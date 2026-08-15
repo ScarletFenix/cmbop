@@ -82,6 +82,23 @@ class EmailLog extends Model
     }
 
     /**
+     * A leftover failed/pending row after a real SMTP success. Campaign
+     * dedupe keys are one-shot; retrying them is a second blast.
+     */
+    public static function latestDeliveredByDedupe(?string $key): ?self
+    {
+        if (! filled($key)) {
+            return null;
+        }
+
+        return static::query()
+            ->where('dedupe_key', $key)
+            ->where('status', self::STATUS_DELIVERED)
+            ->orderByDesc('id')
+            ->first();
+    }
+
+    /**
      * @return array{sent_today: int, pending: int, failed: int, delivered: int}
      */
     public static function dashboardKpis(): array

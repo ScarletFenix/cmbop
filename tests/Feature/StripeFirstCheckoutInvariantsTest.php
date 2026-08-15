@@ -121,7 +121,7 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
             'id' => $sessionId,
             'object' => 'checkout.session',
             'amount_total' => (int) round($euros * 100),
-            'payment_intent' => 'pi_'.substr($sessionId, -8),
+            'payment_intent' => 'pi_'.$sessionId,
             'metadata' => (object) [
                 'type' => 'order_payment',
                 'reference_code' => $ref,

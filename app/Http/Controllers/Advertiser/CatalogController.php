@@ -216,7 +216,7 @@ class CatalogController extends Controller
         try {
             $orderableScope = ContentSubmission::query()
                 ->where('user_id', auth()->id())
-                ->availableForPicker();
+                ->checkoutReady();
 
             // Count must not reuse a limited list — same exists-style gate as the dashboard.
             $approvedArticleCount = (clone $orderableScope)->count();
@@ -640,11 +640,15 @@ class CatalogController extends Controller
         }
 
         if ($request->filled('new_badge') && $request->new_badge == 1) {
-            $query->where('created_at', '>=', now()->subDays(30));
+            $query->where('created_at', '>=', now()->subDays(30))
+                ->where('created_at', '<=', Site::PLAUSIBLE_SQL_DATETIME_CEIL);
         }
 
         if (Schema::hasColumn('sites', 'featured_until')) {
-            $query->orderByRaw('(featured_until IS NOT NULL AND featured_until > ?) DESC', [now()]);
+            $query->orderByRaw(
+                '(featured_until IS NOT NULL AND featured_until > ? AND featured_until <= ?) DESC',
+                [now(), Site::PLAUSIBLE_SQL_DATETIME_CEIL]
+            );
         }
 
         if ($searchText !== '' && ! $request->filled('sort')) {
@@ -659,7 +663,10 @@ class CatalogController extends Controller
             'traffic_desc' => $query->orderByDesc('traffic')->orderByDesc('id'),
             'price_asc' => $query->orderByRaw($advPriceSql.' ASC')->orderByDesc('id'),
             'price_desc' => $query->orderByRaw($advPriceSql.' DESC')->orderByDesc('id'),
-            'newest' => $query->latest('created_at')->orderByDesc('id'),
+            'newest' => $query
+                ->orderByRaw('(created_at IS NOT NULL AND created_at <= ?) DESC', [Site::PLAUSIBLE_SQL_DATETIME_CEIL])
+                ->latest('created_at')
+                ->orderByDesc('id'),
             'rating_desc' => Site::hasSitesColumn('rating_avg')
                 ? $query->orderByDesc('rating_avg')->orderByDesc('rating_count')->orderByDesc('id')
                 : $query->orderByDesc('dr')->orderByDesc('id'),
@@ -1505,19 +1512,19 @@ class CatalogController extends Controller
             ], 422);
         }
 
-        app(OrderPaymentService::class)->replaceUnpaidLeftoversForSubmissions(
+        if (! app(OrderPaymentService::class)->replaceUnpaidLeftoversIfStillOrderable(
             (int) auth()->id(),
             [$submissionId]
-        );
-        $submission = $submission->fresh() ?? $submission;
+        )) {
+            $submission = $submission->fresh() ?? $submission;
 
-        if (! $submission->canBeOrdered() || ! $submission->isReadyForCheckout()) {
             return response()->json([
                 'success' => false,
                 'error' => $submission->libraryFixSummary()
                     ?: 'Choose an approved Content Library article that is still available to order.',
             ], 422);
         }
+        $submission = $submission->fresh() ?? $submission;
 
         $ids[$copyIndex] = $submission->id;
         $cart[$lineKey] = $this->applyCartLineContentIds($cart[$lineKey], $ids);
@@ -1622,17 +1629,34 @@ class CatalogController extends Controller
                     }
 
                     $alreadyAssigned = $this->cartUsesSubmissionId($cart, (int) $librarySubmission->id);
+                    $existingLineKey = null;
+                    foreach ($cart as $key => $item) {
+                        if ($this->cartLineMatches($item, (int) $id, $sensitiveType, $resolvedHomepageDays)) {
+                            $existingLineKey = $key;
+                            break;
+                        }
+                    }
+                    $slotEmpty = $existingLineKey === null
+                        || (($this->cartLineContentIds($cart[$existingLineKey])[0] ?? 0) <= 0);
 
-                    if (! $alreadyAssigned) {
-                        app(OrderPaymentService::class)->replaceUnpaidLeftoversForSubmissions(
+                    if (! $alreadyAssigned && $slotEmpty) {
+                        if (! app(OrderPaymentService::class)->replaceUnpaidLeftoversIfStillOrderable(
                             (int) auth()->id(),
                             [$sessionArticleId]
-                        );
-                        $librarySubmission = $librarySubmission->fresh() ?? $librarySubmission;
-                        if (! $librarySubmission->canBeOrdered() || ! $librarySubmission->isReadyForCheckout()) {
+                        )) {
+                            $librarySubmission = $librarySubmission->fresh() ?? $librarySubmission;
+                            if ($librarySubmission->canReplaceUnpaidLeftover()
+                                || $librarySubmission->activeClaimOrderId()) {
+                                return response()->json([
+                                    'success' => false,
+                                    'error' => $librarySubmission->libraryFixSummary()
+                                        ?: ContentSubmission::ACTIVE_ORDER_CLAIM_MESSAGE,
+                                ], 422);
+                            }
                             session()->forget(['checkout_content_submission_id', 'ordering_from_library']);
                             $librarySubmission = null;
                         } else {
+                            $librarySubmission = $librarySubmission->fresh() ?? $librarySubmission;
                             $attachArticleId = (int) $librarySubmission->id;
                         }
                     }
@@ -1914,7 +1938,7 @@ class CatalogController extends Controller
             return redirect()->route('advertiser.catalog')->with('error', 'Your cart is empty or contains sites you can’t order.');
         }
 
-        $partition = $this->partitionCartByCheckoutReadiness($cart);
+        $partition = $this->partitionCartByCheckoutReadiness($cart, null, null, true);
         $payableCart = $partition['payable'];
         $deferredCart = $partition['deferred'];
 
@@ -2277,12 +2301,17 @@ class CatalogController extends Controller
                         'message' => 'Those listings left the catalog before checkout finished. Your bonus was not spent.',
                     ], 422);
                 }
-                $this->replaceUnpaidLeftoversAtCheckoutCommit(
+                if (! $this->replaceUnpaidLeftoversAtCheckoutCommit(
                     (int) $userId,
                     ['lines' => $fulfillableLines],
                     null,
                     false
-                );
+                )) {
+                    DB::rollBack();
+                    $this->refundCheckoutBonus((int) $userId, (string) $referenceCode);
+
+                    return $this->leftoverReplaceBlockedResponse(['lines' => $fulfillableLines]);
+                }
                 $fulfilledTotal = round(array_sum(array_column(
                     array_column($fulfillableLines, 'orderItem'),
                     'price'
@@ -2512,11 +2541,18 @@ class CatalogController extends Controller
             $storedPackage = $paymentService->getPendingCheckout($referenceCode) ?? [];
             $storedPackage['stripe_session_id'] = $checkoutSession->id;
             $paymentService->storePendingCheckout($referenceCode, $storedPackage);
-            $this->replaceUnpaidLeftoversAtCheckoutCommit(
+            if (! $this->replaceUnpaidLeftoversAtCheckoutCommit(
                 (int) $userId,
                 $checkoutContent,
                 (string) $referenceCode
-            );
+            )) {
+                $paymentService->forgetPendingCheckout((string) $referenceCode);
+                if ($bonusApplied > 0) {
+                    $this->refundCheckoutBonus((int) $userId, (string) $referenceCode);
+                }
+
+                return $this->leftoverReplaceBlockedResponse($checkoutContent);
+            }
 
             Log::info('Stripe-first card checkout session ready (Add Funds style)', [
                 'reference_code' => $referenceCode,
@@ -2605,6 +2641,8 @@ class CatalogController extends Controller
                     $checkoutContent,
                     $referenceCode
                 );
+                // Charge already captured. If replace rolled back because the
+                // article is still claimed, finalize refunds that capture.
                 $intent = (object) [
                     'id' => $payResult['payment_intent_id'],
                     'object' => 'payment_intent',
@@ -2653,11 +2691,16 @@ class CatalogController extends Controller
             }
 
             if (! empty($payResult['redirect_url']) || ! empty($payResult['client_secret'])) {
-                $this->replaceUnpaidLeftoversAtCheckoutCommit(
+                if (! $this->replaceUnpaidLeftoversAtCheckoutCommit(
                     $userId,
                     $checkoutContent,
                     $referenceCode
-                );
+                )) {
+                    $this->refundCheckoutBonus($userId, $referenceCode);
+                    $paymentService->forgetPendingCheckout($referenceCode);
+
+                    return $this->leftoverReplaceBlockedResponse($checkoutContent);
+                }
             }
 
             if (! empty($payResult['redirect_url'])) {
@@ -2932,12 +2975,16 @@ class CatalogController extends Controller
                 ], 422);
             }
 
-            $this->replaceUnpaidLeftoversAtCheckoutCommit(
+            if (! $this->replaceUnpaidLeftoversAtCheckoutCommit(
                 (int) $userId,
                 ['lines' => $fulfillableLines],
                 null,
                 false
-            );
+            )) {
+                DB::rollBack();
+
+                return $this->leftoverReplaceBlockedResponse(['lines' => $fulfillableLines]);
+            }
             $advertiserWallet->refresh();
 
             $expandedOrders = array_column($fulfillableLines, 'orderItem');
@@ -3708,7 +3755,7 @@ class CatalogController extends Controller
 
         $articles = ContentSubmission::query()
             ->where('user_id', auth()->id())
-            ->availableForPicker()
+            ->checkoutReady()
             ->latest('id')
             ->limit(50)
             ->get(['id', 'title', 'original_filename', 'language', 'country', 'anchor_text', 'target_url'])
@@ -3836,13 +3883,6 @@ class CatalogController extends Controller
                 ], 422);
             }
 
-            if (! app(StripeCustomerService::class)->configured()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Card payments are not configured. Set STRIPE_SECRET and STRIPE_KEY, or choose another payment method.',
-                ], 503);
-            }
-
             $amountDue = round((float) $order->total_amount, 2);
             if ($amountDue <= 0) {
                 return response()->json([
@@ -3862,6 +3902,7 @@ class CatalogController extends Controller
 
             $packageTotal = round((float) $package->sum('total_amount'), 2);
             $referenceCode = (string) $order->reference_code;
+            $payments = app(OrderPaymentService::class);
 
             if ($package->contains(fn (Order $row) => ! $row->hasCatalogVisibleFulfillment())) {
                 return response()->json([
@@ -3882,12 +3923,51 @@ class CatalogController extends Controller
             // Pay again charges the full package on the card. Release any leftover
             // checkout bonus for this reference first so promo is not left reserved
             // while the advertiser pays the original total again.
-            app(OrderPaymentService::class)->refundBonusReservedForReference(
+            $payments->refundBonusReservedForReference(
                 (int) auth()->id(),
                 $referenceCode,
                 null,
                 $package
             );
+
+            $appliedCredit = $payments->unfulfilledCardCreditToApply(
+                (int) auth()->id(),
+                $referenceCode,
+                $packageTotal
+            );
+            $chargeAmount = round(max(0, $packageTotal - $appliedCredit), 2);
+
+            if ($chargeAmount <= 0.009 && $appliedCredit > 0.009) {
+                $settled = $payments->settleFailedCardLeftoversFromAppliedCredit(
+                    $referenceCode,
+                    (int) auth()->id(),
+                    $appliedCredit
+                );
+                if ($settled->isEmpty()) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'The leftover card credit could not be applied. Try again or contact support.',
+                    ], 422);
+                }
+
+                $payments->forgetPendingCheckout($referenceCode);
+
+                return response()->json([
+                    'success' => true,
+                    'settled' => true,
+                    'message' => 'This leftover was paid using the card credit already in your wallet.',
+                    'reference_code' => $referenceCode,
+                    'amount_due' => 0,
+                    'unfulfilled_credit_applied' => $appliedCredit,
+                ]);
+            }
+
+            if (! app(StripeCustomerService::class)->configured()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Card payments are not configured. Set STRIPE_SECRET and STRIPE_KEY, or choose another payment method.',
+                ], 503);
+            }
 
             Stripe::setApiKey(config('services.stripe.secret'));
 
@@ -3900,31 +3980,37 @@ class CatalogController extends Controller
                             'name' => 'Order retry - '.$package->count().' item(s)',
                             'description' => 'Order reference: '.$referenceCode,
                         ],
-                        'unit_amount' => StripePaymentService::toCents($packageTotal),
+                        'unit_amount' => StripePaymentService::toCents($chargeAmount),
                     ],
                     'quantity' => 1,
                 ]],
                 'mode' => 'payment',
                 'success_url' => route('advertiser.checkout.process').'?session_id={CHECKOUT_SESSION_ID}&ref='.urlencode($referenceCode),
-                'cancel_url' => route('advertiser.orders').'?payment_status=failed&retry=canceled',
+                'cancel_url' => route('advertiser.orders', [
+                    'payment_status' => 'failed',
+                    'retry' => 'canceled',
+                    'ref' => $referenceCode,
+                ]),
                 'metadata' => [
                     'type' => 'order_payment',
                     'reference_code' => $referenceCode,
                     'user_id' => (string) auth()->id(),
                     'order_count' => (string) $package->count(),
-                    'expected_amount' => (string) $packageTotal,
+                    'expected_amount' => (string) $chargeAmount,
                     'order_total' => (string) $packageTotal,
                     'bonus_applied' => '0',
                     'is_retry' => '1',
+                    'unfulfilled_credit_applied' => (string) $appliedCredit,
                 ],
                 'payment_intent_data' => [
                     'metadata' => [
                         'type' => 'order_payment',
                         'reference_code' => $referenceCode,
                         'user_id' => (string) auth()->id(),
-                        'expected_amount' => (string) $packageTotal,
+                        'expected_amount' => (string) $chargeAmount,
                         'order_total' => (string) $packageTotal,
                         'bonus_applied' => '0',
+                        'unfulfilled_credit_applied' => (string) $appliedCredit,
                     ],
                 ],
             ];
@@ -3942,7 +4028,7 @@ class CatalogController extends Controller
             // Pay again settles leftover rows, not the abandoned Stripe-first
             // package. Drop it so success-URL finalize cannot treat the new
             // session as a stale package mismatch and skip mark-paid.
-            app(OrderPaymentService::class)->forgetPendingCheckoutKeepLeftoverHold(
+            $payments->forgetPendingCheckoutKeepLeftoverHold(
                 $referenceCode,
                 (int) auth()->id()
             );
@@ -3955,7 +4041,8 @@ class CatalogController extends Controller
                 'checkout_url' => $checkoutSession->url,
                 'session_id' => $checkoutSession->id,
                 'reference_code' => $referenceCode,
-                'amount_due' => $packageTotal,
+                'amount_due' => $chargeAmount,
+                'unfulfilled_credit_applied' => $appliedCredit,
             ]);
         } catch (\Exception $e) {
             Log::error('Order payment retry failed: '.$e->getMessage(), [
@@ -4009,17 +4096,34 @@ class CatalogController extends Controller
     {
         $user = User::query()->find($userId) ?? auth()->user();
         $moderation = app(ContentModerationService::class);
+        $scanned = 0;
         foreach ($checkoutContent['lines'] ?? [] as $line) {
             $submission = $line['submission'] ?? null;
             if (! $submission instanceof ContentSubmission) {
+                $id = (int) (is_array($line['orderItem'] ?? null)
+                    ? ($line['orderItem']['content_submission_id'] ?? 0)
+                    : 0);
+                if ($id > 0) {
+                    $submission = ContentSubmission::query()->whereKey($id)->first();
+                }
+            }
+            if (! $submission instanceof ContentSubmission) {
                 continue;
             }
+            $scanned++;
             if (! $moderation->submissionPassesLivePolicy($submission, $user instanceof User ? $user : null)) {
                 return response()->json([
                     'success' => false,
                     'message' => 'A Content Library article no longer passes content policy. Edit it and try again.',
                 ], 422);
             }
+        }
+
+        if ($scanned === 0 && ($checkoutContent['lines'] ?? []) !== []) {
+            return response()->json([
+                'success' => false,
+                'message' => 'A Content Library article no longer passes content policy. Edit it and try again.',
+            ], 422);
         }
 
         return null;
@@ -4053,8 +4157,12 @@ class CatalogController extends Controller
     /**
      * Orders page
      */
-    public function orders()
+    public function orders(Request $request)
     {
+        if (search_text((string) $request->query('retry')) === 'canceled') {
+            $this->failPayAgainAfterStripeCancel($request);
+        }
+
         return view('advertiser.orders');
     }
 
@@ -5579,21 +5687,24 @@ class CatalogController extends Controller
             return;
         }
 
-        // Legacy path: pending order rows existed before Stripe redirect.
-        $stillPending = $canceled->where('payment_status', 'pending');
+        // Card leftovers stay failed+pending for Pay again. Customer cancel
+        // must fail an in-flight retry, not release the article or cancel the row.
+        $stillPending = $canceled->where('payment_status', 'pending')
+            ->where('status', 'pending');
         if ($stillPending->isNotEmpty()) {
             $paymentService->markOrdersFailedFromReference(
                 $referenceCode,
                 'Checkout canceled by customer'
             );
             $canceled = Order::with('items')
-                ->where('user_id', auth()->id())
+                ->where('user_id', $userId)
                 ->where('reference_code', $referenceCode)
                 ->where('payment_method', 'card')
                 ->where('payment_status', 'failed')
+                ->where('status', 'pending')
                 ->get();
         } else {
-            $this->refundCheckoutBonus((int) auth()->id(), $referenceCode);
+            $this->refundCheckoutBonus($userId, $referenceCode);
         }
 
         $paymentService->forgetPendingCheckoutKeepLeftoverHold($referenceCode, $userId);
@@ -5602,11 +5713,6 @@ class CatalogController extends Controller
         $submissionId = session('checkout_content_submission_id');
 
         foreach ($canceled as $order) {
-            $this->releaseContentSubmissionsForOrder($order);
-            if ($order->status !== 'cancelled') {
-                $order->update(['status' => 'cancelled']);
-            }
-
             foreach ($order->items as $item) {
                 if (! $item->site_id) {
                     continue;
@@ -5635,10 +5741,44 @@ class CatalogController extends Controller
         }
         session()->forget('pending_card_reference');
 
-        Log::info('Cancelled unpaid card orders after Stripe cancel', [
+        Log::info('Kept Pay again leftovers after Stripe cancel', [
             'reference_code' => $referenceCode,
             'order_count' => $canceled->count(),
         ]);
+    }
+
+    /**
+     * Pay again cancel_url lands on Orders. Mark the leftover failed again
+     * without cancelling it so Pay again stays available.
+     */
+    private function failPayAgainAfterStripeCancel(Request $request): void
+    {
+        $referenceCode = search_text((string) $request->query(
+            'ref',
+            (string) session('pending_card_reference', '')
+        ));
+        if ($referenceCode === '') {
+            return;
+        }
+
+        $userId = (int) auth()->id();
+        $owned = Order::query()
+            ->where('user_id', $userId)
+            ->where('reference_code', $referenceCode)
+            ->where('payment_method', 'card')
+            ->where('payment_status', 'pending')
+            ->where('status', 'pending')
+            ->exists();
+        if (! $owned) {
+            return;
+        }
+
+        app(OrderPaymentService::class)->markOrdersFailedFromReference(
+            $referenceCode,
+            'Pay again canceled',
+            $userId
+        );
+        session()->forget('pending_card_reference');
     }
 
     /**
@@ -5659,13 +5799,50 @@ class CatalogController extends Controller
         array $checkoutContent,
         ?string $keepReferenceCode = null,
         bool $forgetPackages = true
-    ): void {
-        app(OrderPaymentService::class)->replaceUnpaidLeftoversForSubmissions(
+    ): bool {
+        return app(OrderPaymentService::class)->replaceUnpaidLeftoversIfStillOrderable(
             $userId,
             $this->collectSubmissionIdsFromCheckoutContent($checkoutContent),
             $keepReferenceCode,
             $forgetPackages
         );
+    }
+
+    /**
+     * @param  array{lines?: array<int, mixed>}  $checkoutContent
+     */
+    private function leftoverReplaceBlockedResponse(array $checkoutContent): JsonResponse
+    {
+        $message = ContentSubmission::UNAVAILABLE_MESSAGE;
+        foreach ($checkoutContent['lines'] ?? [] as $line) {
+            if (! is_array($line)) {
+                continue;
+            }
+            $submission = $line['submission'] ?? null;
+            if (! $submission instanceof ContentSubmission) {
+                continue;
+            }
+            $fresh = $submission->fresh() ?? $submission;
+            if ($fresh->isLockedByPaidOrder()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => ContentSubmission::PAID_ORDER_CLAIM_MESSAGE,
+                ], 422);
+            }
+            if ($fresh->canReplaceUnpaidLeftover() || $fresh->activeClaimOrderId()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $fresh->libraryFixSummary()
+                        ?: ContentSubmission::ACTIVE_ORDER_CLAIM_MESSAGE,
+                ], 422);
+            }
+            $message = $fresh->libraryFixSummary() ?: ContentSubmission::UNAVAILABLE_MESSAGE;
+        }
+
+        return response()->json([
+            'success' => false,
+            'message' => $message,
+        ], 422);
     }
 
     /**

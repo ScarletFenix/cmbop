@@ -194,6 +194,7 @@ class PromotionService
                 ->catalogVisible()
                 ->whereNotNull('featured_until')
                 ->where('featured_until', '>', now())
+                ->where('featured_until', '<=', Site::PLAUSIBLE_SQL_DATETIME_CEIL)
                 ->orderByDesc('featured_until')
                 ->get()
                 ->filter(fn (Site $site) => $site->isFeatured())
@@ -268,7 +269,10 @@ class PromotionService
 
         try {
             return [
-                'week' => (int) WelcomeBonusClaim::query()->where('created_at', '>=', now()->startOfWeek())->count(),
+                'week' => (int) WelcomeBonusClaim::query()
+                    ->where('created_at', '>=', now()->startOfWeek())
+                    ->where('created_at', '<=', WelcomeBonusClaim::PLAUSIBLE_SQL_DATETIME_CEIL)
+                    ->count(),
                 'total' => (int) WelcomeBonusClaim::query()->count(),
                 'last' => WelcomeBonusClaim::query()->with('user')->latest('id')->first(),
             ];
@@ -297,6 +301,7 @@ class PromotionService
                 ->catalogVisible()
                 ->whereNotNull('featured_until')
                 ->where('featured_until', '>', now())
+                ->where('featured_until', '<=', Site::PLAUSIBLE_SQL_DATETIME_CEIL)
                 ->get()
                 ->filter(fn (Site $site) => $site->isFeatured())
                 ->count();

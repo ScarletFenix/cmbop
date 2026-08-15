@@ -156,7 +156,7 @@ class LogSentEmail
             $updated = EmailCampaignRecipient::query()
                 ->where('email_campaign_id', $campaignId)
                 ->where('user_id', $userId)
-                ->whereIn('status', EmailCampaignRecipient::statusesOpenForDelivery())
+                ->openForDelivery()
                 ->update([
                     'status' => EmailCampaignRecipient::STATUS_DELIVERED,
                     'email_log_id' => $logId,

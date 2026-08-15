@@ -292,6 +292,14 @@ class CommunityFeedbackTest extends TestCase
         ])->assertOk()->assertJson(['success' => true]);
 
         $this->assertSame('resolved', $report->fresh()->status);
+        $this->assertSame(1, ActivityLog::query()->where('action', 'problem.report_updated')->count());
+
+        $this->actingAs($admin)->patchJson(route('admin.community.problems.update', $report->id), [
+            'status' => 'resolved',
+            'admin_notes' => 'Fixed the mobile CTA.',
+        ])->assertOk()->assertJson(['success' => true]);
+
+        $this->assertSame(1, ActivityLog::query()->where('action', 'problem.report_updated')->count());
 
         $this->actingAs($admin)->patchJson(route('admin.community.problems.update', $report->id), [
             'status' => 'accepted',

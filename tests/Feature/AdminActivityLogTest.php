@@ -3,13 +3,17 @@
 namespace Tests\Feature;
 
 use App\Models\ActivityLog;
+use App\Models\AgencySiteImport;
 use App\Models\DepositRequest;
+use App\Models\EmailCampaign;
 use App\Models\Order;
+use App\Models\ProblemReport;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
 use App\Models\Withdrawal;
 use App\Services\ActivityLogger;
+use App\Support\AdminActivityDisplay;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -237,6 +241,20 @@ class AdminActivityLogTest extends TestCase
         $this->assertStringContainsString('site.approved', $csv);
         $this->assertStringContainsString('Approved for export', $csv);
 
+        $this->makeLog([
+            'action' => 'catalog_pace_exempted',
+            'description' => 'Legacy pace code should export as the live action',
+            'subject_label' => 'Alias Export User',
+        ]);
+
+        $aliased = $this->actingAs($this->admin)
+            ->get(route('admin.activity-logs.export'))
+            ->assertOk()
+            ->streamedContent();
+
+        $this->assertStringContainsString('catalog_activity.exempt_toggled', $aliased);
+        $this->assertStringNotContainsString('catalog_pace_exempted', $aliased);
+
         $marketerRole = Role::where('name', 'marketing')->firstOrFail();
         $marketer = User::factory()->create([
             'email_verified_at' => now(),
@@ -352,6 +370,172 @@ class AdminActivityLogTest extends TestCase
         $this->assertStringContainsString($dossier, $html);
         $this->assertStringNotContainsString(route('admin.deposits.show', $deposit->id), $html);
         $this->assertStringNotContainsString(route('admin.withdrawals.show', $withdrawal->id), $html);
+    }
+
+    public function test_deposit_with_missing_user_links_to_deposits_list_not_a_404_dossier(): void
+    {
+        $log = $this->makeLog([
+            'action' => 'deposit.approved',
+            'description' => 'Approved an orphan deposit',
+            'subject_type' => DepositRequest::class,
+            'subject_id' => 42,
+            'subject_label' => 'Deposit #42',
+        ]);
+
+        $url = AdminActivityDisplay::subjectUrl($log, [
+            'existingDepositIds' => [42 => 999999],
+            'existingUserIds' => [],
+        ]);
+
+        $this->assertSame(route('admin.deposits'), $url);
+        $this->assertNotSame(route('admin.finance.user', 999999), $url);
+        $this->assertNotSame(route('admin.deposits.show', 42), $url);
+    }
+
+    public function test_regranting_marketing_does_not_write_another_grant_row(): void
+    {
+        $marketerRole = Role::where('name', 'marketing')->firstOrFail();
+        $member = User::factory()->create(['email_verified_at' => now()]);
+        $member->roles()->attach($marketerRole->id);
+
+        $this->actingAs($this->admin)
+            ->postJson(route('admin.users.updateRoles', $member->id), [
+                'marketing' => true,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertSame(0, ActivityLog::query()->where('action', 'user.marketing_granted')->count());
+    }
+
+    public function test_retired_catalog_pace_code_filters_with_the_live_action(): void
+    {
+        $this->makeLog([
+            'action' => 'catalog_activity.exempt_toggled',
+            'description' => 'Granted a live pace exemption',
+            'subject_label' => 'Live Exempt User',
+        ]);
+        $this->makeLog([
+            'action' => 'catalog_pace_exempted',
+            'description' => 'Granted a legacy pace exemption',
+            'subject_label' => 'Legacy Exempt User',
+        ]);
+        $this->makeLog([
+            'action' => 'site.approved',
+            'description' => 'Unrelated approval',
+            'subject_label' => 'Other Site',
+        ]);
+
+        $html = $this->actingAs($this->admin)
+            ->get(route('admin.activity-logs.index', ['action' => 'catalog_pace_exempted']))
+            ->assertOk()
+            ->assertSee('Live Exempt User', false)
+            ->assertSee('Legacy Exempt User', false)
+            ->assertDontSee('Other Site', false)
+            ->getContent();
+
+        $this->assertSame(1, substr_count($html, 'value="catalog_activity.exempt_toggled"'));
+        $this->assertStringNotContainsString('value="catalog_pace_exempted"', $html);
+        $this->assertStringContainsString('Toggled catalog pace exemption (2)', $html);
+        $this->assertStringNotContainsString('<code class="small text-muted">catalog_pace_exempted</code>', $html);
+        $this->assertStringContainsString('<code class="small text-muted">catalog_activity.exempt_toggled</code>', $html);
+    }
+
+    public function test_agency_import_row_links_to_publisher_not_a_dead_import_id(): void
+    {
+        $publisher = User::factory()->create([
+            'name' => 'Agency Publisher',
+            'email' => 'agency-pub@example.com',
+            'email_verified_at' => now(),
+        ]);
+
+        $log = $this->makeLog([
+            'action' => 'agency_import.submitted',
+            'description' => 'Submitted agency CSV import #42',
+            'subject_type' => AgencySiteImport::class,
+            'subject_id' => 42,
+            'subject_label' => 'Agency import #42',
+            'properties' => ['publisher_id' => $publisher->id, 'import_id' => 42],
+        ]);
+
+        $lookup = AdminActivityDisplay::preload([$log]);
+        $this->assertSame(
+            route('admin.users.index', ['user' => $publisher->id]),
+            AdminActivityDisplay::subjectUrl($log, $lookup)
+        );
+
+        $gone = $this->makeLog([
+            'action' => 'agency_import.submitted',
+            'description' => 'Submitted agency CSV import #43',
+            'subject_type' => AgencySiteImport::class,
+            'subject_id' => 43,
+            'subject_label' => 'Agency import #43',
+            'properties' => ['publisher_id' => 999999, 'import_id' => 43],
+        ]);
+
+        $this->assertNull(AdminActivityDisplay::subjectUrl($gone, AdminActivityDisplay::preload([$gone])));
+    }
+
+    public function test_dispute_row_links_to_the_order_and_has_a_label(): void
+    {
+        $log = $this->makeLog([
+            'action' => 'dispute.upheld',
+            'description' => 'Upheld a clawback',
+            'subject_type' => Order::class,
+            'subject_id' => 7,
+            'subject_label' => 'Order #ORD-7',
+            'properties' => ['dispute_id' => 3, 'advertiser_credited' => 115],
+        ]);
+
+        $this->assertSame(
+            route('admin.orders.show', 7),
+            AdminActivityDisplay::subjectUrl($log, [
+                'existingOrderIds' => [7 => true],
+            ])
+        );
+
+        $html = $this->actingAs($this->admin)
+            ->get(route('admin.activity-logs.index'))
+            ->assertOk()
+            ->assertSee('Upheld order dispute', false)
+            ->getContent();
+
+        $this->assertStringContainsString('value="dispute.upheld"', $html);
+    }
+
+    public function test_batch_payout_and_inbox_rows_have_labels_and_safe_links(): void
+    {
+        $this->makeLog([
+            'action' => 'withdrawal.batch_completed',
+            'description' => 'Batch marked withdrawals paid',
+            'subject_label' => 'PAYOUT-TEST-1',
+        ]);
+        $this->makeLog([
+            'action' => 'problem.report_updated',
+            'description' => 'Updated problem report #9',
+            'subject_type' => ProblemReport::class,
+            'subject_id' => 9,
+            'subject_label' => 'Checkout broken',
+        ]);
+        $this->makeLog([
+            'action' => 'campaign.queued',
+            'description' => 'Queued a campaign',
+            'subject_type' => EmailCampaign::class,
+            'subject_id' => 3,
+            'subject_label' => 'August promo',
+        ]);
+
+        $html = $this->actingAs($this->admin)
+            ->get(route('admin.activity-logs.index'))
+            ->assertOk()
+            ->assertSee('Batch marked withdrawals paid', false)
+            ->assertSee('Updated problem report', false)
+            ->assertSee('Queued campaign', false)
+            ->getContent();
+
+        $this->assertStringContainsString(route('admin.withdrawals'), $html);
+        $this->assertStringContainsString(route('admin.community.index', ['tab' => 'problems']), $html);
+        $this->assertStringContainsString(route('admin.campaigns.index'), $html);
     }
 
     public function test_search_activate_does_not_match_deactivated(): void
