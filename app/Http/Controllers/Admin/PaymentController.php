@@ -455,7 +455,7 @@ class PaymentController extends Controller
             $order,
             $amount,
             'Admin marked payment failed',
-            $thisOrderBonus > 0 ? $thisOrderBonus : null
+            $thisOrderBonus
         );
         $wallet->refresh();
         $refunded = max(0, round($reservedBefore - (float) $wallet->reserved_balance, 2));
@@ -488,7 +488,7 @@ class PaymentController extends Controller
             $order,
             $amount,
             'Admin refund',
-            $thisOrderBonus > 0 ? $thisOrderBonus : null
+            $thisOrderBonus
         );
 
         return $amount;
@@ -528,13 +528,14 @@ class PaymentController extends Controller
         }
 
         if ($sendNotification && $newStatus === 'failed' && $oldStatus !== 'failed') {
-            $notifications->notifyPaymentFailed([$fresh], $notes !== '' ? $notes : null);
             if ($refundAmount > 0) {
                 $notifications->notifyRefundCredited(
                     $fresh,
                     $refundAmount,
                     $notes !== '' ? $notes : 'Admin marked payment failed'
                 );
+            } else {
+                $notifications->notifyPaymentFailed([$fresh], $notes !== '' ? $notes : null);
             }
         }
 

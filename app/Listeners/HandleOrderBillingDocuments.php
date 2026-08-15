@@ -70,7 +70,12 @@ class HandleOrderBillingDocuments
 
                 match ($to) {
                     'paid' => $this->billing->handlePaymentPaid($order),
-                    'failed' => $this->billing->handlePaymentFailed($order),
+                    // Paid→failed on an in-flight order credits the wallet, so
+                    // issue a refund receipt — a failure report leaves the tax
+                    // invoice marked paid while the advertiser already has cash.
+                    'failed' => $order->status === 'cancelled'
+                        ? $this->billing->handlePaymentRefunded($order, 'Admin marked payment failed')
+                        : $this->billing->handlePaymentFailed($order),
                     'refunded' => $this->billing->handlePaymentRefunded($order),
                     'pending' => $this->billing->handlePaymentPending($order),
                     default => null,

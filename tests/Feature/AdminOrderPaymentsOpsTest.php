@@ -480,6 +480,88 @@ class AdminOrderPaymentsOpsTest extends TestCase
         $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_reserved, 0.01);
     }
 
+    public function test_unpaid_fail_does_not_steal_another_checkout_leftover_bonus(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $wallet = Wallet::create([
+            'user_id' => $advertiser->id,
+            'role_id' => Wallet::advertiserRoleId(),
+            'balance' => 0,
+            'reserved_balance' => 20,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 20,
+            'currency' => 'EUR',
+        ]);
+        $order = $this->makeOrder($advertiser, $this->makeSite($this->makeUser('publisher'), 'unpaid-iso'), [
+            'payment_method' => 'wise',
+            'payment_status' => 'pending',
+            'status' => 'pending',
+            'total_amount' => 80,
+            'reference_code' => 'PAY-UNPAID-THIS',
+        ]);
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'PAY-UNPAID-OTHER', 20);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.payments.updateStatus', $order->id), [
+                'payment_status' => 'failed',
+            ])
+            ->assertOk();
+
+        $wallet->refresh();
+        $this->assertSame('failed', $order->fresh()->payment_status);
+        $this->assertSame('pending', $order->fresh()->status);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->reserved_balance, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(
+            20.0,
+            app(CheckoutIntentService::class)->peekBonus($advertiser->id, 'PAY-UNPAID-OTHER'),
+            0.01
+        );
+    }
+
+    public function test_refund_without_this_order_bonus_does_not_steal_another_leftover(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $wallet = Wallet::create([
+            'user_id' => $advertiser->id,
+            'role_id' => Wallet::advertiserRoleId(),
+            'balance' => 0,
+            'reserved_balance' => 20,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 20,
+            'currency' => 'EUR',
+        ]);
+        $order = $this->makeOrder($advertiser, $this->makeSite($this->makeUser('publisher'), 'no-peek'), [
+            'payment_method' => 'wise',
+            'payment_status' => 'paid',
+            'status' => 'processing',
+            'paid_at' => now(),
+            'total_amount' => 80,
+            'reference_code' => 'PAY-NO-PEEK-THIS',
+        ]);
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'PAY-NO-PEEK-OTHER', 20);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.payments.updateStatus', $order->id), [
+                'payment_status' => 'refunded',
+            ])
+            ->assertOk();
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(80.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->reserved_balance, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(
+            20.0,
+            app(CheckoutIntentService::class)->peekBonus($advertiser->id, 'PAY-NO-PEEK-OTHER'),
+            0.01
+        );
+    }
+
     public function test_refund_does_not_steal_another_checkout_leftover_bonus(): void
     {
         $admin = $this->makeUser('admin');

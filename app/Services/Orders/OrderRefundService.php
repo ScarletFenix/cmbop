@@ -273,6 +273,8 @@ class OrderRefundService
             ? $this->openCheckoutSiblingTotal($userId, $referenceCode, $failedIds)
             : 0.0;
 
+        $peek = app(CheckoutIntentService::class)->peekBonus($userId, $referenceCode, $fallbackBonus);
+
         if ($reserved <= 0) {
             if ($openTotal <= 0) {
                 app(CheckoutIntentService::class)->takeBonus($userId, $referenceCode, $fallbackBonus);
@@ -291,7 +293,19 @@ class OrderRefundService
             $share = min($reserved, max(0, round($reserved * ($failedTotal / $pool), 2)));
         }
 
+        // Cap to this reference's leftover. Dumping the whole wallet bucket
+        // stole another in-flight checkout's promo when this row had none.
+        if ($peek > 0) {
+            $share = min($share, $peek);
+        } elseif ($openTotal <= 0) {
+            $share = 0.0;
+        }
+
         if ($share <= 0) {
+            if ($openTotal <= 0) {
+                app(CheckoutIntentService::class)->takeBonus($userId, $referenceCode, $fallbackBonus);
+            }
+
             return 0.0;
         }
 

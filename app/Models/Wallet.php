@@ -537,6 +537,9 @@ class Wallet extends Model
         $this->balance = round((float) $this->balance + $refund, 2);
         $this->bonus_reserved = round($bonusReserved - $fromBonus, 2);
         $this->bonus_balance = round((float) $this->bonus_balance + $fromBonus, 2);
+        if ($this->bonus_reserved > $this->reserved_balance) {
+            $this->bonus_reserved = (float) $this->reserved_balance;
+        }
         $this->save();
     }
 
