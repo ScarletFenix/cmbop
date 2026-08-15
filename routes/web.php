@@ -598,7 +598,10 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
 
         Route::get('/emails', [AdminEmailCenterController::class, 'index'])->name('emails.index');
         Route::get('/emails/preview/{key}', [AdminEmailCenterController::class, 'preview'])->name('emails.preview');
-        Route::post('/emails/test', [AdminEmailCenterController::class, 'sendTest'])->name('emails.test');
+        Route::get('/emails/logs/{emailLog}', [AdminEmailCenterController::class, 'showLog'])->name('emails.log');
+        Route::post('/emails/test', [AdminEmailCenterController::class, 'sendTest'])
+            ->middleware('throttle:5,1')
+            ->name('emails.test');
         Route::post('/emails/retry', [AdminEmailCenterController::class, 'retryFailed'])->name('emails.retry');
         Route::post('/emails/settings', [AdminEmailCenterController::class, 'updateSettings'])->name('emails.settings');
 

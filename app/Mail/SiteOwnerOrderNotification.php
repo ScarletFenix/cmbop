@@ -19,8 +19,9 @@ class SiteOwnerOrderNotification extends PlatformMailable
         parent::__construct();
         $this->site = $site;
         $this->orders = $orders;
-        // Get the publisher using publisher_id
-        $this->publisher = User::find($site->publisher_id);
+        $this->publisher = $site->relationLoaded('publisher') && $site->publisher
+            ? $site->publisher
+            : User::find($site->publisher_id);
     }
 
     public function build()

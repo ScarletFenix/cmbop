@@ -2,13 +2,20 @@
 
 namespace App\Support;
 
+use App\Mail\AdminAssignedSiteNotification;
 use App\Mail\AdminManualPaymentNotification;
 use App\Mail\AdminNewUserRegistered;
 use App\Mail\AdminStalledOrderAlert;
 use App\Mail\AdvertiserOrderStalledNotice;
 use App\Mail\AdvertiserReviewNudge;
+use App\Mail\AudienceCampaignMail;
 use App\Mail\AutoApproveReminderMail;
+use App\Mail\BulkSiteItemsRejected;
+use App\Mail\BulkSiteRequestCancelled;
+use App\Mail\BulkSiteRequestSubmitted;
+use App\Mail\BulkSitesSeededNotification;
 use App\Mail\CommunityFeedbackReviewed;
+use App\Mail\ContentEvaluationResult;
 use App\Mail\ContentRevisionFulfilled;
 use App\Mail\ContentRevisionRequested;
 use App\Mail\DepositApproved;
@@ -33,6 +40,7 @@ use App\Mail\OrderStatusChanged;
 use App\Mail\PaymentFailedMail;
 use App\Mail\PaymentPendingMail;
 use App\Mail\PaymentSuccessfulInvoiceMail;
+use App\Mail\PayoutProfileUpdatedBySupport;
 use App\Mail\PublisherAcceptNudge;
 use App\Mail\PublisherAddSiteReminderMail;
 use App\Mail\PublisherPublishNudge;
@@ -40,6 +48,7 @@ use App\Mail\RefundReceiptMail;
 use App\Mail\SiteClaimOwnershipTransferred;
 use App\Mail\SiteClaimReviewed;
 use App\Mail\SiteClaimSubmitted;
+use App\Mail\SiteDiscountEnded;
 use App\Mail\SiteOwnerOrderNotification;
 use App\Mail\SiteStatusNotification;
 use App\Mail\SpendBudgetAlertMail;
@@ -50,7 +59,10 @@ use App\Mail\WelcomeEmail;
 use App\Mail\WithdrawalRequestedConfirmation;
 use App\Mail\WithdrawalRequestNotification;
 use App\Mail\WithdrawalStatusUpdated;
+use App\Models\BulkSiteRequest;
+use App\Models\ContentSubmission;
 use App\Models\DepositRequest;
+use App\Models\EmailCampaign;
 use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -66,6 +78,25 @@ use Illuminate\Support\Str;
 
 class EmailCatalog
 {
+    public const PREVIEW_ID = 0;
+
+    public const PREVIEW_EMAIL = 'sample@example.com';
+
+    public static function isPreviewUser(?User $user): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        return (int) $user->id === self::PREVIEW_ID
+            || $user->email === self::PREVIEW_EMAIL;
+    }
+
+    public static function previewVerificationUrl(): string
+    {
+        return rtrim(app_public_url(), '/').'/email/verify/preview-id/preview-hash';
+    }
+
     /**
      * @return array<string, array<string, mixed>>
      */
@@ -291,6 +322,77 @@ class EmailCatalog
                 'status' => 'framework',
                 'importance' => 'Managed by Laravel auth — preview shows a branded sample; do not duplicate send logic.',
             ],
+            'email_verification' => [
+                'name' => 'Email Verification',
+                'description' => 'Laravel auth verification email sent on signup / resend (framework notification).',
+                'category' => 'Auth',
+                'mailable' => null,
+                'status' => 'framework',
+                'importance' => 'Managed by Laravel auth — preview shows a branded sample; the Email Center toggle does not stop verify mail.',
+            ],
+            'content_evaluation_result' => [
+                'name' => 'Content Evaluation Result',
+                'description' => 'Advertiser notified when an uploaded article is approved or needs changes.',
+                'category' => 'Orders',
+                'mailable' => ContentEvaluationResult::class,
+                'status' => 'active',
+            ],
+            'site_discount_ended' => [
+                'name' => 'Site Discount Ended',
+                'description' => 'Publisher notified when a listing discount expires.',
+                'category' => 'Publishers',
+                'mailable' => SiteDiscountEnded::class,
+                'status' => 'active',
+            ],
+            'payout_profile_updated' => [
+                'name' => 'Payout Profile Updated by Support',
+                'description' => 'Publisher notified when support changes their payout details.',
+                'category' => 'Billing',
+                'mailable' => PayoutProfileUpdatedBySupport::class,
+                'status' => 'active',
+            ],
+            'bulk_site_request_submitted' => [
+                'name' => 'Bulk Site Request Submitted',
+                'description' => 'Admins notified when a publisher submits a bulk website request.',
+                'category' => 'Admin',
+                'mailable' => BulkSiteRequestSubmitted::class,
+                'status' => 'active',
+            ],
+            'bulk_sites_seeded' => [
+                'name' => 'Bulk Sites Seeded — Complete Details',
+                'description' => 'Publisher asked to finish details after staff seed a bulk request.',
+                'category' => 'Publishers',
+                'mailable' => BulkSitesSeededNotification::class,
+                'status' => 'active',
+            ],
+            'admin_assigned_site' => [
+                'name' => 'Admin Assigned Site — Accept Listing',
+                'description' => 'Publisher asked to accept a website staff added for them.',
+                'category' => 'Publishers',
+                'mailable' => AdminAssignedSiteNotification::class,
+                'status' => 'active',
+            ],
+            'audience_campaign' => [
+                'name' => 'Updates & Campaigns',
+                'description' => 'Admin-composed marketing / update email to a selected audience.',
+                'category' => 'Growth',
+                'mailable' => AudienceCampaignMail::class,
+                'status' => 'active',
+            ],
+            'bulk_request_cancelled' => [
+                'name' => 'Bulk Website Request Cancelled',
+                'description' => 'Publisher notified when staff cancel a bulk website request.',
+                'category' => 'Publishers',
+                'mailable' => BulkSiteRequestCancelled::class,
+                'status' => 'active',
+            ],
+            'bulk_request_items_rejected' => [
+                'name' => 'Bulk Request Sites Not Added',
+                'description' => 'Publisher notified when some URLs from a bulk request were not added.',
+                'category' => 'Publishers',
+                'mailable' => BulkSiteItemsRejected::class,
+                'status' => 'active',
+            ],
             'admin_new_user' => [
                 'name' => 'New User Registered',
                 'description' => 'Admins notified when a new user registers.',
@@ -420,11 +522,40 @@ class EmailCatalog
         ];
     }
 
+    /**
+     * Email Center cards, in config order. Config is the source of truth for
+     * which types exist; the catalog supplies description / category / status.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    public static function templates(): array
+    {
+        $catalog = self::all();
+        $templates = [];
+
+        foreach (config('email_notifications.types', []) as $key => $config) {
+            $meta = $catalog[$key] ?? [];
+            $templates[$key] = [
+                'key' => $key,
+                'name' => $meta['name'] ?? ($config['name'] ?? $key),
+                'description' => $meta['description'] ?? '',
+                'category' => $meta['category'] ?? 'Other',
+                'mailable' => $meta['mailable'] ?? ($config['mailable'] ?? null),
+                'status' => $meta['status'] ?? (! empty($config['framework']) ? 'framework' : 'active'),
+                'importance' => $meta['importance'] ?? null,
+                'audience' => $config['audience'] ?? 'user',
+                'preference' => $config['preference'] ?? null,
+                'framework' => (bool) ($config['framework'] ?? false),
+                'default_enabled' => (bool) ($config['default_enabled'] ?? true),
+            ];
+        }
+
+        return $templates;
+    }
+
     public static function get(string $key): ?array
     {
-        $all = self::all();
-
-        return $all[$key] ?? null;
+        return self::templates()[$key] ?? null;
     }
 
     public static function keyFromMailable(?string $class): ?string
@@ -446,18 +577,88 @@ class EmailCatalog
     {
         $subject = strtolower($subject);
         $map = [
-            'payment confirmed' => 'order_payment_confirmed',
-            'welcome' => 'welcome',
+            'payment confirmed for order' => 'order_payment_confirmed',
+            'payment successful' => 'payment_successful_invoice',
+            'payment pending verification' => 'payment_pending',
+            'payment failed' => 'payment_failed',
+            'payment update for order' => 'order_status_changed',
+            'welcome to' => 'welcome',
             'temporary password' => 'google_temp_password',
-            'trustpilot' => 'trustpilot_review',
+            'how was your experience' => 'trustpilot_review',
             'reset password' => 'password_reset',
+            'password reset' => 'password_reset',
+            'verify your email' => 'email_verification',
             'deposit approved' => 'deposit_approved',
-            'deposit rejected' => 'deposit_rejected',
-            'withdrawal' => 'withdrawal_status',
-            'new order' => 'publisher_new_order',
-            'order accepted' => 'order_accepted',
-            'live url' => 'live_url_submitted',
+            'wallet topped up' => 'deposit_approved',
+            'deposit request update' => 'deposit_rejected',
+            'new deposit request' => 'deposit_submitted',
+            'payment reported' => 'deposit_marked_paid',
+            'new withdrawal request' => 'withdrawal_request',
+            'withdrawal request received' => 'withdrawal_requested_confirmation',
+            'withdrawal request ' => 'withdrawal_status',
+            'new order for your site' => 'publisher_new_order',
+            'manual payment required' => 'admin_manual_payment',
+            'order accepted -' => 'order_accepted',
+            'order rejected -' => 'order_rejected',
+            'order approved by advertiser' => 'order_completed',
+            'live url submitted' => 'live_url_submitted',
+            'modification requested for order' => 'modification_requested',
+            'publisher requested a revised article' => 'content_revision_requested',
+            'revised article ready' => 'content_revision_fulfilled',
+            'your article was approved' => 'content_evaluation_result',
+            'article evaluation update' => 'content_evaluation_result',
+            'your site discount has ended' => 'site_discount_ended',
+            'your payout details were updated' => 'payout_profile_updated',
+            'bulk site request from' => 'bulk_site_request_submitted',
+            'your sites were added to pending sites' => 'bulk_sites_seeded',
+            'please accept a website we added' => 'admin_assigned_site',
+            'your bulk website request was cancelled' => 'bulk_request_cancelled',
+            'we did not add' => 'bulk_request_items_rejected',
+            'spend budget' => 'spend_budget_alert',
+            'low wallet balance alert' => 'spend_budget_alert',
+            'new site submitted for review' => 'new_site',
+            'site updated - requires review' => 'new_site',
+            'your site has been' => 'site_status',
+            'site status update' => 'site_status',
+            'your site verification' => 'site_status',
+            'your site submission was not accepted' => 'site_status',
+            'your site was archived' => 'site_status',
+            'site claim:' => 'site_claim_submitted',
+            'claim approved' => 'site_claim_reviewed',
+            'claim update' => 'site_claim_reviewed',
+            'ownership transferred' => 'site_claim_ownership_transferred',
+            'website suggestion' => 'website_suggestion_reviewed',
+            'new message regarding order' => 'chat_message',
+            'refund receipt' => 'refund_receipt',
+            'refund credited' => 'dispute_refund_advertiser',
+            'clawback on order' => 'dispute_clawback_publisher',
+            'new order #' => 'order_status_changed',
+            'order #' => 'order_status_changed',
+            'list your first website' => 'publisher_add_site_reminder',
+            'finish setup' => 'publisher_add_site_reminder',
+            'your €20 credit is waiting' => 'deposit_reminder',
+            'add funds to place your first guest post' => 'deposit_reminder',
+            'a paid order is waiting on you' => 'publisher_accept_nudge',
+            'is still unaccepted' => 'publisher_accept_nudge',
+            'waiting to be published' => 'publisher_publish_nudge',
+            'due soon: publish order' => 'publisher_publish_nudge',
+            'past its turnaround' => 'publisher_publish_nudge',
+            'still overdue: order' => 'publisher_publish_nudge',
+            'needs publishing' => 'publisher_publish_nudge',
+            'your link is live' => 'advertiser_review_nudge',
+            '1 day left to review order' => 'auto_approve_reminder',
+            'we are chasing your order' => 'advertiser_order_stalled',
+            '[admin] order' => 'admin_stalled_order',
+            'new advertiser registered' => 'admin_new_user',
+            'new publisher registered' => 'admin_new_user',
+            'new user registered' => 'admin_new_user',
+            'new sites in the catalog' => 'new_sites_digest',
+            'new sites just added' => 'new_sites_digest',
+            'weekly activity summary' => 'weekly_activity_summary',
+            'your spending summary' => 'monthly_spending_summary',
         ];
+
+        uksort($map, static fn (string $a, string $b): int => strlen($b) <=> strlen($a));
 
         foreach ($map as $needle => $key) {
             if (str_contains($subject, $needle)) {
@@ -468,7 +669,7 @@ class EmailCatalog
         return null;
     }
 
-    public static function makeMailable(string $key): ?Mailable
+    public static function makeMailable(string $key, array $options = []): ?Mailable
     {
         $meta = self::get($key);
         if (! $meta || empty($meta['mailable'])) {
@@ -481,6 +682,9 @@ class EmailCatalog
         $item = self::sampleOrderItem();
         $site = self::sampleSite();
         $user = self::sampleUser();
+        $audience = in_array($options['audience'] ?? '', ['advertiser', 'publisher', 'admin'], true)
+            ? $options['audience']
+            : 'advertiser';
 
         return match ($key) {
             'welcome' => new WelcomeEmail($user),
@@ -488,11 +692,15 @@ class EmailCatalog
             'order_status_changed' => new OrderStatusChanged(
                 order: $order,
                 recipient: $user,
-                audience: 'advertiser',
+                audience: $audience,
                 changeKind: 'status',
                 previousValue: 'pending',
                 newValue: 'processing',
-                description: 'Great news — the publisher accepted this order and work can begin.',
+                description: match ($audience) {
+                    'publisher' => 'This order is now processing — please continue the placement.',
+                    'admin' => 'Order status changed to processing (admin copy).',
+                    default => 'Great news — the publisher accepted this order and work can begin.',
+                },
             ),
             'order_payment_confirmed' => new OrderPaymentConfirmed($order),
             'payment_successful_invoice' => new PaymentSuccessfulInvoiceMail(self::sampleTaxInvoice()),
@@ -596,25 +804,48 @@ class EmailCatalog
                 'spendable' => 80.0,
                 'low_balance_threshold' => 50.0,
             ]),
+            'content_evaluation_result' => new ContentEvaluationResult(self::sampleContentSubmission(), [
+                'approved' => true,
+                'notify_status' => 'approved',
+                'moderation_status' => 'approved',
+            ]),
+            'site_discount_ended' => new SiteDiscountEnded($site, $user, 20.0, now()->subDay()),
+            'payout_profile_updated' => new PayoutProfileUpdatedBySupport($user, 'paypal'),
+            'bulk_site_request_submitted' => new BulkSiteRequestSubmitted(
+                self::sampleBulkSiteRequest(),
+                rtrim(app_public_url(), '/').'/admin/bulk-site-requests/0',
+                $user
+            ),
+            'bulk_sites_seeded' => new BulkSitesSeededNotification(self::sampleBulkSiteRequest(), 3, $user, ['example.com', 'sample-two.example']),
+            'admin_assigned_site' => new AdminAssignedSiteNotification($site, $user),
+            'audience_campaign' => new AudienceCampaignMail(self::sampleCampaign(), $user),
+            'bulk_request_cancelled' => new BulkSiteRequestCancelled(self::sampleBulkSiteRequest(), $user, 'Sample cancellation reason for preview.'),
+            'bulk_request_items_rejected' => new BulkSiteItemsRejected(
+                self::sampleBulkSiteRequest(),
+                $user,
+                ['rejected.example'],
+                'Did not meet catalog quality guidelines (preview).',
+                [self::PREVIEW_ID]
+            ),
             default => null,
         };
     }
 
     protected static function sampleUser(): User
     {
-        return User::query()->first() ?? new User([
+        $user = new User([
             'name' => 'Sample User',
-            'email' => 'sample@example.com',
+            'email' => self::PREVIEW_EMAIL,
         ]);
+        $user->id = self::PREVIEW_ID;
+        $user->exists = false;
+        $user->setRelation('roles', collect());
+
+        return $user;
     }
 
     protected static function sampleOrder(): Order
     {
-        $order = Order::query()->with(['user', 'items.site'])->latest('id')->first();
-        if ($order) {
-            return $order;
-        }
-
         $user = self::sampleUser();
         $order = new Order([
             'order_number' => 'ORD-PREVIEW',
@@ -625,10 +856,13 @@ class EmailCatalog
             'status' => 'completed',
             'payment_method' => 'wallet',
         ]);
-        $order->id = 0;
-        $order->user_id = $user->id ?? 0;
+        $order->id = self::PREVIEW_ID;
+        $order->exists = false;
+        $order->user_id = $user->id;
         $order->setRelation('user', $user);
-        $order->setRelation('items', collect());
+        $item = self::sampleOrderItem();
+        $item->order_id = $order->id;
+        $order->setRelation('items', collect([$item]));
         $order->created_at = now();
 
         return $order;
@@ -636,11 +870,6 @@ class EmailCatalog
 
     protected static function sampleOrderItem(): OrderItem
     {
-        $item = OrderItem::query()->with('site')->latest('id')->first();
-        if ($item) {
-            return $item;
-        }
-
         $item = new OrderItem([
             'site_name' => 'Sample Publisher Site',
             'site_url' => 'https://example.com',
@@ -651,6 +880,8 @@ class EmailCatalog
             'social_channels' => ['facebook', 'x'],
             'content_link' => 'https://example.com/content.docx',
         ]);
+        $item->id = self::PREVIEW_ID;
+        $item->exists = false;
         $item->setRelation('site', self::sampleSite());
 
         return $item;
@@ -661,8 +892,8 @@ class EmailCatalog
         $order = self::sampleOrder();
         $item = self::sampleOrderItem();
         $dispute = new OrderItemDispute([
-            'order_id' => $order->id ?? 0,
-            'order_item_id' => $item->id ?? 0,
+            'order_id' => $order->id,
+            'order_item_id' => $item->id,
             'status' => OrderItemDispute::STATUS_UPHELD,
             'reason' => 'The live article was removed after completion (preview).',
             'admin_notes' => 'Confirmed 404. Sample clawback notes for preview.',
@@ -670,7 +901,8 @@ class EmailCatalog
             'advertiser_credited' => 115.00,
             'debt_created' => 0,
         ]);
-        $dispute->id = 0;
+        $dispute->id = self::PREVIEW_ID;
+        $dispute->exists = false;
         $dispute->setRelation('order', $order);
         $dispute->setRelation('orderItem', $item);
 
@@ -679,20 +911,17 @@ class EmailCatalog
 
     protected static function sampleSite(): Site
     {
-        $site = Site::query()->with('publisher')->latest('id')->first();
-        if ($site) {
-            return $site;
-        }
-
         $user = self::sampleUser();
         $site = new Site([
             'site_name' => 'Sample Site',
             'site_url' => 'https://example.com',
-            'publisher_id' => $user->id ?? 0,
+            'domain' => 'example.com',
+            'publisher_id' => $user->id,
             'verified' => true,
             'active' => true,
         ]);
-        $site->id = 0;
+        $site->id = self::PREVIEW_ID;
+        $site->exists = false;
         $site->setRelation('publisher', $user);
 
         return $site;
@@ -700,26 +929,22 @@ class EmailCatalog
 
     protected static function sampleSiteClaim(string $status = 'pending'): SiteClaim
     {
-        $claim = SiteClaim::query()->with(['site', 'claimer'])->latest('id')->first();
-        if ($claim) {
-            return $claim;
-        }
-
         $site = self::sampleSite();
         $user = self::sampleUser();
         $claim = new SiteClaim([
             'site_id' => $site->id,
-            'claimer_id' => $user->id ?? 0,
+            'claimer_id' => $user->id,
             'website_name' => $site->site_name ?: 'Sample Site',
             'website_url' => $site->site_url ?: 'https://example.com',
             'domain' => $site->domain ?: 'example.com',
             'name_matches' => true,
             'proof_message' => 'Sample ownership proof for email preview.',
-            'contact_email' => $user->email ?? 'sample@example.com',
+            'contact_email' => $user->email,
             'status' => $status,
             'admin_notes' => $status === 'approved' ? 'Verified via domain email (preview).' : null,
         ]);
-        $claim->id = 0;
+        $claim->id = self::PREVIEW_ID;
+        $claim->exists = false;
         $claim->setRelation('site', $site);
         $claim->setRelation('claimer', $user);
 
@@ -728,22 +953,18 @@ class EmailCatalog
 
     protected static function sampleProblemReport(): ProblemReport
     {
-        $report = ProblemReport::query()->with('user')->latest('id')->first();
-        if ($report) {
-            return $report;
-        }
-
         $user = self::sampleUser();
         $report = new ProblemReport([
-            'user_id' => $user->id ?? 0,
-            'name' => $user->name ?? 'Sample User',
-            'email' => $user->email ?? 'sample@example.com',
+            'user_id' => $user->id,
+            'name' => $user->name,
+            'email' => $user->email,
             'subject' => 'Checkout button on mobile',
             'message' => 'Sample problem report for email preview.',
             'status' => 'resolved',
             'admin_notes' => 'Fixed the mobile CTA (preview).',
         ]);
-        $report->id = 0;
+        $report->id = self::PREVIEW_ID;
+        $report->exists = false;
         $report->setRelation('user', $user);
 
         return $report;
@@ -751,21 +972,17 @@ class EmailCatalog
 
     protected static function sampleWebsiteSuggestion(): WebsiteSuggestion
     {
-        $suggestion = WebsiteSuggestion::query()->with('user')->latest('id')->first();
-        if ($suggestion) {
-            return $suggestion;
-        }
-
         $user = self::sampleUser();
         $suggestion = new WebsiteSuggestion([
-            'user_id' => $user->id ?? 0,
+            'user_id' => $user->id,
             'website_name' => 'Sample Tech Blog',
             'website_url' => 'https://sample-tech.example',
             'domain' => 'sample-tech.example',
             'status' => 'accepted',
             'admin_notes' => 'We will try to add this listing (preview).',
         ]);
-        $suggestion->id = 0;
+        $suggestion->id = self::PREVIEW_ID;
+        $suggestion->exists = false;
         $suggestion->setRelation('user', $user);
 
         return $suggestion;
@@ -773,38 +990,27 @@ class EmailCatalog
 
     protected static function sampleDeposit(): DepositRequest
     {
-        $deposit = DepositRequest::query()->with('user')->latest('id')->first();
-        if ($deposit) {
-            return $deposit;
-        }
-
+        $user = self::sampleUser();
         $deposit = new DepositRequest([
+            'user_id' => $user->id,
             'amount' => 100,
-            'status' => 'pending',
+            'status' => 'approved',
             'payment_method' => 'bank_transfer',
             'reference_code' => 'DEP-PREVIEW',
         ]);
-        $deposit->id = 1;
+        $deposit->id = self::PREVIEW_ID;
+        $deposit->exists = false;
         $deposit->created_at = now();
         $deposit->updated_at = now();
         $deposit->approved_at = now();
         $deposit->rejected_at = now();
-        $deposit->setRelation('user', self::sampleUser());
+        $deposit->setRelation('user', $user);
 
         return $deposit;
     }
 
     protected static function sampleTaxInvoice(): Invoice
     {
-        $invoice = Invoice::query()
-            ->where('type', Invoice::TYPE_TAX_INVOICE)
-            ->with(['user', 'order'])
-            ->latest('id')
-            ->first();
-        if ($invoice) {
-            return $invoice;
-        }
-
         $user = self::sampleUser();
         $order = self::sampleOrder();
         $invoice = new Invoice([
@@ -818,7 +1024,8 @@ class EmailCatalog
             'customer_name' => $user->name,
             'customer_email' => $user->email,
         ]);
-        $invoice->id = 0;
+        $invoice->id = self::PREVIEW_ID;
+        $invoice->exists = false;
         $invoice->setRelation('user', $user);
         $invoice->setRelation('order', $order);
 
@@ -827,15 +1034,6 @@ class EmailCatalog
 
     protected static function sampleFailureDocument(): Invoice
     {
-        $invoice = Invoice::query()
-            ->where('type', Invoice::TYPE_PAYMENT_FAILURE)
-            ->with(['user', 'order'])
-            ->latest('id')
-            ->first();
-        if ($invoice) {
-            return $invoice;
-        }
-
         $user = self::sampleUser();
         $order = self::sampleOrder();
         $invoice = new Invoice([
@@ -851,7 +1049,8 @@ class EmailCatalog
             'customer_name' => $user->name,
             'customer_email' => $user->email,
         ]);
-        $invoice->id = 0;
+        $invoice->id = self::PREVIEW_ID;
+        $invoice->exists = false;
         $invoice->setRelation('user', $user);
         $invoice->setRelation('order', $order);
 
@@ -860,15 +1059,6 @@ class EmailCatalog
 
     protected static function sampleRefundDocument(): Invoice
     {
-        $invoice = Invoice::query()
-            ->where('type', Invoice::TYPE_REFUND_RECEIPT)
-            ->with(['user', 'order', 'parentInvoice'])
-            ->latest('id')
-            ->first();
-        if ($invoice) {
-            return $invoice;
-        }
-
         $user = self::sampleUser();
         $order = self::sampleOrder();
         $parent = self::sampleTaxInvoice();
@@ -885,7 +1075,8 @@ class EmailCatalog
             'customer_name' => $user->name,
             'customer_email' => $user->email,
         ]);
-        $invoice->id = 0;
+        $invoice->id = self::PREVIEW_ID;
+        $invoice->exists = false;
         $invoice->setRelation('user', $user);
         $invoice->setRelation('order', $order);
         $invoice->setRelation('parentInvoice', $parent);
@@ -895,24 +1086,72 @@ class EmailCatalog
 
     protected static function sampleWithdrawal(): Withdrawal
     {
-        $withdrawal = Withdrawal::query()->with('user')->latest('id')->first();
-        if ($withdrawal) {
-            return $withdrawal;
-        }
-
+        $user = self::sampleUser();
         $withdrawal = new Withdrawal([
+            'user_id' => $user->id,
             'amount' => 50,
             'fee' => 0,
             'net_amount' => 50,
             'status' => 'pending',
             'payment_method' => 'paypal',
         ]);
-        $withdrawal->id = 1;
+        $withdrawal->id = self::PREVIEW_ID;
+        $withdrawal->exists = false;
         $withdrawal->created_at = now();
         $withdrawal->updated_at = now();
         $withdrawal->processed_at = now();
-        $withdrawal->setRelation('user', self::sampleUser());
+        $withdrawal->setRelation('user', $user);
 
         return $withdrawal;
+    }
+
+    protected static function sampleContentSubmission(): ContentSubmission
+    {
+        $user = self::sampleUser();
+        $submission = new ContentSubmission([
+            'user_id' => $user->id,
+            'title' => 'Sample guest post for preview',
+            'original_filename' => 'sample-article.docx',
+            'moderation_status' => 'approved',
+        ]);
+        $submission->id = self::PREVIEW_ID;
+        $submission->exists = false;
+        $submission->setRelation('user', $user);
+
+        return $submission;
+    }
+
+    protected static function sampleBulkSiteRequest(): BulkSiteRequest
+    {
+        $user = self::sampleUser();
+        $request = new BulkSiteRequest([
+            'publisher_id' => $user->id,
+            'status' => BulkSiteRequest::STATUS_REQUESTED,
+            'estimated_count' => 3,
+            'publisher_note' => 'Sample bulk request for email preview.',
+        ]);
+        $request->id = self::PREVIEW_ID;
+        $request->exists = false;
+        $request->setRelation('publisher', $user);
+        $request->setRelation('items', collect());
+
+        return $request;
+    }
+
+    protected static function sampleCampaign(): EmailCampaign
+    {
+        $campaign = new EmailCampaign([
+            'name' => 'Sample campaign',
+            'subject' => 'Sample platform update',
+            'body_html' => '<p>This is a sample campaign body for Email Center preview.</p>',
+            'audience' => 'advertisers',
+            'cta_label' => 'Open catalog',
+            'cta_url' => rtrim(app_public_url(), '/').'/advertiser/catalog',
+            'status' => EmailCampaign::STATUS_DRAFT,
+        ]);
+        $campaign->id = self::PREVIEW_ID;
+        $campaign->exists = false;
+
+        return $campaign;
     }
 }

@@ -38,6 +38,8 @@ class LogSentEmail
             ?? $this->header($headers, 'X-Platform-Dedupe-Key');
         $audience = $meta['audience']
             ?? $this->header($headers, 'X-Platform-Audience');
+        $source = $meta['source']
+            ?? $this->header($headers, 'X-Platform-Source');
 
         if ($mailableInstance instanceof PlatformMailable) {
             $notificationType = $notificationType ?: $mailableInstance->notificationType;
@@ -57,8 +59,7 @@ class LogSentEmail
             $audience = config("email_notifications.types.{$notificationType}.audience");
         }
 
-        EmailLog::create([
-            'uuid' => (string) Str::uuid(),
+        $payload = [
             'mailable' => $mailable,
             'template_key' => $templateKey,
             'notification_type' => $notificationType ?: $templateKey,
@@ -69,12 +70,27 @@ class LogSentEmail
             'from_email' => $from['email'] ?? config('mail.from.address'),
             'subject' => $subject,
             'status' => EmailLog::STATUS_DELIVERED,
-            'attempts' => 1,
-            'meta' => [
+            'error' => null,
+            'meta' => array_filter([
                 'mailer' => config('mail.default'),
-            ],
+                'source' => $source,
+            ]),
             'sent_at' => now(),
-        ]);
+        ];
+
+        $existing = EmailLog::findOpenByDedupe($dedupeKey);
+        if ($existing) {
+            $existing->fill($payload);
+            $existing->attempts = max(1, (int) $existing->attempts) + 1;
+            $existing->save();
+
+            return;
+        }
+
+        EmailLog::create(array_merge($payload, [
+            'uuid' => (string) Str::uuid(),
+            'attempts' => 1,
+        ]));
     }
 
     protected function header($headers, string $name): ?string

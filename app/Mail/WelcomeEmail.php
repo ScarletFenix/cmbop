@@ -4,6 +4,7 @@ namespace App\Mail;
 
 use App\Models\User;
 use App\Notifications\VerifyEmail;
+use App\Support\EmailCatalog;
 
 class WelcomeEmail extends PlatformMailable
 {
@@ -29,7 +30,9 @@ class WelcomeEmail extends PlatformMailable
         // Must be the signed /email/verify/{id}/{hash} URL — NOT /email/verify
         // (that notice route requires auth and never verifies the account).
         if ($needsVerification) {
-            $ctaUrl = VerifyEmail::signedUrlFor($this->user);
+            $ctaUrl = EmailCatalog::isPreviewUser($this->user)
+                ? EmailCatalog::previewVerificationUrl()
+                : VerifyEmail::signedUrlFor($this->user);
             $ctaLabel = 'Click to verify';
         } elseif ($workspace === 'publisher') {
             $ctaUrl = $publisherSitesUrl;

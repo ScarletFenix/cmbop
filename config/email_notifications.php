@@ -49,6 +49,7 @@ use App\Mail\SiteClaimSubmitted;
 use App\Mail\SiteDiscountEnded;
 use App\Mail\SiteOwnerOrderNotification;
 use App\Mail\SiteStatusNotification;
+use App\Mail\SpendBudgetAlertMail;
 use App\Mail\TrustpilotReviewRequest;
 use App\Mail\WebsiteSuggestionReviewed;
 use App\Mail\WeeklyActivitySummary;
@@ -567,6 +568,13 @@ return [
             'audience' => 'advertiser',
             'preference' => 'monthly_summary',
             'mailable' => MonthlySpendingSummary::class,
+            'default_enabled' => true,
+        ],
+        'spend_budget_alert' => [
+            'name' => 'Spend Budget Alert',
+            'audience' => 'advertiser',
+            'preference' => 'payment_emails',
+            'mailable' => SpendBudgetAlertMail::class,
             'default_enabled' => true,
         ],
     ],
