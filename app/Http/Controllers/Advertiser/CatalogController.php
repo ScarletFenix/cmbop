@@ -2140,24 +2140,12 @@ class CatalogController extends Controller
 
             $this->persistCheckoutScheduleSession($checkoutContent['schedule']);
 
-            // Unlock leftovers only for lines we are about to charge.
-            $this->cancelConflictingUnpaidCardOrders(
-                (int) $userId,
-                $this->collectSubmissionIdsFromCartRows($preview['payable'])
-            );
-            $checkoutContent = $this->refreshResolvedCheckoutSubmissions($checkoutContent);
-            if ($checkoutContent instanceof JsonResponse) {
-                return $checkoutContent;
-            }
-
-            // Only charge sites that are ready for checkout (approved article) and need payment.
-            $partition = $this->partitionCartByCheckoutReadiness(
-                $cart,
-                $contentSubmissions,
-                $librarySubmissionId
-            );
-            $payableCart = $partition['payable'];
-            $deferredCart = $partition['deferred'];
+            // Do not cancel leftovers here. Stripe session create, saved-card
+            // charge, and wallet attach can still fail; Pay again must survive
+            // until that commit point. Preview already treated replaceable
+            // leftovers as payable.
+            $payableCart = $preview['payable'];
+            $deferredCart = $preview['deferred'];
 
             if ($payableCart === []) {
                 return response()->json([
@@ -2272,6 +2260,12 @@ class CatalogController extends Controller
                         'message' => 'Those listings left the catalog before checkout finished. Your bonus was not spent.',
                     ], 422);
                 }
+                $this->replaceUnpaidLeftoversAtCheckoutCommit(
+                    (int) $userId,
+                    ['lines' => $fulfillableLines],
+                    null,
+                    false
+                );
                 $fulfilledTotal = round(array_sum(array_column(
                     array_column($fulfillableLines, 'orderItem'),
                     'price'
@@ -2326,6 +2320,7 @@ class CatalogController extends Controller
                     ], 422);
                 }
                 DB::commit();
+                $this->forgetReplacedCheckoutPackages((int) $userId, ['lines' => $fulfillableLines]);
                 $this->forgetCheckoutBonus((int) $userId, (string) $referenceCode);
                 $this->restoreDeferredCartAfterPayment();
                 $advertiserRoleId = Wallet::advertiserRoleId();
@@ -2440,7 +2435,8 @@ class CatalogController extends Controller
                 $totalAmount,
                 $bonusApplied,
                 $paymentMethodId,
-                count($packageLines)
+                count($packageLines),
+                $checkoutContent
             );
         }
 
@@ -2494,6 +2490,11 @@ class CatalogController extends Controller
             $storedPackage = $paymentService->getPendingCheckout($referenceCode) ?? [];
             $storedPackage['stripe_session_id'] = $checkoutSession->id;
             $paymentService->storePendingCheckout($referenceCode, $storedPackage);
+            $this->replaceUnpaidLeftoversAtCheckoutCommit(
+                (int) $userId,
+                $checkoutContent,
+                (string) $referenceCode
+            );
 
             Log::info('Stripe-first card checkout session ready (Add Funds style)', [
                 'reference_code' => $referenceCode,
@@ -2542,7 +2543,8 @@ class CatalogController extends Controller
         float $totalAmount,
         float $bonusApplied,
         string $paymentMethodId,
-        int $itemCount
+        int $itemCount,
+        array $checkoutContent = []
     ): JsonResponse {
         $paymentService = app(OrderPaymentService::class);
         $returnUrl = route('advertiser.checkout.process').'?ref='.urlencode($referenceCode);
@@ -2576,6 +2578,11 @@ class CatalogController extends Controller
             );
 
             if ($payResult['status'] === 'succeeded') {
+                $this->replaceUnpaidLeftoversAtCheckoutCommit(
+                    $userId,
+                    $checkoutContent,
+                    $referenceCode
+                );
                 $intent = (object) [
                     'id' => $payResult['payment_intent_id'],
                     'object' => 'payment_intent',
@@ -2621,6 +2628,14 @@ class CatalogController extends Controller
                     'message' => $created->count().' order(s) paid with your saved card. Order numbers: '.$orderNumbers,
                     'reference_code' => $referenceCode,
                 ]);
+            }
+
+            if (! empty($payResult['redirect_url']) || ! empty($payResult['client_secret'])) {
+                $this->replaceUnpaidLeftoversAtCheckoutCommit(
+                    $userId,
+                    $checkoutContent,
+                    $referenceCode
+                );
             }
 
             if (! empty($payResult['redirect_url'])) {
@@ -2754,6 +2769,14 @@ class CatalogController extends Controller
                 ], 422);
             }
 
+            $this->replaceUnpaidLeftoversAtCheckoutCommit(
+                (int) $userId,
+                ['lines' => $fulfillableLines],
+                null,
+                false
+            );
+            $advertiserWallet->refresh();
+
             $expandedOrders = array_column($fulfillableLines, 'orderItem');
             $totalAmount = round(array_sum(array_column($expandedOrders, 'price')), 2);
 
@@ -2858,6 +2881,7 @@ class CatalogController extends Controller
             }
 
             DB::commit();
+            $this->forgetReplacedCheckoutPackages((int) $userId, ['lines' => $fulfillableLines]);
             $this->restoreDeferredCartAfterPayment();
 
             $isScheduled = ($schedule['mode'] ?? 'immediate') === 'scheduled';
@@ -5409,6 +5433,66 @@ class CatalogController extends Controller
     private function cancelConflictingUnpaidCardOrders(int $userId, array $submissionIds): void
     {
         app(OrderPaymentService::class)->replaceUnpaidLeftoversForSubmissions($userId, $submissionIds);
+    }
+
+    /**
+     * Cancel Pay again leftovers only after this checkout can actually proceed.
+     *
+     * @param  array{lines?: array<int, mixed>}  $checkoutContent
+     */
+    private function replaceUnpaidLeftoversAtCheckoutCommit(
+        int $userId,
+        array $checkoutContent,
+        ?string $keepReferenceCode = null,
+        bool $forgetPackages = true
+    ): void {
+        app(OrderPaymentService::class)->replaceUnpaidLeftoversForSubmissions(
+            $userId,
+            $this->collectSubmissionIdsFromCheckoutContent($checkoutContent),
+            $keepReferenceCode,
+            $forgetPackages
+        );
+    }
+
+    /**
+     * @param  array{lines?: array<int, mixed>}  $checkoutContent
+     */
+    private function forgetReplacedCheckoutPackages(int $userId, array $checkoutContent): void
+    {
+        try {
+            app(OrderPaymentService::class)->forgetPendingCheckoutsForSubmissions(
+                $userId,
+                $this->collectSubmissionIdsFromCheckoutContent($checkoutContent)
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Could not drop abandoned Stripe packages after leftover replace: '.$e->getMessage());
+        }
+    }
+
+    /**
+     * @param  array{lines?: array<int, mixed>}  $checkoutContent
+     * @return array<int, int>
+     */
+    private function collectSubmissionIdsFromCheckoutContent(array $checkoutContent): array
+    {
+        $ids = [];
+        foreach ($checkoutContent['lines'] ?? [] as $line) {
+            if (! is_array($line)) {
+                continue;
+            }
+            $submission = $line['submission'] ?? null;
+            if ($submission instanceof ContentSubmission) {
+                $ids[] = (int) $submission->id;
+
+                continue;
+            }
+            $fromLine = (int) ($line['content_submission_id'] ?? 0);
+            if ($fromLine > 0) {
+                $ids[] = $fromLine;
+            }
+        }
+
+        return array_values(array_unique(array_filter($ids)));
     }
 
     /**

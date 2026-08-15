@@ -10,10 +10,13 @@ use App\Models\Site;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Services\OrderPaymentService;
+use App\Services\StripeCustomerService;
+use App\Services\Wallet\WalletLedgerService;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Mail;
+use Stripe\Checkout\Session;
 use Tests\Support\CreatesContentSubmissions;
 use Tests\TestCase;
 
@@ -1266,6 +1269,293 @@ class CancelledCardOrderMarkPaidTest extends TestCase
         $this->assertSame('failed', $leftover->payment_status);
         $this->assertSame($leftover->id, (int) $submission->fresh()->order_id);
         $this->assertNull(Order::query()->where('reference_code', 'REF-BAD-SCHEDULE-SHOULD-NOT-REPLACE')->first());
+    }
+
+    public function test_stripe_session_failure_does_not_cancel_ready_leftover(): void
+    {
+        config([
+            'content_moderation.enabled' => false,
+            'services.stripe.secret' => 'sk_test_fake_key_for_unit_tests',
+            'services.stripe.key' => 'pk_test_fake_key_for_unit_tests',
+        ]);
+
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher);
+        $submission = $this->createApprovedSubmission($advertiser);
+        $leftover = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-STRIPE-FAIL-KEEP',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'failed',
+            'status' => 'pending',
+        ]);
+        $item = OrderItem::create([
+            'order_id' => $leftover->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/article',
+            'content_submission_id' => $submission->id,
+            'price' => 80,
+        ]);
+        $submission->update([
+            'order_id' => $leftover->id,
+            'order_item_id' => $item->id,
+        ]);
+
+        $this->mock(StripeCustomerService::class, function ($mock) {
+            $mock->shouldReceive('createCheckoutSession')
+                ->once()
+                ->andThrow(new \RuntimeException('stripe unavailable'));
+            $mock->shouldReceive('payWithSavedCard')->never();
+        });
+
+        $this->actingAs($advertiser)
+            ->withSession([
+                'cart' => [
+                    ['id' => $site->id, 'name' => $site->site_name, 'quantity' => 1],
+                ],
+            ])
+            ->postJson(route('advertiser.checkout.process'), [
+                'payment_method' => 'card',
+                'reference_code' => 'REF-STRIPE-FAIL-SHOULD-NOT-REPLACE',
+                'publication_mode' => 'immediate',
+                'content_submissions' => [
+                    $site->id => [$submission->id],
+                ],
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', false);
+
+        $leftover->refresh();
+        $this->assertSame('pending', $leftover->status);
+        $this->assertSame('failed', $leftover->payment_status);
+        $this->assertSame($leftover->id, (int) $submission->fresh()->order_id);
+        $this->assertNull(Cache::get('pending_card_checkout:REF-STRIPE-FAIL-SHOULD-NOT-REPLACE'));
+        $this->assertNull(Order::query()->where('reference_code', 'REF-STRIPE-FAIL-SHOULD-NOT-REPLACE')->first());
+    }
+
+    public function test_saved_card_failure_does_not_cancel_ready_leftover(): void
+    {
+        config([
+            'content_moderation.enabled' => false,
+            'services.stripe.secret' => 'sk_test_fake_key_for_unit_tests',
+            'services.stripe.key' => 'pk_test_fake_key_for_unit_tests',
+        ]);
+
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher);
+        $submission = $this->createApprovedSubmission($advertiser);
+        $leftover = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-SAVED-FAIL-KEEP',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'failed',
+            'status' => 'pending',
+        ]);
+        $item = OrderItem::create([
+            'order_id' => $leftover->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/article',
+            'content_submission_id' => $submission->id,
+            'price' => 80,
+        ]);
+        $submission->update([
+            'order_id' => $leftover->id,
+            'order_item_id' => $item->id,
+        ]);
+
+        $this->mock(StripeCustomerService::class, function ($mock) {
+            $mock->shouldReceive('payWithSavedCard')
+                ->once()
+                ->andThrow(new \RuntimeException('This card does not belong to your account.'));
+            $mock->shouldReceive('createCheckoutSession')->never();
+        });
+
+        $this->actingAs($advertiser)
+            ->withSession([
+                'cart' => [
+                    ['id' => $site->id, 'name' => $site->site_name, 'quantity' => 1],
+                ],
+            ])
+            ->postJson(route('advertiser.checkout.process'), [
+                'payment_method' => 'card',
+                'payment_method_id' => 'pm_test_visa',
+                'reference_code' => 'REF-SAVED-FAIL-SHOULD-NOT-REPLACE',
+                'publication_mode' => 'immediate',
+                'content_submissions' => [
+                    $site->id => [$submission->id],
+                ],
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+
+        $leftover->refresh();
+        $this->assertSame('pending', $leftover->status);
+        $this->assertSame('failed', $leftover->payment_status);
+        $this->assertSame($leftover->id, (int) $submission->fresh()->order_id);
+        $this->assertNull(Cache::get('pending_card_checkout:REF-SAVED-FAIL-SHOULD-NOT-REPLACE'));
+    }
+
+    public function test_card_checkout_replaces_ready_leftover_after_stripe_session(): void
+    {
+        config([
+            'content_moderation.enabled' => false,
+            'services.stripe.secret' => 'sk_test_fake_key_for_unit_tests',
+            'services.stripe.key' => 'pk_test_fake_key_for_unit_tests',
+        ]);
+
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher);
+        $submission = $this->createApprovedSubmission($advertiser);
+        $leftover = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-STRIPE-OK-REPLACE',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'failed',
+            'status' => 'pending',
+        ]);
+        $item = OrderItem::create([
+            'order_id' => $leftover->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/article',
+            'content_submission_id' => $submission->id,
+            'price' => 80,
+        ]);
+        $submission->update([
+            'order_id' => $leftover->id,
+            'order_item_id' => $item->id,
+        ]);
+
+        $this->mock(StripeCustomerService::class, function ($mock) {
+            $mock->shouldReceive('createCheckoutSession')
+                ->once()
+                ->andReturn(Session::constructFrom([
+                    'id' => 'cs_test_replace_leftover',
+                    'object' => 'checkout.session',
+                    'url' => 'https://checkout.stripe.com/c/pay/cs_test_replace_leftover',
+                ]));
+            $mock->shouldReceive('payWithSavedCard')->never();
+        });
+
+        $this->actingAs($advertiser)
+            ->withSession([
+                'cart' => [
+                    ['id' => $site->id, 'name' => $site->site_name, 'quantity' => 1],
+                ],
+            ])
+            ->postJson(route('advertiser.checkout.process'), [
+                'payment_method' => 'card',
+                'reference_code' => 'REF-STRIPE-OK-SHOULD-REPLACE',
+                'publication_mode' => 'immediate',
+                'content_submissions' => [
+                    $site->id => [$submission->id],
+                ],
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('requires_payment', true);
+
+        $leftover->refresh();
+        $this->assertSame('cancelled', $leftover->status);
+        $this->assertSame('failed', $leftover->payment_status);
+        $this->assertNull($submission->fresh()->order_id);
+        $this->assertNotNull(Cache::get('pending_card_checkout:REF-STRIPE-OK-SHOULD-REPLACE'));
+        $this->assertSame(
+            'cs_test_replace_leftover',
+            Cache::get('pending_card_checkout:REF-STRIPE-OK-SHOULD-REPLACE')['stripe_session_id'] ?? null
+        );
+    }
+
+    public function test_wallet_settle_failure_does_not_cancel_ready_leftover(): void
+    {
+        config(['content_moderation.enabled' => false]);
+
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher);
+        Wallet::create([
+            'user_id' => $advertiser->id,
+            'role_id' => Wallet::advertiserRoleId(),
+            'balance' => 200,
+            'reserved_balance' => 0,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 0,
+            'currency' => 'EUR',
+        ]);
+        $submission = $this->createApprovedSubmission($advertiser);
+        $leftover = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-WALLET-LEDGER-KEEP',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'failed',
+            'status' => 'pending',
+        ]);
+        $item = OrderItem::create([
+            'order_id' => $leftover->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/article',
+            'content_submission_id' => $submission->id,
+            'price' => 80,
+        ]);
+        $submission->update([
+            'order_id' => $leftover->id,
+            'order_item_id' => $item->id,
+        ]);
+
+        $this->partialMock(WalletLedgerService::class, function ($mock) {
+            $mock->shouldReceive('recordPurchase')
+                ->once()
+                ->andThrow(new \RuntimeException('ledger schema mismatch'));
+        });
+
+        $this->actingAs($advertiser)
+            ->withSession([
+                'cart' => [
+                    ['id' => $site->id, 'name' => $site->site_name, 'quantity' => 1],
+                ],
+            ])
+            ->postJson(route('advertiser.checkout.process'), [
+                'payment_method' => 'wallet',
+                'reference_code' => 'REF-WALLET-LEDGER-SHOULD-NOT-REPLACE',
+                'publication_mode' => 'immediate',
+                'content_submissions' => [
+                    $site->id => [$submission->id],
+                ],
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', false);
+
+        $leftover->refresh();
+        $this->assertSame('pending', $leftover->status);
+        $this->assertSame('failed', $leftover->payment_status);
+        $this->assertSame($leftover->id, (int) $submission->fresh()->order_id);
+        $this->assertNull(Order::query()->where('reference_code', 'REF-WALLET-LEDGER-SHOULD-NOT-REPLACE')->first());
     }
 
     public function test_late_stripe_webhook_after_replace_credits_wallet_instead_of_rematerializing(): void

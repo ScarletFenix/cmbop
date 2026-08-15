@@ -407,10 +407,21 @@ class OrderPaymentService
      * of one of those articles must drop that package so a late webhook credits
      * the wallet instead of fulfilling the abandoned sibling line.
      *
+     * Checkout must call this only at the payment commit point (Stripe session
+     * persisted, saved-card charge started, or wallet attach about to write).
+     * $keepReferenceCode leaves the in-flight Stripe-first package in place so
+     * forget does not drop the checkout we just stored. $forgetPackages is
+     * false when the caller is still inside a DB transaction and will forget
+     * after commit — otherwise a rolled-back leftover would lose its package.
+     *
      * @param  array<int, int|string>  $submissionIds
      */
-    public function replaceUnpaidLeftoversForSubmissions(int $userId, array $submissionIds): void
-    {
+    public function replaceUnpaidLeftoversForSubmissions(
+        int $userId,
+        array $submissionIds,
+        ?string $keepReferenceCode = null,
+        bool $forgetPackages = true
+    ): void {
         $submissionIds = array_values(array_unique(array_filter(array_map('intval', $submissionIds))));
         if ($userId <= 0 || $submissionIds === []) {
             return;
@@ -513,7 +524,9 @@ class OrderPaymentService
             }
         }
 
-        $this->forgetPendingCheckoutsForSubmissions($userId, $submissionIds);
+        if ($forgetPackages) {
+            $this->forgetPendingCheckoutsForSubmissions($userId, $submissionIds, $keepReferenceCode);
+        }
     }
 
     /**
@@ -523,8 +536,11 @@ class OrderPaymentService
      *
      * @param  array<int, int>  $submissionIds
      */
-    public function forgetPendingCheckoutsForSubmissions(int $userId, array $submissionIds): void
-    {
+    public function forgetPendingCheckoutsForSubmissions(
+        int $userId,
+        array $submissionIds,
+        ?string $keepReferenceCode = null
+    ): void {
         $submissionIds = array_values(array_unique(array_filter(array_map('intval', $submissionIds))));
         if ($userId <= 0 || $submissionIds === []) {
             return;
@@ -562,7 +578,11 @@ class OrderPaymentService
             }
         }
 
+        $keepReferenceCode = search_text((string) $keepReferenceCode);
         foreach (array_unique(array_filter($refs)) as $referenceCode) {
+            if ($keepReferenceCode !== '' && (string) $referenceCode === $keepReferenceCode) {
+                continue;
+            }
             $this->forgetPendingCheckoutKeepLeftoverHold($referenceCode, $userId);
         }
     }
