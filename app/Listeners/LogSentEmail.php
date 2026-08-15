@@ -39,6 +39,8 @@ class LogSentEmail
             ?? $this->header($headers, 'X-Platform-Dedupe-Key');
         $audience = $meta['audience']
             ?? $this->header($headers, 'X-Platform-Audience');
+        $source = $meta['source']
+            ?? $this->header($headers, 'X-Platform-Source');
 
         if ($mailableInstance instanceof PlatformMailable) {
             $notificationType = $notificationType ?: $mailableInstance->notificationType;

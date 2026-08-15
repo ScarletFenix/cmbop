@@ -137,7 +137,7 @@ class GuestPostWizardController extends Controller
         $approvedArticles = ContentSubmission::query()
             ->forArticlePicker()
             ->where('user_id', auth()->id())
-            ->checkoutReady()
+            ->availableForPicker()
             ->latest('id')
             ->limit(100)
             ->get();
@@ -367,7 +367,7 @@ class GuestPostWizardController extends Controller
         $ready = ContentSubmission::query()
             ->whereIn('id', array_values($ids))
             ->where('user_id', auth()->id())
-            ->checkoutReady()
+            ->availableForPicker()
             ->pluck('id')
             ->map(fn ($id) => (int) $id)
             ->all();

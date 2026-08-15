@@ -522,6 +522,41 @@ class BlogTranslationFeatureTest extends TestCase
         $this->assertSame($catalog, $blog->translations()->where('locale', 'de')->value('slug'));
     }
 
+    public function test_update_rejects_clearing_the_primary_locale_translation(): void
+    {
+        $this->artisan('blog:upsert-gastbeitraege-europa')->assertSuccessful();
+
+        $catalog = GastbeitraegeEuropaBlogPost::SLUG;
+        $blog = Blog::query()->where('curated_key', $catalog)->orWhere('slug', $catalog)->firstOrFail();
+
+        $this->actingAs($this->adminUser())
+            ->from(route('admin.blogs.edit', $blog->id))
+            ->put(route('admin.blogs.update', $blog->id), [
+                'status' => 'published',
+                'primary_locale' => 'de',
+                'translations' => [
+                    'en' => [
+                        'title' => 'Buy guest posts in Europe',
+                        'slug' => 'buy-guest-posts-in-europe-cleared-de',
+                        'excerpt' => 'English excerpt',
+                        'content' => '<p>English body</p>',
+                    ],
+                    'de' => [
+                        'title' => '',
+                        'slug' => '',
+                        'excerpt' => '',
+                        'content' => '<p><br></p>',
+                    ],
+                ],
+            ])
+            ->assertRedirect(route('admin.blogs.edit', $blog->id))
+            ->assertSessionHasErrors('translations.de.title');
+
+        $blog->refresh();
+        $this->assertSame($catalog, $blog->slug);
+        $this->assertTrue($blog->translations()->where('locale', 'de')->exists());
+    }
+
     public function test_public_blog_heals_missing_translations_table(): void
     {
         $blog = Blog::factory()->published()->create([
@@ -707,5 +742,84 @@ class BlogTranslationFeatureTest extends TestCase
             ->getContent();
         $this->assertMatchesRegularExpression('/<h1[^>]*>\s*Listed English Post\s*<\/h1>/', $html);
         $this->assertDoesNotMatchRegularExpression('/<h1[^>]*>\s*Nur Deutscher Beitrag\s*<\/h1>/', $html);
+    }
+
+    public function test_sitemap_fallback_skips_slug_owned_by_another_locale_translation(): void
+    {
+        $owner = Blog::factory()->published()->create([
+            'title' => 'Owner English Title',
+            'slug' => 'owner-blog-slug',
+            'content' => '<p>Owner body</p>',
+        ]);
+        BlogTranslation::create([
+            'blog_id' => $owner->id,
+            'locale' => 'en',
+            'title' => 'Owner English Title',
+            'slug' => 'owner-en-slug',
+            'excerpt' => 'Excerpt',
+            'content' => '<p>Owner body</p>',
+            'is_published' => true,
+        ]);
+        BlogTranslation::create([
+            'blog_id' => $owner->id,
+            'locale' => 'fr',
+            'title' => 'Titre propriétaire',
+            'slug' => 'cross-locale-owned-slug',
+            'excerpt' => 'Extrait',
+            'content' => '<p>Corps propriétaire</p>',
+            'is_published' => true,
+        ]);
+
+        $orphan = Blog::factory()->published()->create([
+            'title' => 'Orphan fallback post',
+            'slug' => 'cross-locale-owned-slug',
+            'content' => '<p>Orphan body</p>',
+            'primary_locale' => 'de',
+        ]);
+
+        $enSitemap = $this->get('/sitemap-en.xml')->assertOk()->getContent();
+        $this->assertSame(1, substr_count($enSitemap, '<loc>'.url('/blog/owner-en-slug').'</loc>'));
+        $this->assertSame(0, substr_count($enSitemap, '<loc>'.url('/blog/cross-locale-owned-slug').'</loc>'));
+        $this->assertSame(0, substr_count($enSitemap, '<loc>'.url('/blog/'.$orphan->slug).'</loc>'));
+
+        $html = $this->get('/blog/cross-locale-owned-slug')
+            ->assertOk()
+            ->getContent();
+        $this->assertMatchesRegularExpression('/<h1[^>]*>\s*Owner English Title\s*<\/h1>/', $html);
+        $this->assertDoesNotMatchRegularExpression('/<h1[^>]*>\s*Orphan fallback post\s*<\/h1>/', $html);
+    }
+
+    public function test_show_does_not_render_draft_translation_on_another_published_slug(): void
+    {
+        Blog::factory()->published()->create([
+            'title' => 'Live Published Post',
+            'slug' => 'shared-show-slug',
+            'content' => '<p>Live published body</p>',
+        ]);
+
+        $draft = Blog::factory()->create([
+            'title' => 'Draft Hijack Title',
+            'slug' => 'draft-hijack-slug',
+            'content' => '<p>Draft hijack body</p>',
+            'status' => 'draft',
+            'published_at' => null,
+        ]);
+        BlogTranslation::create([
+            'blog_id' => $draft->id,
+            'locale' => 'en',
+            'title' => 'Draft Hijack Title',
+            'slug' => 'shared-show-slug',
+            'excerpt' => 'Draft excerpt',
+            'content' => '<p>Draft hijack body</p>',
+            'is_published' => true,
+        ]);
+
+        $html = $this->get('/blog/shared-show-slug')
+            ->assertOk()
+            ->getContent();
+        $this->assertMatchesRegularExpression('/<h1[^>]*>\s*Live Published Post\s*<\/h1>/', $html);
+        $this->assertDoesNotMatchRegularExpression('/<h1[^>]*>\s*Draft Hijack Title\s*<\/h1>/', $html);
+        $this->assertStringContainsString('Live published body', $html);
+        $this->assertStringNotContainsString('Draft hijack body', $html);
     }
 }

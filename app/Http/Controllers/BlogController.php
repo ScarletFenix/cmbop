@@ -93,6 +93,9 @@ class BlogController extends Controller
         }
 
         if (! $blog) {
+            // A published translation can belong to a draft. Do not keep that
+            // row — otherwise a legacy blogs.slug hit renders the draft body.
+            $translation = null;
             $blog = Blog::published()
                 ->with(['translations' => function ($query) {
                     $query->where('is_published', true);

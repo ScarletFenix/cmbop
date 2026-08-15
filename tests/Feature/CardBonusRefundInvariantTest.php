@@ -70,6 +70,31 @@ class CardBonusRefundInvariantTest extends TestCase
         $this->assertSame(0.0, $wallet->withdrawableBalance());
     }
 
+    public function test_approving_card_plus_bonus_clears_leftover_hold(): void
+    {
+        [$advertiser, $publisher, $wallet, $item] = $this->paidCardOrderWithReservedBonus(80, 20);
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, $item->order->reference_code, 20);
+        $item->order->update(['status' => 'review']);
+        $item->update([
+            'live_url' => 'https://card-bonus.example/live-clear-hold',
+            'live_url_submitted_at' => now()->subHour(),
+            'accepted_at' => now()->subHours(2),
+        ]);
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.orders.approve', $item->order_id))
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertEqualsWithDelta(
+            0.0,
+            app(CheckoutIntentService::class)->heldBonus($advertiser->id, $item->order->reference_code),
+            0.01
+        );
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_reserved, 0.01);
+    }
+
     public function test_two_card_orders_sharing_bonus_split_promo_then_cash(): void
     {
         $advertiser = $this->userWithRole('advertiser');

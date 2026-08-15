@@ -200,7 +200,7 @@ class OrderPaymentService
      *
      * @param  Collection<int, Order>  $orders
      */
-    protected function recordAdvertiserPurchaseForPaidCheckout(
+    public function recordAdvertiserPurchaseForPaidCheckout(
         string $referenceCode,
         Collection $orders,
         float $bonusApplied,
@@ -240,6 +240,41 @@ class OrderPaymentService
             $orders->first(),
             $referenceCode
         );
+    }
+
+    /**
+     * Promo this settled leftover still owns. Used so admin mark-paid can
+     * write the same purchase hint Stripe finalize writes — clawback otherwise
+     * credits the full line as withdrawable cash.
+     */
+    public function leftoverBonusForPurchaseLedger(Order $order): float
+    {
+        $userId = (int) $order->user_id;
+        $reference = (string) ($order->reference_code ?? '');
+        $cap = app(OrderRefundService::class)->cardLeftoverBonusCap($userId, $reference);
+        if ($cap !== null) {
+            return round($cap, 2);
+        }
+
+        $package = $this->getPendingCheckout($reference);
+        $snapshot = is_array($package)
+            ? round((float) ($package['bonus_applied'] ?? 0), 2)
+            : 0.0;
+        if ($snapshot > 0.009) {
+            return $snapshot;
+        }
+
+        $roleId = Wallet::advertiserRoleId();
+        if (! $roleId || $userId <= 0) {
+            return 0.0;
+        }
+
+        $wallet = Wallet::query()
+            ->where('user_id', $userId)
+            ->where('role_id', $roleId)
+            ->first();
+
+        return $wallet ? max(0, round((float) $wallet->bonus_reserved, 2)) : 0.0;
     }
 
     /**
@@ -346,6 +381,92 @@ class OrderPaymentService
         }
 
         return $failed;
+    }
+
+    /**
+     * Drop this advertiser's unpaid pending leftovers for these articles so a
+     * new checkout can claim them. Failed card leftovers stay for Pay again.
+     *
+     * @param  array<int, int|string>  $submissionIds
+     */
+    public function replaceUnpaidLeftoversForSubmissions(int $userId, array $submissionIds): void
+    {
+        $submissionIds = array_values(array_unique(array_filter(array_map('intval', $submissionIds))));
+        if ($userId <= 0 || $submissionIds === []) {
+            return;
+        }
+
+        if (! Schema::hasColumn('order_items', 'content_submission_id')) {
+            Log::warning('Skipping unpaid leftover replace: order_items.content_submission_id missing');
+
+            return;
+        }
+
+        $itemOrderIds = OrderItem::query()
+            ->whereIn('content_submission_id', $submissionIds)
+            ->whereHas('order', function ($q) use ($userId) {
+                $q->where('user_id', $userId)
+                    ->where('status', 'pending')
+                    ->where(function ($payment) {
+                        $payment->whereNull('payment_status')
+                            ->orWhereNotIn('payment_status', ['paid', 'refunded', 'failed']);
+                    });
+            })
+            ->pluck('order_id');
+
+        $ownedOrderIds = ContentSubmission::query()
+            ->whereIn('id', $submissionIds)
+            ->where('user_id', $userId)
+            ->whereNotNull('order_id')
+            ->pluck('order_id');
+
+        $orderIds = $itemOrderIds->merge($ownedOrderIds)->unique()->filter()->map(fn ($id) => (int) $id)->all();
+        if ($orderIds === []) {
+            return;
+        }
+
+        $orders = Order::query()
+            ->whereIn('id', $orderIds)
+            ->where('user_id', $userId)
+            ->where('status', 'pending')
+            ->where(function ($payment) {
+                $payment->whereNull('payment_status')
+                    ->orWhereNotIn('payment_status', ['paid', 'refunded', 'failed']);
+            })
+            ->get();
+
+        if ($orders->isEmpty()) {
+            return;
+        }
+
+        $cardRefs = $orders->where('payment_method', 'card')
+            ->pluck('reference_code')
+            ->unique()
+            ->filter();
+        foreach ($cardRefs as $referenceCode) {
+            $this->markOrdersFailedFromReference(
+                (string) $referenceCode,
+                'Replaced by a new checkout',
+                $userId
+            );
+        }
+
+        $refunds = app(OrderRefundService::class);
+        foreach ($orders as $order) {
+            if ((string) $order->payment_method !== 'card') {
+                $refunds->releaseReservedCheckoutBonus($order);
+                $order->update([
+                    'payment_status' => 'failed',
+                    'status' => 'cancelled',
+                ]);
+            }
+
+            ContentSubmission::releaseAllForOrder((int) $order->id);
+            $fresh = $order->fresh();
+            if ($fresh && $fresh->status !== 'cancelled') {
+                $fresh->update(['status' => 'cancelled']);
+            }
+        }
     }
 
     /**
@@ -507,10 +628,22 @@ class OrderPaymentService
             // after cancel, held is 0 but the JSON still lists the promo.
             $held = app(CheckoutIntentService::class)->heldBonus($userId, $ref);
             if ($held > 0.009) {
-                $roleId = Wallet::advertiserRoleId();
-                if ($roleId) {
-                    $wallet = Wallet::lockOrCreateForRole($userId, $roleId);
-                    $wallet->refundReserved($held, $held);
+                $alreadySettled = Order::query()
+                    ->where('reference_code', $ref)
+                    ->where('user_id', $userId)
+                    ->where(function ($query) {
+                        $query->where('status', 'completed')
+                            ->orWhere('payment_status', 'refunded');
+                    })
+                    ->exists();
+                // Approve/reject already moved this leftover in the wallet.
+                // refundReserved() here would drain another checkout's reserve.
+                if (! $alreadySettled) {
+                    $roleId = Wallet::advertiserRoleId();
+                    if ($roleId) {
+                        $wallet = Wallet::lockOrCreateForRole($userId, $roleId);
+                        $wallet->refundReserved($held, $held);
+                    }
                 }
                 app(CheckoutIntentService::class)->takeBonus($userId, $ref, $held);
             }
@@ -711,8 +844,8 @@ class OrderPaymentService
 
     /**
      * Drop the package but keep leftover promo so approve/reject can cap this
-     * ref. Used after fail/cancel when a paid sibling on the same checkout
-     * still owns reserved bonus.
+     * ref. Used after Stripe-first finalize and after fail/cancel when a paid
+     * sibling on the same checkout still owns reserved bonus.
      */
     public function forgetPendingCheckoutKeepLeftoverHold(string $referenceCode, int $userId): void
     {
@@ -1035,7 +1168,7 @@ class OrderPaymentService
             if ($existing->isNotEmpty()) {
                 $marked = $this->markOrdersPaidFromStripeSession($referenceCode, $session);
                 if ($marked->isNotEmpty()) {
-                    $this->forgetSettledCheckoutKeepLeftoverHold(
+                    $this->forgetPendingCheckoutKeepLeftoverHold(
                         $referenceCode,
                         (int) ($marked->first()->user_id ?? $package['user_id'] ?? 0)
                     );
@@ -1099,7 +1232,7 @@ class OrderPaymentService
             $this->rereserveReleasedCheckoutBonus($userId, $referenceCode, $bonusKeep);
         }
 
-        $this->forgetSettledCheckoutKeepLeftoverHold($referenceCode, $userId);
+        $this->forgetPendingCheckoutKeepLeftoverHold($referenceCode, $userId);
 
         Log::info('Materialized Stripe-first card orders after payment', [
             'reference_code' => $referenceCode,

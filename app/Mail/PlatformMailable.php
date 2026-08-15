@@ -15,6 +15,7 @@ use Illuminate\Mail\Mailable;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 
 /**
  * Base mailable for the platform email layer.
@@ -39,6 +40,9 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
 
     /** When this mail was handed to the queue, so stale jobs can be dropped */
     public ?string $queuedAt = null;
+
+    /** Email Center test send: deliver now and skip admin/user/dedupe gates */
+    public bool $forceSend = false;
 
     public function __construct()
     {
@@ -103,7 +107,13 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
 
     public function send($mailer)
     {
-        if ($this->isStale()) {
+        if ($this->forceSend) {
+            $type = $this->notificationType ?: EmailCatalog::keyFromMailable(static::class);
+            $this->notificationType = $type;
+            if (! $this->dedupeKey) {
+                $this->dedupeKey = 'email_center_test:'.($type ?: 'unknown').':'.(string) Str::uuid();
+            }
+        } elseif ($this->isStale()) {
             Log::info('Email dropped as stale', [
                 'type' => $this->notificationType,
                 'queued_at' => $this->queuedAt,
@@ -111,9 +121,7 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
             ]);
 
             return null;
-        }
-
-        if (! $this->passesNotificationPolicy()) {
+        } elseif (! $this->passesNotificationPolicy()) {
             Log::info('Email suppressed by notification policy', [
                 'type' => $this->notificationType,
                 'dedupe' => $this->dedupeKey,
@@ -355,5 +363,49 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
         }
 
         return $this->publicRoute('publisher.tasks', $params);
+    }
+
+    public function failed(?\Throwable $exception): void
+    {
+        try {
+            $type = $this->notificationType ?: EmailCatalog::keyFromMailable(static::class);
+            $to = $this->recipientUser?->email
+                ?? data_get($this->to, '0.address')
+                ?? data_get($this->to, '0')
+                ?? 'unknown';
+
+            $payload = [
+                'mailable' => static::class,
+                'template_key' => $type,
+                'notification_type' => $type,
+                'dedupe_key' => $this->dedupeKey,
+                'to_email' => is_string($to) ? $to : 'unknown',
+                'subject' => $this->subject,
+                'status' => EmailLog::STATUS_FAILED,
+                'error' => $exception?->getMessage(),
+                'meta' => [
+                    'source' => $this->forceSend ? 'email_center_test' : 'queue',
+                ],
+            ];
+
+            $existing = EmailLog::findOpenByDedupe($this->dedupeKey);
+            if ($existing) {
+                $existing->fill($payload);
+                $existing->attempts = max(1, (int) $existing->attempts) + 1;
+                $existing->save();
+
+                return;
+            }
+
+            EmailLog::create(array_merge($payload, [
+                'uuid' => (string) Str::uuid(),
+                'attempts' => 1,
+            ]));
+        } catch (\Throwable $e) {
+            Log::warning('Failed to record mail failure', [
+                'mailable' => static::class,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 }

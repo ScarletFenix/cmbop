@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
 use App\Services\InAppNotificationService;
+use App\Services\OrderPaymentService;
 use App\Services\Wallet\WalletLedgerService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -343,8 +344,24 @@ class OrderClawbackService
             ->sum('bonus_amount');
 
         $remaining = max(0, round($purchasedBonus - $alreadyRestored, 2));
+        if ($remaining > 0.009) {
+            return min($amount, $remaining);
+        }
 
-        return min($amount, $remaining);
+        // Admin mark-paid used to skip the purchase row. Fall back to this
+        // leftover's live hold / package snapshot — never another checkout.
+        $userId = (int) $order->user_id;
+        $cap = app(OrderRefundService::class)->cardLeftoverBonusCap($userId, $reference);
+        if ($cap !== null) {
+            return min($amount, $cap);
+        }
+
+        $package = app(OrderPaymentService::class)->getPendingCheckout($reference);
+        $snapshot = is_array($package)
+            ? round((float) ($package['bonus_applied'] ?? 0), 2)
+            : 0.0;
+
+        return min($amount, max(0, $snapshot));
     }
 
     /**

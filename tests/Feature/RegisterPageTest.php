@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Role;
 use App\Models\User;
+use App\Models\WelcomeBonusClaim;
 use App\Notifications\VerifyEmail;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -144,6 +145,7 @@ class RegisterPageTest extends TestCase
         $advertiserRoleId = Role::where('name', 'advertiser')->value('id');
         $wallet = $user->wallets()->where('role_id', $advertiserRoleId)->first();
         $this->assertNotNull($wallet);
-        $this->assertEquals(20.0, (float) $wallet->balance);
+        $this->assertEquals(0.0, (float) $wallet->balance);
+        $this->assertSame(0, WelcomeBonusClaim::query()->count());
     }
 }
