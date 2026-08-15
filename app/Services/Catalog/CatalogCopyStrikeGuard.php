@@ -5,7 +5,10 @@ namespace App\Services\Catalog;
 use App\Models\CatalogCopyEvent;
 use App\Models\Site;
 use App\Models\User;
+use App\Services\InAppNotificationService;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
@@ -32,6 +35,8 @@ class CatalogCopyStrikeGuard
     public const STATUS_WARNING = 'warning';
 
     public const STATUS_HIDE_MODE = 'hide_mode';
+
+    public function __construct(private InAppNotificationService $notifications) {}
 
     /**
      * @return array{
@@ -105,8 +110,11 @@ class CatalogCopyStrikeGuard
                 // leave strike 2 unreachable in a fast harvest.
                 CatalogCopyEvent::query()->where('user_id', $locked->id)->delete();
 
+                $fresh = $locked->fresh();
+                $this->announce($fresh, self::STATUS_WARNING, $distinct);
+
                 return $this->payload(
-                    $locked->fresh(),
+                    $fresh,
                     self::STATUS_WARNING,
                     $distinct,
                     'Heads up: copying lots of website addresses from the catalog looks like harvesting. '
@@ -121,12 +129,14 @@ class CatalogCopyStrikeGuard
             $locked->catalog_hide_until = now()->addHours($cfg['hide_hours']);
             $locked->save();
 
+            $fresh = $locked->fresh();
+            $this->announce($fresh, self::STATUS_HIDE_MODE, $distinct);
+
             return $this->payload(
-                $locked->fresh(),
+                $fresh,
                 self::STATUS_HIDE_MODE,
                 $distinct,
-                'Repeated domain copying detected. Site names and URLs will be hidden for 24 hours — '
-                .'use the eye icon to reveal them one listing at a time.'
+                $this->hideModeUserMessage($cfg['hide_hours'])
             );
         });
     }
@@ -136,6 +146,15 @@ class CatalogCopyStrikeGuard
         $until = $user->catalog_hide_until ?? null;
 
         return $until !== null && $until->isFuture();
+    }
+
+    public function hideModeUserMessage(?int $hours = null): string
+    {
+        $hours = max(1, $hours ?? $this->config()['hide_hours']);
+        $label = $hours === 1 ? '1 hour' : $hours.' hours';
+
+        return 'Repeated domain copying detected. Site names and URLs will be hidden for '.$label.' — '
+            .'use the eye icon to reveal them one listing at a time.';
     }
 
     /**
@@ -254,6 +273,24 @@ class CatalogCopyStrikeGuard
             ->count('normalized_host');
 
         return $withSite + $hostOnly;
+    }
+
+    private function announce(User $user, string $status, int $distinct): void
+    {
+        $key = 'catalog-copy-strike-'.$status.':'.$user->id;
+
+        if (Cache::has($key)) {
+            return;
+        }
+
+        $hours = max(1, $this->config()['hide_hours']);
+        Cache::put($key, true, now()->addHours($hours));
+
+        try {
+            $this->notifications->notifyAdminsCatalogCopyStrike($user, $status, $distinct);
+        } catch (\Throwable $e) {
+            Log::warning('Catalog copy-strike notice failed', ['error' => $e->getMessage()]);
+        }
     }
 
     /**
