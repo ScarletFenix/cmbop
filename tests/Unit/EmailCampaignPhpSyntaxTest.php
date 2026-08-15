@@ -112,6 +112,12 @@ class EmailCampaignPhpSyntaxTest extends TestCase
         $this->assertSame(1, preg_match_all('/function syncQueuedRecipientsWithAttachedLogs\b/', $model));
         $this->assertSame(1, preg_match_all('/function failPendingLogsForStaleRecipients\b/', $model));
         $this->assertTrue((bool) preg_match(
+            '/protected static function expireOrphanedQueuedRecipients\(\): void\s*\{(.*?)\n    \/\*\*/s',
+            $model,
+            $expire
+        ));
+        $this->assertStringContainsString('inFlightCampaignMailUserIds', $expire[1]);
+        $this->assertTrue((bool) preg_match(
             '/protected static function failPendingLogsForStaleRecipients\(\): void\s*\{(.*)\n\}\n/s',
             $model,
             $failPending

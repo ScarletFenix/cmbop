@@ -832,7 +832,8 @@ class EmailCampaign extends Model
     /**
      * A timeout can claim pending → queued and die before Mail::send()
      * inserts the mailable. After the campaign stale window those orphans
-     * are skipped so recount can go failed.
+     * are skipped so recount can go failed. A still-queued mailable is
+     * not an orphan — skip it and a later retry doubles the send.
      */
     protected static function expireOrphanedQueuedRecipients(): void
     {
@@ -848,9 +849,33 @@ class EmailCampaign extends Model
             ->where('updated_at', '<=', $cutoff)
             ->get(['id', 'email_campaign_id', 'user_id']);
 
-        if ($expired->isNotEmpty()) {
+        $expireIds = [];
+        $campaignIds = [];
+
+        foreach ($expired->groupBy('email_campaign_id') as $campaignId => $group) {
+            $campaignId = (int) $campaignId;
+            $inFlight = self::inFlightCampaignMailUserIds($campaignId);
+            // Unreadable mail queue: still expire (72h backstop). A
+            // readable queue with a live AudienceCampaignMail must not
+            // park that user as skipped-stale — expire + retry then
+            // queued a second job beside the backlogged one.
+            $blocked = $inFlight === null ? [] : array_fill_keys($inFlight, true);
+
+            foreach ($group as $row) {
+                if ($inFlight !== null && isset($blocked[(int) $row->user_id])) {
+                    continue;
+                }
+
+                $expireIds[] = (int) $row->id;
+                if ($campaignId > 0) {
+                    $campaignIds[$campaignId] = true;
+                }
+            }
+        }
+
+        if ($expireIds !== []) {
             EmailCampaignRecipient::query()
-                ->whereIn('id', $expired->pluck('id')->all())
+                ->whereIn('id', $expireIds)
                 ->where('status', EmailCampaignRecipient::STATUS_QUEUED)
                 ->whereNull('email_log_id')
                 ->update([
@@ -858,7 +883,7 @@ class EmailCampaign extends Model
                     'skip_reason' => EmailCampaignRecipient::SKIP_STALE,
                 ]);
 
-            foreach ($expired->pluck('email_campaign_id')->unique()->filter()->all() as $id) {
+            foreach (array_keys($campaignIds) as $id) {
                 static::query()->find($id)?->recountRecipientTotals();
             }
         }

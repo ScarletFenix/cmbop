@@ -2098,6 +2098,52 @@ class AdminCampaignsTest extends TestCase
         $this->assertSame(EmailCampaign::STATUS_FAILED, $campaign->fresh()->status);
     }
 
+    public function test_expire_does_not_skip_queued_recipient_while_mailable_is_in_flight(): void
+    {
+        Queue::fake();
+        $this->useDatabaseMailQueue();
+
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+
+        $campaign = EmailCampaign::create([
+            'name' => 'Backlogged mail',
+            'subject' => 'Backlogged mail',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'sent_count' => 1,
+            'status' => EmailCampaign::STATUS_SENDING,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        $log = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => AudienceCampaignMail::class,
+            'template_key' => 'audience_campaign',
+            'dedupe_key' => EmailCampaignRecipient::dedupeKey((int) $campaign->id, (int) $advertiser->id),
+            'to_email' => $advertiser->email,
+            'subject' => 'Backlogged mail',
+            'status' => EmailLog::STATUS_PENDING,
+        ]);
+        $row = EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_QUEUED,
+        ]);
+        $this->insertQueuedCampaignMailJob((int) $campaign->id, (int) $advertiser->id);
+        $row->forceFill(['updated_at' => now()->subHours(80)])->save();
+        $campaign->forceFill(['updated_at' => now()->subHours(80)])->save();
+
+        EmailCampaign::recoverStalled();
+
+        $this->assertSame(EmailCampaignRecipient::STATUS_QUEUED, $row->fresh()->status);
+        $this->assertSame(EmailLog::STATUS_PENDING, $log->fresh()->status);
+        $this->assertSame(EmailCampaign::STATUS_SENDING, $campaign->fresh()->status);
+        Queue::assertNothingPushed();
+    }
+
     public function test_already_stale_skip_closes_a_leftover_pending_log(): void
     {
         $admin = $this->makeUser('admin');
