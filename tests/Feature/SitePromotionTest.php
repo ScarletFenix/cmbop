@@ -12,6 +12,7 @@ use App\Models\Wallet;
 use App\Services\CartPricingService;
 use App\Services\SitePromotionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
@@ -68,6 +69,25 @@ class SitePromotionTest extends TestCase
 
         $site->refresh();
         $this->assertTrue($site->isFeatured());
+        $this->assertSame(40.0, (float) Wallet::where('user_id', $publisher->id)->value('balance'));
+    }
+
+    public function test_feature_succeeds_when_existing_featured_until_is_unparseable(): void
+    {
+        $publisher = $this->publisherWithWallet(50);
+        $site = $this->site($publisher);
+        $site->update(['featured_until' => now()->addDays(3)]);
+        DB::table('sites')->where('id', $site->id)->update([
+            'featured_until' => 'not-a-date',
+        ]);
+
+        $this->assertFalse($site->fresh()->isFeatured());
+
+        $this->actingAs($publisher)->postJson(route('publisher.sites.feature', $site->id))
+            ->assertOk()
+            ->assertJson(['success' => true]);
+
+        $this->assertTrue($site->fresh()->isFeatured());
         $this->assertSame(40.0, (float) Wallet::where('user_id', $publisher->id)->value('balance'));
     }
 

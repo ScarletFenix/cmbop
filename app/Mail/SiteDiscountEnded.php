@@ -20,7 +20,9 @@ class SiteDiscountEnded extends PlatformMailable
         $this->notificationType = 'site_discount_ended';
         $this->recipientUser = $publisher;
         $this->percent = $percent ?? (float) ($site->custom_discount_percent ?? 0);
-        $this->endedAt = $endedAt ?? $site->custom_discount_ends_at;
+        $fallback = $site->safeCustomDiscountEndsAt();
+        $resolved = $endedAt ?? ($fallback instanceof Carbon ? $fallback : ($fallback ? Carbon::instance($fallback) : null));
+        $this->endedAt = $resolved instanceof Carbon ? $resolved : null;
         $this->dedupeKey = 'site-discount-ended:'.$site->id.':'.optional($this->endedAt)->timestamp;
     }
 

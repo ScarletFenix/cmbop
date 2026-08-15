@@ -1065,8 +1065,8 @@
                             .' for '.$bulkMinQty.' articles (−'.$fmtPct($pubBulkEff)
                             .'%). Exclusive better-of with a timed sale — not stacked.';
                     }
-                    $featureDaysLeft = ($site->isFeatured() && $site->featured_until)
-                        ? max(1, (int) now()->diffInDays($site->featured_until))
+                    $featureDaysLeft = ($site->isFeatured() && $site->safeFeaturedUntil())
+                        ? max(1, (int) now()->diffInDays($site->safeFeaturedUntil()))
                         : null;
                     $featurePriceLabel = number_format((float) config('site_promotions.feature.price', 10), 0);
                     $featureDaysCfg = (int) config('site_promotions.feature.days', 7);
@@ -1203,14 +1203,14 @@
                         class="site-offer-chip btn-feature-site {{ $site->isFeatured() ? 'is-on' : '' }}"
                         data-id="{{ $site->id }}"
                         data-name="{{ $site->site_name }}"
-                        data-featured-until="{{ optional($site->featured_until)?->toIso8601String() }}"
+                        data-featured-until="{{ optional($site->safeFeaturedUntil())?->toIso8601String() }}"
                         data-verified="{{ $site->verified ? '1' : '0' }}"
                         aria-pressed="{{ $site->isFeatured() ? 'true' : 'false' }}"
                         aria-label="{{ $site->isFeatured() ? 'Featured' : 'Feature' }}"
                         data-glass-tip
                         data-glass-tip-title="{{ $site->isFeatured() ? 'Featured' : 'Feature this site' }}"
                         data-glass-tip-body="{{ $site->isFeatured()
-                            ? 'Featured until '.optional($site->featured_until)->timezone(config('app.timezone'))->format('j M').'. Click to add another '.$featureDaysCfg.' days (€'.$featurePriceLabel.').'
+                            ? 'Featured until '.optional($site->safeFeaturedUntil())->timezone(config('app.timezone'))->format('j M').'. Click to add another '.$featureDaysCfg.' days (€'.$featurePriceLabel.').'
                             : 'Pin it higher in the advertiser catalog for '.$featureDaysCfg.' days. Paid from publisher balance or card (€'.$featurePriceLabel.').' }}{{ ! $site->verified ? ' This site is active but not verified. Featuring still works; advertisers may trust it less.' : '' }}"
                         data-glass-tip-placement="top">
                     <i class="fa fa-bolt" aria-hidden="true"></i>
@@ -1223,13 +1223,13 @@
                         data-id="{{ $site->id }}"
                         data-name="{{ $site->site_name }}"
                         data-percent="{{ $site->custom_discount_percent }}"
-                        data-ends="{{ optional($site->custom_discount_ends_at)?->toIso8601String() }}"
+                        data-ends="{{ optional($site->safeCustomDiscountEndsAt())?->toIso8601String() }}"
                         aria-pressed="{{ $site->hasActiveCustomDiscount() ? 'true' : 'false' }}"
                         aria-label="{{ $site->hasActiveCustomDiscount() ? 'Timed discount active' : 'Set timed discount' }}"
                         data-glass-tip
                         data-glass-tip-title="{{ $site->hasActiveCustomDiscount() ? 'Timed sale −'.$fmtPct($pubCustomPct).'%' : 'Set timed sale' }}"
                         data-glass-tip-body="{{ $site->hasActiveCustomDiscount()
-                            ? 'Live until '.optional($site->custom_discount_ends_at)->timezone(config('app.timezone'))->format('j M').'. Advertisers get the better of this or bulk — not both.'
+                            ? 'Live until '.optional($site->safeCustomDiscountEndsAt())->timezone(config('app.timezone'))->format('j M').'. Advertisers get the better of this or bulk — not both.'
                             : 'Temporary % off for a limited time. Advertisers see the better of this or bulk — not both.' }}"
                         data-glass-tip-placement="top">
                     <i class="fa fa-percent" aria-hidden="true"></i>
