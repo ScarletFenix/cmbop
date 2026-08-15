@@ -588,6 +588,25 @@ function showLibraryFlash(message, ok) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
+function libraryModerationPassed(data, submission) {
+    const sub = submission || {};
+    if (sub.needs_image_rights || sub.needs_correction) {
+        return false;
+    }
+    const status = String(sub.moderation_status || '');
+    if (status && status !== 'approved') {
+        return false;
+    }
+    if (data && data.approved === true) {
+        return true;
+    }
+    if (data && data.approved === false) {
+        return false;
+    }
+
+    return status === 'approved';
+}
+
 function libraryChipParams(submission) {
     const availability = String((submission && submission.availability) || '');
     const status = String((submission && submission.moderation_status) || '');
@@ -916,8 +935,8 @@ document.getElementById('articleLinksSaveBtn')?.addEventListener('click', async 
         }
         const sub = data.submission || {};
         const html = sub.preview_html || previewModalState.html;
-        const stillApproved = data.approved === true && !sub.needs_image_rights && sub.can_order === true && sub.ready === true;
-        const editable = stillApproved;
+        const stillApproved = libraryModerationPassed(data, sub);
+        const editable = sub.editable !== false;
         openPreviewModal(sub.title || previewModalState.title, html, sub.detected_links || links, previewModalState.submissionId, editable);
         if (!stillApproved) {
             const msg = data.message || (data.report && data.report.summary) || 'Content moderation failed after your link changes. Fix restricted links before ordering.';
@@ -925,8 +944,8 @@ document.getElementById('articleLinksSaveBtn')?.addEventListener('click', async 
             goToLibraryResult(sub, msg, false);
             return;
         }
-        tools.toast(data.message || 'Links saved — content re-checked and approved');
-        if (stillApproved && sub.can_order) {
+        tools.toast(data.message || sub.editor_notice || 'Links saved — content re-checked and approved');
+        if (stillApproved && sub.ready) {
             const dest = libraryChipParams(sub);
             const here = new URL(window.location.href);
             const hereAvail = here.searchParams.get('availability') || 'available';
@@ -1300,8 +1319,15 @@ function dismissLibraryUploadByUser() {
     cancelLibraryUploadHandoffState();
     forceDismissUploadModal();
     if (saved && saved.id) {
-        if (saved.needs_image_rights || saved.availability === 'needs_fix' || saved.can_order === false || saved.ready === false) {
-            goToLibraryResult(saved, '', !!saved.ready);
+        const passed = libraryModerationPassed(saved, saved);
+        if (
+            saved.needs_image_rights
+            || saved.availability === 'needs_fix'
+            || saved.availability === 'in_progress'
+            || saved.can_order === false
+            || saved.ready === false
+        ) {
+            goToLibraryResult(saved, saved.editor_notice || '', passed);
             return;
         }
         showLibraryFlash('Article uploaded. It is in your library.', true);
@@ -1724,10 +1750,10 @@ async function saveArticleEditor() {
             return;
         }
         const sub = data.submission || { id: articleEditorSubmissionId };
-        const stillApproved = data.approved === true && !sub.needs_image_rights && sub.can_order === true && sub.ready === true;
+        const stillApproved = libraryModerationPassed(data, sub);
         const msg = data.message
             || (stillApproved
-                ? 'Article saved and re-approved.'
+                ? (sub.editor_notice || 'Article saved and re-approved.')
                 : 'Article saved, but content moderation failed. Fix restricted links/keywords before ordering.');
         setFeedbackHtml(feedback, stillApproved, msg);
         goToLibraryResult(sub, msg, stillApproved);
@@ -2066,11 +2092,14 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
         setFeedbackHtml(feedback, true, 'Opening editor…');
         if (data.submission) {
             openedEditor = true;
-            libraryUploadSavedSubmission = data.submission;
+            const saved = Object.assign({}, data.submission, {
+                approved: data.approved === true,
+            });
+            libraryUploadSavedSubmission = saved;
             rememberLibraryLanding(
-                data.submission,
+                saved,
                 data.message,
-                !!data.submission.ready
+                libraryModerationPassed(data, saved)
             );
             const submission = await submissionForEditor(Object.assign({}, data.submission, {
                 editor_notice: data.submission.editor_notice
