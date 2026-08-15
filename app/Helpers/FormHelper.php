@@ -51,6 +51,35 @@ if (! function_exists('search_text')) {
     }
 }
 
+if (! function_exists('filter_number')) {
+    /**
+     * Numeric query/body value, or null when missing / non-scalar / non-numeric.
+     *
+     * Arrays like ?price_min[]=10 used to 500 when bound into whereRaw().
+     */
+    function filter_number(mixed $value): ?float
+    {
+        if (is_int($value)) {
+            return (float) $value;
+        }
+
+        if (is_float($value)) {
+            if (is_nan($value) || is_infinite($value)) {
+                return null;
+            }
+
+            return $value;
+        }
+
+        $text = search_text($value);
+        if ($text === '' || ! is_numeric($text)) {
+            return null;
+        }
+
+        return (float) $text;
+    }
+}
+
 if (! function_exists('scalar_list')) {
     /**
      * Flatten nested arrays into unique non-empty strings.

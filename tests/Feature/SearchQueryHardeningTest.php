@@ -61,6 +61,10 @@ class SearchQueryHardeningTest extends TestCase
         $this->assertSame('', search_text(null));
         $this->assertSame('', search_text(12));
         $this->assertSame('INV-1', search_text('  INV-1  '));
+        $this->assertNull(filter_number(['10']));
+        $this->assertNull(filter_number('nope'));
+        $this->assertSame(10.0, filter_number('10'));
+        $this->assertSame(10.0, filter_number(10));
     }
 
     public function test_admin_list_pages_ignore_array_search(): void
@@ -112,7 +116,12 @@ class SearchQueryHardeningTest extends TestCase
             ->assertOk();
 
         $this->actingAs($this->advertiser)
-            ->getJson(route('advertiser.orders.list', ['search' => ['injected'], 'status' => ['pending']]))
+            ->getJson(route('advertiser.orders.list', [
+                'search' => ['injected'],
+                'status' => ['pending'],
+                'payment_status' => ['paid'],
+                'date_from' => ['2026-01-01'],
+            ]))
             ->assertOk()
             ->assertJsonPath('success', true);
 
@@ -127,8 +136,30 @@ class SearchQueryHardeningTest extends TestCase
                 'country' => ['us'],
                 'language' => ['en'],
                 'category' => ['Technology'],
+                'price_min' => ['10'],
+                'price_max' => ['100'],
+                'da_min' => ['20'],
+                'dr_min' => ['20'],
+                'traffic_min' => ['1000'],
+                'rating_min' => ['3'],
             ]))
             ->assertOk();
+
+        $this->actingAs($this->advertiser)
+            ->postJson(route('advertiser.cart.add'), [
+                'id' => ['1'],
+                'sensitive_type' => ['cbd'],
+            ])
+            ->assertStatus(404);
+
+        $this->actingAs($this->advertiser)
+            ->getJson(route('advertiser.reports.orders', [
+                'status' => ['completed'],
+                'payment_status' => ['paid'],
+                'date_from' => ['2026-01-01'],
+            ]))
+            ->assertOk()
+            ->assertJsonPath('success', true);
 
         $this->actingAs($this->advertiser)
             ->get(route('advertiser.catalog.results', ['search' => ['injected']]))
@@ -145,6 +176,11 @@ class SearchQueryHardeningTest extends TestCase
 
         $this->actingAs($this->publisher)
             ->getJson(route('publisher.orders.data', ['search' => ['injected']]))
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->actingAs($this->publisher)
+            ->getJson(route('publisher.reports.orders', ['status' => ['completed']]))
             ->assertOk()
             ->assertJsonPath('success', true);
     }

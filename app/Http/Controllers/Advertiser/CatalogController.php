@@ -483,8 +483,9 @@ class CatalogController extends Controller
             $query->whereNotIn('id', $blacklist);
         }
 
-        if ($request->filled('site')) {
-            $query->where('id', (int) $request->site);
+        $siteId = filter_number($request->input('site'));
+        if ($siteId !== null && (int) $siteId > 0) {
+            $query->where('id', (int) $siteId);
         }
 
         if ($searchText !== '') {
@@ -512,12 +513,10 @@ class CatalogController extends Controller
         }
 
         // Min rating — only sites with at least one advertiser rating at/above the floor.
-        if ($request->filled('rating_min') && Site::hasSitesColumn('rating_avg') && Site::hasSitesColumn('rating_count')) {
-            $ratingMin = (float) $request->input('rating_min');
-            if ($ratingMin > 0) {
-                $query->where('rating_count', '>=', 1)
-                    ->where('rating_avg', '>=', $ratingMin);
-            }
+        $ratingMin = filter_number($request->input('rating_min'));
+        if ($ratingMin !== null && $ratingMin > 0 && Site::hasSitesColumn('rating_avg') && Site::hasSitesColumn('rating_count')) {
+            $query->where('rating_count', '>=', 1)
+                ->where('rating_avg', '>=', $ratingMin);
         }
 
         // Has completions — denormalized completed_orders_count > 0.
@@ -534,25 +533,31 @@ class CatalogController extends Controller
             }
         }
 
-        if ($request->filled('da_min')) {
-            $query->where('da', '>=', (int) $request->da_min);
+        $daMin = filter_number($request->input('da_min'));
+        if ($daMin !== null) {
+            $query->where('da', '>=', (int) $daMin);
         }
-        if ($request->filled('da_max')) {
-            $query->where('da', '<=', (int) $request->da_max);
-        }
-
-        if ($request->filled('dr_min')) {
-            $query->where('dr', '>=', (int) $request->dr_min);
-        }
-        if ($request->filled('dr_max')) {
-            $query->where('dr', '<=', (int) $request->dr_max);
+        $daMax = filter_number($request->input('da_max'));
+        if ($daMax !== null) {
+            $query->where('da', '<=', (int) $daMax);
         }
 
-        if ($request->filled('traffic_min')) {
-            $query->where('traffic', '>=', (int) $request->traffic_min);
+        $drMin = filter_number($request->input('dr_min'));
+        if ($drMin !== null) {
+            $query->where('dr', '>=', (int) $drMin);
         }
-        if ($request->filled('traffic_max')) {
-            $query->where('traffic', '<=', (int) $request->traffic_max);
+        $drMax = filter_number($request->input('dr_max'));
+        if ($drMax !== null) {
+            $query->where('dr', '<=', (int) $drMax);
+        }
+
+        $trafficMin = filter_number($request->input('traffic_min'));
+        if ($trafficMin !== null) {
+            $query->where('traffic', '>=', (int) $trafficMin);
+        }
+        $trafficMax = filter_number($request->input('traffic_max'));
+        if ($trafficMax !== null) {
+            $query->where('traffic', '<=', (int) $trafficMax);
         }
 
         $categoryRaw = search_text($request->input('category'));
@@ -604,11 +609,13 @@ class CatalogController extends Controller
 
         $advPriceSql = app(PlatformFeeService::class)->advertiserBaseSqlExpression('price');
 
-        if ($request->filled('price_min')) {
-            $query->whereRaw("({$advPriceSql}) >= ?", [$request->price_min]);
+        $priceMin = filter_number($request->input('price_min'));
+        if ($priceMin !== null) {
+            $query->whereRaw("({$advPriceSql}) >= ?", [$priceMin]);
         }
-        if ($request->filled('price_max')) {
-            $query->whereRaw("({$advPriceSql}) <= ?", [$request->price_max]);
+        $priceMax = filter_number($request->input('price_max'));
+        if ($priceMax !== null) {
+            $query->whereRaw("({$advPriceSql}) <= ?", [$priceMax]);
         }
 
         if ($request->filled('sponsored') && $request->sponsored == 1) {
@@ -1526,13 +1533,10 @@ class CatalogController extends Controller
     public function addToCart(Request $request)
     {
         try {
-            $id = $request->id;
-            $sensitiveType = $request->input('sensitive_type');
-            if ($sensitiveType === '' || $sensitiveType === null) {
-                $sensitiveType = null;
-            } else {
-                $sensitiveType = trim((string) $sensitiveType);
-            }
+            $rawId = $request->input('id');
+            $id = is_numeric($rawId) ? (int) $rawId : 0;
+            $sensitiveType = search_text($request->input('sensitive_type'));
+            $sensitiveType = $sensitiveType !== '' ? $sensitiveType : null;
 
             $hasHomepageInput = $request->exists('homepage_days');
             $homepageInput = $hasHomepageInput ? $request->input('homepage_days') : null;
@@ -1768,11 +1772,10 @@ class CatalogController extends Controller
     public function removeFromCart(Request $request)
     {
         try {
-            $id = $request->id;
-            $sensitiveType = $request->sensitive_type;
-            if ($sensitiveType === '') {
-                $sensitiveType = null;
-            }
+            $rawId = $request->input('id');
+            $id = is_numeric($rawId) ? (int) $rawId : 0;
+            $sensitiveType = search_text($request->input('sensitive_type'));
+            $sensitiveType = $sensitiveType !== '' ? $sensitiveType : null;
             $hasHomepageInput = $request->exists('homepage_days');
             $homepageDays = $hasHomepageInput ? $request->input('homepage_days') : null;
             $cart = session()->get('cart', []);
@@ -1804,12 +1807,11 @@ class CatalogController extends Controller
     public function updateCartQuantity(Request $request)
     {
         try {
-            $id = (int) $request->id;
+            $rawId = $request->input('id');
+            $id = is_numeric($rawId) ? (int) $rawId : 0;
             $quantity = (int) $request->quantity;
-            $sensitiveType = $request->sensitive_type;
-            if ($sensitiveType === '') {
-                $sensitiveType = null;
-            }
+            $sensitiveType = search_text($request->input('sensitive_type'));
+            $sensitiveType = $sensitiveType !== '' ? $sensitiveType : null;
             $hasHomepageInput = $request->exists('homepage_days');
             $homepageDays = $hasHomepageInput ? $request->input('homepage_days') : null;
             $cart = session()->get('cart', []);
@@ -3681,22 +3683,26 @@ class CatalogController extends Controller
             }
 
             // Payment status filter
-            if ($request->filled('payment_status')) {
-                $query->where('payment_status', $request->payment_status);
+            $paymentStatus = search_text($request->input('payment_status'));
+            if ($paymentStatus !== '') {
+                $query->where('payment_status', $paymentStatus);
             }
 
             // Payment method filter
-            if ($request->filled('payment_method')) {
-                $query->where('payment_method', $request->payment_method);
+            $paymentMethod = search_text($request->input('payment_method'));
+            if ($paymentMethod !== '') {
+                $query->where('payment_method', $paymentMethod);
             }
 
             // Date range filter
-            if ($request->filled('date_from')) {
-                $query->whereDate('created_at', '>=', $request->date_from);
+            $dateFrom = search_text($request->input('date_from'));
+            if ($dateFrom !== '') {
+                $query->whereDate('created_at', '>=', $dateFrom);
             }
 
-            if ($request->filled('date_to')) {
-                $query->whereDate('created_at', '<=', $request->date_to);
+            $dateTo = search_text($request->input('date_to'));
+            if ($dateTo !== '') {
+                $query->whereDate('created_at', '<=', $dateTo);
             }
 
             AdvertiserOrderStatus::applyQueueOrder($query, $statusFilter);

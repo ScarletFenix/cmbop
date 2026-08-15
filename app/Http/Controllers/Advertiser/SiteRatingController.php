@@ -80,7 +80,7 @@ class SiteRatingController extends Controller
             ];
         }
 
-        if ($order->status !== 'completed') {
+        if ($order->status !== 'completed' || $order->payment_status !== 'paid') {
             return [
                 'status' => 422,
                 'body' => [
