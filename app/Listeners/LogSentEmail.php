@@ -63,15 +63,17 @@ class LogSentEmail
             $audience = config("email_notifications.types.{$notificationType}.audience");
         }
 
-        $logMeta = [
-            'mailer' => config('mail.default'),
-        ];
         $campaignId = isset($meta['campaign_id']) ? (int) $meta['campaign_id'] : 0;
         $userId = isset($meta['user_id']) ? (int) $meta['user_id'] : 0;
         if ($mailableInstance instanceof AudienceCampaignMail) {
             $campaignId = $campaignId ?: (int) ($mailableInstance->campaign->id ?? 0);
             $userId = $userId ?: (int) ($mailableInstance->recipient->id ?? 0);
         }
+
+        $logMeta = array_filter([
+            'mailer' => config('mail.default'),
+            'source' => $source,
+        ]);
         if ($campaignId > 0) {
             $logMeta['campaign_id'] = $campaignId;
         }
@@ -79,8 +81,7 @@ class LogSentEmail
             $logMeta['user_id'] = $userId;
         }
 
-        $log = EmailLog::create([
-            'uuid' => (string) Str::uuid(),
+        $payload = [
             'mailable' => $mailable,
             'template_key' => $templateKey,
             'notification_type' => $notificationType ?: $templateKey,
@@ -91,10 +92,25 @@ class LogSentEmail
             'from_email' => $from['email'] ?? config('mail.from.address'),
             'subject' => $subject,
             'status' => EmailLog::STATUS_DELIVERED,
-            'attempts' => 1,
+            'error' => null,
             'meta' => $logMeta,
             'sent_at' => now(),
-        ]);
+        ];
+
+        $existing = EmailLog::findOpenByDedupe($dedupeKey);
+        if ($existing) {
+            $existing->fill($payload);
+            $existing->attempts = max(1, (int) $existing->attempts) + 1;
+            $existing->save();
+            $this->markCampaignRecipientDelivered($campaignId, $userId, (int) $existing->id);
+
+            return;
+        }
+
+        $log = EmailLog::create(array_merge($payload, [
+            'uuid' => (string) Str::uuid(),
+            'attempts' => 1,
+        ]));
 
         $this->markCampaignRecipientDelivered($campaignId, $userId, (int) $log->id);
     }

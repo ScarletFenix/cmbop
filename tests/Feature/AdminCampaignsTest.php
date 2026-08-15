@@ -17,6 +17,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class AdminCampaignsTest extends TestCase
@@ -685,5 +686,53 @@ class AdminCampaignsTest extends TestCase
             'subject' => 'No recipient table',
             'to_email' => $advertiser->email,
         ]);
+    }
+
+    public function test_log_sync_updates_open_dedupe_row_instead_of_duplicating(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+
+        $campaign = EmailCampaign::create([
+            'name' => 'Retry sync',
+            'subject' => 'Retry sync',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'status' => EmailCampaign::STATUS_SENDING,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        $row = EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_QUEUED,
+        ]);
+        $failed = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'dedupe_key' => 'campaign-retry-dedupe',
+            'to_email' => $advertiser->email,
+            'subject' => 'Retry sync',
+            'status' => EmailLog::STATUS_FAILED,
+            'error' => 'SMTP down',
+            'attempts' => 1,
+            'meta' => [],
+        ]);
+
+        $mailable = new AudienceCampaignMail($campaign, $advertiser);
+        $mailable->skipUserPreference = true;
+        $mailable->dedupeKey = 'campaign-retry-dedupe';
+        $mailable->to($advertiser->email);
+        $this->assertNotNull($mailable->send(app('mailer')));
+
+        $this->assertSame(1, EmailLog::query()->count());
+        $fresh = $failed->fresh();
+        $this->assertSame(EmailLog::STATUS_DELIVERED, $fresh->status);
+        $this->assertNull($fresh->error);
+        $this->assertSame(2, $fresh->attempts);
+        $this->assertSame($campaign->id, (int) data_get($fresh->meta, 'campaign_id'));
+        $this->assertSame(EmailCampaignRecipient::STATUS_DELIVERED, $row->fresh()->status);
+        $this->assertSame($failed->id, $row->fresh()->email_log_id);
     }
 }
