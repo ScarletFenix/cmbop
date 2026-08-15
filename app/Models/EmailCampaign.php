@@ -398,6 +398,14 @@ class EmailCampaign extends Model
      */
     protected static function reclaimOrphanedQueuedRecipients(self $campaign): int
     {
+        if (self::mailConnectionIsInline()) {
+            // Inline SMTP never writes an AudienceCampaignMail jobs row.
+            // A send-job timeout after pending → queued, during Mail::send(),
+            // would look like an orphan and reclaim → double-send.
+            // Expire at 72h is still the backstop (inFlight stays []).
+            return 0;
+        }
+
         $inFlight = self::inFlightCampaignMailUserIds((int) $campaign->id);
         if ($inFlight === null) {
             return 0;
@@ -453,13 +461,7 @@ class EmailCampaign extends Model
 
         $mail = (string) config('email_notifications.queue_connection', config('queue.default'));
         $mailDriver = (string) config("queue.connections.{$mail}.driver");
-        if ($mail === '' || $mail === 'sync' || $mailDriver === '' || $mailDriver === 'sync') {
-            // Inline SMTP never writes an AudienceCampaignMail jobs row.
-            // A send-job timeout after pending → queued, during Mail::send(),
-            // would look like an orphan and reclaim → double-send.
-            return null;
-        }
-        if ($mailDriver !== 'database') {
+        if ($mail !== '' && $mail !== 'sync' && $mailDriver !== 'sync' && $mailDriver !== '' && $mailDriver !== 'database') {
             // Mailables ride the mail connection. Redis/SQS there cannot
             // be inspected, so do not reclaim. An unused redis
             // queue.default must not block a healthy database mail queue.
@@ -670,6 +672,18 @@ class EmailCampaign extends Model
         // A healthy empty jobs table must still redispatch, even if the
         // unused connection is broken — otherwise pending rows sit forever.
         return $scanFailed && ! $scannedOk;
+    }
+
+    /**
+     * True when campaign mail is delivered inline (no jobs-table mailable).
+     * Reclaim must not treat that empty scan as "nothing in flight".
+     */
+    protected static function mailConnectionIsInline(): bool
+    {
+        $mail = (string) config('email_notifications.queue_connection', config('queue.default'));
+        $driver = (string) config("queue.connections.{$mail}.driver");
+
+        return $mail === '' || $mail === 'sync' || $driver === '' || $driver === 'sync';
     }
 
     /**
