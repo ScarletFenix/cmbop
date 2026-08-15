@@ -558,19 +558,6 @@ class AudienceInventoryService
         return $query;
     }
 
-    protected function recipientRowQuery(Builder $query, bool $includeUnverified, bool $alreadyScoped = false): Builder
-    {
-        if (! $alreadyScoped) {
-            $query = $this->applyRecipientScope($query, $includeUnverified);
-        }
-
-        return $query
-            ->setEagerLoads([])
-            ->reorder()
-            ->orderBy('users.id')
-            ->select(['users.id', 'users.email']);
-    }
-
     /**
      * @return Collection<int, int>
      */
