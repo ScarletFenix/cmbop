@@ -700,6 +700,7 @@ class AdminOrdersConsoleTest extends TestCase
 
         $order = $this->orderFor($advertiser, $firstSite);
         $order->update(['status' => 'completed', 'completed_at' => now()->subDay()]);
+        $firstItem = $order->items->first();
         $secondItem = OrderItem::create([
             'order_id' => $order->id,
             'site_id' => $secondSite->id,
@@ -710,14 +711,20 @@ class AdminOrdersConsoleTest extends TestCase
             'live_url' => 'https://sibling-admin-dispute.example/live',
         ]);
 
-        OrderItemDispute::ensureTable();
-        OrderItemDispute::create([
-            'order_id' => $order->id,
-            'order_item_id' => $secondItem->id,
-            'opened_by' => $advertiser->id,
-            'status' => OrderItemDispute::STATUS_OPEN,
-            'reason' => 'Second placement live link vanished after approval.',
-        ]);
+        $this->actingAs($admin)
+            ->postJson(route('admin.orders.disputes.open', $order->id), [
+                'reason' => 'Trying to open without choosing a placement on a multi-item order.',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.orders.disputes.open', $order->id), [
+                'reason' => 'Second placement live link vanished after approval.',
+                'order_item_id' => $secondItem->id,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
 
         $this->actingAs($admin)
             ->get(route('admin.orders.show', $order->id))
@@ -729,18 +736,15 @@ class AdminOrdersConsoleTest extends TestCase
 
         $this->actingAs($admin)
             ->postJson(route('admin.orders.disputes.open', $order->id), [
-                'reason' => 'Trying to open without choosing a placement on a multi-item order.',
-            ])
-            ->assertStatus(422)
-            ->assertJsonPath('success', false);
-
-        $this->actingAs($admin)
-            ->postJson(route('admin.orders.disputes.open', $order->id), [
                 'reason' => 'First placement was also taken down after completion.',
-                'order_item_id' => $order->items->first()->id,
             ])
             ->assertOk()
             ->assertJsonPath('success', true);
+
+        $this->assertDatabaseHas('order_item_disputes', [
+            'order_item_id' => $firstItem->id,
+            'status' => OrderItemDispute::STATUS_OPEN,
+        ]);
     }
 
     public function test_order_show_exposes_dispute_anchor_for_list_signals(): void
