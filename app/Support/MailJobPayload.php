@@ -23,9 +23,9 @@ class MailJobPayload
     }
 
     /**
-     * Database-queue payloads JSON-escape the serialized command, so
-     * `campaignId";i:12;` does not appear as a literal. `i:12;` must not
-     * match campaign 123.
+     * True when this payload is a SendEmailCampaignJob for exactly $campaignId.
+     * Covers raw PHP serialization, JSON-escaped queue rows, and a decoded
+     * command string. `i:12;` / `"campaignId":12` must not match 123.
      */
     public static function containsSendCampaignJob(string $payload, int $campaignId): bool
     {

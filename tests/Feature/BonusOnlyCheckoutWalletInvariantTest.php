@@ -11,6 +11,7 @@ use App\Models\Wallet;
 use App\Models\WalletTransaction;
 use App\Services\CartPricingService;
 use App\Services\LiveUrlHealthChecker;
+use App\Services\Wallet\WalletLedgerService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Tests\Support\CreatesContentSubmissions;
@@ -188,6 +189,29 @@ class BonusOnlyCheckoutWalletInvariantTest extends TestCase
         $this->assertEqualsWithDelta($total, (float) $wallet->bonus_reserved, 0.01);
         $this->assertSame(0.0, $wallet->withdrawableBalance());
         $this->assertGreaterThanOrEqual(0.0, (float) $wallet->reserved_balance);
+    }
+
+    public function test_bonus_only_keeps_leftover_reserved_when_ledger_throws_after_pay(): void
+    {
+        [$advertiser, , $site, $wallet, $total] = $this->bonusCoveredCheckoutSetup();
+
+        $this->partialMock(WalletLedgerService::class, function ($mock) {
+            $mock->shouldReceive('recordPurchaseOnce')
+                ->once()
+                ->andThrow(new \RuntimeException('ledger schema mismatch'));
+        });
+
+        $order = $this->placeBonusOnlyOrder($advertiser, $site, 'BONUSLEDGER');
+
+        $this->assertSame('paid', $order->payment_status);
+        $this->assertSame('wallet', $order->payment_method);
+        $this->assertSame(1, Order::where('reference_code', 'BONUSLEDGER')->count());
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta($total, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta($total, (float) $wallet->reserved_balance, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertSame(0.0, $wallet->withdrawableBalance());
     }
 
     public function test_bonus_only_releases_promo_for_line_that_left_catalog(): void

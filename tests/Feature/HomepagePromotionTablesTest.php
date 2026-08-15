@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\SiteAnnouncement;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
@@ -154,5 +155,97 @@ class HomepagePromotionTablesTest extends TestCase
         $this->assertSame(0, SiteAnnouncement::onlyTrashed()->count());
         $this->assertSame(1, SiteAnnouncement::query()->count());
         $this->assertFalse(SiteAnnouncement::query()->first()->restore());
+    }
+
+    public function test_homepage_and_click_ok_when_ends_at_is_unparseable(): void
+    {
+        $announcement = SiteAnnouncement::create([
+            'title' => 'Garbage date notice',
+            'message' => 'Body',
+            'type' => 'limited_offer',
+            'style' => 'promo',
+            'audience' => 'all',
+            'cta_label' => 'Go',
+            'cta_url' => '/advertiser/catalog',
+            'is_active' => true,
+            'ends_at' => now()->addDay(),
+        ]);
+
+        DB::table('site_announcements')->where('id', $announcement->id)->update([
+            'ends_at' => 'not-a-date',
+        ]);
+
+        $fresh = $announcement->fresh();
+        $this->assertFalse($fresh->isCurrentlyLive());
+        $this->assertSame('paused', $fresh->scheduleState());
+
+        $this->get('/')
+            ->assertOk()
+            ->assertDontSee('Garbage date notice', false)
+            ->assertDontSee('Something went wrong');
+
+        $this->get(route('announcements.click', $announcement->id))
+            ->assertRedirect('/');
+        $this->assertSame(0, (int) $announcement->fresh()->clicks);
+    }
+
+    public function test_unparseable_starts_at_is_not_live_and_click_goes_home(): void
+    {
+        $announcement = SiteAnnouncement::create([
+            'title' => 'Garbage start notice',
+            'message' => 'Body',
+            'type' => 'general',
+            'style' => 'info',
+            'audience' => 'all',
+            'cta_label' => 'Go',
+            'cta_url' => '/advertiser/catalog',
+            'is_active' => true,
+            'starts_at' => now()->subHour(),
+        ]);
+
+        DB::table('site_announcements')->where('id', $announcement->id)->update([
+            'starts_at' => 'not-a-date',
+        ]);
+
+        $this->assertFalse($announcement->fresh()->isCurrentlyLive());
+        $this->get('/')->assertOk()->assertDontSee('Garbage start notice', false);
+        $this->get(route('announcements.click', $announcement->id))->assertRedirect('/');
+        $this->assertSame(0, (int) $announcement->fresh()->clicks);
+    }
+
+    public function test_whitespace_cta_is_not_rendered_as_a_link(): void
+    {
+        SiteAnnouncement::create([
+            'title' => 'Whitespace cta notice',
+            'message' => 'Body',
+            'type' => 'general',
+            'style' => 'info',
+            'audience' => 'all',
+            'cta_label' => 'Go',
+            'cta_url' => '   ',
+            'is_active' => true,
+        ]);
+
+        $html = $this->get('/')->assertOk()->assertSee('Whitespace cta notice', false)->getContent();
+        $this->assertStringNotContainsString('site-announcement__cta', $html);
+        $this->assertStringNotContainsString('/announcements/', $html);
+    }
+
+    public function test_limited_offer_shows_ends_label(): void
+    {
+        SiteAnnouncement::create([
+            'title' => 'Sale notice',
+            'message' => 'Body',
+            'type' => 'limited_offer',
+            'style' => 'promo',
+            'audience' => 'all',
+            'is_active' => true,
+            'ends_at' => now()->addDays(3),
+        ]);
+
+        $this->get('/')
+            ->assertOk()
+            ->assertSee('Sale notice', false)
+            ->assertSee('Ends', false);
     }
 }
