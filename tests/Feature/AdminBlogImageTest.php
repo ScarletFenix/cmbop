@@ -183,7 +183,9 @@ class AdminBlogImageTest extends TestCase
             ->assertSee('quillImageInput', false)
             ->assertSee('articleImagesManager', false)
             ->assertSee('Article images', false)
-            ->assertSee('admin-blog-images.js', false);
+            ->assertSee('admin-blog-images.js', false)
+            ->assertSee('/media/blogs/content/demo.jpg', false)
+            ->assertDontSee('/storage/blogs/content/demo.jpg', false);
 
         $this->actingAs($admin)
             ->get(route('admin.blogs.create'))
@@ -244,6 +246,34 @@ class AdminBlogImageTest extends TestCase
             ->assertJsonPath('success', true);
 
         Storage::disk('public')->assertMissing($path);
+    }
+
+    public function test_admin_can_delete_content_image_via_absolute_media_url_with_query(): void
+    {
+        Storage::fake('public');
+        $admin = $this->adminUser();
+
+        $path = UploadedFile::fake()->image('inline-abs.webp')->store('blogs/content', 'public');
+        Storage::disk('public')->assertExists($path);
+
+        $this->actingAs($admin)
+            ->deleteJson(route('admin.blogs.delete-content-image'), [
+                'url' => 'https://example.test/media/'.$path.'?cache=1#preview',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        Storage::disk('public')->assertMissing($path);
+    }
+
+    public function test_admin_blog_images_js_deletes_media_and_storage_urls(): void
+    {
+        $js = file_get_contents(public_path('assets/js/admin-blog-images.js'));
+
+        $this->assertIsString($js);
+        $this->assertStringContainsString('/media/blogs/', $js);
+        $this->assertStringContainsString('/storage/blogs/', $js);
+        $this->assertStringContainsString('isStoredBlogImageSrc', $js);
     }
 
     public function test_store_converts_featured_jpeg_to_webp(): void

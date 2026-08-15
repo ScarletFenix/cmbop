@@ -282,23 +282,23 @@ class BlogController extends Controller
             $data['slug'] = $this->uniqueBlogSlug($enSlug, $blog->id);
 
             if ($request->hasFile('featured_image')) {
-                if ($blog->featured_image && Storage::disk('public')->exists($blog->featured_image)) {
-                    Storage::disk('public')->delete($blog->featured_image);
-                    Log::info('Old featured image deleted', ['path' => $blog->featured_image]);
-                }
-
-                $data['featured_image'] = $this->storeBlogImage($request->file('featured_image'), 'blogs/featured');
-                if ($data['featured_image'] === null) {
+                $stored = $this->storeBlogImage($request->file('featured_image'), 'blogs/featured');
+                if ($stored === null) {
                     throw ValidationException::withMessages([
                         'featured_image' => ['Could not save the featured image to storage. Check disk permissions and MEDIA_PATH.'],
                     ]);
                 }
-                Log::info('New featured image uploaded', ['path' => $data['featured_image']]);
-            } elseif ($request->boolean('remove_featured_image')) {
-                if ($blog->featured_image && Storage::disk('public')->exists($blog->featured_image)) {
-                    Storage::disk('public')->delete($blog->featured_image);
-                    Log::info('Featured image removed', ['path' => $blog->featured_image]);
+
+                $oldFeatured = $blog->featured_image;
+                $data['featured_image'] = $stored;
+                if (filled($oldFeatured) && $oldFeatured !== $stored) {
+                    $this->deletePublicBlogPath((string) $oldFeatured);
+                    Log::info('Old featured image deleted', ['path' => $oldFeatured]);
                 }
+                Log::info('New featured image uploaded', ['path' => $stored]);
+            } elseif ($request->boolean('remove_featured_image')) {
+                $this->deletePublicBlogPath((string) $blog->featured_image);
+                Log::info('Featured image removed', ['path' => $blog->featured_image]);
                 $data['featured_image'] = null;
             }
 
@@ -432,6 +432,12 @@ class BlogController extends Controller
                 ], 500);
             }
             $imageUrl = Site::publicDiskUrl($imagePath);
+            if ($imageUrl === null) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Could not save the image to storage. Check disk permissions and MEDIA_PATH.',
+                ], 500);
+            }
 
             Log::info('Image uploaded via editor', ['path' => $imagePath]);
 
@@ -493,19 +499,24 @@ class BlogController extends Controller
      */
     private function blogStoragePathFromUrl(string $url): ?string
     {
-        $path = $url;
-        if (str_contains($path, '://')) {
-            $path = (string) (parse_url($path, PHP_URL_PATH) ?: '');
+        $path = trim($url);
+        if ($path === '') {
+            return null;
         }
 
-        $path = ltrim($path, '/');
+        if (str_contains($path, '://') || str_starts_with($path, '//')) {
+            $path = (string) (parse_url($path, PHP_URL_PATH) ?: '');
+        } else {
+            $path = explode('#', explode('?', $path, 2)[0], 2)[0];
+        }
+
+        $path = ltrim(str_replace('\\', '/', $path), '/');
         foreach (['storage/', 'media/'] as $prefix) {
             if (str_starts_with($path, $prefix)) {
                 $path = ltrim(substr($path, strlen($prefix)), '/');
             }
         }
 
-        $path = ltrim($path, '/');
         if ($path === '' || str_contains($path, '..')) {
             return null;
         }
@@ -515,6 +526,18 @@ class BlogController extends Controller
         }
 
         return $path;
+    }
+
+    private function deletePublicBlogPath(?string $path): void
+    {
+        $resolved = $this->blogStoragePathFromUrl((string) $path);
+        if ($resolved === null) {
+            return;
+        }
+
+        if (Storage::disk('public')->exists($resolved)) {
+            Storage::disk('public')->delete($resolved);
+        }
     }
 
     private function deleteStoredBlogImages(Blog $blog): void

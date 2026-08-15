@@ -121,7 +121,7 @@ class AdminBlogCuratedSyncTest extends TestCase
 
         $this->get('/de/blog/'.$blog->slug)
             ->assertOk()
-            ->assertSee('/storage/blogs/content/gastbeitraege-europa-sprachen.jpg', false)
+            ->assertSee('/media/blogs/content/gastbeitraege-europa-sprachen.jpg', false)
             ->assertDontSee('/assets/img/blog/gastbeitraege-europa-sprachen.jpg', false);
 
         $blog->refresh();

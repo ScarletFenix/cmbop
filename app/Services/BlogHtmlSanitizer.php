@@ -50,13 +50,39 @@ class BlogHtmlSanitizer
         ) ?: '""';
     }
 
+    /**
+     * Point stored /storage/blogs/... (and absolute twins) at /media/blogs/...
+     * so Hostinger broken public/storage symlinks do not blank inline images.
+     * Curated rows stay /storage/ in the database until a post is saved; public
+     * render and the editor boot script rewrite on the way out.
+     */
+    public static function rewriteStorageBlogUrls(?string $html): string
+    {
+        $html = (string) $html;
+        $rewritten = preg_replace(
+            '#(?:https?://[^"\']+)?/storage/(blogs/(?:content|featured)/)#i',
+            '/media/$1',
+            $html
+        );
+
+        return is_string($rewritten) ? $rewritten : $html;
+    }
+
+    /**
+     * Encode stored HTML for the Quill boot script, with Hostinger-safe image URLs.
+     */
+    public static function encodeForEditor(?string $html): string
+    {
+        return self::encodeForScript(self::rewriteStorageBlogUrls($html));
+    }
+
     public function sanitize(?string $html): string
     {
         if (self::isEmptyHtml($html)) {
             return '';
         }
 
-        $html = trim((string) $html);
+        $html = self::rewriteStorageBlogUrls(trim((string) $html));
 
         // strip_tags keeps inner text, so remove these elements with their contents first.
         $html = preg_replace('/<(script|style|noscript|template)\b[^>]*>.*?<\/\1>/isu', '', $html) ?? $html;
