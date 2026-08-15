@@ -42,6 +42,7 @@ class AdminCampaignsDocsTest extends TestCase
         $this->assertStringContainsString('ops-mail-reminders.md', $body);
         $this->assertStringContainsString('even if that staff account also has a marketplace role', $body);
         $this->assertStringContainsString('payment_status=completed', $body);
+        $this->assertStringContainsString('Preference, disabled, and unverified skips stay skipped', $body);
         $this->assertStringNotContainsString('/advertiser/campaigns', $body);
     }
 

@@ -76,8 +76,11 @@ or marketing, even if that staff account also has a marketplace role.
    claim `pending` → `queued` and die before `Mail::send()` inserts the
    mailable. A later SMTP success or a send suppressed as a duplicate
    still marks the recipient `delivered` (it already went out), including
-   when expire already flipped the row to skipped stale. Recover also
-   attaches a delivered `email_logs` row to those leftovers.
+   when expire already flipped the row to skipped stale. Preference,
+   disabled, and unverified skips stay skipped — a stray `MessageSent`
+   or duplicate suppress must not hide an opt-out as a successful send.
+   Recover also attaches a delivered `email_logs` row to those stale
+   leftovers only.
 5. Individual `AudienceCampaignMail` failures mark that recipient `failed`
    (`error`) and recount. If a `sent` campaign later has no queued/delivered
    rows left, status is downgraded to `failed`. A late `marketing_emails`
