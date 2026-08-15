@@ -3700,7 +3700,7 @@ class CatalogController extends Controller
 
         $articles = ContentSubmission::query()
             ->where('user_id', auth()->id())
-            ->availableForPicker()
+            ->checkoutReady()
             ->latest('id')
             ->limit(50)
             ->get(['id', 'title', 'original_filename', 'language', 'country', 'anchor_text', 'target_url'])
