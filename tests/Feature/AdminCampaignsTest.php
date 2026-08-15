@@ -603,6 +603,32 @@ class AdminCampaignsTest extends TestCase
         Mail::assertNothingQueued();
     }
 
+    public function test_send_job_uses_mail_database_when_app_queue_is_sync(): void
+    {
+        Mail::fake();
+        config([
+            'queue.default' => 'sync',
+            'email_notifications.queue_connection' => 'database',
+            'email_notifications.queue' => 'emails',
+            'queue.connections.database.driver' => 'database',
+            'queue.connections.database.table' => 'jobs',
+        ]);
+
+        $admin = $this->makeUser('admin');
+        $this->makeUser('advertiser');
+
+        $this->actingAs($admin)
+            ->post(route('admin.campaigns.send'), $this->campaignPayload([
+                'respect_preferences' => '0',
+            ]))
+            ->assertRedirect(route('admin.campaigns.index'));
+
+        $campaign = EmailCampaign::query()->latest('id')->first();
+        $this->assertSame(EmailCampaign::STATUS_QUEUED, $campaign->status);
+        $this->assertSame(1, DB::table('jobs')->count());
+        $this->assertSame('database', (new SendEmailCampaignJob($campaign->id))->connection);
+    }
+
     public function test_job_skips_opted_out_and_queues_mail_for_the_rest(): void
     {
         Mail::fake();

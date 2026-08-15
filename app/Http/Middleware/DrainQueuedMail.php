@@ -66,12 +66,7 @@ class DrainQueuedMail
 
     private function enabled(): bool
     {
-        // No console guard needed: terminate() only runs for HTTP requests.
-        if (! config('email_notifications.auto_drain')) {
-            return false;
-        }
-
-        return EmailCampaign::drainableQueueConnections() !== [];
+        return (bool) config('email_notifications.auto_drain');
     }
 
     /**

@@ -417,6 +417,25 @@ class EmailCampaign extends Model
     }
 
     /**
+     * Prefer the mail connection when it can store jobs, otherwise the first
+     * drainable app connection. Null means both are sync (run inline).
+     */
+    public static function preferredSendJobConnection(): ?string
+    {
+        $drainable = self::drainableQueueConnections();
+        if ($drainable === []) {
+            return null;
+        }
+
+        $mail = (string) config('email_notifications.queue_connection', '');
+        if ($mail !== '' && in_array($mail, $drainable, true)) {
+            return $mail;
+        }
+
+        return $drainable[0];
+    }
+
+    /**
      * LogSentEmail can persist a delivered/failed row and still miss the
      * recipient FK. Re-attach those before expire treats them as stale.
      */

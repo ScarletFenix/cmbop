@@ -34,6 +34,9 @@ class SendEmailCampaignJob implements ShouldQueue
 
     public function __construct(public int $campaignId, public int $failStreak = 0)
     {
+        if ($connection = EmailCampaign::preferredSendJobConnection()) {
+            $this->onConnection($connection);
+        }
         $this->onQueue(config('email_notifications.queue', 'emails'));
     }
 

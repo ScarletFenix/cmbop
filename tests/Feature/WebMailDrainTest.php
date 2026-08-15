@@ -134,6 +134,45 @@ class WebMailDrainTest extends TestCase
         $this->assertSame(EmailCampaign::STATUS_SENDING, $campaign->fresh()->status);
     }
 
+    public function test_web_drain_recovers_stalled_campaign_when_both_queues_are_sync(): void
+    {
+        Mail::fake();
+        $this->seed(RolesTableSeeder::class);
+        config([
+            'queue.default' => 'sync',
+            'email_notifications.queue_connection' => 'sync',
+            'email_notifications.auto_drain' => true,
+        ]);
+
+        $role = Role::where('name', 'advertiser')->firstOrFail();
+        $advertiser = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $role->id,
+        ]);
+        $advertiser->roles()->attach($role->id);
+
+        $campaign = EmailCampaign::create([
+            'name' => 'Inline recover',
+            'subject' => 'Inline recover',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'status' => EmailCampaign::STATUS_QUEUED,
+            'respect_preferences' => false,
+        ]);
+        EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_PENDING,
+        ]);
+        $campaign->forceFill(['updated_at' => now()->subMinutes(5)])->save();
+
+        $this->get('/')->assertSuccessful();
+
+        $this->assertNotSame(EmailCampaign::STATUS_QUEUED, $campaign->fresh()->status);
+    }
+
     public function test_the_drain_can_be_turned_off_for_hosts_with_a_worker(): void
     {
         $this->useDatabaseMailQueue();
