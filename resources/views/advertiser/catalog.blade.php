@@ -340,7 +340,7 @@
                                     <div class="multi-select-empty d-none">No categories found</div>
                                 </div>
                             </div>
-                            <input type="hidden" name="category" id="selectedCategory" value="{{ \App\Models\Category::canonicalizeCatalogCategoryParam((string) request('category', '')) }}">
+                            <input type="hidden" name="category" id="selectedCategory" value="{{ \App\Models\Category::canonicalizeCatalogCategoryParam($catalogCategoryText) }}">
                         </div>
 
                         <!-- Primary: Country (searchable dropdown) -->
@@ -440,14 +440,14 @@
                                        class="form-control form-control-sm no-spinner"
                                        placeholder="Min"
                                        min="0" step="0.01"
-                                       value="{{ request('price_min') }}">
+                                       value="{{ search_text(request('price_min')) }}">
                                 <input type="number"
                                        name="price_max"
                                        id="priceMaxInput" aria-label="Maximum price in euros"
                                        class="form-control form-control-sm no-spinner"
                                        placeholder="Max"
                                        min="0" step="0.01"
-                                       value="{{ request('price_max') }}">
+                                       value="{{ search_text(request('price_max')) }}">
                             </div>
                             <div class="filter-presets" data-preset-group="price">
                                 <button type="button" class="filter-preset" data-min="" data-max="50" data-target-min="priceMinInput" data-target-max="priceMaxInput">Under €50</button>
@@ -708,10 +708,10 @@
 window.CatalogConfig = {
     favorites: @json($favorites ?? []),
     blacklist: @json($blacklist ?? []),
-    categoryParam: @json(\App\Models\Category::canonicalizeCatalogCategoryParam((string) request('category', ''))),
+    categoryParam: @json(\App\Models\Category::canonicalizeCatalogCategoryParam($catalogCategoryText)),
     categoryNames: @json(array_values($siteCategories ?? [])),
-    countryParam: @json((string) request('country', '')),
-    languageParam: @json((string) request('language', '')),
+    countryParam: @json($catalogCountryText),
+    languageParam: @json($catalogLanguageText),
     countryLanguageMap: @json(app(\App\Services\Marketplace\CountryLanguagePairs::class)->mapWithNames()),
     countryGroups: @json(collect($countryPickerGroups ?? [])->mapWithKeys(fn ($g) => [$g['key'] => $g['codes']])->all()),
     countryGroupLabels: @json(collect($countryPickerGroups ?? [])->mapWithKeys(fn ($g) => [$g['key'] => $g['label']])->all()),
