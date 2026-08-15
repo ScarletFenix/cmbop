@@ -411,6 +411,11 @@ class ContentModerationService
         return ['ok' => $failures === [], 'failures' => $failures];
     }
 
+    public function submissionPassesLivePolicy(ContentSubmission $submission, ?User $user = null): bool
+    {
+        return (bool) ($this->assertSubmissionsApproved([$submission], $user)['ok'] ?? false);
+    }
+
     public function assertLinksApproved(array $urls, ?User $user = null): array
     {
         $cfg = $this->effectiveConfig();

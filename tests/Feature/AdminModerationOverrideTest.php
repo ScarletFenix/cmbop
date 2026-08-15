@@ -14,7 +14,9 @@ use App\Models\User;
 use App\Services\ContentModeration\ContentModerationService;
 use App\Services\ContentUpload\ArticleEvaluationService;
 use App\Services\OrderPaymentService;
+use App\Services\StripeCustomerService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Mail;
 use Tests\Support\CreatesContentSubmissions;
 use Tests\TestCase;
 
@@ -588,5 +590,218 @@ class AdminModerationOverrideTest extends TestCase
             ->assertOk()
             ->assertSee('casino')
             ->assertSee('Matched terms');
+    }
+
+    public function test_revision_confirm_existing_still_allows_an_unedited_override(): void
+    {
+        Mail::fake();
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        [$submission, $log] = $this->rejectCasinoArticle($advertiser);
+
+        $this->actingAs($admin)
+            ->post(route('admin.moderation.override', $log), [
+                'notes' => 'Allow this version only.',
+            ])
+            ->assertRedirect();
+
+        $item = $this->paidLibraryItem($advertiser, $submission);
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.orders.fulfill-content-revision', $item->order_id), [
+                'confirm_existing' => true,
+                'order_item_id' => $item->id,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertFalse($item->fresh()->isContentRevisionRequested());
+        $this->assertSame(ContentSubmission::STATUS_APPROVED, $submission->fresh()->moderation_status);
+    }
+
+    public function test_revision_confirm_existing_blocks_a_silent_title_edit(): void
+    {
+        Mail::fake();
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        [$submission, $log] = $this->rejectCasinoArticle($advertiser);
+
+        $this->actingAs($admin)
+            ->post(route('admin.moderation.override', $log), [
+                'notes' => 'Allow this version only.',
+            ])
+            ->assertRedirect();
+
+        $item = $this->paidLibraryItem($advertiser, $submission);
+        $submission->refresh()->update([
+            'title' => 'Best online casino bonus guide',
+        ]);
+        $this->assertTrue($submission->fresh()->isApproved());
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.orders.fulfill-content-revision', $item->order_id), [
+                'confirm_existing' => true,
+                'order_item_id' => $item->id,
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['confirm_existing']);
+
+        $this->assertTrue($item->fresh()->isContentRevisionRequested());
+        $this->assertSame(ContentSubmission::STATUS_REJECTED, $submission->fresh()->moderation_status);
+    }
+
+    public function test_revision_attach_blocks_a_silently_edited_override(): void
+    {
+        Mail::fake();
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        $current = $this->createApprovedSubmission($advertiser);
+        [$replacement, $log] = $this->rejectCasinoArticle($advertiser);
+
+        $this->actingAs($admin)
+            ->post(route('admin.moderation.override', $log), [
+                'notes' => 'Allow this version only.',
+            ])
+            ->assertRedirect();
+
+        $item = $this->paidLibraryItem($advertiser, $current);
+        $replacement->refresh()->update([
+            'title' => 'Best online casino bonus guide',
+        ]);
+        $this->assertTrue($replacement->fresh()->isApproved());
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.orders.fulfill-content-revision', $item->order_id), [
+                'content_submission_id' => $replacement->id,
+                'order_item_id' => $item->id,
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['content_submission_id']);
+
+        $this->assertTrue($item->fresh()->isContentRevisionRequested());
+        $this->assertSame($current->id, (int) $item->fresh()->content_submission_id);
+        $this->assertSame(ContentSubmission::STATUS_REJECTED, $replacement->fresh()->moderation_status);
+    }
+
+    public function test_pay_again_blocks_a_silent_title_edit_without_opening_stripe(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        [$submission, $log] = $this->rejectCasinoArticle($advertiser);
+
+        $this->actingAs($admin)
+            ->post(route('admin.moderation.override', $log), [
+                'notes' => 'Allow this version only.',
+            ])
+            ->assertRedirect();
+
+        $site = $this->publisherSite();
+        $order = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => 'ORD-OVR-RETRY',
+            'reference_code' => 'REF-OVR-RETRY',
+            'subtotal' => 40,
+            'tax' => 0,
+            'total_amount' => 40,
+            'payment_method' => 'card',
+            'payment_status' => 'failed',
+            'status' => 'pending',
+        ]);
+        OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'price' => 40,
+            'content_link' => route('advertiser.content-submissions.download', $submission),
+            'content_submission_id' => $submission->id,
+        ]);
+        $submission->update([
+            'order_id' => $order->id,
+            'title' => 'Best online casino bonus guide',
+        ]);
+
+        $this->mock(StripeCustomerService::class, function ($mock) {
+            $mock->shouldReceive('configured')->andReturn(true);
+            $mock->shouldReceive('createCheckoutSession')->never();
+        });
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.orders.list'))
+            ->assertOk()
+            ->assertJsonPath('orders.0.can_retry_payment', true);
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.orders.retry-payment', $order))
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+
+        $this->assertSame(ContentSubmission::STATUS_REJECTED, $submission->fresh()->moderation_status);
+        $this->assertSame('failed', $order->fresh()->payment_status);
+    }
+
+    private function publisherSite(): Site
+    {
+        $publisherRole = Role::firstOrCreate(['name' => 'publisher']);
+        $publisher = User::factory()->create(['email_verified_at' => now()]);
+        $publisher->roles()->attach($publisherRole->id);
+
+        return Site::create([
+            'publisher_id' => $publisher->id,
+            'site_name' => 'Override Policy Site',
+            'site_url' => 'https://override-policy.example',
+            'domain' => 'override-policy.example',
+            'da' => 20,
+            'dr' => 20,
+            'traffic' => 100,
+            'country' => 'us',
+            'language' => 'en',
+            'price' => 40,
+            'publication_time' => '7 days',
+            'link_type' => 'dofollow',
+            'description' => 'Policy recheck site',
+            'verified' => true,
+            'active' => true,
+        ]);
+    }
+
+    private function paidLibraryItem(User $advertiser, ContentSubmission $submission): OrderItem
+    {
+        $site = $this->publisherSite();
+        $order = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => 'ORD-OVR-REV-'.random_int(1000, 9999),
+            'reference_code' => 'REF-OVR-REV-'.random_int(1000, 9999),
+            'subtotal' => 40,
+            'tax' => 0,
+            'total_amount' => 40,
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'status' => 'processing',
+            'paid_at' => now(),
+        ]);
+        $item = OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'price' => 40,
+            'content_link' => route('advertiser.content-submissions.download', $submission),
+            'content_submission_id' => $submission->id,
+            'content_disk' => $submission->disk,
+            'content_path' => $submission->path,
+            'content_original_name' => $submission->original_filename,
+            'accepted_at' => now(),
+            'publisher_status' => 'accepted',
+            'content_revision_requested' => 'yes',
+            'content_revision_requested_at' => now(),
+            'content_revision_reason' => 'Please tighten the intro and fix brand spelling.',
+        ]);
+        $submission->update([
+            'order_id' => $order->id,
+            'order_item_id' => $item->id,
+        ]);
+
+        return $item->fresh();
     }
 }

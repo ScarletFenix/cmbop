@@ -11,6 +11,7 @@ use App\Models\OrderItem;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\CheckoutSchemaService;
+use App\Services\ContentModeration\ContentModerationService;
 use App\Services\InAppNotificationService;
 use App\Services\OrderChatContactGuard;
 use App\Services\OrderPaymentService;
@@ -228,6 +229,8 @@ class ContentRevisionService
                     ]);
                 }
 
+                $existing = $this->assertLibraryArticlePassesPolicy($existing, $advertiser, 'confirm_existing');
+
                 if ($existing->hasImages() && ! $existing->imageRightsCoverContent()) {
                     throw ValidationException::withMessages([
                         'confirm_existing' => 'Confirm image rights on the attached article before sending it back.',
@@ -259,6 +262,8 @@ class ContentRevisionService
                         'content_submission_id' => 'Only approved Content Library articles can be attached.',
                     ]);
                 }
+
+                $submission = $this->assertLibraryArticlePassesPolicy($submission, $advertiser, 'content_submission_id');
 
                 $sameAsCurrent = (int) $item->content_submission_id === (int) $submission->id;
                 if (! $sameAsCurrent) {
@@ -483,6 +488,23 @@ class ContentRevisionService
         }
 
         return $payload;
+    }
+
+    /**
+     * Re-scan the article against live policy before sending it back to the publisher.
+     * A staff override or stale approved flag is not enough after the advertiser edits.
+     */
+    protected function assertLibraryArticlePassesPolicy(ContentSubmission $submission, User $advertiser, string $field): ContentSubmission
+    {
+        $result = app(ContentModerationService::class)->assertSubmissionsApproved([$submission], $advertiser);
+        if (! ($result['ok'] ?? false)) {
+            throw ValidationException::withMessages([
+                $field => $result['failures'][0]['message']
+                    ?? 'This article no longer passes content policy. Edit it and try again.',
+            ]);
+        }
+
+        return $submission->fresh() ?? $submission;
     }
 
     /**

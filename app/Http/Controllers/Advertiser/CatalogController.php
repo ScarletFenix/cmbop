@@ -3660,6 +3660,15 @@ class CatalogController extends Controller
                 ], 422);
             }
 
+            foreach ($package as $row) {
+                if (! $this->orderLibraryContentPassesLivePolicy($row)) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'A Content Library article no longer passes content policy. Edit it and try again.',
+                    ], 422);
+                }
+            }
+
             // Pay again charges the full package on the card. Release any leftover
             // checkout bonus for this reference first so promo is not left reserved
             // while the advertiser pays the original total again.
@@ -3767,6 +3776,31 @@ class CatalogController extends Controller
             }
             $submission = ContentSubmission::query()->whereKey($id)->first();
             if (! $submission || ! $submission->isReadyToFulfill((int) $order->id)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Live re-scan for Pay again. Do not call this from the orders list —
+     * viewing leftovers must not write new moderation rows or flip status.
+     */
+    private function orderLibraryContentPassesLivePolicy(Order $order): bool
+    {
+        $order->loadMissing('items');
+        $moderation = app(ContentModerationService::class);
+        $owner = $order->user;
+        $user = $owner instanceof User ? $owner : auth()->user();
+
+        foreach ($order->items as $item) {
+            $id = (int) ($item->content_submission_id ?? 0);
+            if ($id <= 0) {
+                continue;
+            }
+            $submission = ContentSubmission::query()->whereKey($id)->first();
+            if (! $submission || ! $moderation->submissionPassesLivePolicy($submission, $user)) {
                 return false;
             }
         }
@@ -4804,6 +4838,15 @@ class CatalogController extends Controller
         if (! $locked || ! $locked->isReadyToFulfill((int) $order->id)) {
             throw new \RuntimeException(ContentSubmission::UNAVAILABLE_MESSAGE);
         }
+
+        $owner = $order->user;
+        if (! app(ContentModerationService::class)->submissionPassesLivePolicy(
+            $locked,
+            $owner instanceof User ? $owner : auth()->user()
+        )) {
+            throw new \RuntimeException(ContentSubmission::UNAVAILABLE_MESSAGE);
+        }
+        $locked = $locked->fresh() ?? $locked;
 
         // Each article is published on one site only. Keep the first order/item linkage on the
         // submission row; every OrderItem still stores its own content_submission_id.
