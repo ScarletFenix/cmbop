@@ -3032,7 +3032,7 @@ class AdminCampaignsTest extends TestCase
             'status' => EmailLog::STATUS_PENDING,
             'attempts' => 2,
         ]);
-        $pending->forceFill(['updated_at' => now()->subHours(3)])->save();
+        EmailLog::query()->whereKey($pending->id)->update(['updated_at' => now()->subHours(3)]);
         $delivered = EmailLog::create([
             'uuid' => (string) Str::uuid(),
             'mailable' => AudienceCampaignMail::class,
@@ -3078,7 +3078,7 @@ class AdminCampaignsTest extends TestCase
             'email' => $advertiser->email,
             'status' => EmailCampaignRecipient::STATUS_QUEUED,
         ]);
-        $row->forceFill(['updated_at' => now()->subMinutes(5)])->save();
+        EmailCampaignRecipient::query()->whereKey($row->id)->update(['updated_at' => now()->subMinutes(5)]);
 
         $dedupe = EmailCampaignRecipient::dedupeKey((int) $campaign->id, (int) $advertiser->id);
         $delivered = EmailLog::create([
@@ -3092,7 +3092,7 @@ class AdminCampaignsTest extends TestCase
             'sent_at' => now()->subHours(2),
             'attempts' => 1,
         ]);
-        $delivered->forceFill(['updated_at' => now()->subHours(2)])->save();
+        EmailLog::query()->whereKey($delivered->id)->update(['updated_at' => now()->subHours(2)]);
         $pending = EmailLog::create([
             'uuid' => (string) Str::uuid(),
             'mailable' => AudienceCampaignMail::class,
@@ -3103,8 +3103,10 @@ class AdminCampaignsTest extends TestCase
             'status' => EmailLog::STATUS_PENDING,
             'attempts' => 2,
         ]);
-        $pending->forceFill(['updated_at' => now()->subMinutes(3)])->save();
-        $campaign->forceFill(['updated_at' => now()->subMinutes(5)])->save();
+        EmailLog::query()->whereKey($pending->id)->update(['updated_at' => now()->subMinutes(3)]);
+        EmailCampaign::query()->whereKey($campaign->id)->update(['updated_at' => now()->subMinutes(5)]);
+        $this->useDatabaseMailQueue();
+        $this->insertQueuedCampaignMailJob((int) $campaign->id, (int) $advertiser->id);
 
         EmailCampaign::recoverStalled();
 

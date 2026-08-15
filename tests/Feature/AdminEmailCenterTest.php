@@ -2121,7 +2121,7 @@ class AdminEmailCenterTest extends TestCase
             'status' => EmailLog::STATUS_PENDING,
             'attempts' => 2,
         ]);
-        $log->forceFill(['updated_at' => now()->subHours(25)])->save();
+        EmailLog::query()->whereKey($log->id)->update(['updated_at' => now()->subHours(25)]);
 
         config([
             'email_notifications.queue_connection' => 'database',
@@ -2130,16 +2130,12 @@ class AdminEmailCenterTest extends TestCase
             'queue.connections.database.table' => 'jobs',
         ]);
 
-        $dedupe = 'welcome:'.$admin->id;
-        $command = 'O:24:"App\\Mail\\WelcomeEmail":2:{s:9:"dedupeKey";s:'.strlen($dedupe).':"'.$dedupe.'";s:8:"to_email";s:'.strlen((string) $admin->email).':"'.$admin->email.'";}';
         DB::table('jobs')->insert([
             'queue' => 'emails',
             'payload' => json_encode([
                 'displayName' => WelcomeEmail::class,
-                'data' => [
-                    'commandName' => 'Illuminate\\Mail\\SendQueuedMailable',
-                    'command' => $command,
-                ],
+                'data' => ['commandName' => 'Illuminate\\Mail\\SendQueuedMailable'],
+                'to' => $admin->email,
             ]),
             'attempts' => 0,
             'available_at' => time(),
