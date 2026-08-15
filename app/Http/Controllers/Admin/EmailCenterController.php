@@ -295,10 +295,12 @@ class EmailCenterController extends Controller
         }
 
         $payloads = $this->failedJobPayloadsByUuid($uuids);
-        $closed = $this->closeFailedLogsAlreadyDelivered();
+        [$closed, $closedUuids] = $this->closeFailedLogsAlreadyDelivered();
+        $closedUuidSet = array_fill_keys($closedUuids, true);
         $uuids = array_values(array_filter(
             $uuids,
-            fn (string $uuid) => ! $this->payloadAlreadyDelivered((string) ($payloads[$uuid] ?? ''))
+            fn (string $uuid) => empty($closedUuidSet[$uuid])
+                && ! $this->payloadAlreadyDelivered((string) ($payloads[$uuid] ?? ''))
         ));
 
         if ($uuids === []) {
@@ -484,6 +486,7 @@ class EmailCenterController extends Controller
 
             if ($this->closeFailedLogAlreadyDelivered($log)) {
                 $marked[$log->id] = true;
+                $claimedUuids[$stored] = true;
 
                 continue;
             }
@@ -528,10 +531,15 @@ class EmailCenterController extends Controller
     /**
      * Leftover failed rows after a real delivery. Retrying the queue job
      * would send a second campaign / welcome once the 10-minute window lapses.
+     * Also return stamped job UUIDs so a shared stale stamp cannot
+     * pending-mark a different campaign beside that closed log.
+     *
+     * @return array{0: int, 1: list<string>}
      */
-    protected function closeFailedLogsAlreadyDelivered(): int
+    protected function closeFailedLogsAlreadyDelivered(): array
     {
         $closed = 0;
+        $uuids = [];
 
         foreach (EmailLog::query()
             ->where('status', EmailLog::STATUS_FAILED)
@@ -541,10 +549,14 @@ class EmailCenterController extends Controller
             ->get() as $log) {
             if ($this->closeFailedLogAlreadyDelivered($log)) {
                 $closed++;
+                $uuid = (string) data_get($log->meta, 'failed_job_uuid');
+                if ($uuid !== '') {
+                    $uuids[$uuid] = true;
+                }
             }
         }
 
-        return $closed;
+        return [$closed, array_keys($uuids)];
     }
 
     protected function closeFailedLogAlreadyDelivered(EmailLog $log): bool
