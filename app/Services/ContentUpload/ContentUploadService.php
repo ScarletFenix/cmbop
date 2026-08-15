@@ -220,6 +220,10 @@ class ContentUploadService
         $attrs['draft_payload'] = $draftPayload;
 
         if ($replace) {
+            $attrs['feature_image_url'] = null;
+            $attrs['publication_mode'] = ContentSubmission::MODE_IMMEDIATE;
+            $attrs['scheduled_publish_at'] = null;
+            $attrs['timezone'] = $cfg['scheduling']['default_timezone'] ?? 'UTC';
             $replace->deleteStoredFile();
             $submission = $replace;
             $submission->fill($attrs)->save();
@@ -239,10 +243,7 @@ class ContentUploadService
             $previewHtml = ArticlePreviewHtml::normalize((string) $result['highlighted_html']);
         }
 
-        $report = $result['report'] ?? [];
-        if (! empty($result['highlighted_html'])) {
-            $report['highlighted_preview'] = true;
-        }
+        $report = $this->evaluationReportWithNotifyStatus($submission, $result);
 
         $submission->update([
             'preview_html' => $previewHtml,
@@ -260,6 +261,9 @@ class ContentUploadService
         $fresh = $submission->fresh();
         $this->reconcileImageRightsAfterParse($fresh, $imageRights, $imageRightsSource);
         $fresh = $fresh->fresh();
+        $result = $this->presentEvaluationResult($fresh, $result);
+        $this->persistPresentedEvaluationReport($fresh, $result);
+        $fresh = $fresh->fresh();
         $this->notifyAdvertiserOfEvaluation($fresh, $result);
 
         // Upload was accepted into the library; approval is separate.
@@ -270,7 +274,7 @@ class ContentUploadService
             'submission' => $fresh,
             'title' => $result['title'],
             'message' => $result['message'],
-            'report' => $report,
+            'report' => $result['report'] ?? $report,
             'links' => $links,
             'has_link' => $firstLink !== null,
         ];
@@ -318,23 +322,22 @@ class ContentUploadService
                 return;
             }
 
-            $approved = (bool) ($result['approved'] ?? false);
-            $status = (string) ($result['moderation_status'] ?? $submission->moderation_status);
+            $result = $this->presentEvaluationResult($submission, $result);
+            $status = (string) ($result['notify_status'] ?? $result['moderation_status'] ?? $submission->moderation_status);
 
-            // Allow a later approval email after an earlier rejection/needs-fix notice.
-            $alreadyNotifiedSameOutcome = $submission->approval_notified_at
-                && $approved
-                && $submission->isApproved()
-                && ($submission->evaluation_report['notified_status'] ?? null) === $status;
+            // Same outcome (including "confirm rights") must not resend. A later
+            // approval after rights are declared uses a different notify_status.
+            if ($submission->approval_notified_at
+                && ($submission->evaluation_report['notified_status'] ?? null) === $status) {
+                return;
+            }
 
-            if (! $alreadyNotifiedSameOutcome && $user->email) {
+            if ($user->email) {
                 $mailable = new ContentEvaluationResult($submission, $result);
                 $mailable->notificationType = 'content_evaluation_result';
                 $mailable->dedupeKey = 'content_eval:'.$submission->id.':'.$status;
                 Mail::to($user->email)->send($mailable);
             }
-
-            $this->notifyInApp($user, $submission, $result);
 
             $report = $submission->evaluation_report ?? [];
             if (! is_array($report)) {
@@ -345,12 +348,104 @@ class ContentUploadService
                 'approval_notified_at' => now(),
                 'evaluation_report' => $report,
             ]);
+
+            try {
+                $this->notifyInApp($user, $submission, $result);
+            } catch (\Throwable $e) {
+                Log::warning('Content evaluation in-app notification failed', [
+                    'submission_id' => $submission->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         } catch (\Throwable $e) {
             Log::warning('Content evaluation notification failed', [
                 'submission_id' => $submission->id,
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    /**
+     * Policy can approve while image rights are still missing. Do not tell
+     * the advertiser they can order until the article is actually orderable.
+     *
+     * @param  array<string, mixed>  $result
+     * @return array<string, mixed>
+     */
+    public function presentEvaluationResult(ContentSubmission $submission, array $result): array
+    {
+        $moderationStatus = (string) ($result['moderation_status'] ?? $submission->moderation_status);
+        $policyApproved = (bool) ($result['approved'] ?? false)
+            || $moderationStatus === ContentSubmission::STATUS_APPROVED;
+
+        if ($policyApproved
+            && $submission->hasImages()
+            && ! $submission->imageRightsCoverContent()) {
+            $result['approved'] = false;
+            $result['title'] = 'Confirm image rights';
+            $result['message'] = $submission->editorNotice();
+            $result['notify_status'] = 'needs_image_rights';
+            if (! isset($result['report']) || ! is_array($result['report'])) {
+                $result['report'] = [];
+            }
+            $result['report']['summary'] = $result['message'];
+
+            return $result;
+        }
+
+        $result['notify_status'] = ! empty($result['approved'])
+            ? 'approved'
+            : $moderationStatus;
+
+        return $result;
+    }
+
+    /**
+     * Keep the last mailed outcome across re-evaluations so the same
+     * notify_status is not sent twice.
+     *
+     * @param  array<string, mixed>  $result
+     * @return array<string, mixed>
+     */
+    protected function evaluationReportWithNotifyStatus(ContentSubmission $submission, array $result): array
+    {
+        $report = $result['report'] ?? [];
+        if (! is_array($report)) {
+            $report = [];
+        }
+        if (! empty($result['highlighted_html'])) {
+            $report['highlighted_preview'] = true;
+        }
+
+        $previous = $submission->evaluation_report;
+        if (is_array($previous) && isset($previous['notified_status'])) {
+            $report['notified_status'] = $previous['notified_status'];
+        }
+
+        return $report;
+    }
+
+    /**
+     * @param  array<string, mixed>  $result
+     */
+    protected function persistPresentedEvaluationReport(ContentSubmission $submission, array $result): void
+    {
+        if (($result['notify_status'] ?? null) !== 'needs_image_rights') {
+            return;
+        }
+
+        $summary = trim((string) ($result['message'] ?? ''));
+        if ($summary === '') {
+            return;
+        }
+
+        $report = is_array($submission->evaluation_report) ? $submission->evaluation_report : [];
+        if (($report['summary'] ?? null) === $summary) {
+            return;
+        }
+
+        $report['summary'] = $summary;
+        $submission->update(['evaluation_report' => $report]);
     }
 
     /**
@@ -449,6 +544,9 @@ class ContentUploadService
         if ($firstLink) {
             $attrs['anchor_text'] = $firstLink['anchor'];
             $attrs['target_url'] = $firstLink['url'];
+        } else {
+            $attrs['anchor_text'] = null;
+            $attrs['target_url'] = null;
         }
 
         $payload = $submission->draft_payload ?? [];
@@ -507,10 +605,7 @@ class ContentUploadService
             $previewHtml = ArticlePreviewHtml::normalize((string) $result['highlighted_html']);
         }
 
-        $report = $result['report'] ?? [];
-        if (! empty($result['highlighted_html'])) {
-            $report['highlighted_preview'] = true;
-        }
+        $report = $this->evaluationReportWithNotifyStatus($submission, $result);
 
         $submission->update([
             'preview_html' => $previewHtml,
@@ -526,6 +621,9 @@ class ContentUploadService
         ]);
 
         $fresh = $submission->fresh();
+        $result = $this->presentEvaluationResult($fresh, $result);
+        $this->persistPresentedEvaluationReport($fresh, $result);
+        $fresh = $fresh->fresh();
         if ($notify) {
             $this->notifyAdvertiserOfEvaluation($fresh, $result);
         }
@@ -535,8 +633,9 @@ class ContentUploadService
             'submission' => $fresh,
             'title' => $result['title'] ?? null,
             'message' => (string) ($result['message'] ?? ''),
-            'report' => $report,
+            'report' => $result['report'] ?? $report,
             'moderation_status' => (string) ($result['moderation_status'] ?? $fresh->moderation_status),
+            'notify_status' => (string) ($result['notify_status'] ?? $result['moderation_status'] ?? $fresh->moderation_status),
         ];
     }
 

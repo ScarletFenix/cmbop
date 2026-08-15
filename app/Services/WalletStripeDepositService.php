@@ -52,7 +52,8 @@ class WalletStripeDepositService
                 $completeDepositId,
                 '',
                 $paymentIntentId,
-                (object) ['amount_total' => StripePaymentService::toCents($amountEuros)]
+                (object) ['amount_total' => StripePaymentService::toCents($amountEuros)],
+                $userId
             );
         }
 
@@ -142,7 +143,13 @@ class WalletStripeDepositService
             return $this->withStripeDepositLock(
                 $paymentIntentId,
                 $sessionId,
-                fn () => $this->completeExistingDeposit((int) $depositId, $sessionId, $paymentIntentId, $session)
+                fn () => $this->completeExistingDeposit(
+                    (int) $depositId,
+                    $sessionId,
+                    $paymentIntentId,
+                    $session,
+                    $userId
+                )
             );
         }
 
@@ -310,15 +317,32 @@ class WalletStripeDepositService
         int $depositId,
         string $sessionId,
         string $paymentIntentId,
-        object $session
+        object $session,
+        ?int $expectedUserId = null
     ): float {
         $credited = 0.0;
         $notifyDepositId = null;
 
-        DB::transaction(function () use ($depositId, $sessionId, $paymentIntentId, $session, &$credited, &$notifyDepositId) {
+        DB::transaction(function () use ($depositId, $sessionId, $paymentIntentId, $session, $expectedUserId, &$credited, &$notifyDepositId) {
             $lockedDeposit = DepositRequest::where('id', $depositId)->lockForUpdate()->first();
             if (! $lockedDeposit) {
                 throw new \RuntimeException('Deposit not found: '.$depositId);
+            }
+
+            $sessionUserId = $expectedUserId;
+            if (! $sessionUserId) {
+                $meta = $this->metaArray($session->metadata ?? null);
+                $sessionUserId = isset($meta['user_id']) ? (int) $meta['user_id'] : null;
+            }
+            if ($sessionUserId && (int) $sessionUserId !== (int) $lockedDeposit->user_id) {
+                Log::warning('WalletStripeDepositService: refusing deposit owned by another user', [
+                    'deposit_id' => $lockedDeposit->id,
+                    'deposit_user_id' => $lockedDeposit->user_id,
+                    'session_user_id' => $sessionUserId,
+                    'session_id' => $sessionId,
+                ]);
+
+                return;
             }
 
             if ($lockedDeposit->status === 'completed') {

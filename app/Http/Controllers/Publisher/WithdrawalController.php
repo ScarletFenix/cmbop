@@ -265,11 +265,13 @@ class WithdrawalController extends Controller
                 $query->where('status', $request->status);
             }
 
-            if ($request->filled('from_date')) {
-                $query->whereDate('created_at', '>=', $request->from_date);
+            $fromDate = search_text($request->input('from_date'));
+            if ($fromDate !== '') {
+                $query->whereDate('created_at', '>=', $fromDate);
             }
-            if ($request->filled('to_date')) {
-                $query->whereDate('created_at', '<=', $request->to_date);
+            $toDate = search_text($request->input('to_date'));
+            if ($toDate !== '') {
+                $query->whereDate('created_at', '<=', $toDate);
             }
 
             $withdrawals = $query->orderBy('created_at', 'desc')->paginate(10);

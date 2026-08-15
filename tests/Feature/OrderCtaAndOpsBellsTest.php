@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Mail\BulkSiteRequestSubmitted;
 use App\Mail\OrderStatusChanged;
 use App\Models\BulkSiteRequest;
 use App\Models\InAppNotification;
@@ -144,7 +145,7 @@ class OrderCtaAndOpsBellsTest extends TestCase
         );
     }
 
-    public function test_bulk_staff_bell_uses_admin_route_not_marketing_only(): void
+    public function test_bulk_staff_bell_uses_active_workspace_route(): void
     {
         $bulk = BulkSiteRequest::create([
             'publisher_id' => $this->publisher->id,
@@ -169,7 +170,33 @@ class OrderCtaAndOpsBellsTest extends TestCase
             ->where('related_id', $bulk->id)
             ->first();
         $this->assertNotNull($marketingNote);
-        $this->assertStringContainsString('/admin/bulk-site-requests/'.$bulk->id, (string) $marketingNote->action_url);
+        $this->assertStringContainsString('/marketing/bulk-site-requests/'.$bulk->id, (string) $marketingNote->action_url);
+        $this->assertStringNotContainsString('/admin/bulk-site-requests/', (string) $marketingNote->action_url);
+    }
+
+    public function test_bulk_submit_email_cta_uses_recipient_workspace(): void
+    {
+        Mail::fake();
+
+        $this->actingAs($this->publisher)
+            ->post(route('publisher.bulk-sites.request'), [
+                'sites' => [
+                    ['url' => 'https://cta-bulk-a.example', 'price' => 40],
+                    ['url' => 'https://cta-bulk-b.example', 'price' => 55],
+                ],
+            ])
+            ->assertRedirect();
+
+        $bulk = BulkSiteRequest::query()->where('publisher_id', $this->publisher->id)->firstOrFail();
+
+        Mail::assertQueued(BulkSiteRequestSubmitted::class, function (BulkSiteRequestSubmitted $mail) use ($bulk) {
+            return $mail->hasTo($this->admin->email)
+                && $mail->openUrl === route('admin.bulk-site-requests.show', $bulk);
+        });
+        Mail::assertQueued(BulkSiteRequestSubmitted::class, function (BulkSiteRequestSubmitted $mail) use ($bulk) {
+            return $mail->hasTo($this->marketer->email)
+                && $mail->openUrl === route('marketing.bulk-site-requests.show', $bulk);
+        });
     }
 
     public function test_ops_bells_go_to_admin_not_marketing(): void

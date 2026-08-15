@@ -100,18 +100,18 @@ class EmailNotificationService
         $site->loadMissing('publisher');
 
         if ($sendEmail) {
-            $admins = $this->adminUsers();
-            foreach ($admins as $admin) {
+            $staff = $this->staffOpsUsers();
+            foreach ($staff as $member) {
                 $this->dispatch(
                     'new_site',
-                    $admin,
-                    new NewSiteNotification($site, $action),
-                    'new_site:'.$action.':'.$site->id.':admin:'.$admin->id
+                    $member,
+                    new NewSiteNotification($site, $action, NewSiteNotification::reviewUrl($site, $member)),
+                    'new_site:'.$action.':'.$site->id.':admin:'.$member->id
                 );
             }
 
             $fallback = config('mail.admin_email') ?: config('email_notifications.brand.support_email');
-            if ($admins->isEmpty() && filled($fallback)) {
+            if ($staff->isEmpty() && filled($fallback)) {
                 try {
                     $mailable = new NewSiteNotification($site, $action);
                     $mailable->notificationType = 'new_site';
@@ -395,13 +395,16 @@ class EmailNotificationService
 
         $add($order->user, 'advertiser');
 
-        // Publishers are notified immediately — including scheduled orders (publish on the date).
-        foreach ($order->items as $item) {
-            $publisher = $item->site?->publisher;
-            if (! $publisher && $item->site?->publisher_id) {
-                $publisher = User::query()->find($item->site->publisher_id);
+        // Publishers only learn about paid work. Unpaid / pending card rows
+        // used to email a tasks deep-link before payment landed.
+        if ($order->payment_status === 'paid') {
+            foreach ($order->items as $item) {
+                $publisher = $item->site?->publisher;
+                if (! $publisher && $item->site?->publisher_id) {
+                    $publisher = User::query()->find($item->site->publisher_id);
+                }
+                $add($publisher, 'publisher');
             }
-            $add($publisher, 'publisher');
         }
 
         foreach ($this->usersWithRole('admin') as $admin) {
@@ -536,6 +539,21 @@ class EmailNotificationService
     protected function adminUsers(): Collection
     {
         return $this->usersWithRole('admin');
+    }
+
+    /**
+     * Site-ops staff (admin + marketing). Money/order mail stays on adminUsers().
+     *
+     * @return Collection<int, User>
+     */
+    protected function staffOpsUsers(): Collection
+    {
+        return User::query()
+            ->whereHas('roles', fn ($q) => $q->whereIn('name', ['admin', 'marketing']))
+            ->whereNotNull('email')
+            ->get()
+            ->unique('id')
+            ->values();
     }
 
     protected function usersWithRole(string $roleName): Collection

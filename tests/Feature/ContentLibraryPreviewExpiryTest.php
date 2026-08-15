@@ -220,6 +220,50 @@ class ContentLibraryPreviewExpiryTest extends TestCase
         $this->assertSame(1, ContentSubmission::query()->where('user_id', $advertiser->id)->count());
     }
 
+    public function test_replace_upload_rejects_archived_articles_on_both_endpoints(): void
+    {
+        Storage::fake('local');
+        config(['content_moderation.enabled' => false]);
+        Mail::fake();
+
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->archive();
+
+        $path = sys_get_temp_dir().'/replace-archived-'.uniqid('', true).'.docx';
+        $this->makeDocxFile($path);
+
+        foreach ([
+            'advertiser.content-library.upload',
+            'advertiser.content-submissions.upload',
+        ] as $routeName) {
+            $this->actingAs($advertiser)
+                ->postJson(route($routeName), [
+                    'file' => new UploadedFile(
+                        $path,
+                        'revised.docx',
+                        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                        null,
+                        true
+                    ),
+                    'country' => 'us',
+                    'language' => 'en',
+                    'replace_id' => $submission->id,
+                    'image_rights' => ContentSubmission::IMAGE_RIGHTS_NONE,
+                ])
+                ->assertStatus(422)
+                ->assertJsonPath('success', false)
+                ->assertJsonPath('title', 'Archived');
+        }
+
+        @unlink($path);
+
+        $fresh = $submission->fresh();
+        $this->assertTrue($fresh->isArchived());
+        $this->assertTrue($fresh->hasStoredFile());
+        $this->assertSame(1, ContentSubmission::query()->where('user_id', $advertiser->id)->count());
+    }
+
     public function test_editor_image_stores_webp_on_public_disk_not_private(): void
     {
         if (! function_exists('imagecreatetruecolor') || ! function_exists('imagewebp')) {

@@ -230,9 +230,19 @@ class MarketingHistoryDisplay
 
     public static function reason(?ActivityLog $log): ?string
     {
-        $reason = trim((string) data_get($log?->properties, 'reason'));
+        foreach (['reason', 'note'] as $key) {
+            $value = trim((string) data_get($log?->properties, $key));
+            if ($value !== '') {
+                return $value;
+            }
+        }
 
-        return $reason !== '' ? $reason : null;
+        return null;
+    }
+
+    public static function reasonLabel(?ActivityLog $log): string
+    {
+        return $log?->action === 'bulk_request.items_rejected' ? 'Note' : 'Reason';
     }
 
     /**

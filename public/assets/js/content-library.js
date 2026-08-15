@@ -36,6 +36,7 @@ let previewModalState = { title: '', submissionId: null, editable: false, html: 
 let pendingLibraryLanding = null;
 let skipEditorListLanding = false;
 let skipPreviewListLanding = false;
+let previewOpenedFromEditor = false;
 let libraryUploadAbort = null;
 let libraryUploadHandoff = false;
 let libraryUploadClosingForEditor = false;
@@ -596,6 +597,7 @@ function libraryChipParams(submission) {
         || status === 'rejected'
         || status === 'error'
         || (submission && submission.needs_correction)
+        || (submission && submission.needs_image_rights)
     ) {
         return { status: 'all', availability: 'needs_fix' };
     }
@@ -603,6 +605,9 @@ function libraryChipParams(submission) {
 }
 
 function libraryResultMessage(submission, fallback, ok) {
+    if (submission && submission.needs_image_rights) {
+        return 'This article contains images. Confirm you own them, or add the source URL or copyright details.';
+    }
     if (fallback) return fallback;
     if (!ok) {
         return 'Article needs corrections — it is listed here so you can fix and resubmit.';
@@ -689,6 +694,16 @@ function bindLibraryResultLanding() {
         previewEl.addEventListener('hidden.bs.modal', function () {
             if (skipPreviewListLanding) {
                 skipPreviewListLanding = false;
+                return;
+            }
+            if (previewOpenedFromEditor) {
+                previewOpenedFromEditor = false;
+                const editorEl = document.getElementById('articleEditorModal');
+                if (articleEditorSubmissionId && articleQuill
+                    && Number(articleEditorSubmissionId) === Number(previewModalState.submissionId)
+                    && editorEl && typeof bootstrap !== 'undefined') {
+                    bootstrap.Modal.getOrCreateInstance(editorEl).show();
+                }
                 return;
             }
             if (!pendingLibraryLanding) return;
@@ -844,7 +859,10 @@ document.getElementById('articleCopyContentBtn')?.addEventListener('click', asyn
         return;
     }
     try {
-        await tools.copyHtml(body.innerHTML, body.innerText);
+        const html = previewModalState.html || '';
+        const tmp = document.createElement('div');
+        tmp.innerHTML = html;
+        await tools.copyHtml(html, tmp.innerText || body.innerText);
         tools.toast('Article copied — paste into your CMS');
     } catch (e) {
         tools.toast('Could not copy article', false);
@@ -871,7 +889,7 @@ document.getElementById('articleLinksSaveBtn')?.addEventListener('click', async 
             },
             body: JSON.stringify({
                 links: links,
-                preview_html: document.getElementById('articlePreviewBody').innerHTML,
+                preview_html: previewModalState.html || '',
             }),
         });
         const data = await res.json();
@@ -880,8 +898,8 @@ document.getElementById('articleLinksSaveBtn')?.addEventListener('click', async 
             return;
         }
         const sub = data.submission || {};
-        const html = sub.preview_html || document.getElementById('articlePreviewBody').innerHTML;
-        const stillApproved = data.approved !== false;
+        const html = sub.preview_html || previewModalState.html;
+        const stillApproved = data.approved === true && !sub.needs_image_rights && sub.can_order !== false;
         const editable = stillApproved;
         openPreviewModal(sub.title || previewModalState.title, html, sub.detected_links || links, previewModalState.submissionId, editable);
         if (!stillApproved) {
@@ -891,7 +909,7 @@ document.getElementById('articleLinksSaveBtn')?.addEventListener('click', async 
             return;
         }
         tools.toast(data.message || 'Links saved — content re-checked and approved');
-        if (data.approved === true) {
+        if (stillApproved && sub.can_order) {
             const dest = libraryChipParams(sub);
             const here = new URL(window.location.href);
             const hereAvail = here.searchParams.get('availability') || 'available';
@@ -1265,6 +1283,10 @@ function dismissLibraryUploadByUser() {
     cancelLibraryUploadHandoffState();
     forceDismissUploadModal();
     if (saved && saved.id) {
+        if (saved.needs_image_rights || saved.availability === 'needs_fix' || saved.can_order === false) {
+            goToLibraryResult(saved, '', !!saved.can_order);
+            return;
+        }
         showLibraryFlash('Article uploaded. It is in your library.', true);
     }
 }
@@ -1684,13 +1706,14 @@ async function saveArticleEditor() {
             btn.disabled = false;
             return;
         }
-        const stillApproved = data.approved !== false;
+        const sub = data.submission || { id: articleEditorSubmissionId };
+        const stillApproved = data.approved === true && !sub.needs_image_rights && !!sub.can_order;
         const msg = data.message
             || (stillApproved
                 ? 'Article saved and re-approved.'
                 : 'Article saved, but content moderation failed. Fix restricted links/keywords before ordering.');
         setFeedbackHtml(feedback, stillApproved, msg);
-        goToLibraryResult(data.submission || { id: articleEditorSubmissionId }, msg, stillApproved);
+        goToLibraryResult(sub, msg, stillApproved);
     } catch (e) {
         setFeedbackHtml(feedback, false, 'Network error while saving.');
         btn.disabled = false;
@@ -1716,6 +1739,7 @@ document.getElementById('articleEditorPreviewBtn')?.addEventListener('click', fu
             true
         );
     };
+    previewOpenedFromEditor = true;
     if (editorEl && editorEl.classList.contains('show') && typeof bootstrap !== 'undefined') {
         skipEditorListLanding = true;
         editorEl.addEventListener('hidden.bs.modal', function onEditorHidden() {
@@ -1729,6 +1753,7 @@ document.getElementById('articleEditorPreviewBtn')?.addEventListener('click', fu
 });
 
 function returnToEditorFromPreview() {
+    previewOpenedFromEditor = false;
     const previewEl = document.getElementById('articlePreviewModal');
     const editorEl = document.getElementById('articleEditorModal');
     const id = previewModalState.submissionId;
@@ -2028,12 +2053,14 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
             rememberLibraryLanding(
                 data.submission,
                 data.message,
-                !!(data.approved || data.submission.can_order)
+                !!data.submission.can_order
             );
             const submission = await submissionForEditor(Object.assign({}, data.submission, {
-                can_order: !!(data.submission.can_order || data.approved),
-                editor_notice: data.approved ? '' : (data.message || ''),
-                editor_notice_ok: !!data.approved,
+                editor_notice: data.submission.editor_notice
+                    || (data.submission.needs_image_rights
+                        ? (data.message || '')
+                        : (data.approved ? '' : (data.message || ''))),
+                editor_notice_ok: !!data.submission.editor_notice_ok,
             }));
             openArticleEditor(submission);
         } else {

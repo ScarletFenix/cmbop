@@ -28,8 +28,8 @@ class DepositController extends Controller
             $query->where('status', $request->status);
         }
 
-        if ($request->filled('search')) {
-            $search = $request->search;
+        $search = search_text($request->input('search'));
+        if ($search !== '') {
             $query->where(function ($q) use ($search) {
                 $q->where('reference_code', 'like', "%{$search}%")
                     ->orWhereHas('user', function ($sub) use ($search) {

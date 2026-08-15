@@ -191,7 +191,7 @@ class AgencySiteImportService
                 }
                 $seenDomainsInFile[$domain] = $rowNumber;
 
-                if (Site::where('domain', $domain)->exists()) {
+                if (Site::findOccupyingDomain($domain)) {
                     $failure = [
                         'row' => $rowNumber,
                         'site' => $data['site_url'],
@@ -218,6 +218,11 @@ class AgencySiteImportService
                 try {
                     $site = null;
                     DB::transaction(function () use ($parsed, $publisher, $import, &$site) {
+                        Site::releaseCancelledBulkDomain($parsed['domain'], (int) $publisher->id);
+                        if (Site::findOccupyingDomain($parsed['domain'])) {
+                            throw new InvalidArgumentException('This domain is already registered in the system.');
+                        }
+
                         $listing = [
                             'publisher_id' => $publisher->id,
                             'site_name' => $parsed['site_name'],
@@ -367,7 +372,9 @@ class AgencySiteImportService
         }
 
         $host = parse_url($siteUrl, PHP_URL_HOST);
-        $domain = $host ? preg_replace('/^www\./', '', strtolower($host)) : null;
+        $domain = is_string($host) && $host !== ''
+            ? Site::normalizeMarketplaceDomain($host)
+            : null;
         if (! $domain) {
             $errors[] = 'Invalid site_url.';
         }

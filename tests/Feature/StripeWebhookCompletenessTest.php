@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\BulkSiteRequest;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Role;
@@ -379,6 +380,136 @@ class StripeWebhookCompletenessTest extends TestCase
         $this->assertSame(0, SiteFeaturePurchase::where('site_id', $site->id)->count());
     }
 
+    public function test_site_feature_owner_mismatch_credits_wallet_and_acks(): void
+    {
+        config([
+            'site_promotions.feature.price' => 25,
+            'site_promotions.feature.days' => 7,
+        ]);
+
+        $payer = $this->makeUser('publisher');
+        $newOwner = $this->makeUser('publisher');
+        $site = $this->makeSite($payer);
+        $site->update(['publisher_id' => $newOwner->id]);
+
+        $roleId = Wallet::publisherRoleId();
+        $wallet = Wallet::create([
+            'user_id' => $payer->id,
+            'role_id' => $roleId,
+            'balance' => 0,
+            'reserved_balance' => 0,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 0,
+            'currency' => 'EUR',
+        ]);
+
+        $sessionId = 'cs_feature_mismatch_'.uniqid();
+        $event = [
+            'id' => 'evt_feature_mismatch_'.uniqid(),
+            'object' => 'event',
+            'type' => 'checkout.session.completed',
+            'data' => [
+                'object' => [
+                    'id' => $sessionId,
+                    'object' => 'checkout.session',
+                    'payment_status' => 'paid',
+                    'payment_intent' => 'pi_feature_mismatch',
+                    'amount_total' => 2500,
+                    'metadata' => [
+                        'type' => 'site_feature',
+                        'site_id' => (string) $site->id,
+                        'user_id' => (string) $payer->id,
+                        'price' => '25',
+                        'days' => '7',
+                    ],
+                ],
+            ],
+        ];
+
+        $this->signedWebhook($event)->assertOk();
+        $this->assertNull($site->fresh()->featured_until);
+        $this->assertEquals(25.0, (float) $wallet->fresh()->balance);
+
+        $event['id'] = 'evt_feature_mismatch_again_'.uniqid();
+        $this->signedWebhook($event)->assertOk();
+
+        $this->assertEquals(25.0, (float) $wallet->fresh()->balance);
+        $this->assertSame(1, SiteFeaturePurchase::where('stripe_session_id', $sessionId)->count());
+        $this->assertDatabaseHas('site_feature_purchases', [
+            'site_id' => $site->id,
+            'user_id' => $payer->id,
+            'stripe_session_id' => $sessionId,
+            'payment_method' => 'stripe_credit',
+        ]);
+    }
+
+    public function test_site_feature_cancelled_bulk_credits_wallet_and_acks(): void
+    {
+        config([
+            'site_promotions.feature.price' => 25,
+            'site_promotions.feature.days' => 7,
+        ]);
+
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher);
+        $bulk = BulkSiteRequest::create([
+            'publisher_id' => $publisher->id,
+            'status' => BulkSiteRequest::STATUS_CANCELLED,
+            'estimated_count' => 1,
+        ]);
+        $site->forceFill(['bulk_site_request_id' => $bulk->id])->save();
+
+        $roleId = Wallet::publisherRoleId();
+        $wallet = Wallet::create([
+            'user_id' => $publisher->id,
+            'role_id' => $roleId,
+            'balance' => 0,
+            'reserved_balance' => 0,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 0,
+            'currency' => 'EUR',
+        ]);
+
+        $sessionId = 'cs_feature_leftover_'.uniqid();
+        $event = [
+            'id' => 'evt_feature_leftover_'.uniqid(),
+            'object' => 'event',
+            'type' => 'checkout.session.completed',
+            'data' => [
+                'object' => [
+                    'id' => $sessionId,
+                    'object' => 'checkout.session',
+                    'payment_status' => 'paid',
+                    'payment_intent' => 'pi_feature_leftover',
+                    'amount_total' => 2500,
+                    'metadata' => [
+                        'type' => 'site_feature',
+                        'site_id' => (string) $site->id,
+                        'user_id' => (string) $publisher->id,
+                        'price' => '25',
+                        'days' => '7',
+                    ],
+                ],
+            ],
+        ];
+
+        $this->signedWebhook($event)->assertOk();
+        $this->assertNull($site->fresh()->featured_until);
+        $this->assertEquals(25.0, (float) $wallet->fresh()->balance);
+
+        $event['id'] = 'evt_feature_leftover_again_'.uniqid();
+        $this->signedWebhook($event)->assertOk();
+
+        $this->assertEquals(25.0, (float) $wallet->fresh()->balance);
+        $this->assertSame(1, SiteFeaturePurchase::where('stripe_session_id', $sessionId)->count());
+        $this->assertDatabaseHas('site_feature_purchases', [
+            'site_id' => $site->id,
+            'user_id' => $publisher->id,
+            'stripe_session_id' => $sessionId,
+            'payment_method' => 'stripe_credit',
+        ]);
+    }
+
     public function test_unpaid_order_checkout_session_is_rejected(): void
     {
         $advertiser = $this->makeUser('advertiser');
@@ -426,6 +557,102 @@ class StripeWebhookCompletenessTest extends TestCase
         ];
 
         $this->signedWebhook($event)->assertStatus(500);
+        $this->assertSame('pending', $order->fresh()->payment_status);
+    }
+
+    public function test_untyped_session_with_reference_code_does_not_settle_orders(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher);
+
+        $order = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'UNTYPED-REF-SESSION',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'pending',
+            'status' => 'pending',
+        ]);
+        OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/a',
+            'price' => 80,
+        ]);
+
+        $event = [
+            'id' => 'evt_untyped_ref_'.uniqid(),
+            'object' => 'event',
+            'type' => 'checkout.session.completed',
+            'data' => [
+                'object' => [
+                    'id' => 'cs_untyped_ref',
+                    'object' => 'checkout.session',
+                    'payment_status' => 'paid',
+                    'payment_intent' => 'pi_untyped_ref',
+                    'amount_total' => 8000,
+                    'metadata' => [
+                        'reference_code' => $order->reference_code,
+                        'user_id' => (string) $advertiser->id,
+                    ],
+                ],
+            ],
+        ];
+
+        $this->signedWebhook($event)->assertOk();
+        $this->assertSame('pending', $order->fresh()->payment_status);
+    }
+
+    public function test_untyped_expired_session_does_not_fail_orders(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher);
+
+        $order = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'UNTYPED-EXPIRE-REF',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'pending',
+            'status' => 'pending',
+        ]);
+        OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/a',
+            'price' => 80,
+        ]);
+
+        $event = [
+            'id' => 'evt_untyped_expire_'.uniqid(),
+            'object' => 'event',
+            'type' => 'checkout.session.expired',
+            'data' => [
+                'object' => [
+                    'id' => 'cs_untyped_expire',
+                    'object' => 'checkout.session',
+                    'payment_status' => 'unpaid',
+                    'metadata' => [
+                        'reference_code' => $order->reference_code,
+                        'user_id' => (string) $advertiser->id,
+                    ],
+                ],
+            ],
+        ];
+
+        $this->signedWebhook($event)->assertOk();
         $this->assertSame('pending', $order->fresh()->payment_status);
     }
 

@@ -29,7 +29,7 @@ class WebsiteSuggestionController extends Controller
             ], 422);
         }
 
-        $existing = Site::query()->where('domain', $domain)->first();
+        $existing = Site::findOccupyingDomain($domain);
         if ($existing) {
             $message = $existing->isCatalogVisible()
                 ? 'That website is already listed in our catalog. Try searching for “'.$domain.'”.'
@@ -87,6 +87,8 @@ class WebsiteSuggestionController extends Controller
             return null;
         }
 
-        return preg_replace('/^www\./', '', strtolower($host));
+        $normalized = Site::normalizeMarketplaceDomain($host);
+
+        return $normalized !== '' ? $normalized : null;
     }
 }

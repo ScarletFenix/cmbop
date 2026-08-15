@@ -137,6 +137,12 @@ class OrderClawbackService
                 ]);
             }
 
+            if ($order->payment_status !== 'paid') {
+                throw ValidationException::withMessages([
+                    'dispute' => 'Only paid orders can be clawed back.',
+                ]);
+            }
+
             $targetPayout = round((float) $item->publisherPayoutAmount(), 2);
             $advertiserCredit = round((float) $item->price, 2);
 
@@ -364,9 +370,11 @@ class OrderClawbackService
             ]);
         }
 
-        if ($order->payment_status === 'refunded') {
+        if ($order->payment_status !== 'paid') {
             throw ValidationException::withMessages([
-                'order' => 'This order has already been refunded.',
+                'order' => $order->payment_status === 'refunded'
+                    ? 'This order has already been refunded.'
+                    : 'Only paid completed orders can be disputed.',
             ]);
         }
 

@@ -38,7 +38,12 @@ class RedirectMarketingFromAdmin
                 $target .= '?'.$qs;
             }
 
-            return redirect()->to($target);
+            // GET leftover /admin links can 302. Mutating leftover forms must
+            // keep POST/PUT/DELETE + body — a 302 becomes GET /marketing/.../done
+            // (no such route) and silently drops Done / reject / seed.
+            $status = $request->isMethodSafe() ? 302 : 307;
+
+            return redirect()->to($target, $status);
         }
 
         if ($request->expectsJson()) {

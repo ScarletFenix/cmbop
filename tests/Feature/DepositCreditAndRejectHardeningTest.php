@@ -451,4 +451,38 @@ class DepositCreditAndRejectHardeningTest extends TestCase
         $this->assertEqualsWithDelta(10.0, (float) $deposit->fresh()->amount, 0.01);
         $this->assertSame('completed', $deposit->fresh()->status);
     }
+
+    public function test_complete_existing_deposit_refuses_other_users_row(): void
+    {
+        $owner = $this->advertiser();
+        $other = $this->advertiser();
+        $ownerWallet = $this->walletFor($owner);
+        $otherWallet = $this->walletFor($other);
+
+        $deposit = DepositRequest::create([
+            'user_id' => $owner->id,
+            'reference_code' => 'DEP-MISMATCH-1',
+            'amount' => 40,
+            'payment_method' => 'card',
+            'status' => 'pending',
+        ]);
+
+        $credited = app(WalletStripeDepositService::class)->creditFromCheckoutSession((object) [
+            'id' => 'cs_mismatch_'.uniqid(),
+            'payment_status' => 'paid',
+            'amount_total' => 4000,
+            'payment_intent' => 'pi_mismatch_'.uniqid(),
+            'metadata' => (object) [
+                'type' => 'wallet_deposit',
+                'user_id' => (string) $other->id,
+                'deposit_id' => (string) $deposit->id,
+                'amount' => '40.00',
+            ],
+        ]);
+
+        $this->assertSame(0.0, $credited);
+        $this->assertSame('pending', $deposit->fresh()->status);
+        $this->assertSame(0.0, (float) $ownerWallet->fresh()->balance);
+        $this->assertSame(0.0, (float) $otherWallet->fresh()->balance);
+    }
 }

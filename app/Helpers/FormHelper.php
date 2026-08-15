@@ -37,6 +37,49 @@ if (! function_exists('scalar_text')) {
     }
 }
 
+if (! function_exists('search_text')) {
+    /**
+     * Trimmed search/filter string, or empty when the value is not a string.
+     *
+     * Query params like ?search[]=x used to 500 via (string) cast or LIKE
+     * interpolation ("Array to string conversion"). Ignore non-strings — same
+     * as admin payments / finance ledger — instead of flattening the first item.
+     */
+    function search_text(mixed $value): string
+    {
+        return is_string($value) ? trim($value) : '';
+    }
+}
+
+if (! function_exists('filter_number')) {
+    /**
+     * Numeric query/body value, or null when missing / non-scalar / non-numeric.
+     *
+     * Arrays like ?price_min[]=10 used to 500 when bound into whereRaw().
+     */
+    function filter_number(mixed $value): ?float
+    {
+        if (is_int($value)) {
+            return (float) $value;
+        }
+
+        if (is_float($value)) {
+            if (is_nan($value) || is_infinite($value)) {
+                return null;
+            }
+
+            return $value;
+        }
+
+        $text = search_text($value);
+        if ($text === '' || ! is_numeric($text)) {
+            return null;
+        }
+
+        return (float) $text;
+    }
+}
+
 if (! function_exists('scalar_list')) {
     /**
      * Flatten nested arrays into unique non-empty strings.

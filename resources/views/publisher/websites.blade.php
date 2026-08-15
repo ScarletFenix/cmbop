@@ -699,12 +699,20 @@
     @endif
 
     @if(!empty($openBulkRequest))
+        @php
+            $bulkNextStep = 'Next: our marketer adds DA/DR/traffic/language/country/niches → you add descriptions & listing details → we approve.';
+            if (($awaitingDetailsCount ?? 0) > 0) {
+                $bulkNextStep = 'Next: add descriptions and listing details with Complete details, then we approve.';
+            } elseif (($detailsCompleteCount ?? 0) > 0) {
+                $bulkNextStep = 'Next: review and submit your listings, then we approve.';
+            }
+        @endphp
         <div class="alert alert-light border mb-3">
             <strong>Bulk request #{{ $openBulkRequest->id }}</strong>
-            — status: <span class="text-capitalize">{{ str_replace('_', ' ', $openBulkRequest->status) }}</span>.
+            — status: <span class="text-capitalize">{{ $openBulkRequest->statusLabel() }}</span>.
             You submitted <strong>URL + price</strong> only — track progress under
             <a href="{{ route('publisher.websites', ['status' => 'pending']) }}" class="fw-semibold">Pending</a>.
-            Next: our marketer adds DA/DR/traffic/language/country/niches → you add descriptions &amp; listing details → we approve.
+            {{ $bulkNextStep }}
             @if(($openBulkRequest->estimated_count ?? 0) > 0)
                 <span class="d-block small text-muted mt-1">{{ $openBulkRequest->estimated_count }} site(s) in this request.</span>
             @endif

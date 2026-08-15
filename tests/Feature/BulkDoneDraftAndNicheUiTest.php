@@ -70,7 +70,8 @@ class BulkDoneDraftAndNicheUiTest extends TestCase
             ->get(route('marketing.bulk-site-requests.show', $bulk))
             ->assertOk()
             ->assertSee('id="bulkDoneForm"', false)
-            ->assertSee('bulk-done-panel', false)
+            ->assertSee('data-bulk-reject-row', false)
+            ->assertSee('name="rejection_note"', false)
             ->assertSee('bulk-done-table-wrap', false)
             ->assertSee('data-bulk-done-row', false)
             ->assertSee('bulkDoneDraft:'.$bulk->id.':'.$this->marketer->id, false)
@@ -132,6 +133,9 @@ class BulkDoneDraftAndNicheUiTest extends TestCase
         $this->assertStringContainsString("e.key === 'Backspace'", $js);
         $this->assertStringContainsString('removeLast', $js);
         $this->assertStringContainsString('categories: categories ? categories.value : \'\'', $html);
+        $this->assertStringContainsString('rejected: rejectedIds()', $html);
+        $this->assertStringContainsString('rejection_note:', $html);
+        $this->assertStringContainsString('applyRejectedState', $html);
         $this->assertStringContainsString('multiSelects[itemId].setSelectedItems(nicheValues, nicheValues)', $html);
         $this->assertStringContainsString('Category::catalogPickerNames()', file_get_contents(app_path('Http/Controllers/Admin/BulkSiteRequestController.php')));
 
@@ -143,6 +147,40 @@ class BulkDoneDraftAndNicheUiTest extends TestCase
         $cssDup = file_get_contents(public_path('assets/css/multi-select.css'));
         $this->assertStringContainsString('.multi-select-dropdown.multi-select-dropdown--fixed', $cssDup);
         $this->assertStringContainsString('max-height: 4.75rem', $cssDup);
+    }
+
+    public function test_admin_bulk_request_show_defines_below_quality_and_renders(): void
+    {
+        $adminRole = Role::where('name', 'admin')->firstOrFail();
+        $admin = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $adminRole->id,
+        ]);
+        $admin->roles()->attach($adminRole->id);
+
+        $bulk = BulkSiteRequest::create([
+            'publisher_id' => $this->publisher->id,
+            'status' => BulkSiteRequest::STATUS_REQUESTED,
+            'estimated_count' => 1,
+        ]);
+        BulkSiteRequestItem::create([
+            'bulk_site_request_id' => $bulk->id,
+            'site_url' => 'https://admin-below-quality.example',
+            'domain' => 'admin-below-quality.example',
+            'price' => 40,
+        ]);
+
+        $blade = file_get_contents(resource_path('views/admin/bulk-site-requests/show.blade.php'));
+        $this->assertStringContainsString('$belowQuality = $metricsFilled', $blade);
+
+        $this->actingAs($admin)
+            ->get(route('admin.bulk-site-requests.show', $bulk))
+            ->assertOk()
+            ->assertSee('admin-below-quality.example', false)
+            ->assertSee('data-bulk-quality-chip', false)
+            ->assertSee('data-bulk-quality-warn', false)
+            ->assertSee('Below bar', false)
+            ->assertDontSee('Undefined variable $belowQuality', false);
     }
 
     public function test_marketing_layout_sidebar_collapse_uses_shell_tokens(): void

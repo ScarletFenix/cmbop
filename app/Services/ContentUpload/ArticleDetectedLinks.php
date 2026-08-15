@@ -58,7 +58,7 @@ class ArticleDetectedLinks
     {
         $links = self::normalizeList($links);
         if ($links === []) {
-            return $html;
+            return (string) preg_replace('/<a\b[^>]*>(.*?)<\/a>/is', '$1', $html);
         }
 
         $index = 0;

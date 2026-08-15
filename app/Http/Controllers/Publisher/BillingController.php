@@ -19,8 +19,8 @@ class BillingController extends Controller
             ->where('type', Invoice::TYPE_WITHDRAWAL_PAYOUT)
             ->where('status', '!=', Invoice::STATUS_CANCELLED);
 
-        if ($request->filled('search')) {
-            $search = trim((string) $request->search);
+        $search = search_text($request->input('search'));
+        if ($search !== '') {
             $query->where(function ($q) use ($search) {
                 $q->where('invoice_number', 'like', "%{$search}%")
                     ->orWhere('reference_code', 'like', "%{$search}%")
@@ -129,8 +129,8 @@ class BillingController extends Controller
             return null;
         }
 
-        $raw = trim((string) $value);
-        if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $raw)) {
+        $raw = search_text($value);
+        if ($raw === '' || ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $raw)) {
             return null;
         }
 

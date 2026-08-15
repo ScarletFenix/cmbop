@@ -404,10 +404,9 @@ class AdminFinanceHubTest extends TestCase
         $admin = $this->makeUser('admin');
 
         $this->actingAs($admin)
-            ->from(route('admin.finance.ledger'))
             ->get(route('admin.finance.ledger', ['date_from' => 'nope']))
-            ->assertRedirect(route('admin.finance.ledger'))
-            ->assertSessionHasErrors('date_from');
+            ->assertOk()
+            ->assertSee('Wallet ledger', false);
 
         $this->actingAs($admin)
             ->get(route('admin.finance.ledger', ['search' => ['oops']]))

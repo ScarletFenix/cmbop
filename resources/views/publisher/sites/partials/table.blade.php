@@ -1386,7 +1386,7 @@
                     ({{ $openBulkRequest->estimated_count }} site(s) in this request.)
                 @endif
             </p>
-            <p class="small text-muted mb-0">Status: <span class="text-capitalize">{{ str_replace('_', ' ', $openBulkRequest->status) }}</span></p>
+            <p class="small text-muted mb-0">Status: <span class="text-capitalize">{{ $openBulkRequest->statusLabel() }}</span></p>
         </div>
     @else
         <i class="fa fa-clock me-2 text-muted"></i> No pending sites. Add a website or start a bulk request — drafts and admin review show here.

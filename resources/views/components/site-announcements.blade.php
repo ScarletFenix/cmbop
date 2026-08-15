@@ -11,9 +11,9 @@
 <link rel="stylesheet" href="{{ asset('assets/css/promotions.css') }}">
 <div class="site-announcements" data-audience="{{ $audience ?? 'auto' }}">
     @foreach($announcements as $item)
-        <div class="site-announcement site-announcement--{{ $item->style }} site-announcement-type--{{ $item->type }}"
+        <div class="site-announcement site-announcement--{{ scalar_text($item->style) }} site-announcement-type--{{ scalar_text($item->type) }}"
              data-announcement-id="{{ $item->id }}"
-             data-type="{{ $item->type }}"
+             data-type="{{ scalar_text($item->type) }}"
              role="status">
             <div class="site-announcement__inner">
                 <div class="site-announcement__icon" aria-hidden="true">
@@ -21,13 +21,13 @@
                 </div>
                 <div class="site-announcement__body">
                     <span class="site-announcement__type">{{ $item->typeLabel() }}</span>
-                    <strong class="site-announcement__title">{{ $item->title }}</strong>
-                    <span class="site-announcement__message">{{ $item->message }}</span>
+                    <strong class="site-announcement__title">{{ scalar_text($item->title) }}</strong>
+                    <span class="site-announcement__message">{{ scalar_text($item->message) }}</span>
                     @if($item->ends_at && in_array($item->type, ['limited_offer', 'discount', 'black_friday', 'offer'], true))
                         <span class="site-announcement__ends">Ends {{ $item->ends_at->format('M j') }}</span>
                     @endif
                     @if($item->cta_url && $item->cta_label)
-                        <a class="site-announcement__cta" href="{{ $item->cta_url }}">{{ $item->cta_label }}</a>
+                        <a class="site-announcement__cta" href="{{ scalar_text($item->cta_url) }}">{{ scalar_text($item->cta_label) }}</a>
                     @endif
                 </div>
                 @if($item->is_dismissible)
