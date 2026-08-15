@@ -67,7 +67,18 @@ class ContentLibraryController extends Controller
 
     public function show(Request $request, ContentSubmission $submission)
     {
-        $submission->load(['user:id,name,email', 'orderItem.site', 'orderItems.site', 'moderationLog.overrider:id,name,email']);
+        $submission->load([
+            'user:id,name,email',
+            'order:id,status,payment_status,order_number,user_id',
+            'orderItem.site:id,site_name,site_url',
+            'orderItems.site:id,site_name,site_url',
+            'orderItems.order:id,status,payment_status,order_number',
+            'moderationLog.overrider:id,name,email',
+        ]);
+
+        $filters = $this->parseFilters($request);
+        $placement = $submission->placementItem();
+        $fileOnDisk = $this->staffActions->fileOnDisk($submission);
 
         return view('admin.content-library.show', [
             'submission' => $submission,
@@ -92,14 +103,21 @@ class ContentLibraryController extends Controller
 
     public function download(ContentSubmission $submission): StreamedResponse
     {
-        $disk = Storage::disk($submission->disk ?: 'local');
-        if (! $submission->path || ! $disk->exists($submission->path)) {
+        try {
+            $disk = Storage::disk($submission->disk ?: 'local');
+        } catch (\Throwable) {
+            abort(404, 'File not found');
+        }
+        $path = (string) $submission->path;
+        if ($path === '' || str_contains($path, '..') || ! $disk->exists($path)) {
             abort(404, 'File not found');
         }
 
+        $filename = str_replace(["\r", "\n", '"'], '', basename((string) ($submission->original_filename ?: 'article.docx')));
+
         return $disk->download(
-            $submission->path,
-            $submission->original_filename ?: 'article.docx',
+            $path,
+            $filename !== '' ? $filename : 'article.docx',
             ['Content-Type' => $submission->mime ?: 'application/octet-stream']
         );
     }
@@ -128,18 +146,16 @@ class ContentLibraryController extends Controller
             'notes' => ['required', 'string', 'min:5', 'max:2000'],
         ]);
 
+        $admin = $request->user();
+        abort_unless($admin instanceof User, 403);
+
         try {
-            $this->staffActions->override($submission, $data['decision'], $request->user(), $data['notes']);
+            $this->staffActions->override($submission, $data['decision'], $admin, $data['notes']);
         } catch (ValidationException $e) {
             return back()->with('error', collect($e->errors())->flatten()->first() ?: 'Override failed.');
         }
 
-        return back()->with(
-            'success',
-            $data['decision'] === 'approved'
-                ? 'Article #'.$submission->id.' approved. The advertiser can attach it in the catalog.'
-                : 'Article #'.$submission->id.' rejected.'
-        );
+        return back()->with('success', $this->overrideFlash($submission->fresh(), $data['decision']));
     }
 
     public function archive(ContentSubmission $submission): RedirectResponse
@@ -369,6 +385,30 @@ class ContentLibraryController extends Controller
         return $query;
     }
 
+    protected function overrideFlash(?ContentSubmission $submission, string $decision): string
+    {
+        if (! $submission) {
+            return $decision === 'approved' ? 'Article approved.' : 'Article rejected.';
+        }
+
+        if ($decision !== 'approved') {
+            return 'Article #'.$submission->id.' rejected.';
+        }
+
+        if ($submission->isReadyForCheckout()) {
+            return 'Article #'.$submission->id.' approved. The advertiser can attach it in the catalog.';
+        }
+
+        if ($submission->isUsableAfterStaffApproval()) {
+            return 'Article #'.$submission->id.' approved. It stays on the open order and can be fulfilled.';
+        }
+
+        $notice = trim($submission->editorNotice());
+
+        return 'Article #'.$submission->id.' approved, but it is still not checkout-ready'
+            .($notice !== '' ? ': '.$notice : '.');
+    }
+
     protected function staffPreviewHtml(ContentSubmission $submission): string
     {
         $html = $this->sanitizer->sanitize((string) ($submission->preview_html ?? ''));
@@ -380,7 +420,7 @@ class ContentLibraryController extends Controller
 
     protected function canRetry(ContentSubmission $submission, bool $fileOnDisk): bool
     {
-        if ($submission->isArchived()) {
+        if ($submission->isArchived() || $submission->isLockedByPaidOrder()) {
             return false;
         }
 

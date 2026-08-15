@@ -345,6 +345,8 @@ class EmailCampaign extends Model
             return false;
         }
 
+        $scanFailed = false;
+
         foreach (self::sendJobQueueConnections() as $connection) {
             try {
                 if ($connection === 'sync'
@@ -357,23 +359,40 @@ class EmailCampaign extends Model
                     continue;
                 }
 
-                $found = DB::table($table)
+                // SQLite via the query builder can return an empty set for a
+                // missing payload column instead of throwing. That looked like
+                // "no send job" and recover flooded another dispatch.
+                if (! Schema::hasColumn($table, 'payload')) {
+                    $scanFailed = true;
+
+                    continue;
+                }
+
+                $found = false;
+                DB::table($table)
                     ->where('payload', 'like', '%SendEmailCampaignJob%')
-                    ->pluck('payload')
-                    ->contains(fn ($payload) => MailJobPayload::containsSendCampaignJob(
-                        (string) $payload,
-                        $campaignId
-                    ));
+                    ->orderBy('id')
+                    ->select(['id', 'payload'])
+                    ->chunkById(100, function ($rows) use ($campaignId, &$found) {
+                        $found = $rows->contains(fn ($row) => MailJobPayload::containsSendCampaignJob(
+                            (string) $row->payload,
+                            $campaignId
+                        ));
+
+                        return ! $found;
+                    });
 
                 if ($found) {
                     return true;
                 }
             } catch (\Throwable) {
-                // A broken first connection must not hide a job on the other.
+                // A lock-timeout or missing payload column must not look
+                // like "no job" — recover would enqueue another send.
+                $scanFailed = true;
             }
         }
 
-        return false;
+        return $scanFailed;
     }
 
     /**
@@ -459,10 +478,16 @@ class EmailCampaign extends Model
 
         $cutoff = now()->subMinutes(max(1, $staleMinutes));
         $rows = EmailCampaignRecipient::query()
-            ->where('status', EmailCampaignRecipient::STATUS_QUEUED)
             ->whereNull('email_log_id')
             ->where('updated_at', '<=', $cutoff)
-            ->get(['id', 'email_campaign_id', 'user_id', 'updated_at']);
+            ->where(function ($query) {
+                $query->where('status', EmailCampaignRecipient::STATUS_QUEUED)
+                    ->orWhere(function ($skipped) {
+                        $skipped->where('status', EmailCampaignRecipient::STATUS_SKIPPED)
+                            ->where('skip_reason', EmailCampaignRecipient::SKIP_STALE);
+                    });
+            })
+            ->get(['id', 'email_campaign_id', 'user_id', 'status', 'updated_at']);
 
         if ($rows->isEmpty()) {
             return;
@@ -506,6 +531,13 @@ class EmailCampaign extends Model
                 fn (EmailLog $log) => $log->status === EmailLog::STATUS_FAILED
             );
 
+            $staleSkip = $row->status === EmailCampaignRecipient::STATUS_SKIPPED;
+            // Expire already parked the row. Only a delivered log proves the
+            // mail went out — do not revive a stale skip from an old failure.
+            if ($staleSkip && ! $deliveredLog) {
+                continue;
+            }
+
             $log = $deliveredLog;
             if (! $log && $failedLog) {
                 // An older failed log must not kill a newer in-flight retry.
@@ -529,9 +561,13 @@ class EmailCampaign extends Model
                 && ! $log->updated_at->greaterThan($row->updated_at)) {
                 continue;
             }
+            $expected = $staleSkip
+                ? EmailCampaignRecipient::STATUS_SKIPPED
+                : EmailCampaignRecipient::STATUS_QUEUED;
+
             EmailCampaignRecipient::query()
                 ->whereKey($row->id)
-                ->where('status', EmailCampaignRecipient::STATUS_QUEUED)
+                ->where('status', $expected)
                 ->whereNull('email_log_id')
                 ->update([
                     'status' => $delivered

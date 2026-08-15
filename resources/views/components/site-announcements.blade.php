@@ -25,13 +25,13 @@
                     <span class="site-announcement__type">{{ $item->typeLabel() }}</span>
                     <strong class="site-announcement__title">{{ scalar_text($item->title) }}</strong>
                     <span class="site-announcement__message">{{ scalar_text($item->message) }}</span>
-                    @if($item->ends_at && in_array($item->type, ['limited_offer', 'discount', 'black_friday', 'offer'], true))
-                        <span class="site-announcement__ends">Ends {{ $item->ends_at->format('M j') }}</span>
+                    @if($endsLabel = $item->offerEndsLabel())
+                        <span class="site-announcement__ends">Ends {{ $endsLabel }}</span>
                     @endif
-                    @if($item->cta_url && $item->cta_label)
+                    @if($item->cta_label && $item->clickHref())
                         <a class="site-announcement__cta"
                            href="{{ route('announcements.click', $item) }}"
-                           @if(!\Illuminate\Support\Str::startsWith((string) $item->cta_url, '/')) rel="noopener noreferrer" @endif
+                           @if(!\Illuminate\Support\Str::startsWith((string) $item->clickHref(), '/')) rel="noopener noreferrer" @endif
                         >{{ scalar_text($item->cta_label) }}</a>
                     @endif
                 </div>

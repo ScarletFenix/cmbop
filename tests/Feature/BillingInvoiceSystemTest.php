@@ -270,6 +270,10 @@ class BillingInvoiceSystemTest extends TestCase
 
         $this->assertSame(Invoice::STATUS_CANCELLED, $invoice->fresh()->status);
         $this->assertTrue($invoice->fresh()->pdfExists() || filled($invoice->fresh()->pdf_path));
+        $this->assertDatabaseHas('activity_logs', [
+            'action' => 'invoice.cancelled',
+            'user_id' => $admin->id,
+        ]);
     }
 
     public function test_marking_order_paid_via_update_triggers_invoice(): void

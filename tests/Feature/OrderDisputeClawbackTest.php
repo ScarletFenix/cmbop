@@ -930,6 +930,10 @@ class OrderDisputeClawbackTest extends TestCase
             'type' => WalletTransaction::TYPE_ADJUSTMENT,
             'amount' => 60,
         ]);
+        $this->assertDatabaseHas('activity_logs', [
+            'action' => 'finance.debt_cleared',
+            'user_id' => $admin->id,
+        ]);
     }
 
     public function test_releasing_a_clawed_line_does_not_steal_a_reused_library_article(): void

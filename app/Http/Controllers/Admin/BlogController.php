@@ -8,6 +8,7 @@ use App\Http\Requests\Admin\UpdateBlogRequest;
 use App\Models\Blog;
 use App\Models\BlogTranslation;
 use App\Models\Site;
+use App\Services\ActivityLogger;
 use App\Services\BlogHtmlSanitizer;
 use App\Services\CuratedBlogSync;
 use App\Services\CuratedBlogWriter;
@@ -430,6 +431,14 @@ class BlogController extends Controller
                 'deleted_by' => auth()->id(),
             ]);
 
+            ActivityLogger::tryLog(
+                'blog.deleted',
+                (auth()->user()?->name ?? 'Admin').' deleted blog "'.$blogTitle.'"',
+                null,
+                ['blog_id' => (int) $id, 'title' => $blogTitle],
+                $blogTitle
+            );
+
             return redirect()->route('admin.blogs.index')
                 ->with('success', 'Blog "'.$blogTitle.'" deleted successfully!');
         } catch (\Throwable $e) {
@@ -462,6 +471,14 @@ class BlogController extends Controller
             $blog->updated_by = auth()->id();
             $blog->manually_edited_at = now();
             $blog->save();
+
+            ActivityLogger::tryLog(
+                $blog->status === 'published' ? 'blog.published' : 'blog.unpublished',
+                (auth()->user()?->name ?? 'Admin').' '.($blog->status === 'published' ? 'published' : 'unpublished').' blog "'.$blog->title.'"',
+                $blog,
+                ['blog_id' => $blog->id, 'status' => $blog->status],
+                $blog->title
+            );
 
             return redirect()->route('admin.blogs.index')
                 ->with('success', $message);

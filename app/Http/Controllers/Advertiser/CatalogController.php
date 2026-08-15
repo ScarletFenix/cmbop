@@ -2288,36 +2288,41 @@ class CatalogController extends Controller
                 }
                 DB::commit();
                 $this->forgetCheckoutBonus((int) $userId, (string) $referenceCode);
-                $this->restoreDeferredCartAfterPayment();
-                $advertiserRoleId = Wallet::advertiserRoleId();
-                if ($advertiserRoleId) {
-                    $purchaseWallet = Wallet::query()
-                        ->where('user_id', $userId)
-                        ->where('role_id', $advertiserRoleId)
-                        ->first();
-                    if ($purchaseWallet) {
-                        app(WalletLedgerService::class)->recordPurchaseOnce(
-                            $purchaseWallet,
-                            $totalAmount,
-                            $bonusApplied,
-                            $created->first(),
-                            (string) $referenceCode
-                        );
-                    }
-                }
-                $paymentService->notifyPublishersOfPaidOrders($created);
-
-                try {
-                    app(SpendBudgetService::class)->evaluate(auth()->user());
-                } catch (\Throwable $e) {
-                    Log::warning('Spend budget evaluate after bonus checkout failed: '.$e->getMessage());
-                }
+                $this->finishBonusOnlyCheckoutAfterSettle(
+                    $paymentService,
+                    $created,
+                    (string) $referenceCode,
+                    $totalAmount,
+                    $bonusApplied
+                );
 
                 return response()->json([
                     'success' => true,
                     'message' => count($created).' order(s) placed using your bonus balance. Reference: '.$referenceCode,
                 ]);
             } catch (\Throwable $e) {
+                $paid = $this->paidOrdersForCheckout((string) $referenceCode, (int) $userId);
+                if ($paid->isNotEmpty()) {
+                    // Leftover bonus is already reserved on the leftover orders.
+                    // Refund/422 here made a retry charge leftover promo again.
+                    Log::error('Bonus-only checkout failed after leftover orders settled: '.$e->getMessage(), [
+                        'reference_code' => $referenceCode,
+                        'user_id' => $userId,
+                    ]);
+                    $this->finishBonusOnlyCheckoutAfterSettle(
+                        $paymentService,
+                        $paid,
+                        (string) $referenceCode,
+                        (float) $paid->sum(fn (Order $order) => (float) $order->total_amount),
+                        $bonusApplied
+                    );
+
+                    return response()->json([
+                        'success' => true,
+                        'message' => $paid->count().' order(s) placed using your bonus balance. Reference: '.$referenceCode,
+                    ]);
+                }
+
                 DB::rollBack();
                 $this->refundCheckoutBonus((int) $userId, (string) $referenceCode);
 
@@ -2650,15 +2655,23 @@ class CatalogController extends Controller
     /**
      * @return Collection<int, Order>
      */
-    private function paidCardOrdersForCheckout(string $referenceCode, int $userId)
+    private function paidOrdersForCheckout(string $referenceCode, int $userId, ?string $paymentMethod = null)
     {
         return Order::query()
             ->where('reference_code', $referenceCode)
-            ->where('payment_method', 'card')
             ->where('user_id', $userId)
+            ->when($paymentMethod !== null, fn ($query) => $query->where('payment_method', $paymentMethod))
             ->where('payment_status', 'paid')
             ->where('status', '!=', 'cancelled')
             ->get();
+    }
+
+    /**
+     * @return Collection<int, Order>
+     */
+    private function paidCardOrdersForCheckout(string $referenceCode, int $userId)
+    {
+        return $this->paidOrdersForCheckout($referenceCode, $userId, 'card');
     }
 
     /**
@@ -2677,6 +2690,121 @@ class CatalogController extends Controller
         } catch (\Throwable $e) {
             Log::warning('restore cart after saved-card settle failed: '.$e->getMessage());
         }
+    }
+
+    /**
+     * @param  iterable<Order>  $orders
+     */
+    private function finishBonusOnlyCheckoutAfterSettle(
+        OrderPaymentService $paymentService,
+        iterable $orders,
+        string $referenceCode,
+        float $totalAmount,
+        float $bonusApplied
+    ): void {
+        try {
+            $this->restoreDeferredCartAfterPayment();
+        } catch (\Throwable $e) {
+            Log::warning('restore cart after bonus-only leftover settle failed: '.$e->getMessage());
+        }
+
+        try {
+            $paymentService->recordAdvertiserPurchaseForPaidCheckout(
+                $referenceCode,
+                collect($orders),
+                $bonusApplied,
+                $totalAmount
+            );
+        } catch (\Throwable $e) {
+            Log::warning('purchase ledger after bonus-only leftover settle failed: '.$e->getMessage());
+        }
+
+        try {
+            $paymentService->notifyPublishersOfPaidOrders($orders);
+        } catch (\Throwable $e) {
+            Log::warning('notify after bonus-only leftover settle failed: '.$e->getMessage());
+        }
+
+        try {
+            app(SpendBudgetService::class)->evaluate(auth()->user());
+        } catch (\Throwable $e) {
+            Log::warning('Spend budget evaluate after bonus checkout failed: '.$e->getMessage());
+        }
+    }
+
+    /**
+     * @param  array<int, Order>  $createdOrders
+     * @param  array<string, mixed>  $schedule
+     */
+    private function walletCheckoutSuccessResponse(
+        array $createdOrders,
+        array $schedule,
+        float $totalAmount,
+        string $referenceCode
+    ) {
+        try {
+            $this->restoreDeferredCartAfterPayment();
+        } catch (\Throwable $e) {
+            Log::warning('restore cart after leftover wallet settle failed: '.$e->getMessage());
+        }
+
+        $isScheduled = ($schedule['mode'] ?? 'immediate') === 'scheduled';
+
+        $freshPaid = collect();
+        foreach ($createdOrders as $createdOrder) {
+            try {
+                $fresh = $createdOrder->fresh(['items']) ?: $createdOrder;
+                $freshPaid->push($fresh);
+                app(InAppNotificationService::class)->notifyOrderCreated($fresh);
+            } catch (\Throwable $e) {
+                Log::warning('notifyOrderCreated after leftover wallet settle failed: '.$e->getMessage());
+            }
+        }
+
+        try {
+            app(InAppNotificationService::class)->notifyAdvertiserOrdersPaid($freshPaid);
+        } catch (\Throwable $e) {
+            Log::warning('notifyAdvertiserOrdersPaid after leftover wallet settle failed: '.$e->getMessage());
+        }
+
+        try {
+            app(SpendBudgetService::class)->evaluate(auth()->user());
+        } catch (\Throwable $e) {
+            Log::warning('Spend budget evaluate after checkout failed: '.$e->getMessage());
+        }
+
+        try {
+            $this->sendSiteOwnerEmails($createdOrders);
+        } catch (\Throwable $e) {
+            Log::warning('site owner emails after leftover wallet settle failed: '.$e->getMessage());
+        }
+
+        $orderNumbers = implode(', ', array_map(
+            fn (Order $order) => $order->order_number,
+            $createdOrders
+        ));
+
+        Log::info('Orders created with wallet payment (funds reserved)', [
+            'reference_code' => $referenceCode,
+            'order_count' => count($createdOrders),
+            'total_reserved' => $totalAmount,
+            'scheduled' => $isScheduled,
+        ]);
+
+        $scheduleLabel = $this->scheduleSuccessLabel($schedule);
+        $msg = $isScheduled
+            ? count($createdOrders).' order(s) placed and charged. Publisher notified — they must publish on '.$scheduleLabel.'. Order numbers: '.$orderNumbers
+            : count($createdOrders).' order(s) placed successfully! Funds have been reserved from your wallet. Order numbers: '.$orderNumbers;
+
+        return response()->json([
+            'success' => true,
+            'message' => $msg,
+            'scheduled' => $isScheduled,
+            'scheduled_label' => $scheduleLabel,
+            'scheduled_orders_url' => $isScheduled
+                ? route('advertiser.scheduled-orders', ['tab' => 'upcoming'])
+                : null,
+        ]);
     }
 
     /**
@@ -2704,6 +2832,20 @@ class CatalogController extends Controller
             $advertiserWallet->repairOrphanedWelcomeBonus();
             $advertiserWallet->reconcileInflatedBonusBalance();
             $advertiserWallet->refresh();
+
+            $existingPaid = $this->paidOrdersForCheckout((string) $referenceCode, (int) $userId);
+            if ($existingPaid->isNotEmpty()) {
+                // Double-submit after the first request already reserved leftover
+                // funds. Reserving again would charge leftover cash / promo twice.
+                DB::rollBack();
+
+                return $this->walletCheckoutSuccessResponse(
+                    $existingPaid->all(),
+                    $checkoutContent['schedule'] ?? $schedule,
+                    (float) $existingPaid->sum(fn (Order $order) => (float) $order->total_amount),
+                    (string) $referenceCode
+                );
+            }
 
             $fulfillableLines = $this->fulfillableCheckoutLines($checkoutContent, (int) $userId);
             if ($fulfillableLines === []) {
@@ -2819,54 +2961,31 @@ class CatalogController extends Controller
             }
 
             DB::commit();
-            $this->restoreDeferredCartAfterPayment();
 
-            $isScheduled = ($schedule['mode'] ?? 'immediate') === 'scheduled';
+            return $this->walletCheckoutSuccessResponse(
+                $createdOrders,
+                $checkoutContent['schedule'] ?? $schedule,
+                $totalAmount,
+                (string) $referenceCode
+            );
+        } catch (\Throwable $e) {
+            $paid = $this->paidOrdersForCheckout((string) $referenceCode, (int) $userId);
+            if ($paid->isNotEmpty()) {
+                // Leftover wallet leftover is already reserved. A 422 here
+                // made a retry reserve leftover promo / leftover cash again.
+                Log::error('Wallet payment failed after leftover orders settled: '.$e->getMessage(), [
+                    'user_id' => $userId,
+                    'reference_code' => $referenceCode,
+                ]);
 
-            $freshPaid = collect();
-            foreach ($createdOrders as $createdOrder) {
-                $fresh = $createdOrder->fresh(['items']);
-                $freshPaid->push($fresh);
-                app(InAppNotificationService::class)->notifyOrderCreated($fresh);
+                return $this->walletCheckoutSuccessResponse(
+                    $paid->all(),
+                    $checkoutContent['schedule'] ?? [],
+                    (float) $paid->sum(fn (Order $order) => (float) $order->total_amount),
+                    (string) $referenceCode
+                );
             }
-            app(InAppNotificationService::class)->notifyAdvertiserOrdersPaid($freshPaid);
 
-            try {
-                app(SpendBudgetService::class)->evaluate(auth()->user());
-            } catch (\Throwable $e) {
-                Log::warning('Spend budget evaluate after checkout failed: '.$e->getMessage());
-            }
-
-            // Wallet is paid immediately — notify publishers (scheduled orders publish on the date).
-            $this->sendSiteOwnerEmails($createdOrders);
-
-            $orderNumbers = implode(', ', array_map(
-                fn (Order $order) => $order->order_number,
-                $createdOrders
-            ));
-
-            Log::info('Orders created with wallet payment (funds reserved)', [
-                'reference_code' => $referenceCode,
-                'order_count' => count($createdOrders),
-                'total_reserved' => $totalAmount,
-                'scheduled' => $isScheduled,
-            ]);
-
-            $scheduleLabel = $this->scheduleSuccessLabel($schedule);
-            $msg = $isScheduled
-                ? count($createdOrders).' order(s) placed and charged. Publisher notified — they must publish on '.$scheduleLabel.'. Order numbers: '.$orderNumbers
-                : count($createdOrders).' order(s) placed successfully! Funds have been reserved from your wallet. Order numbers: '.$orderNumbers;
-
-            return response()->json([
-                'success' => true,
-                'message' => $msg,
-                'scheduled' => $isScheduled,
-                'scheduled_label' => $scheduleLabel,
-                'scheduled_orders_url' => $isScheduled
-                    ? route('advertiser.scheduled-orders', ['tab' => 'upcoming'])
-                    : null,
-            ]);
-        } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Wallet payment failed: '.$e->getMessage(), [
                 'user_id' => $userId,
@@ -3719,6 +3838,14 @@ class CatalogController extends Controller
                     'payment_status' => 'pending',
                     'status' => 'pending',
                 ]);
+
+            // Pay again settles leftover rows, not the abandoned Stripe-first
+            // package. Drop it so success-URL finalize cannot treat the new
+            // session as a stale package mismatch and skip mark-paid.
+            app(OrderPaymentService::class)->forgetPendingCheckoutKeepLeftoverHold(
+                $referenceCode,
+                (int) auth()->id()
+            );
 
             session()->put('pending_card_reference', $referenceCode);
 

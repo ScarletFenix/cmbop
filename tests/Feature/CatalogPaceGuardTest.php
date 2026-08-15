@@ -276,6 +276,11 @@ class CatalogPaceGuardTest extends TestCase
             ->post(route('admin.catalog-activity.exempt', $advertiser->id))
             ->assertRedirect();
 
+        $this->assertDatabaseHas('activity_logs', [
+            'action' => 'catalog_activity.exempt_toggled',
+            'user_id' => $admin->id,
+        ]);
+
         $advertiser->refresh();
         $this->assertTrue((bool) $advertiser->catalog_reveal_exempt);
         $this->assertNotNull($advertiser->catalog_reveal_exempt_until);
@@ -360,6 +365,8 @@ class CatalogPaceGuardTest extends TestCase
             ->get(route('admin.catalog-activity'))
             ->assertOk()
             ->assertSee($advertiser->email)
-            ->assertSee('Per order');
+            ->assertSee('Per order')
+            ->assertSee('Hide-mode unlocks (eye / visit / cart)')
+            ->assertSee('Open-catalog browsing is not logged.');
     }
 }

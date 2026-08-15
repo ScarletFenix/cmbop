@@ -90,6 +90,11 @@ class AdBanner extends Model
         return PromotionUrl::href($this->image_url);
     }
 
+    public function clickHref(): ?string
+    {
+        return PromotionUrl::href($this->link_url);
+    }
+
     public function sizeLabel(): string
     {
         $sizeKey = scalar_text($this->size_key);

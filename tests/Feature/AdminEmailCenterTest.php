@@ -336,6 +336,10 @@ class AdminEmailCenterTest extends TestCase
         $this->assertSame(EmailLog::STATUS_DELIVERED, $log->status);
         $this->assertSame('email_center_test', $log->meta['source'] ?? null);
         $this->assertStringNotContainsString('leaked@example.com', (string) $log->subject);
+        $this->assertDatabaseHas('activity_logs', [
+            'action' => 'email_center.test_sent',
+            'user_id' => $admin->id,
+        ]);
     }
 
     public function test_send_test_bypasses_global_disable_and_dedupe(): void
@@ -634,8 +638,8 @@ class AdminEmailCenterTest extends TestCase
             ->assertRedirect(route('admin.emails.index'))
             ->assertSessionHas('success');
 
-        // No recipient token in the payload — do not pending-mark a Welcome
-        // log that might belong to someone else.
+        // Unidentified Welcome payload must not pending-mark a log that
+        // has a recipient — requireToken rejects the unique-class fallback.
         $this->assertSame(EmailLog::STATUS_FAILED, EmailLog::query()->first()->status);
         $this->assertTrue(DB::table('failed_jobs')->where('uuid', $otherUuid)->exists());
     }
@@ -886,6 +890,7 @@ class AdminEmailCenterTest extends TestCase
                 'displayName' => WelcomeEmail::class,
                 'job' => 'Illuminate\\Queue\\CallQueuedHandler@call',
                 'data' => ['commandName' => 'Illuminate\\Mail\\SendQueuedMailable'],
+                'to' => 'customer@example.com',
             ]),
             'exception' => 'SMTP failed',
             'failed_at' => now(),
@@ -903,6 +908,45 @@ class AdminEmailCenterTest extends TestCase
         $this->assertSame(EmailLog::STATUS_PENDING, $fresh->status);
         $this->assertSame(2, $fresh->attempts);
         $this->assertNull($fresh->error);
+    }
+
+    public function test_retry_production_log_refuses_unidentified_unique_job(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $log = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => WelcomeEmail::class,
+            'template_key' => 'welcome',
+            'to_email' => 'customer@example.com',
+            'subject' => 'Welcome to SEOLinkBuildings',
+            'status' => EmailLog::STATUS_FAILED,
+            'error' => 'SMTP down',
+            'attempts' => 1,
+            'meta' => ['source' => 'queue'],
+        ]);
+
+        DB::table('failed_jobs')->insert([
+            'uuid' => (string) Str::uuid(),
+            'connection' => 'database',
+            'queue' => 'emails',
+            'payload' => json_encode([
+                'displayName' => WelcomeEmail::class,
+                'job' => 'Illuminate\\Queue\\CallQueuedHandler@call',
+                'data' => ['commandName' => 'Illuminate\\Mail\\SendQueuedMailable'],
+            ]),
+            'exception' => 'SMTP failed',
+            'failed_at' => now(),
+        ]);
+
+        Artisan::shouldReceive('call')->never();
+
+        $this->actingAs($admin)
+            ->from(route('admin.emails.index'))
+            ->post(route('admin.emails.retry'), ['log_id' => $log->id])
+            ->assertRedirect(route('admin.emails.index'))
+            ->assertSessionHas('error');
+
+        $this->assertSame(EmailLog::STATUS_FAILED, $log->fresh()->status);
     }
 
     public function test_retry_production_log_uses_recipient_matching_job(): void
@@ -1443,6 +1487,7 @@ class AdminEmailCenterTest extends TestCase
             'payload' => json_encode([
                 'displayName' => WelcomeEmail::class,
                 'data' => ['commandName' => 'Illuminate\\Mail\\SendQueuedMailable'],
+                'to' => 'customer@example.com',
             ]),
             'exception' => 'SMTP failed',
             'failed_at' => now(),
@@ -1488,6 +1533,7 @@ class AdminEmailCenterTest extends TestCase
                     'commandName' => 'Illuminate\\Mail\\SendQueuedMailable',
                     'command' => 'O:36:"Illuminate\\Mail\\SendQueuedMailable":1:{s:8:"queuedAt";s:'.strlen($oldQueuedAt).':"'.$oldQueuedAt.'";}',
                 ],
+                'to' => 'customer@example.com',
             ]),
             'exception' => 'SMTP failed',
             'failed_at' => now(),
