@@ -445,34 +445,13 @@ class EmailCampaign extends Model
                     continue;
                 }
 
-                DB::table($table)
-                    ->where(function ($query) use ($prefix) {
-                        $query->where('payload', 'like', '%AudienceCampaignMail%')
-                            ->orWhere('payload', 'like', '%'.$prefix.'%');
-                    })
-                    ->orderBy('id')
-                    ->select(['id', 'payload'])
-                    ->chunkById(100, function ($rows) use ($campaignId, &$ids, &$sawUnscoped) {
-                        foreach ($rows as $row) {
-                            $payload = (string) $row->payload;
-                            if (! MailJobPayload::containsCampaignMail($payload, $campaignId)) {
-                                continue;
-                            }
-
-                            $extracted = MailJobPayload::campaignMailUserIds($payload, $campaignId);
-                            if ($extracted === []) {
-                                $sawUnscoped = true;
-
-                                return false;
-                            }
-
-                            foreach ($extracted as $userId) {
-                                $ids[$userId] = true;
-                            }
-                        }
-
-                        return true;
-                    });
+                self::collectCampaignMailUserIdsFromTable(
+                    $table,
+                    $campaignId,
+                    $prefix,
+                    $ids,
+                    $sawUnscoped
+                );
             } catch (\Throwable) {
                 if ($connection === $mail) {
                     $mailFailed = true;
@@ -480,11 +459,72 @@ class EmailCampaign extends Model
             }
         }
 
+        // A mailable that already failed is still retryable from Email
+        // Center. Reclaiming that user would dispatch a second send.
+        try {
+            $failedTable = (string) config('queue.failed.table', 'failed_jobs');
+            if (Schema::hasTable($failedTable)) {
+                if (! Schema::hasColumn($failedTable, 'payload')) {
+                    return null;
+                }
+
+                self::collectCampaignMailUserIdsFromTable(
+                    $failedTable,
+                    $campaignId,
+                    $prefix,
+                    $ids,
+                    $sawUnscoped
+                );
+            }
+        } catch (\Throwable) {
+            return null;
+        }
+
         if ($sawUnscoped || $mailFailed) {
             return null;
         }
 
         return array_map('intval', array_keys($ids));
+    }
+
+    /**
+     * @param  array<int, true>  $ids
+     */
+    protected static function collectCampaignMailUserIdsFromTable(
+        string $table,
+        int $campaignId,
+        string $prefix,
+        array &$ids,
+        bool &$sawUnscoped
+    ): void {
+        DB::table($table)
+            ->where(function ($query) use ($prefix) {
+                $query->where('payload', 'like', '%AudienceCampaignMail%')
+                    ->orWhere('payload', 'like', '%'.$prefix.'%');
+            })
+            ->orderBy('id')
+            ->select(['id', 'payload'])
+            ->chunkById(100, function ($rows) use ($campaignId, &$ids, &$sawUnscoped) {
+                foreach ($rows as $row) {
+                    $payload = (string) $row->payload;
+                    if (! MailJobPayload::containsCampaignMail($payload, $campaignId)) {
+                        continue;
+                    }
+
+                    $extracted = MailJobPayload::campaignMailUserIds($payload, $campaignId);
+                    if ($extracted === []) {
+                        $sawUnscoped = true;
+
+                        return false;
+                    }
+
+                    foreach ($extracted as $userId) {
+                        $ids[$userId] = true;
+                    }
+                }
+
+                return true;
+            });
     }
 
     /**

@@ -93,6 +93,7 @@ class EmailCampaignPhpSyntaxTest extends TestCase
         $model = (string) file_get_contents($files[0]);
         $this->assertSame(1, preg_match_all('/function reclaimOrphanedQueuedRecipients\b/', $model));
         $this->assertSame(1, preg_match_all('/function inFlightCampaignMailUserIds\b/', $model));
+        $this->assertSame(1, preg_match_all('/function collectCampaignMailUserIdsFromTable\b/', $model));
         $this->assertSame(1, preg_match_all('/function syncQueuedRecipientsWithAttachedLogs\b/', $model));
         $this->assertTrue((bool) preg_match(
             '/protected static function inFlightCampaignMailUserIds\(int \$campaignId\): \?array\s*\{(.*?)\n    protected static function hasQueuedSendJob/s',

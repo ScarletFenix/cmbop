@@ -61,7 +61,9 @@ or marketing, even if that staff account also has a marketplace role.
    connection, or a mailable whose user id cannot be parsed is fail-closed:
    the row stays queued so an in-flight send is not doubled. An unused
    redis `queue.default` or a second database table without `payload` must
-   not block a healthy database mail queue. Give-up can leave a campaign
+   not block a healthy database mail queue. A matching
+   `AudienceCampaignMail` in `failed_jobs` is also in-flight — Email
+   Center can retry it, and reclaiming that user would double-send. Give-up can leave a campaign
    `failed` with leftover `queued` claims — recover now selects those too,
    reclaims orphans, and puts the campaign back to `sending`. A queued row
    that already has a delivered/failed log FK is synced to that log
