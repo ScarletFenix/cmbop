@@ -711,8 +711,8 @@ class OrderPaymentService
 
     /**
      * Drop the package but keep leftover promo so approve/reject can cap this
-     * ref. Used after fail/cancel when a paid sibling on the same checkout
-     * still owns reserved bonus.
+     * ref. Used after Stripe-first finalize and after fail/cancel when a paid
+     * sibling on the same checkout still owns reserved bonus.
      */
     public function forgetPendingCheckoutKeepLeftoverHold(string $referenceCode, int $userId): void
     {
@@ -1035,7 +1035,7 @@ class OrderPaymentService
             if ($existing->isNotEmpty()) {
                 $marked = $this->markOrdersPaidFromStripeSession($referenceCode, $session);
                 if ($marked->isNotEmpty()) {
-                    $this->forgetSettledCheckoutKeepLeftoverHold(
+                    $this->forgetPendingCheckoutKeepLeftoverHold(
                         $referenceCode,
                         (int) ($marked->first()->user_id ?? $package['user_id'] ?? 0)
                     );
@@ -1099,7 +1099,7 @@ class OrderPaymentService
             $this->rereserveReleasedCheckoutBonus($userId, $referenceCode, $bonusKeep);
         }
 
-        $this->forgetSettledCheckoutKeepLeftoverHold($referenceCode, $userId);
+        $this->forgetPendingCheckoutKeepLeftoverHold($referenceCode, $userId);
 
         Log::info('Materialized Stripe-first card orders after payment', [
             'reference_code' => $referenceCode,
