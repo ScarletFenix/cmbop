@@ -1974,6 +1974,113 @@ class AdminEmailCenterTest extends TestCase
         $this->assertSame(EmailLog::STATUS_PENDING, $owner->fresh()->status);
     }
 
+    public function test_bulk_retry_marks_only_one_log_per_shared_uuid_stamp(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $sharedUuid = (string) Str::uuid();
+        $olderCampaign = EmailCampaign::create([
+            'name' => 'Older stamp',
+            'subject' => 'Older stamp',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'sent_count' => 0,
+            'skipped_count' => 1,
+            'status' => EmailCampaign::STATUS_FAILED,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        $newerCampaign = EmailCampaign::create([
+            'name' => 'Newer stamp',
+            'subject' => 'Newer stamp',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'sent_count' => 0,
+            'skipped_count' => 1,
+            'status' => EmailCampaign::STATUS_FAILED,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        $olderRow = EmailCampaignRecipient::create([
+            'email_campaign_id' => $olderCampaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_FAILED,
+            'skip_reason' => EmailCampaignRecipient::SKIP_ERROR,
+        ]);
+        $newerRow = EmailCampaignRecipient::create([
+            'email_campaign_id' => $newerCampaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_FAILED,
+            'skip_reason' => EmailCampaignRecipient::SKIP_ERROR,
+        ]);
+        $older = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => AudienceCampaignMail::class,
+            'template_key' => 'audience_campaign',
+            'dedupe_key' => 'audience_campaign:'.$olderCampaign->id.':user:'.$advertiser->id,
+            'to_email' => $advertiser->email,
+            'subject' => 'Older stamp',
+            'status' => EmailLog::STATUS_FAILED,
+            'error' => 'SMTP down',
+            'attempts' => 1,
+            'meta' => [
+                'source' => 'queue',
+                'failed_job_uuid' => $sharedUuid,
+                'campaign_id' => $olderCampaign->id,
+                'user_id' => $advertiser->id,
+            ],
+        ]);
+        $newer = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => AudienceCampaignMail::class,
+            'template_key' => 'audience_campaign',
+            'dedupe_key' => 'audience_campaign:'.$newerCampaign->id.':user:'.$advertiser->id,
+            'to_email' => $advertiser->email,
+            'subject' => 'Newer stamp',
+            'status' => EmailLog::STATUS_FAILED,
+            'error' => 'SMTP down',
+            'attempts' => 1,
+            'meta' => [
+                'source' => 'queue',
+                'failed_job_uuid' => $sharedUuid,
+                'campaign_id' => $newerCampaign->id,
+                'user_id' => $advertiser->id,
+            ],
+        ]);
+
+        DB::table('failed_jobs')->insert([
+            'uuid' => $sharedUuid,
+            'connection' => 'database',
+            'queue' => 'emails',
+            'payload' => json_encode([
+                'displayName' => AudienceCampaignMail::class,
+                'data' => ['commandName' => 'Illuminate\\Mail\\SendQueuedMailable'],
+                'to' => $advertiser->email,
+            ]),
+            'exception' => 'SMTP failed',
+            'failed_at' => now(),
+        ]);
+
+        $this->mockQueueRetry([$sharedUuid]);
+
+        $this->actingAs($admin)
+            ->from(route('admin.emails.index'))
+            ->post(route('admin.emails.retry'))
+            ->assertRedirect(route('admin.emails.index'))
+            ->assertSessionHas('success');
+
+        $this->assertSame(EmailLog::STATUS_PENDING, $newer->fresh()->status);
+        $this->assertSame(EmailLog::STATUS_FAILED, $older->fresh()->status);
+        $this->assertSame(EmailCampaignRecipient::STATUS_QUEUED, $newerRow->fresh()->status);
+        $this->assertSame(EmailCampaignRecipient::STATUS_FAILED, $olderRow->fresh()->status);
+        $this->assertSame(EmailCampaign::STATUS_SENDING, $newerCampaign->fresh()->status);
+        $this->assertSame(EmailCampaign::STATUS_FAILED, $olderCampaign->fresh()->status);
+    }
+
     public function test_bulk_retry_marks_unstamped_log_by_payload(): void
     {
         $admin = $this->userWithRole('admin');

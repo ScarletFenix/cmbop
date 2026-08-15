@@ -333,6 +333,15 @@ class EmailCampaign extends Model
                 }
             }
 
+            // failed() remembers MAX and dispatches the last attempt.
+            // Give-up before that jobs-table check wiped leftover pending
+            // beside a live SendEmailCampaignJob.
+            if (self::hasQueuedSendJob((int) $id)) {
+                $campaign->touch();
+
+                continue;
+            }
+
             if ($campaign->status === self::STATUS_SENDING
                 && $campaign->currentFailStreak() >= SendEmailCampaignJob::MAX_FAIL_STREAK) {
                 EmailCampaignRecipient::query()
@@ -354,11 +363,6 @@ class EmailCampaign extends Model
             }
 
             try {
-                if (self::hasQueuedSendJob((int) $id)) {
-                    $campaign->touch();
-
-                    continue;
-                }
                 SendEmailCampaignJob::dispatch((int) $id);
                 $campaign->touch();
                 $dispatched++;

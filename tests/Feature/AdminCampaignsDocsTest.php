@@ -31,6 +31,7 @@ class AdminCampaignsDocsTest extends TestCase
         $this->assertStringContainsString('Do **not** use `ShouldBeUnique`', $body);
         $this->assertStringContainsString('mail:drain-queue', $body);
         $this->assertStringContainsString('Fail streak is stored in cache', $body);
+        $this->assertStringContainsString('must **not** give up leftover pending while', $body);
         $this->assertStringContainsString('touches', $body);
         $this->assertStringContainsString('JSON-escaped payloads', $body);
         $this->assertStringContainsString('recipientBuilder', $body);
@@ -41,6 +42,7 @@ class AdminCampaignsDocsTest extends TestCase
         $this->assertStringContainsString('second retry doubles the send', $body);
         $this->assertStringContainsString('must **not** skip a recipient whose', $body);
         $this->assertStringContainsString('queued row with a pending Email Center log', $body);
+        $this->assertStringContainsString('only one failed log per job UUID', $body);
         $this->assertStringContainsString('already has a delivered/failed log FK', $body);
         $this->assertStringContainsString('must **not** look like “no job”', $body);
         $this->assertStringContainsString('ops-mail-reminders.md', $body);
