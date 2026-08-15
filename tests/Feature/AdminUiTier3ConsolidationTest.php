@@ -110,6 +110,7 @@ class AdminUiTier3ConsolidationTest extends TestCase
         }
         // Page rules must be scoped, not applied to every table in the shell.
         $this->assertStringContainsString('.admin-deposits-table tbody tr:hover', $components);
+        $this->assertStringContainsString('.admin-deposits-filters .slb-search-status:empty', $components);
         $this->assertStringContainsString('.admin-blogs-table td', $components);
 
         $staff = file_get_contents(public_path('assets/css/staff-sites.css'));
