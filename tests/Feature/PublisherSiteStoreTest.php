@@ -415,7 +415,9 @@ class PublisherSiteStoreTest extends TestCase
             ->first();
 
         $this->assertNotNull($note);
-        $this->assertSame('New site to verify', $note->title);
+        $this->assertSame('New site to review', $note->title);
+        $this->assertStringContainsString('/marketing/sites', (string) $note->action_url);
+        $this->assertStringNotContainsString('/admin/sites', (string) $note->action_url);
         $this->assertStringContainsString('needs_review=1', (string) $note->action_url);
         $this->assertStringContainsString('publisher='.$this->publisher->id, (string) $note->action_url);
         $this->assertStringContainsString('site='.$site->id, (string) $note->action_url);

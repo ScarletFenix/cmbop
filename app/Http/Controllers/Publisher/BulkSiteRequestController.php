@@ -157,9 +157,17 @@ class BulkSiteRequestController extends Controller
                 : collect([(object) ['email' => config('mail.admin_email', 'admin@yourdomain.com')]]);
 
             foreach ($recipients as $admin) {
-                if (! empty($admin->email)) {
-                    Mail::to($admin->email)->send(new BulkSiteRequestSubmitted($bulk->load('items')));
+                if (empty($admin->email)) {
+                    continue;
                 }
+                $openUrl = $admin instanceof User
+                    ? route(staff_route_prefix_for($admin).'bulk-site-requests.show', $bulk)
+                    : route('admin.bulk-site-requests.show', $bulk);
+                Mail::to($admin->email)->send(new BulkSiteRequestSubmitted(
+                    $bulk->load('items'),
+                    $openUrl,
+                    $admin instanceof User ? $admin : null
+                ));
             }
         } catch (\Throwable $e) {
             Log::warning('Failed to email admins about bulk site request: '.$e->getMessage());

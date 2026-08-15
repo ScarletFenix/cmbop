@@ -1760,7 +1760,7 @@ class InAppNotificationService
         ];
 
         foreach ($this->usersWithRoles(['admin', 'marketing']) as $staff) {
-            $canVerify = $staff->hasRole('admin');
+            $canVerify = $staff->isAdmin();
             $this->notify(
                 $staff,
                 self::TYPE_SYSTEM,
@@ -1772,7 +1772,7 @@ class InAppNotificationService
                     : ($canVerify
                         ? "{$name} was submitted and needs verification."
                         : "{$name} was submitted and needs review."),
-                $options + ['action_url' => $canVerify ? $adminUrl : $marketingUrl]
+                $options + ['action_url' => staff_uses_marketing_workspace($staff) ? $marketingUrl : $adminUrl]
             );
         }
     }
@@ -1976,25 +1976,32 @@ class InAppNotificationService
         $who = $bulk->publisher?->name ?: ($bulk->publisher?->email ?: 'A publisher');
         $count = $bulk->items->count() ?: (int) ($bulk->estimated_count ?? 0);
 
-        $this->notifyAdmins(
-            self::TYPE_SYSTEM,
-            'New bulk sites request',
-            "{$who} submitted {$count} site URL(s) + price(s). Add them to Pending sites when ready.",
-            [
-                'category' => self::CATEGORY_SYSTEM,
-                'icon' => 'bell',
-                'priority' => InAppNotification::PRIORITY_HIGH,
-                'related' => $bulk,
-                'action_label' => 'Open bulk request',
-                // Admin route works for admins; RedirectMarketingFromAdmin remaps it for marketers.
-                'action_url' => route('admin.bulk-site-requests.show', $bulk->id, false),
-                'meta' => [
-                    'bulk_site_request_id' => $bulk->id,
-                    'publisher_id' => $bulk->publisher_id,
-                    'estimated_count' => $count,
-                ],
-            ]
-        );
+        foreach ($this->usersWithRoles(['admin', 'marketing']) as $staff) {
+            $this->notify(
+                $staff,
+                self::TYPE_SYSTEM,
+                'New bulk sites request',
+                "{$who} submitted {$count} site URL(s) + price(s). Add them to Pending sites when ready.",
+                [
+                    'audience' => InAppNotification::AUDIENCE_ADMIN,
+                    'category' => self::CATEGORY_SYSTEM,
+                    'icon' => 'bell',
+                    'priority' => InAppNotification::PRIORITY_HIGH,
+                    'related' => $bulk,
+                    'action_label' => 'Open bulk request',
+                    'action_url' => route(
+                        staff_route_prefix_for($staff).'bulk-site-requests.show',
+                        $bulk->id,
+                        false
+                    ),
+                    'meta' => [
+                        'bulk_site_request_id' => $bulk->id,
+                        'publisher_id' => $bulk->publisher_id,
+                        'estimated_count' => $count,
+                    ],
+                ]
+            );
+        }
     }
 
     /**

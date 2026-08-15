@@ -124,6 +124,34 @@ class AdminSiteReviewQueueTest extends TestCase
         $this->assertStringContainsString('site='.$site->id, (string) $note->action_url);
     }
 
+    public function test_notify_dual_role_marketing_active_uses_review_copy_and_marketing_url(): void
+    {
+        $adminRole = Role::where('name', 'admin')->firstOrFail();
+        $marketingRole = Role::where('name', 'marketing')->firstOrFail();
+        $dual = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $marketingRole->id,
+        ]);
+        $dual->roles()->attach([$adminRole->id, $marketingRole->id]);
+
+        $publisher = $this->userWithRole('publisher');
+        $site = $this->makePendingSite($publisher);
+
+        app(InAppNotificationService::class)->notifyAdminsNewSite($site, 'create');
+
+        $note = InAppNotification::query()
+            ->where('user_id', $dual->id)
+            ->where('related_type', Site::class)
+            ->where('related_id', $site->id)
+            ->first();
+
+        $this->assertNotNull($note);
+        $this->assertSame('New site to review', $note->title);
+        $this->assertStringContainsString('needs review', (string) $note->message);
+        $this->assertStringContainsString('/marketing/sites', (string) $note->action_url);
+        $this->assertStringNotContainsString('/admin/sites', (string) $note->action_url);
+    }
+
     public function test_verify_archives_admin_site_review_notifications(): void
     {
         $admin = $this->userWithRole('admin');
