@@ -9,6 +9,7 @@ use App\Models\EmailLog;
 use App\Models\EmailNotificationSetting;
 use App\Models\User;
 use App\Support\EmailCatalog;
+use App\Support\MailJobPayload;
 use App\Support\UserFacingError;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\Request;
@@ -30,9 +31,9 @@ class EmailCenterController extends Controller
         $recentLogs = EmailLog::query()
             ->when($filters['status'] ?? null, fn ($q, $status) => $q->where('status', $status))
             ->when($filters['template_key'] ?? null, fn ($q, $key) => $q->where('template_key', $key))
-            ->when($filters['to_email'] ?? null, fn ($q, $email) => $q->where('to_email', 'like', '%'.$this->escapeLike($email).'%'))
-            ->when($filters['date_from'] ?? null, fn ($q, $from) => $q->whereDate('created_at', '>=', $from))
-            ->when($filters['date_to'] ?? null, fn ($q, $to) => $q->whereDate('created_at', '<=', $to))
+            ->when($filters['to_email'] ?? null, fn ($q, $email) => $this->applyToEmailFilter($q, $email))
+            ->when($filters['date_from'] ?? null, fn ($q, $from) => $q->whereRaw('date(coalesce(sent_at, created_at)) >= ?', [$from]))
+            ->when($filters['date_to'] ?? null, fn ($q, $to) => $q->whereRaw('date(coalesce(sent_at, created_at)) <= ?', [$to]))
             ->latest('id')
             ->paginate(50)
             ->withQueryString()
@@ -47,15 +48,19 @@ class EmailCenterController extends Controller
             ->keyBy('template_key');
 
         $settingRows = EmailNotificationSetting::query()->pluck('enabled', 'type');
-        $settings = collect(config('email_notifications.types', []))->map(function (array $meta, string $type) use ($settingRows) {
+        $preferenceLabels = collect(config('email_notifications.preference_keys', []))
+            ->map(fn (array $meta) => $meta['label'] ?? null);
+        $settings = collect(config('email_notifications.types', []))->map(function (array $meta, string $type) use ($settingRows, $preferenceLabels) {
             $default = (bool) ($meta['default_enabled'] ?? true);
+            $preference = $meta['preference'] ?? null;
 
             return [
                 'type' => $type,
                 'name' => $meta['name'] ?? $type,
                 'audience' => $meta['audience'] ?? 'user',
                 'enabled' => $settingRows->has($type) ? (bool) $settingRows->get($type) : $default,
-                'preference' => $meta['preference'] ?? null,
+                'preference' => $preference,
+                'preference_label' => $preference ? ($preferenceLabels[$preference] ?? $preference) : null,
                 'framework' => (bool) ($meta['framework'] ?? false),
             ];
         })->values();
@@ -142,12 +147,14 @@ class EmailCenterController extends Controller
 
         $data = $request->validate($rules);
 
-        foreach ($editable as $type) {
-            EmailNotificationSetting::updateOrCreate(
-                ['type' => $type],
-                ['enabled' => (string) $data['enabled'][$type] === '1']
-            );
-        }
+        DB::transaction(function () use ($editable, $data) {
+            foreach ($editable as $type) {
+                EmailNotificationSetting::updateOrCreate(
+                    ['type' => $type],
+                    ['enabled' => (string) $data['enabled'][$type] === '1']
+                );
+            }
+        });
 
         EmailNotificationSetting::flushCache();
 
@@ -252,9 +259,16 @@ class EmailCenterController extends Controller
         }
 
         try {
+            foreach ($uuids as $uuid) {
+                $this->refreshFailedJobQueuedAt($uuid);
+            }
             Artisan::call('queue:retry', ['id' => $uuids]);
         } catch (\Throwable $e) {
             return back()->with('error', UserFacingError::message($e, 'Could not retry mail jobs. Please try again.'));
+        }
+
+        if ($this->queueRetryMissedEveryJob(Artisan::output())) {
+            return back()->with('error', 'Could not retry mail jobs. Please try again.');
         }
 
         return back()->with('success', 'Retried '.count($uuids).' failed mail job(s). Other failed jobs were left untouched.');
@@ -267,17 +281,21 @@ class EmailCenterController extends Controller
             return back()->with('error', 'That email log is not failed.');
         }
 
-        $source = data_get($log->meta, 'source');
-        if ($source === 'email_center_test' || $this->isFrameworkTemplate((string) $log->template_key)) {
+        if ($this->shouldRebuildAsTest($log)) {
             return $this->retryTestLog($log);
         }
 
         $uuid = $this->failedJobUuidForLog($log);
         if ($uuid) {
             try {
+                $this->refreshFailedJobQueuedAt($uuid);
                 Artisan::call('queue:retry', ['id' => [$uuid]]);
             } catch (\Throwable $e) {
                 return back()->with('error', UserFacingError::message($e, 'Could not retry the mail job. Please try again.'));
+            }
+
+            if ($this->queueRetryMissedJob(Artisan::output())) {
+                return back()->with('error', 'Cannot rebuild production payload — retry the queue job.');
             }
 
             $log->update([
@@ -301,7 +319,7 @@ class EmailCenterController extends Controller
         }
 
         $adminEmail = (string) request()->user()->email;
-        $dedupe = $log->dedupe_key ?: 'email_center_test:'.$key.':retry:'.$log->id;
+        $dedupe = 'email_center_test:'.$key.':retry:'.$log->id;
         $log->update(['dedupe_key' => $dedupe]);
 
         try {
@@ -336,22 +354,112 @@ class EmailCenterController extends Controller
             return null;
         }
 
+        $stored = data_get($log->meta, 'failed_job_uuid');
+        if (is_string($stored) && $stored !== '') {
+            $storedPayload = DB::table('failed_jobs')->where('uuid', $stored)->value('payload');
+            if (is_string($storedPayload) && $this->failedJobMatchesLog($storedPayload, $log)) {
+                return $stored;
+            }
+        }
+
         $catalog = EmailCatalog::get((string) $log->template_key) ?? [];
         $class = (string) ($log->mailable ?: ($catalog['mailable'] ?? ''));
         if ($class === '') {
             return null;
         }
 
-        $jsonClass = str_replace('\\', '\\\\', $class);
-
-        foreach (DB::table('failed_jobs')->where($this->mailJobPayloadConstraint())->get(['uuid', 'payload']) as $job) {
+        $basename = class_basename($class);
+        $candidates = [];
+        foreach (DB::table('failed_jobs')
+            ->where($this->mailJobPayloadConstraint())
+            ->where('payload', 'like', '%'.$basename.'%')
+            ->orderByDesc('id')
+            ->limit(100)
+            ->get(['uuid', 'payload']) as $job) {
             $payload = (string) $job->payload;
-            if (str_contains($payload, $class) || str_contains($payload, $jsonClass)) {
-                return (string) $job->uuid;
+            if (MailJobPayload::containsMailable($payload, $class)) {
+                $candidates[] = $job;
             }
         }
 
-        return null;
+        if ($candidates === []) {
+            return null;
+        }
+
+        $to = (string) $log->to_email;
+        $dedupe = (string) $log->dedupe_key;
+        $tight = array_values(array_filter($candidates, function ($job) use ($to, $dedupe) {
+            $payload = (string) $job->payload;
+
+            return MailJobPayload::containsToken($payload, $to)
+                || MailJobPayload::containsToken($payload, $dedupe);
+        }));
+
+        if (count($tight) === 1) {
+            return (string) $tight[0]->uuid;
+        }
+
+        if (count($tight) > 1) {
+            return null;
+        }
+
+        if (count($candidates) !== 1) {
+            return null;
+        }
+
+        $payload = (string) $candidates[0]->payload;
+        $logHasIdentity = ($to !== '' && $to !== 'unknown') || $dedupe !== '';
+        if ($logHasIdentity && MailJobPayload::looksIdentified($payload)) {
+            return null;
+        }
+
+        return (string) $candidates[0]->uuid;
+    }
+
+    protected function failedJobMatchesLog(string $payload, EmailLog $log): bool
+    {
+        if (! MailJobPayload::isQueuedMailable($payload)) {
+            return false;
+        }
+
+        $catalog = EmailCatalog::get((string) $log->template_key) ?? [];
+        $class = (string) ($log->mailable ?: ($catalog['mailable'] ?? ''));
+        if ($class !== '' && ! MailJobPayload::containsMailable($payload, $class)) {
+            return false;
+        }
+
+        if (MailJobPayload::containsToken($payload, (string) $log->to_email)
+            || MailJobPayload::containsToken($payload, (string) $log->dedupe_key)) {
+            return true;
+        }
+
+        return ! MailJobPayload::looksIdentified($payload);
+    }
+
+    protected function refreshFailedJobQueuedAt(string $uuid): void
+    {
+        $payload = DB::table('failed_jobs')->where('uuid', $uuid)->value('payload');
+        if (! is_string($payload) || ! str_contains($payload, 'queuedAt')) {
+            return;
+        }
+
+        $refreshed = MailJobPayload::refreshQueuedAt($payload);
+        if ($refreshed !== $payload) {
+            DB::table('failed_jobs')->where('uuid', $uuid)->update(['payload' => $refreshed]);
+        }
+    }
+
+    protected function queueRetryMissedJob(string $output): bool
+    {
+        return str_contains($output, 'Unable to find failed job')
+            || str_contains($output, 'No retryable jobs found.');
+    }
+
+    protected function queueRetryMissedEveryJob(string $output): bool
+    {
+        return str_contains($output, 'No retryable jobs found.')
+            || (str_contains($output, 'Unable to find failed job')
+                && ! str_contains($output, 'Pushing failed queue jobs'));
     }
 
     protected function queuedMailJobsCount(): int
@@ -396,9 +504,7 @@ class EmailCenterController extends Controller
     protected function mailJobPayloadConstraint(): \Closure
     {
         return function ($q) {
-            $q->where('payload', 'like', '%SendQueuedMailable%')
-                ->orWhere('payload', 'like', '%App\\\\Mail\\\\%')
-                ->orWhere('payload', 'like', '%Illuminate\\\\Mail\\\\%');
+            $q->where('payload', 'like', '%SendQueuedMailable%');
         };
     }
 
@@ -440,9 +546,36 @@ class EmailCenterController extends Controller
         return $date->format('Y-m-d') === $value ? $value : null;
     }
 
+    protected function applyToEmailFilter($query, string $email)
+    {
+        $like = '%'.$this->escapeLike($email).'%';
+        $driver = $query->getConnection()->getDriverName();
+
+        if (in_array($driver, ['mysql', 'mariadb', 'sqlite'], true)) {
+            return $query->whereRaw('to_email LIKE ? ESCAPE ?', [$like, '\\']);
+        }
+
+        return $query->where('to_email', 'like', $like);
+    }
+
     protected function escapeLike(string $value): string
     {
         return str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $value);
+    }
+
+    protected function shouldRebuildAsTest(EmailLog $log): bool
+    {
+        if (data_get($log->meta, 'source') === 'email_center_test') {
+            return true;
+        }
+
+        if (str_starts_with((string) $log->dedupe_key, 'email_center_test:')) {
+            return true;
+        }
+
+        return $this->isFrameworkTemplate((string) $log->template_key)
+            && strcasecmp((string) $log->to_email, (string) request()->user()?->email) === 0
+            && str_contains((string) $log->subject, 'Test Preview');
     }
 
     protected function isFrameworkTemplate(string $key): bool
@@ -484,7 +617,7 @@ class EmailCenterController extends Controller
     {
         return match ($key) {
             'password_reset' => $this->renderMarkdown('emails.password-reset-preview', [
-                'resetUrl' => url('/password/reset/preview-token'),
+                'resetUrl' => rtrim(app_public_url(), '/').'/password/reset/preview-token',
             ]),
             'email_verification' => $this->renderMarkdown('emails.email-verification-preview', [
                 'verifyUrl' => EmailCatalog::previewVerificationUrl(),

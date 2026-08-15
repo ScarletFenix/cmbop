@@ -6,6 +6,7 @@ use App\Listeners\HandleOrderBillingDocuments;
 use App\Listeners\IssueDepositReceipt;
 use App\Listeners\SendOrderLifecycleEmails;
 use App\Listeners\SendTrustpilotReviewOnOrderCompleted;
+use App\Listeners\StampEmailLogFailedJobUuid;
 use App\Models\Blog;
 use App\Models\DepositRequest;
 use App\Models\Order;
@@ -22,10 +23,12 @@ use Illuminate\Auth\Middleware\RedirectIfAuthenticated;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\Paginator;
+use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\View;
@@ -70,6 +73,12 @@ class AppServiceProvider extends ServiceProvider
         // pagination SVGs render as giant arrows when w-5/h-5/hidden utilities
         // are missing — switch to Bootstrap 5 views sitewide (catalog + admin).
         Paginator::useBootstrapFive();
+
+        // event:cache can drop discovered listeners; stamp the failed job UUID
+        // so Email Center retry does not attach the wrong SendQueuedMailable.
+        Queue::failing(function (JobFailed $event) {
+            app(StampEmailLogFailedJobUuid::class)->handle($event);
+        });
 
         // Register flood control must use the same place key as the €20 claim.
         // Default throttle:N,M follows Request::ip() / X-Forwarded-For.

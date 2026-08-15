@@ -138,9 +138,13 @@ class BulkSiteRequestController extends Controller
 
     public function updateNotes(Request $request, int $id)
     {
+        $validated = $request->validate([
+            'admin_notes' => ['nullable', 'string', 'max:20000'],
+        ]);
+
         $bulkRequest = BulkSiteRequest::findOrFail($id);
         $bulkRequest->forceFill([
-            'admin_notes' => $request->input('admin_notes'),
+            'admin_notes' => $validated['admin_notes'] ?? null,
             'handled_by' => auth()->id(),
         ])->save();
 

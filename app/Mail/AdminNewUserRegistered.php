@@ -3,6 +3,7 @@
 namespace App\Mail;
 
 use App\Models\User;
+use App\Support\EmailCatalog;
 
 class AdminNewUserRegistered extends PlatformMailable
 {
@@ -16,7 +17,9 @@ class AdminNewUserRegistered extends PlatformMailable
     public function build()
     {
         $first = $this->firstName($this->admin);
-        $role = $this->newUser->activeRole();
+        $role = EmailCatalog::isPreviewUser($this->newUser)
+            ? 'advertiser'
+            : $this->newUser->activeRole();
         $roleLabel = match ($role) {
             'advertiser' => 'Advertiser',
             'publisher' => 'Publisher',
