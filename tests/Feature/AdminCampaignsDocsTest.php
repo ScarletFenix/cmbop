@@ -31,19 +31,29 @@ class AdminCampaignsDocsTest extends TestCase
         $this->assertStringContainsString('Do **not** use `ShouldBeUnique`', $body);
         $this->assertStringContainsString('mail:drain-queue', $body);
         $this->assertStringContainsString('Fail streak is stored in cache', $body);
+        $this->assertStringContainsString('must **not** give up leftover pending while', $body);
         $this->assertStringContainsString('touches', $body);
         $this->assertStringContainsString('JSON-escaped payloads', $body);
         $this->assertStringContainsString('recipientBuilder', $body);
         $this->assertStringContainsString('reconciled against `email_logs`', $body);
         $this->assertStringContainsString('must **not** finalize as sent', $body);
         $this->assertStringContainsString('reclaims them to `pending`', $body);
+        $this->assertStringContainsString('must still reclaim even if the unused', $body);
+        $this->assertStringContainsString('second retry doubles the send', $body);
+        $this->assertStringContainsString('must **not** skip a recipient whose', $body);
+        $this->assertStringContainsString('queued row with a pending Email Center log', $body);
+        $this->assertStringContainsString('only one failed log per job UUID', $body);
+        $this->assertStringContainsString('must also clear the fail streak', $body);
         $this->assertStringContainsString('already has a delivered/failed log FK', $body);
         $this->assertStringContainsString('second database table without `payload`', $body);
         $this->assertStringContainsString('failed_jobs', $body);
+        $this->assertStringContainsString('must **not** block expire', $body);
         $this->assertStringContainsString('must **not** look like “no job”', $body);
         $this->assertStringContainsString('ops-mail-reminders.md', $body);
         $this->assertStringContainsString('even if that staff account also has a marketplace role', $body);
+        $this->assertStringContainsString('re-check staff roles at send time', $body);
         $this->assertStringContainsString('payment_status=completed', $body);
+        $this->assertStringContainsString('Preference, disabled, and unverified skips stay skipped', $body);
         $this->assertStringNotContainsString('/advertiser/campaigns', $body);
     }
 

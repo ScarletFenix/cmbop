@@ -23,10 +23,12 @@ class ContentEvaluationResult extends PlatformMailable
     {
         $approved = (bool) ($this->result['approved'] ?? false);
         $subject = $approved
-            ? 'Your article was approved for publication'
+            ? (! empty($this->result['approved_leftover'])
+                ? 'Your article was approved — continue the open order'
+                : 'Your article was approved for publication')
             : 'Article evaluation update: action needed';
         $libraryParams = $approved
-            ? []
+            ? $this->submission->staffApprovalLibraryParams()
             : ['status' => 'all', 'availability' => 'needs_fix'];
 
         return $this->subject($subject)

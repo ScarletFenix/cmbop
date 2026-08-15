@@ -2,8 +2,10 @@
 
 namespace Tests\Feature;
 
+use App\Mail\ContentEvaluationResult;
 use App\Models\ContentModerationSetting;
 use App\Models\ContentSubmission;
+use App\Models\InAppNotification;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Role;
@@ -13,6 +15,7 @@ use App\Services\ContentModeration\ContentModerationService;
 use App\Services\ContentUpload\ArticleEvaluationService;
 use App\Services\ContentUpload\ArticleHtmlSanitizer;
 use App\Services\ContentUpload\ContentUploadService;
+use App\Services\InAppNotificationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -394,6 +397,104 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertTrue(
             ContentSubmission::query()->whereKey($waitingArticle->id)->inProgressInLibrary()->exists()
         );
+    }
+
+    public function test_paid_item_only_leftover_with_live_url_is_completed(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->activeSite($publisher, 'paid-item-live');
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update(['title' => 'Paid Item Only Live']);
+        $order = $this->makeOrder($advertiser);
+        $order->update(['payment_status' => 'paid', 'status' => 'processing', 'paid_at' => now()]);
+        OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'price' => 46,
+            'content_link' => 'https://example.com/article.docx',
+            'content_submission_id' => $submission->id,
+            'live_url' => 'https://live.example/item-only-post',
+            'live_url_submitted_at' => now(),
+            'publisher_status' => 'completed',
+        ]);
+        $submission->update(['order_id' => null, 'order_item_id' => null]);
+
+        $fresh = $submission->fresh()->load(['order', 'orderItems.order', 'orderItem']);
+        $this->assertFalse($fresh->isInUse());
+        $this->assertTrue($fresh->isLockedByPaidOrder());
+        $this->assertTrue($fresh->isPublished());
+        $this->assertSame('https://live.example/item-only-post', $fresh->liveUrl());
+        $this->assertSame('published', $fresh->libraryAvailability());
+        $this->assertTrue(
+            ContentSubmission::query()->whereKey($submission->id)->withCurrentLivePlacement()->exists()
+        );
+        $this->assertFalse(
+            ContentSubmission::query()->whereKey($submission->id)->needsLibraryFix()->exists()
+        );
+        $this->assertFalse(
+            ContentSubmission::query()->whereKey($submission->id)->inProgressInLibrary()->exists()
+        );
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', ['availability' => 'completed']))
+            ->assertOk()
+            ->assertSee('Paid Item Only Live')
+            ->assertSee('https://live.example/item-only-post')
+            ->assertSee('>Order:</strong> #'.$order->id, false);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', ['availability' => 'needs_fix']))
+            ->assertOk()
+            ->assertDontSee('Paid Item Only Live');
+    }
+
+    public function test_paid_item_only_leftover_without_live_url_is_in_progress(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->activeSite($publisher, 'paid-item-wait');
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update(['title' => 'Paid Item Only Waiting']);
+        $order = $this->makeOrder($advertiser);
+        $order->update(['payment_status' => 'paid', 'status' => 'processing', 'paid_at' => now()]);
+        OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'price' => 46,
+            'content_link' => 'https://example.com/article.docx',
+            'content_submission_id' => $submission->id,
+        ]);
+        $submission->update(['order_id' => null, 'order_item_id' => null]);
+
+        $fresh = $submission->fresh()->load(['order', 'orderItems.order', 'orderItem']);
+        $this->assertFalse($fresh->isInUse());
+        $this->assertTrue($fresh->isLockedByPaidOrder());
+        $this->assertFalse($fresh->isPublished());
+        $this->assertTrue($fresh->isReadyToFulfill((int) $order->id));
+        $this->assertSame('in_progress', $fresh->libraryAvailability());
+        $this->assertTrue(
+            ContentSubmission::query()->whereKey($submission->id)->inProgressInLibrary()->exists()
+        );
+        $this->assertFalse(
+            ContentSubmission::query()->whereKey($submission->id)->needsLibraryFix()->exists()
+        );
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', ['availability' => 'in_progress']))
+            ->assertOk()
+            ->assertSee('Paid Item Only Waiting')
+            ->assertSee('Order #'.$order->id)
+            ->assertSee('View order');
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', ['availability' => 'needs_fix']))
+            ->assertOk()
+            ->assertDontSee('Paid Item Only Waiting');
     }
 
     public function test_approved_chip_excludes_completed_and_in_progress(): void

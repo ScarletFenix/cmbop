@@ -7,7 +7,9 @@ Article needs changes
 
 Hello {{ $firstName }},
 
-@if($approved)
+@if($approved && !empty($result['approved_leftover']))
+Your article **{{ $submission->title ?: $submission->original_filename }}** is approved. Continue the open order it is already attached to — use Pay again there, or start a new checkout to replace it.
+@elseif($approved)
 Your article **{{ $submission->title ?: $submission->original_filename }}** is approved. You can select websites and place an order from your Content Library.
 @else
 Your article **{{ $submission->title ?: $submission->original_filename }}** was saved to your Content Library, but it needs changes before you can order.
