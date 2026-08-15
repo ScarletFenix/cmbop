@@ -97,10 +97,22 @@ class EmailCampaignPhpSyntaxTest extends TestCase
         $center = (string) file_get_contents($files[3]);
         $this->assertSame(1, preg_match_all('/function markRetriedMailLogsPending\b/', $center));
         $this->assertSame(1, preg_match_all('/function failedJobMatchesLog\b/', $center));
+        $this->assertTrue(
+            (bool) preg_match(
+                '/protected function markRetriedMailLogsPending\(.*?\n    protected function pendingMarkRetriedLog/s',
+                $center,
+                $pending
+            )
+        );
+        $this->assertStringContainsString('$claimedUuids[$stored] = true;', $pending[0]);
 
         $payloadTest = (string) file_get_contents($files[4]);
         $this->assertSame(1, preg_match_all(
-            '/function test_matches_email_log_require_token_rejects_unidentified_payload\b/',
+            '/function test_contains_send_campaign_job_matches_escaped_and_raw_payloads\b/',
+            $payloadTest
+        ));
+        $this->assertSame(1, preg_match_all(
+            '/function test_contains_campaign_mail_matches_dedupe_token_without_crossing_ids\b/',
             $payloadTest
         ));
     }
