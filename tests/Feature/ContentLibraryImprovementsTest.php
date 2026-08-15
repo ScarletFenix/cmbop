@@ -1057,11 +1057,20 @@ class ContentLibraryImprovementsTest extends TestCase
             'image_rights_declared_at' => null,
         ]);
 
+        $this->assertSame('needs_fix', $needsRights->fresh()->libraryAvailability());
+        $this->assertSame('available', $ready->fresh()->libraryAvailability());
+
         $this->actingAs($advertiser)
             ->get(route('advertiser.content-library', ['availability' => 'available']))
             ->assertOk()
             ->assertSee('Ready To Order')
             ->assertDontSee('Needs Image Rights');
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', ['status' => 'all', 'availability' => 'needs_fix']))
+            ->assertOk()
+            ->assertSee('Needs Image Rights')
+            ->assertDontSee('Ready To Order');
     }
 
     public function test_preview_link_save_rejects_eleven_images_and_keeps_approval(): void
@@ -1389,6 +1398,7 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('function goToLibraryResult', $js);
         $this->assertStringContainsString('function libraryDestinationUrl', $js);
         $this->assertStringContainsString("availability: 'needs_fix'", $js);
+        $this->assertStringContainsString('submission.needs_image_rights', $js);
         $this->assertStringContainsString('libraryResultFlash', $js);
         $this->assertStringContainsString('function applyLibraryResultFocus', $js);
         $this->assertStringNotContainsString('window.location.reload()', $js);

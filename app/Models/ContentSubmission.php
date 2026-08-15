@@ -249,6 +249,43 @@ class ContentSubmission extends Model
     }
 
     /**
+     * Rejected / error articles, plus approved articles that still need image rights.
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeNeedsLibraryFix($query)
+    {
+        $query
+            ->where(function ($q) {
+                $q->whereIn('moderation_status', [
+                    self::STATUS_NEEDS_IMPROVEMENT,
+                    self::STATUS_REJECTED,
+                    self::STATUS_ERROR,
+                ])->orWhere(function ($rights) {
+                    $rights->where('moderation_status', self::STATUS_APPROVED)
+                        ->whereNull('order_id')
+                        ->where(function ($img) {
+                            $img->where('preview_html', 'like', '%<img%')
+                                ->orWhere('preview_html', 'like', '%<IMG%');
+                        })
+                        ->where(function ($claim) {
+                            $claim->whereNull('image_rights')
+                                ->orWhereNotIn('image_rights', [
+                                    self::IMAGE_RIGHTS_OWN,
+                                    self::IMAGE_RIGHTS_LICENSED,
+                                ]);
+                        });
+                });
+            })
+            ->where(function ($exp) {
+                $exp->whereNull('expires_at')->orWhere('expires_at', '>', now());
+            });
+
+        return $query;
+    }
+
+    /**
      * Cart / wizard / catalog pickers only need identity + orderability fields.
      *
      * @param  Builder<static>  $query
@@ -719,6 +756,12 @@ class ContentSubmission extends Model
         }
 
         if ($this->needsCorrection()) {
+            return 'needs_fix';
+        }
+
+        if ($this->moderation_status === self::STATUS_APPROVED
+            && $this->hasImages()
+            && ! $this->imageRightsCoverContent()) {
             return 'needs_fix';
         }
 

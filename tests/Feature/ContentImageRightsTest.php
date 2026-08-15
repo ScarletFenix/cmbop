@@ -252,8 +252,12 @@ class ContentImageRightsTest extends TestCase
             );
 
         $this->assertFalse($submission->fresh()->canBeOrdered());
+        $this->assertSame('needs_fix', $submission->fresh()->libraryAvailability());
         $this->assertFalse(
             ContentSubmission::query()->whereKey($submission->id)->orderable()->exists()
+        );
+        $this->assertTrue(
+            ContentSubmission::query()->whereKey($submission->id)->needsLibraryFix()->exists()
         );
     }
 

@@ -596,6 +596,7 @@ function libraryChipParams(submission) {
         || status === 'rejected'
         || status === 'error'
         || (submission && submission.needs_correction)
+        || (submission && submission.needs_image_rights)
     ) {
         return { status: 'all', availability: 'needs_fix' };
     }
@@ -2028,12 +2029,13 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
             rememberLibraryLanding(
                 data.submission,
                 data.message,
-                !!(data.approved || data.submission.can_order)
+                !!data.submission.can_order
             );
             const submission = await submissionForEditor(Object.assign({}, data.submission, {
-                can_order: !!(data.submission.can_order || data.approved),
-                editor_notice: data.approved ? '' : (data.message || ''),
-                editor_notice_ok: !!data.approved,
+                editor_notice: data.submission.needs_image_rights
+                    ? ''
+                    : (data.approved ? '' : (data.message || '')),
+                editor_notice_ok: !!data.approved && !data.submission.needs_image_rights,
             }));
             openArticleEditor(submission);
         } else {

@@ -153,13 +153,7 @@ class ContentLibraryController extends Controller
                     ->whereNotNull('expires_at')
                     ->where('expires_at', '<=', now());
             } elseif ($availability === 'needs_fix') {
-                $query->whereIn('moderation_status', [
-                    ContentSubmission::STATUS_NEEDS_IMPROVEMENT,
-                    ContentSubmission::STATUS_REJECTED,
-                    ContentSubmission::STATUS_ERROR,
-                ])->where(function ($exp) {
-                    $exp->whereNull('expires_at')->orWhere('expires_at', '>', now());
-                });
+                $query->needsLibraryFix();
             } elseif ($availability === 'published') {
                 $hasPublisherStatus = Schema::hasColumn('order_items', 'publisher_status');
                 $query->whereNotNull('order_id')
@@ -276,16 +270,7 @@ class ContentLibraryController extends Controller
                 ->whereNotNull('expires_at')
                 ->where('expires_at', '<=', now())
                 ->count(),
-            'needs_fix' => (int) (clone $countScope)
-                ->whereIn('moderation_status', [
-                    ContentSubmission::STATUS_NEEDS_IMPROVEMENT,
-                    ContentSubmission::STATUS_REJECTED,
-                    ContentSubmission::STATUS_ERROR,
-                ])
-                ->where(function ($exp) {
-                    $exp->whereNull('expires_at')->orWhere('expires_at', '>', now());
-                })
-                ->count(),
+            'needs_fix' => (int) (clone $countScope)->needsLibraryFix()->count(),
         ];
 
         $archivedCountScope = ContentSubmission::query()
