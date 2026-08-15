@@ -543,14 +543,10 @@ class BlogController extends Controller
             $title = trim((string) ($item['title'] ?? ''));
             $slug = trim((string) ($item['slug'] ?? ''));
             $excerpt = isset($item['excerpt']) ? trim((string) $item['excerpt']) : null;
-            $metaTitle = isset($item['meta_title']) ? trim((string) $item['meta_title']) : null;
-            $metaDescription = isset($item['meta_description']) ? trim((string) $item['meta_description']) : null;
-            $isPublished = ! array_key_exists('is_published', $item)
-                || filter_var($item['is_published'], FILTER_VALIDATE_BOOLEAN);
-            $rawContent = trim((string) ($item['content'] ?? ''));
-            $content = BlogHtmlSanitizer::isEmptyHtml($rawContent)
-                ? ''
-                : app(BlogHtmlSanitizer::class)->sanitize($rawContent);
+            $content = trim((string) ($item['content'] ?? ''));
+            if (BlogHtmlSanitizer::isBlank($content)) {
+                $content = '';
+            }
 
             if ($locale === 'en') {
                 if ($requireEnglish && ($title === '' || $content === '')) {

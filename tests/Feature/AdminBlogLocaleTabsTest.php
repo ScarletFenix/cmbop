@@ -94,4 +94,37 @@ class AdminBlogLocaleTabsTest extends TestCase
 
         $this->assertSame(3, BlogTranslation::query()->where('blog_id', $blog->id)->count());
     }
+
+    public function test_empty_quill_tabs_are_ignored_so_english_only_save_works(): void
+    {
+        $admin = $this->adminUser();
+
+        $translations = [
+            'en' => [
+                'title' => 'English only post',
+                'slug' => 'english-only-post',
+                'excerpt' => 'Excerpt',
+                'content' => '<p>English body</p>',
+            ],
+        ];
+        foreach (['de', 'fr', 'nl', 'es', 'it', 'us'] as $locale) {
+            $translations[$locale] = [
+                'title' => '',
+                'slug' => '',
+                'excerpt' => '',
+                'content' => '<p><br></p>',
+            ];
+        }
+
+        $this->actingAs($admin)
+            ->post(route('admin.blogs.store'), [
+                'status' => 'published',
+                'translations' => $translations,
+            ])
+            ->assertRedirect(route('admin.blogs.index'));
+
+        $blog = Blog::query()->where('slug', 'english-only-post')->first();
+        $this->assertNotNull($blog);
+        $this->assertSame(['en'], $blog->translations()->pluck('locale')->all());
+    }
 }

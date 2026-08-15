@@ -47,7 +47,7 @@
                                         type="button"
                                         role="tab"
                                     >
-                                        {{ $locale === 'en' ? 'UK' : strtoupper($locale) }} {!! $locale === 'en' ? '<span class="text-danger">*</span>' : '' !!}
+                                        {{ \App\Support\PublicI18n::shortLabel($locale) }} {!! $locale === 'en' ? '<span class="text-danger">*</span>' : '' !!}
                                     </button>
                                 </li>
                             @endforeach
@@ -265,7 +265,7 @@ var activeLocale = 'en';
     if (!el) return;
     quills[locale] = new Quill(el, {
         theme: 'snow',
-        placeholder: 'Write blog content for ' + locale.toUpperCase() + '...',
+        placeholder: 'Write blog content for ' + (locale === 'en' ? 'UK' : locale.toUpperCase()) + '...',
         modules: {
             toolbar: [
                 [{ 'header': [1, 2, 3, 4, 5, 6, false] }],

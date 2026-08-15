@@ -220,7 +220,8 @@ class PublicI18n
         Request $request,
         ?string $xDefaultLocale = null,
         ?array $locales = null,
-        ?string $pathOverride = null
+        ?string $pathOverride = null,
+        ?array $pathByLocale = null
     ): array {
         if (! self::isPublicMarketingPath($request)) {
             return [];
@@ -236,20 +237,30 @@ class PublicI18n
         }
 
         foreach ($targetLocales as $locale) {
+            $localePath = ltrim((string) ($pathByLocale[$locale] ?? $path), '/');
             $tags[] = [
                 'hreflang' => self::hreflang($locale),
-                'href' => self::urlForLocale($path, $locale),
+                'href' => self::urlForLocale($localePath, $locale),
             ];
         }
 
         $xDefault = self::isSupported($xDefaultLocale) ? $xDefaultLocale : self::default();
+        $xDefaultPath = ltrim((string) ($pathByLocale[$xDefault] ?? $path), '/');
 
         $tags[] = [
             'hreflang' => 'x-default',
-            'href' => self::urlForLocale($path, $xDefault),
+            'href' => self::urlForLocale($xDefaultPath, $xDefault),
         ];
 
         return $tags;
+    }
+
+    /**
+     * Short admin / fallback label (en → UK).
+     */
+    public static function shortLabel(string $locale): string
+    {
+        return $locale === 'en' ? 'UK' : strtoupper($locale);
     }
 
     public static function preferredFromBrowser(Request $request): ?string

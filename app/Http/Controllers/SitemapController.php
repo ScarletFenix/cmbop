@@ -88,15 +88,18 @@ class SitemapController extends Controller
 
         foreach ($translations as $translation) {
             $path = 'blog/'.$translation->slug;
-            $availableLocales = BlogTranslation::query()
+            $slugsByLocale = BlogTranslation::query()
                 ->where('blog_id', $translation->blog_id)
                 ->where('is_published', true)
-                ->pluck('locale')
-                ->unique()
-                ->values()
+                ->pluck('slug', 'locale')
                 ->all();
+            $availableLocales = array_keys($slugsByLocale);
+            $pathByLocale = [];
+            foreach ($slugsByLocale as $altLocale => $slug) {
+                $pathByLocale[$altLocale] = 'blog/'.$slug;
+            }
 
-            $entry = $this->urlEntry($path, $locale, 'monthly', '0.6', $availableLocales);
+            $entry = $this->urlEntry($path, $locale, 'monthly', '0.6', $availableLocales, $pathByLocale);
             $entry['lastmod'] = optional($translation->updated_at)?->toAtomString();
             $urls[] = $entry;
         }
@@ -109,19 +112,22 @@ class SitemapController extends Controller
     /**
      * @return array{loc: string, changefreq: string, priority: string, alternates: list<array{hreflang: string, href: string}>}
      */
-    private function urlEntry(string $path, string $locale, string $changefreq, string $priority, ?array $availableLocales = null): array
+    private function urlEntry(string $path, string $locale, string $changefreq, string $priority, ?array $availableLocales = null, ?array $pathByLocale = null): array
     {
         $alternates = [];
         $altLocales = $availableLocales ?: PublicI18n::supported();
         foreach ($altLocales as $alt) {
+            $altPath = ltrim((string) ($pathByLocale[$alt] ?? $path), '/');
             $alternates[] = [
                 'hreflang' => PublicI18n::hreflang($alt),
-                'href' => PublicI18n::urlForLocale($path, $alt),
+                'href' => PublicI18n::urlForLocale($altPath, $alt),
             ];
         }
+        $xDefault = in_array(PublicI18n::default(), $altLocales, true) ? PublicI18n::default() : $locale;
+        $xDefaultPath = ltrim((string) ($pathByLocale[$xDefault] ?? $path), '/');
         $alternates[] = [
             'hreflang' => 'x-default',
-            'href' => PublicI18n::urlForLocale($path, in_array(PublicI18n::default(), $altLocales, true) ? PublicI18n::default() : $locale),
+            'href' => PublicI18n::urlForLocale($xDefaultPath, $xDefault),
         ];
 
         return [

@@ -36,7 +36,7 @@
     'name' => __('messages.how_page_howto_name'),
     'description' => __('messages.meta_how_it_works_description'),
     'url' => localized_url('how-it-works'),
-    'inLanguage' => str_replace('_', '-', app()->getLocale()),
+    'inLanguage' => \App\Support\PublicI18n::htmlLang(),
     'step' => $howToSteps,
 ], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) !!}
 </script>

@@ -90,7 +90,10 @@ class SeoAndSecurityHeadersTest extends TestCase
             ->assertSee('seolinkbuildings.com', false)
             ->assertSee('Topurlz', false)
             ->assertSee('/pricing', false)
-            ->assertSee('16607074', false);
+            ->assertSee('16607074', false)
+            ->assertSee('/es/', false)
+            ->assertSee('/it/', false)
+            ->assertSee('/us/', false);
     }
 
     public function test_auth_pages_use_branded_meta(): void
