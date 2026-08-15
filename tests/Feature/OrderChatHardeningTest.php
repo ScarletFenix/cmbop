@@ -302,6 +302,12 @@ class OrderChatHardeningTest extends TestCase
             ->assertOk()
             ->assertJsonPath('can_send', true)
             ->assertJsonPath('composer_note', 'This order is completed. You can still message about this placement.');
+
+        $this->actingAs($publisher)
+            ->getJson(route('chat.messages', $completed->id))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('order_details.content_link', 'https://example.com/article.docx');
     }
 
     public function test_since_id_returns_only_newer_messages(): void

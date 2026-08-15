@@ -486,7 +486,7 @@ class ChatController extends Controller
             'homepage_price' => (float) ($item?->homepage_price ?? 0),
             'social_channels' => $item ? $item->enabledSocialChannels() : [],
             'social_post_urls' => $item ? $item->socialPostUrls() : [],
-            'content_link' => $item?->content_link,
+            'content_link' => $item?->publisherContentLink(),
             'live_url' => $item?->live_url,
             'live_url_check_ok' => $item?->live_url_check_ok,
             'live_url_http_status' => $item?->live_url_http_status,

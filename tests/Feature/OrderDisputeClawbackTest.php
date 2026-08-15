@@ -403,6 +403,14 @@ class OrderDisputeClawbackTest extends TestCase
             ->assertJsonPath('data.preview_html', $siblingArticle->fresh()->preview_html)
             ->assertJsonPath('data.content_download_url', route('publisher.content.download', $siblingArticle));
 
+        $this->actingAs($publisher)
+            ->getJson(route('chat.messages', $order->id))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('order_details.content_link', null)
+            ->assertJsonMissing(['Reused secret draft'])
+            ->assertJsonMissing([route('publisher.content.download', $disputedArticle)]);
+
         $this->actingAs($advertiser)
             ->deleteJson(route('advertiser.content-submissions.destroy', $disputedArticle))
             ->assertOk()
