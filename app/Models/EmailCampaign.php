@@ -358,11 +358,12 @@ class EmailCampaign extends Model
                     ->pluck('payload');
 
                 foreach ($payloads as $payload) {
-                    if (MailJobPayload::containsCampaignJob((string) $payload, $campaignId)) {
+                    if (MailJobPayload::containsSendCampaignJob((string) $payload, $campaignId)) {
                         return true;
                     }
                 }
             } catch (\Throwable) {
+                // A broken first connection must not hide a job on the other.
             }
         }
 
@@ -370,9 +371,9 @@ class EmailCampaign extends Model
     }
 
     /**
-     * The send job uses the app default connection (it does not call
-     * onConnection). Mail may use MAIL_QUEUE_CONNECTION. Check both so a
-     * sync mail connection cannot hide a database-queued send job.
+     * The send job pins onConnection() to preferredSendJobConnection()
+     * (mail first, otherwise queue.default). Check both so a sync side
+     * cannot hide a database-queued send job on the other connection.
      *
      * @return list<string>
      */
@@ -455,7 +456,7 @@ class EmailCampaign extends Model
             ->where('status', EmailCampaignRecipient::STATUS_QUEUED)
             ->whereNull('email_log_id')
             ->where('updated_at', '<=', $cutoff)
-            ->get(['id', 'email_campaign_id', 'user_id']);
+            ->get(['id', 'email_campaign_id', 'user_id', 'updated_at']);
 
         if ($rows->isEmpty()) {
             return;
@@ -490,6 +491,13 @@ class EmailCampaign extends Model
             }
 
             $delivered = $log->status === EmailLog::STATUS_DELIVERED;
+            // An older failed log must not kill a newer in-flight retry.
+            if (! $delivered
+                && $log->updated_at
+                && $row->updated_at
+                && ! $log->updated_at->greaterThan($row->updated_at)) {
+                continue;
+            }
             EmailCampaignRecipient::query()
                 ->whereKey($row->id)
                 ->where('status', EmailCampaignRecipient::STATUS_QUEUED)

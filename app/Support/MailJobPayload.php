@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Models\EmailLog;
 use Carbon\Carbon;
 
 class MailJobPayload
@@ -22,25 +23,20 @@ class MailJobPayload
     }
 
     /**
-     * Database-queue payloads JSON-escape the serialized command, so a raw
-     * LIKE for campaignId";i:N; misses the job that is already queued.
+     * Database-queue payloads JSON-escape the serialized command, so
+     * `campaignId";i:12;` does not appear as a literal. `i:12;` must not
+     * match campaign 123.
      */
-    public static function containsCampaignJob(string $payload, int $campaignId): bool
+    public static function containsSendCampaignJob(string $payload, int $campaignId): bool
     {
         if ($campaignId < 1 || ! str_contains($payload, 'SendEmailCampaignJob')) {
             return false;
         }
 
-        $token = 'campaignId";i:'.$campaignId.';';
-        if (str_contains($payload, $token)
-            || str_contains($payload, 'campaignId\\";i:'.$campaignId.';')) {
-            return true;
-        }
+        $suffix = ';i:'.$campaignId.';';
 
-        $decoded = json_decode($payload, true);
-        $command = is_array($decoded) ? ($decoded['data']['command'] ?? null) : null;
-
-        return is_string($command) && str_contains($command, $token);
+        return str_contains($payload, '"campaignId"'.$suffix)
+            || str_contains($payload, '\\"campaignId\\"'.$suffix);
     }
 
     /**
@@ -67,6 +63,51 @@ class MailJobPayload
         }
 
         return self::emails($payload) !== [];
+    }
+
+    public static function matchesEmailLog(string $payload, EmailLog $log): bool
+    {
+        if (! self::isQueuedMailable($payload)) {
+            return false;
+        }
+
+        $catalog = EmailCatalog::get((string) $log->template_key) ?? [];
+        $class = (string) ($log->mailable ?: ($catalog['mailable'] ?? ''));
+        if ($class !== '' && ! self::containsMailable($payload, $class)) {
+            return false;
+        }
+
+        if (self::containsToken($payload, (string) $log->to_email)
+            || self::containsToken($payload, (string) $log->dedupe_key)) {
+            return true;
+        }
+
+        $to = (string) $log->to_email;
+        $dedupe = (string) $log->dedupe_key;
+        $logHasIdentity = ($to !== '' && strcasecmp($to, 'unknown') !== 0) || $dedupe !== '';
+
+        return ! ($logHasIdentity && self::looksIdentified($payload));
+    }
+
+    public static function containsCampaignId(string $payload, int $campaignId): bool
+    {
+        if ($campaignId < 1) {
+            return false;
+        }
+
+        $id = (string) $campaignId;
+        if (preg_match('/s:10:\\\\?"campaignId\\\\?";i:'.$id.';/', $payload)) {
+            return true;
+        }
+
+        if (preg_match('/"campaignId":'.$id.'(?!\d)/', $payload)) {
+            return true;
+        }
+
+        $decoded = json_decode($payload, true);
+        $command = is_array($decoded) ? ($decoded['data']['command'] ?? null) : null;
+
+        return is_string($command) && (bool) preg_match('/s:10:"campaignId";i:'.$id.';/', $command);
     }
 
     public static function dedupeKey(string $payload): ?string

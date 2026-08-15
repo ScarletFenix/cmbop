@@ -35,18 +35,20 @@ or marketing, even if that staff account also has a marketplace role.
    `queued`/`sending` rows so a lost continuation does not sit forever.
    Recovery **touches** the campaign after a re-dispatch (or when a send
    job is already in the `jobs` table) so a backed-up emails queue cannot
-   enqueue another job on every page view. The jobs-table check parses
-   JSON-escaped `jobs.payload` (same as Email Center) — a raw LIKE for
-   `campaignId";i:N;` misses the queued job and floods another dispatch
-   every stale window. The send job pins `onConnection` to a drainable
-   queue (mail connection first, otherwise `queue.default`) so
-   `QUEUE_CONNECTION=sync` plus a database mail queue cannot run the
-   whole audience inside the compose request. `mail:drain-queue` and
-   web drain recover even when mail is `sync`, and they drain every
-   drainable connection — `MAIL_QUEUE_CONNECTION=sync` used to skip
-   both and leave campaign jobs sitting. Web recover still runs when
-   auto-drain is on and there is nothing to drain (both connections
-   sync) so a killed inline send is not left `sending` until cron.    A `sending` campaign that still
+   enqueue another job on every page view. The jobs-table check must
+   match JSON-escaped payloads (`\"campaignId\";i:N;`) — a literal
+   `campaignId";i:N;` LIKE misses every database-queue row. It walks
+   every send-job connection (mail first, then `queue.default`); a miss
+   or error on the first must not skip the other. The send job pins
+   `onConnection` to a drainable queue (mail connection first, otherwise
+   `queue.default`) so `QUEUE_CONNECTION=sync` plus a database mail queue
+   cannot run the whole audience inside the compose request.
+   `mail:drain-queue` and web drain recover even when mail is `sync`,
+   and they drain every drainable connection — `MAIL_QUEUE_CONNECTION=sync`
+   used to skip both and leave campaign jobs sitting. Web recover still
+   runs when auto-drain is on and there is nothing to drain (both
+   connections sync) so a killed inline send is not left `sending` until
+   cron. A `sending` campaign that still
    has `queued` recipients is left sending — leftover queued rows are not
    treated as a successful send. A timeout after the last `pending` →
    `queued` claim must **not** finalize as sent (`failed()` used to, because

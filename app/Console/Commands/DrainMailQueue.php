@@ -69,9 +69,9 @@ class DrainMailQueue extends Command
      */
     private function recoverStalledCampaigns(): void
     {
-        // Always — SendEmailCampaignJob rides queue.default, not
-        // MAIL_QUEUE_CONNECTION. A sync mail connection used to skip this
-        // and leave stalled campaigns on the database app queue.
+        // Always — the send job may sit on the mail connection or
+        // queue.default. A sync mail connection used to skip this and
+        // leave stalled campaigns on the database app queue.
         try {
             $n = EmailCampaign::recoverStalled();
             if ($n > 0) {
