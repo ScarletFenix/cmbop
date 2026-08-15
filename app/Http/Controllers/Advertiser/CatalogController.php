@@ -2383,6 +2383,10 @@ class CatalogController extends Controller
 
             session()->put('pending_card_reference', $referenceCode);
 
+            $storedPackage = $paymentService->getPendingCheckout($referenceCode) ?? [];
+            $storedPackage['stripe_session_id'] = $checkoutSession->id;
+            $paymentService->storePendingCheckout($referenceCode, $storedPackage);
+
             Log::info('Stripe-first card checkout session ready (Add Funds style)', [
                 'reference_code' => $referenceCode,
                 'session_id' => $checkoutSession->id,
@@ -4927,22 +4931,74 @@ class CatalogController extends Controller
         }
     }
 
+    private function stripeCheckoutSessionIsPaid(array $package): bool
+    {
+        $sessionId = search_text($package['stripe_session_id'] ?? '');
+        if ($sessionId === '' || ! config('services.stripe.secret')) {
+            return false;
+        }
+
+        try {
+            Stripe::setApiKey(config('services.stripe.secret'));
+            $session = Session::retrieve($sessionId);
+
+            return ($session->payment_status ?? null) === 'paid';
+        } catch (\Throwable $e) {
+            Log::warning('Could not verify Stripe session before cancel cleanup', [
+                'session_id' => $sessionId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
+    }
+
     private function cancelUnpaidCardOrdersAndRestoreCart(string $referenceCode): void
     {
+        $referenceCode = search_text($referenceCode);
+        if ($referenceCode === '') {
+            return;
+        }
+
         $paymentService = app(OrderPaymentService::class);
+        $userId = (int) auth()->id();
 
         $canceled = Order::with('items')
-            ->where('user_id', auth()->id())
+            ->where('user_id', $userId)
             ->where('reference_code', $referenceCode)
             ->where('payment_method', 'card')
             ->whereIn('payment_status', ['pending', 'failed'])
             ->whereIn('status', ['pending', 'cancelled'])
             ->get();
 
-        // Stripe-first (Add Funds style): no order rows yet. Release reserved
-        // bonus, but keep the package so a late paid webhook can still settle.
+        // Stripe-first: no order rows yet. Keep the package so a late paid
+        // webhook can still settle. Only release THIS reference's bonus.
         if ($canceled->isEmpty()) {
-            $this->refundCheckoutBonus((int) auth()->id(), $referenceCode);
+            $alreadyPaid = Order::query()
+                ->where('user_id', $userId)
+                ->where('reference_code', $referenceCode)
+                ->where('payment_method', 'card')
+                ->where('payment_status', 'paid')
+                ->exists();
+            if ($alreadyPaid) {
+                return;
+            }
+
+            $package = $paymentService->getPendingCheckout($referenceCode);
+            if (! is_array($package) || (int) ($package['user_id'] ?? 0) !== $userId) {
+                return;
+            }
+
+            if ($this->stripeCheckoutSessionIsPaid($package)) {
+                Log::info('Skipping cancel bonus release; Stripe session already paid', [
+                    'reference_code' => $referenceCode,
+                    'session_id' => $package['stripe_session_id'] ?? null,
+                ]);
+
+                return;
+            }
+
+            $this->refundCheckoutBonus($userId, $referenceCode);
             session()->forget(['pending_card_reference', 'checkout_deferred_cart']);
 
             Log::info('Cancelled Stripe-first card checkout (no order rows yet)', [

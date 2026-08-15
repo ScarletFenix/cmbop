@@ -90,11 +90,11 @@ class CheckoutIntentService
     }
 
     /**
-     * Pull the reserved bonus for this reference (cache, durable row, then fallback).
+     * Reserved bonus recorded for this reference (cache, durable row, then fallback).
      */
-    public function takeBonus(int $userId, string $referenceCode, ?float $fallback = null): float
+    public function peekBonus(int $userId, string $referenceCode, ?float $fallback = null): float
     {
-        $fromCache = round((float) Cache::pull(self::bonusCacheKey($userId, $referenceCode), 0), 2);
+        $fromCache = round((float) Cache::get(self::bonusCacheKey($userId, $referenceCode), 0), 2);
         $intent = $this->findIntent($referenceCode);
         $fromRow = $intent ? round((float) $intent->bonus_applied, 2) : 0.0;
         $fromPackage = is_array($intent?->package)
@@ -102,11 +102,22 @@ class CheckoutIntentService
             : 0.0;
         $bonus = max($fromCache, $fromRow, $fromPackage, round((float) ($fallback ?? 0), 2));
 
-        if ($intent && $fromRow > 0) {
+        return $bonus > 0 ? $bonus : 0.0;
+    }
+
+    /**
+     * Pull the reserved bonus for this reference (cache, durable row, then fallback).
+     */
+    public function takeBonus(int $userId, string $referenceCode, ?float $fallback = null): float
+    {
+        $bonus = $this->peekBonus($userId, $referenceCode, $fallback);
+        Cache::forget(self::bonusCacheKey($userId, $referenceCode));
+        $intent = $this->findIntent($referenceCode);
+        if ($intent && (float) $intent->bonus_applied > 0) {
             $intent->update(['bonus_applied' => 0]);
         }
 
-        return $bonus > 0 ? $bonus : 0.0;
+        return $bonus;
     }
 
     /**

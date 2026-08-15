@@ -286,6 +286,14 @@ class OrderRefundService
             $share = min($reserved, max(0, round($reserved * ($failedTotal / $pool), 2)));
         }
 
+        $thisRefBonus = app(CheckoutIntentService::class)->peekBonus($userId, $referenceCode, $fallbackBonus);
+        if ($failed->isEmpty() || $failedTotal <= 0) {
+            // Stripe-first / no rows: never dump another checkout's reserved promo.
+            $share = min($share, $thisRefBonus);
+        } elseif ($thisRefBonus > 0) {
+            $share = min($share, $thisRefBonus);
+        }
+
         if ($share <= 0) {
             return 0.0;
         }
