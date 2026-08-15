@@ -89,7 +89,7 @@
                                    enterkeyhint="search"
                                    aria-describedby="ordersSearchHint ordersSearchStatus"
                                    data-orders-live-search="1"
-                                   value="{{ request('search') }}">
+                                   value="{{ search_text(request('search')) }}">
                             <button type="button"
                                     id="ordersSearchClear"
                                     class="btn btn-sm btn-link orders-search-clear slb-search-clear d-none"

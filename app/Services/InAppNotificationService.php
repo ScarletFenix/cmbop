@@ -2353,8 +2353,8 @@ class InAppNotificationService
             $query->where('category', $filters['category']);
         }
 
-        if (! empty($filters['q'])) {
-            $q = trim((string) $filters['q']);
+        $q = search_text($filters['q'] ?? null);
+        if ($q !== '') {
             $query->where(function ($builder) use ($q) {
                 $builder->where('title', 'like', "%{$q}%")
                     ->orWhere('message', 'like', "%{$q}%");

@@ -23,8 +23,8 @@ class AudienceController extends Controller
             default => AudienceInventoryService::AUDIENCE_ADVERTISERS,
         };
 
-        $search = $request->get('q');
-        $users = $inventory->paginate($audienceKey, $search);
+        $search = search_text($request->get('q'));
+        $users = $inventory->paginate($audienceKey, $search !== '' ? $search : null);
         $stats = $inventory->stats();
         $campaignAudience = $audienceKey;
 

@@ -41,8 +41,8 @@ class AdminWithdrawalController extends Controller
                 $query->whereIn('status', ['completed', 'cancelled']);
             }
 
-            if ($request->filled('search')) {
-                $search = $request->search;
+            $search = search_text($request->input('search'));
+            if ($search !== '') {
                 $query->where(function ($q) use ($search) {
                     $q->where('id', 'like', "%{$search}%")
                         ->orWhereHas('user', function ($sub) use ($search) {

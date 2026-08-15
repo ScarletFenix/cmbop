@@ -5,7 +5,9 @@ namespace App\Services\Orders;
 use App\Models\ContentSubmission;
 use App\Models\Order;
 use App\Models\Wallet;
+use App\Services\CheckoutIntentService;
 use App\Services\Wallet\WalletLedgerService;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -117,15 +119,15 @@ class OrderRefundService
 
         $bonusRestored = 0.0;
         if ($order->payment_method === 'wallet') {
+            $bonusShare = $this->checkoutBonusShare($wallet, $order, $amount);
             $bonusReservedBefore = (float) $wallet->bonus_reserved;
-            $wallet->refundReserved($amount);
+            $wallet->refundReserved($amount, $bonusShare);
             $bonusRestored = max(0, round($bonusReservedBefore - (float) $wallet->bonus_reserved, 2));
         } else {
             // Card / Wise / bank / crypto may still hold leftover checkout bonus
-            // in reserved. Restore that slice as spend-only; credit only the
-            // captured cash. Crediting the full line minted withdrawable cash
-            // from promotional credit.
-            $bonusShare = min($amount, max(0, round((float) $wallet->bonus_reserved, 2)));
+            // in reserved. Restore only this line's share so a sibling reject
+            // cannot unlock the whole checkout promo while other paid rows remain.
+            $bonusShare = $this->checkoutBonusShare($wallet, $order, $amount);
             $cashShare = round($amount - $bonusShare, 2);
             if ($bonusShare > 0) {
                 $bonusReservedBefore = (float) $wallet->bonus_reserved;
@@ -162,6 +164,8 @@ class OrderRefundService
      * Drop reserved funds when an order is completed.
      * Wallet checkouts consume the full line. Card / manual checkouts only
      * consume leftover promotional reserve so it cannot be refunded as cash later.
+     * Shared checkout bonus is pro-rated across still-paid siblings so the
+     * first approve cannot burn promo that a later reject would mint as cash.
      */
     public function consumeReservedForSettledOrder(Order $order, Wallet $wallet): void
     {
@@ -170,15 +174,152 @@ class OrderRefundService
             return;
         }
 
+        $bonusShare = $this->checkoutBonusShare($wallet, $order, $total);
+
         if ($order->payment_method === 'wallet') {
-            $wallet->consumeReserved($total);
+            $wallet->consumeReserved($total, $bonusShare);
 
             return;
         }
 
-        $bonus = min($total, max(0, round((float) $wallet->bonus_reserved, 2)));
-        if ($bonus > 0) {
-            $wallet->consumeReserved($bonus);
+        if ($bonusShare > 0) {
+            $wallet->consumeReserved($bonusShare, $bonusShare);
         }
+    }
+
+    /**
+     * Split leftover checkout bonus across still-paid siblings that share
+     * the same reference. Using the whole reserved bucket on the first
+     * reject or approve unlocked promo that a later sibling refund would
+     * mint as withdrawable cash.
+     */
+    private function checkoutBonusShare(Wallet $wallet, Order $order, float $amount): float
+    {
+        $reserved = max(0, round((float) $wallet->bonus_reserved, 2));
+        if ($reserved <= 0 || $amount <= 0) {
+            return 0.0;
+        }
+
+        $reference = (string) ($order->reference_code ?? '');
+        $siblingTotal = 0.0;
+        if ($reference !== '') {
+            // Completed siblings already spent their share. Counting them
+            // again would leave leftover promo reserved after the last
+            // open line is approved or rejected.
+            $siblingTotal = $this->openCheckoutSiblingTotal(
+                (int) $order->user_id,
+                $reference,
+                [(int) $order->id]
+            );
+        }
+
+        if ($siblingTotal <= 0) {
+            return min($amount, $reserved);
+        }
+
+        $pool = round($amount + $siblingTotal, 2);
+        if ($pool <= 0) {
+            return min($amount, $reserved);
+        }
+
+        return min($amount, max(0, round($reserved * ($amount / $pool), 2)));
+    }
+
+    /**
+     * Restore this line's share of leftover checkout bonus (unpaid fail / cancel).
+     * Paid siblings keep their share reserved.
+     */
+    public function releaseReservedCheckoutBonus(Order $order): float
+    {
+        return $this->releaseReservedCheckoutBonusForReference(
+            (int) $order->user_id,
+            (string) ($order->reference_code ?? ''),
+            collect([$order])
+        );
+    }
+
+    /**
+     * Restore leftover checkout bonus for a failed/cancelled reference.
+     * Stripe-first (no rows) or no remaining open siblings releases the rest.
+     *
+     * @param  Collection<int, Order>  $failedOrders
+     */
+    public function releaseReservedCheckoutBonusForReference(
+        int $userId,
+        string $referenceCode,
+        $failedOrders,
+        ?float $fallbackBonus = null
+    ): float {
+        $advertiserRoleId = Wallet::advertiserRoleId();
+        if (! $advertiserRoleId || $userId <= 0) {
+            return 0.0;
+        }
+
+        $wallet = Wallet::where('user_id', $userId)->where('role_id', $advertiserRoleId)->lockForUpdate()->first();
+        if (! $wallet) {
+            return 0.0;
+        }
+
+        $reserved = max(0, round((float) $wallet->bonus_reserved, 2));
+        $failed = collect($failedOrders);
+        $failedIds = $failed->pluck('id')->filter()->map(fn ($id) => (int) $id)->all();
+        $failedTotal = round((float) $failed->sum(fn ($order) => (float) ($order->total_amount ?? 0)), 2);
+        $openTotal = $referenceCode !== ''
+            ? $this->openCheckoutSiblingTotal($userId, $referenceCode, $failedIds)
+            : 0.0;
+
+        if ($reserved <= 0) {
+            if ($openTotal <= 0) {
+                app(CheckoutIntentService::class)->takeBonus($userId, $referenceCode, $fallbackBonus);
+            }
+
+            return 0.0;
+        }
+
+        if ($openTotal > 0 && ($failed->isEmpty() || $failedTotal <= 0)) {
+            return 0.0;
+        }
+
+        $share = $reserved;
+        if ($openTotal > 0 && $failedTotal > 0) {
+            $pool = round($failedTotal + $openTotal, 2);
+            $share = min($reserved, max(0, round($reserved * ($failedTotal / $pool), 2)));
+        }
+
+        if ($share <= 0) {
+            return 0.0;
+        }
+
+        $wallet->refundReserved($share, $share);
+
+        $intents = app(CheckoutIntentService::class);
+        if ($openTotal <= 0) {
+            $intents->takeBonus($userId, $referenceCode, $fallbackBonus);
+        } else {
+            $intents->decrementBonus($userId, $referenceCode, $share);
+        }
+
+        return $share;
+    }
+
+    /**
+     * Still-open siblings that share this checkout's reserved promo.
+     * Pending rows still hold a claim; completed/cancelled already settled.
+     *
+     * @param  list<int>  $excludeIds
+     */
+    private function openCheckoutSiblingTotal(int $userId, string $reference, array $excludeIds = []): float
+    {
+        if ($reference === '' || $userId <= 0) {
+            return 0.0;
+        }
+
+        return round((float) Order::query()
+            ->where('reference_code', $reference)
+            ->where('user_id', $userId)
+            ->when($excludeIds !== [], fn ($q) => $q->whereNotIn('id', $excludeIds))
+            ->whereIn('payment_status', ['paid', 'pending'])
+            ->whereNotIn('status', ['completed', 'cancelled'])
+            ->sum('total_amount'), 2);
     }
 }

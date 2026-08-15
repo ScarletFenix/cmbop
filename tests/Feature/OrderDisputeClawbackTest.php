@@ -185,6 +185,64 @@ class OrderDisputeClawbackTest extends TestCase
         $this->assertDatabaseCount('order_item_disputes', 0);
     }
 
+    public function test_advertiser_cannot_dispute_unpaid_completed_order(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher);
+        $order = $this->makeCompletedOrder($advertiser, $site, [
+            'payment_status' => 'pending',
+            'paid_at' => null,
+        ]);
+
+        $response = $this->actingAs($advertiser)->postJson(
+            route('advertiser.orders.report-link-removed', $order->id),
+            ['reason' => 'Trying to dispute an unpaid completed order.']
+        );
+
+        $response->assertStatus(422)->assertJson(['success' => false]);
+        $this->assertDatabaseCount('order_item_disputes', 0);
+    }
+
+    public function test_uphold_unpaid_completed_order_does_not_credit_advertiser(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher);
+        $order = $this->makeCompletedOrder($advertiser, $site, [
+            'payment_status' => 'pending',
+            'paid_at' => null,
+        ]);
+        $pubWallet = $this->publisherWallet($publisher, 100);
+        $advWallet = $this->advertiserWallet($advertiser, 10);
+
+        $dispute = OrderItemDispute::create([
+            'order_id' => $order->id,
+            'order_item_id' => $order->items->first()->id,
+            'opened_by' => $advertiser->id,
+            'status' => OrderItemDispute::STATUS_OPEN,
+            'reason' => 'Legacy unpaid completed row should not mint a refund.',
+        ]);
+
+        $response = $this->actingAs($admin)->postJson(
+            route('admin.orders.disputes.uphold', $dispute->id),
+            ['admin_notes' => 'Confirmed this unpaid row must not credit the advertiser.']
+        );
+
+        $response->assertStatus(422)->assertJson(['success' => false]);
+
+        $pubWallet->refresh();
+        $advWallet->refresh();
+        $order->refresh();
+        $dispute->refresh();
+
+        $this->assertSame(100.0, (float) $pubWallet->balance);
+        $this->assertSame(10.0, (float) $advWallet->balance);
+        $this->assertSame('pending', $order->payment_status);
+        $this->assertSame(OrderItemDispute::STATUS_OPEN, $dispute->status);
+    }
+
     public function test_uphold_with_full_balance_debits_publisher_and_credits_advertiser(): void
     {
         $admin = $this->makeUser('admin');

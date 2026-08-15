@@ -24,7 +24,7 @@ class CommunityFeedbackController extends Controller
         }
 
         $status = $request->get('status');
-        $q = trim((string) $request->get('q', ''));
+        $q = search_text($request->get('q'));
 
         $problems = ProblemReport::query()
             ->with(['user:id,name,email', 'reviewer:id,name'])

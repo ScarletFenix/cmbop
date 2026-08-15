@@ -164,6 +164,24 @@ class NotificationEmailCtaFixesTest extends TestCase
         Mail::assertNotQueued(OrderStatusChanged::class, fn (OrderStatusChanged $mail) => $mail->hasTo($this->marketer->email));
     }
 
+    public function test_unpaid_order_lifecycle_skips_publisher(): void
+    {
+        Mail::fake();
+
+        $this->order->update(['payment_status' => 'pending', 'paid_at' => null]);
+
+        app(EmailNotificationService::class)->notifyOrderLifecycle(
+            $this->order->fresh(['user', 'items.site.publisher']),
+            'created',
+            null,
+            'pending',
+        );
+
+        Mail::assertQueued(OrderStatusChanged::class, fn (OrderStatusChanged $mail) => $mail->hasTo($this->admin->email));
+        Mail::assertQueued(OrderStatusChanged::class, fn (OrderStatusChanged $mail) => $mail->hasTo($this->advertiser->email));
+        Mail::assertNotQueued(OrderStatusChanged::class, fn (OrderStatusChanged $mail) => $mail->hasTo($this->publisher->email));
+    }
+
     public function test_site_status_email_cta_goes_to_publisher_websites(): void
     {
         $html = (new SiteStatusNotification($this->site->fresh('publisher'), 'activated'))->render();

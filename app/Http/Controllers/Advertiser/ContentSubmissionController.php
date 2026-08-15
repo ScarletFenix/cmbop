@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Advertiser;
 use App\Http\Controllers\Controller;
 use App\Models\ContentSubmission;
 use App\Models\OrderItem;
-use App\Models\Site;
 use App\Services\ContentUpload\ArticleDetectedLinks;
 use App\Services\ContentUpload\ArticleHtmlSanitizer;
 use App\Services\ContentUpload\ArticlePreviewHtml;
@@ -660,29 +659,28 @@ class ContentSubmissionController extends Controller
             return;
         }
 
-        // Publisher for the placement site (legacy site-bound submissions)
-        if ($submission->site_id) {
-            $site = Site::find($submission->site_id);
-            if ($site && (int) $site->publisher_id === (int) $user->id) {
-                return;
-            }
-        }
-
-        if ($submission->order_item_id && $submission->orderItem?->site?->publisher_id == $user->id) {
-            return;
-        }
-
-        // Library articles are linked via order_items.content_submission_id (site_id may be null)
-        $viaOrderItem = OrderItem::query()
-            ->where('content_submission_id', $submission->id)
-            ->whereHas('site', fn ($q) => $q->where('publisher_id', $user->id))
-            ->exists();
-
-        if ($viaOrderItem) {
+        // Registration attaches both portal roles, so a publisher can hit this
+        // advertiser route. Site ownership alone used to skip the paid check
+        // that publisher.content.download already enforces.
+        if ($this->publisherHasPaidDownloadAccess($submission, (int) $user->id)) {
             return;
         }
 
         abort(403);
+    }
+
+    private function publisherHasPaidDownloadAccess(ContentSubmission $submission, int $publisherId): bool
+    {
+        return OrderItem::query()
+            ->where(function ($q) use ($submission) {
+                $q->where('content_submission_id', $submission->id);
+                if ($submission->order_item_id) {
+                    $q->orWhere('id', $submission->order_item_id);
+                }
+            })
+            ->whereHas('site', fn ($q) => $q->where('publisher_id', $publisherId))
+            ->whereHas('order', fn ($q) => $q->where('payment_status', 'paid'))
+            ->exists();
     }
 
     protected function serializeSubmission(ContentSubmission $s): array

@@ -324,9 +324,17 @@ class ChatController extends Controller
             return true;
         }
 
-        return $order->items()->whereHas('site', function ($q) use ($user) {
+        $isPublisher = $order->items()->whereHas('site', function ($q) use ($user) {
             $q->where('publisher_id', $user->id);
         })->exists();
+
+        if (! $isPublisher) {
+            return false;
+        }
+
+        // Tasks already hide unpaid checkouts. Chat used to leak item ids
+        // and content links to the publisher before payment landed.
+        return $order->payment_status === 'paid' && $order->status !== 'cancelled';
     }
 
     /**

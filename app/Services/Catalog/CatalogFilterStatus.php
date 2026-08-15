@@ -32,7 +32,7 @@ class CatalogFilterStatus
      */
     public function summarize(Request $request, int $total, ?int $firstItem = null, ?int $lastItem = null): array
     {
-        $search = trim((string) $request->input('search', ''));
+        $search = search_text($request->input('search'));
         $countries = $this->selectedCountryCodes($request);
         $countryLabel = $this->countryLabels($countries);
         $niches = $this->selectedNiches($request);
@@ -133,7 +133,7 @@ class CatalogFilterStatus
      */
     public function emptyRecovery(Request $request): array
     {
-        $search = trim((string) $request->input('search', ''));
+        $search = search_text($request->input('search'));
         $countries = $this->selectedCountryCodes($request);
         $hasCountry = $countries !== [];
         $niches = $this->selectedNiches($request);
@@ -207,7 +207,7 @@ class CatalogFilterStatus
      */
     public function selectedNiches(Request $request): array
     {
-        $raw = trim((string) $request->input('category', ''));
+        $raw = search_text($request->input('category'));
         if ($raw === '') {
             return [];
         }
@@ -222,7 +222,7 @@ class CatalogFilterStatus
      */
     public function selectedCountryCodes(Request $request): array
     {
-        $raw = (string) $request->input('country', '');
+        $raw = search_text($request->input('country'));
         $codes = [];
         foreach (explode(',', $raw) as $code) {
             $normalized = strtolower(trim($code));
@@ -248,10 +248,15 @@ class CatalogFilterStatus
             if (isset($exceptLookup[$key])) {
                 continue;
             }
-            if (! $request->filled($key)) {
+            $raw = $request->input($key);
+            if (! is_scalar($raw)) {
                 continue;
             }
-            $query[$key] = $request->input($key);
+            $value = is_string($raw) ? trim($raw) : (string) $raw;
+            if ($value === '') {
+                continue;
+            }
+            $query[$key] = $value;
         }
 
         foreach ($merge as $key => $value) {

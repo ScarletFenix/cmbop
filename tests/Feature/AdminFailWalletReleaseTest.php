@@ -218,6 +218,14 @@ class AdminFailWalletReleaseTest extends TestCase
         $this->assertNull($submission->order_id);
         $this->assertNull($submission->order_item_id);
         $this->assertTrue($submission->canBeOrdered());
+
+        $wallet = Wallet::query()
+            ->where('user_id', $advertiser->id)
+            ->where('role_id', Wallet::advertiserRoleId())
+            ->first();
+        $this->assertNotNull($wallet);
+        $this->assertEqualsWithDelta(80.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(80.0, $wallet->withdrawableBalance(), 0.01);
     }
 
     public function test_admin_failed_does_not_cancel_a_completed_card_order(): void
@@ -318,9 +326,10 @@ class AdminFailWalletReleaseTest extends TestCase
         $source = file_get_contents(app_path('Http/Controllers/Admin/PaymentController.php'));
 
         $this->assertStringContainsString(
-            'use App\\Services\\Wallet\\WalletLedgerService;',
+            'use App\\Services\\Orders\\OrderRefundService;',
             $source
         );
         $this->assertStringContainsString('releaseWalletHoldOnAdminFailed', $source);
+        $this->assertStringContainsString('refundToAdvertiser', $source);
     }
 }

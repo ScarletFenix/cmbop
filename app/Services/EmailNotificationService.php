@@ -395,13 +395,16 @@ class EmailNotificationService
 
         $add($order->user, 'advertiser');
 
-        // Publishers are notified immediately — including scheduled orders (publish on the date).
-        foreach ($order->items as $item) {
-            $publisher = $item->site?->publisher;
-            if (! $publisher && $item->site?->publisher_id) {
-                $publisher = User::query()->find($item->site->publisher_id);
+        // Publishers only learn about paid work. Unpaid / pending card rows
+        // used to email a tasks deep-link before payment landed.
+        if ($order->payment_status === 'paid') {
+            foreach ($order->items as $item) {
+                $publisher = $item->site?->publisher;
+                if (! $publisher && $item->site?->publisher_id) {
+                    $publisher = User::query()->find($item->site->publisher_id);
+                }
+                $add($publisher, 'publisher');
             }
-            $add($publisher, 'publisher');
         }
 
         foreach ($this->usersWithRole('admin') as $admin) {

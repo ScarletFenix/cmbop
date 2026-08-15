@@ -16,8 +16,8 @@ class InvoiceController extends Controller
     {
         $query = Invoice::query()->with(['user:id,name,email', 'order:id,order_number']);
 
-        if ($request->filled('search')) {
-            $search = trim((string) $request->search);
+        $search = search_text($request->input('search'));
+        if ($search !== '') {
             $query->where(function ($q) use ($search) {
                 $q->where('invoice_number', 'like', "%{$search}%")
                     ->orWhere('order_number', 'like', "%{$search}%")

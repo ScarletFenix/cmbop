@@ -167,7 +167,7 @@ class CatalogController extends Controller
         $availableCountries = $this->getAvailableCountries();
         $selectedCountryCodes = array_values(array_filter(array_map(
             static fn ($c) => strtolower(trim((string) $c)),
-            explode(',', (string) $request->input('country', ''))
+            explode(',', search_text($request->input('country')))
         )));
         try {
             $countryPicker = app(CatalogCountryInventory::class)
@@ -312,7 +312,7 @@ class CatalogController extends Controller
         }
 
         $blacklist = UserBlacklist::where('user_id', auth()->id())->pluck('site_id')->toArray();
-        $showBlacklistedOnly = $request->filled('blacklist_filter') && (string) $request->blacklist_filter === '1';
+        $showBlacklistedOnly = search_text($request->input('blacklist_filter')) === '1';
         $bulkDeals = $this->loadBulkDeals($request, $blacklist, $showBlacklistedOnly);
 
         $urlVisibility = app(SiteUrlVisibility::class);
@@ -371,10 +371,11 @@ class CatalogController extends Controller
             $query->whereNotIn('id', $blacklist);
         }
 
-        if ($request->filled('country') && ! empty($request->country)) {
+        $bulkCountry = search_text($request->input('country'));
+        if ($bulkCountry !== '') {
             $countries = array_values(array_filter(array_map(function ($c) {
                 return strtolower(trim($c));
-            }, explode(',', (string) $request->country))));
+            }, explode(',', $bulkCountry))));
             if ($countries !== []) {
                 // Primary country only (scalar sites.country) — matches catalog flag.
                 app(CatalogCountryInventory::class)
@@ -382,10 +383,11 @@ class CatalogController extends Controller
             }
         }
 
-        if ($request->filled('language') && ! empty($request->language)) {
+        $bulkLanguage = search_text($request->input('language'));
+        if ($bulkLanguage !== '') {
             // Option A: all sites offering these languages (AND with country above).
             app(CatalogLanguageFilter::class)
-                ->constrainQuery($query, explode(',', (string) $request->language));
+                ->constrainQuery($query, explode(',', $bulkLanguage));
         }
 
         $bulkDeals = $query
@@ -453,7 +455,7 @@ class CatalogController extends Controller
         // Country & language stay on the dedicated multi-selects.
         // Parse before blacklist so a name search can still surface blocked rows.
         $catalogSearch = app(CatalogSearchQuery::class);
-        $rawSearch = trim((string) $request->input('search', ''));
+        $rawSearch = search_text($request->input('search'));
         $parsedSearch = $catalogSearch->parse($rawSearch);
         $searchMerge = $catalogSearch->mergeIntoRequestInput(
             $rawSearch,
@@ -464,7 +466,7 @@ class CatalogController extends Controller
         if ($searchMerge !== []) {
             $request->merge($searchMerge);
         }
-        $searchText = trim((string) $request->input('search', ''));
+        $searchText = search_text($request->input('search'));
 
         // Blacklist filter / browse hide — but free-text search includes matches
         // (dimmed via blacklisted-row) so buyers can find and unblock them.
@@ -481,8 +483,9 @@ class CatalogController extends Controller
             $query->whereNotIn('id', $blacklist);
         }
 
-        if ($request->filled('site')) {
-            $query->where('id', (int) $request->site);
+        $siteId = filter_number($request->input('site'));
+        if ($siteId !== null && (int) $siteId > 0) {
+            $query->where('id', (int) $siteId);
         }
 
         if ($searchText !== '') {
@@ -510,12 +513,10 @@ class CatalogController extends Controller
         }
 
         // Min rating — only sites with at least one advertiser rating at/above the floor.
-        if ($request->filled('rating_min') && Site::hasSitesColumn('rating_avg') && Site::hasSitesColumn('rating_count')) {
-            $ratingMin = (float) $request->input('rating_min');
-            if ($ratingMin > 0) {
-                $query->where('rating_count', '>=', 1)
-                    ->where('rating_avg', '>=', $ratingMin);
-            }
+        $ratingMin = filter_number($request->input('rating_min'));
+        if ($ratingMin !== null && $ratingMin > 0 && Site::hasSitesColumn('rating_avg') && Site::hasSitesColumn('rating_count')) {
+            $query->where('rating_count', '>=', 1)
+                ->where('rating_avg', '>=', $ratingMin);
         }
 
         // Has completions — denormalized completed_orders_count > 0.
@@ -532,56 +533,65 @@ class CatalogController extends Controller
             }
         }
 
-        if ($request->filled('da_min')) {
-            $query->where('da', '>=', (int) $request->da_min);
+        $daMin = filter_number($request->input('da_min'));
+        if ($daMin !== null) {
+            $query->where('da', '>=', (int) $daMin);
         }
-        if ($request->filled('da_max')) {
-            $query->where('da', '<=', (int) $request->da_max);
-        }
-
-        if ($request->filled('dr_min')) {
-            $query->where('dr', '>=', (int) $request->dr_min);
-        }
-        if ($request->filled('dr_max')) {
-            $query->where('dr', '<=', (int) $request->dr_max);
+        $daMax = filter_number($request->input('da_max'));
+        if ($daMax !== null) {
+            $query->where('da', '<=', (int) $daMax);
         }
 
-        if ($request->filled('traffic_min')) {
-            $query->where('traffic', '>=', (int) $request->traffic_min);
+        $drMin = filter_number($request->input('dr_min'));
+        if ($drMin !== null) {
+            $query->where('dr', '>=', (int) $drMin);
         }
-        if ($request->filled('traffic_max')) {
-            $query->where('traffic', '<=', (int) $request->traffic_max);
+        $drMax = filter_number($request->input('dr_max'));
+        if ($drMax !== null) {
+            $query->where('dr', '<=', (int) $drMax);
         }
 
-        if ($request->filled('category') && ! empty($request->category)) {
+        $trafficMin = filter_number($request->input('traffic_min'));
+        if ($trafficMin !== null) {
+            $query->where('traffic', '>=', (int) $trafficMin);
+        }
+        $trafficMax = filter_number($request->input('traffic_max'));
+        if ($trafficMax !== null) {
+            $query->where('traffic', '<=', (int) $trafficMax);
+        }
+
+        $categoryRaw = search_text($request->input('category'));
+        if ($categoryRaw !== '') {
             // category= uses `|` (publisher-aligned). Legacy comma URLs are parsed
             // longest-first against known niches — never blindly explode(',').
             // Include unknown tokens so niches not yet in `categories` still filter.
-            $categories = Category::catalogFilterNicheNames((string) $request->category);
+            $categories = Category::catalogFilterNicheNames($categoryRaw);
             if ($categories !== []) {
                 Category::constrainQueryToNicheNames($query, $categories);
             }
         }
 
-        if ($request->filled('country') && ! empty($request->country)) {
+        $countryRaw = search_text($request->input('country'));
+        if ($countryRaw !== '') {
             $countries = array_values(array_filter(array_map(function ($c) {
                 return strtolower(trim($c));
-            }, explode(',', $request->country))));
+            }, explode(',', $countryRaw))));
             // Primary country only (scalar sites.country) — matches catalog flag /
             // inventory counts. Do not match JSON countries "contains".
             app(CatalogCountryInventory::class)
                 ->constrainQueryToPrimaryCountries($query, $countries);
         }
 
-        if ($request->filled('language') && ! empty($request->language)) {
+        $languageRaw = search_text($request->input('language'));
+        if ($languageRaw !== '') {
             // Option A: language-only → all sites offering these languages (any country).
             // With country= also set, constraints AND. Never auto-sets country.
             // When country is set, drop language codes that are not paired with those countries.
-            $languageCodes = explode(',', (string) $request->language);
-            if ($request->filled('country') && ! empty($request->country)) {
+            $languageCodes = explode(',', $languageRaw);
+            if ($countryRaw !== '') {
                 $countryCodes = array_values(array_filter(array_map(
                     static fn ($c) => strtolower(trim((string) $c)),
-                    explode(',', (string) $request->country)
+                    explode(',', $countryRaw)
                 )));
                 $allowed = app(CountryLanguagePairs::class)
                     ->languageCodesForCountries($countryCodes);
@@ -599,11 +609,13 @@ class CatalogController extends Controller
 
         $advPriceSql = app(PlatformFeeService::class)->advertiserBaseSqlExpression('price');
 
-        if ($request->filled('price_min')) {
-            $query->whereRaw("({$advPriceSql}) >= ?", [$request->price_min]);
+        $priceMin = filter_number($request->input('price_min'));
+        if ($priceMin !== null) {
+            $query->whereRaw("({$advPriceSql}) >= ?", [$priceMin]);
         }
-        if ($request->filled('price_max')) {
-            $query->whereRaw("({$advPriceSql}) <= ?", [$request->price_max]);
+        $priceMax = filter_number($request->input('price_max'));
+        if ($priceMax !== null) {
+            $query->whereRaw("({$advPriceSql}) <= ?", [$priceMax]);
         }
 
         if ($request->filled('sponsored') && $request->sponsored == 1) {
@@ -1189,7 +1201,7 @@ class CatalogController extends Controller
     public function suggest(Request $request, CatalogSearchQuery $catalogSearch, SiteUrlVisibility $visibility): JsonResponse
     {
         $user = auth()->user();
-        $raw = trim((string) $request->query('q', $request->input('q', '')));
+        $raw = search_text($request->query('q', $request->input('q')));
         $parsed = $catalogSearch->parse($raw);
         $text = trim((string) ($parsed['text'] ?? ''));
 
@@ -1521,13 +1533,10 @@ class CatalogController extends Controller
     public function addToCart(Request $request)
     {
         try {
-            $id = $request->id;
-            $sensitiveType = $request->input('sensitive_type');
-            if ($sensitiveType === '' || $sensitiveType === null) {
-                $sensitiveType = null;
-            } else {
-                $sensitiveType = trim((string) $sensitiveType);
-            }
+            $rawId = $request->input('id');
+            $id = is_numeric($rawId) ? (int) $rawId : 0;
+            $sensitiveType = search_text($request->input('sensitive_type'));
+            $sensitiveType = $sensitiveType !== '' ? $sensitiveType : null;
 
             $hasHomepageInput = $request->exists('homepage_days');
             $homepageInput = $hasHomepageInput ? $request->input('homepage_days') : null;
@@ -1763,11 +1772,10 @@ class CatalogController extends Controller
     public function removeFromCart(Request $request)
     {
         try {
-            $id = $request->id;
-            $sensitiveType = $request->sensitive_type;
-            if ($sensitiveType === '') {
-                $sensitiveType = null;
-            }
+            $rawId = $request->input('id');
+            $id = is_numeric($rawId) ? (int) $rawId : 0;
+            $sensitiveType = search_text($request->input('sensitive_type'));
+            $sensitiveType = $sensitiveType !== '' ? $sensitiveType : null;
             $hasHomepageInput = $request->exists('homepage_days');
             $homepageDays = $hasHomepageInput ? $request->input('homepage_days') : null;
             $cart = session()->get('cart', []);
@@ -1799,12 +1807,11 @@ class CatalogController extends Controller
     public function updateCartQuantity(Request $request)
     {
         try {
-            $id = (int) $request->id;
+            $rawId = $request->input('id');
+            $id = is_numeric($rawId) ? (int) $rawId : 0;
             $quantity = (int) $request->quantity;
-            $sensitiveType = $request->sensitive_type;
-            if ($sensitiveType === '') {
-                $sensitiveType = null;
-            }
+            $sensitiveType = search_text($request->input('sensitive_type'));
+            $sensitiveType = $sensitiveType !== '' ? $sensitiveType : null;
             $hasHomepageInput = $request->exists('homepage_days');
             $homepageDays = $hasHomepageInput ? $request->input('homepage_days') : null;
             $cart = session()->get('cart', []);
@@ -2890,6 +2897,12 @@ class CatalogController extends Controller
                         ->with('error', 'Payment does not belong to this account.');
                 }
 
+                $intentType = (string) ($intent->metadata->type ?? '');
+                if ($intentType !== '' && ! in_array($intentType, ['order_payment', 'order'], true)) {
+                    return redirect()->route('advertiser.checkout')
+                        ->with('error', 'This payment is not an order checkout.');
+                }
+
                 if ($intent->status !== 'succeeded') {
                     return redirect()->route('advertiser.orders', ['payment_status' => 'failed'])
                         ->with('error', 'Card payment was not completed.');
@@ -2928,6 +2941,12 @@ class CatalogController extends Controller
                 if ((string) ($stripeSession->metadata->user_id ?? '') !== (string) auth()->id()) {
                     return redirect()->route('advertiser.checkout')
                         ->with('error', 'Payment does not belong to this account.');
+                }
+
+                $sessionType = (string) ($stripeSession->metadata->type ?? '');
+                if ($sessionType !== '' && ! in_array($sessionType, ['order_payment', 'order'], true)) {
+                    return redirect()->route('advertiser.checkout')
+                        ->with('error', 'This payment is not an order checkout.');
                 }
 
                 $newlyPaid = $paymentService->finalizeStripeFirstCheckout($referenceCode, $stripeSession);
@@ -3474,7 +3493,9 @@ class CatalogController extends Controller
             // while the advertiser pays the original total again.
             app(OrderPaymentService::class)->refundBonusReservedForReference(
                 (int) auth()->id(),
-                $referenceCode
+                $referenceCode,
+                null,
+                $package
             );
 
             Stripe::setApiKey(config('services.stripe.secret'));
@@ -3627,8 +3648,8 @@ class CatalogController extends Controller
             $query = Order::where('user_id', $userId)
                 ->with(OrderItemDispute::tableAvailable() ? ['items.latestDispute'] : ['items']);
 
-            $search = trim((string) $request->input('search', ''));
-            $statusFilter = strtolower(trim((string) $request->input('status', '')));
+            $search = search_text($request->input('search'));
+            $statusFilter = strtolower(search_text($request->input('status')));
 
             // Search filter — word-AND across order #, reference, site name/URL, live URL
             if ($search !== '') {
@@ -3670,22 +3691,26 @@ class CatalogController extends Controller
             }
 
             // Payment status filter
-            if ($request->filled('payment_status')) {
-                $query->where('payment_status', $request->payment_status);
+            $paymentStatus = search_text($request->input('payment_status'));
+            if ($paymentStatus !== '') {
+                $query->where('payment_status', $paymentStatus);
             }
 
             // Payment method filter
-            if ($request->filled('payment_method')) {
-                $query->where('payment_method', $request->payment_method);
+            $paymentMethod = search_text($request->input('payment_method'));
+            if ($paymentMethod !== '') {
+                $query->where('payment_method', $paymentMethod);
             }
 
             // Date range filter
-            if ($request->filled('date_from')) {
-                $query->whereDate('created_at', '>=', $request->date_from);
+            $dateFrom = search_text($request->input('date_from'));
+            if ($dateFrom !== '') {
+                $query->whereDate('created_at', '>=', $dateFrom);
             }
 
-            if ($request->filled('date_to')) {
-                $query->whereDate('created_at', '<=', $request->date_to);
+            $dateTo = search_text($request->input('date_to'));
+            if ($dateTo !== '') {
+                $query->whereDate('created_at', '<=', $dateTo);
             }
 
             AdvertiserOrderStatus::applyQueueOrder($query, $statusFilter);
@@ -4680,20 +4705,18 @@ class CatalogController extends Controller
 
     private function refundCheckoutBonus(int $userId, string $referenceCode): void
     {
-        $bonus = app(CheckoutIntentService::class)->takeBonus($userId, $referenceCode);
-        if ($bonus <= 0) {
-            return;
-        }
+        $failed = Order::query()
+            ->where('user_id', $userId)
+            ->where('reference_code', $referenceCode)
+            ->whereIn('payment_status', ['failed', 'pending'])
+            ->where('status', '!=', 'cancelled')
+            ->get();
 
-        $roleId = Wallet::advertiserRoleId();
-        if (! $roleId) {
-            return;
-        }
-
-        $wallet = Wallet::where('user_id', $userId)->where('role_id', $roleId)->first();
-        if ($wallet && (float) $wallet->bonus_reserved > 0) {
-            $wallet->refundReserved(min($bonus, (float) $wallet->bonus_reserved));
-        }
+        app(OrderRefundService::class)->releaseReservedCheckoutBonusForReference(
+            $userId,
+            $referenceCode,
+            $failed
+        );
     }
 
     /**

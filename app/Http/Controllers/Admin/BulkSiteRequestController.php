@@ -26,7 +26,7 @@ class BulkSiteRequestController extends Controller
 {
     public function index(Request $request)
     {
-        $status = $request->string('status')->toString();
+        $status = search_text($request->input('status'));
 
         $query = BulkSiteRequest::query()
             ->with(['publisher', 'handler'])

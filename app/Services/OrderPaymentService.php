@@ -29,6 +29,7 @@ class OrderPaymentService
      */
     public function markOrdersPaidFromStripeSession(string $referenceCode, object $session): Collection
     {
+        $this->assertStripeObjectIsOrderPayment($session);
         $sessionMeta = $this->sessionMetadataArray($session);
         $newlyPaid = DB::transaction(function () use ($referenceCode, $session) {
             $orders = Order::with('items')
@@ -99,6 +100,7 @@ class OrderPaymentService
      */
     public function markOrdersPaidFromPaymentIntent(string $referenceCode, object $intent): Collection
     {
+        $this->assertStripeObjectIsOrderPayment($intent);
         $meta = [];
         if (isset($intent->metadata)) {
             $meta = is_array($intent->metadata)
@@ -271,7 +273,7 @@ class OrderPaymentService
                 if (($fallback ?? 0) <= 0) {
                     $fallback = round((float) ($package['bonus_applied'] ?? 0), 2);
                 }
-                $this->refundBonusReservedForReference($resolvedUserId, $referenceCode, $fallback);
+                $this->refundBonusReservedForReference($resolvedUserId, $referenceCode, $fallback, $marked);
             }
             $this->forgetPendingCheckout($referenceCode);
 
@@ -309,22 +311,21 @@ class OrderPaymentService
     /**
      * Refund promotional credit reserved for a card checkout reference.
      */
-    public function refundBonusReservedForReference(int $userId, string $referenceCode, ?float $fallbackBonus = null): void
-    {
-        $bonus = app(CheckoutIntentService::class)->takeBonus($userId, $referenceCode, $fallbackBonus);
-        if ($bonus <= 0) {
-            return;
-        }
-
-        $roleId = Wallet::advertiserRoleId();
-        if (! $roleId) {
-            return;
-        }
-
-        $wallet = Wallet::where('user_id', $userId)->where('role_id', $roleId)->lockForUpdate()->first();
-        if ($wallet && (float) $wallet->bonus_reserved > 0) {
-            $wallet->refundReserved(min($bonus, (float) $wallet->bonus_reserved));
-        }
+    /**
+     * @param  Collection<int, Order>|null  $failedOrders
+     */
+    public function refundBonusReservedForReference(
+        int $userId,
+        string $referenceCode,
+        ?float $fallbackBonus = null,
+        ?Collection $failedOrders = null
+    ): void {
+        app(OrderRefundService::class)->releaseReservedCheckoutBonusForReference(
+            $userId,
+            $referenceCode,
+            $failedOrders ?? collect(),
+            $fallbackBonus
+        );
     }
 
     /**
@@ -379,6 +380,8 @@ class OrderPaymentService
      */
     private function finalizeStripeFirstCheckoutLocked(string $referenceCode, object $session): Collection
     {
+        $this->assertStripeObjectIsOrderPayment($session);
+
         $existingCount = Order::query()
             ->where('reference_code', $referenceCode)
             ->where('payment_method', 'card')
@@ -743,6 +746,23 @@ class OrderPaymentService
         }
 
         return (array) json_decode(json_encode($meta), true);
+    }
+
+    /**
+     * Wallet deposits and site-feature sessions must not settle catalog orders,
+     * even when the client reuses the same reference_code and amount.
+     */
+    public function assertStripeObjectIsOrderPayment(object $session): void
+    {
+        $meta = $this->sessionMetadataArray($session);
+        $type = isset($meta['type']) ? (string) $meta['type'] : '';
+        if ($type === '' || in_array($type, ['order_payment', 'order'], true)) {
+            return;
+        }
+
+        throw new \RuntimeException(
+            'Stripe settlement is not an order payment (type '.$type.').'
+        );
     }
 
     /**
