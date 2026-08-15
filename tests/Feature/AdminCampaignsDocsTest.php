@@ -38,6 +38,7 @@ class AdminCampaignsDocsTest extends TestCase
         $this->assertStringContainsString('must **not** finalize as sent', $body);
         $this->assertStringContainsString('reclaims them to `pending`', $body);
         $this->assertStringContainsString('already has a delivered/failed log FK', $body);
+        $this->assertStringContainsString('second database table without `payload`', $body);
         $this->assertStringContainsString('must **not** look like “no job”', $body);
         $this->assertStringContainsString('ops-mail-reminders.md', $body);
         $this->assertStringContainsString('even if that staff account also has a marketplace role', $body);

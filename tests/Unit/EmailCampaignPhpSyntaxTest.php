@@ -94,5 +94,13 @@ class EmailCampaignPhpSyntaxTest extends TestCase
         $this->assertSame(1, preg_match_all('/function reclaimOrphanedQueuedRecipients\b/', $model));
         $this->assertSame(1, preg_match_all('/function inFlightCampaignMailUserIds\b/', $model));
         $this->assertSame(1, preg_match_all('/function syncQueuedRecipientsWithAttachedLogs\b/', $model));
+        $this->assertTrue((bool) preg_match(
+            '/protected static function inFlightCampaignMailUserIds\(int \$campaignId\): \?array\s*\{(.*?)\n    protected static function hasQueuedSendJob/s',
+            $model,
+            $inFlight
+        ));
+        $this->assertStringContainsString('$mailFailed = true;', $inFlight[1]);
+        $this->assertStringNotContainsString('if (! Schema::hasColumn($table, \'payload\')) {
+                    return null;', $inFlight[1]);
     }
 }

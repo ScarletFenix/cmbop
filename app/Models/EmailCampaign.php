@@ -410,6 +410,7 @@ class EmailCampaign extends Model
 
         $ids = [];
         $sawUnscoped = false;
+        $mailFailed = false;
         $prefix = 'audience_campaign:'.$campaignId.':user:';
 
         $mail = (string) config('email_notifications.queue_connection', config('queue.default'));
@@ -433,8 +434,15 @@ class EmailCampaign extends Model
                     continue;
                 }
 
+                // Same unused-table hole as hasQueuedSendJob: a second
+                // database connection without payload must not look like
+                // "mail in flight" or orphans never reclaim.
                 if (! Schema::hasColumn($table, 'payload')) {
-                    return null;
+                    if ($connection === $mail) {
+                        $mailFailed = true;
+                    }
+
+                    continue;
                 }
 
                 DB::table($table)
@@ -466,11 +474,13 @@ class EmailCampaign extends Model
                         return true;
                     });
             } catch (\Throwable) {
-                return null;
+                if ($connection === $mail) {
+                    $mailFailed = true;
+                }
             }
         }
 
-        if ($sawUnscoped) {
+        if ($sawUnscoped || $mailFailed) {
             return null;
         }
 
