@@ -115,10 +115,19 @@ class BulkDoneDraftAndNicheUiTest extends TestCase
         $this->assertStringContainsString('align-items-start', $html);
         $this->assertStringContainsString('bulk-request-sidebar', $html);
         $this->assertStringContainsString('bulk-request-main', $html);
+        $this->assertStringContainsString('bulk-request-done', $html);
         $this->assertStringNotContainsString('max-height: 28rem', $html);
+        $mainPos = strpos($html, 'bulk-request-main');
+        $donePos = strpos($html, 'bulk-request-done');
+        $this->assertNotFalse($mainPos);
+        $this->assertNotFalse($donePos);
+        $this->assertGreaterThan($mainPos, $donePos);
+        $this->assertStringNotContainsString('id="bulkDoneForm"', substr($html, $mainPos, $donePos - $mainPos));
         $staffCss = file_get_contents(public_path('assets/css/staff-sites.css'));
         $this->assertStringContainsString('.bulk-request-show', $staffCss);
         $this->assertStringContainsString('.bulk-request-sidebar', $staffCss);
+        $this->assertStringContainsString('.bulk-request-show > .bulk-request-done', $staffCss);
+        $this->assertStringContainsString('.bulk-request-show .bulk-history-list', $staffCss);
         $this->assertStringContainsString('align-items: flex-start', $staffCss);
         $this->assertStringContainsString('.bulk-done-panel', $staffCss);
         $this->assertStringContainsString('.bulk-done-row__fields', $staffCss);
@@ -190,6 +199,34 @@ class BulkDoneDraftAndNicheUiTest extends TestCase
             ->assertSee('data-bulk-quality-warn', false)
             ->assertSee('Below bar', false)
             ->assertDontSee('Undefined variable $belowQuality', false);
+    }
+
+    public function test_bulk_notes_reject_non_string_payload(): void
+    {
+        $bulk = BulkSiteRequest::create([
+            'publisher_id' => $this->publisher->id,
+            'status' => BulkSiteRequest::STATUS_REQUESTED,
+            'estimated_count' => 1,
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.bulk-site-requests.show', $bulk))
+            ->post(route('marketing.bulk-site-requests.notes', $bulk), [
+                'admin_notes' => ['injected'],
+            ])
+            ->assertRedirect(route('marketing.bulk-site-requests.show', $bulk))
+            ->assertSessionHasErrors('admin_notes');
+
+        $this->assertNull($bulk->fresh()->admin_notes);
+
+        $this->actingAs($this->marketer)
+            ->post(route('marketing.bulk-site-requests.notes', $bulk), [
+                'admin_notes' => 'Keep this note',
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $this->assertSame('Keep this note', $bulk->fresh()->admin_notes);
     }
 
     public function test_marketing_layout_sidebar_collapse_uses_shell_tokens(): void

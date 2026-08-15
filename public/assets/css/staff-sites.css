@@ -553,6 +553,11 @@
   flex: 0 0 auto;
 }
 
+.bulk-request-show > .bulk-request-done {
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+}
+
 .bulk-request-show .card-body {
   padding: 0.85rem 1rem;
 }
@@ -577,27 +582,27 @@
   resize: vertical;
 }
 
-.bulk-history-list {
+.bulk-request-show .bulk-history-list {
   max-height: 16rem;
   overflow-y: auto;
 }
 
-.bulk-history-item {
+.bulk-request-show .bulk-history-item {
   padding: 0.45rem 0;
   border-bottom: 1px solid var(--bs-border-color, #e9ecef);
   font-size: 0.8125rem;
 }
 
-.bulk-history-item:first-child {
+.bulk-request-show .bulk-history-item:first-child {
   padding-top: 0;
 }
 
-.bulk-history-item:last-child {
+.bulk-request-show .bulk-history-item:last-child {
   border-bottom: 0;
   padding-bottom: 0;
 }
 
-.bulk-history-meta {
+.bulk-request-show .bulk-history-meta {
   margin-top: 0.2rem;
   font-size: 0.72rem;
 }

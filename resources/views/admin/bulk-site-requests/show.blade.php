@@ -144,8 +144,10 @@
                     </div>
                 </div>
             </div>
+        </div>
+    </div>
 
-            <div class="card border-0 shadow-sm border-primary-subtle">
+    <div class="card border-0 shadow-sm border-primary-subtle bulk-request-done">
                 <div class="card-body">
                     <h6 class="fw-semibold mb-1">Done — add sites &amp; notify publisher</h6>
                     <p class="small text-muted mb-3">
@@ -480,11 +482,9 @@
             @endif
         </div>
     </div>
-        </div>
-    </div>
 
     <div class="row g-3 align-items-start bulk-request-lower">
-        <div class="col-lg-8 bulk-request-stack">
+        <div class="col-12 bulk-request-stack">
             <div class="card border-0 shadow-sm">
                 <div class="card-body">
                     <h6 class="fw-semibold mb-1">Advanced: seed with per-row metrics</h6>
