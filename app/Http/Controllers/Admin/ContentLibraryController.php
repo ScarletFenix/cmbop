@@ -427,7 +427,7 @@ class ContentLibraryController extends Controller
             return false;
         }
 
-        if ($submission->isExpired() && ! $submission->isLinkedToOpenOrderItem()) {
+        if ($submission->isUnusedExpired()) {
             return false;
         }
 

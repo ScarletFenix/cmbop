@@ -363,6 +363,54 @@ class AdminContentLibraryTest extends TestCase
             ->assertSee(route('admin.orders.show', $order), false);
     }
 
+    public function test_cancelled_owner_order_id_is_not_the_library_order_link(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher);
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update(['title' => 'Ghost Cancelled Owner']);
+        $cancelled = $this->orderFor($advertiser, [
+            'payment_status' => 'failed',
+            'status' => 'cancelled',
+        ]);
+        $open = $this->orderFor($advertiser, [
+            'payment_status' => 'failed',
+            'status' => 'pending',
+        ]);
+        $submission->update(['order_id' => $cancelled->id, 'order_item_id' => null]);
+        $this->claimByItemOnly($submission, $open, $site);
+        $submission->update(['order_id' => $cancelled->id]);
+
+        $fresh = $submission->fresh()->load(['order', 'orderItems.order']);
+        $this->assertSame((int) $cancelled->id, (int) $fresh->order_id);
+        $this->assertSame((int) $open->id, (int) $fresh->libraryOrder()?->id);
+
+        $this->actingAs($admin)
+            ->get(route('admin.content-library.show', $submission))
+            ->assertOk()
+            ->assertSee($open->order_number)
+            ->assertSee(route('admin.orders.show', $open), false)
+            ->assertDontSee($cancelled->order_number)
+            ->assertDontSee(route('admin.orders.show', $cancelled), false);
+
+        $unused = $this->createApprovedSubmission($advertiser);
+        $unused->update(['title' => 'Ghost Unused Cancelled']);
+        $ghost = $this->orderFor($advertiser, [
+            'payment_status' => 'failed',
+            'status' => 'cancelled',
+        ]);
+        $unused->update(['order_id' => $ghost->id]);
+        $this->assertNull($unused->fresh()->load('order')->libraryOrder());
+
+        $this->actingAs($admin)
+            ->get(route('admin.content-library.show', $unused))
+            ->assertOk()
+            ->assertDontSee($ghost->order_number)
+            ->assertDontSee(route('admin.orders.show', $ghost), false);
+    }
+
     public function test_expired_item_only_leftover_stays_editable_and_staff_can_retry(): void
     {
         $admin = $this->admin();

@@ -926,11 +926,7 @@ class ContentSubmission extends Model
             return false;
         }
 
-        if ($this->isInUse() || $this->isLinkedToOpenOrderItem()) {
-            return true;
-        }
-
-        return ! $this->isExpired();
+        return ! $this->isUnusedExpired();
     }
 
     public function canEditArticle(): bool
@@ -941,7 +937,15 @@ class ContentSubmission extends Model
 
         // Catalog expiry is unused-inventory only. A leftover still on an
         // open order must stay editable so Pay again can be unblocked.
-        return ! $this->isExpired() || $this->isLinkedToOpenOrderItem();
+        return ! $this->isUnusedExpired();
+    }
+
+    /**
+     * Retention clock for unused inventory. Claimed leftovers are not this.
+     */
+    public function isUnusedExpired(): bool
+    {
+        return $this->isExpired() && ! $this->isLinkedToOpenOrderItem();
     }
 
     /**
@@ -1285,8 +1289,28 @@ class ContentSubmission extends Model
      */
     public function libraryOrder(): ?Order
     {
+        $claimId = $this->activeClaimOrderId();
+        if ($claimId) {
+            $owner = $this->relatedOwnerOrder();
+            if ($owner instanceof Order && (int) $owner->id === $claimId) {
+                return $owner;
+            }
+
+            $item = $this->placementItem();
+            if ($item && (int) $item->order_id === $claimId) {
+                $order = $item->relationLoaded('order')
+                    ? $item->order
+                    : $item->order()->first();
+                if ($order instanceof Order) {
+                    return $order;
+                }
+            }
+
+            return Order::query()->find($claimId);
+        }
+
         $owner = $this->relatedOwnerOrder();
-        if ($owner instanceof Order) {
+        if ($owner instanceof Order && $owner->status !== 'cancelled') {
             return $owner;
         }
 
@@ -1295,14 +1319,12 @@ class ContentSubmission extends Model
             $order = $item->relationLoaded('order')
                 ? $item->order
                 : $item->order()->first();
-            if ($order instanceof Order) {
+            if ($order instanceof Order && $order->status !== 'cancelled') {
                 return $order;
             }
         }
 
-        $claimId = $this->activeClaimOrderId();
-
-        return $claimId ? Order::query()->find($claimId) : null;
+        return null;
     }
 
     public function liveUrl(): ?string

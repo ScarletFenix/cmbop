@@ -389,7 +389,7 @@ class ContentLibraryController extends Controller
                 ->where('id', $data['replace_id'])
                 ->where('user_id', auth()->id())
                 ->first();
-            if ($replace?->isExpired()) {
+            if ($replace?->isUnusedExpired()) {
                 return response()->json([
                     'success' => false,
                     'title' => 'Expired',

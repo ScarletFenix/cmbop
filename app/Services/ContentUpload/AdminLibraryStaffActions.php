@@ -48,7 +48,7 @@ class AdminLibraryStaffActions
             ]);
         }
 
-        if ($submission->isExpired() && ! $submission->isLinkedToOpenOrderItem()) {
+        if ($submission->isUnusedExpired()) {
             throw ValidationException::withMessages([
                 'submission' => 'Expired unused articles are preview only. Ask the advertiser to upload a new file.',
             ]);
