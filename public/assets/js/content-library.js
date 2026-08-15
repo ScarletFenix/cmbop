@@ -899,7 +899,7 @@ document.getElementById('articleLinksSaveBtn')?.addEventListener('click', async 
         }
         const sub = data.submission || {};
         const html = sub.preview_html || previewModalState.html;
-        const stillApproved = data.approved === true && !sub.needs_image_rights && sub.can_order !== false;
+        const stillApproved = data.approved === true && !sub.needs_image_rights && sub.can_order !== false && sub.ready !== false;
         const editable = stillApproved;
         openPreviewModal(sub.title || previewModalState.title, html, sub.detected_links || links, previewModalState.submissionId, editable);
         if (!stillApproved) {
@@ -1283,8 +1283,8 @@ function dismissLibraryUploadByUser() {
     cancelLibraryUploadHandoffState();
     forceDismissUploadModal();
     if (saved && saved.id) {
-        if (saved.needs_image_rights || saved.availability === 'needs_fix' || saved.can_order === false) {
-            goToLibraryResult(saved, '', !!saved.can_order);
+        if (saved.needs_image_rights || saved.availability === 'needs_fix' || saved.can_order === false || saved.ready === false) {
+            goToLibraryResult(saved, '', !!saved.ready);
             return;
         }
         showLibraryFlash('Article uploaded. It is in your library.', true);
@@ -1707,7 +1707,7 @@ async function saveArticleEditor() {
             return;
         }
         const sub = data.submission || { id: articleEditorSubmissionId };
-        const stillApproved = data.approved === true && !sub.needs_image_rights && !!sub.can_order;
+        const stillApproved = data.approved === true && !sub.needs_image_rights && !!sub.can_order && sub.ready !== false;
         const msg = data.message
             || (stillApproved
                 ? 'Article saved and re-approved.'
@@ -2053,7 +2053,7 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
             rememberLibraryLanding(
                 data.submission,
                 data.message,
-                !!data.submission.can_order
+                !!data.submission.ready
             );
             const submission = await submissionForEditor(Object.assign({}, data.submission, {
                 editor_notice: data.submission.editor_notice

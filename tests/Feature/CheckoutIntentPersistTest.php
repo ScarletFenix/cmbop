@@ -167,4 +167,19 @@ class CheckoutIntentPersistTest extends TestCase
         $this->assertEqualsWithDelta(0.0, (float) $wallet->reserved_balance, 0.01);
         $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_reserved, 0.01);
     }
+
+    public function test_held_bonus_reads_remembered_promo_without_consuming_it(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $intents = app(CheckoutIntentService::class);
+
+        $this->assertSame(0.0, $intents->heldBonus(0, 'REF-HELD'));
+        $this->assertSame(0.0, $intents->heldBonus($advertiser->id, ''));
+
+        $intents->rememberBonus($advertiser->id, 'REF-HELD', 20);
+
+        $this->assertEqualsWithDelta(20.0, $intents->heldBonus($advertiser->id, 'REF-HELD'), 0.01);
+        $this->assertEqualsWithDelta(20.0, $intents->peekBonus($advertiser->id, 'REF-HELD'), 0.01);
+        $this->assertEqualsWithDelta(20.0, $intents->heldBonus($advertiser->id, 'REF-HELD'), 0.01);
+    }
 }

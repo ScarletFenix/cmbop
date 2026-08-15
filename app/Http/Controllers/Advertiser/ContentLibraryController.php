@@ -126,7 +126,7 @@ class ContentLibraryController extends Controller
             $query->whereNull('archived_at');
 
             if ($availability === 'available') {
-                $query->orderable();
+                $query->checkoutReady();
             } elseif ($availability === 'evaluating') {
                 $query->whereIn('moderation_status', [
                     ContentSubmission::STATUS_PENDING,
@@ -228,7 +228,7 @@ class ContentLibraryController extends Controller
         $hasPublisherStatus = Schema::hasColumn('order_items', 'publisher_status');
         $availabilityCounts = [
             'all' => (int) (clone $countScope)->count(),
-            'available' => (int) (clone $countScope)->orderable()->count(),
+            'available' => (int) (clone $countScope)->checkoutReady()->count(),
             'evaluating' => (int) (clone $countScope)
                 ->whereIn('moderation_status', [
                     ContentSubmission::STATUS_PENDING,
@@ -570,7 +570,7 @@ class ContentLibraryController extends Controller
         if (! $submission->isReadyForCheckout()) {
             return redirect()
                 ->route('advertiser.content-library')
-                ->with('error', 'Add anchor text and a valid HTTPS target URL, or confirm continuing without a link.');
+                ->with('error', ContentSubmission::CHECKOUT_LINK_MESSAGE);
         }
 
         // Keep existing cart sites and any publication date already chosen at checkout.
@@ -621,6 +621,7 @@ class ContentLibraryController extends Controller
             'word_count' => $s->word_count,
             'moderation_status' => $s->moderation_status,
             'can_order' => $s->canBeOrdered(),
+            'ready' => $s->isReadyForCheckout(),
             'editable' => $s->canEditArticle(),
             'has_file' => $s->hasStoredFile(),
             'detected_links' => $s->detectedLinks(),
@@ -654,6 +655,7 @@ class ContentLibraryController extends Controller
             'target_url' => $s->target_url,
             'detected_links' => $s->detectedLinks(),
             'has_link' => $s->hasLink(),
+            'ready' => $s->isReadyForCheckout(),
             'can_order' => $s->canBeOrdered(),
             'editable' => $s->canEditArticle(),
             'has_file' => $s->hasStoredFile(),

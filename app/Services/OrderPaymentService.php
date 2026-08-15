@@ -82,6 +82,14 @@ class OrderPaymentService
                 $newlyPaid->push($order->fresh('items'));
             }
 
+            if ($newlyPaid->isNotEmpty()) {
+                $this->rereserveReleasedCheckoutBonus(
+                    (int) $newlyPaid->first()->user_id,
+                    $referenceCode,
+                    (float) ($meta['bonus_applied'] ?? 0)
+                );
+            }
+
             // Keep leftover checkout bonus reserved until approve/reject.
             // Consuming here made card+bonus rejects credit the promo slice as cash.
 
@@ -151,6 +159,14 @@ class OrderPaymentService
                     'status' => 'pending',
                 ]);
                 $newlyPaid->push($order->fresh('items'));
+            }
+
+            if ($newlyPaid->isNotEmpty()) {
+                $this->rereserveReleasedCheckoutBonus(
+                    (int) $newlyPaid->first()->user_id,
+                    $referenceCode,
+                    (float) ($meta['bonus_applied'] ?? 0)
+                );
             }
 
             // Keep leftover checkout bonus reserved until approve/reject.
@@ -329,6 +345,46 @@ class OrderPaymentService
     /**
      * @param  Collection<int, Order>|null  $failedOrders
      */
+    /**
+     * If fail/cancel already returned this checkout's promo to bonus_balance,
+     * hold it again when the same card payment later marks the order paid.
+     */
+    public function rereserveReleasedCheckoutBonus(int $userId, string $referenceCode, float $bonusApplied): float
+    {
+        $bonusApplied = round($bonusApplied, 2);
+        if ($userId <= 0 || $bonusApplied <= 0.009) {
+            return 0.0;
+        }
+
+        $intents = app(CheckoutIntentService::class);
+        $held = $intents->peekBonus($userId, $referenceCode);
+        $need = round(max(0, $bonusApplied - $held), 2);
+        if ($need <= 0) {
+            return 0.0;
+        }
+
+        $roleId = Wallet::advertiserRoleId();
+        if (! $roleId) {
+            return 0.0;
+        }
+
+        $wallet = Wallet::lockOrCreateForRole($userId, $roleId);
+        $moved = $wallet->reserveBonusOnly($need);
+        if ($moved <= 0) {
+            return 0.0;
+        }
+
+        $intents->rememberBonus($userId, $referenceCode, round($held + $moved, 2));
+
+        Log::info('Re-reserved checkout bonus after late card mark-paid', [
+            'user_id' => $userId,
+            'reference_code' => $referenceCode,
+            'amount' => $moved,
+        ]);
+
+        return $moved;
+    }
+
     public function refundBonusReservedForReference(
         int $userId,
         string $referenceCode,
@@ -637,6 +693,22 @@ class OrderPaymentService
             return collect();
         }
 
+        $packageSessionId = search_text($package['stripe_session_id'] ?? '');
+        $incomingId = (string) ($session->id ?? '');
+        $isPaymentIntent = ($session->object ?? null) === 'payment_intent'
+            || str_starts_with($incomingId, 'pi_');
+        if ($packageSessionId !== '' && $incomingId !== '' && ! $isPaymentIntent
+            && $packageSessionId !== $incomingId) {
+            Log::warning('Stripe session does not match current checkout package', [
+                'reference_code' => $referenceCode,
+                'package_session_id' => $packageSessionId,
+                'session_id' => $incomingId,
+            ]);
+            $this->creditCapturedCardWhenPackageMissing($referenceCode, $session);
+
+            return collect();
+        }
+
         $meta = $this->sessionMetadataArray($session);
         $packageUserId = (int) ($package['user_id'] ?? 0);
         $metaUserId = isset($meta['user_id']) ? (int) $meta['user_id'] : 0;
@@ -751,7 +823,8 @@ class OrderPaymentService
                     ? ContentSubmission::query()->whereKey($submissionId)->lockForUpdate()->first()
                     : null;
                 $articleTaken = $submission && $submission->isClaimedByAnotherOrder();
-                $attachSubmission = $submission && ! $articleTaken;
+                $articleUnready = $submission && ! $articleTaken && ! $submission->isReadyForCheckout();
+                $attachSubmission = $submission && ! $articleTaken && ! $articleUnready;
 
                 $order = $this->createPaidCardOrderRow($schema, [
                     'user_id' => $userId,
@@ -809,20 +882,22 @@ class OrderPaymentService
 
                 $item = OrderItem::create($schema->filterExistingColumns('order_items', $itemPayload));
 
-                if ($articleTaken) {
-                    app(OrderRefundService::class)->cancelAndRefund(
-                        $order,
-                        'Content Library article was already purchased on another checkout'
-                    );
+                if ($articleTaken || $articleUnready) {
+                    $reason = $articleTaken
+                        ? 'Content Library article was already purchased on another checkout'
+                        : 'Content Library article is no longer available for checkout';
+                    app(OrderRefundService::class)->cancelAndRefund($order, $reason);
                     $refundedInFinalize = round(
                         $refundedInFinalize + (float) $order->total_amount,
                         2
                     );
-                    Log::warning('Refunded duplicate Content Library Stripe checkout', [
-                        'reference_code' => $referenceCode,
-                        'order_id' => $order->id,
-                        'content_submission_id' => $submission?->id,
-                    ]);
+                    Log::warning($articleTaken
+                        ? 'Refunded duplicate Content Library Stripe checkout'
+                        : 'Refunded Stripe checkout for an unready Content Library article', [
+                            'reference_code' => $referenceCode,
+                            'order_id' => $order->id,
+                            'content_submission_id' => $submission?->id,
+                        ]);
 
                     continue;
                 }
@@ -890,6 +965,14 @@ class OrderPaymentService
         $unfulfilled = round(max(0, $expected - $fulfilled - $refundedInFinalize), 2);
         if ($userId > 0 && $unfulfilled > 0.009) {
             $this->creditUnfulfilledCardCapture($userId, $referenceCode, $unfulfilled);
+        }
+
+        if ($userId > 0) {
+            $this->rereserveReleasedCheckoutBonus(
+                $userId,
+                $referenceCode,
+                (float) ($package['bonus_applied'] ?? $meta['bonus_applied'] ?? 0)
+            );
         }
 
         $this->forgetPendingCheckout($referenceCode);

@@ -441,15 +441,34 @@ class ContentSubmissionController extends Controller
             $data['anchor_text'] = trim(preg_replace('/\s+/', ' ', (string) $data['anchor_text']) ?? '');
         }
 
-        if (! empty($data['target_url'])) {
-            $url = trim($data['target_url']);
-            if (! filter_var($url, FILTER_VALIDATE_URL) || ! str_starts_with(strtolower($url), 'https://')) {
+        if (array_key_exists('target_url', $data)) {
+            $url = trim((string) $data['target_url']);
+            if ($url === '') {
+                $data['target_url'] = null;
+            } elseif (! filter_var($url, FILTER_VALIDATE_URL) || ! str_starts_with(strtolower($url), 'https://')) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Target URL must be a valid HTTPS URL.',
                 ], 422);
+            } else {
+                $data['target_url'] = $url;
             }
-            $data['target_url'] = $url;
+        }
+
+        if (array_key_exists('anchor_text', $data) || array_key_exists('target_url', $data)) {
+            $probe = $submission->replicate();
+            if (array_key_exists('anchor_text', $data)) {
+                $probe->anchor_text = $data['anchor_text'];
+            }
+            if (array_key_exists('target_url', $data)) {
+                $probe->target_url = $data['target_url'];
+            }
+            if (! $probe->hasCheckoutReadyLinks()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => ContentSubmission::CHECKOUT_LINK_MESSAGE,
+                ], 422);
+            }
         }
 
         if (! empty($data['feature_image_url'])) {
@@ -613,6 +632,8 @@ class ContentSubmissionController extends Controller
             'country' => $submission->country,
             'language' => $submission->language,
             'can_order' => $submission->canBeOrdered(),
+            'ready' => $submission->isReadyForCheckout(),
+            'availability' => $submission->libraryAvailability(),
             'anchor_text' => $submission->anchor_text,
             'target_url' => $submission->target_url,
             'feature_image_url' => $submission->feature_image_url

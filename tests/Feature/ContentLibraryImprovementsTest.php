@@ -913,6 +913,139 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertTrue($fresh->canBeOrdered());
     }
 
+    public function test_preview_patch_rejects_a_half_filled_checkout_link(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+
+        $this->actingAs($advertiser)
+            ->patchJson(route('advertiser.content-submissions.update', $submission), [
+                'target_url' => '',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', ContentSubmission::CHECKOUT_LINK_MESSAGE);
+
+        $fresh = $submission->fresh();
+        $this->assertSame('https://example.com/tools', $fresh->target_url);
+        $this->assertSame(ContentSubmission::STATUS_APPROVED, $fresh->moderation_status);
+        $this->assertTrue($fresh->isReadyForCheckout());
+        $this->assertSame('available', $fresh->libraryAvailability());
+    }
+
+    public function test_incomplete_link_is_not_shown_as_orderable(): void
+    {
+        $advertiser = $this->advertiser();
+        $ready = $this->createApprovedSubmission($advertiser);
+        $ready->update(['title' => 'Ready To Order']);
+
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'title' => 'Incomplete Link Piece',
+            'target_url' => null,
+            'evaluation_report' => [
+                'summary' => 'Your article was approved for publication. You can now select websites and place an order.',
+            ],
+        ]);
+
+        $fresh = $submission->fresh();
+        $this->assertTrue($fresh->canBeOrdered());
+        $this->assertFalse($fresh->isReadyForCheckout());
+        $this->assertSame('needs_fix', $fresh->libraryAvailability());
+        $this->assertSame(ContentSubmission::CHECKOUT_LINK_MESSAGE, $fresh->libraryFixSummary());
+        $this->assertSame(ContentSubmission::CHECKOUT_LINK_MESSAGE, $fresh->editorNotice());
+        $this->assertFalse(
+            ContentSubmission::query()->whereKey($submission->id)->checkoutReady()->exists()
+        );
+        $this->assertTrue(
+            ContentSubmission::query()->whereKey($submission->id)->needsLibraryFix()->exists()
+        );
+
+        $approved = $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library'))
+            ->assertOk()
+            ->assertSee('Ready To Order')
+            ->assertDontSee('Incomplete Link Piece')
+            ->getContent();
+
+        $this->assertStringNotContainsString(
+            route('advertiser.content-library.order', $submission, false),
+            $approved
+        );
+        $this->assertMatchesRegularExpression(
+            '/aria-label="Needs corrections, 1 article"/',
+            $approved
+        );
+
+        $needsFix = $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', ['status' => 'all', 'availability' => 'needs_fix']))
+            ->assertOk()
+            ->assertSee('Incomplete Link Piece')
+            ->assertDontSee('Ready To Order')
+            ->assertSee(ContentSubmission::CHECKOUT_LINK_MESSAGE)
+            ->assertDontSee('You can now select websites and place an order')
+            ->assertSee('Edit article')
+            ->assertDontSee('>Resubmit<')
+            ->getContent();
+
+        $this->assertStringNotContainsString(
+            route('advertiser.content-library.order', $submission, false),
+            $needsFix
+        );
+        $this->assertStringContainsString('js-open-editor', $needsFix);
+        $this->assertStringContainsString('data-submission-id="'.$submission->id.'"', $needsFix);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', [
+                'edit' => $submission->id,
+                'upload' => 1,
+                'status' => 'all',
+                'availability' => 'needs_fix',
+            ]))
+            ->assertOk()
+            ->assertSee('name="replace_id"', false)
+            ->assertSee('value="'.$submission->id.'"', false);
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.content-submissions.preview', $submission))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('can_order', true)
+            ->assertJsonPath('ready', false)
+            ->assertJsonPath('availability', 'needs_fix')
+            ->assertJsonPath('editor_notice', ContentSubmission::CHECKOUT_LINK_MESSAGE);
+
+        $cart = $this->actingAs($advertiser)
+            ->getJson(route('advertiser.cart.get'))
+            ->assertOk()
+            ->json();
+        $articleIds = collect($cart['approved_articles'] ?? [])->pluck('id')->all();
+        $this->assertContains($ready->id, $articleIds);
+        $this->assertNotContains($submission->id, $articleIds);
+    }
+
+    public function test_evaluation_does_not_call_an_incomplete_link_ready_to_order(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        Mail::fake();
+
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'target_url' => null,
+            'approval_notified_at' => null,
+            'evaluation_report' => null,
+        ]);
+
+        $result = app(ContentUploadService::class)->reEvaluateSubmission($submission->fresh());
+
+        $this->assertFalse($result['approved']);
+        $this->assertSame('needs_checkout_link', $result['notify_status'] ?? null);
+        $this->assertSame(ContentSubmission::CHECKOUT_LINK_MESSAGE, $result['message'] ?? null);
+        $this->assertSame(ContentSubmission::STATUS_APPROVED, $submission->fresh()->moderation_status);
+    }
+
     public function test_advertiser_can_edit_article_html_with_links_and_images(): void
     {
         config(['content_moderation.enabled' => false]);
@@ -1533,7 +1666,7 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString("availability: 'needs_fix'", $js);
         $this->assertStringContainsString('submission.needs_image_rights', $js);
         $this->assertStringContainsString('function dismissLibraryUploadByUser', $js);
-        $this->assertStringContainsString('goToLibraryResult(saved, \'\', !!saved.can_order)', $js);
+        $this->assertStringContainsString('goToLibraryResult(saved, \'\', !!saved.ready)', $js);
         $this->assertStringContainsString('libraryResultFlash', $js);
         $this->assertStringContainsString('function applyLibraryResultFocus', $js);
         $this->assertStringNotContainsString('window.location.reload()', $js);

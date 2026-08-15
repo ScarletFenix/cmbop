@@ -235,7 +235,7 @@ class ContentRevisionService
 
                 if (! $existing->hasCheckoutReadyLinks()) {
                     throw ValidationException::withMessages([
-                        'confirm_existing' => 'Add a valid HTTPS target URL, or clear the link, before sending this article back.',
+                        'confirm_existing' => ContentSubmission::CHECKOUT_LINK_MESSAGE,
                     ]);
                 }
 
@@ -259,6 +259,12 @@ class ContentRevisionService
                     ]);
                 }
 
+                if ($submission->hasImages() && ! $submission->imageRightsCoverContent()) {
+                    throw ValidationException::withMessages([
+                        'content_submission_id' => 'Confirm image rights on this article before sending it back.',
+                    ]);
+                }
+
                 $sameAsCurrent = (int) $item->content_submission_id === (int) $submission->id;
                 $linkedElsewhere = $submission->order_id
                     && (int) $submission->order_id !== (int) $lockedOrder->id;
@@ -268,7 +274,11 @@ class ContentRevisionService
                     ->where('content_submission_id', $submission->id)
                     ->exists();
 
-                if (! $sameAsCurrent && ($linkedElsewhere || $usedBySibling)) {
+                if (! $sameAsCurrent && (
+                    $linkedElsewhere
+                    || $usedBySibling
+                    || $submission->isClaimedByAnotherOrder((int) $lockedOrder->id)
+                )) {
                     throw ValidationException::withMessages([
                         'content_submission_id' => 'That Content Library article is already used on another placement.',
                     ]);
@@ -282,7 +292,7 @@ class ContentRevisionService
 
                 if (! $submission->hasCheckoutReadyLinks()) {
                     throw ValidationException::withMessages([
-                        'content_submission_id' => 'Add a valid HTTPS target URL, or clear the link, before attaching this article.',
+                        'content_submission_id' => ContentSubmission::CHECKOUT_LINK_MESSAGE,
                     ]);
                 }
 

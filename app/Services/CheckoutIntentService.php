@@ -130,7 +130,7 @@ class CheckoutIntentService
         $bonus = $this->peekBonus($userId, $referenceCode, $fallback);
         Cache::forget(self::bonusCacheKey($userId, $referenceCode));
         $intent = $this->findIntent($referenceCode);
-        if ($intent && round((float) $intent->bonus_applied, 2) > 0) {
+        if ($intent && (float) $intent->bonus_applied > 0) {
             $intent->update(['bonus_applied' => 0]);
         }
 

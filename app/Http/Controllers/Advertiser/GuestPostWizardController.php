@@ -137,7 +137,7 @@ class GuestPostWizardController extends Controller
         $approvedArticles = ContentSubmission::query()
             ->forArticlePicker()
             ->where('user_id', auth()->id())
-            ->orderable()
+            ->checkoutReady()
             ->latest('id')
             ->limit(100)
             ->get();

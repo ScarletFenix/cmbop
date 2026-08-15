@@ -339,7 +339,7 @@
                                     $scoresAdvisory = ($submission->uniqueness_score !== null && $submission->uniqueness_score < $minU)
                                         || ($submission->quality_score !== null && $submission->quality_score < $minQ);
                                 @endphp
-                                @if($scoresAdvisory && $submission->canBeOrdered())
+                                @if($scoresAdvisory && $submission->isReadyForCheckout())
                                     <span class="library-scores-note">Advisory — still orderable</span>
                                 @endif
                             @else
@@ -374,7 +374,7 @@
                             </div>
                             @else
                             <div class="d-inline-flex flex-wrap gap-1 justify-content-end">
-                                @if($submission->canBeOrdered())
+                                @if($submission->isReadyForCheckout())
                                     <a class="btn btn-sm btn-primary"
                                        href="{{ route('advertiser.content-library.order', $submission, false) }}">
                                         Order
@@ -382,7 +382,7 @@
                                 @elseif($availability === 'evaluating')
                                     <span class="small text-muted">Processing</span>
                                 @elseif($availability === 'needs_fix')
-                                    @if($submission->canEditArticle() && $submission->hasImages() && ! $submission->imageRightsCoverContent() && ! $submission->needsCorrection())
+                                    @if($submission->canEditArticle() && ! $submission->needsCorrection())
                                         <button type="button"
                                                 class="btn btn-sm btn-outline-primary js-open-editor"
                                                 data-submission-id="{{ $submission->id }}">

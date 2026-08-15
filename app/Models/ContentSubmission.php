@@ -41,6 +41,8 @@ class ContentSubmission extends Model
 
     public const UNAVAILABLE_MESSAGE = 'Content Library article is no longer available';
 
+    public const CHECKOUT_LINK_MESSAGE = 'Add anchor text and a valid HTTPS target URL, or clear both link fields.';
+
     /** The advertiser owns or created every image. */
     public const IMAGE_RIGHTS_OWN = 'own';
 
@@ -245,6 +247,39 @@ class ContentSubmission extends Model
     }
 
     /**
+     * SQL mirror of hasCheckoutReadyLinks() — empty pair or a complete HTTPS pair.
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeHasCheckoutReadyLinks($query)
+    {
+        return $query->whereRaw(self::checkoutReadyLinksSql($query->getModel()->getTable()));
+    }
+
+    /**
+     * SQL negation of hasCheckoutReadyLinks() (half-filled or non-HTTPS target).
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeWithoutCheckoutReadyLinks($query)
+    {
+        return $query->whereRaw('NOT ('.self::checkoutReadyLinksSql($query->getModel()->getTable()).')');
+    }
+
+    /**
+     * SQL mirror of isReadyForCheckout() for list/exists queries.
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeCheckoutReady($query)
+    {
+        return $query->orderable()->hasCheckoutReadyLinks();
+    }
+
+    /**
      * SQL mirror of canBeOrdered() for list/exists queries (cart, checkout, dashboard).
      *
      * @param  Builder<static>  $query
@@ -279,7 +314,8 @@ class ContentSubmission extends Model
     }
 
     /**
-     * Rejected / error articles, plus approved articles that still need image rights.
+     * Rejected / error articles, plus approved articles that still need image
+     * rights or a complete checkout link.
      *
      * @param  Builder<static>  $query
      * @return Builder<static>
@@ -313,6 +349,8 @@ class ContentSubmission extends Model
                                         });
                                 });
                         });
+                })->orWhere(function ($links) {
+                    $links->orderable()->withoutCheckoutReadyLinks();
                 });
             })
             ->where(function ($exp) {
@@ -597,8 +635,11 @@ class ContentSubmission extends Model
      */
     public function libraryFixSummary(): string
     {
-        if ($this->hasImages() && ! $this->imageRightsCoverContent() && ! $this->needsCorrection()) {
-            return $this->editorNotice();
+        if (! $this->needsCorrection()) {
+            $notice = $this->editorNotice();
+            if ($notice !== '') {
+                return $notice;
+            }
         }
 
         return $this->evaluationSummary();
@@ -615,6 +656,10 @@ class ContentSubmission extends Model
 
         if ($this->hasImages() && ! $this->imageRightsCoverContent()) {
             return 'This article contains images. Confirm you own them, or add the source URL or copyright details.';
+        }
+
+        if ($this->canBeOrdered() && ! $this->hasCheckoutReadyLinks()) {
+            return self::CHECKOUT_LINK_MESSAGE;
         }
 
         return '';
@@ -824,6 +869,10 @@ class ContentSubmission extends Model
 
         if ($this->isEvaluating()) {
             return 'evaluating';
+        }
+
+        if ($this->canBeOrdered() && ! $this->hasCheckoutReadyLinks()) {
+            return 'needs_fix';
         }
 
         if ($this->canBeOrdered()) {
@@ -1053,6 +1102,24 @@ class ContentSubmission extends Model
         }
 
         $this->fill($attrs)->save();
+    }
+
+    /**
+     * Approximate SQL for hasCheckoutReadyLinks() (empty pair or HTTPS pair).
+     */
+    protected static function checkoutReadyLinksSql(string $table): string
+    {
+        $anchor = 'TRIM(IFNULL('.$table.'.anchor_text, \'\'))';
+        $target = 'TRIM(IFNULL('.$table.'.target_url, \'\'))';
+
+        return '(( '.$anchor.' = \'\' AND '.$target.' = \'\')'
+            .' OR ('
+            .$anchor.' != \'\''
+            .' AND '.$target.' != \'\''
+            .' AND LOWER('.$target.') LIKE \'https://%\''
+            .' AND LOWER('.$target.') NOT LIKE \'https:///%\''
+            .' AND LENGTH('.$target.') >= 12'
+            .'))';
     }
 
     /**
