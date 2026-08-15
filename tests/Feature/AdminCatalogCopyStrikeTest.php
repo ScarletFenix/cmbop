@@ -158,7 +158,14 @@ class AdminCatalogCopyStrikeTest extends TestCase
             ->assertSee('Next wave re-hides immediately.')
             ->getContent();
 
-        $this->assertStringNotContainsString('>Warned<', $html);
+        $this->assertMatchesRegularExpression(
+            '/id="user-'.$served->id.'"[\\s\\S]*?Served hide[\\s\\S]*?<\\/tr>/',
+            $html
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/id="user-'.$served->id.'"[\\s\\S]*?badge bg-warning[\\s\\S]*?Warned[\\s\\S]*?<\\/tr>/',
+            $html
+        );
     }
 
     public function test_stale_post_hide_is_hidden_by_default_and_visible_with_copy_all(): void
