@@ -596,6 +596,33 @@ class SiteEnrichmentTest extends TestCase
         $site->refresh();
         $this->assertNotNull($site->screenshot_path);
         $this->assertNotEmpty($site->enrichment_error);
+        $this->assertSame(0, ActivityLog::query()->where('action', 'site.screenshot_refreshed')->count());
+        $this->assertSame(0, ActivityLog::query()->where('action', 'site.screenshot_refresh_queued')->count());
+    }
+
+    public function test_async_metrics_refresh_logs_queued_not_refreshed(): void
+    {
+        Queue::fake();
+        config(['site_enrichment.enabled' => true]);
+
+        $this->seed(RolesTableSeeder::class);
+        $adminRole = Role::where('name', 'admin')->firstOrFail();
+        $admin = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $adminRole->id,
+        ]);
+        $admin->roles()->attach($adminRole->id);
+
+        $site = $this->makeSite();
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.sites.refresh-metrics', $site->id))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('message', 'Metrics refresh queued');
+
+        $this->assertSame(1, ActivityLog::query()->where('action', 'site.metrics_refresh_queued')->count());
+        $this->assertSame(0, ActivityLog::query()->where('action', 'site.metrics_refreshed')->count());
     }
 
     public function test_thum_io_capture_requests_a_desktop_viewport(): void

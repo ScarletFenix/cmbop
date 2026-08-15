@@ -538,6 +538,7 @@ class MarketingPanelHistoryTest extends TestCase
             ->assertSee('Edited site (1)', false)
             ->assertSee('Activated site (0)', false)
             ->assertSee('Approved site (0)', false)
+            ->assertSee('Queued metrics refresh (0)', false)
             ->assertDontSee('seeding, edits, activations, assigns, and bulk updates', false)
             ->getContent();
 

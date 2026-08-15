@@ -193,6 +193,15 @@ class SitePromotionTest extends TestCase
             ->assertOk()
             ->assertJsonPath('success', true)
             ->assertJsonFragment(['message' => 'Joined bulk discount programme (12% on 3–5 articles). Exclusive better-of with any timed sale — not stacked; advertisers see the post-fee-floor rate.']);
+
+        $this->assertSame(1, ActivityLog::query()->where('action', 'site.bulk_discount_joined')->count());
+
+        $this->actingAs($publisher)
+            ->postJson(route('publisher.sites.bulk-join', $site->id), ['percent' => 12])
+            ->assertOk();
+
+        $this->assertSame(1, ActivityLog::query()->where('action', 'site.bulk_discount_joined')->count());
+        $this->assertSame(0, ActivityLog::query()->where('action', 'site.bulk_discount_updated')->count());
     }
 
     public function test_publisher_can_join_bulk_at_eighty_percent(): void
@@ -225,6 +234,41 @@ class SitePromotionTest extends TestCase
             ->assertJsonFragment(['message' => 'Updated bulk discount to 80% on 3–5 articles. Exclusive better-of with any timed sale — not stacked; advertisers see the post-fee-floor rate.']);
 
         $this->assertSame(80.0, (float) $site->fresh()->bulk_discount_percent);
+        $this->assertSame(1, ActivityLog::query()->where('action', 'site.bulk_discount_joined')->count());
+        $this->assertSame(1, ActivityLog::query()->where('action', 'site.bulk_discount_updated')->count());
+    }
+
+    public function test_leave_bulk_and_clear_discount_log_once(): void
+    {
+        $publisher = $this->publisherWithWallet();
+        $site = $this->site($publisher);
+
+        $this->actingAs($publisher)
+            ->postJson(route('publisher.sites.bulk-join', $site->id), ['percent' => 15])
+            ->assertOk();
+        $this->actingAs($publisher)
+            ->postJson(route('publisher.sites.discount', $site->id), ['percent' => 20, 'days' => 7])
+            ->assertOk();
+
+        $this->actingAs($publisher)
+            ->deleteJson(route('publisher.sites.bulk-leave', $site->id))
+            ->assertOk();
+        $this->actingAs($publisher)
+            ->deleteJson(route('publisher.sites.discount.clear', $site->id))
+            ->assertOk();
+
+        $this->assertSame(1, ActivityLog::query()->where('action', 'site.bulk_discount_left')->count());
+        $this->assertSame(1, ActivityLog::query()->where('action', 'site.discount_cleared')->count());
+
+        $this->actingAs($publisher)
+            ->deleteJson(route('publisher.sites.bulk-leave', $site->id))
+            ->assertOk();
+        $this->actingAs($publisher)
+            ->deleteJson(route('publisher.sites.discount.clear', $site->id))
+            ->assertOk();
+
+        $this->assertSame(1, ActivityLog::query()->where('action', 'site.bulk_discount_left')->count());
+        $this->assertSame(1, ActivityLog::query()->where('action', 'site.discount_cleared')->count());
     }
 
     public function test_bulk_percent_outside_ten_to_eighty_is_rejected(): void

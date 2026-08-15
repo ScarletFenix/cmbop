@@ -120,20 +120,32 @@ class SiteEnrichmentController extends Controller
             $run = null;
         }
 
-        ActivityLogger::log(
-            'site.metrics_refreshed',
-            auth()->user()->name.' refreshed metrics for "'.$site->site_name.'"',
-            $site,
-            ['provider' => $request->input('provider'), 'sync' => $sync],
-            $site->site_name
-        );
+        $runStatus = (string) data_get($run, 'status', '');
+        $ok = $sync
+            ? in_array($runStatus, ['success', 'partial'], true)
+            : true;
+
+        if ($ok) {
+            $this->logRefreshOutcome(
+                $site,
+                $sync,
+                'site.metrics_refreshed',
+                'site.metrics_refresh_queued',
+                'metrics',
+                ['provider' => $request->input('provider')]
+            );
+        }
+
+        $providerError = trim((string) (data_get($run, 'error') ?? $site->fresh()?->enrichment_error ?? ''));
 
         return response()->json([
-            'success' => true,
-            'message' => $sync ? 'Metrics refreshed' : 'Metrics refresh queued',
+            'success' => $ok,
+            'message' => $sync
+                ? ($ok ? 'Metrics refreshed' : ($providerError !== '' ? $providerError : 'Metrics refresh failed.'))
+                : 'Metrics refresh queued',
             'run' => $run,
             'site' => $site->fresh(),
-        ]);
+        ], $ok ? 200 : 422);
     }
 
     public function refreshScreenshot(Request $request, int $id, SiteEnrichmentService $enrichment)
@@ -155,14 +167,6 @@ class SiteEnrichmentController extends Controller
             $run = null;
         }
 
-        ActivityLogger::log(
-            'site.screenshot_refreshed',
-            auth()->user()->name.' refreshed screenshot for "'.$site->site_name.'"',
-            $site,
-            ['sync' => $sync],
-            $site->site_name
-        );
-
         $fresh = $site->fresh();
         $usedPlaceholder = (bool) data_get($run, 'payload.used_placeholder', false);
         $runStatus = (string) data_get($run, 'status', '');
@@ -176,6 +180,16 @@ class SiteEnrichmentController extends Controller
         $ok = $sync
             ? (! $usedPlaceholder && $runStatus === 'success')
             : true;
+
+        if ($ok) {
+            $this->logRefreshOutcome(
+                $site,
+                $sync,
+                'site.screenshot_refreshed',
+                'site.screenshot_refresh_queued',
+                'screenshot'
+            );
+        }
 
         $message = $sync
             ? ($ok ? 'Screenshot refreshed' : ($providerError !== '' ? $providerError : 'Screenshot capture failed. Upload a site image instead.'))
@@ -499,5 +513,29 @@ class SiteEnrichmentController extends Controller
         }
 
         return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $properties
+     */
+    private function logRefreshOutcome(
+        Site $site,
+        bool $sync,
+        string $refreshedAction,
+        string $queuedAction,
+        string $noun,
+        array $properties = []
+    ): void {
+        $actor = auth()->user()?->name ?? 'Staff';
+
+        ActivityLogger::tryLog(
+            $sync ? $refreshedAction : $queuedAction,
+            $sync
+                ? $actor.' refreshed '.$noun.' for "'.$site->site_name.'"'
+                : $actor.' queued a '.$noun.' refresh for "'.$site->site_name.'"',
+            $site,
+            $properties + ['sync' => $sync],
+            $site->site_name
+        );
     }
 }
