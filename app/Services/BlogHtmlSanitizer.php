@@ -158,6 +158,9 @@ class BlogHtmlSanitizer
             '/<img\b([^>]*)>/iu',
             function (array $m): string {
                 $src = $this->attribute($m[1], 'src');
+                if (str_starts_with($src, '//')) {
+                    $src = 'https:'.$src;
+                }
                 $allowed = $src !== '' && (
                     preg_match('#^https?://#i', $src)
                     || str_starts_with($src, '/storage/')

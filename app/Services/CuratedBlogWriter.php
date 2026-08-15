@@ -3,8 +3,10 @@
 namespace App\Services;
 
 use App\Models\Blog;
+use App\Models\BlogTranslation;
 use App\Models\CuratedBlogTombstone;
 use App\Models\User;
+use App\Support\PublicI18n;
 use Illuminate\Support\Facades\Schema;
 
 class CuratedBlogWriter
@@ -93,10 +95,62 @@ class CuratedBlogWriter
         if ($existing) {
             $existing->fill($data);
             $existing->save();
+            self::syncPrimaryTranslation($existing);
 
             return $existing;
         }
 
-        return Blog::create($data);
+        $created = Blog::create($data);
+        self::syncPrimaryTranslation($created);
+
+        return $created;
+    }
+
+    /**
+     * Public locale URLs read blog_translations, not blogs.content.
+     * Upsert commands that only write blogs.* leave DE/FR/NL pillars stale
+     * after a deploy until an admin full-saves the post.
+     */
+    private static function syncPrimaryTranslation(Blog $blog): void
+    {
+        if (! Schema::hasTable('blog_translations')) {
+            return;
+        }
+
+        $locale = PublicI18n::isSupported($blog->primary_locale)
+            ? $blog->primary_locale
+            : 'en';
+
+        $slug = $blog->slug ?: 'post-'.$blog->id;
+        $slugTaken = BlogTranslation::query()
+            ->where('slug', $slug)
+            ->where(function ($query) use ($blog, $locale) {
+                $query->where('blog_id', '!=', $blog->id)
+                    ->orWhere('locale', '!=', $locale);
+            })
+            ->exists();
+        if ($slugTaken) {
+            $existingSlug = BlogTranslation::query()
+                ->where('blog_id', $blog->id)
+                ->where('locale', $locale)
+                ->value('slug');
+            $slug = is_string($existingSlug) && $existingSlug !== ''
+                ? $existingSlug
+                : $slug.'-'.$locale;
+        }
+
+        BlogTranslation::query()->updateOrCreate(
+            [
+                'blog_id' => $blog->id,
+                'locale' => $locale,
+            ],
+            [
+                'title' => $blog->title,
+                'slug' => $slug,
+                'excerpt' => $blog->excerpt,
+                'content' => $blog->content,
+                'is_published' => $blog->status === 'published',
+            ]
+        );
     }
 }

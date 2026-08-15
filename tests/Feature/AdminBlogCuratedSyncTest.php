@@ -279,4 +279,48 @@ class AdminBlogCuratedSyncTest extends TestCase
                 ->exists()
         );
     }
+
+    public function test_upsert_refreshes_stale_primary_translation_content(): void
+    {
+        $this->artisan('blog:upsert-gastbeitraege-europa')->assertSuccessful();
+
+        $blog = Blog::query()->where('slug', GastbeitraegeEuropaBlogPost::SLUG)->firstOrFail();
+        $locale = $blog->primary_locale ?: 'de';
+        $translation = $blog->translations()->where('locale', $locale)->firstOrFail();
+
+        $translation->forceFill(['content' => '<p>Stale translation body</p>'])->save();
+        $blog->forceFill([
+            'content' => '<p>Stale blogs body</p>',
+            'manually_edited_at' => null,
+        ])->save();
+
+        $this->artisan('blog:upsert-gastbeitraege-europa')->assertSuccessful();
+
+        $blog->refresh();
+        $translation->refresh();
+        $this->assertStringNotContainsString('Stale blogs body', (string) $blog->content);
+        $this->assertStringNotContainsString('Stale translation body', (string) $translation->content);
+        $this->assertSame($blog->content, $translation->content);
+    }
+
+    public function test_toggle_unpublish_is_not_reverted_by_curated_sync(): void
+    {
+        $this->artisan('blog:upsert-live-link-checklist')->assertSuccessful();
+
+        $admin = $this->adminUser();
+        $blog = Blog::query()->where('slug', LiveLinkChecklistBlogPost::SLUG)->firstOrFail();
+
+        $this->actingAs($admin)
+            ->post(route('admin.blogs.toggle-status', $blog->id))
+            ->assertRedirect(route('admin.blogs.index'));
+
+        $this->assertSame('draft', $blog->fresh()->status);
+        $this->assertNotNull($blog->fresh()->manually_edited_at);
+
+        $this->actingAs($admin)
+            ->post(route('admin.blogs.sync-curated'))
+            ->assertRedirect(route('admin.blogs.index'));
+
+        $this->assertSame('draft', $blog->fresh()->status);
+    }
 }

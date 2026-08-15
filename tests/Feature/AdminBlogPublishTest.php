@@ -45,6 +45,54 @@ class AdminBlogPublishTest extends TestCase
             ->assertSessionHas('success');
 
         $this->assertSame('draft', $blog->fresh()->status);
+        $this->assertNotNull($blog->fresh()->manually_edited_at);
+    }
+
+    public function test_store_does_not_steal_legacy_blog_slug(): void
+    {
+        $admin = $this->adminUser();
+        $legacy = Blog::factory()->published()->create([
+            'title' => 'Legacy Shared Slug',
+            'slug' => 'shared-public-slug',
+            'content' => '<p>Legacy body</p>',
+        ]);
+        BlogTranslation::create([
+            'blog_id' => $legacy->id,
+            'locale' => 'en',
+            'title' => 'Legacy Shared Slug',
+            'slug' => 'legacy-other-slug',
+            'excerpt' => 'Excerpt',
+            'content' => '<p>Legacy body</p>',
+            'is_published' => true,
+        ]);
+
+        $this->actingAs($admin)
+            ->post(route('admin.blogs.store'), [
+                'status' => 'published',
+                'translations' => [
+                    'en' => [
+                        'title' => 'New Shared Slug',
+                        'slug' => 'shared-public-slug',
+                        'content' => '<p>New body that must not hijack the legacy URL.</p>',
+                    ],
+                ],
+            ])
+            ->assertRedirect(route('admin.blogs.index'));
+
+        $created = Blog::query()->where('title', 'New Shared Slug')->first();
+        $this->assertNotNull($created);
+        $this->assertNotSame('shared-public-slug', $created->slug);
+        $this->assertNotSame(
+            'shared-public-slug',
+            $created->translations()->where('locale', 'en')->value('slug')
+        );
+
+        $html = $this->get(route('blog.show', ['slug' => 'shared-public-slug']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertMatchesRegularExpression('/<h1[^>]*>\s*Legacy Shared Slug\s*<\/h1>/', $html);
+        $this->assertDoesNotMatchRegularExpression('/<h1[^>]*>\s*New Shared Slug\s*<\/h1>/', $html);
     }
 
     public function test_republish_keeps_original_published_at(): void
