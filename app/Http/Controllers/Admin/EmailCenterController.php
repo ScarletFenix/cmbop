@@ -442,12 +442,14 @@ class EmailCenterController extends Controller
 
         $failed = EmailLog::query()
             ->where('status', EmailLog::STATUS_FAILED)
+            ->orderByDesc('id')
             ->get();
         $marked = [];
+        $claimedUuids = [];
 
         foreach ($failed as $log) {
             $stored = (string) data_get($log->meta, 'failed_job_uuid');
-            if ($stored === '' || ! in_array($stored, $uuids, true)) {
+            if ($stored === '' || ! in_array($stored, $uuids, true) || ! empty($claimedUuids[$stored])) {
                 continue;
             }
 
@@ -460,9 +462,14 @@ class EmailCenterController extends Controller
 
             $this->pendingMarkRetriedLog($log);
             $marked[$log->id] = true;
+            $claimedUuids[$stored] = true;
         }
 
         foreach ($uuids as $uuid) {
+            if (! empty($claimedUuids[$uuid])) {
+                continue;
+            }
+
             $payload = (string) ($payloadsByUuid[$uuid] ?? '');
             if ($payload === '') {
                 continue;
@@ -479,6 +486,7 @@ class EmailCenterController extends Controller
             $log = $matches->first();
             $this->pendingMarkRetriedLog($log);
             $marked[$log->id] = true;
+            $claimedUuids[$uuid] = true;
         }
     }
 
