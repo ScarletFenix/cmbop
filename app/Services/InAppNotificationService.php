@@ -2040,6 +2040,53 @@ class InAppNotificationService
         );
     }
 
+    /**
+     * @param  list<string>  $domains
+     */
+    public function notifyPublisherBulkItemsRejected(BulkSiteRequest $bulk, array $domains, string $note): void
+    {
+        $publisherId = (int) ($bulk->publisher_id ?? 0);
+        $domains = array_values(array_filter(array_map(
+            static fn ($domain) => trim((string) $domain),
+            $domains
+        )));
+        if ($publisherId <= 0 || $domains === []) {
+            return;
+        }
+
+        $count = count($domains);
+        $list = implode(', ', $domains);
+        $message = $count === 1
+            ? "We did not add {$list} from bulk request #{$bulk->id}."
+            : "We did not add these sites from bulk request #{$bulk->id}: {$list}.";
+        if (filled($note)) {
+            $message .= ' Note: '.trim($note);
+        }
+
+        $this->notify(
+            $publisherId,
+            self::TYPE_SITE_STATUS,
+            $count === 1
+                ? 'A site was not added from your bulk request'
+                : $count.' sites were not added from your bulk request',
+            $message,
+            [
+                'category' => self::CATEGORY_ACCOUNT,
+                'icon' => 'alert-triangle',
+                'priority' => InAppNotification::PRIORITY_HIGH,
+                'related' => $bulk,
+                'audience' => InAppNotification::AUDIENCE_PUBLISHER,
+                'action_label' => 'Open My Sites',
+                'action_url' => route('publisher.websites', [], false),
+                'meta' => [
+                    'bulk_site_request_id' => $bulk->id,
+                    'domains' => $domains,
+                    'note' => trim($note),
+                ],
+            ]
+        );
+    }
+
     public function notifyPublisherBulkSitesAdded(BulkSiteRequest $bulk, int $createdCount): void
     {
         $publisherId = (int) ($bulk->publisher_id ?? 0);

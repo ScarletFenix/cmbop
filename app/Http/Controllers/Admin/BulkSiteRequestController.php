@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Mail\BulkSiteItemsRejected;
 use App\Mail\BulkSiteRequestCancelled;
 use App\Mail\BulkSitesSeededNotification;
 use App\Models\ActivityLog;
@@ -219,6 +220,8 @@ class BulkSiteRequestController extends Controller
             $inputItems = [];
         }
 
+        $rejectedItemIds = $this->pendingRejectedItemIds($request, $pendingIds);
+
         // Only validate rows the marketer started or completed. Empty pending rows stay for later.
         $completeItemIds = [];
         $partialItemIds = [];
@@ -238,34 +241,56 @@ class BulkSiteRequestController extends Controller
             }
         }
 
+        // A filled row is kept (seeded). Delete only applies to unfinished pending rows.
+        $rejectedItemIds = array_values(array_diff($rejectedItemIds, $completeItemIds));
+        $partialItemIds = array_values(array_diff($partialItemIds, $rejectedItemIds));
+
         $maxSites = BulkSiteRequest::MAX_SITES_PER_REQUEST;
 
         $validator = Validator::make($request->all(), [
-            'items' => 'required|array|min:1|max:'.$maxSites,
+            'items' => 'nullable|array|max:'.$maxSites,
+            'rejected_item_ids' => 'nullable|array|max:'.$maxSites,
+            'rejected_item_ids.*' => 'integer',
+            'rejection_note' => 'nullable|string|max:1000',
         ], [
-            'items.required' => 'Fill at least one complete website block (Language, Country, DA, DR, Traffic, Niches) before Done.',
             'items.max' => "You can Done at most {$maxSites} websites per submission (same limit as publisher bulk).",
+            'rejection_note.max' => 'The publisher note must be at most 1000 characters.',
         ]);
 
         $validator->after(function ($validator) use (
+            $request,
             $inputItems,
             $pendingIds,
             $completeItemIds,
             $partialItemIds,
+            $rejectedItemIds,
             $allowedCountries,
             $allowedLanguages
         ) {
-            if ($completeItemIds === [] && $partialItemIds === []) {
+            if ($completeItemIds === [] && $rejectedItemIds === [] && $partialItemIds === []) {
                 $validator->errors()->add(
                     'items',
-                    'Fill at least one complete website block before clicking Done.'
+                    'Fill at least one complete website block, or delete sites you will not add, before clicking Done.'
                 );
 
                 return;
             }
 
+            if ($rejectedItemIds !== []) {
+                $note = trim((string) $request->input('rejection_note', ''));
+                if (strlen($note) < 10) {
+                    $validator->errors()->add(
+                        'rejection_note',
+                        'Add a note for the publisher about the removed sites (at least 10 characters).'
+                    );
+                }
+            }
+
             foreach ($inputItems as $itemId => $row) {
                 $itemId = (int) $itemId;
+                if (in_array($itemId, $rejectedItemIds, true)) {
+                    continue;
+                }
                 if (! in_array($itemId, $pendingIds, true)) {
                     $validator->errors()->add('items.'.$itemId, 'This row is not a pending website on this request.');
 
@@ -354,10 +379,10 @@ class BulkSiteRequestController extends Controller
                 ->with('error', 'Finish each started block completely, or clear it and submit only the finished blocks.');
         }
 
-        if ($completeItemIds === []) {
+        if ($completeItemIds === [] && $rejectedItemIds === []) {
             return back()
                 ->withInput()
-                ->with('error', 'Fill at least one complete website block before clicking Done.');
+                ->with('error', 'Fill at least one complete website block, or delete sites you will not add, before clicking Done.');
         }
 
         if (count($completeItemIds) > $maxSites) {
@@ -390,7 +415,31 @@ class BulkSiteRequestController extends Controller
             ];
         }
 
-        return $this->createDraftSitesAndNotify($bulkRequest, $rows, [], 'bulk_request.done');
+        $rejectedItems = [];
+        foreach ($rejectedItemIds as $itemId) {
+            $item = $pendingItems->get($itemId);
+            if (! $item) {
+                continue;
+            }
+            $rejectedItems[] = [
+                'id' => (int) $item->id,
+                'domain' => (string) $item->domain,
+                'site_url' => (string) $item->site_url,
+            ];
+        }
+
+        $rejectionNote = $rejectedItems === []
+            ? null
+            : trim((string) $request->input('rejection_note', ''));
+
+        return $this->createDraftSitesAndNotify(
+            $bulkRequest,
+            $rows,
+            [],
+            'bulk_request.done',
+            $rejectedItems,
+            $rejectionNote
+        );
     }
 
     /**
@@ -442,17 +491,35 @@ class BulkSiteRequestController extends Controller
      * @param  list<array<string, mixed>>  $rows
      * @param  list<array<string, mixed>>  $failures
      * @param  'bulk_request.done'|'bulk_request.seeded'  $action
+     * @param  list<array{id:int,domain:string,site_url:string}>  $rejectedItems
      */
-    private function createDraftSitesAndNotify(BulkSiteRequest $bulkRequest, array $rows, array $failures, string $action)
-    {
+    private function createDraftSitesAndNotify(
+        BulkSiteRequest $bulkRequest,
+        array $rows,
+        array $failures,
+        string $action,
+        array $rejectedItems = [],
+        ?string $rejectionNote = null
+    ) {
         if (! in_array($action, ['bulk_request.done', 'bulk_request.seeded'], true)) {
             throw new \InvalidArgumentException('Unsupported bulk history action.');
         }
 
         $created = 0;
         $createdDomains = [];
+        $deletedCount = 0;
+        $deletedDomains = [];
 
-        DB::transaction(function () use ($bulkRequest, $rows, &$created, &$failures, &$createdDomains) {
+        DB::transaction(function () use (
+            $bulkRequest,
+            $rows,
+            $rejectedItems,
+            &$created,
+            &$failures,
+            &$createdDomains,
+            &$deletedCount,
+            &$deletedDomains
+        ) {
             foreach ($rows as $row) {
                 $domain = $row['domain'];
 
@@ -512,6 +579,29 @@ class BulkSiteRequestController extends Controller
                 $createdDomains[] = $domain;
             }
 
+            $rejectedIds = array_values(array_unique(array_map(
+                static fn (array $item): int => (int) $item['id'],
+                $rejectedItems
+            )));
+            if ($rejectedIds !== []) {
+                $kept = $bulkRequest->items()
+                    ->whereIn('id', $rejectedIds)
+                    ->whereNull('site_id')
+                    ->get(['id', 'domain']);
+                $deletedDomains = $kept->pluck('domain')->filter()->map(fn ($d) => (string) $d)->values()->all();
+                $deletedCount = $bulkRequest->items()
+                    ->whereIn('id', $rejectedIds)
+                    ->whereNull('site_id')
+                    ->delete();
+
+                if ($deletedCount > 0) {
+                    $bulkRequest->forceFill([
+                        'estimated_count' => $bulkRequest->items()->count(),
+                        'handled_by' => auth()->id(),
+                    ])->save();
+                }
+            }
+
             if ($created > 0) {
                 $bulkRequest->forceFill([
                     'status' => BulkSiteRequest::STATUS_AWAITING_PUBLISHER,
@@ -521,6 +611,9 @@ class BulkSiteRequestController extends Controller
                 ])->save();
             }
         });
+
+        $fresh = $bulkRequest->fresh(['publisher']);
+        $publisher = $fresh?->publisher;
 
         if ($created > 0) {
             $verb = $action === 'bulk_request.done'
@@ -542,9 +635,6 @@ class BulkSiteRequestController extends Controller
                 'Bulk request #'.$bulkRequest->id
             );
 
-            $fresh = $bulkRequest->fresh(['publisher']);
-            $publisher = $fresh?->publisher;
-
             try {
                 if ($publisher?->email) {
                     Mail::to($publisher->email)->send(new BulkSitesSeededNotification($fresh, $created, $publisher));
@@ -560,21 +650,85 @@ class BulkSiteRequestController extends Controller
             }
         }
 
+        if ($deletedCount > 0) {
+            $note = trim((string) $rejectionNote);
+            ActivityLogger::log(
+                'bulk_request.items_rejected',
+                (auth()->user()->name ?? 'Staff').' removed '.$deletedCount.' pending site(s) from bulk request #'.$bulkRequest->id,
+                $bulkRequest,
+                [
+                    'bulk_site_request_id' => $bulkRequest->id,
+                    'publisher_id' => $bulkRequest->publisher_id,
+                    'rejected_count' => $deletedCount,
+                    'domains' => $deletedDomains,
+                    'note' => $note,
+                ],
+                'Bulk request #'.$bulkRequest->id
+            );
+
+            try {
+                if ($publisher?->email) {
+                    Mail::to($publisher->email)->send(
+                        new BulkSiteItemsRejected($fresh, $publisher, $deletedDomains, $note)
+                    );
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Failed to email publisher after bulk item reject: '.$e->getMessage());
+            }
+
+            try {
+                app(InAppNotificationService::class)
+                    ->notifyPublisherBulkItemsRejected($fresh, $deletedDomains, $note);
+            } catch (\Throwable $e) {
+                Log::warning('Failed to send in-app bulk item reject notice: '.$e->getMessage());
+            }
+        }
+
         $remaining = $bulkRequest->items()->whereNull('site_id')->count();
         $headline = $action === 'bulk_request.done' ? 'Done' : 'Seed';
-        $message = $created > 0
-            ? "{$headline} — {$created} site(s) added to the publisher’s Pending sites. Publisher notified (email + in-app). Still inactive until they finish details and you verify."
-            : 'No sites were added.';
-        if ($created > 0 && $remaining > 0) {
-            $message .= " {$remaining} website(s) still pending — fill and submit them when ready.";
+        $parts = [];
+        if ($created > 0) {
+            $parts[] = "{$headline} — {$created} site(s) added to the publisher’s Pending sites. Publisher notified (email + in-app). Still inactive until they finish details and you verify.";
+        }
+        if ($deletedCount > 0) {
+            $parts[] = $deletedCount === 1
+                ? '1 site was removed and the publisher was notified.'
+                : "{$deletedCount} sites were removed and the publisher was notified.";
+        }
+        $message = $parts !== [] ? implode(' ', $parts) : 'No sites were added.';
+        if ($remaining > 0 && ($created > 0 || $deletedCount > 0)) {
+            $message .= $created > 0
+                ? " {$remaining} website(s) still pending — fill and submit them when ready."
+                : " {$remaining} website(s) still pending.";
         }
         if ($failures !== []) {
             $message .= ' '.count($failures).' row(s) failed.';
         }
 
+        $didWork = $created > 0 || $deletedCount > 0;
+
         return back()
-            ->with($created > 0 ? 'success' : 'error', $message)
+            ->with($didWork ? 'success' : 'error', $message)
             ->with('seed_failures', $failures);
+    }
+
+    /**
+     * @param  list<int>  $pendingIds
+     * @return list<int>
+     */
+    private function pendingRejectedItemIds(Request $request, array $pendingIds): array
+    {
+        $raw = $request->input('rejected_item_ids', []);
+        if (! is_array($raw)) {
+            $raw = [];
+        }
+
+        return collect($raw)
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0 && in_array($id, $pendingIds, true))
+            ->unique()
+            ->values()
+            ->all();
     }
 
     /**

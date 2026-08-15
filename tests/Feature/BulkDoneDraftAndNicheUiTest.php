@@ -67,6 +67,8 @@ class BulkDoneDraftAndNicheUiTest extends TestCase
             ->get(route('marketing.bulk-site-requests.show', $bulk))
             ->assertOk()
             ->assertSee('id="bulkDoneForm"', false)
+            ->assertSee('data-bulk-reject-row', false)
+            ->assertSee('name="rejection_note"', false)
             ->assertSee('bulk-done-table-wrap', false)
             ->assertSee('bulkDoneDraft:'.$bulk->id.':'.$this->marketer->id, false)
             ->assertSee('sessionStorage', false)

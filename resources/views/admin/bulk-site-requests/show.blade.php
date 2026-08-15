@@ -147,6 +147,7 @@
                         (publisher + marketer share a {{ \App\Models\BulkSiteRequest::MAX_SITES_PER_REQUEST }}-site batch limit).
                         Fill a complete block (Language, Country, DA, DR, Traffic, Niches) and click Done — one row, several, or all at once.
                         Finished rows become drafts and notify the publisher; the rest stay here until you fill them.
+                        Delete a row you will not add — those sites leave this batch and the publisher gets one note for all removed sites.
                     </p>
 
                     @if($errors->any())
@@ -165,6 +166,19 @@
                               enctype="multipart/form-data"
                               novalidate>
                             @csrf
+                            @php
+                                $oldRejectedIds = collect(old('rejected_item_ids', []))
+                                    ->map(fn ($id) => (int) $id)
+                                    ->filter()
+                                    ->unique()
+                                    ->values()
+                                    ->all();
+                            @endphp
+                            <div id="bulkRejectedIds">
+                                @foreach($oldRejectedIds as $rejectedId)
+                                    <input type="hidden" name="rejected_item_ids[]" value="{{ $rejectedId }}">
+                                @endforeach
+                            </div>
                             <div class="bulk-done-table-wrap admin-contained-scroll mb-3">
                                 <table class="table table-sm align-middle mb-0 bulk-done-grid">
                                     <thead>
@@ -190,13 +204,23 @@
                                                 $uid = 'done'.$item->id;
                                                 $oldCountry = strtolower((string) ($old['country'] ?? ''));
                                                 $oldLanguage = strtolower((string) ($old['language'] ?? ''));
+                                                $isRejected = in_array((int) $item->id, $oldRejectedIds, true);
                                             @endphp
-                                            <tr data-bulk-done-row>
+                                            <tr data-bulk-done-row
+                                                data-item-id="{{ $item->id }}"
+                                                @class(['d-none' => $isRejected])
+                                                @if($isRejected) data-bulk-rejected="1" @endif>
                                                 <td>
                                                     <div class="fw-semibold small text-break">{{ $item->domain }}</div>
                                                     <a class="small text-muted text-break" href="{{ $item->site_url }}" target="_blank" rel="noopener noreferrer">
                                                         {{ $item->site_url }}
                                                     </a>
+                                                    <button type="button"
+                                                            class="btn btn-sm btn-outline-danger mt-2 bulk-done-reject"
+                                                            data-bulk-reject-row
+                                                            @disabled($isRejected)>
+                                                        Delete
+                                                    </button>
                                                 </td>
                                                 <td class="text-nowrap">€{{ number_format((float) $item->price, 2) }}</td>
                                                 <td>
@@ -326,6 +350,21 @@
                                 </table>
                             </div>
 
+                            <div id="bulkRejectionNoteWrap" class="mb-3{{ $oldRejectedIds === [] && ! $errors->has('rejection_note') ? ' d-none' : '' }}">
+                                <label for="rejection_note" class="form-label small fw-semibold">Note to publisher (removed sites)</label>
+                                <textarea name="rejection_note"
+                                          id="rejection_note"
+                                          class="form-control @error('rejection_note') is-invalid @enderror"
+                                          rows="3"
+                                          minlength="10"
+                                          maxlength="1000"
+                                          placeholder="Tell the publisher why these sites were not added (10–1000 characters).">{{ old('rejection_note') }}</textarea>
+                                @error('rejection_note')
+                                    <div class="invalid-feedback d-block">{{ $message }}</div>
+                                @enderror
+                                <div class="form-text">Required when you delete one or more sites. The publisher gets this one note for all removed sites.</div>
+                            </div>
+
                             <div id="bulkDoneHint" class="alert alert-warning py-2 small mb-3" role="status">
                                 Fill at least one complete block (Language, Country, DA, DR, Traffic, Niches) before Done.
                             </div>
@@ -447,6 +486,9 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
 
     const submitBtn = document.getElementById('bulkDoneSubmit');
     const hint = document.getElementById('bulkDoneHint');
+    const noteWrap = document.getElementById('bulkRejectionNoteWrap');
+    const noteEl = document.getElementById('rejection_note');
+    const rejectedBox = document.getElementById('bulkRejectedIds');
     const fields = () => Array.from(form.querySelectorAll('[data-bulk-required]'));
     const multiSelects = {};
     const prefills = {};
@@ -548,7 +590,7 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
 
     function writeDraft() {
         const items = {};
-        form.querySelectorAll('[data-bulk-done-row]').forEach(function (row) {
+        doneRows().forEach(function (row) {
             const language = row.querySelector('select[name*="[language]"]');
             const country = row.querySelector('select[name*="[country]"]');
             const da = row.querySelector('input[name*="[da]"]');
@@ -640,7 +682,39 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
     }
 
     function doneRows() {
-        return Array.from(form.querySelectorAll('[data-bulk-done-row]'));
+        return Array.from(form.querySelectorAll('[data-bulk-done-row]')).filter(function (row) {
+            return row.getAttribute('data-bulk-rejected') !== '1';
+        });
+    }
+
+    function rejectedIds() {
+        return Array.from(form.querySelectorAll('input[name="rejected_item_ids[]"]'))
+            .map(function (el) { return String(el.value || '').trim(); })
+            .filter(Boolean);
+    }
+
+    function rejectionNoteOk() {
+        const note = String((noteEl && noteEl.value) || '').trim();
+        return note.length >= 10 && note.length <= 1000;
+    }
+
+    function markRowRejected(row) {
+        const id = row.getAttribute('data-item-id');
+        if (!id) return;
+        row.classList.add('d-none');
+        row.setAttribute('data-bulk-rejected', '1');
+        row.querySelectorAll('select, input, textarea, button').forEach(function (el) {
+            el.disabled = true;
+        });
+        if (rejectedBox && !form.querySelector('input[name="rejected_item_ids[]"][value="' + id + '"]')) {
+            const hidden = document.createElement('input');
+            hidden.type = 'hidden';
+            hidden.name = 'rejected_item_ids[]';
+            hidden.value = id;
+            rejectedBox.appendChild(hidden);
+        }
+        pruneDraftForItemIds([id]);
+        syncDoneState();
     }
 
     function completeRows() {
@@ -691,21 +765,35 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
         const open = submitBtn && submitBtn.getAttribute('data-open') === '1';
         const complete = completeRows();
         const partial = partialRows();
-        const ready = complete.length > 0 && partial.length === 0;
+        const rejected = rejectedIds();
+        const noteOk = rejectionNoteOk();
+        const ready = partial.length === 0 && (
+            complete.length > 0 || (rejected.length > 0 && noteOk)
+        );
+        if (noteWrap) {
+            noteWrap.classList.toggle('d-none', rejected.length === 0);
+        }
         if (submitBtn) {
             submitBtn.disabled = !(open && ready);
-            const label = complete.length === 1
-                ? 'Done — add 1 filled site & notify publisher'
-                : ('Done — add ' + complete.length + ' filled sites & notify publisher');
-            submitBtn.textContent = complete.length > 0
-                ? label
-                : 'Done — add filled sites & notify publisher';
+            if (complete.length > 0) {
+                submitBtn.textContent = complete.length === 1
+                    ? 'Done — add 1 filled site & notify publisher'
+                    : ('Done — add ' + complete.length + ' filled sites & notify publisher');
+            } else if (rejected.length > 0) {
+                submitBtn.textContent = rejected.length === 1
+                    ? 'Done — remove 1 site & notify publisher'
+                    : ('Done — remove ' + rejected.length + ' sites & notify publisher');
+            } else {
+                submitBtn.textContent = 'Done — add filled sites & notify publisher';
+            }
         }
         if (hint) {
             hint.classList.toggle('d-none', ready);
             if (partial.length > 0) {
                 hint.textContent = 'Finish or clear incomplete rows first. You can submit the '
                     + complete.length + ' complete block(s) after that.';
+            } else if (rejected.length > 0 && !noteOk) {
+                hint.textContent = 'Add a note for the publisher about the removed sites (10–1000 characters).';
             } else if (complete.length === 0) {
                 hint.textContent = 'Fill at least one complete block (Country, Language, DA, DR, Traffic, Niches) before Done.';
             } else {
@@ -759,6 +847,18 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
         el.removeAttribute('data-score-clamp');
     });
 
+    form.querySelectorAll('[data-bulk-done-row][data-bulk-rejected="1"]').forEach(function (row) {
+        row.querySelectorAll('select, input, textarea, button').forEach(function (el) {
+            el.disabled = true;
+        });
+    });
+    form.querySelectorAll('[data-bulk-reject-row]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            const row = btn.closest('[data-bulk-done-row]');
+            if (row) markRowRejected(row);
+        });
+    });
+
     form.addEventListener('input', function (e) {
         clampScoreInput(e.target);
         syncDoneState();
@@ -785,7 +885,12 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
 
         const complete = completeRows();
         const partial = partialRows();
-        if (complete.length === 0 || partial.length > 0) {
+        const rejected = rejectedIds();
+        const noteOk = rejectionNoteOk();
+        const ready = partial.length === 0 && (
+            complete.length > 0 || (rejected.length > 0 && noteOk)
+        );
+        if (!ready) {
             e.preventDefault();
             syncDoneState();
             if (partial.length > 0) {
@@ -798,6 +903,16 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
                     icon: 'warning',
                     title: 'Finish incomplete blocks',
                     text: 'Each started row must be fully filled, or clear it. Then submit the complete block(s). Empty rows can wait for later.',
+                });
+            } else if (rejected.length > 0 && !noteOk) {
+                if (noteEl) {
+                    noteEl.focus();
+                    noteEl.classList.add('is-invalid');
+                }
+                slbAlert({
+                    icon: 'warning',
+                    title: 'Add a publisher note',
+                    text: 'Write one note (10–1000 characters) for the sites you are removing. The publisher receives that single note.',
                 });
             } else {
                 const firstEmpty = fields().find((el) => !fieldFilled(el));
@@ -816,14 +931,29 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
 
         const count = complete.length;
         const remaining = doneRows().length - count;
-        const submittedIds = complete.map(rowItemId).filter(Boolean);
+        const submittedIds = complete.map(rowItemId).filter(Boolean).concat(rejected);
         e.preventDefault();
+        let confirmTitle = 'Seed draft sites?';
+        let confirmText = remaining > 0
+            ? ('Add ' + count + ' complete draft site(s) now and notify the publisher? ' + remaining + ' unfinished row(s) will stay pending.')
+            : ('Add ' + count + ' draft site(s) to this publisher’s Pending sites and notify them?');
+        let confirmTextBtn = 'Add drafts';
+        if (count > 0 && rejected.length > 0) {
+            confirmTitle = 'Add drafts and remove sites?';
+            confirmText = 'Add ' + count + ' draft site(s) and remove ' + rejected.length
+                + ' site(s)? The publisher gets both notices.'
+                + (remaining > 0 ? (' ' + remaining + ' unfinished row(s) will stay pending.') : '');
+            confirmTextBtn = 'Done';
+        } else if (count === 0 && rejected.length > 0) {
+            confirmTitle = 'Remove sites?';
+            confirmText = 'Remove ' + rejected.length + ' site(s) and notify the publisher with your note?'
+                + (remaining > 0 ? (' ' + remaining + ' unfinished row(s) will stay pending.') : '');
+            confirmTextBtn = 'Remove sites';
+        }
         const confirmFn = window.slbConfirm({
-            title: 'Seed draft sites?',
-            text: remaining > 0
-                ? ('Add ' + count + ' complete draft site(s) now and notify the publisher? ' + remaining + ' unfinished row(s) will stay pending.')
-                : ('Add ' + count + ' draft site(s) to this publisher’s Pending sites and notify them?'),
-            confirmText: 'Add drafts',
+            title: confirmTitle,
+            text: confirmText,
+            confirmText: confirmTextBtn,
             icon: 'question',
         });
 

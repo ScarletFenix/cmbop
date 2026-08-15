@@ -17,6 +17,7 @@ class PanelController extends Controller
         'bulk_request.seeded',
         'bulk_request.sheet_sent',
         'bulk_request.cancelled',
+        'bulk_request.items_rejected',
         'bulk_request.notes_updated',
         'site.deleted_by_marketing',
         'site.updated',
