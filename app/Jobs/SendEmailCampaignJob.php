@@ -34,6 +34,9 @@ class SendEmailCampaignJob implements ShouldQueue
 
     public function __construct(public int $campaignId, public int $failStreak = 0)
     {
+        if ($connection = EmailCampaign::preferredSendJobConnection()) {
+            $this->onConnection($connection);
+        }
         $this->onQueue(config('email_notifications.queue', 'emails'));
     }
 
@@ -125,7 +128,7 @@ class SendEmailCampaignJob implements ShouldQueue
     protected function deliverOne(EmailCampaign $campaign, EmailCampaignRecipient $row): void
     {
         $user = $row->user;
-        if (! $user) {
+        if (! $user || trim((string) $user->email) === '') {
             $this->claimPending($row, EmailCampaignRecipient::STATUS_FAILED, EmailCampaignRecipient::SKIP_ERROR);
 
             return;

@@ -35,12 +35,20 @@ or marketing, even if that staff account also has a marketplace role.
    `queued`/`sending` rows so a lost continuation does not sit forever.
    Recovery **touches** the campaign after a re-dispatch (or when a send
    job is already in the `jobs` table) so a backed-up emails queue cannot
-   enqueue another job on every page view. The jobs-table check parses
-   JSON-escaped `jobs.payload` (same as Email Center) — a raw LIKE for
-   `campaignId";i:N;` misses the queued job and floods another dispatch
-   every stale window. It also looks at `queue.default`, not only
-   `MAIL_QUEUE_CONNECTION`, because the send job does not call
-   `onConnection`.    A `sending` campaign that still
+   enqueue another job on every page view. The jobs-table check must
+   match JSON-escaped payloads (`\"campaignId\";i:N;`) — a literal
+   `campaignId";i:N;` LIKE misses every database-queue row. It walks
+   every send-job connection (mail first, then `queue.default`); a miss
+   or error on the first must not skip the other. The send job pins
+   `onConnection` to a drainable queue (mail connection first, otherwise
+   `queue.default`) so `QUEUE_CONNECTION=sync` plus a database mail queue
+   cannot run the whole audience inside the compose request.
+   `mail:drain-queue` and web drain recover even when mail is `sync`,
+   and they drain every drainable connection — `MAIL_QUEUE_CONNECTION=sync`
+   used to skip both and leave campaign jobs sitting. Web recover still
+   runs when auto-drain is on and there is nothing to drain (both
+   connections sync) so a killed inline send is not left `sending` until
+   cron. A `sending` campaign that still
    has `queued` recipients is left sending — leftover queued rows are not
    treated as a successful send. A timeout after the last `pending` →
    `queued` claim must **not** finalize as sent (`failed()` used to, because
@@ -67,8 +75,12 @@ or marketing, even if that staff account also has a marketplace role.
    job — a stale unique lock silently drops the only dispatch. The `queued` →
    `sending` claim plus per-row `pending` → `queued` is the mutex. Send
    hydrates `id`+`email` only (`collectRecipientRows` via
-   `queryForAudienceKey`) so a large audience cannot OOM the compose
-   request and a new inventory key cannot count N then send nobody.
+   `recipientBuilder` / `queryForAudienceKey`) so a large audience cannot
+   OOM the compose request and a new inventory key cannot count N then
+   send nobody. A live user email that is blank or whitespace is failed
+   at send instead of `Mail::to('')`. Email Center retry of a failed
+   campaign mailable clears `email_log_id` so a lost retry can still
+   expire as stale.
    `user_ids` are integers capped at
    `PICKER_LIMIT * 2` (no `exists:users,id` — a deleted picker row must not
    422 the whole send).

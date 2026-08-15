@@ -450,6 +450,9 @@ class EmailCenterController extends Controller
                 ->update([
                     'status' => EmailCampaignRecipient::STATUS_QUEUED,
                     'skip_reason' => null,
+                    // Expire/reconcile only touch queued rows with no log FK.
+                    // Leaving the failed log attached parked the retry forever.
+                    'email_log_id' => null,
                 ]);
 
             if ($updated) {

@@ -3,32 +3,25 @@
 namespace Tests\Unit;
 
 use App\Support\MailJobPayload;
-use Tests\TestCase;
+use PHPUnit\Framework\TestCase;
 
 class MailJobPayloadTest extends TestCase
 {
-    public function test_contains_campaign_job_reads_json_escaped_command(): void
+    public function test_contains_send_campaign_job_matches_escaped_and_raw_payloads(): void
     {
-        $payload = json_encode([
+        $raw = 'O:32:"App\\Jobs\\SendEmailCampaignJob":1:{s:10:"campaignId";i:12;}';
+        $json = json_encode([
             'displayName' => 'App\\Jobs\\SendEmailCampaignJob',
             'data' => [
                 'commandName' => 'App\\Jobs\\SendEmailCampaignJob',
-                'command' => 'O:32:"App\\Jobs\\SendEmailCampaignJob":2:{s:10:"campaignId";i:12;s:10:"failStreak";i:0;}',
+                'command' => $raw,
             ],
-        ]);
+        ], JSON_THROW_ON_ERROR);
 
-        $this->assertIsString($payload);
-        $this->assertStringNotContainsString('campaignId";i:12;', $payload);
-        $this->assertTrue(MailJobPayload::containsCampaignJob($payload, 12));
-        $this->assertFalse(MailJobPayload::containsCampaignJob($payload, 1));
-        $this->assertFalse(MailJobPayload::containsCampaignJob($payload, 120));
-    }
-
-    public function test_contains_campaign_job_reads_raw_serialized_token(): void
-    {
-        $payload = 'O:32:"App\\Jobs\\SendEmailCampaignJob":1:{s:10:"campaignId";i:4;}';
-
-        $this->assertTrue(MailJobPayload::containsCampaignJob($payload, 4));
-        $this->assertFalse(MailJobPayload::containsCampaignJob($payload, 40));
+        $this->assertTrue(MailJobPayload::containsSendCampaignJob($raw, 12));
+        $this->assertTrue(MailJobPayload::containsSendCampaignJob($json, 12));
+        $this->assertFalse(MailJobPayload::containsSendCampaignJob($json, 1));
+        $this->assertFalse(MailJobPayload::containsSendCampaignJob($json, 123));
+        $this->assertFalse(MailJobPayload::containsSendCampaignJob('SendEmailCampaignJob only', 12));
     }
 }

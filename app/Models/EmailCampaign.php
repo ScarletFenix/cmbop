@@ -334,6 +334,10 @@ class EmailCampaign extends Model
     /**
      * Recover used to dispatch without bumping updated_at, so a backed-up
      * emails queue made every page view / drain enqueue another send job.
+     *
+     * The send job used to ride `queue.default` while this check only looked
+     * at MAIL_QUEUE_CONNECTION. Scan both so a mismatch cannot flood.
+     * Database-queue rows JSON-escape the serialized command.
      */
     protected static function hasQueuedSendJob(int $campaignId): bool
     {
@@ -341,8 +345,8 @@ class EmailCampaign extends Model
             return false;
         }
 
-        foreach (self::sendJobQueueConnections() as $connection) {
-            try {
+        try {
+            foreach (self::sendJobQueueConnections() as $connection) {
                 if ($connection === 'sync'
                     || config("queue.connections.{$connection}.driver") !== 'database') {
                     continue;
@@ -358,11 +362,12 @@ class EmailCampaign extends Model
                     ->pluck('payload');
 
                 foreach ($payloads as $payload) {
-                    if (MailJobPayload::containsCampaignJob((string) $payload, $campaignId)) {
+                    if (MailJobPayload::containsSendCampaignJob((string) $payload, $campaignId)) {
                         return true;
                     }
                 }
             } catch (\Throwable) {
+                // A broken first connection must not hide a job on the other.
             }
         }
 
@@ -370,18 +375,69 @@ class EmailCampaign extends Model
     }
 
     /**
-     * The send job uses the app default connection (it does not call
-     * onConnection). Mail may use MAIL_QUEUE_CONNECTION. Check both so a
-     * sync mail connection cannot hide a database-queued send job.
+     * The send job pins onConnection() to preferredSendJobConnection()
+     * (mail first, otherwise queue.default). Check both so a sync side
+     * cannot hide a database-queued send job on the other connection.
      *
      * @return list<string>
      */
     protected static function sendJobQueueConnections(): array
     {
         return array_values(array_unique(array_filter([
-            (string) config('queue.default'),
             (string) config('email_notifications.queue_connection', config('queue.default')),
+            (string) config('queue.default'),
         ])));
+    }
+
+    /**
+     * Connections that can actually store campaign / mail jobs. Sync mail
+     * with a database app queue still has SendEmailCampaignJob rows to drain.
+     *
+     * @return list<string>
+     */
+    public static function drainableQueueConnections(): array
+    {
+        $ready = [];
+
+        foreach (self::sendJobQueueConnections() as $connection) {
+            if ($connection === '' || $connection === 'sync') {
+                continue;
+            }
+
+            if (config("queue.connections.{$connection}.driver") === 'database') {
+                try {
+                    $table = (string) config("queue.connections.{$connection}.table", 'jobs');
+                    if (! Schema::hasTable($table)) {
+                        continue;
+                    }
+                } catch (\Throwable) {
+                    continue;
+                }
+            }
+
+            $ready[] = $connection;
+        }
+
+        return array_values(array_unique($ready));
+    }
+
+    /**
+     * Prefer the mail connection when it can store jobs, otherwise the first
+     * drainable app connection. Null means both are sync (run inline).
+     */
+    public static function preferredSendJobConnection(): ?string
+    {
+        $drainable = self::drainableQueueConnections();
+        if ($drainable === []) {
+            return null;
+        }
+
+        $mail = (string) config('email_notifications.queue_connection', '');
+        if ($mail !== '' && in_array($mail, $drainable, true)) {
+            return $mail;
+        }
+
+        return $drainable[0];
     }
 
     /**
@@ -464,6 +520,13 @@ class EmailCampaign extends Model
             }
 
             $delivered = $log->status === EmailLog::STATUS_DELIVERED;
+            // An older failed log must not kill a newer in-flight retry.
+            if (! $delivered
+                && $log->updated_at
+                && $row->updated_at
+                && ! $log->updated_at->greaterThan($row->updated_at)) {
+                continue;
+            }
             EmailCampaignRecipient::query()
                 ->whereKey($row->id)
                 ->where('status', EmailCampaignRecipient::STATUS_QUEUED)
