@@ -355,6 +355,17 @@
 
 /* ——— Finance overview header actions ——— */
 
+.admin-finance-toolbar__form {
+  min-width: 0;
+}
+
+/* When the 2-char hint is visible it hangs below the field. Grow the
+   toolbar — not the search column — so Open / ledger / export stay aligned
+   and the hint cannot cover the period presets. */
+.admin-finance-toolbar:has(.slb-search-status:not(:empty)) {
+  padding-bottom: 2.5em;
+}
+
 .admin-finance-toolbar__search {
   position: relative;
   min-width: 220px;
@@ -370,23 +381,30 @@
 }
 
 /* Keep the 2-char hint out of the flex row so Open / ledger / export stay
-   on the input baseline instead of dropping when the status line appears. */
+   on the input baseline instead of dropping when the status line appears.
+   Constrain it to the field width so it cannot slide under Open. */
 .admin-finance-toolbar .slb-search-status {
   position: absolute;
   left: 0;
+  right: 0;
   top: 100%;
   z-index: 1;
   min-height: 0;
   margin: 0;
+  max-width: 100%;
+  pointer-events: none;
 }
 
 .admin-finance-toolbar .slb-search-status:empty {
   display: none;
 }
 
-.admin-finance-toolbar .btn,
+/* Scope to action buttons only — the search clear control is also .btn. */
+.admin-finance-toolbar__action .btn,
 .admin-finance-period__action .btn {
   min-height: calc(1.5em + 0.5rem + 2px);
+  display: inline-flex;
+  align-items: center;
 }
 
 /* ——— Wallet ledger filters ——— */

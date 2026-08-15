@@ -441,6 +441,7 @@ class AdminFinanceHubTest extends TestCase
 
         $this->assertStringContainsString('admin-finance-toolbar', $html);
         $this->assertStringContainsString('admin-finance-toolbar d-flex flex-wrap align-items-end', $html);
+        $this->assertStringContainsString('admin-finance-toolbar__form d-flex flex-nowrap align-items-end', $html);
         $this->assertStringContainsString('admin-finance-toolbar__search', $html);
         $this->assertStringContainsString('admin-finance-toolbar__action', $html);
         $this->assertStringContainsString('for="adminFinanceUserSearch"', $html);
@@ -452,13 +453,21 @@ class AdminFinanceHubTest extends TestCase
         $blade = (string) file_get_contents(resource_path('views/admin/finance.blade.php'));
         $this->assertStringNotContainsString('admin-finance-toolbar d-flex flex-wrap gap-2 align-items-start', $blade);
         $this->assertStringNotContainsString('btn-outline-primary mb-3', $blade);
+        $this->assertStringNotContainsString('request()->query()', $blade);
 
         $css = (string) file_get_contents(public_path('assets/css/admin-components.css'));
         $this->assertStringContainsString('.admin-finance-toolbar__search', $css);
         $this->assertStringContainsString('.admin-finance-toolbar .slb-search-status', $css);
         $this->assertMatchesRegularExpression('/\.admin-finance-toolbar \.slb-search-status\s*\{[^}]*position:\s*absolute/s', $css);
+        $this->assertMatchesRegularExpression('/\.admin-finance-toolbar \.slb-search-status\s*\{[^}]*right:\s*0/s', $css);
         $this->assertStringContainsString('.admin-finance-toolbar .slb-search-status:empty', $css);
-        $this->assertStringContainsString('.admin-finance-toolbar .btn', $css);
+        $this->assertStringContainsString('.admin-finance-toolbar__action .btn', $css);
+        $this->assertStringNotContainsString('.admin-finance-toolbar .btn,', $css);
+        $this->assertStringContainsString('.admin-finance-toolbar:has(.slb-search-status:not(:empty))', $css);
+        $this->assertMatchesRegularExpression(
+            '/\.admin-finance-toolbar:has\(\.slb-search-status:not\(:empty\)\)\s*\{[^}]*padding-bottom:\s*2\.5em/s',
+            $css
+        );
     }
 
     public function test_overview_dossier_search_keeps_selected_period(): void
@@ -506,6 +515,30 @@ class AdminFinanceHubTest extends TestCase
         $this->assertStringContainsString('period=all&amp;q=zz-no-match', $html);
         $this->assertStringContainsString('period=week&amp;q=zz-no-match', $html);
         $this->assertStringContainsString('period=month&amp;q=zz-no-match', $html);
+
+        $this->assertTrue((bool) preg_match('/id="adminFinanceExport"[^>]+href="([^"]+)"/', $html, $export));
+        $this->assertStringContainsString('period=all', $export[1]);
+        $this->assertStringNotContainsString('q=', $export[1]);
+    }
+
+    public function test_overview_export_link_uses_custom_dates_not_dossier_query(): void
+    {
+        $admin = $this->makeUser('admin');
+
+        $html = $this->actingAs($admin)
+            ->get(route('admin.finance', [
+                'q' => 'zz-no-match',
+                'date_from' => '2026-01-01',
+                'date_to' => '2026-01-31',
+            ]))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertTrue((bool) preg_match('/id="adminFinanceExport"[^>]+href="([^"]+)"/', $html, $export));
+        $this->assertStringContainsString('date_from=2026-01-01', $export[1]);
+        $this->assertStringContainsString('date_to=2026-01-31', $export[1]);
+        $this->assertStringNotContainsString('period=', $export[1]);
+        $this->assertStringNotContainsString('q=', $export[1]);
     }
 
     public function test_ledger_rejects_invalid_dates_and_array_search(): void
