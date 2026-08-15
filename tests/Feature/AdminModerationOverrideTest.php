@@ -42,6 +42,8 @@ class AdminModerationOverrideTest extends TestCase
         ContentModerationSetting::clearCache();
 
         $submission = $this->createApprovedSubmission($advertiser);
+        config(['content_moderation.enabled' => true]);
+        ContentModerationSetting::clearCache();
         $body = 'Play at the best online casino and claim your no deposit bonus for slots and roulette today.';
         $submission->update([
             'extracted_text' => $body,
