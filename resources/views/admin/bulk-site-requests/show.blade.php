@@ -76,6 +76,12 @@
                             <div class="border-bottom py-2 small">
                                 <div class="fw-semibold">{{ marketing_task_label($entry->action) }}</div>
                                 <div class="text-muted">{{ $entry->description }}</div>
+                                @php
+                                    $historyNote = \App\Support\MarketingHistoryDisplay::reason($entry);
+                                @endphp
+                                @if($historyNote)
+                                    <div class="text-muted mt-1" data-history-reason>{{ \App\Support\MarketingHistoryDisplay::reasonLabel($entry) }}: {{ $historyNote }}</div>
+                                @endif
                                 <div class="text-muted mt-1" style="font-size:.72rem;">
                                     {{ $entry->user_name ?? 'System' }}
                                     @if($entry->role) · {{ $entry->role }} @endif

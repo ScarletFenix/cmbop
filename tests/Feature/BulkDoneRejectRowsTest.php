@@ -616,4 +616,112 @@ class BulkDoneRejectRowsTest extends TestCase
 
         $this->assertDatabaseHas('bulk_site_request_items', ['id' => $items[0]->id]);
     }
+
+    public function test_marketer_admin_show_link_opens_marketing_done_form(): void
+    {
+        [$bulk] = $this->makeBulkWithItems(1, 'admin-get');
+
+        $this->actingAs($this->marketer)
+            ->get(route('admin.bulk-site-requests.show', $bulk))
+            ->assertRedirect(route('marketing.bulk-site-requests.show', $bulk));
+
+        $html = $this->actingAs($this->marketer)
+            ->get(route('marketing.bulk-site-requests.show', $bulk))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString(route('marketing.bulk-site-requests.done', $bulk), $html);
+        $this->assertStringNotContainsString(route('admin.bulk-site-requests.done', $bulk), $html);
+    }
+
+    public function test_marketer_leftover_admin_done_post_replays_on_marketing_url(): void
+    {
+        Mail::fake();
+        [$bulk, $items] = $this->makeBulkWithItems(1, 'admin-post');
+        $payload = [
+            'rejected_item_ids' => [$items[0]->id],
+            'rejection_note' => 'Leftover admin Done URL should still remove the site.',
+        ];
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.bulk-site-requests.show', $bulk))
+            ->post(route('admin.bulk-site-requests.done', $bulk), $payload)
+            ->assertStatus(307)
+            ->assertRedirect(route('marketing.bulk-site-requests.done', $bulk));
+
+        $this->assertDatabaseHas('bulk_site_request_items', ['id' => $items[0]->id]);
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.bulk-site-requests.show', $bulk))
+            ->post(route('marketing.bulk-site-requests.done', $bulk), $payload)
+            ->assertRedirect(route('marketing.bulk-site-requests.show', $bulk))
+            ->assertSessionHas('success');
+
+        $this->assertDatabaseMissing('bulk_site_request_items', ['id' => $items[0]->id]);
+        Mail::assertQueued(BulkSiteItemsRejected::class, 1);
+    }
+
+    public function test_marketer_reject_note_shows_on_history_and_bulk_page(): void
+    {
+        Mail::fake();
+        [$bulk, $items] = $this->makeBulkWithItems(1, 'hist-note');
+        $note = 'These metrics do not meet our listing bar.';
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.bulk-site-requests.show', $bulk))
+            ->post(route('marketing.bulk-site-requests.done', $bulk), [
+                'rejected_item_ids' => [$items[0]->id],
+                'rejection_note' => $note,
+            ])
+            ->assertRedirect(route('marketing.bulk-site-requests.show', $bulk))
+            ->assertSessionHas('success');
+
+        $this->actingAs($this->marketer)
+            ->get(route('marketing.history'))
+            ->assertOk()
+            ->assertSee('Removed bulk sites', false)
+            ->assertSee('Note: '.$note, false)
+            ->assertSee(route('marketing.bulk-site-requests.show', $bulk), false)
+            ->assertDontSee(route('admin.bulk-site-requests.show', $bulk), false);
+
+        $this->actingAs($this->marketer)
+            ->get(route('marketing.bulk-site-requests.show', $bulk))
+            ->assertOk()
+            ->assertSee('Removed bulk sites', false)
+            ->assertSee('Note: '.$note, false);
+    }
+
+    public function test_admin_with_marketing_active_posts_marketing_done(): void
+    {
+        Mail::fake();
+        $adminRole = Role::where('name', 'admin')->firstOrFail();
+        $this->marketer->roles()->attach($adminRole->id);
+        $this->assertSame('marketing', $this->marketer->fresh()->activeRole());
+
+        [$bulk, $items] = $this->makeBulkWithItems(1, 'dual-role');
+
+        $html = $this->actingAs($this->marketer->fresh())
+            ->get(route('marketing.bulk-site-requests.show', $bulk))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString(route('marketing.bulk-site-requests.done', $bulk), $html);
+        $this->assertStringNotContainsString(route('admin.bulk-site-requests.done', $bulk), $html);
+
+        $this->actingAs($this->marketer->fresh())
+            ->from(route('marketing.bulk-site-requests.show', $bulk))
+            ->post(route('marketing.bulk-site-requests.done', $bulk), [
+                'rejected_item_ids' => [$items[0]->id],
+                'rejection_note' => 'Dual-role marketer can still remove a pending row.',
+            ])
+            ->assertRedirect(route('marketing.bulk-site-requests.show', $bulk))
+            ->assertSessionHas('success');
+
+        $this->assertDatabaseMissing('bulk_site_request_items', ['id' => $items[0]->id]);
+        $this->assertDatabaseHas('activity_logs', [
+            'action' => 'bulk_request.items_rejected',
+            'user_id' => $this->marketer->id,
+            'role' => 'marketing',
+        ]);
+    }
 }
