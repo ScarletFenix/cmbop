@@ -538,8 +538,14 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
 
         Route::get('/catalog-activity', [AdminCatalogActivityController::class, 'index'])
             ->name('catalog-activity');
+        Route::get('/catalog-activity/{user}', [AdminCatalogActivityController::class, 'show'])
+            ->name('catalog-activity.show');
         Route::post('/catalog-activity/{user}/exempt', [AdminCatalogActivityController::class, 'toggleExempt'])
             ->name('catalog-activity.exempt');
+        Route::post('/catalog-activity/{user}/lift-hide', [AdminCatalogActivityController::class, 'liftHide'])
+            ->name('catalog-activity.lift-hide');
+        Route::post('/catalog-activity/{user}/reset-strikes', [AdminCatalogActivityController::class, 'resetStrikes'])
+            ->name('catalog-activity.reset-strikes');
         Route::post('/catalog-activity/{user}/clear-copy-hide', [AdminCatalogActivityController::class, 'clearCopyHide'])
             ->name('catalog-activity.clear-copy-hide');
 

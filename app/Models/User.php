@@ -93,14 +93,48 @@ class User extends Authenticatable implements MustVerifyEmail
         'catalog_reveal_exempt_until' => 'datetime',
         'catalog_copy_strike_count' => 'integer',
         'catalog_copy_warned_at' => 'datetime',
+        'catalog_copy_after_id' => 'integer',
         'catalog_hide_until' => 'datetime',
     ];
+
+    public const CATALOG_COPY_HIDDEN = 'hidden';
+
+    public const CATALOG_COPY_POST_HIDE = 'post_hide';
+
+    public const CATALOG_COPY_WARNED = 'warned';
+
+    public const CATALOG_COPY_CLEAN = 'clean';
 
     public function inCatalogHideMode(): bool
     {
         $until = $this->catalog_hide_until ?? null;
 
         return $until !== null && $until->isFuture();
+    }
+
+    /**
+     * Copy-strike ladder for the admin catalog-activity queue.
+     *
+     * Strike 2 after hide expires is "served hide" (next wave re-hides),
+     * not a first warning.
+     */
+    public function catalogCopyStatus(): string
+    {
+        if ($this->inCatalogHideMode()) {
+            return self::CATALOG_COPY_HIDDEN;
+        }
+
+        $strikes = (int) ($this->catalog_copy_strike_count ?? 0);
+
+        if ($strikes >= 2) {
+            return self::CATALOG_COPY_POST_HIDE;
+        }
+
+        if ($strikes >= 1) {
+            return self::CATALOG_COPY_WARNED;
+        }
+
+        return self::CATALOG_COPY_CLEAN;
     }
 
     public function payoutProfileLocked(): bool

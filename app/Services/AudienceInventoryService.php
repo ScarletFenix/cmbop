@@ -510,7 +510,7 @@ class AudienceInventoryService
     protected function pickerQuery(string $roleName): Builder
     {
         $query = $this->queryForRole($roleName);
-        $this->excludeStaffAccounts($query);
+        $this->constrainUsableEmail($this->excludeStaffAccounts($query));
 
         return $query
             ->setEagerLoads([])
