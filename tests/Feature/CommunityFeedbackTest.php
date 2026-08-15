@@ -719,4 +719,68 @@ class CommunityFeedbackTest extends TestCase
         $this->assertStringContainsString('We reviewed your problem report', $feedback->render());
         $this->assertStringContainsString('We will try to add', $website->render());
     }
+
+    public function test_blank_report_email_falls_back_to_the_user_account(): void
+    {
+        Mail::fake();
+
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $report = ProblemReport::create([
+            'user_id' => $advertiser->id,
+            'name' => $advertiser->name,
+            'email' => '',
+            'subject' => 'Checkout broken',
+            'message' => 'The pay button does nothing on mobile.',
+            'status' => 'pending',
+        ]);
+
+        $this->actingAs($admin)->patchJson(route('admin.community.problems.update', $report->id), [
+            'status' => 'resolved',
+        ])->assertOk();
+
+        Mail::assertQueued(CommunityFeedbackReviewed::class, function (CommunityFeedbackReviewed $mail) use ($advertiser) {
+            return $mail->hasTo($advertiser->email);
+        });
+    }
+
+    public function test_url_only_website_suggestion_still_shows_already_in_catalog(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $site = $this->siteFor($publisher);
+
+        WebsiteSuggestion::create([
+            'user_id' => $advertiser->id,
+            'website_name' => 'Owned News Daily',
+            'website_url' => 'https://owned-news.example/about',
+            'domain' => null,
+            'status' => 'pending',
+        ]);
+
+        $html = $this->actingAs($admin)
+            ->get(route('admin.community.index', ['tab' => 'websites']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Already in catalog', $html);
+        $this->assertStringContainsString(route('admin.sites.edit', $site->id), $html);
+        $this->assertStringNotContainsString('Create listing', $html);
+    }
+
+    public function test_email_center_can_preview_community_review_templates(): void
+    {
+        $admin = $this->userWithRole('admin');
+
+        $this->actingAs($admin)
+            ->get(route('admin.emails.preview', 'community_feedback_reviewed'))
+            ->assertOk()
+            ->assertSee('We reviewed your problem report', false);
+
+        $this->actingAs($admin)
+            ->get(route('admin.emails.preview', 'website_suggestion_reviewed'))
+            ->assertOk()
+            ->assertSee('We will try to add', false);
+    }
 }

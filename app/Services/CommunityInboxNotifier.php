@@ -98,8 +98,11 @@ class CommunityInboxNotifier
             ]);
         }
 
-        $email = $item->email ?? $item->user?->email;
-        if (! is_string($email) || $email === '') {
+        $email = search_text($item->email ?? null);
+        if ($email === '') {
+            $email = search_text($item->user?->email ?? null);
+        }
+        if ($email === '') {
             return;
         }
 

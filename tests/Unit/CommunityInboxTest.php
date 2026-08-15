@@ -137,4 +137,25 @@ class CommunityInboxTest extends TestCase
             'site_name' => 'Bad Site',
         ], CommunityInbox::createListingQuery($suggestion));
     }
+
+    public function test_suggestion_lookup_domain_uses_url_host_when_domain_is_empty(): void
+    {
+        $fromUrl = new WebsiteSuggestion([
+            'website_url' => 'https://fresh-tech.example/path',
+            'domain' => null,
+        ]);
+        $this->assertSame('fresh-tech.example', CommunityInbox::suggestionLookupDomain($fromUrl));
+
+        $fromDomain = new WebsiteSuggestion([
+            'website_url' => 'https://other.example',
+            'domain' => 'WWW.Owned-News.example',
+        ]);
+        $this->assertSame('owned-news.example', CommunityInbox::suggestionLookupDomain($fromDomain));
+
+        $unsafe = new WebsiteSuggestion([
+            'website_url' => 'javascript:alert(1)',
+            'domain' => null,
+        ]);
+        $this->assertSame('', CommunityInbox::suggestionLookupDomain($unsafe));
+    }
 }

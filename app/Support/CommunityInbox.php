@@ -198,6 +198,25 @@ class CommunityInbox
     }
 
     /**
+     * Host used to see if a suggestion already occupies the catalog.
+     * `domain` is nullable, so fall back to the URL host — a raw
+     * `https://…` string is not a marketplace domain.
+     */
+    public static function suggestionLookupDomain(WebsiteSuggestion $suggestion): string
+    {
+        $raw = search_text($suggestion->domain);
+        if ($raw === '') {
+            $url = self::safeHttpUrl($suggestion->website_url);
+            if ($url) {
+                $host = parse_url($url, PHP_URL_HOST);
+                $raw = is_string($host) ? $host : '';
+            }
+        }
+
+        return $raw !== '' ? Site::normalizeMarketplaceDomain($raw) : '';
+    }
+
+    /**
      * @param  iterable<int, WebsiteSuggestion>  $suggestions
      * @return array<int, Site>
      */
@@ -206,9 +225,9 @@ class CommunityInbox
         $found = [];
         $seen = [];
         foreach ($suggestions as $suggestion) {
-            $domain = search_text($suggestion->domain ?: $suggestion->website_url);
-            if ($domain === '' || isset($seen[$domain])) {
-                if ($domain !== '' && isset($seen[$domain]) && $seen[$domain] instanceof Site) {
+            $domain = self::suggestionLookupDomain($suggestion);
+            if ($domain === '' || array_key_exists($domain, $seen)) {
+                if ($domain !== '' && ($seen[$domain] ?? null) instanceof Site) {
                     $found[$suggestion->id] = $seen[$domain];
                 }
 
