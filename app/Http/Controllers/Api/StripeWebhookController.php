@@ -244,6 +244,7 @@ class StripeWebhookController extends Controller
                 ->count();
 
             if ($existingPaid > 0 && $paymentService->getPendingCheckout($referenceCode) === null) {
+                $paymentService->creditCapturedCardWhenAlreadySettled($referenceCode, $session);
                 Log::info('Order payment already finalized (idempotent webhook)', [
                     'reference_code' => $referenceCode,
                     'paid_count' => $existingPaid,
@@ -306,6 +307,7 @@ class StripeWebhookController extends Controller
                 ->count();
 
             if ($existingPaid > 0 && $paymentService->getPendingCheckout($referenceCode) === null) {
+                $paymentService->creditCapturedCardWhenAlreadySettled($referenceCode, $intent);
                 Log::info('Order PI payment already finalized (idempotent webhook)', [
                     'reference_code' => $referenceCode,
                 ]);
