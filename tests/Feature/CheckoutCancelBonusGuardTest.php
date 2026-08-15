@@ -100,6 +100,24 @@ class CheckoutCancelBonusGuardTest extends TestCase
         $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_balance, 0.01);
     }
 
+    public function test_cancel_of_failed_leftover_does_not_dump_paid_orders_bonus(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $site = $this->site($publisher);
+        $wallet = $this->wallet($advertiser, 20);
+        $this->paidCardOrder($advertiser, $site, 80, 'REF-PAID-BONUS');
+        $this->cardOrder($advertiser, $site, 50, 'REF-OLD-FAILED', 'failed');
+
+        $this->actingAs($advertiser)
+            ->withSession(['cart' => [['id' => $site->id, 'name' => $site->site_name, 'quantity' => 1]]])
+            ->get(route('advertiser.checkout', ['canceled' => 1, 'ref' => 'REF-OLD-FAILED']));
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_balance, 0.01);
+    }
+
     public function test_late_mark_paid_rereserves_bonus_released_on_fail(): void
     {
         $advertiser = $this->userWithRole('advertiser');

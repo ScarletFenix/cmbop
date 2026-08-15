@@ -4767,10 +4767,16 @@ class CatalogController extends Controller
             ->where('status', '!=', 'cancelled')
             ->get();
 
+        $package = app(OrderPaymentService::class)->getPendingCheckout($referenceCode);
+        $fallback = is_array($package)
+            ? round((float) ($package['bonus_applied'] ?? 0), 2)
+            : null;
+
         app(OrderRefundService::class)->releaseReservedCheckoutBonusForReference(
             $userId,
             $referenceCode,
-            $failed
+            $failed,
+            $fallback
         );
     }
 

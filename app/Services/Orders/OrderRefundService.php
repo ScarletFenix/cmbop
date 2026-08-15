@@ -287,11 +287,12 @@ class OrderRefundService
         }
 
         $thisRefBonus = app(CheckoutIntentService::class)->peekBonus($userId, $referenceCode, $fallbackBonus);
-        if ($failed->isEmpty() || $failedTotal <= 0) {
-            // Stripe-first / no rows: never dump another checkout's reserved promo.
+        $otherOpenHoldsReserve = $this->otherOpenCheckoutExists($userId, $referenceCode);
+        if ($thisRefBonus > 0) {
             $share = min($share, $thisRefBonus);
-        } elseif ($thisRefBonus > 0) {
-            $share = min($share, $thisRefBonus);
+        } elseif ($failed->isEmpty() || $otherOpenHoldsReserve) {
+            // Unknown bonus for this ref — do not unlock another checkout's reserve.
+            $share = 0.0;
         }
 
         if ($share <= 0) {
@@ -308,6 +309,23 @@ class OrderRefundService
         }
 
         return $share;
+    }
+
+    /**
+     * Another checkout still has paid/pending rows that may hold reserved promo.
+     */
+    private function otherOpenCheckoutExists(int $userId, string $reference): bool
+    {
+        if ($userId <= 0) {
+            return false;
+        }
+
+        return Order::query()
+            ->where('user_id', $userId)
+            ->when($reference !== '', fn ($q) => $q->where('reference_code', '!=', $reference))
+            ->whereIn('payment_status', ['paid', 'pending'])
+            ->whereNotIn('status', ['completed', 'cancelled'])
+            ->exists();
     }
 
     /**
