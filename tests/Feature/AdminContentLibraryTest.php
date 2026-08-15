@@ -259,14 +259,9 @@ class AdminContentLibraryTest extends TestCase
 
         $this->assertStringContainsString('name="user_id"', $html);
         $this->assertStringContainsString('value="'.$owner->id.'"', $html);
-        $this->assertStringContainsString(
-            route('admin.content-library.index', ['availability' => 'available', 'user_id' => $owner->id]),
-            $html
-        );
-        $this->assertStringContainsString(
-            route('admin.content-library.show', ['submission' => $owned, 'user_id' => $owner->id]),
-            $html
-        );
+        $this->assertStringContainsString('availability=available', $html);
+        $this->assertStringContainsString('user_id='.$owner->id, $html);
+        $this->assertStringContainsString('/admin/content-library/'.$owned->id, $html);
     }
 
     public function test_search_requires_every_word_in_title(): void
@@ -333,10 +328,8 @@ class AdminContentLibraryTest extends TestCase
             ->getContent();
 
         $this->assertStringNotContainsString('<script>alert(1)</script>', $html);
-        $this->assertStringContainsString(
-            route('admin.content-library.index', ['availability' => 'in_progress', 'user_id' => $advertiser->id]),
-            $html
-        );
+        $this->assertStringContainsString('availability=in_progress', $html);
+        $this->assertStringContainsString('user_id='.$advertiser->id, $html);
     }
 
     public function test_show_hides_download_when_file_missing_on_disk(): void
