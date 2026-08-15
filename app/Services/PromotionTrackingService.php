@@ -147,7 +147,9 @@ class PromotionTrackingService
                 ->where('subject_type', $subjectType)
                 ->where('event', $event)
                 ->where('occurred_on', '>=', $since->format('Y-m-d'))
-                ->where('occurred_on', '<=', now()->toDateString())
+                // Date casts persist as 'Y-m-d 00:00:00'; a date-only ceil
+                // would drop today's real events. Tomorrow excludes leftovers.
+                ->where('occurred_on', '<', now()->addDay()->toDateString())
                 ->count();
         } catch (\Throwable) {
             return 0;
@@ -166,7 +168,7 @@ class PromotionTrackingService
                 ->where('subject_id', $subject->getKey())
                 ->where('event', $event)
                 ->where('occurred_on', '>=', $since->format('Y-m-d'))
-                ->where('occurred_on', '<=', now()->toDateString())
+                ->where('occurred_on', '<', now()->addDay()->toDateString())
                 ->count();
         } catch (\Throwable) {
             return 0;
