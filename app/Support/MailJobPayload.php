@@ -47,6 +47,28 @@ class MailJobPayload
         return self::emails($payload) !== [];
     }
 
+    public static function dedupeKey(string $payload): ?string
+    {
+        $decoded = json_decode($payload, true);
+        $command = is_array($decoded) ? ($decoded['data']['command'] ?? null) : null;
+        $haystacks = array_values(array_filter([
+            is_string($command) ? $command : null,
+            $payload,
+        ]));
+
+        foreach ($haystacks as $haystack) {
+            if (preg_match('/s:9:\\\\?"dedupeKey\\\\?";s:\d+:\\\\?"([^\\\\"]+)\\\\?"/', $haystack, $matches)) {
+                return $matches[1];
+            }
+
+            if (preg_match('/s:10:\\\\?"dedupe_key\\\\?";s:\d+:\\\\?"([^\\\\"]+)\\\\?"/', $haystack, $matches)) {
+                return $matches[1];
+            }
+        }
+
+        return null;
+    }
+
     /**
      * @return list<string>
      */

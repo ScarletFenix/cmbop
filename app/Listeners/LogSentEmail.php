@@ -109,13 +109,26 @@ class LogSentEmail
             'sent_at' => now(),
         ];
 
-        $existing = EmailLog::findOpenByDedupe($dedupeKey);
-        if ($existing) {
+        $open = EmailLog::openByDedupe($dedupeKey);
+        if ($open->isNotEmpty()) {
+            $existing = $open->first();
             $previousMeta = (array) $existing->meta;
             $existing->fill($payload);
             $existing->meta = array_filter(array_merge($previousMeta, $logMeta));
             $existing->attempts = max(1, (int) $existing->attempts) + 1;
             $existing->save();
+
+            foreach ($open->skip(1) as $stale) {
+                $stale->fill([
+                    'status' => EmailLog::STATUS_FAILED,
+                    'error' => 'Closed: duplicate open log for the same send',
+                ]);
+                $stale->meta = array_filter(array_merge((array) $stale->meta, [
+                    'superseded_by' => $existing->id,
+                ]));
+                $stale->save();
+            }
+
             $this->markCampaignRecipientDelivered($campaignId, $userId, (int) $existing->id);
 
             return;

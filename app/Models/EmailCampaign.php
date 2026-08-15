@@ -61,34 +61,61 @@ class EmailCampaign extends Model
         return $this->hasMany(EmailCampaignRecipient::class);
     }
 
+    /**
+     * @return array{pending: int, queued: int, delivered: int, failed: int, skipped: int}
+     */
+    public function recipientStatusCounts(): array
+    {
+        $rows = $this->recipients()
+            ->toBase()
+            ->selectRaw('status, count(*) as aggregate')
+            ->groupBy('status')
+            ->pluck('aggregate', 'status');
+
+        return [
+            'pending' => (int) ($rows[EmailCampaignRecipient::STATUS_PENDING] ?? 0),
+            'queued' => (int) ($rows[EmailCampaignRecipient::STATUS_QUEUED] ?? 0),
+            'delivered' => (int) ($rows[EmailCampaignRecipient::STATUS_DELIVERED] ?? 0),
+            'failed' => (int) ($rows[EmailCampaignRecipient::STATUS_FAILED] ?? 0),
+            'skipped' => (int) ($rows[EmailCampaignRecipient::STATUS_SKIPPED] ?? 0),
+        ];
+    }
+
+    public function hasInFlightRecipients(): bool
+    {
+        return $this->recipients()
+            ->whereIn('status', [
+                EmailCampaignRecipient::STATUS_PENDING,
+                EmailCampaignRecipient::STATUS_QUEUED,
+            ])
+            ->exists();
+    }
+
     public function recountRecipientTotals(): void
     {
-        $queued = $this->recipients()
-            ->where('status', EmailCampaignRecipient::STATUS_QUEUED)
-            ->count();
-        $delivered = $this->recipients()
-            ->where('status', EmailCampaignRecipient::STATUS_DELIVERED)
-            ->count();
-        $skipped = $this->recipients()
-            ->whereIn('status', [
-                EmailCampaignRecipient::STATUS_SKIPPED,
-                EmailCampaignRecipient::STATUS_FAILED,
-            ])
-            ->count();
+        $counts = $this->recipientStatusCounts();
+        $inFlight = $counts['pending'] + $counts['queued'];
 
         $payload = [
-            'sent_count' => $queued + $delivered,
-            'skipped_count' => $skipped,
+            'sent_count' => $counts['queued'] + $counts['delivered'],
+            'skipped_count' => $counts['skipped'] + $counts['failed'],
         ];
 
-        // queued counts toward progress, but a terminal campaign is only
-        // "sent" after at least one real delivery. Otherwise a retry or a
-        // lost mail job would flip failed → sent while nothing went out.
-        if (in_array($this->status, [self::STATUS_SENT, self::STATUS_FAILED], true)) {
-            if ($delivered > 0) {
+        // queued counts toward progress, but the campaign is only "sent"
+        // after at least one real delivery and nothing left in flight.
+        // A lost mail job or Mail::queue() must not flip sending → sent.
+        if ($inFlight > 0) {
+            if ($this->status === self::STATUS_SENT) {
+                $payload['status'] = self::STATUS_SENDING;
+                $payload['sent_at'] = null;
+            }
+        } elseif (in_array($this->status, [self::STATUS_SENDING, self::STATUS_SENT, self::STATUS_FAILED], true)) {
+            if ($counts['delivered'] > 0) {
                 $payload['status'] = self::STATUS_SENT;
-            } elseif ($queued === 0) {
+                $payload['sent_at'] = $this->sent_at ?? now();
+            } else {
                 $payload['status'] = self::STATUS_FAILED;
+                $payload['sent_at'] = $this->sent_at ?? now();
             }
         } elseif ($this->status === self::STATUS_SENDING) {
             $pending = $this->recipients()
@@ -103,6 +130,30 @@ class EmailCampaign extends Model
         }
 
         $this->update($payload);
+    }
+
+    /**
+     * Finish the campaign only when no recipient is still pending or queued.
+     */
+    public function finalizeIfIdle(): bool
+    {
+        $this->recountRecipientTotals();
+        $this->refresh();
+
+        if ($this->hasInFlightRecipients()) {
+            return false;
+        }
+
+        $delivered = $this->recipients()
+            ->where('status', EmailCampaignRecipient::STATUS_DELIVERED)
+            ->count();
+
+        $this->update([
+            'status' => $delivered > 0 ? self::STATUS_SENT : self::STATUS_FAILED,
+            'sent_at' => $this->sent_at ?? now(),
+        ]);
+
+        return true;
     }
 
     public static function labelForAudience(?string $audience): string
@@ -201,6 +252,15 @@ class EmailCampaign extends Model
                 })->orWhere(function ($sending) use ($stale) {
                     $sending->where('status', self::STATUS_SENDING)
                         ->where('updated_at', '<=', $stale);
+                })->orWhere(function ($sentLie) use ($stale) {
+                    $sentLie->where('status', self::STATUS_SENT)
+                        ->where('updated_at', '<=', $stale)
+                        ->whereHas('recipients', function ($recipients) {
+                            $recipients->whereIn('status', [
+                                EmailCampaignRecipient::STATUS_PENDING,
+                                EmailCampaignRecipient::STATUS_QUEUED,
+                            ]);
+                        });
                 });
             })
             ->pluck('id');
@@ -209,6 +269,14 @@ class EmailCampaign extends Model
             $campaign = static::query()->find($id);
             if (! $campaign) {
                 continue;
+            }
+
+            if ($campaign->status === self::STATUS_SENT && $campaign->hasInFlightRecipients()) {
+                $campaign->finalizeIfIdle();
+                $campaign->refresh();
+                if ($campaign->status !== self::STATUS_SENDING) {
+                    continue;
+                }
             }
 
             if ($campaign->status === self::STATUS_SENDING
@@ -227,14 +295,7 @@ class EmailCampaign extends Model
                 }
 
                 $campaign->clearFailStreak();
-                $campaign->recountRecipientTotals();
-                $campaign->refresh();
-                $campaign->update([
-                    'status' => $campaign->sent_count > 0
-                        ? self::STATUS_SENT
-                        : self::STATUS_FAILED,
-                    'sent_at' => $campaign->sent_at ?? now(),
-                ]);
+                $campaign->finalizeIfIdle();
 
                 continue;
             }
@@ -389,8 +450,8 @@ class EmailCampaign extends Model
 
     /**
      * A timeout can claim pending → queued and die before Mail::send()
-     * inserts the mailable. Those rows count as sent forever. After the
-     * campaign stale window they are skipped so recount can go failed.
+     * inserts the mailable. After the campaign stale window those orphans
+     * are skipped so recount can go failed.
      */
     protected static function expireOrphanedQueuedRecipients(): void
     {

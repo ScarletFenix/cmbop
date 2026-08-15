@@ -1192,6 +1192,112 @@ class AdminEmailCenterTest extends TestCase
         $this->assertSame($uuid, $log->fresh()->meta['failed_job_uuid'] ?? null);
     }
 
+    public function test_job_failed_event_stamps_log_older_than_one_hour(): void
+    {
+        $uuid = (string) Str::uuid();
+        $log = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => WelcomeEmail::class,
+            'template_key' => 'welcome',
+            'to_email' => 'customer@example.com',
+            'subject' => 'Welcome to SEOLinkBuildings',
+            'status' => EmailLog::STATUS_FAILED,
+            'error' => 'SMTP down',
+            'attempts' => 1,
+            'meta' => ['source' => 'queue'],
+        ]);
+        $log->forceFill(['updated_at' => now()->subHours(5)])->save();
+
+        $job = Mockery::mock(Job::class);
+        $job->shouldReceive('uuid')->andReturn($uuid);
+        $job->shouldReceive('getRawBody')->andReturn(json_encode([
+            'displayName' => WelcomeEmail::class,
+            'data' => ['commandName' => 'Illuminate\\Mail\\SendQueuedMailable'],
+            'to' => 'customer@example.com',
+        ]));
+
+        (new StampEmailLogFailedJobUuid)->handle(
+            new JobFailed('database', $job, new \RuntimeException('SMTP'))
+        );
+
+        $this->assertSame($uuid, $log->fresh()->meta['failed_job_uuid'] ?? null);
+    }
+
+    public function test_job_failed_event_stamps_by_dedupe_key_without_time_window(): void
+    {
+        $uuid = (string) Str::uuid();
+        $log = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => WelcomeEmail::class,
+            'template_key' => 'welcome',
+            'dedupe_key' => 'welcome:99',
+            'to_email' => 'customer@example.com',
+            'subject' => 'Welcome to SEOLinkBuildings',
+            'status' => EmailLog::STATUS_FAILED,
+            'error' => 'SMTP down',
+            'attempts' => 1,
+            'meta' => ['source' => 'queue'],
+        ]);
+        $log->forceFill(['updated_at' => now()->subHours(80)])->save();
+
+        $job = Mockery::mock(Job::class);
+        $job->shouldReceive('uuid')->andReturn($uuid);
+        $job->shouldReceive('getRawBody')->andReturn(json_encode([
+            'displayName' => WelcomeEmail::class,
+            'data' => [
+                'commandName' => 'Illuminate\\Mail\\SendQueuedMailable',
+                'command' => 's:9:"dedupeKey";s:10:"welcome:99";',
+            ],
+            'to' => 'customer@example.com',
+        ]));
+
+        (new StampEmailLogFailedJobUuid)->handle(
+            new JobFailed('database', $job, new \RuntimeException('SMTP'))
+        );
+
+        $this->assertSame($uuid, $log->fresh()->meta['failed_job_uuid'] ?? null);
+    }
+
+    public function test_successful_send_closes_every_open_log_for_the_dedupe_key(): void
+    {
+        $admin = $this->userWithRole('admin');
+        EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => WelcomeEmail::class,
+            'template_key' => 'welcome',
+            'dedupe_key' => 'welcome-open-dupes',
+            'to_email' => $admin->email,
+            'subject' => 'Welcome',
+            'status' => EmailLog::STATUS_PENDING,
+            'attempts' => 1,
+        ]);
+        $newer = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => WelcomeEmail::class,
+            'template_key' => 'welcome',
+            'dedupe_key' => 'welcome-open-dupes',
+            'to_email' => $admin->email,
+            'subject' => 'Welcome',
+            'status' => EmailLog::STATUS_FAILED,
+            'error' => 'SMTP down',
+            'attempts' => 1,
+        ]);
+
+        $mail = EmailCatalog::makeMailable('welcome');
+        $this->assertNotNull($mail);
+        $mail->forceSend = true;
+        $mail->skipUserPreference = true;
+        $mail->dedupeKey = 'welcome-open-dupes';
+
+        Mail::to($admin->email)->sendNow($mail);
+
+        $this->assertSame(2, EmailLog::query()->count());
+        $this->assertSame(EmailLog::STATUS_DELIVERED, $newer->fresh()->status);
+        $older = EmailLog::query()->where('id', '!=', $newer->id)->first();
+        $this->assertSame(EmailLog::STATUS_FAILED, $older->status);
+        $this->assertSame($newer->id, data_get($older->meta, 'superseded_by'));
+    }
+
     public function test_retry_ignores_stored_uuid_for_other_recipient(): void
     {
         $admin = $this->userWithRole('admin');

@@ -311,19 +311,21 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
     protected function abandonOpenLog(string $error): void
     {
         try {
-            $existing = EmailLog::findOpenByDedupe($this->dedupeKey);
-            if (! $existing) {
+            $open = EmailLog::openByDedupe($this->dedupeKey);
+            if ($open->isEmpty()) {
                 return;
             }
 
-            $existing->fill([
-                'status' => EmailLog::STATUS_FAILED,
-                'error' => $error,
-            ]);
-            $existing->meta = array_filter(array_merge((array) $existing->meta, [
-                'suppressed' => $this->suppressReason ?: 'policy',
-            ]));
-            $existing->save();
+            foreach ($open as $existing) {
+                $existing->fill([
+                    'status' => EmailLog::STATUS_FAILED,
+                    'error' => $error,
+                ]);
+                $existing->meta = array_filter(array_merge((array) $existing->meta, [
+                    'suppressed' => $this->suppressReason ?: 'policy',
+                ]));
+                $existing->save();
+            }
         } catch (\Throwable $e) {
             Log::warning('Failed to close suppressed mail log', [
                 'mailable' => static::class,
@@ -502,17 +504,20 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
                 'error' => $exception?->getMessage(),
             ];
 
-            $existing = EmailLog::findOpenByDedupe($this->dedupeKey);
-            if ($existing) {
-                if (($payload['to_email'] ?? '') === 'unknown'
-                    && filled($existing->to_email)
-                    && $existing->to_email !== 'unknown') {
-                    unset($payload['to_email']);
+            $open = EmailLog::openByDedupe($this->dedupeKey);
+            if ($open->isNotEmpty()) {
+                foreach ($open as $existing) {
+                    $rowPayload = $payload;
+                    if (($rowPayload['to_email'] ?? '') === 'unknown'
+                        && filled($existing->to_email)
+                        && $existing->to_email !== 'unknown') {
+                        unset($rowPayload['to_email']);
+                    }
+                    $existing->fill($rowPayload);
+                    $existing->meta = array_filter(array_merge((array) $existing->meta, $meta));
+                    $existing->attempts = max(1, (int) $existing->attempts) + 1;
+                    $existing->save();
                 }
-                $existing->fill($payload);
-                $existing->meta = array_filter(array_merge((array) $existing->meta, $meta));
-                $existing->attempts = max(1, (int) $existing->attempts) + 1;
-                $existing->save();
 
                 return;
             }
