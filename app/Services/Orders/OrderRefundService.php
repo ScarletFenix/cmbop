@@ -2,6 +2,7 @@
 
 namespace App\Services\Orders;
 
+use App\Models\CheckoutIntent;
 use App\Models\ContentSubmission;
 use App\Models\Order;
 use App\Models\Wallet;
@@ -10,6 +11,7 @@ use App\Services\Wallet\WalletLedgerService;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Returns advertiser funds when an order is cancelled or rejected.
@@ -128,14 +130,10 @@ class OrderRefundService
                 $bonusShare = min($bonusShare, round($maxBonusShare, 2));
             }
         } else {
-            $poolCap = $maxBonusShare;
-            if ($poolCap === null) {
-                $peek = app(CheckoutIntentService::class)->peekBonus(
-                    (int) $order->user_id,
-                    (string) ($order->reference_code ?? '')
-                );
-                $poolCap = $peek > 0 ? $peek : null;
-            }
+            $poolCap = $maxBonusShare ?? $this->cardLeftoverBonusCap(
+                (int) $order->user_id,
+                (string) ($order->reference_code ?? '')
+            );
             $bonusShare = $this->checkoutBonusShare($wallet, $order, $amount, $poolCap);
         }
 
@@ -215,15 +213,14 @@ class OrderRefundService
             return;
         }
 
-        $peek = app(CheckoutIntentService::class)->peekBonus(
-            (int) $order->user_id,
-            (string) ($order->reference_code ?? '')
-        );
         $bonusShare = $this->checkoutBonusShare(
             $wallet,
             $order,
             $total,
-            $peek > 0 ? $peek : null
+            $this->cardLeftoverBonusCap(
+                (int) $order->user_id,
+                (string) ($order->reference_code ?? '')
+            )
         );
 
         if ($bonusShare > 0) {
@@ -333,7 +330,7 @@ class OrderRefundService
             ? $this->openCheckoutSiblingTotal($userId, $referenceCode, $failedIds)
             : 0.0;
 
-        $peek = app(CheckoutIntentService::class)->peekBonus($userId, $referenceCode, $fallbackBonus);
+        $peek = $this->liveCheckoutBonusCap($userId, $referenceCode, $fallbackBonus);
 
         if ($reserved <= 0) {
             if ($openTotal <= 0) {
@@ -416,6 +413,60 @@ class OrderRefundService
         if ($reduce > 0) {
             $intents->decrementBonus($userId, $reference, $reduce);
         }
+    }
+
+    /**
+     * Card leftover share after finalize may have no intent row left.
+     * Uncapped (null) is safe only when no other checkout holds promo.
+     */
+    public function cardLeftoverBonusCap(int $userId, string $referenceCode): ?float
+    {
+        $held = app(CheckoutIntentService::class)->heldBonus($userId, $referenceCode);
+        if ($held > 0.009) {
+            return $held;
+        }
+
+        return $this->otherLiveCheckoutBonusExists($userId, $referenceCode) ? 0.0 : null;
+    }
+
+    /**
+     * Live hold for this reference. A stale package snapshot / fallback must
+     * not cap a release when another checkout still holds promo.
+     */
+    private function liveCheckoutBonusCap(int $userId, string $referenceCode, ?float $fallbackBonus): float
+    {
+        $held = app(CheckoutIntentService::class)->heldBonus($userId, $referenceCode);
+        if ($held > 0.009) {
+            return $held;
+        }
+
+        $fallback = round((float) ($fallbackBonus ?? 0), 2);
+        if ($fallback <= 0.009 || $this->otherLiveCheckoutBonusExists($userId, $referenceCode)) {
+            return 0.0;
+        }
+
+        return $fallback;
+    }
+
+    private function otherLiveCheckoutBonusExists(int $userId, string $reference): bool
+    {
+        if ($userId <= 0) {
+            return false;
+        }
+
+        if ($this->otherOpenCheckoutExists($userId, $reference)) {
+            return true;
+        }
+
+        if (! Schema::hasTable((new CheckoutIntent)->getTable())) {
+            return false;
+        }
+
+        return CheckoutIntent::query()
+            ->where('user_id', $userId)
+            ->when($reference !== '', fn ($q) => $q->where('reference_code', '!=', $reference))
+            ->where('bonus_applied', '>', 0)
+            ->exists();
     }
 
     /**

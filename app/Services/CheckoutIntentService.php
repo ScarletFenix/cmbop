@@ -91,7 +91,6 @@ class CheckoutIntentService
 
     /**
      * Bonus still held for this reference (cache / intent row, not the package snapshot).
-     * After takeBonus the package JSON may still list bonus_applied; that is not a live hold.
      */
     public function heldBonus(int $userId, string $referenceCode): float
     {
@@ -107,23 +106,21 @@ class CheckoutIntentService
     }
 
     /**
-     * Read leftover checkout bonus for this reference without consuming it.
+     * Live leftover checkout bonus for this reference, plus an explicit fallback.
+     * Package JSON is a snapshot, not a hold — after takeBonus it must not
+     * cap or release another checkout's reserved promo.
      */
     public function peekBonus(int $userId, string $referenceCode, ?float $fallback = null): float
     {
-        $fromCache = round((float) Cache::get(self::bonusCacheKey($userId, $referenceCode), 0), 2);
-        $intent = $this->findIntent($referenceCode);
-        $fromRow = $intent ? round((float) $intent->bonus_applied, 2) : 0.0;
-        $fromPackage = is_array($intent?->package)
-            ? round((float) ($intent->package['bonus_applied'] ?? 0), 2)
-            : 0.0;
-        $bonus = max($fromCache, $fromRow, $fromPackage, round((float) ($fallback ?? 0), 2));
-
-        return $bonus > 0 ? $bonus : 0.0;
+        return max(
+            $this->heldBonus($userId, $referenceCode),
+            round((float) ($fallback ?? 0), 2)
+        );
     }
 
     /**
      * Pull the reserved bonus for this reference (cache, durable row, then fallback).
+     * Leaves package.bonus_applied intact so a late paid webhook can re-reserve.
      */
     public function takeBonus(int $userId, string $referenceCode, ?float $fallback = null): float
     {
@@ -147,12 +144,8 @@ class CheckoutIntentService
             return;
         }
 
+        $left = max(0, round($this->heldBonus($userId, $referenceCode) - $amount, 2));
         $intent = $this->findIntent($referenceCode);
-        $fromRow = $intent ? round((float) $intent->bonus_applied, 2) : 0.0;
-        $fromCache = round((float) Cache::get(self::bonusCacheKey($userId, $referenceCode), 0), 2);
-        $current = max($fromRow, $fromCache);
-        $left = max(0, round($current - $amount, 2));
-
         if ($intent) {
             $intent->update(['bonus_applied' => $left]);
         }

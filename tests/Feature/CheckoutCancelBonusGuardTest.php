@@ -190,7 +190,7 @@ class CheckoutCancelBonusGuardTest extends TestCase
             0.01
         );
         $this->assertEqualsWithDelta(
-            20.0,
+            0.0,
             app(CheckoutIntentService::class)->peekBonus($advertiser->id, 'REF-STALE-PKG-BONUS'),
             0.01
         );
@@ -219,6 +219,88 @@ class CheckoutCancelBonusGuardTest extends TestCase
         $wallet->refresh();
         $this->assertEqualsWithDelta(60.0, $wallet->withdrawableBalance(), 0.01);
         $this->assertEqualsWithDelta(20.0, $wallet->lockedBonusBalance(), 0.01);
+    }
+
+    public function test_second_cancel_does_not_steal_another_checkouts_reserved_bonus(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $wallet = $this->wallet($advertiser, 20);
+        $payments = app(OrderPaymentService::class);
+        $intents = app(CheckoutIntentService::class);
+        $refunds = app(OrderRefundService::class);
+
+        $payments->storePendingCheckout('REF-FIRST-CANCEL', [
+            'user_id' => $advertiser->id,
+            'order_total' => 80,
+            'amount_due' => 60,
+            'bonus_applied' => 20,
+            'schedule' => ['mode' => 'immediate', 'timezone' => 'UTC'],
+            'lines' => [],
+        ]);
+        $intents->rememberBonus($advertiser->id, 'REF-FIRST-CANCEL', 20);
+
+        $refunds->releaseReservedCheckoutBonusForReference(
+            $advertiser->id,
+            'REF-FIRST-CANCEL',
+            collect(),
+            20
+        );
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
+
+        $wallet->reserveBonusOnly(20);
+        $intents->rememberBonus($advertiser->id, 'REF-SECOND-CART', 20);
+
+        $package = $payments->getPendingCheckout('REF-FIRST-CANCEL');
+        $fallback = is_array($package) ? round((float) ($package['bonus_applied'] ?? 0), 2) : 0.0;
+        $refunds->releaseReservedCheckoutBonusForReference(
+            $advertiser->id,
+            'REF-FIRST-CANCEL',
+            collect(),
+            $fallback > 0 ? $fallback : 20
+        );
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(20.0, $intents->heldBonus($advertiser->id, 'REF-SECOND-CART'), 0.01);
+        $this->assertEqualsWithDelta(0.0, $intents->heldBonus($advertiser->id, 'REF-FIRST-CANCEL'), 0.01);
+    }
+
+    public function test_stale_package_json_does_not_burn_other_checkout_on_approve(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $wallet = $this->wallet($advertiser, 20);
+        $order = $this->paidCardOrder($advertiser, $this->site($publisher), 80, 'REF-STALE-APPROVE')->order;
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'REF-OTHER-HOLD', 20);
+        CheckoutIntent::query()->create([
+            'user_id' => $advertiser->id,
+            'reference_code' => 'REF-STALE-APPROVE',
+            'bonus_applied' => 0,
+            'package' => [
+                'user_id' => $advertiser->id,
+                'order_total' => 80,
+                'amount_due' => 60,
+                'bonus_applied' => 20,
+                'schedule' => ['mode' => 'immediate', 'timezone' => 'UTC'],
+                'lines' => [],
+            ],
+            'expires_at' => now()->addDay(),
+        ]);
+
+        app(OrderRefundService::class)->consumeReservedForSettledOrder($order->fresh(), $wallet->fresh());
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->reserved_balance, 0.01);
+        $this->assertEqualsWithDelta(
+            20.0,
+            app(CheckoutIntentService::class)->heldBonus($advertiser->id, 'REF-OTHER-HOLD'),
+            0.01
+        );
     }
 
     private function fakePaidStripeSession(string $sessionId): void
