@@ -593,6 +593,50 @@ class CheckoutCancelBonusGuardTest extends TestCase
         );
     }
 
+    public function test_pay_again_shortfall_does_not_settle_after_leftover_credit_was_spent(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $wallet = $this->wallet($advertiser, 0);
+        $item = $this->cardOrder($advertiser, $this->site($publisher), 80, 'REF-PAY-AGAIN-SPENT', 'failed');
+        $payments = app(OrderPaymentService::class);
+        $payments->creditUnfulfilledCardCapture(
+            $advertiser->id,
+            'REF-PAY-AGAIN-SPENT',
+            60,
+            'cs_spent_late'
+        );
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(60.0, $wallet->withdrawableBalance(), 0.01);
+        $wallet->debit(60);
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(0.0, $wallet->withdrawableBalance(), 0.01);
+
+        $retrySession = (object) [
+            'id' => 'cs_pay_again_spent_shortfall',
+            'object' => 'checkout.session',
+            'amount_total' => 2000,
+            'payment_intent' => 'pi_pay_again_spent_shortfall',
+            'metadata' => (object) [
+                'type' => 'order_payment',
+                'reference_code' => 'REF-PAY-AGAIN-SPENT',
+                'expected_amount' => '20',
+                'order_total' => '80',
+                'bonus_applied' => '0',
+                'is_retry' => '1',
+                'unfulfilled_credit_applied' => '60',
+                'user_id' => (string) $advertiser->id,
+            ],
+        ];
+
+        $paid = $payments->markOrdersPaidFromStripeSession('REF-PAY-AGAIN-SPENT', $retrySession);
+        $this->assertTrue($paid->isEmpty());
+        $this->assertSame('failed', $item->order->fresh()->payment_status);
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(0.0, $wallet->withdrawableBalance(), 0.01);
+        $this->assertEqualsWithDelta(60.0, $payments->unfulfilledCardCreditAmount('REF-PAY-AGAIN-SPENT'), 0.01);
+    }
+
     public function test_pay_again_settles_from_wallet_when_unfulfilled_credit_covers_leftover(): void
     {
         $advertiser = $this->userWithRole('advertiser');
