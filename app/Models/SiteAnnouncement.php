@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Models\Concerns\HasPromotionSchedule;
 use App\Models\Concerns\SoftDeletesWhenReady;
+use App\Support\PromotionUrl;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -108,5 +109,10 @@ class SiteAnnouncement extends Model
         $ends = $this->safeEndsAt();
 
         return $ends ? $ends->format('M j') : null;
+    }
+
+    public function clickHref(): ?string
+    {
+        return PromotionUrl::href($this->cta_url);
     }
 }

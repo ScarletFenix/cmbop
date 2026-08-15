@@ -143,5 +143,8 @@ class AdminPromotionsSchemaDriftResilienceTest extends TestCase
             ->get(route('admin.promotions.announcements.edit', $announcement->id))
             ->assertOk()
             ->assertDontSee('Something went wrong');
+
+        $this->assertFalse($announcement->fresh()->isCurrentlyLive());
+        $this->assertSame('paused', $announcement->fresh()->scheduleState());
     }
 }

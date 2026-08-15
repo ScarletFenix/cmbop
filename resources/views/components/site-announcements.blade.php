@@ -28,10 +28,10 @@
                     @if($endsLabel = $item->offerEndsLabel())
                         <span class="site-announcement__ends">Ends {{ $endsLabel }}</span>
                     @endif
-                    @if($item->cta_url && $item->cta_label)
+                    @if($item->cta_label && $item->clickHref())
                         <a class="site-announcement__cta"
                            href="{{ route('announcements.click', $item) }}"
-                           @if(!\Illuminate\Support\Str::startsWith((string) $item->cta_url, '/')) rel="noopener noreferrer" @endif
+                           @if(!\Illuminate\Support\Str::startsWith((string) $item->clickHref(), '/')) rel="noopener noreferrer" @endif
                         >{{ scalar_text($item->cta_label) }}</a>
                     @endif
                 </div>

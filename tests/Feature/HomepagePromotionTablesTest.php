@@ -175,15 +175,60 @@ class HomepagePromotionTablesTest extends TestCase
             'ends_at' => 'not-a-date',
         ]);
 
+        $fresh = $announcement->fresh();
+        $this->assertFalse($fresh->isCurrentlyLive());
+        $this->assertSame('paused', $fresh->scheduleState());
+
         $this->get('/')
             ->assertOk()
-            ->assertSee('Garbage date notice', false)
+            ->assertDontSee('Garbage date notice', false)
             ->assertDontSee('Something went wrong');
 
-        $location = (string) $this->get(route('announcements.click', $announcement->id))
-            ->assertRedirect()
-            ->headers->get('Location');
-        $this->assertStringContainsString('/advertiser/catalog', $location);
+        $this->get(route('announcements.click', $announcement->id))
+            ->assertRedirect('/');
+        $this->assertSame(0, (int) $announcement->fresh()->clicks);
+    }
+
+    public function test_unparseable_starts_at_is_not_live_and_click_goes_home(): void
+    {
+        $announcement = SiteAnnouncement::create([
+            'title' => 'Garbage start notice',
+            'message' => 'Body',
+            'type' => 'general',
+            'style' => 'info',
+            'audience' => 'all',
+            'cta_label' => 'Go',
+            'cta_url' => '/advertiser/catalog',
+            'is_active' => true,
+            'starts_at' => now()->subHour(),
+        ]);
+
+        DB::table('site_announcements')->where('id', $announcement->id)->update([
+            'starts_at' => 'not-a-date',
+        ]);
+
+        $this->assertFalse($announcement->fresh()->isCurrentlyLive());
+        $this->get('/')->assertOk()->assertDontSee('Garbage start notice', false);
+        $this->get(route('announcements.click', $announcement->id))->assertRedirect('/');
+        $this->assertSame(0, (int) $announcement->fresh()->clicks);
+    }
+
+    public function test_whitespace_cta_is_not_rendered_as_a_link(): void
+    {
+        SiteAnnouncement::create([
+            'title' => 'Whitespace cta notice',
+            'message' => 'Body',
+            'type' => 'general',
+            'style' => 'info',
+            'audience' => 'all',
+            'cta_label' => 'Go',
+            'cta_url' => '   ',
+            'is_active' => true,
+        ]);
+
+        $html = $this->get('/')->assertOk()->assertSee('Whitespace cta notice', false)->getContent();
+        $this->assertStringNotContainsString('site-announcement__cta', $html);
+        $this->assertStringNotContainsString('/announcements/', $html);
     }
 
     public function test_limited_offer_shows_ends_label(): void

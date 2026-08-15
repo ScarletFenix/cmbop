@@ -58,6 +58,13 @@ trait HasPromotionSchedule
                 return false;
             }
 
+            // A leftover non-null date that Carbon cannot parse is not "no
+            // schedule" — SQL active() already excludes many of these, and
+            // treating them as unrestricted made admin/click disagree.
+            if ($this->scheduleDateUnparseable('starts_at') || $this->scheduleDateUnparseable('ends_at')) {
+                return false;
+            }
+
             $now = now();
             $starts = $this->safeStartsAt();
             if ($starts && $starts->gt($now)) {
@@ -93,5 +100,15 @@ trait HasPromotionSchedule
         } catch (\Throwable) {
             return null;
         }
+    }
+
+    private function scheduleDateUnparseable(string $attribute): bool
+    {
+        $raw = $this->getAttributes()[$attribute] ?? null;
+        if ($raw === null || $raw === '') {
+            return false;
+        }
+
+        return $this->safeScheduleDate($attribute) === null;
     }
 }

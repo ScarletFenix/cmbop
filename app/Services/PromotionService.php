@@ -53,8 +53,11 @@ class PromotionService
                 ->forAudience($audience)
                 ->orderBy('priority')
                 ->orderByDesc('id')
-                ->limit($limit)
-                ->get();
+                ->limit(max($limit * 3, 10))
+                ->get()
+                ->filter(fn (SiteAnnouncement $item) => $item->isCurrentlyLive())
+                ->take($limit)
+                ->values();
         } catch (\Throwable $e) {
             Log::warning('Failed to load site announcements', ['error' => $e->getMessage()]);
 
@@ -81,7 +84,7 @@ class PromotionService
                 $query->forPlacement($placement);
             }
 
-            $all = $query->get();
+            $all = $query->get()->filter(fn (AdBanner $banner) => $banner->isCurrentlyLive())->values();
             $limit = max(1, (int) config('promotions.banners_per_placement', 1));
             $seed = crc32(($placement ?? 'any').'|'.now()->toDateString());
 
@@ -131,7 +134,7 @@ class PromotionService
 
             return [
                 'announcements_live' => Schema::hasTable('site_announcements')
-                    ? SiteAnnouncement::query()->active()->count()
+                    ? SiteAnnouncement::query()->active()->get()->filter->isCurrentlyLive()->count()
                     : 0,
                 'announcements_total' => Schema::hasTable('site_announcements')
                     ? SiteAnnouncement::query()->count()
@@ -140,7 +143,7 @@ class PromotionService
                     ? SiteAnnouncement::query()->scheduleState('expired')->count()
                     : 0,
                 'banners_live' => Schema::hasTable('ad_banners')
-                    ? AdBanner::query()->active()->count()
+                    ? AdBanner::query()->active()->get()->filter->isCurrentlyLive()->count()
                     : 0,
                 'banners_total' => Schema::hasTable('ad_banners')
                     ? AdBanner::query()->count()
