@@ -20,11 +20,13 @@ class WelcomeBonusSetting extends Model
             return $default;
         }
 
-        return Cache::remember('welcome_bonus_setting:'.$key, 60, function () use ($key, $default) {
+        try {
             $row = static::query()->where('key', $key)->first();
 
             return $row?->value ?? $default;
-        });
+        } catch (\Throwable) {
+            return $default;
+        }
     }
 
     public static function setValue(string $key, mixed $value): void
