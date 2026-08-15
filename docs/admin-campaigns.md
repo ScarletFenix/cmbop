@@ -66,7 +66,7 @@ or marketing, even if that staff account also has a marketplace role.
    table, or a mailable whose user id cannot be parsed is fail-closed: the
    row stays queued so an in-flight send is not doubled. An unused redis
    `queue.default` or a broken unused database table must not block a
-   healthy empty mail queue — recover must still reclaim. A successful
+   healthy empty mail queue — recover must still reclaim. A second database table without `payload` on the unused connection must not look like in-flight mail. A successful
    empty scan of the live mail table must still reclaim even if the unused
    connection is broken. Give-up can leave a campaign
    `failed` with leftover `queued` claims — recover now selects those too,

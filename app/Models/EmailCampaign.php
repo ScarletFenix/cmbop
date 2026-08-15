@@ -230,7 +230,9 @@ class EmailCampaign extends Model
     protected static function recoverStalledLocked(int $staleMinutes): int
     {
         self::reconcileQueuedRecipientsFromLogs($staleMinutes);
-        self::syncQueuedRecipientsWithAttachedLogs();
+        foreach (self::healQueuedRecipientsWithTerminalLog() as $id) {
+            static::query()->find($id)?->recountRecipientTotals();
+        }
         self::expireOrphanedQueuedRecipients();
 
         $stale = now()->subMinutes(max(1, $staleMinutes));
@@ -870,6 +872,15 @@ class EmailCampaign extends Model
      */
     protected static function healQueuedRecipientsWithTerminalLog(): array
     {
+        try {
+            if (! Schema::hasTable((new EmailCampaignRecipient)->getTable())
+                || ! Schema::hasTable((new EmailLog)->getTable())) {
+                return [];
+            }
+        } catch (\Throwable) {
+            return [];
+        }
+
         $rows = EmailCampaignRecipient::query()
             ->where('status', EmailCampaignRecipient::STATUS_QUEUED)
             ->whereNotNull('email_log_id')
