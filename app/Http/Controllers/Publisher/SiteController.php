@@ -881,6 +881,18 @@ class SiteController extends Controller
         }
 
         if ($needsRereview && $wasLive) {
+            ActivityLogger::tryLog(
+                'site.rereview_requested',
+                auth()->user()->name.' pulled "'.$site->site_name.'" offline for re-review',
+                $site,
+                [
+                    'verified' => false,
+                    'active' => false,
+                    'was_verified' => (bool) $wasLive,
+                ],
+                $site->site_name
+            );
+
             return redirect()->back()->with('success', 'Site updated. Market/niche changes require re-review — it is offline until an admin approves it again.');
         }
 
@@ -978,6 +990,14 @@ class SiteController extends Controller
         $site->archived_at = now();
         $site->save();
 
+        ActivityLogger::tryLog(
+            'site.archived',
+            auth()->user()->name.' archived "'.$site->site_name.'"',
+            $site,
+            ['by' => 'publisher'],
+            $site->site_name
+        );
+
         return response()->json([
             'success' => true,
             'message' => 'Site archived and hidden from the catalog.',
@@ -999,6 +1019,14 @@ class SiteController extends Controller
         $site->archived_at = null;
         $site->save();
         $site->refresh();
+
+        ActivityLogger::tryLog(
+            'site.unarchived',
+            auth()->user()->name.' restored "'.$site->site_name.'" from archive',
+            $site,
+            ['by' => 'publisher'],
+            $site->site_name
+        );
 
         $message = 'Site restored. It remains inactive until it is active again.';
         if ($site->isCatalogVisible()) {

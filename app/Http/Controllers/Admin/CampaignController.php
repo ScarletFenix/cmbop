@@ -160,23 +160,6 @@ class CampaignController extends Controller
         });
 
         try {
-            ActivityLogger::log(
-                'campaign.queued',
-                "Queued campaign \"{$campaign->name}\" for {$count} recipient(s).",
-                $campaign,
-                [
-                    'audience' => $campaign->audience,
-                    'recipients' => $count,
-                ]
-            );
-        } catch (\Throwable $e) {
-            Log::warning('Campaign activity log failed', [
-                'campaign_id' => $campaign->id,
-                'error' => $e->getMessage(),
-            ]);
-        }
-
-        try {
             SendEmailCampaignJob::dispatch($campaign->id);
         } catch (\Throwable $e) {
             Log::error('Campaign job dispatch failed', [
@@ -185,6 +168,16 @@ class CampaignController extends Controller
             ]);
             $campaign->refresh()->recountRecipientTotals();
             if ($campaign->status === EmailCampaign::STATUS_SENT) {
+                ActivityLogger::tryLog(
+                    'campaign.queued',
+                    "Queued campaign \"{$campaign->name}\" for {$count} recipient(s).",
+                    $campaign,
+                    [
+                        'audience' => $campaign->audience,
+                        'recipients' => $count,
+                    ]
+                );
+
                 return redirect()
                     ->route('admin.campaigns.index')
                     ->with('success', "Campaign queued for {$count} recipient(s).");
@@ -207,6 +200,16 @@ class CampaignController extends Controller
 
             return back()->withInput()->with('error', 'Campaign was saved but could not be queued. Try again.');
         }
+
+        ActivityLogger::tryLog(
+            'campaign.queued',
+            "Queued campaign \"{$campaign->name}\" for {$count} recipient(s).",
+            $campaign,
+            [
+                'audience' => $campaign->audience,
+                'recipients' => $count,
+            ]
+        );
 
         return redirect()
             ->route('admin.campaigns.index')

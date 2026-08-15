@@ -342,11 +342,13 @@ class CatalogCopyStrikeGuard
             ->where('user_id', $user->id)
             ->where('created_at', '>=', $since)
             ->where('created_at', '<=', CatalogCopyEvent::PLAUSIBLE_SQL_DATETIME_CEIL)
-            ->when(
-                $siteId !== null,
-                fn ($q) => $q->where('site_id', $siteId),
-                fn ($q) => $q->where('normalized_host', $host)->whereNull('site_id')
-            )
+            ->when($afterId > 0, fn ($q) => $q->where('id', '>', $afterId))
+            ->where(function ($q) use ($siteId, $host) {
+                $q->where('normalized_host', $host);
+                if ($siteId !== null) {
+                    $q->orWhere('site_id', $siteId);
+                }
+            })
             ->exists();
 
         if ($exists) {
@@ -371,6 +373,7 @@ class CatalogCopyStrikeGuard
             ->where('user_id', $user->id)
             ->where('created_at', '>=', $since)
             ->where('created_at', '<=', CatalogCopyEvent::PLAUSIBLE_SQL_DATETIME_CEIL)
+            ->when($afterId > 0, fn ($q) => $q->where('id', '>', $afterId))
             ->whereNotNull('site_id')
             ->distinct()
             ->count('site_id');
@@ -379,6 +382,7 @@ class CatalogCopyStrikeGuard
             ->where('user_id', $user->id)
             ->where('created_at', '>=', $since)
             ->where('created_at', '<=', CatalogCopyEvent::PLAUSIBLE_SQL_DATETIME_CEIL)
+            ->when($afterId > 0, fn ($q) => $q->where('id', '>', $afterId))
             ->whereNull('site_id')
             ->distinct()
             ->count('normalized_host');
