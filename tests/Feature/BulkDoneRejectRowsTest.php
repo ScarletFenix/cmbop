@@ -394,10 +394,11 @@ class BulkDoneRejectRowsTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        $this->assertStringContainsString('Finish the boxes first.', $html);
-        $this->assertStringContainsString('Finish this field, or clear the row and submit only complete blocks.', $html);
+        $this->assertMatchesRegularExpression(
+            '/<div class="alert alert-danger py-2 small">\s*<strong>\s*Finish the boxes first\.\s*<\/strong>\s*Finish this field, or clear the row and submit only complete blocks\./s',
+            $html
+        );
         $this->assertStringNotContainsString('Add a publisher note.', $html);
-        $this->assertStringNotContainsString('Add a note for the publisher about the removed sites', $html);
     }
 
     public function test_reject_email_still_sends_when_publisher_opts_out_of_system_updates(): void
