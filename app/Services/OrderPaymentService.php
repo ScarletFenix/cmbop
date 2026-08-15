@@ -427,6 +427,15 @@ class OrderPaymentService
         foreach ($hiddenPending as $order) {
             $order->update(['status' => 'cancelled']);
         }
+
+        if ($userId > 0) {
+            $this->refundBonusReservedForReference(
+                $userId,
+                $referenceCode,
+                isset($meta['bonus_applied']) ? round((float) $meta['bonus_applied'], 2) : null,
+                $hiddenPending
+            );
+        }
     }
 
     public function unfulfilledCardCreditAmount(string $referenceCode): float

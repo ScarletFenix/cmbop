@@ -500,6 +500,8 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
         $advertiser = $this->makeUser('advertiser');
         $publisher = $this->makeUser('publisher');
         $site = $this->makeSite($publisher, 'legacy-hidden.example', 80);
+        $wallet = $this->advertiserWallet($advertiser, 20);
+        $wallet->reserveBonusOnly(20);
         $ref = 'LEGACY-HIDDEN-1';
 
         $order = Order::create([
@@ -524,21 +526,20 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
 
         $site->update(['verified' => false, 'active' => false]);
 
-        $paid = app(OrderPaymentService::class)->markOrdersPaidFromStripeSession(
-            $ref,
-            $this->paidSession($ref, 80, 'cs_legacy_hidden')
-        );
+        $session = $this->paidSession($ref, 80, 'cs_legacy_hidden');
+        $session->metadata->bonus_applied = '20';
+        $session->metadata->order_total = '100';
+
+        $paid = app(OrderPaymentService::class)->markOrdersPaidFromStripeSession($ref, $session);
 
         $this->assertCount(0, $paid);
         $this->assertSame('pending', $order->fresh()->payment_status);
         $this->assertSame('cancelled', $order->fresh()->status);
 
-        $wallet = Wallet::query()
-            ->where('user_id', $advertiser->id)
-            ->where('role_id', Wallet::advertiserRoleId())
-            ->first();
-        $this->assertNotNull($wallet);
-        $this->assertEqualsWithDelta(80.0, (float) $wallet->balance, 0.01);
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(100.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_reserved, 0.01);
         $this->assertEqualsWithDelta(
             80.0,
             app(OrderPaymentService::class)->unfulfilledCardCreditAmount($ref),
