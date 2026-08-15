@@ -1,12 +1,12 @@
 @extends(staff_layout())
 
 @section('content')
-<div class="container-fluid">
-    <div class="mb-3">
+<div class="container-fluid bulk-request-show">
+    <div class="bulk-request-show__header">
         <a href="{{ staff_route('bulk-site-requests.index') }}" class="small text-muted text-decoration-none">
             ← Bulk requests
         </a>
-        <h3 class="mt-2 mb-1">Bulk request #{{ $bulkRequest->id }}</h3>
+        <h3 class="bulk-request-show__title">Bulk request #{{ $bulkRequest->id }}</h3>
         <p class="text-muted small mb-0">
             Publisher: <strong>{{ $bulkRequest->publisher->name }}</strong>
             ({{ $bulkRequest->publisher->email }})
@@ -27,27 +27,27 @@
         </div>
     @endif
 
-    <div class="row g-3">
-        <div class="col-lg-4">
-            <div class="card border-0 shadow-sm mb-3">
+    <div class="row g-3 align-items-start bulk-request-layout">
+        <div class="col-lg-4 bulk-request-sidebar">
+            <div class="card border-0 shadow-sm bulk-request-note">
                 <div class="card-body">
                     <h6 class="fw-semibold">Publisher note</h6>
                     <p class="small mb-0">{{ $bulkRequest->publisher_note ?: '—' }}</p>
                 </div>
             </div>
 
-            <div class="card border-0 shadow-sm mb-3">
+            <div class="card border-0 shadow-sm bulk-request-ops">
                 <div class="card-body">
-                    <h6 class="fw-semibold mb-3">Ops actions</h6>
-                    <form method="POST" action="{{ staff_route('bulk-site-requests.notes', $bulkRequest) }}" class="mb-3">
+                    <h6 class="fw-semibold">Ops actions</h6>
+                    <form method="POST" action="{{ staff_route('bulk-site-requests.notes', $bulkRequest) }}">
                         @csrf
-                        <label class="form-label small">Internal notes</label>
-                        <textarea name="admin_notes" class="form-control form-control-sm mb-2" rows="3">{{ old_text('admin_notes', $bulkRequest->admin_notes) }}</textarea>
-                        <button type="submit" class="btn btn-sm btn-outline-secondary">Save notes</button>
+                        <label class="form-label small mb-1">Internal notes</label>
+                        <textarea name="admin_notes" class="form-control form-control-sm" rows="3">{{ old_text('admin_notes', $bulkRequest->admin_notes) }}</textarea>
+                        <button type="submit" class="btn btn-sm btn-outline-secondary mt-2">Save notes</button>
                     </form>
 
                     @if($bulkRequest->canMarkSheetSent())
-                        <form method="POST" action="{{ staff_route('bulk-site-requests.sheet-sent', $bulkRequest) }}" class="mb-2">
+                        <form method="POST" action="{{ staff_route('bulk-site-requests.sheet-sent', $bulkRequest) }}">
                             @csrf
                             <button type="submit" class="btn btn-sm btn-outline-secondary w-100">
                                 Mark sheet emailed (optional)
@@ -65,13 +65,13 @@
                 </div>
             </div>
 
-            <div class="card border-0 shadow-sm mb-3">
+            <div class="card border-0 shadow-sm bulk-request-history">
                 <div class="card-body">
                     <h6 class="fw-semibold mb-1">History</h6>
-                    <p class="small text-muted mb-3">Append-only audit trail. Cannot be deleted.</p>
-                    <div class="bulk-history-list" style="max-height: 28rem; overflow-y: auto;">
+                    <p class="small text-muted mb-2">Append-only audit trail. Cannot be deleted.</p>
+                    <div class="bulk-history-list">
                         @forelse($history as $entry)
-                            <div class="border-bottom py-2 small">
+                            <div class="bulk-history-item">
                                 <div class="fw-semibold">{{ marketing_task_label($entry->action) }}</div>
                                 <div class="text-muted">{{ $entry->description }}</div>
                                 @php
@@ -80,7 +80,7 @@
                                 @if($historyNote)
                                     <div class="text-muted mt-1" data-history-reason>{{ \App\Support\MarketingHistoryDisplay::reasonLabel($entry) }}: {{ $historyNote }}</div>
                                 @endif
-                                <div class="text-muted mt-1" style="font-size:.72rem;">
+                                <div class="bulk-history-meta text-muted">
                                     {{ $entry->user_name ?? 'System' }}
                                     @if($entry->role) · {{ $entry->role }} @endif
                                     · {{ $entry->created_at?->timezone(config('app.timezone'))->format('M j, Y H:i') }}
@@ -94,8 +94,8 @@
             </div>
         </div>
 
-        <div class="col-lg-8">
-            <div class="card border-0 shadow-sm mb-3">
+        <div class="col-lg-8 bulk-request-main">
+            <div class="card border-0 shadow-sm">
                 <div class="card-body">
                     <h6 class="fw-semibold mb-1">Publisher submitted (URL + price only)</h6>
                     <p class="small text-muted mb-3">
@@ -144,10 +144,8 @@
                     </div>
                 </div>
             </div>
-        </div>
-    </div>
 
-            <div class="card border-0 shadow-sm mb-3 border-primary-subtle">
+            <div class="card border-0 shadow-sm border-primary-subtle">
                 <div class="card-body">
                     <h6 class="fw-semibold mb-1">Done — add sites &amp; notify publisher</h6>
                     <p class="small text-muted mb-3">
@@ -482,10 +480,12 @@
             @endif
         </div>
     </div>
+        </div>
+    </div>
 
-    <div class="row g-3">
-        <div class="col-lg-8">
-            <div class="card border-0 shadow-sm mb-3">
+    <div class="row g-3 align-items-start bulk-request-lower">
+        <div class="col-lg-8 bulk-request-stack">
+            <div class="card border-0 shadow-sm">
                 <div class="card-body">
                     <h6 class="fw-semibold mb-1">Advanced: seed with per-row metrics</h6>
                     <p class="small text-muted mb-3">

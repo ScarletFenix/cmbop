@@ -110,7 +110,16 @@ class BulkDoneDraftAndNicheUiTest extends TestCase
 
         $this->assertStringContainsString('staff-sites.css', $html);
         $this->assertStringContainsString('bulk-done-list', $html);
+        $this->assertStringContainsString('bulk-request-show', $html);
+        $this->assertStringContainsString('bulk-request-layout', $html);
+        $this->assertStringContainsString('align-items-start', $html);
+        $this->assertStringContainsString('bulk-request-sidebar', $html);
+        $this->assertStringContainsString('bulk-request-main', $html);
+        $this->assertStringNotContainsString('max-height: 28rem', $html);
         $staffCss = file_get_contents(public_path('assets/css/staff-sites.css'));
+        $this->assertStringContainsString('.bulk-request-show', $staffCss);
+        $this->assertStringContainsString('.bulk-request-sidebar', $staffCss);
+        $this->assertStringContainsString('align-items: flex-start', $staffCss);
         $this->assertStringContainsString('.bulk-done-panel', $staffCss);
         $this->assertStringContainsString('.bulk-done-row__fields', $staffCss);
         $this->assertStringContainsString('.bulk-done-row__chip.is-empty', $staffCss);
