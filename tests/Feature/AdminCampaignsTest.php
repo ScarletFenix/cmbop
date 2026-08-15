@@ -1204,11 +1204,23 @@ class AdminCampaignsTest extends TestCase
         $mailable->skipUserPreference = true;
         $mailable->dedupeKey = EmailCampaignRecipient::dedupeKey((int) $campaign->id, (int) $advertiser->id);
         $mailable->to($advertiser->email);
+        $log = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => AudienceCampaignMail::class,
+            'template_key' => 'audience_campaign',
+            'dedupe_key' => $mailable->dedupeKey,
+            'to_email' => $advertiser->email,
+            'subject' => 'Queued then staff',
+            'status' => EmailLog::STATUS_PENDING,
+            'attempts' => 1,
+        ]);
 
         $this->assertNull($mailable->send(app('mailer')));
         $this->assertSame('staff', $mailable->suppressReason);
         $this->assertSame(EmailCampaignRecipient::STATUS_SKIPPED, $row->fresh()->status);
         $this->assertSame(EmailCampaignRecipient::SKIP_STAFF, $row->fresh()->skip_reason);
+        $this->assertSame(EmailLog::STATUS_FAILED, $log->fresh()->status);
+        $this->assertSame('Suppressed: recipient is staff', $log->fresh()->error);
         $this->assertSame(0, $campaign->fresh()->sent_count);
         $this->assertSame(1, $campaign->fresh()->skipped_count);
     }

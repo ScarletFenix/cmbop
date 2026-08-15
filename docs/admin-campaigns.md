@@ -131,9 +131,9 @@ or marketing, even if that staff account also has a marketplace role.
    Email Center retry of a failed campaign mailable clears `email_log_id`
    so a lost retry can still expire as stale. Reviving a `failed` campaign
    must also clear the fail streak — leaving MAX parked the leftover
-   pending for recover give-up beside the retried mailable. Bulk retry must mark only one failed log per job UUID — a shared stale stamp plus the same
+   pending for recover give-up beside the retried mailable.    Bulk retry must mark only one failed log per job UUID — a shared stale stamp plus the same
    `to_email` used to pending-mark two campaigns and reclaim the extra
-   recipient beside a single `queue:retry`.
+   recipient beside a single `queue:retry`. Closing a leftover already-delivered log must also drop that job UUID from the retry list — a shared stale stamp would otherwise pending-mark the other campaign.
    `user_ids` are integers capped at
    `PICKER_LIMIT * 2` (no `exists:users,id` — a deleted picker row must not
    422 the whole send).

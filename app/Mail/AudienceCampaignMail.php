@@ -64,6 +64,7 @@ class AudienceCampaignMail extends PlatformMailable
     {
         if (AudienceInventoryService::userHasStaffRole($this->recipient)) {
             $this->suppressReason = 'staff';
+            $this->abandonOpenLog($this->suppressErrorMessage());
             $this->markRecipientSkipped(EmailCampaignRecipient::SKIP_STAFF);
 
             return null;
