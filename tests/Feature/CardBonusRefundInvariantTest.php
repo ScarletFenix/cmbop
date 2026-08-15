@@ -10,8 +10,10 @@ use App\Models\User;
 use App\Models\Wallet;
 use App\Services\CheckoutIntentService;
 use App\Services\OrderPaymentService;
+use App\Services\StripeCustomerService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
+use Stripe\Checkout\Session;
 use Tests\TestCase;
 
 /**
@@ -466,6 +468,90 @@ class CardBonusRefundInvariantTest extends TestCase
         $this->assertEqualsWithDelta(80.0, (float) $wallet->balance, 0.01);
         $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
         $this->assertEqualsWithDelta(60.0, $wallet->withdrawableBalance(), 0.01);
+    }
+
+    public function test_pay_again_full_card_settle_does_not_keep_fail_bonus_snapshot(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $wallet = $this->wallet($advertiser, reservedBonus: 20);
+        $site = $this->site($publisher);
+        $item = $this->cardOrder($advertiser, $site, 80, 'REF-PAY-AGAIN-NO-SNAP', 'pending');
+        $payments = app(OrderPaymentService::class);
+        $payments->storePendingCheckout('REF-PAY-AGAIN-NO-SNAP', [
+            'user_id' => $advertiser->id,
+            'reference_code' => 'REF-PAY-AGAIN-NO-SNAP',
+            'order_total' => 80,
+            'amount_due' => 60,
+            'bonus_applied' => 20,
+            'schedule' => ['mode' => 'immediate', 'timezone' => 'UTC'],
+            'lines' => [['site_id' => $site->id, 'price' => 80]],
+            'stripe_session_id' => 'cs_will_expire_retry',
+        ]);
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'REF-PAY-AGAIN-NO-SNAP', 20);
+
+        $payments->markOrdersFailedFromReference('REF-PAY-AGAIN-NO-SNAP', 'expired');
+        $this->assertEqualsWithDelta(
+            20.0,
+            $payments->leftoverBonusForPurchaseLedger($item->order->fresh()),
+            0.01
+        );
+
+        $this->mock(StripeCustomerService::class, function ($mock) {
+            $mock->shouldReceive('configured')->andReturn(true);
+            $mock->shouldReceive('createCheckoutSession')->once()->andReturn(
+                Session::constructFrom([
+                    'id' => 'cs_pay_again_full',
+                    'object' => 'checkout.session',
+                    'url' => 'https://checkout.stripe.test/pay-again',
+                ])
+            );
+        });
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.orders.retry-payment', $item->order_id))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('amount_due', 80);
+
+        $this->assertNull($payments->getPendingCheckout('REF-PAY-AGAIN-NO-SNAP'));
+
+        $session = (object) [
+            'id' => 'cs_pay_again_full',
+            'object' => 'checkout.session',
+            'amount_total' => 8000,
+            'payment_intent' => 'pi_pay_again_full',
+            'metadata' => (object) [
+                'type' => 'order_payment',
+                'reference_code' => 'REF-PAY-AGAIN-NO-SNAP',
+                'expected_amount' => '80',
+                'order_total' => '80',
+                'bonus_applied' => '0',
+            ],
+        ];
+
+        $paid = $payments->markOrdersPaidFromStripeSession('REF-PAY-AGAIN-NO-SNAP', $session);
+        $this->assertCount(1, $paid);
+        $payments->forgetPendingCheckoutKeepLeftoverHold('REF-PAY-AGAIN-NO-SNAP', $advertiser->id);
+
+        $this->assertNull($payments->getPendingCheckout('REF-PAY-AGAIN-NO-SNAP'));
+        $this->assertEqualsWithDelta(
+            0.0,
+            $payments->leftoverBonusForPurchaseLedger($item->order->fresh()),
+            0.01
+        );
+
+        $this->actingAs($publisher)
+            ->postJson(route('publisher.orders.reject', $item->id), [
+                'reason' => 'The topic does not fit our editorial guidelines.',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(100.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(80.0, $wallet->withdrawableBalance(), 0.01);
     }
 
     public function test_admin_mark_paid_then_reject_restores_promo_not_cash(): void
