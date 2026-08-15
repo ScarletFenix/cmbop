@@ -114,16 +114,16 @@ class PaymentController extends Controller
 
             foreach ($rows as $order) {
                 fputcsv($out, [
-                    $order->order_number,
-                    $order->reference_code,
-                    $order->user?->name,
-                    $order->user?->email,
+                    $this->csvCell($order->order_number),
+                    $this->csvCell($order->reference_code),
+                    $this->csvCell($order->user?->name),
+                    $this->csvCell($order->user?->email),
                     number_format((float) $order->total_amount, 2, '.', ''),
-                    $order->payment_method,
-                    $order->payment_status,
-                    $order->status,
-                    $order->payment_reference,
-                    $order->admin_notes,
+                    $this->csvCell($order->payment_method),
+                    $this->csvCell($order->payment_status),
+                    $this->csvCell($order->status),
+                    $this->csvCell($order->payment_reference),
+                    $this->csvCell($order->admin_notes),
                     optional($order->paid_at)->toDateTimeString(),
                     optional($order->created_at)->toDateTimeString(),
                 ]);
@@ -241,7 +241,9 @@ class PaymentController extends Controller
             }
 
             $refundAmount = 0.0;
-            if ($request->payment_status === 'refunded' && $oldStatus === 'paid') {
+            // Failed-from-paid already credited captured methods. A later
+            // refunded label must not pay the advertiser a second time.
+            if ($newStatus === 'refunded' && $oldStatus === 'paid') {
                 if ($order->status === 'completed') {
                     return $this->abortPaymentUpdate(
                         (int) $id,
@@ -268,12 +270,14 @@ class PaymentController extends Controller
 
                 if ($order->payment_method === 'wallet') {
                     $refundAmount = $this->releaseWalletHoldOnAdminFailed($order);
-                } elseif (! in_array((string) $order->status, ['cancelled', 'completed'], true)) {
+                } else {
                     // Collected card / bank / Wise: credit the advertiser wallet
-                    // the same way Refunded does. Failed used to cancel the
-                    // placement and release the article with €0 in-app credit.
+                    // the same way Refunded does. Failed used to skip already-
+                    // cancelled paid rows and leave captured money uncredited.
                     $refundAmount = $this->creditAdvertiserRefund($order);
-                    $order->status = 'cancelled';
+                    if ($order->status !== 'cancelled') {
+                        $order->status = 'cancelled';
+                    }
                 }
 
                 if ($order->status === 'cancelled') {
@@ -295,74 +299,32 @@ class PaymentController extends Controller
                 'payment_reference' => $paymentReference !== '' ? $paymentReference : null,
             ]);
 
-            // Send email notification to user when payment is marked as paid.
-            // Do not consume checkout bonus here — Stripe mark-paid also leaves
-            // bonus_reserved until approve/reject so a later refund cannot mint
-            // promo as withdrawable cash.
-            if ($request->payment_status === 'paid' && $oldStatus !== 'paid') {
-                // Keep leftover checkout bonus reserved until approve/reject,
-                // matching Stripe finalize. Consuming here minted promo as cash
-                // if the publisher later rejected the placement.
-                if ($sendNotification) {
-                    $this->sendPaymentConfirmationEmail($order);
-                }
-            }
-
             // Unpaid failure: release this line's leftover checkout bonus.
             // Paid failures already restored promo via creditAdvertiserRefund /
             // releaseWalletHoldOnAdminFailed — do not dump the sibling share.
-            if ($request->payment_status === 'failed' && $oldStatus !== 'failed' && $oldStatus !== 'paid') {
+            if ($newStatus === 'failed' && $oldStatus !== 'failed' && $oldStatus !== 'paid') {
                 $this->refundReservedCheckoutBonus($order);
             }
 
             DB::commit();
 
-            $fresh = $order->fresh(['items']);
-            $notifications = app(InAppNotificationService::class);
-
-            if ($request->payment_status === 'paid' && $oldStatus !== 'paid') {
-                app(OrderPaymentService::class)->notifyPublishersOfPaidOrders([$fresh]);
-                if ($fresh->user) {
-                    try {
-                        app(SpendBudgetService::class)->evaluate($fresh->user);
-                    } catch (\Throwable $e) {
-                        Log::warning('Spend budget evaluate after admin mark-paid failed: '.$e->getMessage());
-                    }
-                }
-            }
-
-            if ($sendNotification && $request->payment_status === 'failed' && $oldStatus !== 'failed') {
-                $notifications->notifyPaymentFailed([$fresh], $notes !== '' ? $notes : $request->notes);
-                if ($refundAmount > 0) {
-                    $notifications->notifyRefundCredited(
-                        $fresh,
-                        $refundAmount,
-                        $notes !== '' ? $notes : 'Admin marked payment failed'
-                    );
-                }
-            }
-
-            if ($sendNotification && $request->payment_status === 'refunded' && $oldStatus !== 'refunded' && $refundAmount > 0) {
-                $notifications->notifyRefundCredited(
-                    $fresh,
-                    $refundAmount,
-                    $notes !== '' ? $notes : 'Admin refund'
+            try {
+                $this->runPostCommitPaymentSideEffects(
+                    $order,
+                    (string) $oldStatus,
+                    $newStatus,
+                    $sendNotification,
+                    $notes,
+                    $paymentReference,
+                    $refundAmount
                 );
-            }
-
-            ActivityLogger::log(
-                'payment.status_updated',
-                auth()->user()->name.' set payment for order '.$order->order_number.' to '.$request->payment_status,
-                $order,
-                [
+            } catch (\Throwable $e) {
+                Log::error('Post-commit payment side effects failed: '.$e->getMessage(), [
+                    'order_id' => $order->id,
                     'from' => $oldStatus,
-                    'to' => $request->payment_status,
-                    'notes' => $notes !== '' ? $notes : null,
-                    'payment_reference' => $paymentReference !== '' ? $paymentReference : null,
-                    'refund_amount' => $refundAmount > 0 ? $refundAmount : null,
-                ],
-                $order->order_number
-            );
+                    'to' => $newStatus,
+                ]);
+            }
 
             return response()->json([
                 'success' => true,
@@ -462,7 +424,7 @@ class PaymentController extends Controller
      */
     private function releaseWalletHoldOnAdminFailed(Order $order): float
     {
-        if (in_array((string) $order->status, ['completed', 'cancelled'], true)) {
+        if ((string) $order->status === 'completed') {
             return 0.0;
         }
 
@@ -493,7 +455,8 @@ class PaymentController extends Controller
         app(OrderRefundService::class)->refundToAdvertiser(
             $order,
             $amount,
-            'Admin marked payment failed'
+            'Admin marked payment failed',
+            $this->bonusShareCapForRefund($order)
         );
         $wallet->refresh();
         $refunded = max(0, round($reservedBefore - (float) $wallet->reserved_balance, 2));
@@ -517,25 +480,118 @@ class PaymentController extends Controller
             return 0.0;
         }
 
-        app(OrderRefundService::class)->refundToAdvertiser($order, $amount, 'Admin refund');
+        $reservedBefore = 0.0;
+        $wallet = null;
+        if ($order->payment_method === 'wallet') {
+            $advertiserRoleId = Wallet::advertiserRoleId();
+            if ($advertiserRoleId) {
+                $wallet = Wallet::lockOrCreateForRole($order->user_id, $advertiserRoleId);
+                $reservedBefore = round((float) $wallet->reserved_balance, 2);
+            }
+        }
+
+        app(OrderRefundService::class)->refundToAdvertiser(
+            $order,
+            $amount,
+            'Admin refund',
+            $this->bonusShareCapForRefund($order)
+        );
+
+        if ($order->payment_method === 'wallet') {
+            $wallet?->refresh();
+
+            return max(0, round($reservedBefore - (float) ($wallet?->reserved_balance ?? 0), 2));
+        }
 
         return $amount;
     }
 
     /**
-     * @param  Collection<int, Order>  $orders
+     * Wallet holds already contain promo — a missing intent must not cap the
+     * share at 0 (that restores the hold as cash and then burns bonus_reserved).
+     * Card leftover still passes peek including 0 so we cannot steal another
+     * in-flight checkout's reserved bonus.
      */
-    private function attachInvoiceDocuments($orders): void
+    private function bonusShareCapForRefund(Order $order): ?float
     {
-        $links = app(AdminInvoiceLinks::class);
-        $byOrder = $links->forOrders($orders);
+        $peek = app(CheckoutIntentService::class)->peekBonus(
+            (int) $order->user_id,
+            (string) $order->reference_code
+        );
 
-        foreach ($orders as $order) {
-            $documents = $byOrder->get((int) $order->id, []);
-            $order->setAttribute('invoice_documents', $documents);
-            $primary = $links->primary($documents);
-            $order->setAttribute('invoice_url', data_get($primary, 'url'));
+        if ($order->payment_method === 'wallet') {
+            return $peek > 0 ? $peek : null;
         }
+
+        return $peek;
+    }
+
+    /**
+     * Notifications / invoices / audit must not 500 after money already moved.
+     */
+    private function runPostCommitPaymentSideEffects(
+        Order $order,
+        string $oldStatus,
+        string $newStatus,
+        bool $sendNotification,
+        string $notes,
+        string $paymentReference,
+        float $refundAmount
+    ): void {
+        // Keep leftover checkout bonus reserved until approve/reject,
+        // matching Stripe finalize. Consuming here minted promo as cash
+        // if the publisher later rejected the placement.
+        if ($newStatus === 'paid' && $oldStatus !== 'paid' && $sendNotification) {
+            $this->sendPaymentConfirmationEmail($order);
+        }
+
+        $fresh = $order->fresh(['items']) ?: $order;
+        $notifications = app(InAppNotificationService::class);
+
+        if ($newStatus === 'paid' && $oldStatus !== 'paid') {
+            app(OrderPaymentService::class)->notifyPublishersOfPaidOrders([$fresh]);
+            if ($fresh->user) {
+                try {
+                    app(SpendBudgetService::class)->evaluate($fresh->user);
+                } catch (\Throwable $e) {
+                    Log::warning('Spend budget evaluate after admin mark-paid failed: '.$e->getMessage());
+                }
+            }
+        }
+
+        if ($sendNotification && $newStatus === 'failed' && $oldStatus !== 'failed') {
+            if ($refundAmount > 0) {
+                $notifications->notifyRefundCredited(
+                    $fresh,
+                    $refundAmount,
+                    $notes !== '' ? $notes : 'Admin marked payment failed'
+                );
+            } else {
+                $notifications->notifyPaymentFailed([$fresh], $notes !== '' ? $notes : null);
+            }
+        }
+
+        if ($sendNotification && $newStatus === 'refunded' && $oldStatus !== 'refunded' && $refundAmount > 0) {
+            $notifications->notifyRefundCredited(
+                $fresh,
+                $refundAmount,
+                $notes !== '' ? $notes : 'Admin refund'
+            );
+        }
+
+        ActivityLogger::log(
+            'payment.status_updated',
+            (auth()->user()?->name ?? 'Admin').' set payment for order '.$order->order_number.' to '.$newStatus,
+            $order,
+            [
+                'from' => $oldStatus,
+                'to' => $newStatus,
+                'notes' => $notes !== '' ? $notes : null,
+                'payment_reference' => $paymentReference !== '' ? $paymentReference : null,
+                'refund_amount' => $refundAmount > 0 ? $refundAmount : null,
+            ],
+            $order->order_number
+        );
     }
 
     /**
@@ -592,7 +648,11 @@ class PaymentController extends Controller
         }
 
         $orderStatus = is_string($request->input('status')) ? $request->input('status') : '';
-        if ($orderStatus !== '') {
+        if ($orderStatus === 'scheduled') {
+            // Live scheduled rows keep status=pending and store the slot on
+            // publication_mode — the same trap the orders console already fixed.
+            $query->awaitingScheduledRelease();
+        } elseif ($orderStatus !== '') {
             $query->where('status', $orderStatus);
         }
 
@@ -664,6 +724,14 @@ class PaymentController extends Controller
                 return [];
             }
 
+            // Keep `paid` so staff can save notes / transfer reference
+            // without a money move.
+            return ['paid', 'failed', 'refunded'];
+        }
+
+        // Paid→failed already credits captured methods. Allow Refunded as a
+        // bookkeeping correction (no second credit) and Failed for notes.
+        if ($current === 'failed' && (string) $order->status === 'cancelled') {
             return ['failed', 'refunded'];
         }
 
@@ -697,6 +765,19 @@ class PaymentController extends Controller
         }
 
         return 'That payment status change is not allowed for this order.';
+    }
+
+    /**
+     * Neutralize spreadsheet formula injection in admin CSV exports.
+     */
+    private function csvCell(mixed $value): string
+    {
+        $text = (string) ($value ?? '');
+        if ($text !== '' && preg_match('/^[=+\-@\t\r]/', $text)) {
+            return "'".$text;
+        }
+
+        return $text;
     }
 
     /**

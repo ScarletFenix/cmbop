@@ -537,6 +537,16 @@ class Wallet extends Model
         $this->balance = round((float) $this->balance + $refund, 2);
         $this->bonus_reserved = round($bonusReserved - $fromBonus, 2);
         $this->bonus_balance = round((float) $this->bonus_balance + $fromBonus, 2);
+        // Never leave bonus_reserved larger than the hold — but do not burn
+        // the excess. A 0 bonusLimit used to zero the leftover without
+        // restoring spend-only promo.
+        if ($this->bonus_reserved > $this->reserved_balance) {
+            $excess = round($this->bonus_reserved - (float) $this->reserved_balance, 2);
+            $this->bonus_reserved = (float) $this->reserved_balance;
+            if ($excess > 0) {
+                $this->bonus_balance = round((float) $this->bonus_balance + $excess, 2);
+            }
+        }
         $this->save();
     }
 
