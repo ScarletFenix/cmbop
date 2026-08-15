@@ -449,7 +449,7 @@ class EmailCenterController extends Controller
 
         foreach ($failed as $log) {
             $stored = (string) data_get($log->meta, 'failed_job_uuid');
-            if ($stored === '' || ! in_array($stored, $uuids, true) || ! empty($claimedUuids[$stored])) {
+            if ($stored === '' || ! in_array($stored, $uuids, true)) {
                 continue;
             }
 
@@ -462,7 +462,6 @@ class EmailCenterController extends Controller
 
             $this->pendingMarkRetriedLog($log);
             $marked[$log->id] = true;
-            $claimedUuids[$stored] = true;
         }
 
         foreach ($uuids as $uuid) {
