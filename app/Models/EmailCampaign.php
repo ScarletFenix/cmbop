@@ -237,6 +237,14 @@ class EmailCampaign extends Model
         self::expireOrphanedQueuedRecipients();
         self::expireOrphanedPendingLogs();
 
+        try {
+            if (! Schema::hasTable((new EmailCampaignRecipient)->getTable())) {
+                return 0;
+            }
+        } catch (\Throwable) {
+            return 0;
+        }
+
         $stale = now()->subMinutes(max(1, $staleMinutes));
         $dispatched = 0;
 
@@ -1244,6 +1252,8 @@ class EmailCampaign extends Model
         }
 
         $payloads = [];
+        $mailScannedOk = false;
+        $mailNeedsScan = $mail !== '' && $mail !== 'sync' && $mailDriver === 'database';
 
         foreach (self::sendJobQueueConnections() as $connection) {
             try {
@@ -1257,8 +1267,12 @@ class EmailCampaign extends Model
                     continue;
                 }
 
+                // Same trap as inFlight / hasQueuedSendJob: a missing
+                // payload column on the unused default must not abort a
+                // healthy mail-queue scan. That discarded the payloads
+                // and left lost Welcome rows pending forever.
                 if (! Schema::hasColumn($table, 'payload')) {
-                    return null;
+                    continue;
                 }
 
                 DB::table($table)
@@ -1272,9 +1286,18 @@ class EmailCampaign extends Model
                             }
                         }
                     });
+
+                if ($connection === $mail) {
+                    $mailScannedOk = true;
+                }
             } catch (\Throwable) {
-                return null;
+                // A lock-timeout on the unused default table must not
+                // discard a successful mail-queue scan.
             }
+        }
+
+        if ($mailNeedsScan && ! $mailScannedOk) {
+            return null;
         }
 
         return $payloads;

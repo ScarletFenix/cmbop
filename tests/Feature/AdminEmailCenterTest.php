@@ -31,6 +31,7 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Mockery;
 use Tests\TestCase;
@@ -2664,6 +2665,71 @@ class AdminEmailCenterTest extends TestCase
             'subject' => 'Campaign',
             'status' => EmailLog::STATUS_PENDING,
             'attempts' => 1,
+        ]);
+        $log->forceFill(['updated_at' => now()->subHours(25)])->save();
+
+        EmailCampaign::recoverStalled();
+
+        $this->assertSame(EmailLog::STATUS_PENDING, $log->fresh()->status);
+    }
+
+    public function test_recover_fails_orphaned_pending_log_when_unused_queue_table_lacks_payload(): void
+    {
+        Schema::create('jobs_broken_pending_expire', function ($table) {
+            $table->id();
+            $table->string('queue')->nullable();
+        });
+        config([
+            'email_notifications.queue_connection' => 'database',
+            'queue.default' => 'broken-db',
+            'queue.connections.database.driver' => 'database',
+            'queue.connections.database.table' => 'jobs',
+            'queue.connections.broken-db.driver' => 'database',
+            'queue.connections.broken-db.table' => 'jobs_broken_pending_expire',
+        ]);
+
+        $admin = $this->userWithRole('admin');
+        $log = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => WelcomeEmail::class,
+            'template_key' => 'welcome',
+            'dedupe_key' => 'welcome:'.$admin->id,
+            'to_email' => $admin->email,
+            'subject' => 'Welcome',
+            'status' => EmailLog::STATUS_PENDING,
+            'attempts' => 2,
+        ]);
+        $log->forceFill(['updated_at' => now()->subHours(25)])->save();
+
+        EmailCampaign::recoverStalled();
+
+        $this->assertSame(EmailLog::STATUS_FAILED, $log->fresh()->status);
+        $this->assertSame('Expired: mail job was not confirmed', $log->fresh()->error);
+    }
+
+    public function test_recover_keeps_pending_log_when_mail_queue_table_lacks_payload(): void
+    {
+        Schema::create('jobs_broken_mail_pending_expire', function ($table) {
+            $table->id();
+            $table->string('queue')->nullable();
+        });
+        config([
+            'email_notifications.queue_connection' => 'broken-db',
+            'queue.default' => 'broken-db',
+            'queue.connections.broken-db.driver' => 'database',
+            'queue.connections.broken-db.table' => 'jobs_broken_mail_pending_expire',
+        ]);
+
+        $admin = $this->userWithRole('admin');
+        $log = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => WelcomeEmail::class,
+            'template_key' => 'welcome',
+            'dedupe_key' => 'welcome:'.$admin->id,
+            'to_email' => $admin->email,
+            'subject' => 'Welcome',
+            'status' => EmailLog::STATUS_PENDING,
+            'attempts' => 2,
         ]);
         $log->forceFill(['updated_at' => now()->subHours(25)])->save();
 

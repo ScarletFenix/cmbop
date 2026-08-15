@@ -110,58 +110,31 @@ class EmailCampaignPhpSyntaxTest extends TestCase
         $model = (string) file_get_contents($files[0]);
         $this->assertSame(1, preg_match_all('/function reclaimOrphanedQueuedRecipients\b/', $model));
         $this->assertSame(1, preg_match_all('/function inFlightCampaignMailUserIds\b/', $model));
-        $this->assertSame(1, preg_match_all('/function syncQueuedRecipientsWithAttachedLogs\b/', $model));
+        $this->assertSame(1, preg_match_all('/function healQueuedRecipientsWithTerminalLog\b/', $model));
+        $this->assertSame(0, preg_match_all('/function syncQueuedRecipientsWithAttachedLogs\b/', $model));
         $this->assertSame(1, preg_match_all('/function failPendingLogsForStaleRecipients\b/', $model));
-        $this->assertSame(1, preg_match_all('/function mailConnectionIsInline\b/', $model));
+        $this->assertSame(1, preg_match_all('/function expireOrphanedPendingLogs\b/', $model));
+        $this->assertSame(1, preg_match_all('/function queuedMailablePayloads\b/', $model));
         $this->assertTrue((bool) preg_match(
-            '/protected static function recoverStalledLocked\(int \$staleMinutes\): int\s*\{(.*?)\n    protected static function reclaimOrphanedQueuedRecipients/s',
+            '/protected static function healQueuedRecipientsWithTerminalLog\(\): array\s*\{(.*?)\n    \/\*\*/s',
             $model,
-            $recover
+            $heal
         ));
-        $this->assertNotFalse(strpos($recover[1], 'hasQueuedSendJob'));
-        $this->assertNotFalse(strpos($recover[1], 'currentFailStreak()'));
-        $this->assertLessThan(
-            strpos($recover[1], 'currentFailStreak()'),
-            strpos($recover[1], 'hasQueuedSendJob'),
-            'recover must see an in-flight send job before fail-streak give-up'
+        $this->assertSame(
+            0,
+            preg_match_all('/^\s*return;\s*$/m', $heal[1]),
+            'healQueuedRecipientsWithTerminalLog must return [] — a bare return is a TypeError'
         );
-
         $this->assertTrue((bool) preg_match(
-            '/protected static function expireOrphanedQueuedRecipients\(\): void\s*\{(.*?)\n    \/\*\*/s',
+            '/protected static function queuedMailablePayloads\(\): \?array\s*\{(.*)\n    \}\n\}\n/s',
             $model,
-            $expire
+            $queued
         ));
-        $this->assertStringContainsString('inFlightCampaignMailUserIds', $expire[1]);
-        $this->assertTrue((bool) preg_match(
-            '/protected static function failPendingLogsForStaleRecipients\(\): void\s*\{(.*)\n\}\n/s',
-            $model,
-            $failPending
-        ));
-        $this->assertStringContainsString('inFlightCampaignMailUserIds', $failPending[1]);
-        $this->assertStringNotContainsString('$expired', $failPending[1]);
-        $this->assertStringContainsString("'updated_at'", $failPending[1]);
-
-        $center = (string) file_get_contents($files[3]);
-        $this->assertSame(1, preg_match_all('/function markRetriedMailLogsPending\b/', $center));
-        $this->assertSame(1, preg_match_all('/function closeFailedLogsAlreadyDelivered\b/', $center));
-        $this->assertSame(1, preg_match_all('/function failedJobMatchesLog\b/', $center));
-        $this->assertTrue((bool) preg_match(
-            '/protected function markRetriedMailLogsPending\(array \$uuids, array \$payloadsByUuid = \[\]\): void\s*\{(.*?)\n    \/\*\*/s',
-            $center,
-            $mark
-        ));
-        $this->assertStringContainsString('$claimedUuids[$stored] = true;', $mark[1]);
-        $this->assertTrue((bool) preg_match(
-            '/protected function requeueFailedCampaignRecipient\(EmailLog \$log\): void\s*\{(.*)\n    protected function failedJobUuidForLog/s',
-            $center,
-            $requeue
-        ));
-        $this->assertStringContainsString('clearFailStreak()', $requeue[1]);
-
-        $payloadTest = (string) file_get_contents($files[4]);
-        $this->assertSame(1, preg_match_all(
-            '/function test_matches_email_log_require_token_rejects_unidentified_payload\b/',
-            $payloadTest
-        ));
+        $this->assertStringContainsString('$mailScannedOk = true;', $queued[1]);
+        $this->assertStringContainsString('if ($mailNeedsScan && ! $mailScannedOk)', $queued[1]);
+        $this->assertDoesNotMatchRegularExpression(
+            '/hasColumn\(\$table, \'payload\'\)\) \{\s*return null;/',
+            $queued[1]
+        );
     }
 }
