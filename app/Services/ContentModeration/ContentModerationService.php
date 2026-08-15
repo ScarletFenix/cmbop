@@ -9,13 +9,18 @@ use App\Models\User;
 use App\Services\ActivityLogger;
 use App\Services\ContentUpload\ArticleHtmlSanitizer;
 use App\Services\ContentUpload\ContentUploadService;
+use App\Services\ContentUpload\DocumentTextExtractor;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class ContentModerationService
 {
+    /** @var array<string, array{hash:string, text:string, links:list<string>, ok:bool}> */
+    private array $storedFilePolicyCache = [];
+
     public function __construct(
         private GoogleDocsFetcher $fetcher,
         private ContentModerationEngine $engine,
@@ -350,6 +355,16 @@ class ContentModerationService
                     'title' => 'Content check required',
                     'message' => config('content_upload.help.compliance_reject')
                         ?: 'Please upload a revised document before continuing.',
+                ];
+
+                continue;
+            }
+
+            if ($this->storedFileUnreadable($submission)) {
+                $failures[] = [
+                    'url' => 'upload:'.$submission->id,
+                    'title' => 'Content check required',
+                    'message' => 'The stored Word file could not be re-checked. Please re-upload the article.',
                 ];
 
                 continue;
@@ -744,12 +759,15 @@ class ContentModerationService
      */
     public function linksFromSubmission(ContentSubmission $submission): array
     {
-        return $this->linksFromSubmissionHtml(
+        $fromPreview = $this->linksFromSubmissionHtml(
             html: (string) ($submission->preview_html ?? ''),
             targetUrl: $submission->target_url ? (string) $submission->target_url : null,
             plainText: (string) ($submission->extracted_text ?? ''),
             extraLinks: $submission->detectedLinks(),
         );
+        $fromFile = $this->storedFilePolicySignals($submission)['links'];
+
+        return $this->engine->normalizeLinkList(array_merge($fromPreview, $fromFile));
     }
 
     public function submissionIdFromSource(string $sourceLabel): ?int
@@ -851,7 +869,8 @@ class ContentModerationService
     }
 
     /**
-     * Restricted-term haystack: body + stored anchors + HTML attributes.
+     * Restricted-term haystack: body + stored anchors + HTML attributes +
+     * the Word package the publisher downloads.
      * Keep language / uniqueness on scanTextFromSubmission() so a short
      * English backlink does not false-fail a non-English article.
      */
@@ -861,9 +880,71 @@ class ContentModerationService
             $this->scanTextFromSubmission($submission),
             implode("\n", $this->anchorTextsFromSubmission($submission)),
             implode("\n", $this->htmlAttributeTexts((string) ($submission->preview_html ?? ''))),
+            $this->storedFilePolicySignals($submission)['text'],
         ];
 
         return trim(implode("\n", array_filter($parts, static fn (string $part) => trim($part) !== '')));
+    }
+
+    /**
+     * Publisher download is the stored .docx, which can diverge from preview_html
+     * after an editor save. Re-read the package (headers/footers/comments + rels).
+     *
+     * @return array{hash:string, text:string, links:list<string>, ok:bool}
+     */
+    public function storedFilePolicySignals(ContentSubmission $submission): array
+    {
+        $empty = ['hash' => '', 'text' => '', 'links' => [], 'ok' => true];
+        if (! $submission->hasStoredFile()) {
+            return $empty;
+        }
+
+        try {
+            $disk = Storage::disk($submission->disk ?: 'local');
+            if (! $disk->exists((string) $submission->path)) {
+                return $empty;
+            }
+            $absolute = $disk->path((string) $submission->path);
+        } catch (\Throwable) {
+            return $empty;
+        }
+
+        if (! is_file($absolute)) {
+            return $empty;
+        }
+
+        $cacheKey = $absolute.'|'.(int) filemtime($absolute).'|'.(int) filesize($absolute);
+        if (isset($this->storedFilePolicyCache[$cacheKey])) {
+            return $this->storedFilePolicyCache[$cacheKey];
+        }
+
+        $hash = hash_file('sha256', $absolute) ?: '';
+        $extracted = (new DocumentTextExtractor)->extractPolicySignals($absolute);
+
+        return $this->storedFilePolicyCache[$cacheKey] = [
+            'hash' => $hash,
+            'text' => $extracted['text'],
+            'links' => $extracted['links'],
+            'ok' => $extracted['ok'],
+        ];
+    }
+
+    public function storedFileUnreadable(ContentSubmission $submission): bool
+    {
+        if (! $submission->hasStoredFile()) {
+            return false;
+        }
+
+        try {
+            $disk = Storage::disk($submission->disk ?: 'local');
+            if (! $disk->exists((string) $submission->path)) {
+                return false;
+            }
+        } catch (\Throwable) {
+            return false;
+        }
+
+        return ! $this->storedFilePolicySignals($submission)['ok'];
     }
 
     public function scanTitle(ContentSubmission $submission): string
@@ -890,6 +971,7 @@ class ContentModerationService
             (string) $submission->target_url,
             implode("\n", $links),
             implode("\n", $this->anchorTextsFromSubmission($submission)),
+            $this->storedFilePolicySignals($submission)['hash'],
         ]));
     }
 

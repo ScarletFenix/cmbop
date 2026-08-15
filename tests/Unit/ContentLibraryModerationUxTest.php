@@ -161,6 +161,28 @@ class ContentLibraryModerationUxTest extends TestCase
         $this->assertStringContainsString('bet365', implode(' ', $result['matched_terms']));
     }
 
+    public function test_engine_rejects_zero_width_and_split_casino(): void
+    {
+        $engine = new ContentModerationEngine;
+        $cfg = require dirname(__DIR__, 2).'/config/content_moderation.php';
+        $categories = $cfg['categories'];
+
+        foreach ([
+            'Play at the best online cas'."\u{200B}".'ino tonight.',
+            'Play at the best online cas-ino tonight.',
+            'Play at the best online c a s i n o tonight.',
+        ] as $text) {
+            $result = $engine->score(
+                title: 'Marketing tips',
+                text: $text,
+                links: [],
+                categories: $categories,
+            );
+            $this->assertSame('gambling', $result['detected_category'], $text);
+            $this->assertGreaterThanOrEqual(70, $result['max_confidence'], $text);
+        }
+    }
+
     public function test_engine_rejects_adult_porn_domain(): void
     {
         $engine = new ContentModerationEngine;
