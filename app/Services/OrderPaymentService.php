@@ -61,6 +61,9 @@ class OrderPaymentService
 
             $meta = $this->sessionMetadataArray($session);
             $hasMarkable = $orders->contains(fn (Order $order) => $this->canMarkCardOrderPaid($order));
+            if ($hasMarkable && $this->sessionAlreadyCreditedAsUnfulfilled($referenceCode, $session)) {
+                return collect();
+            }
             if ($hasMarkable && ! $this->allowStripeCaptureForOrders($session, $orders, $meta, $referenceCode)) {
                 $amountMismatch = true;
 
@@ -148,6 +151,9 @@ class OrderPaymentService
             }
 
             $hasMarkable = $orders->contains(fn (Order $order) => $this->canMarkCardOrderPaid($order));
+            if ($hasMarkable && $this->sessionAlreadyCreditedAsUnfulfilled($referenceCode, $intent)) {
+                return collect();
+            }
             if ($hasMarkable && ! $this->allowStripeCaptureForOrders($intent, $orders, $meta, $referenceCode)) {
                 $amountMismatch = true;
 
@@ -938,6 +944,24 @@ class OrderPaymentService
                     ->orWhere('reference', 'like', $prefix.'-%');
             })
             ->sum('amount'), 2);
+    }
+
+    /**
+     * This Stripe capture was already returned as wallet cash (bonus gone,
+     * listing gone, or amount mismatch). A later webhook/success URL must
+     * not also mark the leftover paid once the promo is free again.
+     */
+    private function sessionAlreadyCreditedAsUnfulfilled(string $referenceCode, object $session): bool
+    {
+        $sessionId = (string) ($session->id ?? '');
+        if ($sessionId === '' || ! Schema::hasTable((new WalletTransaction)->getTable())) {
+            return false;
+        }
+
+        return WalletTransaction::query()
+            ->where('direction', 'credit')
+            ->where('reference', self::unfulfilledCardCreditReference($referenceCode, $sessionId))
+            ->exists();
     }
 
     /**
