@@ -4684,10 +4684,20 @@ document.addEventListener('click', async function (e) {
     let hideToastShown = false;
     let trackingStopped = false;
 
-    function looksDomainish(text) {
-        const t = String(text || '').trim();
-        if (!t || t.length > 500 || /\r|\n/.test(t)) return false;
-        return DOMAINISH.test(t);
+    function extractDomainish(text) {
+        const tokens = String(text || '').split(/\s+/);
+        const hits = [];
+        const seen = {};
+        for (let i = 0; i < tokens.length; i++) {
+            const t = String(tokens[i] || '').replace(/^[\s"'<[(\{]+|[\s"'>\]\),\.;!?]+$/g, '');
+            if (!t || t.length > 500 || !DOMAINISH.test(t)) continue;
+            const key = t.toLowerCase();
+            if (seen[key]) continue;
+            seen[key] = true;
+            hits.push(t);
+            if (hits.length >= 40) break;
+        }
+        return hits;
     }
 
     function rowSiteId(node) {
@@ -4706,8 +4716,9 @@ document.addEventListener('click', async function (e) {
     function selectionInsideCatalog() {
         const sel = window.getSelection && window.getSelection();
         if (!sel || sel.isCollapsed || !sel.rangeCount) return null;
-        const text = String(sel.toString() || '').trim();
-        if (!looksDomainish(text)) return null;
+        const raw = String(sel.toString() || '');
+        const hits = extractDomainish(raw);
+        if (hits.length === 0) return null;
         const anchor = sel.anchorNode && (sel.anchorNode.nodeType === 3 ? sel.anchorNode.parentElement : sel.anchorNode);
         const focus = sel.focusNode && (sel.focusNode.nodeType === 3 ? sel.focusNode.parentElement : sel.focusNode);
         const node = anchor || focus;
@@ -4724,7 +4735,10 @@ document.addEventListener('click', async function (e) {
         const row = node.closest('.site-row, .catalog-mobile-card, .catalog-site-details');
         if (!urlCell && !row) return null;
 
-        return { text, siteId: rowSiteId(urlCell || row) };
+        return {
+            text: hits.length === 1 ? hits[0] : hits.join('\n'),
+            siteId: hits.length === 1 ? rowSiteId(urlCell || row) : null,
+        };
     }
 
     function syncHideModeFromPayload(data) {

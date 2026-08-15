@@ -279,6 +279,53 @@ class CatalogHarvestResistanceTest extends TestCase
         $this->assertStringContainsString('class="text-decoration-none catalog-site-url"', $html);
     }
 
+    public function test_description_listing_href_is_our_redirect_not_the_publisher_url(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $site = $this->site($publisher, 'desc-href.example');
+        $site->update([
+            'description' => '<p>See <a href="https://desc-href.example/about">our about page</a>.</p>',
+        ]);
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('our about page', $html);
+        $this->assertStringNotContainsString('href="https://desc-href.example/about"', $html);
+        $this->assertStringContainsString('/advertiser/go/'.$site->id.'?path=', $html);
+    }
+
+    public function test_description_path_visit_stays_on_the_listing_host(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $site = $this->site($publisher, 'desc-path.example');
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog.visit', [
+                'site' => $site->id,
+                'path' => '/about?ref=1',
+            ]))
+            ->assertRedirect('https://desc-path.example/about?ref=1');
+    }
+
+    public function test_description_path_visit_rejects_a_host(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $site = $this->site($publisher, 'desc-safe.example');
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog.visit', [
+                'site' => $site->id,
+                'path' => '//evil.example/phish',
+            ]))
+            ->assertRedirect('https://desc-safe.example');
+    }
+
     public function test_sample_article_opens_through_our_redirect(): void
     {
         $advertiser = $this->userWithRole('advertiser');

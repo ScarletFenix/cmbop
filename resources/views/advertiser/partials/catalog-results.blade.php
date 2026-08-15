@@ -186,7 +186,7 @@
                 $hasPlacementExtras = $homepageOptions !== [] || $socialChannels !== [];
                 $hasListingExtras = $hasSensitiveExtras || $hasPlacementExtras;
                 $hasPricingExtras = $hasSensitiveExtras;
-                $expandDescriptionHtml = $site->safeDescriptionHtml();
+                $expandDescriptionHtml = $site->catalogDescriptionHtml();
                 $hasExpandDescription = trim(strip_tags($expandDescriptionHtml)) !== '';
 
                 // Own listings show the entered price and cannot be ordered.

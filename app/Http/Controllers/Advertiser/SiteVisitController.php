@@ -64,10 +64,16 @@ class SiteVisitController extends Controller
         }
 
         $url = $model->site_url;
-        // Sample-article links must not put the publisher URL in href —
+        // Description / sample links must not put the publisher URL in href —
         // "Copy link address" would bypass copy-track. Click still lands
-        // on the article via ?sample=1.
-        if ($request->boolean('sample')) {
+        // on the article via ?sample=1 or a same-host ?path=.
+        $path = $request->query('path');
+        if (is_string($path) && $this->isSafeRelativePath($path)) {
+            $origin = $this->listingOrigin($model->site_url);
+            if ($origin !== '') {
+                $url = $origin.$path;
+            }
+        } elseif ($request->boolean('sample')) {
             $sample = safe_external_url($model->example_url, '');
             if (str_starts_with($sample, 'http://') || str_starts_with($sample, 'https://')) {
                 $url = $sample;
@@ -79,5 +85,45 @@ class SiteVisitController extends Controller
         }
 
         return redirect()->away($url);
+    }
+
+    /**
+     * Path-only query for description links. Must not accept a host.
+     */
+    private function isSafeRelativePath(string $path): bool
+    {
+        if ($path === '' || strlen($path) > 500) {
+            return false;
+        }
+
+        if (! str_starts_with($path, '/') || str_starts_with($path, '//')) {
+            return false;
+        }
+
+        if (str_contains($path, '\\') || str_contains($path, "\0") || str_contains($path, '://')) {
+            return false;
+        }
+
+        return true;
+    }
+
+    private function listingOrigin(string $siteUrl): string
+    {
+        $safe = safe_external_url($siteUrl, '');
+        if (! str_starts_with($safe, 'http://') && ! str_starts_with($safe, 'https://')) {
+            return '';
+        }
+
+        $parts = parse_url($safe);
+        if (! is_array($parts) || empty($parts['scheme']) || empty($parts['host'])) {
+            return '';
+        }
+
+        $origin = $parts['scheme'].'://'.$parts['host'];
+        if (! empty($parts['port'])) {
+            $origin .= ':'.$parts['port'];
+        }
+
+        return $origin;
     }
 }

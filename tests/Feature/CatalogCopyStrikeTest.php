@@ -301,6 +301,22 @@ class CatalogCopyStrikeTest extends TestCase
         $this->assertSame(1, CatalogCopyEvent::where('user_id', $user->id)->count());
     }
 
+    public function test_copy_track_endpoint_accepts_a_multi_url_dump(): void
+    {
+        $user = $this->advertiser();
+        $dump = implode("\n", array_map(
+            fn (int $i): string => 'https://api-dump-'.$i.'.example',
+            range(1, 5)
+        ));
+
+        $this->actingAs($user)
+            ->postJson(route('advertiser.catalog.copy-track'), ['text' => $dump])
+            ->assertOk()
+            ->assertJsonPath('status', CatalogCopyStrikeGuard::STATUS_WARNING);
+
+        $this->assertSame(5, CatalogCopyEvent::where('user_id', $user->id)->count());
+    }
+
     public function test_copy_track_endpoint_applies_warning(): void
     {
         $user = $this->advertiser();
@@ -340,6 +356,56 @@ class CatalogCopyStrikeTest extends TestCase
         $this->assertSame('news.site.com', $guard->normalizeHost('https://news.site.com/blog/post?x=1'));
         $this->assertSame('example.com', $guard->normalizeHost('www.example.com'));
         $this->assertSame('', $guard->normalizeHost('not a host'));
+        $this->assertSame('', $guard->normalizeHost("https://one.example\nhttps://two.example"));
+    }
+
+    public function test_trailing_newline_still_counts_as_one_host(): void
+    {
+        $user = $this->advertiser();
+        $site = $this->site('cell-newline.example');
+        $guard = app(CatalogCopyStrikeGuard::class);
+
+        $result = $guard->record($user, $site->id, "https://cell-newline.example\n");
+
+        $this->assertSame(CatalogCopyStrikeGuard::STATUS_RECORDED, $result['status']);
+        $this->assertSame(1, CatalogCopyEvent::where('user_id', $user->id)->count());
+        $this->assertSame('cell-newline.example', CatalogCopyEvent::first()->normalized_host);
+    }
+
+    public function test_multi_url_dump_counts_each_host(): void
+    {
+        $user = $this->advertiser();
+        $guard = app(CatalogCopyStrikeGuard::class);
+        $dump = implode("\n", [
+            'https://dump-1.example',
+            'https://dump-2.example',
+            'https://dump-3.example',
+            'https://dump-4.example',
+            'https://dump-5.example',
+        ]);
+
+        $result = $guard->record($user, null, $dump);
+
+        $this->assertSame(CatalogCopyStrikeGuard::STATUS_WARNING, $result['status']);
+        $this->assertSame(5, CatalogCopyEvent::where('user_id', $user->id)->count());
+        $this->assertSame(1, (int) $user->fresh()->catalog_copy_strike_count);
+    }
+
+    public function test_whole_row_text_with_one_url_counts_once(): void
+    {
+        $user = $this->advertiser();
+        $site = $this->site('row-copy.example');
+        $guard = app(CatalogCopyStrikeGuard::class);
+
+        $result = $guard->record(
+            $user,
+            $site->id,
+            "Row Copy Brand\nhttps://row-copy.example\nDR 45  DA 40  €150"
+        );
+
+        $this->assertSame(CatalogCopyStrikeGuard::STATUS_RECORDED, $result['status']);
+        $this->assertSame(1, CatalogCopyEvent::where('user_id', $user->id)->count());
+        $this->assertSame($site->id, (int) CatalogCopyEvent::first()->site_id);
     }
 
     public function test_copy_tracking_pauses_while_hide_mode_is_active(): void

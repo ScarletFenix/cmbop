@@ -135,6 +135,13 @@ class CatalogUiRegressionTest extends TestCase
         );
         // Details expand is a sibling <tr>, not .site-row — still count copies.
         $this->assertStringContainsString('.catalog-site-details', $js);
+        // Table-cell copies often include a trailing newline; multi-select dumps
+        // include several hosts. Do not drop the whole clipboard.
+        $this->assertStringContainsString('extractDomainish', $js);
+        $this->assertDoesNotMatchRegularExpression(
+            '/if \(!t \|\| t\.length > 500 \|\| \/\\\\r\|\\\\n\/\.test\(t\)\) return false;/',
+            $js
+        );
         $this->assertMatchesRegularExpression(
             '/inCatalogHideMode\)\s*\{[\s\S]*?addEventListener\(\s*[\'"]click[\'"]\s*,\s*function\s*\([^)]*\)\s*\{[\s\S]*?reveal-url[\s\S]*?\}\s*,\s*true\s*\)/',
             $js
