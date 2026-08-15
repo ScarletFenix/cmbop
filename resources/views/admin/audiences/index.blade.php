@@ -38,7 +38,7 @@
             ['tab' => 'no_sites', 'stat' => 'publishers_no_sites', 'title' => 'No sites', 'hint' => 'Publishers who never listed a site'],
             ['tab' => 'no_active_sites', 'stat' => 'publishers_no_active_sites', 'title' => 'No active sites', 'hint' => 'Publishers with no catalog-visible listing'],
             ['tab' => 'never_deposited', 'stat' => 'advertisers_never_deposited', 'title' => 'Never deposited', 'hint' => 'Advertisers who never funded a wallet'],
-            ['tab' => 'deposited_no_orders', 'stat' => 'advertisers_deposited_no_orders', 'title' => 'Deposited, no orders', 'hint' => 'Funded a wallet but never checked out'],
+            ['tab' => 'deposited_no_orders', 'stat' => 'advertisers_deposited_no_orders', 'title' => 'Deposited, no paid orders', 'hint' => 'Funded a wallet but never became a customer'],
         ] as $card)
             <div class="col-md-6 col-xl-3">
                 <a href="{{ $tabUrl($card['tab']) }}" class="text-decoration-none text-reset">
@@ -55,7 +55,7 @@
         @endforeach
     </div>
 
-    <p class="small text-muted mb-3">Never checked out ⊂ No paid orders ⊂ Advertisers. Never deposited is independent (wallet funding, not checkout). Email sends the whole segment, not the filtered table.</p>
+    <p class="small text-muted mb-3">Never checked out ⊂ No paid orders ⊂ Advertisers. Deposited, no paid orders is a credited deposit ∩ no paid/refunded order (abandoned checkout stays in). Never deposited is independent (wallet funding, not checkout). Email sends the whole segment, not the filtered table.</p>
 
     <ul class="nav nav-tabs mb-3 flex-wrap">
         @foreach([
@@ -68,7 +68,7 @@
             ['tab' => 'no_sites', 'stat' => 'publishers_no_sites', 'icon' => 'fa-link', 'label' => 'No sites'],
             ['tab' => 'no_active_sites', 'stat' => 'publishers_no_active_sites', 'icon' => 'fa-unlink', 'label' => 'No active sites'],
             ['tab' => 'never_deposited', 'stat' => 'advertisers_never_deposited', 'icon' => 'fa-wallet', 'label' => 'Never deposited'],
-            ['tab' => 'deposited_no_orders', 'stat' => 'advertisers_deposited_no_orders', 'icon' => 'fa-piggy-bank', 'label' => 'Deposited, no orders'],
+            ['tab' => 'deposited_no_orders', 'stat' => 'advertisers_deposited_no_orders', 'icon' => 'fa-piggy-bank', 'label' => 'Deposited, no paid orders'],
         ] as $nav)
             <li class="nav-item">
                 <a class="nav-link {{ $tab === $nav['tab'] ? 'active' : '' }}" href="{{ $tabUrl($nav['tab']) }}">

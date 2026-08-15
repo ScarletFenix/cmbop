@@ -125,7 +125,7 @@
                                         Advertisers: paid customers ({{ $stats['advertisers_paid_orders'] ?? 0 }})
                                     </option>
                                     <option value="advertisers_deposited_no_orders" @selected(old('audience', $preselect) === 'advertisers_deposited_no_orders')>
-                                        Advertisers: deposited, no orders ({{ $stats['advertisers_deposited_no_orders'] ?? 0 }})
+                                        Advertisers: deposited, no paid orders ({{ $stats['advertisers_deposited_no_orders'] ?? 0 }})
                                     </option>
                                     <option value="publishers_no_active_sites" @selected(old('audience', $preselect) === 'publishers_no_active_sites')>
                                         Publishers: no active sites ({{ $stats['publishers_no_active_sites'] ?? 0 }})
@@ -203,7 +203,7 @@
                             </div>
                             <div class="col-12">
                                 <label class="form-label">Subject</label>
-                                <input type="text" name="subject" id="campaignSubject" class="form-control" value="{{ old_text('subject') }}" required maxlength="180" placeholder="Black Friday update for our partners">
+                                <input type="text" name="subject" id="campaignSubject" class="form-control" value="{{ old_text('subject', request('subject')) }}" required maxlength="180" placeholder="Black Friday update for our partners">
                             </div>
                             <div class="col-12">
                                 <label class="form-label">Message (HTML allowed: p, strong, em, lists, links)</label>
@@ -211,11 +211,17 @@
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">CTA label (optional)</label>
-                                <input type="text" name="cta_label" class="form-control" value="{{ old_text('cta_label') }}" maxlength="80" placeholder="View offer">
+                                <input type="text" name="cta_label" class="form-control" value="{{ old_text('cta_label', request('cta_label')) }}" maxlength="80" placeholder="View offer">
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">CTA URL (optional)</label>
-                                <input type="url" name="cta_url" class="form-control" value="{{ old_text('cta_url') }}" maxlength="500" placeholder="https://">
+                                @php
+                                    $prefillCta = old_text('cta_url', request('cta_url'));
+                                    if ($prefillCta !== '' && str_starts_with($prefillCta, '/')) {
+                                        $prefillCta = url($prefillCta);
+                                    }
+                                @endphp
+                                <input type="url" name="cta_url" class="form-control" value="{{ $prefillCta }}" maxlength="500" placeholder="https://">
                             </div>
                             <div class="col-12">
                                 <div class="form-check">

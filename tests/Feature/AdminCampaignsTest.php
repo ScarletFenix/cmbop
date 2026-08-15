@@ -427,6 +427,26 @@ class AdminCampaignsTest extends TestCase
         Mail::assertQueued(AudienceCampaignMail::class, 1);
     }
 
+    public function test_selected_audience_rejects_dual_role_staff_ids(): void
+    {
+        Mail::fake();
+
+        $admin = $this->makeUser('admin');
+        $staffAdvertiser = $this->makeUser('advertiser');
+        $staffAdvertiser->roles()->attach(Role::where('name', 'admin')->firstOrFail()->id);
+
+        $this->actingAs($admin)
+            ->post(route('admin.campaigns.send'), $this->campaignPayload([
+                'audience' => 'selected',
+                'user_ids' => [$staffAdvertiser->id],
+                'respect_preferences' => '0',
+            ]))
+            ->assertRedirect()
+            ->assertSessionHas('error', 'No recipients found for that audience.');
+
+        Mail::assertNothingQueued();
+    }
+
     public function test_no_paid_orders_excludes_paid_but_keeps_abandoned_checkout(): void
     {
         $admin = $this->makeUser('admin');
@@ -1181,6 +1201,72 @@ class AdminCampaignsTest extends TestCase
             $campaign->recipients()->where('user_id', $advertiser->id)->value('status')
         );
         Queue::assertPushed(SendEmailCampaignJob::class, fn (SendEmailCampaignJob $job) => $job->campaignId === $campaign->id);
+    }
+
+    public function test_job_timeout_after_last_batch_does_not_mark_queued_as_sent(): void
+    {
+        Queue::fake();
+
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+
+        $campaign = EmailCampaign::create([
+            'name' => 'Last batch timeout',
+            'subject' => 'Last batch timeout',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'sent_count' => 1,
+            'status' => EmailCampaign::STATUS_SENDING,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_QUEUED,
+        ]);
+
+        (new SendEmailCampaignJob($campaign->id))->failed(new \RuntimeException('Job timed out'));
+
+        $this->assertSame(EmailCampaign::STATUS_SENDING, $campaign->fresh()->status);
+        $this->assertSame(
+            EmailCampaignRecipient::STATUS_QUEUED,
+            $campaign->recipients()->where('user_id', $advertiser->id)->value('status')
+        );
+        Queue::assertNothingPushed();
+    }
+
+    public function test_recount_promotes_finished_sending_campaign_after_delivery(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+
+        $campaign = EmailCampaign::create([
+            'name' => 'Promote',
+            'subject' => 'Promote',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'sent_count' => 0,
+            'status' => EmailCampaign::STATUS_SENDING,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_DELIVERED,
+        ]);
+
+        $campaign->recountRecipientTotals();
+
+        $fresh = $campaign->fresh();
+        $this->assertSame(EmailCampaign::STATUS_SENT, $fresh->status);
+        $this->assertSame(1, $fresh->sent_count);
+        $this->assertNotNull($fresh->sent_at);
     }
 
     public function test_index_redispatches_a_stale_queued_campaign(): void

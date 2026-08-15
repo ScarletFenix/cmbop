@@ -44,7 +44,8 @@ class AudienceInventoryService
      */
     public static function customerPaymentStatuses(): array
     {
-        return ['paid', 'refunded'];
+        // `completed` is a legacy/alias paid flag (see AdvertiserOrderStatus).
+        return ['paid', 'completed', 'refunded'];
     }
 
     /**
@@ -181,7 +182,7 @@ class AudienceInventoryService
             self::AUDIENCE_PUBLISHERS_NO_SITES => 'Publishers (no sites)',
             self::AUDIENCE_PUBLISHERS_NO_ACTIVE_SITES => 'Publishers (no active sites)',
             self::AUDIENCE_ADVERTISERS_NEVER_DEPOSITED => 'Advertisers (never deposited)',
-            self::AUDIENCE_ADVERTISERS_DEPOSITED_NO_ORDERS => 'Advertisers (deposited, no orders)',
+            self::AUDIENCE_ADVERTISERS_DEPOSITED_NO_ORDERS => 'Advertisers (deposited, no paid orders)',
             self::AUDIENCE_SELECTED => 'Selected users',
             default => ucfirst($audience),
         };
@@ -216,39 +217,39 @@ class AudienceInventoryService
             self::AUDIENCE_PUBLISHERS_NO_SITES => 'No sites',
             self::AUDIENCE_PUBLISHERS_NO_ACTIVE_SITES => 'No active sites',
             self::AUDIENCE_ADVERTISERS_NEVER_DEPOSITED => 'Never deposited',
-            self::AUDIENCE_ADVERTISERS_DEPOSITED_NO_ORDERS => 'Deposited, no orders',
+            self::AUDIENCE_ADVERTISERS_DEPOSITED_NO_ORDERS => 'Deposited, no paid orders',
             default => 'Advertisers',
         };
     }
 
     public function advertiserCount(bool $includeUnverified = true): int
     {
-        return $this->applyRecipientScope($this->queryForRole('advertiser'), $includeUnverified)->count();
+        return $this->count(self::AUDIENCE_ADVERTISERS, null, $includeUnverified);
     }
 
     public function publisherCount(bool $includeUnverified = true): int
     {
-        return $this->applyRecipientScope($this->queryForRole('publisher'), $includeUnverified)->count();
+        return $this->count(self::AUDIENCE_PUBLISHERS, null, $includeUnverified);
     }
 
     public function advertisersNoOrdersCount(bool $includeUnverified = true): int
     {
-        return $this->applyRecipientScope($this->queryAdvertisersNoOrders(), $includeUnverified)->count();
+        return $this->count(self::AUDIENCE_ADVERTISERS_NO_ORDERS, null, $includeUnverified);
     }
 
     public function advertisersNoPaidOrdersCount(bool $includeUnverified = true): int
     {
-        return $this->applyRecipientScope($this->queryAdvertisersNoPaidOrders(), $includeUnverified)->count();
+        return $this->count(self::AUDIENCE_ADVERTISERS_NO_PAID_ORDERS, null, $includeUnverified);
     }
 
     public function publishersNoSitesCount(bool $includeUnverified = true): int
     {
-        return $this->applyRecipientScope($this->queryPublishersNoSites(), $includeUnverified)->count();
+        return $this->count(self::AUDIENCE_PUBLISHERS_NO_SITES, null, $includeUnverified);
     }
 
     public function advertisersNeverDepositedCount(bool $includeUnverified = true): int
     {
-        return $this->applyRecipientScope($this->queryAdvertisersNeverDeposited(), $includeUnverified)->count();
+        return $this->count(self::AUDIENCE_ADVERTISERS_NEVER_DEPOSITED, null, $includeUnverified);
     }
 
     public function queryForRole(string $roleName): Builder
@@ -281,7 +282,7 @@ class AudienceInventoryService
     }
 
     /**
-     * Advertisers who have never been a customer (no paid or refunded order).
+     * Advertisers who have never been a customer (no paid, completed, or refunded order).
      */
     public function queryAdvertisersNoPaidOrders(): Builder
     {
@@ -319,7 +320,7 @@ class AudienceInventoryService
      * Advertisers who have actually bought something.
      *
      * An abandoned unpaid checkout is not a customer. A later refund still
-     * means they checked out and paid, so paid + refunded both count.
+     * means they checked out and paid, so paid + completed + refunded all count.
      */
     public function queryAdvertisersWithPaidOrders(): Builder
     {
@@ -344,7 +345,10 @@ class AudienceInventoryService
     }
 
     /**
-     * Advertisers who funded a wallet but never started checkout.
+     * Advertisers who funded a wallet but never became a customer.
+     *
+     * An abandoned unpaid checkout still belongs here — they have credit and
+     * did not finish paying. A paid, completed, or refunded order does not.
      */
     public function queryAdvertisersDepositedNoOrders(): Builder
     {
@@ -352,7 +356,9 @@ class AudienceInventoryService
             ->whereHas('depositRequests', function (Builder $q) {
                 $q->whereIn('status', self::creditedDepositStatuses());
             })
-            ->whereDoesntHave('orders');
+            ->whereDoesntHave('orders', function (Builder $q) {
+                $q->whereIn('payment_status', self::customerPaymentStatuses());
+            });
     }
 
     public function queryMarketplaceUsers(): Builder
@@ -376,7 +382,7 @@ class AudienceInventoryService
     {
         $audienceKey = self::canonicalAudienceKey($audienceKey) ?? $audienceKey;
 
-        return match ($audienceKey) {
+        $query = match ($audienceKey) {
             self::AUDIENCE_ADVERTISERS => $this->queryForRole('advertiser'),
             self::AUDIENCE_PUBLISHERS => $this->queryForRole('publisher'),
             self::AUDIENCE_BOTH => $this->queryMarketplaceUsers(),
@@ -389,6 +395,8 @@ class AudienceInventoryService
             self::AUDIENCE_ADVERTISERS_DEPOSITED_NO_ORDERS => $this->queryAdvertisersDepositedNoOrders(),
             default => User::query()->whereRaw('1 = 0'),
         };
+
+        return $this->excludeStaffAccounts($query);
     }
 
     /**
@@ -426,7 +434,12 @@ class AudienceInventoryService
      */
     public function collectRecipientRows(string $audience, ?array $selectedIds = null, bool $includeUnverified = false): Collection
     {
-        if ($audience === self::AUDIENCE_SELECTED) {
+        $key = self::canonicalAudienceKey($audience);
+        if ($key === null) {
+            return collect();
+        }
+
+        if ($key === self::AUDIENCE_SELECTED) {
             return $this->recipientRowQuery(
                 $this->querySelected($selectedIds, $includeUnverified),
                 $includeUnverified,
@@ -434,14 +447,12 @@ class AudienceInventoryService
             )->get();
         }
 
-        if (! in_array($audience, self::audienceKeys(), true)) {
-            return collect();
-        }
-
         // Same query as inventory / count — a second match here previously
         // dropped paid_orders, no_active_sites, and deposited_no_orders, so
         // compose counted them and send returned "No recipients found".
-        return $this->recipientRowQuery($this->queryForAudienceKey($audience), $includeUnverified)->get();
+        // Tab slugs (no_orders, …) must canonicalize first or count() and
+        // send diverge when a caller skips the controller merge.
+        return $this->recipientRowQuery($this->queryForAudienceKey($key), $includeUnverified)->get();
     }
 
     /**
@@ -461,7 +472,7 @@ class AudienceInventoryService
 
     public function bothUniqueCount(bool $includeUnverified = true): int
     {
-        return $this->applyRecipientScope($this->queryMarketplaceUsers(), $includeUnverified)->count();
+        return $this->count(self::AUDIENCE_BOTH, null, $includeUnverified);
     }
 
     /**
@@ -469,10 +480,31 @@ class AudienceInventoryService
      */
     public function pickerUsers(string $roleName, int $limit = self::PICKER_LIMIT): Collection
     {
-        return $this->queryForRole($roleName)
-            ->setEagerLoads([])
+        return $this->pickerQuery($roleName)
             ->limit($limit)
             ->get(['id', 'name', 'email']);
+    }
+
+    /**
+     * True when the custom picker is not showing every user in that role.
+     * Uses the same universe as pickerUsers() (verified first, then the rest).
+     */
+    public function pickerIsCapped(string $roleName, int $limit = self::PICKER_LIMIT): bool
+    {
+        return $this->pickerQuery($roleName)->count() > $limit;
+    }
+
+    protected function pickerQuery(string $roleName): Builder
+    {
+        $query = $this->queryForRole($roleName);
+        $this->excludeStaffAccounts($query);
+
+        return $query
+            ->setEagerLoads([])
+            ->reorder()
+            ->orderByRaw('case when email_verified_at is null then 1 else 0 end')
+            ->orderBy('name')
+            ->orderBy('id');
     }
 
     /**
@@ -491,6 +523,7 @@ class AudienceInventoryService
             ->whereIn('id', $ids)
             ->whereNotNull('email')
             ->where('email', '!=', '')
+            ->whereRaw('TRIM(email) != ?', [''])
             ->orderBy('name');
 
         if ($roleIds->isEmpty()) {
@@ -498,6 +531,7 @@ class AudienceInventoryService
         }
 
         $query->whereHas('roles', fn (Builder $q) => $q->whereIn('roles.id', $roleIds));
+        $this->excludeStaffAccounts($query);
 
         return $this->applyRecipientScope($query, $includeUnverified);
     }
@@ -539,8 +573,22 @@ class AudienceInventoryService
         return User::query()
             ->whereNotNull('email')
             ->where('email', '!=', '')
+            ->whereRaw('TRIM(email) != ?', [''])
             ->with(['roles', 'activeRoleRelation'])
             ->orderBy('name');
+    }
+
+    /**
+     * Inventory + campaigns never email staff, including dual-role
+     * admin/marketing accounts that still have advertiser or publisher.
+     * Reminder queries keep queryForRole() as-is so deposit / add-site /
+     * digest commands are unchanged.
+     */
+    protected function excludeStaffAccounts(Builder $query): Builder
+    {
+        return $query->whereDoesntHave('roles', function (Builder $q) {
+            $q->whereIn('roles.name', ['admin', 'marketing']);
+        });
     }
 
     protected function applySearch(Builder $query, ?string $search): Builder
@@ -708,7 +756,7 @@ class AudienceInventoryService
                 }
 
                 return true;
-            });
+            }, 'users.id', 'id');
 
             fclose($out);
         }, $filename, $headers);
