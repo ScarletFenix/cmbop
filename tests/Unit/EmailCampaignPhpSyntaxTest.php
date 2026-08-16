@@ -159,6 +159,15 @@ class EmailCampaignPhpSyntaxTest extends TestCase
             'latestDeliveredForCampaignUser must not cap a global 100-row scan'
         );
 
+        $this->assertTrue((bool) preg_match(
+            '/protected function isDuplicate\(string \$key\): bool\s*\{(.*?)\n    protected function brand/s',
+            $mailable,
+            $dup
+        ));
+        $this->assertStringContainsString("where('sent_at', '>=', \$cutoff)", $dup[1]);
+        $this->assertStringContainsString("whereNull('sent_at')", $dup[1]);
+        $this->assertStringNotContainsString("where('created_at', '>=', now()->subMinutes(\$minutes))", $dup[1]);
+
         $model = (string) file_get_contents($files[0]);
         $this->assertSame(1, preg_match_all('/function reclaimOrphanedQueuedRecipients\b/', $model));
         $this->assertTrue((bool) preg_match(
