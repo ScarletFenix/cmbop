@@ -241,6 +241,15 @@ class MailJobPayload
             return true;
         }
 
+        // AudienceCampaignMail without a stamped dedupeKey still serializes
+        // EmailCampaign + User ModelIdentifiers. Expire used requireToken
+        // only, so a 72h pending log was failed beside the live job and a
+        // later retry doubled the send.
+        if (preg_match('/^audience_campaign:(\d+):user:(\d+)$/', (string) $log->dedupe_key, $campaign)
+            && in_array((int) $campaign[2], self::campaignMailUserIds($payload, (int) $campaign[1]), true)) {
+            return true;
+        }
+
         if ($requireToken) {
             return false;
         }

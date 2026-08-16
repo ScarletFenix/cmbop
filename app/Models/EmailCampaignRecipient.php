@@ -2,12 +2,15 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\ToleratesUnparseableDates;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class EmailCampaignRecipient extends Model
 {
+    use ToleratesUnparseableDates;
+
     public const STATUS_PENDING = 'pending';
 
     public const STATUS_QUEUED = 'queued';

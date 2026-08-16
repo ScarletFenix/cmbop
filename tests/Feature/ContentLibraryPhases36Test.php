@@ -10,6 +10,7 @@ use App\Models\Site;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Tests\Support\CreatesContentSubmissions;
 use Tests\TestCase;
@@ -234,6 +235,29 @@ class ContentLibraryPhases36Test extends TestCase
         $this->assertSame('', (string) $stripped->path);
         $this->assertFalse($stripped->hasStoredFile());
         $this->assertFalse(Storage::disk($disk)->exists($path));
+    }
+
+    public function test_purge_expired_skips_leftover_expires_at(): void
+    {
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update(['title' => 'Leftover Clock Piece']);
+        $path = $submission->path;
+        $disk = $submission->disk ?: 'local';
+        DB::table('content_submissions')->where('id', $submission->id)->update([
+            'expires_at' => 'not-a-date',
+        ]);
+
+        $this->assertFalse($submission->fresh()->isExpired());
+        $this->assertFalse(
+            ContentSubmission::query()->whereKey($submission->id)->expiredUnused()->exists()
+        );
+
+        $this->assertSame(0, Artisan::call('content:purge-expired'));
+        $fresh = $submission->fresh();
+        $this->assertSame($path, $fresh->path);
+        $this->assertTrue($fresh->hasStoredFile());
+        $this->assertTrue(Storage::disk($disk)->exists($path));
     }
 
     public function test_purge_expired_strips_article_still_pointed_at_by_cancelled_leftover(): void

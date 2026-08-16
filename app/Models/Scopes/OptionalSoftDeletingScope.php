@@ -2,6 +2,7 @@
 
 namespace App\Models\Scopes;
 
+use App\Models\Concerns\ToleratesUnparseableDates;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
@@ -20,7 +21,7 @@ class OptionalSoftDeletingScope extends SoftDeletingScope
             return;
         }
 
-        parent::apply($builder, $model);
+        $this->constrainWithoutTrashed($builder, $model);
     }
 
     public static function columnReady(Model $model): bool
@@ -64,7 +65,11 @@ class OptionalSoftDeletingScope extends SoftDeletingScope
                 return $builder->whereRaw('0 = 1');
             }
 
-            return $builder->whereNotNull($model->getQualifiedDeletedAtColumn());
+            $column = $model->getQualifiedDeletedAtColumn();
+
+            return $builder->whereNotNull($column)
+                ->where($column, '>=', self::plausibleFloor($model))
+                ->where($column, '<=', self::plausibleCeil($model));
         });
     }
 
@@ -78,7 +83,38 @@ class OptionalSoftDeletingScope extends SoftDeletingScope
                 return $builder;
             }
 
-            return $builder->whereNull($model->getQualifiedDeletedAtColumn());
+            return $this->constrainWithoutTrashed($builder, $model);
         });
+    }
+
+    /**
+     * Leftover Hostinger strings are not a real delete. SQLite whereNull
+     * misses them, so live notices vanished and Trash listed garbage.
+     */
+    private function constrainWithoutTrashed(Builder $builder, Model $model): Builder
+    {
+        $column = $model->getQualifiedDeletedAtColumn();
+        $floor = self::plausibleFloor($model);
+        $ceil = self::plausibleCeil($model);
+
+        return $builder->where(function (Builder $q) use ($column, $floor, $ceil) {
+            $q->whereNull($column)
+                ->orWhere($column, '>', $ceil)
+                ->orWhere($column, '<', $floor);
+        });
+    }
+
+    private static function plausibleFloor(Model $model): string
+    {
+        return defined($model::class.'::PLAUSIBLE_SQL_DATETIME_FLOOR')
+            ? $model::PLAUSIBLE_SQL_DATETIME_FLOOR
+            : ToleratesUnparseableDates::PLAUSIBLE_SQL_DATETIME_FLOOR;
+    }
+
+    private static function plausibleCeil(Model $model): string
+    {
+        return defined($model::class.'::PLAUSIBLE_SQL_DATETIME_CEIL')
+            ? $model::PLAUSIBLE_SQL_DATETIME_CEIL
+            : ToleratesUnparseableDates::PLAUSIBLE_SQL_DATETIME_CEIL;
     }
 }

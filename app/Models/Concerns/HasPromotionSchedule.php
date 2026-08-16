@@ -36,6 +36,36 @@ trait HasPromotionSchedule
         return 'paused';
     }
 
+    /**
+     * SQL counterpart of isCurrentlyLive(). Leftover Hostinger strings must
+     * not match: SQLite treats 'not-a-date' >= now as true (still running),
+     * and MySQL zero-dates match starts_at <= now.
+     */
+    public function scopeActive(Builder $query): Builder
+    {
+        $now = now();
+        $floor = self::PLAUSIBLE_SQL_DATETIME_FLOOR;
+        $ceil = self::PLAUSIBLE_SQL_DATETIME_CEIL;
+
+        return $query->where('is_active', true)
+            ->where(function (Builder $q) use ($now, $floor, $ceil) {
+                $q->whereNull('starts_at')
+                    ->orWhere(function (Builder $inner) use ($now, $floor, $ceil) {
+                        $inner->where('starts_at', '<=', $now)
+                            ->where('starts_at', '>=', $floor)
+                            ->where('starts_at', '<=', $ceil);
+                    });
+            })
+            ->where(function (Builder $q) use ($now, $floor, $ceil) {
+                $q->whereNull('ends_at')
+                    ->orWhere(function (Builder $inner) use ($now, $floor, $ceil) {
+                        $inner->where('ends_at', '>=', $now)
+                            ->where('ends_at', '>=', $floor)
+                            ->where('ends_at', '<=', $ceil);
+                    });
+            });
+    }
+
     public function scopeScheduleState(Builder $query, string $state): Builder
     {
         $now = now();
@@ -45,10 +75,14 @@ trait HasPromotionSchedule
             'paused' => $query->where('is_active', false),
             'scheduled' => $query->where('is_active', true)
                 ->whereNotNull('starts_at')
-                ->where('starts_at', '>', $now),
+                ->where('starts_at', '>', $now)
+                ->where('starts_at', '>=', self::PLAUSIBLE_SQL_DATETIME_FLOOR)
+                ->where('starts_at', '<=', self::PLAUSIBLE_SQL_DATETIME_CEIL),
             'expired' => $query->where('is_active', true)
                 ->whereNotNull('ends_at')
-                ->where('ends_at', '<', $now),
+                ->where('ends_at', '<', $now)
+                ->where('ends_at', '>=', self::PLAUSIBLE_SQL_DATETIME_FLOOR)
+                ->where('ends_at', '<=', self::PLAUSIBLE_SQL_DATETIME_CEIL),
             default => $query,
         };
     }
@@ -61,8 +95,8 @@ trait HasPromotionSchedule
             }
 
             // A leftover non-null date that Carbon cannot parse is not "no
-            // schedule" — SQL active() already excludes many of these, and
-            // treating them as unrestricted made admin/click disagree.
+            // schedule" — SQL active() now excludes these, and treating them
+            // as unrestricted made admin/click disagree.
             if ($this->scheduleDateUnparseable('starts_at') || $this->scheduleDateUnparseable('ends_at')) {
                 return false;
             }

@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Mail\SiteDiscountEnded;
+use App\Models\ActivityLog;
 use App\Models\BulkSiteRequest;
 use App\Models\Role;
 use App\Models\Site;
@@ -192,6 +193,15 @@ class SitePromotionTest extends TestCase
             ->assertOk()
             ->assertJsonPath('success', true)
             ->assertJsonFragment(['message' => 'Joined bulk discount programme (12% on 3–5 articles). Exclusive better-of with any timed sale — not stacked; advertisers see the post-fee-floor rate.']);
+
+        $this->assertSame(1, ActivityLog::query()->where('action', 'site.bulk_discount_joined')->count());
+
+        $this->actingAs($publisher)
+            ->postJson(route('publisher.sites.bulk-join', $site->id), ['percent' => 12])
+            ->assertOk();
+
+        $this->assertSame(1, ActivityLog::query()->where('action', 'site.bulk_discount_joined')->count());
+        $this->assertSame(0, ActivityLog::query()->where('action', 'site.bulk_discount_updated')->count());
     }
 
     public function test_publisher_can_join_bulk_at_eighty_percent(): void
@@ -224,6 +234,41 @@ class SitePromotionTest extends TestCase
             ->assertJsonFragment(['message' => 'Updated bulk discount to 80% on 3–5 articles. Exclusive better-of with any timed sale — not stacked; advertisers see the post-fee-floor rate.']);
 
         $this->assertSame(80.0, (float) $site->fresh()->bulk_discount_percent);
+        $this->assertSame(1, ActivityLog::query()->where('action', 'site.bulk_discount_joined')->count());
+        $this->assertSame(1, ActivityLog::query()->where('action', 'site.bulk_discount_updated')->count());
+    }
+
+    public function test_leave_bulk_and_clear_discount_log_once(): void
+    {
+        $publisher = $this->publisherWithWallet();
+        $site = $this->site($publisher);
+
+        $this->actingAs($publisher)
+            ->postJson(route('publisher.sites.bulk-join', $site->id), ['percent' => 15])
+            ->assertOk();
+        $this->actingAs($publisher)
+            ->postJson(route('publisher.sites.discount', $site->id), ['percent' => 20, 'days' => 7])
+            ->assertOk();
+
+        $this->actingAs($publisher)
+            ->deleteJson(route('publisher.sites.bulk-leave', $site->id))
+            ->assertOk();
+        $this->actingAs($publisher)
+            ->deleteJson(route('publisher.sites.discount.clear', $site->id))
+            ->assertOk();
+
+        $this->assertSame(1, ActivityLog::query()->where('action', 'site.bulk_discount_left')->count());
+        $this->assertSame(1, ActivityLog::query()->where('action', 'site.discount_cleared')->count());
+
+        $this->actingAs($publisher)
+            ->deleteJson(route('publisher.sites.bulk-leave', $site->id))
+            ->assertOk();
+        $this->actingAs($publisher)
+            ->deleteJson(route('publisher.sites.discount.clear', $site->id))
+            ->assertOk();
+
+        $this->assertSame(1, ActivityLog::query()->where('action', 'site.bulk_discount_left')->count());
+        $this->assertSame(1, ActivityLog::query()->where('action', 'site.discount_cleared')->count());
     }
 
     public function test_bulk_percent_outside_ten_to_eighty_is_rejected(): void
@@ -266,6 +311,52 @@ class SitePromotionTest extends TestCase
         Mail::assertQueued(SiteDiscountEnded::class);
     }
 
+    public function test_expiry_job_skips_unparseable_discount_ends(): void
+    {
+        Mail::fake();
+        $publisher = $this->publisherWithWallet();
+        $site = $this->site($publisher);
+        $this->actingAs($publisher)->postJson(route('publisher.sites.discount', $site->id), [
+            'percent' => 20,
+            'days' => 7,
+        ])->assertOk();
+
+        DB::table('sites')->where('id', $site->id)->update([
+            'custom_discount_ends_at' => 'not-a-date',
+            'custom_discount_notified_at' => null,
+        ]);
+
+        $sent = app(SitePromotionService::class)->notifyExpiredCustomDiscounts();
+        $this->assertSame(0, $sent);
+        Mail::assertNothingQueued();
+        $this->assertSame(20.0, (float) $site->fresh()->custom_discount_percent);
+        $this->assertNull($site->fresh()->custom_discount_notified_at);
+    }
+
+    public function test_expiry_job_clears_sale_when_notified_at_is_leftover(): void
+    {
+        Mail::fake();
+        $publisher = $this->publisherWithWallet();
+        $site = $this->site($publisher);
+        $this->actingAs($publisher)->postJson(route('publisher.sites.discount', $site->id), [
+            'percent' => 20,
+            'days' => 1,
+        ])->assertOk();
+
+        DB::table('sites')->where('id', $site->id)->update([
+            'custom_discount_ends_at' => now()->subMinute()->toDateTimeString(),
+            'custom_discount_notified_at' => 'not-a-date',
+        ]);
+
+        $sent = app(SitePromotionService::class)->notifyExpiredCustomDiscounts();
+        $this->assertSame(1, $sent);
+        Mail::assertQueued(SiteDiscountEnded::class);
+
+        $fresh = $site->fresh();
+        $this->assertNull($fresh->custom_discount_percent);
+        $this->assertInstanceOf(\DateTimeInterface::class, $fresh->custom_discount_notified_at);
+    }
+
     public function test_promotions_wallet_summary_uses_withdrawable_not_bonus(): void
     {
         $publisher = $this->publisherWithWallet(50);
@@ -292,8 +383,11 @@ class SitePromotionTest extends TestCase
         $second = $promotions->featureFromStripePayment($site->fresh(), $publisher, 'cs_test_feature_dup');
 
         $this->assertTrue($first['success']);
+        $this->assertFalse($first['already'] ?? false);
         $this->assertTrue($second['success']);
+        $this->assertTrue($second['already']);
         $this->assertSame(1, SiteFeaturePurchase::where('stripe_session_id', 'cs_test_feature_dup')->count());
+        $this->assertSame(1, ActivityLog::query()->where('action', 'site.featured_stripe')->count());
 
         $until = $site->fresh()->featured_until;
         $this->assertNotNull($until);
@@ -416,8 +510,12 @@ class SitePromotionTest extends TestCase
 
         $apply = $promotions->featureFromStripePayment($site->fresh(), $newOwner, 'cs_feature_mismatch');
         $this->assertTrue($apply['success']);
+        $this->assertTrue($apply['already']);
+        $this->assertTrue($apply['credited']);
         $this->assertNull($site->fresh()->featured_until);
         $this->assertStringContainsString('changed owner', $first['message']);
+        $this->assertSame(1, ActivityLog::query()->where('action', 'site.feature_stripe_credited')->count());
+        $this->assertSame(0, ActivityLog::query()->where('action', 'site.featured_stripe')->count());
     }
 
     public function test_feature_from_stripe_credits_cancelled_bulk_leftover(): void
@@ -440,6 +538,8 @@ class SitePromotionTest extends TestCase
         $this->assertTrue($first['credited']);
         $this->assertFalse($first['already']);
         $this->assertTrue($second['already']);
+        $this->assertSame(1, ActivityLog::query()->where('action', 'site.feature_stripe_credited')->count());
+        $this->assertSame(0, ActivityLog::query()->where('action', 'site.featured_stripe')->count());
         $this->assertStringContainsString('no longer in the catalog', $first['message']);
         $this->assertNull($site->fresh()->featured_until);
         $this->assertEqualsWithDelta(15.0, (float) Wallet::where('user_id', $publisher->id)->value('balance'), 0.01);

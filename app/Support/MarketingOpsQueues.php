@@ -70,7 +70,7 @@ class MarketingOpsQueues
                 if (Site::hasSitesColumn('publisher_accepted_at')
                     && Site::hasSitesColumn('assigned_by_user_id')) {
                     $q->orWhere(function ($invite) {
-                        $invite->whereNull('publisher_accepted_at')
+                        $invite->wherePublisherAcceptanceIsMissing()
                             ->whereNotNull('assigned_by_user_id');
                     });
                 }

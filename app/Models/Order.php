@@ -4,11 +4,14 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\ToleratesUnparseableDates;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 
 class Order extends Model
 {
+    use ToleratesUnparseableDates;
+
     protected $fillable = [
         'user_id',
         'order_number',

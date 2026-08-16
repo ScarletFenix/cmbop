@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ActivityLog;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Role;
@@ -198,6 +199,14 @@ class SiteRatingTest extends TestCase
         $this->actingAs($admin)->putJson(route('admin.site-ratings.update', $rating->id), [
             'status' => 'hidden',
         ])->assertOk();
+
+        $this->assertSame(1, ActivityLog::query()->where('action', 'site.rating_updated')->count());
+
+        $this->actingAs($admin)->putJson(route('admin.site-ratings.update', $rating->id), [
+            'status' => 'hidden',
+        ])->assertOk();
+
+        $this->assertSame(1, ActivityLog::query()->where('action', 'site.rating_updated')->count());
 
         $rating->refresh();
         $this->assertFalse((bool) $rating->is_admin);

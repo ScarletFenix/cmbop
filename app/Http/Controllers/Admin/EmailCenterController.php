@@ -16,6 +16,7 @@ use App\Support\UserFacingError;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Mail\Markdown;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
@@ -42,7 +43,10 @@ class EmailCenterController extends Controller
             ->fragment('ec-recent');
 
         $templateStats = EmailLog::query()
-            ->selectRaw('template_key, COUNT(*) as sent_count, MAX(sent_at) as last_sent_at')
+            ->selectRaw(
+                'template_key, COUNT(*) as sent_count, MAX(CASE WHEN sent_at >= ? AND sent_at <= ? THEN sent_at END) as last_sent_at',
+                [EmailLog::PLAUSIBLE_SQL_DATETIME_FLOOR, EmailLog::PLAUSIBLE_SQL_DATETIME_CEIL]
+            )
             ->where('status', EmailLog::STATUS_DELIVERED)
             ->whereNotNull('template_key')
             ->groupBy('template_key')
@@ -71,7 +75,7 @@ class EmailCenterController extends Controller
 
         $templates = collect(EmailCatalog::templates())->map(function (array $meta) use ($templateStats, $enabledByType) {
             $row = $templateStats->get($meta['key']);
-            $meta['last_sent_at'] = $row?->last_sent_at;
+            $meta['last_sent_at'] = $this->parseLastSentAt($row?->last_sent_at);
             $meta['sent_count'] = (int) ($row?->sent_count ?? 0);
             $meta['enabled'] = (bool) ($enabledByType[$meta['key']] ?? true);
 
@@ -291,10 +295,14 @@ class EmailCenterController extends Controller
         }
 
         $payloads = $this->failedJobPayloadsByUuid($uuids);
-        $closed = $this->closeFailedLogsAlreadyDelivered();
+        [$closed, $closedLeftovers] = $this->closeFailedLogsAlreadyDelivered();
         $uuids = array_values(array_filter(
             $uuids,
-            fn (string $uuid) => ! $this->payloadAlreadyDelivered((string) ($payloads[$uuid] ?? ''))
+            fn (string $uuid) => ! $this->shouldSkipRetryForClosedLeftover(
+                $uuid,
+                (string) ($payloads[$uuid] ?? ''),
+                $closedLeftovers
+            ) && ! $this->payloadAlreadyDelivered((string) ($payloads[$uuid] ?? ''))
         ));
 
         if ($uuids === []) {
@@ -480,6 +488,7 @@ class EmailCenterController extends Controller
 
             if ($this->closeFailedLogAlreadyDelivered($log)) {
                 $marked[$log->id] = true;
+                $claimedUuids[$stored] = true;
 
                 continue;
             }
@@ -524,10 +533,13 @@ class EmailCenterController extends Controller
     /**
      * Leftover failed rows after a real delivery. Retrying the queue job
      * would send a second campaign / welcome once the 10-minute window lapses.
+     *
+     * @return array{0: int, 1: list<EmailLog>}
      */
-    protected function closeFailedLogsAlreadyDelivered(): int
+    protected function closeFailedLogsAlreadyDelivered(): array
     {
         $closed = 0;
+        $leftovers = [];
 
         foreach (EmailLog::query()
             ->where('status', EmailLog::STATUS_FAILED)
@@ -537,10 +549,54 @@ class EmailCenterController extends Controller
             ->get() as $log) {
             if ($this->closeFailedLogAlreadyDelivered($log)) {
                 $closed++;
+                $leftovers[] = $log;
             }
         }
 
-        return $closed;
+        return [$closed, $leftovers];
+    }
+
+    /**
+     * Drop a leftover campaign job even when the payload has no extractable
+     * dedupeKey. A stale failed_job_uuid stamp on that leftover must not
+     * also suppress a Welcome (or other-campaign) job that actually owns
+     * the UUID.
+     *
+     * @param  list<EmailLog>  $leftovers
+     */
+    protected function shouldSkipRetryForClosedLeftover(string $uuid, string $payload, array $leftovers): bool
+    {
+        foreach ($leftovers as $leftover) {
+            $stored = (string) data_get($leftover->meta, 'failed_job_uuid');
+            if ($stored === $uuid) {
+                return $this->leftoverOwnsFailedJob($leftover, $payload);
+            }
+
+            if ($stored === '' && $this->leftoverOwnsFailedJob($leftover, $payload)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    protected function leftoverOwnsFailedJob(EmailLog $leftover, string $payload): bool
+    {
+        if ($payload === '') {
+            return true;
+        }
+
+        $dedupe = MailJobPayload::dedupeKey($payload);
+        $leftoverDedupe = (string) $leftover->dedupe_key;
+        if (is_string($dedupe) && $dedupe !== '') {
+            return $dedupe === $leftoverDedupe;
+        }
+
+        $class = (string) ($leftover->mailable ?: '');
+
+        return $class !== ''
+            && MailJobPayload::containsMailable($payload, $class)
+            && MailJobPayload::containsToken($payload, (string) $leftover->to_email);
     }
 
     protected function closeFailedLogAlreadyDelivered(EmailLog $log): bool
@@ -550,6 +606,10 @@ class EmailCenterController extends Controller
         }
 
         $delivered = EmailLog::latestDeliveredByDedupe((string) $log->dedupe_key);
+        if (! $delivered || (int) $delivered->id === (int) $log->id) {
+            [$campaignId, $userId] = EmailLog::campaignUserIds($log);
+            $delivered = EmailLog::latestDeliveredForCampaignUser($campaignId, $userId);
+        }
         if (! $delivered || (int) $delivered->id === (int) $log->id) {
             return false;
         }
@@ -579,7 +639,15 @@ class EmailCenterController extends Controller
             return false;
         }
 
-        return EmailLog::latestDeliveredByDedupe($dedupe) !== null;
+        if (EmailLog::latestDeliveredByDedupe($dedupe) !== null) {
+            return true;
+        }
+
+        if (! preg_match('/^audience_campaign:(\d+):user:(\d+)$/', $dedupe, $matches)) {
+            return false;
+        }
+
+        return EmailLog::latestDeliveredForCampaignUser((int) $matches[1], (int) $matches[2]) !== null;
     }
 
     protected function isOneShotCampaignLog(EmailLog $log): bool
@@ -746,13 +814,11 @@ class EmailCenterController extends Controller
             return null;
         }
 
-        $to = (string) $log->to_email;
-        $dedupe = (string) $log->dedupe_key;
-        $tight = array_values(array_filter($candidates, function ($job) use ($to, $dedupe) {
-            $payload = (string) $job->payload;
-
-            return MailJobPayload::containsToken($payload, $to)
-                || MailJobPayload::containsToken($payload, $dedupe);
+        $tight = array_values(array_filter($candidates, function ($job) use ($log) {
+            // Token or campaign ModelIdentifier (no stamped dedupeKey).
+            // Unique class match without a recipient is how an anonymous
+            // Welcome job was retried against the wrong failed log.
+            return $this->failedJobMatchesLog((string) $job->payload, $log);
         }));
 
         if (count($tight) === 1) {
@@ -962,5 +1028,37 @@ class EmailCenterController extends Controller
     protected function renderMarkdown(string $view, array $data = []): string
     {
         return app(Markdown::class)->render($view, $data);
+    }
+
+    /**
+     * Hostinger leftover sent_at strings win SQLite MAX() and 500
+     * Carbon::parse() on the template cards.
+     */
+    private function parseLastSentAt(mixed $value): ?Carbon
+    {
+        try {
+            if ($value instanceof Carbon) {
+                return $value;
+            }
+
+            if ($value instanceof \DateTimeInterface) {
+                return Carbon::parse($value->format('Y-m-d H:i:s'));
+            }
+
+            $raw = trim((string) $value);
+            if ($raw === '') {
+                return null;
+            }
+
+            $parsed = Carbon::parse($raw);
+            if ($parsed->lt(EmailLog::PLAUSIBLE_SQL_DATETIME_FLOOR)
+                || $parsed->gt(EmailLog::PLAUSIBLE_SQL_DATETIME_CEIL)) {
+                return null;
+            }
+
+            return $parsed;
+        } catch (\Throwable) {
+            return null;
+        }
     }
 }

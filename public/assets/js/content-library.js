@@ -619,6 +619,12 @@ function libraryChipParams(submission) {
     if (availability === 'in_progress') {
         return { status: 'all', availability: 'in_progress' };
     }
+    if (availability === 'published') {
+        return { status: 'all', availability: 'published' };
+    }
+    if (availability === 'evaluating') {
+        return { status: 'all', availability: 'evaluating' };
+    }
     if (
         availability === 'needs_fix'
         || status === 'needs_improvement'
@@ -651,7 +657,7 @@ function libraryResultMessage(submission, fallback, ok) {
     const availability = String((submission && submission.availability) || '');
     const status = String((submission && submission.moderation_status) || '');
     if (availability === 'evaluating' || status === 'pending' || status === 'processing') {
-        return 'Article is still evaluating — it stays on Approved until the check finishes.';
+        return 'Article is still evaluating — it stays on Evaluating until the check finishes.';
     }
     return 'Article approved — you can order it from here.';
 }
