@@ -5,6 +5,7 @@ namespace App\Services\Orders;
 use App\Models\CheckoutIntent;
 use App\Models\ContentSubmission;
 use App\Models\Order;
+use App\Models\OrderItemDispute;
 use App\Models\Wallet;
 use App\Services\CheckoutIntentService;
 use App\Services\Wallet\WalletLedgerService;
@@ -51,7 +52,7 @@ class OrderRefundService
                 return $none;
             }
 
-            $amount = round((float) $locked->total_amount, 2);
+            $amount = $this->resolveOrderCancelRefundAmount($locked);
             $refundable = $locked->payment_status === 'paid' && $amount > 0;
 
             $locked->update(array_filter([
@@ -81,13 +82,30 @@ class OrderRefundService
     public function resolveOrderCancelRefundAmount(Order $order): float
     {
         $orderTotal = round((float) $order->total_amount, 2);
+        $alreadyCredited = $this->priorAdvertiserCredits($order);
         if ($orderTotal > 0) {
-            return $orderTotal;
+            return max(0.0, round($orderTotal - $alreadyCredited, 2));
         }
 
         $order->loadMissing('items');
 
-        return round(abs((float) $order->items->sum('price')), 2);
+        return max(0.0, round(abs((float) $order->items->sum('price')) - $alreadyCredited, 2));
+    }
+
+    /**
+     * Line clawbacks already returned this slice. A later full-order cancel
+     * must not credit the advertiser a second time.
+     */
+    private function priorAdvertiserCredits(Order $order): float
+    {
+        if (! $order->id || ! OrderItemDispute::tableAvailable()) {
+            return 0.0;
+        }
+
+        return round((float) OrderItemDispute::query()
+            ->where('order_id', $order->id)
+            ->where('status', OrderItemDispute::STATUS_UPHELD)
+            ->sum('advertiser_credited'), 2);
     }
 
     /**

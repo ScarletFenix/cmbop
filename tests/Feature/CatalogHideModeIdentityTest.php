@@ -260,5 +260,7 @@ class CatalogHideModeIdentityTest extends TestCase
         $this->assertStringContainsString("data.status === 'hide_mode'", $js);
         $this->assertStringContainsString('window.location.reload()', $js);
         $this->assertStringContainsString('.catalog-site-details', $js);
+        $this->assertStringContainsString('swal-claim-url', $js);
+        $this->assertStringContainsString('We cannot fill it in while the catalog is hiding names', $js);
     }
 }

@@ -122,12 +122,12 @@ class ContentModerationEngine
         array $extraKeywords,
         array $exceptions,
     ): array {
-        $rawHaystack = mb_strtolower($title."\n".$text);
+        $rawHaystack = mb_strtolower($this->splitCamelCase($title."\n".$text));
         $haystack = $this->applyExceptions($this->deobfuscate($rawHaystack), $exceptions);
         $urlStrings = $this->normalizeLinkList($links);
         $urlStrings = $this->enrichLinksFromContent($urlStrings, $haystack, $categories);
         $linkHosts = array_map(fn (string $u) => $this->hostForMatch($u), $urlStrings);
-        $linkBlob = mb_strtolower(implode(' ', array_merge($urlStrings, $linkHosts)));
+        $linkBlob = mb_strtolower($this->splitCamelCase(implode(' ', array_merge($urlStrings, $linkHosts))));
         if ($linkBlob !== '') {
             $haystack = trim($haystack."\n".$this->deobfuscate($linkBlob));
         }
@@ -537,8 +537,23 @@ class ContentModerationEngine
     /**
      * Normalize common link cloaking before keyword/domain scans.
      */
+    /**
+     * Insert a break before capitals so BestOnlineCasinoBonus still matches casino.
+     */
+    public function splitCamelCase(string $text): string
+    {
+        return preg_replace('/(?<=\p{Ll})(?=\p{Lu})/u', ' ', $text) ?? $text;
+    }
+
     public function deobfuscate(string $text): string
     {
+        for ($i = 0; $i < 3; $i++) {
+            $next = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            if ($next === $text) {
+                break;
+            }
+            $text = $next;
+        }
         $text = preg_replace('/\[\s*dot\s*\]/iu', '.', $text) ?? $text;
         $text = preg_replace('/\(\s*dot\s*\)/iu', '.', $text) ?? $text;
         $text = preg_replace('/\{\s*dot\s*\}/iu', '.', $text) ?? $text;
@@ -563,6 +578,8 @@ class ContentModerationEngine
         $text = preg_replace('/\p{Mn}+/u', '', $text) ?? $text;
         // After NFKD, fullwidth %HH becomes ASCII so cas％６９no → casino.
         $text = $this->percentDecode($text);
+        // CSS hex escapes in inline style urls: cas\69no → casino.
+        $text = $this->cssDecode($text);
 
         $text = strtr($text, self::latinConfusables());
 
@@ -587,12 +604,12 @@ class ContentModerationEngine
     }
 
     /**
-     * Join letter-split evasions ("cas-ino", "c a s i n o") without
-     * destroying hyphen boundaries on the original haystack.
+     * Join letter-split evasions ("cas-ino", "cas+ino", "c a s i n o")
+     * without destroying those separators on the original haystack.
      */
     public function tightenHaystack(string $haystack): string
     {
-        return preg_replace('/(?<=\p{L})[\s\-\._]+(?=\p{L})/u', '', $haystack) ?? $haystack;
+        return preg_replace('/(?<=\p{L})[\s\p{P}\p{S}]+(?=\p{L})/u', '', $haystack) ?? $haystack;
     }
 
     /**
@@ -631,6 +648,28 @@ class ContentModerationEngine
     }
 
     /**
+     * Unfold CSS hex escapes used in inline style urls ("cas\69no").
+     */
+    public function cssDecode(string $text): string
+    {
+        $decoded = preg_replace_callback(
+            '/\\\\([0-9a-fA-F]{1,6})(?:\s|(?![0-9a-fA-F]))/u',
+            static function (array $m): string {
+                $codepoint = hexdec($m[1]);
+                if ($codepoint <= 0 || $codepoint > 0x10FFFF) {
+                    return '';
+                }
+                $char = mb_chr($codepoint, 'UTF-8');
+
+                return is_string($char) ? $char : '';
+            },
+            $text
+        );
+
+        return is_string($decoded) ? $decoded : $text;
+    }
+
+    /**
      * @param  array<string, mixed>  $cat
      * @return list<string>
      */
@@ -657,6 +696,13 @@ class ContentModerationEngine
 
     protected function countTerm(string $haystack, string $term, ?string $tightHaystack = null): int
     {
+        // Fold the needle the same way as the haystack (NFKD, entities, leet).
+        // Otherwise "glücksspiel" never matches the stripped "glucksspiel" body.
+        $term = $this->deobfuscate($term);
+        if ($term === '') {
+            return 0;
+        }
+
         $count = 0;
         foreach (array_filter([$haystack, $tightHaystack]) as $candidate) {
             $count = max($count, $this->countTermIn($candidate, $term));
@@ -675,12 +721,54 @@ class ContentModerationEngine
             return substr_count($haystack, $term);
         }
 
-        // Unicode-aware word boundaries; also catch glued variants like "casino!" already via \b.
-        return preg_match_all('/(?<![\p{L}\p{N}_])'.preg_quote($term, '/').'(?![\p{L}\p{N}_])/u', $haystack) ?: 0;
+        // Underscore is a separator (filenames, slugs, URLs), not a letter.
+        // `best_online_casino_bonus.jpg` must still match `casino`.
+        $count = preg_match_all('/(?<![\p{L}\p{N}])'.preg_quote($term, '/').'(?![\p{L}\p{N}])/u', $haystack) ?: 0;
+        if (mb_strlen($term) >= 5) {
+            $count = max($count, $this->countTermInSlugs($haystack, $term));
+        }
+
+        return $count;
+    }
+
+    /**
+     * Glued filename / URL tokens ("casinobanner.jpg", "mycasino.docx").
+     */
+    protected function countTermInSlugs(string $haystack, string $term): int
+    {
+        if (! preg_match_all('/[^\s]+/u', $haystack, $matches)) {
+            return 0;
+        }
+
+        $count = 0;
+        foreach ($matches[0] as $token) {
+            if (! $this->tokenLooksLikeSlug($token)) {
+                continue;
+            }
+            if (str_contains($token, $term)) {
+                $count++;
+            }
+        }
+
+        return $count;
+    }
+
+    protected function tokenLooksLikeSlug(string $token): bool
+    {
+        if (preg_match('/[.\/%\\\\_+]/u', $token)) {
+            return true;
+        }
+
+        return (bool) preg_match('/^[a-z0-9]{8,}$/u', $token);
     }
 
     protected function phrasePresent(string $haystack, string $tightHaystack, string $phrase): bool
     {
+        $phrase = $this->deobfuscate($phrase);
+        if ($phrase === '') {
+            return false;
+        }
+
         $leetPhrase = $this->leetFold($phrase);
         if (str_contains($haystack, $phrase) || str_contains($this->leetFold($haystack), $leetPhrase)) {
             return true;

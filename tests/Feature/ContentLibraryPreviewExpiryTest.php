@@ -160,7 +160,10 @@ class ContentLibraryPreviewExpiryTest extends TestCase
 
         $this->actingAs($advertiser)
             ->get(route('advertiser.content-library.order', $submission))
-            ->assertRedirect(route('advertiser.content-library'))
+            ->assertRedirect(route('advertiser.content-library', [
+                'status' => 'all',
+                'availability' => 'expired',
+            ]).'#library-row-'.$submission->id)
             ->assertSessionHas('error', 'Expired articles are preview only and cannot be ordered.');
 
         $this->actingAs($advertiser)

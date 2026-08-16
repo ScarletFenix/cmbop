@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\ToleratesUnparseableDates;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 
 class EmailLog extends Model
 {
+    use ToleratesUnparseableDates;
+
     public const STATUS_PENDING = 'pending';
 
     public const STATUS_DELIVERED = 'delivered';
@@ -109,15 +112,47 @@ class EmailLog extends Model
     {
         $campaignId = (int) data_get($log->meta, 'campaign_id');
         $userId = (int) data_get($log->meta, 'user_id');
+
+        foreach ([(string) $log->dedupe_key, (string) $log->template_key] as $key) {
+            if (preg_match('/^audience_campaign:(\d+):user:(\d+)$/', $key, $matches)) {
+                $campaignId = $campaignId > 0 ? $campaignId : (int) $matches[1];
+                $userId = $userId > 0 ? $userId : (int) $matches[2];
+                break;
+            }
+        }
+
         if ($campaignId > 0 && $userId > 0) {
             return [$campaignId, $userId];
         }
 
-        if (preg_match('/^audience_campaign:(\d+):user:(\d+)$/', (string) $log->dedupe_key, $matches)) {
-            return [(int) $matches[1], (int) $matches[2]];
-        }
+        $canonical = EmailCampaignRecipient::dedupeKey($campaignId, $userId);
 
-        return [0, 0];
+        try {
+            return static::query()
+                ->whereIn('status', [self::STATUS_PENDING, self::STATUS_FAILED])
+                ->where(function ($query) use ($canonical) {
+                    $query->where('dedupe_key', $canonical)
+                        ->orWhere('dedupe_key', 'like', 'audience_campaign|%')
+                        ->orWhere('notification_type', 'audience_campaign')
+                        ->orWhere('template_key', 'audience_campaign')
+                        ->orWhere('mailable', 'like', '%AudienceCampaignMail%');
+                })
+                ->orderByDesc('id')
+                ->limit(200)
+                ->get()
+                ->filter(function (self $log) use ($campaignId, $userId, $canonical) {
+                    if ((string) $log->dedupe_key === $canonical) {
+                        return true;
+                    }
+
+                    [$foundCampaign, $foundUser] = static::campaignUserIds($log);
+
+                    return $foundCampaign === $campaignId && $foundUser === $userId;
+                })
+                ->values();
+        } catch (\Throwable) {
+            return static::query()->whereRaw('0 = 1')->get();
+        }
     }
 
     /**
@@ -155,18 +190,38 @@ class EmailLog extends Model
         } catch (\Throwable) {
         }
 
+        // JSON meta path can miss leftover generic-key rows. Do not scan
+        // the newest 100 campaign emails site-wide — a later burst hides
+        // this user's delivery and isDuplicate() blasts again.
+        $email = null;
         try {
-            foreach (static::query()
+            $email = User::query()->whereKey($userId)->value('email');
+        } catch (\Throwable) {
+        }
+        $email = is_string($email) && $email !== '' ? $email : null;
+        $generic = $email !== null
+            ? 'audience_campaign|'.$email.'|AudienceCampaignMail'
+            : null;
+
+        try {
+            $query = static::query()
                 ->where('status', self::STATUS_DELIVERED)
-                ->where(function ($query) {
-                    $query->where('notification_type', 'audience_campaign')
+                ->where(function ($type) {
+                    $type->where('notification_type', 'audience_campaign')
                         ->orWhere('template_key', 'audience_campaign')
                         ->orWhere('mailable', 'like', '%AudienceCampaignMail%')
                         ->orWhere('dedupe_key', 'like', 'audience_campaign%');
-                })
-                ->orderByDesc('id')
-                ->limit(100)
-                ->get() as $log) {
+                });
+            if ($email !== null) {
+                $query->where(function ($who) use ($email, $generic) {
+                    $who->where('to_email', $email);
+                    if ($generic !== null) {
+                        $who->orWhere('dedupe_key', $generic);
+                    }
+                });
+            }
+
+            foreach ($query->orderByDesc('id')->cursor() as $log) {
                 [$foundCampaign, $foundUser] = static::campaignUserIds($log);
                 if ($foundCampaign === $campaignId && $foundUser === $userId) {
                     return $log;
@@ -182,9 +237,12 @@ class EmailLog extends Model
      * Recipients with a pending Email Center row for this campaign.
      * Includes leftover generic-key retries that only store the pair in meta.
      *
-     * @return list<int>
+     * Null means email_logs could not be read. Reclaim must fail-closed
+     * instead of treating an unread table as "no pending retries".
+     *
+     * @return list<int>|null
      */
-    public static function pendingUserIdsForCampaign(int $campaignId): array
+    public static function pendingUserIdsForCampaign(int $campaignId, ?\DateTimeInterface $updatedAfter = null): ?array
     {
         if ($campaignId < 1) {
             return [];
@@ -203,6 +261,52 @@ class EmailLog extends Model
                         ->orWhere('mailable', 'like', '%AudienceCampaignMail%')
                         ->orWhere('dedupe_key', 'like', 'audience_campaign|%');
                 })
+                ->get(['id', 'dedupe_key', 'meta', 'notification_type', 'template_key', 'mailable', 'updated_at']) as $log) {
+                if ($updatedAfter !== null
+                    && $log->updated_at
+                    && ! $log->updated_at->greaterThan($updatedAfter)) {
+                    // Stale pending = lost retry. Expire may close it.
+                    // Missing/unreadable clocks stay held (fail-closed).
+                    continue;
+                }
+                [$foundCampaign, $foundUser] = static::campaignUserIds($log);
+                if ($foundCampaign === $campaignId && $foundUser > 0) {
+                    $ids[$foundUser] = true;
+                }
+            }
+        } catch (\Throwable) {
+            return null;
+        }
+
+        return array_map('intval', array_keys($ids));
+    }
+
+    /**
+     * Recipients who already have a delivered Email Center row for this
+     * campaign. Null means email_logs could not be read — reclaim/expire
+     * must not treat that as “nobody was mailed”.
+     *
+     * @return list<int>|null
+     */
+    public static function deliveredUserIdsForCampaign(int $campaignId): ?array
+    {
+        if ($campaignId < 1) {
+            return [];
+        }
+
+        $ids = [];
+        $prefix = 'audience_campaign:'.$campaignId.':user:';
+
+        try {
+            foreach (static::query()
+                ->where('status', self::STATUS_DELIVERED)
+                ->where(function ($query) use ($prefix) {
+                    $query->where('dedupe_key', 'like', $prefix.'%')
+                        ->orWhere('notification_type', 'audience_campaign')
+                        ->orWhere('template_key', 'audience_campaign')
+                        ->orWhere('mailable', 'like', '%AudienceCampaignMail%')
+                        ->orWhere('dedupe_key', 'like', 'audience_campaign|%');
+                })
                 ->get(['id', 'dedupe_key', 'meta', 'notification_type', 'template_key', 'mailable']) as $log) {
                 [$foundCampaign, $foundUser] = static::campaignUserIds($log);
                 if ($foundCampaign === $campaignId && $foundUser > 0) {
@@ -210,7 +314,7 @@ class EmailLog extends Model
                 }
             }
         } catch (\Throwable) {
-            return [];
+            return null;
         }
 
         return array_map('intval', array_keys($ids));

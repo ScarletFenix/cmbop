@@ -2326,4 +2326,23 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
         $this->assertEqualsWithDelta(60.0, (float) $wallet->balance, 0.01);
         $this->assertEqualsWithDelta(60.0, $payments->unfulfilledCardCreditAmount($ref), 0.01);
     }
+
+    public function test_unkeyed_unfulfilled_credit_does_not_stack_on_session_keyed_row(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $wallet = $this->advertiserWallet($advertiser, 0);
+        $ref = 'KEYED-THEN-UNKEYED-1';
+        $payments = app(OrderPaymentService::class);
+
+        $this->assertEqualsWithDelta(
+            60.0,
+            $payments->creditUnfulfilledCardCapture($advertiser->id, $ref, 60, 'cs_keyed_then_unkeyed'),
+            0.01
+        );
+        $this->assertEqualsWithDelta(0.0, $payments->creditUnfulfilledCardCapture($advertiser->id, $ref, 60), 0.01);
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(60.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(60.0, $payments->unfulfilledCardCreditAmount($ref), 0.01);
+    }
 }

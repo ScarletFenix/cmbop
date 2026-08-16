@@ -5,7 +5,9 @@ namespace Tests\Feature;
 use App\Models\DepositRequest;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\Admin\FinanceOverviewService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class DepositMarkPaidTest extends TestCase
@@ -140,5 +142,59 @@ class DepositMarkPaidTest extends TestCase
             ->assertSee('OK, I have made the payment')
             ->assertSee('stays')
             ->assertSee('Pending');
+    }
+
+    public function test_leftover_mark_paid_stamp_does_not_500_or_fake_a_report(): void
+    {
+        $user = $this->advertiser();
+        $adminRole = Role::firstOrCreate(['name' => 'admin']);
+        $admin = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $adminRole->id,
+        ]);
+        $admin->roles()->attach($adminRole->id);
+
+        $deposit = $this->pendingDeposit($user, 'wise');
+        $deposit->update(['user_marked_paid_at' => now()]);
+        DB::table('deposit_requests')->where('id', $deposit->id)->update([
+            'user_marked_paid_at' => 'not-a-date',
+        ]);
+
+        $deposit->refresh();
+        $this->assertNull($deposit->user_marked_paid_at);
+        $this->assertFalse($deposit->userHasMarkedPaid());
+        $this->assertTrue($deposit->canUserMarkPaid());
+        $this->assertFalse(DepositRequest::query()->whereUserMarkedPaidAtIsRecorded()->whereKey($deposit->id)->exists());
+
+        $this->actingAs($user)
+            ->get(route('advertiser.invoice', $deposit->reference_code))
+            ->assertOk()
+            ->assertSee('OK, I have made the payment');
+
+        $this->actingAs($user)
+            ->getJson(route('advertiser.balance.transactions'))
+            ->assertOk();
+
+        $this->actingAs($admin)
+            ->get(route('admin.deposits'))
+            ->assertOk();
+        $this->actingAs($admin)
+            ->getJson(route('admin.deposits.show', $deposit->id))
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertSame(0, app(FinanceOverviewService::class)->opsQueues()['pending_deposits']['user_marked_paid_count']);
+
+        $this->actingAs($user)
+            ->postJson(route('advertiser.add-funds.mark-paid', $deposit), [
+                'user_payment_note' => 'WISE-HEAL',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $deposit->refresh();
+        $this->assertNotNull($deposit->user_marked_paid_at);
+        $this->assertSame('WISE-HEAL', $deposit->user_payment_note);
+        $this->assertTrue(DepositRequest::query()->whereUserMarkedPaidAtIsRecorded()->whereKey($deposit->id)->exists());
     }
 }

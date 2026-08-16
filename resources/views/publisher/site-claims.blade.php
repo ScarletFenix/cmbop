@@ -41,8 +41,8 @@
                                 @endphp
                                 <tr>
                                     <td>
-                                        <div class="fw-semibold">{{ $claim->site->site_name ?? $claim->website_name }}</div>
-                                        <div class="small text-muted">{{ $claim->domain }}</div>
+                                        <div class="fw-semibold">{{ $claim->display_name ?? $claim->displayNameFor(auth()->user()) }}</div>
+                                        <div class="small text-muted">{{ $claim->display_host ?? $claim->displayHostFor(auth()->user()) }}</div>
                                         @if($claim->status !== 'pending' && filled($claim->admin_notes))
                                             <div class="small text-muted fst-italic">Note: {{ $claim->admin_notes }}</div>
                                         @endif

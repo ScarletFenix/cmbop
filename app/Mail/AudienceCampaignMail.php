@@ -26,6 +26,8 @@ class AudienceCampaignMail extends PlatformMailable
         $this->notificationType = 'audience_campaign';
         $this->recipientUser = $recipient;
         $this->skipUserPreference = ! $campaign->respect_preferences;
+        // Staff skip runs before parent::send() sets a default key.
+        $this->dedupeKey = EmailCampaignRecipient::dedupeKey((int) $campaign->id, (int) $recipient->id);
     }
 
     public function unsubscribeUrl(): string
@@ -64,8 +66,26 @@ class AudienceCampaignMail extends PlatformMailable
     {
         if (AudienceInventoryService::userHasStaffRole($this->recipient)) {
             $this->suppressReason = 'staff';
+            if (! filled($this->dedupeKey)) {
+                [$campaignId, $userId] = $this->campaignAndUserIds();
+                if ($campaignId > 0 && $userId > 0) {
+                    $this->dedupeKey = EmailCampaignRecipient::dedupeKey($campaignId, $userId);
+                }
+            }
+            // Staff skip runs before parent::send(), so abandonOpenLog
+            // never ran — a retried pending Email Center row stayed
+            // pending forever (retry only accepts failed).
             $this->abandonOpenLog($this->suppressErrorMessage());
             $this->markRecipientSkipped(EmailCampaignRecipient::SKIP_STAFF);
+
+            return null;
+        }
+
+        if ($this->campaign->respect_preferences
+            && ! EmailNotificationPreference::allows($this->recipient, 'marketing_emails', failClosed: true)) {
+            $this->suppressReason = 'preference';
+            $this->abandonOpenLog($this->suppressErrorMessage());
+            $this->markRecipientSkipped(EmailCampaignRecipient::SKIP_PREFERENCE);
 
             return null;
         }
@@ -83,6 +103,14 @@ class AudienceCampaignMail extends PlatformMailable
 
     public function failed(?\Throwable $exception): void
     {
+        if ($this->alreadyHasDeliveredLog()) {
+            $this->suppressReason = 'duplicate';
+            $this->abandonOpenLog($this->suppressErrorMessage());
+            $this->markRecipientDelivered();
+
+            return;
+        }
+
         parent::failed($exception);
         $this->markRecipientFailed();
     }
@@ -105,6 +133,21 @@ class AudienceCampaignMail extends PlatformMailable
         }
     }
 
+    /**
+     * parent::send() fills an empty key with type|email|class. That string
+     * is not the one-shot campaign key, so isDuplicate() misses a real
+     * delivery and Email Center leftover rows cannot find their sibling.
+     */
+    protected function defaultDedupeKey(?string $type, ?User $recipient): ?string
+    {
+        [$campaignId, $userId] = $this->campaignAndUserIds();
+        if ($campaignId > 0 && $userId > 0) {
+            return EmailCampaignRecipient::dedupeKey($campaignId, $userId);
+        }
+
+        return parent::defaultDedupeKey($type, $recipient);
+    }
+
     protected function skipReasonForSuppressedSend(): string
     {
         if ($this->suppressReason === 'stale' || $this->isStale()) {
@@ -113,7 +156,7 @@ class AudienceCampaignMail extends PlatformMailable
 
         if ($this->suppressReason === 'preference'
             || ($this->campaign->respect_preferences
-                && ! EmailNotificationPreference::allows($this->recipient, 'marketing_emails'))) {
+                && ! EmailNotificationPreference::allows($this->recipient, 'marketing_emails', failClosed: true))) {
             return EmailCampaignRecipient::SKIP_PREFERENCE;
         }
 
@@ -162,10 +205,17 @@ class AudienceCampaignMail extends PlatformMailable
     /**
      * A historical send that wrote the generic default key must still
      * block a later job that uses `audience_campaign:{id}:user:{id}`.
+     *
+     * The generic string is per email, not per campaign. parent::isDuplicate()
+     * is one-shot for any `audience_campaign` key, so campaign 2 would be
+     * suppressed after campaign 1 mailed the same address under
+     * `audience_campaign|{email}|AudienceCampaignMail`. Only campaign+user
+     * identity is safe for that leftover shape.
      */
     protected function isDuplicate(string $key): bool
     {
-        if (parent::isDuplicate($key)) {
+        $sharedGenericKey = str_starts_with($key, 'audience_campaign|');
+        if (! $sharedGenericKey && parent::isDuplicate($key)) {
             return true;
         }
 
@@ -179,17 +229,22 @@ class AudienceCampaignMail extends PlatformMailable
                 return false;
             }
 
+            // latestDeliveredForCampaignUser() swallows query errors as
+            // "not delivered". Probe first so a locked table cannot look
+            // like a first-time send and blast someone who already got it.
+            EmailLog::query()->whereKey(0)->exists();
+
             $delivered = EmailLog::latestDeliveredForCampaignUser($campaignId, $userId);
 
             return $delivered !== null;
         } catch (\Throwable $e) {
-            Log::warning('Campaign sibling dedupe check failed; allowing send', [
+            Log::warning('Campaign sibling dedupe check failed; holding send', [
                 'campaign_id' => $campaignId,
                 'user_id' => $userId,
                 'error' => $e->getMessage(),
             ]);
 
-            return false;
+            throw $e;
         }
     }
 
