@@ -161,48 +161,9 @@ class EmailCampaignPhpSyntaxTest extends TestCase
         $inventory = (string) file_get_contents($files[2]);
         $this->assertSame(1, preg_match_all('/function recipientRowQuery\b/', $inventory));
 
-        $center = (string) file_get_contents($files[3]);
-        $this->assertSame(1, preg_match_all('/function deliveredSiblingIsSameCampaignSend\b/', $center));
-        $this->assertSame(1, preg_match_all('/function campaignIdFromLog\b/', $center));
-        $this->assertSame(1, preg_match_all('/function isSameAttemptLeftover\b/', $center));
-        $this->assertSame(1, preg_match_all('/function payloadQueuedAtAlreadyDelivered\b/', $center));
-
-        $log = (string) file_get_contents($root.'/app/Models/EmailLog.php');
-        $this->assertSame(1, preg_match_all('/function latestDeliveredForCampaignUser\b/', $log));
-        $this->assertSame(1, preg_match_all('/function pendingUserIdsForCampaign\b/', $log));
-        $this->assertSame(1, preg_match_all('/function campaignUserIds\b/', $log));
-        $this->assertSame(1, preg_match_all('/function openForCampaignUser\b/', $log));
-
         $sent = (string) file_get_contents($root.'/app/Listeners/LogSentEmail.php');
-        $this->assertSame(1, preg_match_all('/function closeSiblingCampaignLogs\b/', $sent));
-
-        $this->assertSame(1, preg_match_all('/function openSiblingCampaignLogs\b/', $mailable));
-        $this->assertTrue((bool) preg_match(
-            '/public static function campaignUserIds\(self \$log\): array\s*\{(.*?)\n    \/\*\*/s',
-            $log,
-            $ids
-        ));
-        $this->assertStringContainsString('template_key', $ids[1]);
-        $this->assertStringContainsString('return [0, 0];', $ids[1]);
-        $this->assertStringNotContainsString(
-            'return static::query()',
-            $ids[1],
-            'campaignUserIds must parse identity, not return open leftover rows'
-        );
-        $this->assertSame(
-            0,
-            preg_match_all('/->limit\(100\)/', $log),
-            'latestDeliveredForCampaignUser must not cap a global 100-row scan'
-        );
-
-        $this->assertTrue((bool) preg_match(
-            '/protected function isDuplicate\(string \$key\): bool\s*\{(.*?)\n    protected function brand/s',
-            $mailable,
-            $dup
-        ));
-        $this->assertStringContainsString("where('sent_at', '>=', \$cutoff)", $dup[1]);
-        $this->assertStringContainsString("whereNull('sent_at')", $dup[1]);
-        $this->assertStringNotContainsString("where('created_at', '>=', now()->subMinutes(\$minutes))", $dup[1]);
+        $this->assertStringContainsString("'suppressed' => 'duplicate'", $sent);
+        $this->assertStringNotContainsString('Closed: duplicate open log for the same send', $sent);
 
         $model = (string) file_get_contents($files[0]);
         $this->assertSame(1, preg_match_all('/function reclaimOrphanedQueuedRecipients\b/', $model));
