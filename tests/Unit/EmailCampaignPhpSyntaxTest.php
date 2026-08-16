@@ -89,6 +89,22 @@ class EmailCampaignPhpSyntaxTest extends TestCase
             '/hasColumn\(\$table, \'payload\'\)\) \{\s*return null;/',
             $inFlight[1]
         );
+
+        $this->assertTrue((bool) preg_match(
+            '/protected static function queuedMailablePayloads\(\): \?array\s*\{(.*)\n    protected static function unidentifiedPayloadCouldBeLog/s',
+            $source,
+            $queued
+        ));
+        $this->assertStringContainsString('$mailScannedOk = true;', $queued[1]);
+        $this->assertStringContainsString('if ($mailNeedsScan && ! $mailScannedOk)', $queued[1]);
+        $this->assertDoesNotMatchRegularExpression(
+            '/hasColumn\(\$table, \'payload\'\)\) \{\s*return null;/',
+            $queued[1]
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/catch \(\\\\Throwable\) \{\s*return null;/',
+            $queued[1]
+        );
     }
 
     public function test_merge_sensitive_campaign_files_parse_without_duplicate_methods(): void
@@ -215,9 +231,10 @@ class EmailCampaignPhpSyntaxTest extends TestCase
         $this->assertStringContainsString('notification_type', $campaignLog[1]);
         $this->assertStringContainsString("str_starts_with((string) \$log->template_key, 'audience_campaign')", $campaignLog[1]);
         $this->assertSame(1, preg_match_all('/function queuedMailablePayloads\b/', $model));
+        $this->assertSame(1, preg_match_all('/function unidentifiedPayloadCouldBeLog\b/', $model));
         $this->assertSame(1, preg_match_all('/function mailConnectionIsInline\b/', $model));
         $this->assertTrue((bool) preg_match(
-            '/protected static function queuedMailablePayloads\(\): \?array\s*\{(.*)\n\}\n/s',
+            '/protected static function queuedMailablePayloads\(\): \?array\s*\{(.*)\n    protected static function unidentifiedPayloadCouldBeLog/s',
             $model,
             $queuedMail
         ));
