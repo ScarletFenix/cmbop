@@ -69,6 +69,9 @@ class MailJobPayloadTest extends TestCase
         $user->id = 34;
         $mailable = new AudienceCampaignMail($campaign, $user);
         $mailable->notificationType = 'audience_campaign';
+        // Leftover jobs queued before the constructor stamped a key
+        // still serialize the campaign/user ModelIdentifiers.
+        $mailable->dedupeKey = null;
 
         $raw = serialize($mailable);
         $json = json_encode([

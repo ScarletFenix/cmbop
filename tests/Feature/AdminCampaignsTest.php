@@ -1323,6 +1323,8 @@ class AdminCampaignsTest extends TestCase
         $this->assertSame(EmailCampaignRecipient::SKIP_STAFF, $row->fresh()->skip_reason);
         $this->assertSame(EmailLog::STATUS_FAILED, $log->fresh()->status);
         $this->assertSame('Suppressed: recipient is staff', $log->fresh()->error);
+        $this->assertSame(EmailLog::STATUS_FAILED, $pendingLog->fresh()->status);
+        $this->assertSame('Suppressed: recipient is staff', $pendingLog->fresh()->error);
         $this->assertSame(0, $campaign->fresh()->sent_count);
         $this->assertSame(1, $campaign->fresh()->skipped_count);
     }
@@ -1415,8 +1417,6 @@ class AdminCampaignsTest extends TestCase
         $this->assertSame('Suppressed: recipient is staff', $log->fresh()->error);
         $this->assertSame(0, $campaign->fresh()->sent_count);
         $this->assertSame(1, $campaign->fresh()->skipped_count);
-        $this->assertSame(EmailLog::STATUS_FAILED, $pendingLog->fresh()->status);
-        $this->assertSame('Suppressed: recipient is staff', $pendingLog->fresh()->error);
     }
 
     public function test_mailable_failed_marks_recipient_failed(): void
