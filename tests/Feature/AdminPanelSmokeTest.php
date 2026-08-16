@@ -525,6 +525,11 @@ class AdminPanelSmokeTest extends TestCase
             ->get(route('admin.community.index', ['tab' => 'suggestions']))
             ->assertOk()
             ->assertSee('Add a DA slider');
+
+        $this->actingAs($admin)
+            ->get(route('admin.community.index', ['tab' => 'claims']))
+            ->assertOk()
+            ->assertSee('Smoke Test Site');
     }
 
     public function test_export_endpoints_do_not_500(): void

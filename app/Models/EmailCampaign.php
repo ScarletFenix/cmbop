@@ -437,9 +437,12 @@ class EmailCampaign extends Model
         if ($pendingHold === null) {
             return 0;
         }
-        $holdUserIds = array_merge($holdUserIds, $deliveredIds);
+        $deliveredIds = EmailLog::deliveredUserIdsForCampaign((int) $campaign->id);
+        if ($deliveredIds === null) {
+            return 0;
+        }
 
-        $holdUserIds = array_merge($inFlight, $pendingHold);
+        $holdUserIds = array_merge($inFlight, $pendingHold, $deliveredIds);
 
         $query = EmailCampaignRecipient::query()
             ->where('email_campaign_id', $campaign->id)
@@ -933,21 +936,20 @@ class EmailCampaign extends Model
                 return (string) $log->dedupe_key;
             });
 
-            $log = $deliveredLog;
-            if (! $log && $failedLog) {
-                // Failed-log attach still waits out the stall window so a
-                // 10-second-old queued claim is not killed by an older
-                // leftover failure while Mail::send() is still running.
-                if ($row->updated_at && $row->updated_at->greaterThan($cutoff)) {
-                    continue;
-                }
-                // An older failed log must not kill a newer in-flight retry.
-                if ($failedLog->updated_at
-                    && $row->updated_at
-                    && ! $failedLog->updated_at->greaterThan($row->updated_at)) {
-                    continue;
-                }
-                $log = $failedLog;
+        $campaignIds = array_fill_keys($attachedIds, true);
+
+        // Walk every queued row even when grouping found nothing.
+        // latestDeliveredForCampaignUser() still attaches a leftover
+        // generic-key delivery after a failed extras JSON scan.
+        foreach ($rows as $row) {
+            try {
+                self::reconcileOneQueuedRecipientFromLogs($row, $logs, $cutoff, $campaignIds);
+            } catch (\Throwable $e) {
+                Log::warning('Campaign recipient reconcile skipped a leftover row', [
+                    'recipient_id' => $row->id ?? null,
+                    'campaign_id' => $row->email_campaign_id ?? null,
+                    'error' => $e->getMessage(),
+                ]);
             }
         }
 
@@ -1341,8 +1343,15 @@ class EmailCampaign extends Model
             if ($pendingHold === null) {
                 continue;
             }
+            $deliveredHold = EmailLog::deliveredUserIdsForCampaign($campaignId);
+            if ($deliveredHold === null) {
+                continue;
+            }
             $blocked = $inFlight === null ? [] : array_fill_keys($inFlight, true);
             foreach ($pendingHold as $userId) {
+                $blocked[$userId] = true;
+            }
+            foreach ($deliveredHold as $userId) {
                 $blocked[$userId] = true;
             }
 

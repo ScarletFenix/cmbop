@@ -187,7 +187,7 @@ class EmailCampaignPhpSyntaxTest extends TestCase
         $this->assertSame(1, preg_match_all('/function reclaimOrphanedQueuedRecipients\b/', $model));
         $this->assertSame(1, preg_match_all('/function pendingLogUserIdsForCampaign\b/', $model));
         $this->assertSame(1, preg_match_all('/function inFlightCampaignMailUserIds\b/', $model));
-        $this->assertSame(1, preg_match_all('/function campaignLogUserIdsForStatus\b/', $model));
+        $this->assertSame(0, preg_match_all('/function campaignLogUserIdsForStatus\b/', $model));
         $this->assertSame(1, preg_match_all('/function healQueuedRecipientsWithTerminalLog\b/', $model));
         $this->assertSame(1, preg_match_all('/function reconcileOneQueuedRecipientFromLogs\b/', $model));
         $this->assertTrue((bool) preg_match(
@@ -248,7 +248,7 @@ class EmailCampaignPhpSyntaxTest extends TestCase
         ));
         $this->assertStringContainsString('inFlightCampaignMailUserIds', $expire[1]);
         $this->assertStringContainsString('deliveredUserIdsForCampaign', $expire[1]);
-        $this->assertStringContainsString('pendingUserIdsForCampaign', $expire[1]);
+        $this->assertStringContainsString('pendingLogUserIdsForCampaign', $expire[1]);
         $this->assertTrue((bool) preg_match(
             '/protected static function healQueuedRecipientsWithTerminalLog\(\): array\s*\{(.*?)\n    \/\*\*/s',
             $model,
@@ -287,27 +287,21 @@ class EmailCampaignPhpSyntaxTest extends TestCase
             $center,
             $requeue
         ));
-        $this->assertStringContainsString('$mailScannedOk = true;', $queued[1]);
-        $this->assertStringContainsString('if ($mailNeedsScan && ! $mailScannedOk)', $queued[1]);
-        $this->assertDoesNotMatchRegularExpression(
-            '/hasColumn\(\$table, \'payload\'\)\) \{\s*return null;/',
-            $queued[1]
-        );
+        $this->assertStringContainsString("'email_log_id' => null", $requeue[1]);
+        $this->assertStringContainsString('SKIP_STALE', $requeue[1]);
         $this->assertTrue((bool) preg_match(
             '/protected static function expireOrphanedQueuedRecipients\(\): void\s*\{(.*?)\n    \/\*\*/s',
             $model,
             $expire
         ));
-        $this->assertStringContainsString('campaignLogUserIdsForStatus', $expire[1]);
+        $this->assertStringContainsString('pendingLogUserIdsForCampaign', $expire[1]);
         $this->assertTrue((bool) preg_match(
             '/protected static function reclaimOrphanedQueuedRecipients\(self \$campaign\): int\s*\{(.*?)\n    \/\*\*/s',
             $model,
             $reclaim
         ));
-        $this->assertGreaterThanOrEqual(
-            2,
-            substr_count($reclaim[1], 'campaignLogUserIdsForStatus'),
-            'reclaim must hold pending and delivered campaign logs'
-        );
+        $this->assertStringContainsString('pendingLogUserIdsForCampaign', $reclaim[1]);
+        $this->assertStringContainsString('deliveredUserIdsForCampaign', $reclaim[1]);
+        $this->assertStringNotContainsString('$holdUserIds = array_merge($holdUserIds, $deliveredIds);', $reclaim[1]);
     }
 }

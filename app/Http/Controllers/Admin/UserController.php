@@ -52,12 +52,13 @@ class UserController extends Controller
     // ✅ Update Company (AJAX)
     public function updateCompany(Request $request, $id)
     {
-        try {
-            $request->validate([
-                'company_name' => 'nullable|string|max:255',
-            ]);
+        $request->validate([
+            'company_name' => 'nullable|string|max:255',
+        ]);
 
-            $user = User::findOrFail($id);
+        $user = User::findOrFail($id);
+
+        try {
 
             $from = $user->company_name;
             $to = $request->input('company_name');

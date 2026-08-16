@@ -262,7 +262,7 @@
                                 <td>
                                     <div class="fw-semibold">
                                         @if($item->site_id)
-                                            <a href="{{ route('admin.sites.edit', $item->site_id) }}">{{ $item->site->site_name ?? $item->website_name }}</a>
+                                            <a href="{{ route('admin.sites.edit', $item->site_id) }}">{{ $item->site?->site_name ?? $item->website_name }}</a>
                                         @else
                                             {{ $item->website_name }}
                                         @endif
@@ -285,10 +285,10 @@
                                         @if($item->site?->publisher_id)
                                             <a href="{{ route('admin.users.index', ['user' => $item->site->publisher_id]) }}#user-{{ $item->site->publisher_id }}">{{ $item->site->publisher?->name ?? 'User #'.$item->site->publisher_id }}</a>
                                         @else
-                                            {{ $item->site->publisher?->name ?? '—' }}
+                                            {{ $item->site?->publisher?->name ?? '—' }}
                                         @endif
                                     </div>
-                                    <div class="small text-muted">{{ $item->site->publisher?->email ?? '' }}</div>
+                                    <div class="small text-muted">{{ $item->site?->publisher?->email ?? '' }}</div>
                                 </td>
                                 <td class="small" style="max-width:260px;">
                                     @if($item->name_matches)

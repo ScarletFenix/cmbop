@@ -23,6 +23,7 @@ use App\Support\BillingCustomerMailSuppressor;
 use App\Support\OrderLifecycleMailSuppressor;
 use App\Support\UserFacingError;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -360,6 +361,19 @@ class PaymentController extends Controller
                 $order->paid_at = null;
             }
 
+            // Unpaid failure: release leftover checkout bonus and cancel
+            // non-card methods in this same save so lifecycle mail sees both
+            // payment_status + status with the same suppressor snapshot.
+            if ($newStatus === 'failed' && $oldStatus !== 'failed' && $oldStatus !== 'paid') {
+                $this->refundReservedCheckoutBonus($order);
+                if ($order->payment_method !== 'card') {
+                    if ($order->status !== 'cancelled') {
+                        $order->status = 'cancelled';
+                    }
+                    ContentSubmission::releaseAllForOrder((int) $order->id);
+                }
+            }
+
             $order->save();
 
             if ($newStatus === 'paid' && $oldStatus !== 'paid') {
@@ -395,22 +409,6 @@ class PaymentController extends Controller
                 'payment_reference' => $paymentReference !== '' ? $paymentReference : null,
             ]);
 
-            // Unpaid failure: release this line's leftover checkout bonus.
-            // Paid failures already restored promo via creditAdvertiserRefund /
-            // releaseWalletHoldOnAdminFailed — do not dump the sibling share.
-            if ($newStatus === 'failed' && $oldStatus !== 'failed' && $oldStatus !== 'paid') {
-                $this->refundReservedCheckoutBonus($order);
-                // Card leftovers stay pending so Pay again works. Wise/bank/crypto
-                // have no retry, so cancel and free the library article.
-                if ($order->payment_method !== 'card') {
-                    if ($order->status !== 'cancelled') {
-                        $order->status = 'cancelled';
-                    }
-                    ContentSubmission::releaseAllForOrder((int) $order->id);
-                    $order->save();
-                }
-            }
-
             DB::commit();
 
             try {
@@ -442,6 +440,16 @@ class PaymentController extends Controller
                 ],
             ]);
 
+        } catch (ModelNotFoundException $e) {
+            DB::rollBack();
+            if (! $sendNotification) {
+                app(OrderLifecycleMailSuppressor::class)->forget((int) $id);
+            }
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Payment not found',
+            ], 404);
         } catch (\Exception $e) {
             DB::rollBack();
             if (! $sendNotification) {
