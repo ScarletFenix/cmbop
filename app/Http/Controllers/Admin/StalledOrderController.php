@@ -15,6 +15,7 @@ use App\Services\InAppNotificationService;
 use App\Services\Reminders\OrderDeadline;
 use App\Services\Reminders\StalledOrderQueue;
 use App\Support\UserFacingError;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
 
@@ -107,7 +108,7 @@ class StalledOrderController extends Controller
 
             $hoursOverdue = $sent;
 
-            ActivityLogger::log(
+            ActivityLogger::tryLog(
                 'order.publisher_reminded',
                 'Sent a manual '.$track.' reminder to '.$publisher->email,
                 $order,
@@ -124,6 +125,11 @@ class StalledOrderController extends Controller
                 'success' => true,
                 'message' => 'Reminder sent to '.$publisher->email,
             ]);
+        } catch (ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Order item not found.',
+            ], 404);
         } catch (\Throwable $e) {
             Log::error('Manual publisher reminder failed', [
                 'order_item_id' => $orderItem,

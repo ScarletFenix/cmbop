@@ -70,7 +70,7 @@
                 </div>
                 <div class="col-md-6 text-md-end">
                     <small class="text-muted">
-                        <strong>Created:</strong> {{ $blog->created_at->format('M d, Y H:i') }}
+                        <strong>Created:</strong> {{ optional($blog->created_at)->format('M d, Y H:i') ?: '—' }}
                     </small>
                     <br>
                     <small class="text-muted">

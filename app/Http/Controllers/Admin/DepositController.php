@@ -24,8 +24,9 @@ class DepositController extends Controller
     {
         $query = DepositRequest::with('user');
 
-        if ($request->filled('status')) {
-            $query->where('status', $request->status);
+        $status = scalar_text($request->input('status'));
+        if (in_array($status, ['pending', 'approved', 'completed', 'rejected'], true)) {
+            $query->where('status', $status);
         }
 
         $search = search_text($request->input('search'));
@@ -199,9 +200,16 @@ class DepositController extends Controller
             $message .= ' Email could not be sent.';
         }
 
-        app(InAppNotificationService::class)->notifyDepositRejected($deposit->fresh());
+        try {
+            app(InAppNotificationService::class)->notifyDepositRejected($deposit->fresh());
+        } catch (\Throwable $e) {
+            Log::warning('Deposit rejection notification failed', [
+                'deposit_id' => $deposit->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
 
-        ActivityLogger::log(
+        ActivityLogger::tryLog(
             'deposit.rejected',
             auth()->user()->name.' rejected deposit #'.$deposit->id.' (€'.number_format($deposit->amount, 2).')',
             $deposit,

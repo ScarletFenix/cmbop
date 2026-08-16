@@ -88,7 +88,7 @@ class ManualDepositApprovalService
         $emailSent = (bool) ($notified['email_sent'] ?? false);
 
         $actorName = $actor?->name ?: 'System';
-        ActivityLogger::log(
+        ActivityLogger::tryLog(
             'deposit.approved',
             $actorName.' approved deposit #'.$completed->id.' (€'.number_format((float) $completed->amount, 2).')',
             $completed,

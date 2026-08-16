@@ -275,7 +275,7 @@ class SiteEnrichmentController extends Controller
             'admin'
         );
 
-        ActivityLogger::log(
+        ActivityLogger::tryLog(
             'site.metrics_manual',
             auth()->user()->name.' set manual metrics for "'.$site->site_name.'"',
             $site,
@@ -315,7 +315,7 @@ class SiteEnrichmentController extends Controller
         $site->forceFill(['metrics_manual' => false])->save();
 
         if (! $alreadyUnlocked) {
-            ActivityLogger::log(
+            ActivityLogger::tryLog(
                 'site.metrics_api_unlocked',
                 auth()->user()->name.' allowed API overwrite for "'.$site->site_name.'"',
                 $site,

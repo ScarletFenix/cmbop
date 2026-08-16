@@ -205,7 +205,7 @@ class AdminWithdrawalController extends Controller
         $runId = 'PAYOUT-'.now()->format('Ymd-His').'-'.$ok;
 
         if ($ok > 0) {
-            ActivityLogger::log(
+            ActivityLogger::tryLog(
                 'withdrawal.batch_'.$action,
                 auth()->user()->name.' batch '.$action.' on '.$ok.' withdrawal(s) ['.$runId.']',
                 null,

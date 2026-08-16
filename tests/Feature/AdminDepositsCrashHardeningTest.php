@@ -5,9 +5,12 @@ namespace Tests\Feature;
 use App\Models\DepositRequest;
 use App\Models\Role;
 use App\Models\User;
+use App\Models\Wallet;
+use App\Services\InAppNotificationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 class AdminDepositsCrashHardeningTest extends TestCase
@@ -72,6 +75,32 @@ class AdminDepositsCrashHardeningTest extends TestCase
         $this->assertStringContainsString('admin-deposits-filters__actions', $html);
     }
 
+    public function test_index_view_survives_a_null_created_at(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $deposit = $this->depositFor($advertiser);
+        $deposit->created_at = null;
+
+        $this->actingAs($admin)->withViewErrors([]);
+
+        $html = view('admin.deposits', [
+            'deposits' => new LengthAwarePaginator(collect([$deposit]), 1, 20),
+            'stats' => [
+                'pending' => 1,
+                'user_reported_paid' => 0,
+                'approved' => 0,
+                'completed' => 0,
+                'rejected' => 0,
+                'total_amount' => 0,
+            ],
+            'invoiceLinks' => collect(),
+        ])->render();
+
+        $this->assertStringContainsString($deposit->reference_code, $html);
+        $this->assertStringContainsString('—', $html);
+    }
+
     public function test_deposits_filter_css_aligns_actions_with_inputs(): void
     {
         $css = file_get_contents(public_path('assets/css/admin-components.css'));
@@ -80,6 +109,18 @@ class AdminDepositsCrashHardeningTest extends TestCase
 
         $live = file_get_contents(public_path('assets/css/slb-live-search.css'));
         $this->assertStringContainsString('.slb-search-status:empty', $live);
+    }
+
+    public function test_array_status_filter_does_not_500(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $this->depositFor($advertiser, ['reference_code' => 'DEP-ARRAY-STATUS']);
+
+        $this->actingAs($admin)
+            ->get(route('admin.deposits', ['status' => ['pending', 'approved']]))
+            ->assertOk()
+            ->assertSee('DEP-ARRAY-STATUS');
     }
 
     public function test_array_admin_notes_do_not_approve_or_reject(): void
@@ -140,5 +181,51 @@ class AdminDepositsCrashHardeningTest extends TestCase
         $this->assertStringNotContainsString("fetch('/admin/deposits/'", $html);
         $this->assertStringNotContainsString('fetch(`/admin/deposits/${id}/approve`', $html);
         $this->assertStringNotContainsString('fetch(`/admin/deposits/${id}/reject`', $html);
+    }
+
+    public function test_approve_still_credits_when_activity_log_table_is_gone(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $deposit = $this->depositFor($advertiser, ['amount' => 40]);
+        Wallet::create([
+            'user_id' => $advertiser->id,
+            'role_id' => Wallet::advertiserRoleId(),
+            'balance' => 0,
+            'reserved_balance' => 0,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 0,
+            'currency' => 'EUR',
+        ]);
+
+        Schema::dropIfExists('activity_logs');
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.deposits.approve', $deposit->id))
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertSame('completed', $deposit->fresh()->status);
+        $this->assertEqualsWithDelta(40.0, (float) Wallet::query()
+            ->where('user_id', $advertiser->id)
+            ->value('balance'), 0.01);
+    }
+
+    public function test_reject_still_succeeds_when_notification_throws(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $deposit = $this->depositFor($advertiser);
+
+        $this->mock(InAppNotificationService::class, function ($mock) {
+            $mock->shouldReceive('notifyDepositRejected')->andThrow(new \RuntimeException('bell down'));
+        });
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.deposits.reject', $deposit->id))
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertSame('rejected', $deposit->fresh()->status);
     }
 }

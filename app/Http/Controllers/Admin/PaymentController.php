@@ -701,7 +701,7 @@ class PaymentController extends Controller
             return;
         }
 
-        ActivityLogger::log(
+        ActivityLogger::tryLog(
             'payment.status_updated',
             (auth()->user()?->name ?? 'Admin').' set payment for order '.$order->order_number.' to '.$newStatus,
             $order,
