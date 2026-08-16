@@ -51,6 +51,7 @@ class AdminCampaignsDocsTest extends TestCase
         $this->assertStringContainsString('must also clear the fail streak', $body);
         $this->assertStringContainsString('already has a delivered/failed log FK', $body);
         $this->assertStringContainsString('must not beat a delivered log', $body);
+        $this->assertStringContainsString('must not beat a delivered sibling', $body);
         $this->assertStringContainsString('second database table without `payload`', $body);
         $this->assertStringContainsString('failed_jobs', $body);
         $this->assertStringContainsString('must **not** block expire', $body);

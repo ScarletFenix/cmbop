@@ -93,6 +93,7 @@ class EmailCampaignPhpSyntaxTest extends TestCase
             $root.'/app/Http/Controllers/Admin/EmailCenterController.php',
             $root.'/app/Models/EmailLog.php',
             $root.'/tests/Unit/MailJobPayloadTest.php',
+            $root.'/tests/Feature/AdminCampaignsTest.php',
         ];
 
         foreach ($files as $path) {
@@ -150,6 +151,9 @@ class EmailCampaignPhpSyntaxTest extends TestCase
         $this->assertStringContainsString('dedupeKey(', $heal[1]);
         $this->assertStringContainsString('user_id', $heal[1]);
         $this->assertStringContainsString('STATUS_DELIVERED', $heal[1]);
+        $this->assertStringContainsString('latestDeliveredForCampaignUser', $heal[1]);
+        $this->assertSame(1, substr_count($heal[1], '$healedCampaigns = []'));
+        $this->assertSame(1, substr_count($heal[1], 'return array_keys($healedCampaigns);'));
         $this->assertTrue(
             (bool) preg_match(
                 '/expireOrphanedPendingLogs\(\);.*?healQueuedRecipientsWithTerminalLog\(\)/s',

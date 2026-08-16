@@ -1104,7 +1104,7 @@ class EmailCampaign extends Model
             ->filter(fn (EmailLog $log) => filled($log->dedupe_key))
             ->groupBy('dedupe_key');
 
-        $campaignIds = [];
+        $healedCampaigns = [];
 
         foreach ($rows as $row) {
             $attached = $logsById->get((int) $row->email_log_id);
@@ -1118,6 +1118,16 @@ class EmailCampaign extends Model
             );
             if (! $deliveredLog && $attached?->status === EmailLog::STATUS_DELIVERED) {
                 $deliveredLog = $attached;
+            }
+            // Exact-key grouping misses a leftover generic
+            // audience_campaign|{email}|AudienceCampaignMail row. Trusting
+            // only the attached failed/pending FK then marked a real send
+            // failed and a later compose doubled the audience.
+            if (! $deliveredLog) {
+                $deliveredLog = EmailLog::latestDeliveredForCampaignUser(
+                    (int) $row->email_campaign_id,
+                    (int) $row->user_id
+                );
             }
 
             $pendingLogs = $group
@@ -1177,21 +1187,6 @@ class EmailCampaign extends Model
             $query = EmailCampaignRecipient::query()
                 ->whereKey($row->id)
                 ->where('email_log_id', (int) $row->email_log_id);
-
-            if ($staleSkip) {
-                $query->where('status', EmailCampaignRecipient::STATUS_SKIPPED)
-                    ->where('skip_reason', EmailCampaignRecipient::SKIP_STALE);
-            } else {
-                $query->where('status', $row->status);
-            }
-
-            $query->update([
-                'status' => $delivered
-                    ? EmailCampaignRecipient::STATUS_DELIVERED
-                    : EmailCampaignRecipient::STATUS_FAILED,
-                'email_log_id' => (int) $log->id,
-                'skip_reason' => $delivered ? null : EmailCampaignRecipient::SKIP_ERROR,
-            ]);
 
             if ($staleSkip) {
                 $query->where('status', EmailCampaignRecipient::STATUS_SKIPPED)
