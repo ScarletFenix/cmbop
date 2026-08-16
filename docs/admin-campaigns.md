@@ -86,7 +86,7 @@ or marketing, even if that staff account also has a marketplace role.
    log are first reconciled against `email_logs` by
    `audience_campaign:{id}:user:{id}` **or** `meta.campaign_id` +
    `meta.user_id`; a delivered/failed log is attached
-   instead of counting as a fake send. A historical send that wrote the
+   instead of counting as a fake send. A delivered log is attached even when the queued row is younger than the stall window — waiting two minutes let reclaim reset that leftover to pending and dispatch a second send. Failed-log attach still waits. Reclaim and expire also hold user ids from `deliveredUserIdsForCampaign()` (null means email_logs could not be read — do not reclaim or skip-stale). A historical send that wrote the
    generic default key must still attach — exact-key lookup used to miss
    it, reclaim reset the row to pending, and the next job blasted again. A delivered log still wins when a
    pending Email Center row exists for the same key — skipping that attach

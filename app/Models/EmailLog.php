@@ -217,6 +217,45 @@ class EmailLog extends Model
     }
 
     /**
+     * Recipients who already have a delivered Email Center row for this
+     * campaign. Null means email_logs could not be read — reclaim/expire
+     * must not treat that as “nobody was mailed”.
+     *
+     * @return list<int>|null
+     */
+    public static function deliveredUserIdsForCampaign(int $campaignId): ?array
+    {
+        if ($campaignId < 1) {
+            return [];
+        }
+
+        $ids = [];
+        $prefix = 'audience_campaign:'.$campaignId.':user:';
+
+        try {
+            foreach (static::query()
+                ->where('status', self::STATUS_DELIVERED)
+                ->where(function ($query) use ($prefix) {
+                    $query->where('dedupe_key', 'like', $prefix.'%')
+                        ->orWhere('notification_type', 'audience_campaign')
+                        ->orWhere('template_key', 'audience_campaign')
+                        ->orWhere('mailable', 'like', '%AudienceCampaignMail%')
+                        ->orWhere('dedupe_key', 'like', 'audience_campaign|%');
+                })
+                ->get(['id', 'dedupe_key', 'meta', 'notification_type', 'template_key', 'mailable']) as $log) {
+                [$foundCampaign, $foundUser] = static::campaignUserIds($log);
+                if ($foundCampaign === $campaignId && $foundUser > 0) {
+                    $ids[$foundUser] = true;
+                }
+            }
+        } catch (\Throwable) {
+            return null;
+        }
+
+        return array_map('intval', array_keys($ids));
+    }
+
+    /**
      * @return array{sent_today: int, pending: int, failed: int, delivered: int}
      */
     public static function dashboardKpis(): array
