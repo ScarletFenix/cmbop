@@ -1439,7 +1439,8 @@ class AdminEmailCenterTest extends TestCase
         $this->assertSame(2, EmailLog::query()->count());
         $this->assertSame(EmailLog::STATUS_DELIVERED, $newer->fresh()->status);
         $older = EmailLog::query()->where('id', '!=', $newer->id)->first();
-        $this->assertSame(EmailLog::STATUS_FAILED, $older->status);
+        $this->assertSame(EmailLog::STATUS_DELIVERED, $older->status);
+        $this->assertSame('duplicate', data_get($older->meta, 'suppressed'));
         $this->assertSame($newer->id, data_get($older->meta, 'superseded_by'));
     }
 
