@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\ToleratesUnparseableDates;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class SiteUrlReveal extends Model
 {
+    use ToleratesUnparseableDates;
+
     public const SOURCE_CATALOG = 'catalog';
 
     public const SOURCE_CART = 'cart';

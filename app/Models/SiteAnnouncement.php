@@ -47,19 +47,6 @@ class SiteAnnouncement extends Model
         return $this->belongsTo(User::class, 'created_by');
     }
 
-    public function scopeActive(Builder $query): Builder
-    {
-        $now = now();
-
-        return $query->where('is_active', true)
-            ->where(function (Builder $q) use ($now) {
-                $q->whereNull('starts_at')->orWhere('starts_at', '<=', $now);
-            })
-            ->where(function (Builder $q) use ($now) {
-                $q->whereNull('ends_at')->orWhere('ends_at', '>=', $now);
-            });
-    }
-
     public function scopeForAudience(Builder $query, string $audience): Builder
     {
         return $query->where(function (Builder $q) use ($audience) {

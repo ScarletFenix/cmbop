@@ -191,6 +191,37 @@ class HomepagePromotionTablesTest extends TestCase
         $this->assertFalse(SiteAnnouncement::query()->first()->restore());
     }
 
+    public function test_unparseable_deleted_at_does_not_hide_a_live_notice(): void
+    {
+        $announcement = SiteAnnouncement::create([
+            'title' => 'Still live after leftover delete',
+            'message' => 'Body',
+            'type' => 'general',
+            'style' => 'info',
+            'audience' => 'all',
+            'cta_label' => 'Go',
+            'cta_url' => '/advertiser/catalog',
+            'is_active' => true,
+        ]);
+        DB::table('site_announcements')->where('id', $announcement->id)->update([
+            'deleted_at' => 'not-a-date',
+        ]);
+
+        $fresh = $announcement->fresh();
+        $this->assertFalse($fresh->trashed());
+        $this->assertTrue($fresh->isCurrentlyLive());
+        $this->assertFalse(SiteAnnouncement::onlyTrashed()->whereKey($announcement->id)->exists());
+        $this->assertTrue(SiteAnnouncement::query()->whereKey($announcement->id)->exists());
+
+        $this->get('/')
+            ->assertOk()
+            ->assertSee('Still live after leftover delete', false)
+            ->assertDontSee('Something went wrong');
+
+        $this->get(route('announcements.click', $announcement->id))
+            ->assertRedirect('/advertiser/catalog');
+    }
+
     public function test_homepage_and_click_ok_when_ends_at_is_unparseable(): void
     {
         $announcement = SiteAnnouncement::create([

@@ -12,6 +12,7 @@ use App\Models\Site;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
+use App\Services\ActivityLogger;
 use App\Services\InAppNotificationService;
 use App\Services\OrderPaymentService;
 use App\Services\Wallet\WalletLedgerService;
@@ -71,9 +72,23 @@ class OrderClawbackService
                 'reason' => $reason,
             ]);
 
-            $this->notifications->notifyDisputeOpened($dispute->fresh(['order', 'orderItem.site']));
+            $fresh = $dispute->fresh(['order', 'orderItem.site']);
+            $this->notifications->notifyDisputeOpened($fresh);
+            $this->logDisputeActivity(
+                'dispute.opened',
+                ($opener->name ?: $opener->email).' opened a dispute on order #'
+                    .($order->order_number ?? $order->id),
+                $order,
+                $opener,
+                [
+                    'dispute_id' => $fresh->id,
+                    'order_item_id' => $item->id,
+                    'reason' => $reason,
+                    'as_admin' => $asAdmin,
+                ]
+            );
 
-            return $dispute;
+            return $fresh;
         });
     }
 
@@ -103,6 +118,19 @@ class OrderClawbackService
 
             $fresh = $dispute->fresh(['order', 'orderItem.site']);
             $this->notifications->notifyDisputeDismissed($fresh);
+            $order = $fresh->order ?? Order::query()->find($fresh->order_id);
+            $this->logDisputeActivity(
+                'dispute.dismissed',
+                ($admin->name ?: $admin->email).' dismissed a dispute on order #'
+                    .($order?->order_number ?? $fresh->order_id),
+                $order,
+                $admin,
+                [
+                    'dispute_id' => $fresh->id,
+                    'order_item_id' => $fresh->order_item_id,
+                    'reason' => $notes,
+                ]
+            );
 
             return $fresh;
         });
@@ -254,6 +282,28 @@ class OrderClawbackService
 
             ContentSubmission::releaseAllForOrderItem((int) $item->id);
 
+            $this->logDisputeActivity(
+                'dispute.upheld',
+                ($admin->name ?: $admin->email).' upheld a dispute on order #'
+                    .($order->order_number ?? $order->id)
+                    .' (€'.number_format($advertiserCredit, 2).' credited, €'
+                    .number_format($debited, 2).' debited'
+                    .($debtCreated > 0 ? ', €'.number_format($debtCreated, 2).' debt' : '')
+                    .')',
+                $order,
+                $admin,
+                [
+                    'dispute_id' => $fresh->id,
+                    'order_item_id' => $item->id,
+                    'publisher_id' => $publisherId,
+                    'publisher_debited' => $debited,
+                    'advertiser_credited' => $advertiserCredit,
+                    'debt_created' => $debtCreated,
+                    'payment_status' => $order->fresh()?->payment_status,
+                    'reason' => $notes,
+                ]
+            );
+
             Log::info('Order item dispute upheld / clawback applied', [
                 'dispute_id' => $fresh->id,
                 'order_id' => $order->id,
@@ -362,6 +412,26 @@ class OrderClawbackService
             : 0.0;
 
         return min($amount, max(0, $snapshot));
+    }
+
+    /**
+     * @param  array<string, mixed>  $properties
+     */
+    private function logDisputeActivity(
+        string $action,
+        string $description,
+        ?Order $order,
+        User $actor,
+        array $properties
+    ): void {
+        ActivityLogger::tryLog(
+            $action,
+            $description,
+            $order,
+            $properties,
+            $order ? 'Order #'.($order->order_number ?? $order->id) : null,
+            $actor
+        );
     }
 
     /**

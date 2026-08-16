@@ -61,27 +61,35 @@ or marketing, even if that staff account also has a marketplace role.
    recover reclaims them to `pending` and dispatches a send job. A
    queued row with a pending Email Center log is held — that is a
    just-retried mailable, and reclaiming it would dispatch a second send
-   if the jobs-table scan missed the retried job. A matching
+   if the jobs-table scan missed the retried job. Hold uses the campaign
+   + user pair (meta or `audience_campaign:{id}:user:{id}`), not only the
+   exact dedupe string — a leftover generic
+   `audience_campaign|{email}|AudienceCampaignMail` retry still blocks
+   reclaim. An unreadable email_logs table must not look like “no pending retries” — reclaim fail-closes the same way as a failed jobs-table scan. A matching
    `failed_jobs` AudienceCampaignMail is also held — that row is still
    retryable from Email Center. A
    Redis/SQS **mail** queue, inline SMTP (`sync` mail), a missing `payload` column on the **mail**
    table, or a mailable whose user id cannot be parsed is fail-closed: the
-   row stays queued so an in-flight send is not doubled. An unused redis
+   row stays queued so an in-flight send is not doubled. An `AudienceCampaignMail` that only serializes the campaign as a ModelIdentifier (no `campaignId` property and no `dedupeKey`) must still count as in-flight so reclaim does not treat that jobs row as empty, and expire must not fail a pending campaign log beside that jobs row. An unused redis
    `queue.default` or a broken unused database table must not block a
    healthy empty mail queue — recover must still reclaim. A second database table without `payload` on the unused connection must not look like in-flight mail. A successful
    empty scan of the live mail table must still reclaim even if the unused
    connection is broken. Give-up can leave a campaign
    `failed` with leftover `queued` claims — recover now selects those too,
-   reclaims orphans, and puts the campaign back to `sending`. A queued row
+   reclaims orphans, and puts the campaign back to `sending`.    A queued row
    that already has a delivered/failed log FK is synced to that log
    (expire/reclaim both require a null FK, so those rows sat queued forever).
+   Heal must look up by `audience_campaign:{id}:user:{id}`, not only the attached id — an attached failed or leftover pending log FK must not beat a delivered log for the same recipient (that marked a real send failed and a later compose doubled it). Heal runs again after pending-log expire so a leftover pending FK closed in this pass can sync the same recover.
    A timeout after the last `pending` →
    `queued` claim must **not** finalize as sent (`failed()` used to, because
    `sent_count` includes queued). Recount promotes `sending` → `sent` only
    when no pending or queued rows remain and at least one delivery landed. `queued` rows with no email
    log are first reconciled against `email_logs` by
-   `audience_campaign:{id}:user:{id}`; a delivered/failed log is attached
-   instead of counting as a fake send. A delivered log still wins when a
+   `audience_campaign:{id}:user:{id}` **or** `meta.campaign_id` +
+   `meta.user_id`; a delivered/failed log is attached
+   instead of counting as a fake send. A delivered log is attached even when the queued row is younger than the stall window — waiting two minutes let reclaim reset that leftover to pending and dispatch a second send. Failed-log attach still waits. Reclaim and expire also hold user ids from `deliveredUserIdsForCampaign()` (null means email_logs could not be read — do not reclaim or skip-stale). A historical send that wrote the
+   generic default key must still attach — exact-key lookup used to miss
+   it, reclaim reset the row to pending, and the next job blasted again. A delivered log still wins when a
    pending Email Center row exists for the same key — skipping that attach
    let expire mark a real send stale, and a later retry doubled it.
    Leftovers older than
@@ -96,7 +104,7 @@ or marketing, even if that staff account also has a marketplace role.
    when expire already flipped the row to skipped stale. Preference, disabled, and unverified skips stay skipped — a stray `MessageSent`
    or duplicate suppress must not hide an opt-out as a successful send.
    Recover also attaches a delivered `email_logs` row to those stale
-   leftovers only. A leftover pending Email Center log for a skipped-stale recipient is failed so retry can see it — but not while that user's `AudienceCampaignMail` is still on the queue, or a second retry doubles the send.
+   leftovers only. A leftover pending Email Center log for a skipped-stale recipient is failed so retry can see it — but not while that user's `AudienceCampaignMail` is still on the queue, or a second retry doubles the send. Lost transactional pending logs (Welcome / orders) with no campaign recipient are failed after the mail age window when no matching `SendQueuedMailable` is on a readable database queue — retry only accepts failed. An unused queue table without `payload` must **not** abort that expire or those Welcome rows stay pending forever.
 5. Individual `AudienceCampaignMail` failures mark that recipient `failed`
    (`error`) and recount. If a `sent` campaign later has no queued/delivered
    rows left, status is downgraded to `failed`. A late `marketing_emails`
@@ -131,9 +139,9 @@ or marketing, even if that staff account also has a marketplace role.
    Email Center retry of a failed campaign mailable clears `email_log_id`
    so a lost retry can still expire as stale. Reviving a `failed` campaign
    must also clear the fail streak — leaving MAX parked the leftover
-   pending for recover give-up beside the retried mailable. Bulk retry must mark only one failed log per job UUID — a shared stale stamp plus the same
+   pending for recover give-up beside the retried mailable.    Bulk retry must mark only one failed log per job UUID — a shared stale stamp plus the same
    `to_email` used to pending-mark two campaigns and reclaim the extra
-   recipient beside a single `queue:retry`.
+   recipient beside a single `queue:retry`. Closing a leftover already-delivered log must also drop that job UUID from the retry list — a shared stale stamp would otherwise pending-mark the other campaign.
    `user_ids` are integers capped at
    `PICKER_LIMIT * 2` (no `exists:users,id` — a deleted picker row must not
    422 the whole send).
