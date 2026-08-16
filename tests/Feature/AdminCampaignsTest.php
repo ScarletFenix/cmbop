@@ -3947,6 +3947,119 @@ class AdminCampaignsTest extends TestCase
         $this->assertSame(1, EmailLog::query()->where('status', EmailLog::STATUS_DELIVERED)->count());
     }
 
+    public function test_later_campaign_still_sends_when_prior_campaign_used_generic_key(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $generic = 'audience_campaign|'.$advertiser->email.'|AudienceCampaignMail';
+
+        $first = EmailCampaign::create([
+            'name' => 'First generic',
+            'subject' => 'First generic',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'status' => EmailCampaign::STATUS_SENT,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => AudienceCampaignMail::class,
+            'template_key' => 'audience_campaign',
+            'notification_type' => 'audience_campaign',
+            'dedupe_key' => $generic,
+            'to_email' => $advertiser->email,
+            'subject' => 'First generic',
+            'status' => EmailLog::STATUS_DELIVERED,
+            'sent_at' => now()->subDay(),
+            'meta' => [
+                'campaign_id' => $first->id,
+                'user_id' => $advertiser->id,
+            ],
+        ]);
+
+        $second = EmailCampaign::create([
+            'name' => 'Second generic',
+            'subject' => 'Second generic',
+            'body_html' => '<p>Hi again</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'status' => EmailCampaign::STATUS_SENDING,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        $row = EmailCampaignRecipient::create([
+            'email_campaign_id' => $second->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_QUEUED,
+        ]);
+
+        $mailable = new AudienceCampaignMail($second, $advertiser);
+        $mailable->dedupeKey = $generic;
+        Mail::to($advertiser->email)->send($mailable);
+
+        $this->assertSame(EmailCampaignRecipient::STATUS_DELIVERED, $row->fresh()->status);
+        $this->assertSame(2, EmailLog::query()
+            ->where('to_email', $advertiser->email)
+            ->where('status', EmailLog::STATUS_DELIVERED)
+            ->count());
+        $this->assertNotNull(EmailLog::latestDeliveredForCampaignUser((int) $second->id, (int) $advertiser->id));
+    }
+
+    public function test_same_campaign_generic_key_leftover_does_not_resend(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $generic = 'audience_campaign|'.$advertiser->email.'|AudienceCampaignMail';
+
+        $campaign = EmailCampaign::create([
+            'name' => 'Same generic leftover',
+            'subject' => 'Same generic leftover',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'status' => EmailCampaign::STATUS_SENDING,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        $row = EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_QUEUED,
+        ]);
+        $delivered = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => AudienceCampaignMail::class,
+            'template_key' => 'audience_campaign',
+            'notification_type' => 'audience_campaign',
+            'dedupe_key' => $generic,
+            'to_email' => $advertiser->email,
+            'subject' => 'Same generic leftover',
+            'status' => EmailLog::STATUS_DELIVERED,
+            'sent_at' => now()->subDay(),
+            'meta' => [
+                'campaign_id' => $campaign->id,
+                'user_id' => $advertiser->id,
+            ],
+        ]);
+
+        $mailable = new AudienceCampaignMail($campaign, $advertiser);
+        $mailable->dedupeKey = $generic;
+        $mailable->to($advertiser->email);
+
+        $this->assertNull($mailable->send(app('mailer')));
+        $this->assertSame('duplicate', $mailable->suppressReason);
+        $this->assertSame(EmailCampaignRecipient::STATUS_DELIVERED, $row->fresh()->status);
+        $this->assertSame($delivered->id, $row->fresh()->email_log_id);
+        $this->assertSame(1, EmailLog::query()
+            ->where('to_email', $advertiser->email)
+            ->where('status', EmailLog::STATUS_DELIVERED)
+            ->count());
+    }
+
     public function test_stall_recovery_does_not_reclaim_queued_row_for_another_campaign_mailable(): void
     {
         Queue::fake();
