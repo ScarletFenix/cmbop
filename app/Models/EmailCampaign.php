@@ -11,6 +11,8 @@ use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -894,109 +896,137 @@ class EmailCampaign extends Model
         }
 
         foreach ($rows as $row) {
-            $group = $logs->get(EmailCampaignRecipient::dedupeKey(
-                (int) $row->email_campaign_id,
-                (int) $row->user_id
-            ));
-            if (! $group) {
-                continue;
-            }
-
-            $deliveredLog = $group->first(
-                fn (EmailLog $log) => $log->status === EmailLog::STATUS_DELIVERED
-            );
-            // A pending log means a retry may be in flight — do not attach
-            // a failed log over that. A delivered log still wins: expire
-            // would otherwise skip-stale someone who already received the
-            // mail, and a later retry doubles the send.
-            if (! $deliveredLog && $group->contains(fn (EmailLog $log) => $log->status === EmailLog::STATUS_PENDING)) {
-                continue;
-            }
-            $failedLog = $group->first(
-                fn (EmailLog $log) => $log->status === EmailLog::STATUS_FAILED
-            );
-            $pendingLogs = $group->filter(
-                fn (EmailLog $log) => $log->status === EmailLog::STATUS_PENDING
-            );
-
-            // A leftover pending row must not block a real delivery. Only a
-            // newer pending (retry after that delivery) stays in-flight.
-            if ($pendingLogs->isNotEmpty()) {
-                $freshPending = $pendingLogs->first(function (EmailLog $pending) use ($deliveredLog) {
-                    return ! $deliveredLog
-                        || ($pending->updated_at
-                            && $deliveredLog->updated_at
-                            && $pending->updated_at->greaterThan($deliveredLog->updated_at));
-                });
-                if ($freshPending) {
-                    continue;
-                }
-
-                foreach ($pendingLogs as $pending) {
-                    $pending->update([
-                        'status' => EmailLog::STATUS_FAILED,
-                        'error' => 'Closed: duplicate open log for the same send',
-                    ]);
-                }
-            }
-
-            $staleSkip = $row->status === EmailCampaignRecipient::STATUS_SKIPPED;
-            // Expire already parked the row. Only a delivered log proves the
-            // mail went out — do not revive a stale skip from an old failure.
-            if ($staleSkip && ! $deliveredLog) {
-                continue;
-            }
-            if (! $deliveredLog
-                && $row->updated_at
-                && $row->updated_at->greaterThan($cutoff)) {
-                continue;
-            }
-
-            $log = $deliveredLog;
-            if (! $log && $failedLog) {
-                // An older failed log must not kill a newer in-flight retry.
-                if ($failedLog->updated_at
-                    && $row->updated_at
-                    && ! $failedLog->updated_at->greaterThan($row->updated_at)) {
-                    continue;
-                }
-                $log = $failedLog;
-            }
-
-            if (! $log) {
-                continue;
-            }
-
-            $delivered = $log->status === EmailLog::STATUS_DELIVERED;
-            // An older failed log must not kill a newer in-flight retry.
-            if (! $delivered
-                && $log->updated_at
-                && $row->updated_at
-                && ! $log->updated_at->greaterThan($row->updated_at)) {
-                continue;
-            }
-            $expected = $staleSkip
-                ? EmailCampaignRecipient::STATUS_SKIPPED
-                : EmailCampaignRecipient::STATUS_QUEUED;
-
-            EmailCampaignRecipient::query()
-                ->whereKey($row->id)
-                ->where('status', $expected)
-                ->whereNull('email_log_id')
-                ->update([
-                    'status' => $delivered
-                        ? EmailCampaignRecipient::STATUS_DELIVERED
-                        : EmailCampaignRecipient::STATUS_FAILED,
-                    'email_log_id' => (int) $log->id,
-                    'skip_reason' => $delivered ? null : EmailCampaignRecipient::SKIP_ERROR,
+            try {
+                self::reconcileOneQueuedRecipientFromLogs($row, $logs, $cutoff, $campaignIds);
+            } catch (\Throwable $e) {
+                Log::warning('Campaign recipient reconcile skipped a leftover row', [
+                    'recipient_id' => $row->id ?? null,
+                    'campaign_id' => $row->email_campaign_id ?? null,
+                    'error' => $e->getMessage(),
                 ]);
-
-            $campaignIds[(int) $row->email_campaign_id] = true;
+            }
         }
 
         foreach (array_keys($campaignIds) as $id) {
             static::query()->find($id)?->recountRecipientTotals();
         }
+    }
+
+    /**
+     * @param  Collection<string, mixed>  $logs
+     * @param  array<int, true>  $campaignIds
+     */
+    protected static function reconcileOneQueuedRecipientFromLogs(
+        EmailCampaignRecipient $row,
+        $logs,
+        Carbon $cutoff,
+        array &$campaignIds,
+    ): void {
+        $group = $logs->get(EmailCampaignRecipient::dedupeKey(
+            (int) $row->email_campaign_id,
+            (int) $row->user_id
+        ));
+        if (! $group) {
+            return;
+        }
+
+        $deliveredLog = $group->first(
+            fn (EmailLog $log) => $log->status === EmailLog::STATUS_DELIVERED
+        );
+        // A pending log means a retry may be in flight — do not attach
+        // a failed log over that. A delivered log still wins: expire
+        // would otherwise skip-stale someone who already received the
+        // mail, and a later retry doubles the send.
+        if (! $deliveredLog && $group->contains(fn (EmailLog $log) => $log->status === EmailLog::STATUS_PENDING)) {
+            return;
+        }
+        $failedLog = $group->first(
+            fn (EmailLog $log) => $log->status === EmailLog::STATUS_FAILED
+        );
+        $pendingLogs = $group->filter(
+            fn (EmailLog $log) => $log->status === EmailLog::STATUS_PENDING
+        );
+
+        // A leftover pending row must not block a real delivery. Only a
+        // newer pending (retry after that delivery) stays in-flight.
+        if ($pendingLogs->isNotEmpty()) {
+            $freshPending = $pendingLogs->first(function (EmailLog $pending) use ($deliveredLog) {
+                return ! $deliveredLog
+                    || ($pending->updated_at
+                        && $deliveredLog->updated_at
+                        && $pending->updated_at->greaterThan($deliveredLog->updated_at));
+            });
+            if ($freshPending) {
+                return;
+            }
+
+            foreach ($pendingLogs as $pending) {
+                $pending->update([
+                    'status' => EmailLog::STATUS_FAILED,
+                    'error' => 'Closed: duplicate open log for the same send',
+                ]);
+            }
+        }
+
+        $staleSkip = $row->status === EmailCampaignRecipient::STATUS_SKIPPED;
+        // Expire already parked the row. Only a delivered log proves the
+        // mail went out — do not revive a stale skip from an old failure.
+        if ($staleSkip && ! $deliveredLog) {
+            return;
+        }
+        // Leftover garbage timestamps used to throw here and abort the
+        // rest of recover. Unreadable clocks also must not attach a
+        // failed log — that would kill an in-flight retry we cannot
+        // prove is stale. Delivered still attaches at any age.
+        if (! $deliveredLog && ! $row->updated_at) {
+            return;
+        }
+        if (! $deliveredLog
+            && $row->updated_at
+            && $row->updated_at->greaterThan($cutoff)) {
+            return;
+        }
+
+        $log = $deliveredLog;
+        if (! $log && $failedLog) {
+            // An older failed log must not kill a newer in-flight retry.
+            if ($failedLog->updated_at
+                && $row->updated_at
+                && ! $failedLog->updated_at->greaterThan($row->updated_at)) {
+                return;
+            }
+            $log = $failedLog;
+        }
+
+        if (! $log) {
+            return;
+        }
+
+        $delivered = $log->status === EmailLog::STATUS_DELIVERED;
+        // An older failed log must not kill a newer in-flight retry.
+        if (! $delivered
+            && $log->updated_at
+            && $row->updated_at
+            && ! $log->updated_at->greaterThan($row->updated_at)) {
+            return;
+        }
+        $expected = $staleSkip
+            ? EmailCampaignRecipient::STATUS_SKIPPED
+            : EmailCampaignRecipient::STATUS_QUEUED;
+
+        EmailCampaignRecipient::query()
+            ->whereKey($row->id)
+            ->where('status', $expected)
+            ->whereNull('email_log_id')
+            ->update([
+                'status' => $delivered
+                    ? EmailCampaignRecipient::STATUS_DELIVERED
+                    : EmailCampaignRecipient::STATUS_FAILED,
+                'email_log_id' => (int) $log->id,
+                'skip_reason' => $delivered ? null : EmailCampaignRecipient::SKIP_ERROR,
+            ]);
+
+        $campaignIds[(int) $row->email_campaign_id] = true;
     }
 
     /**
