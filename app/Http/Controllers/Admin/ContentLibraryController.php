@@ -78,7 +78,7 @@ class ContentLibraryController extends Controller
         ]);
 
         $filters = $this->parseFilters($request);
-        $placement = $submission->placementItem();
+        $placement = $submission->libraryPlacementItem();
         $fileOnDisk = $this->staffActions->fileOnDisk($submission);
 
         return view('admin.content-library.show', [

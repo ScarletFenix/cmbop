@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\ToleratesUnparseableDates;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -9,6 +10,8 @@ use Illuminate\Support\Facades\Storage;
 
 class Invoice extends Model
 {
+    use ToleratesUnparseableDates;
+
     public const TYPE_TAX_INVOICE = 'tax_invoice';
 
     public const TYPE_PAYMENT_RECEIPT = 'payment_receipt';

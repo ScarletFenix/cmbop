@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\ToleratesUnparseableDates;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\Log;
@@ -9,6 +10,8 @@ use Illuminate\Support\Facades\Schema;
 
 class Withdrawal extends Model
 {
+    use ToleratesUnparseableDates;
+
     public const CANCELLED_BY_USER = 'user';
 
     public const CANCELLED_BY_ADMIN = 'admin';

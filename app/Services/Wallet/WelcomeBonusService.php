@@ -301,23 +301,34 @@ class WelcomeBonusService
     /**
      * Exact-string lookup misses leftover rows written before today's
      * normalizer: full 128-bit IPv6, expanded/uppercase IPv4-mapped
-     * (::FFFF:1.2.3.4, 0:0:0:0:0:ffff:1.2.3.4). Compare packed form.
+     * (::FFFF:1.2.3.4, 0:0:0:0:0:ffff:1.2.3.4), and padded IPv4
+     * ('1.2.3.4 ' / ' 1.2.3.4') which has no colon so a colon-only
+     * scan never sees it. Unique(ip_address) is exact-string, so the
+     * clean key can be inserted beside the leftover — a second €20.
      */
     private function legacyPlaceClaimed(string $ip, bool $lock = false): bool
     {
         $wantedV6 = $this->ipv6AllocationKey($ip);
         $wantedV4 = $this->ipv4Key($ip);
-        if ($wantedV6 === null && $wantedV4 === null) {
+        $keys = $this->ipClaimKeys($ip);
+        if ($wantedV6 === null && $wantedV4 === null && $keys === []) {
             return false;
         }
 
-        $query = WelcomeBonusClaim::query()->where('ip_address', 'like', '%:%');
+        $query = WelcomeBonusClaim::query()->where(function ($query): void {
+            $query->where('ip_address', 'like', '%:%')
+                ->orWhere('ip_address', 'like', ' %')
+                ->orWhere('ip_address', 'like', '% ');
+        });
         if ($lock) {
             $query->lockForUpdate();
         }
 
         foreach ($query->pluck('ip_address') as $rowIp) {
-            $row = (string) $rowIp;
+            $row = trim((string) $rowIp);
+            if ($row !== '' && in_array($row, $keys, true)) {
+                return true;
+            }
             if ($wantedV6 !== null && $this->ipv6AllocationKey($row) === $wantedV6) {
                 return true;
             }
@@ -514,6 +525,7 @@ class WelcomeBonusService
      */
     private function ipv4Key(string $ip): ?string
     {
+        $ip = trim($ip);
         $packed = @inet_pton($ip);
         if ($packed === false) {
             return null;
@@ -532,6 +544,7 @@ class WelcomeBonusService
 
     private function ipv6AllocationKey(string $ip): ?string
     {
+        $ip = trim($ip);
         $packed = @inet_pton($ip);
         if ($packed === false || strlen($packed) !== 16) {
             return null;
