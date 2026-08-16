@@ -75,6 +75,15 @@ class AudienceCampaignMail extends PlatformMailable
             return null;
         }
 
+        if ($this->campaign->respect_preferences
+            && ! EmailNotificationPreference::allows($this->recipient, 'marketing_emails', failClosed: true)) {
+            $this->suppressReason = 'preference';
+            $this->abandonOpenLog($this->suppressErrorMessage());
+            $this->markRecipientSkipped(EmailCampaignRecipient::SKIP_PREFERENCE);
+
+            return null;
+        }
+
         $result = parent::send($mailer);
 
         if ($result !== null || $this->suppressReason === 'duplicate') {
@@ -118,7 +127,7 @@ class AudienceCampaignMail extends PlatformMailable
 
         if ($this->suppressReason === 'preference'
             || ($this->campaign->respect_preferences
-                && ! EmailNotificationPreference::allows($this->recipient, 'marketing_emails'))) {
+                && ! EmailNotificationPreference::allows($this->recipient, 'marketing_emails', failClosed: true))) {
             return EmailCampaignRecipient::SKIP_PREFERENCE;
         }
 

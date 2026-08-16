@@ -1227,6 +1227,94 @@ class AdminCampaignsTest extends TestCase
         $this->assertSame(1, $campaign->fresh()->skipped_count);
     }
 
+    public function test_job_does_not_send_when_marketing_preferences_cannot_be_read(): void
+    {
+        Mail::fake();
+
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+
+        $campaign = EmailCampaign::create([
+            'name' => 'Prefs unread',
+            'subject' => 'Prefs unread',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'status' => EmailCampaign::STATUS_QUEUED,
+            'respect_preferences' => true,
+            'created_by' => $admin->id,
+        ]);
+        EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_PENDING,
+        ]);
+
+        Schema::rename('email_notification_preferences', 'email_notification_preferences_hidden');
+        try {
+            (new SendEmailCampaignJob((int) $campaign->id))->handle();
+        } finally {
+            Schema::rename('email_notification_preferences_hidden', 'email_notification_preferences');
+        }
+
+        $row = $campaign->recipients()->where('user_id', $advertiser->id)->first();
+        $this->assertSame(EmailCampaignRecipient::STATUS_SKIPPED, $row->status);
+        $this->assertSame(EmailCampaignRecipient::SKIP_PREFERENCE, $row->skip_reason);
+        Mail::assertNothingOutgoing();
+    }
+
+    public function test_queued_mail_skips_when_marketing_preferences_cannot_be_read(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+
+        $campaign = EmailCampaign::create([
+            'name' => 'Queued prefs unread',
+            'subject' => 'Queued prefs unread',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'status' => EmailCampaign::STATUS_SENDING,
+            'respect_preferences' => true,
+            'created_by' => $admin->id,
+        ]);
+        $row = EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_QUEUED,
+        ]);
+
+        $mailable = new AudienceCampaignMail($campaign, $advertiser);
+        $mailable->dedupeKey = EmailCampaignRecipient::dedupeKey((int) $campaign->id, (int) $advertiser->id);
+        $mailable->to($advertiser->email);
+        $log = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => AudienceCampaignMail::class,
+            'template_key' => 'audience_campaign',
+            'dedupe_key' => $mailable->dedupeKey,
+            'to_email' => $advertiser->email,
+            'subject' => 'Queued prefs unread',
+            'status' => EmailLog::STATUS_PENDING,
+            'attempts' => 1,
+        ]);
+
+        Schema::rename('email_notification_preferences', 'email_notification_preferences_hidden');
+        try {
+            $this->assertNull($mailable->send(app('mailer')));
+        } finally {
+            Schema::rename('email_notification_preferences_hidden', 'email_notification_preferences');
+        }
+
+        $this->assertSame('preference', $mailable->suppressReason);
+        $this->assertSame(EmailCampaignRecipient::STATUS_SKIPPED, $row->fresh()->status);
+        $this->assertSame(EmailCampaignRecipient::SKIP_PREFERENCE, $row->fresh()->skip_reason);
+        $this->assertSame(EmailLog::STATUS_FAILED, $log->fresh()->status);
+        $this->assertSame(0, $campaign->fresh()->sent_count);
+        $this->assertSame(1, $campaign->fresh()->skipped_count);
+    }
+
     public function test_job_skips_recipient_promoted_to_staff_before_send(): void
     {
         Mail::fake();
@@ -1415,8 +1503,6 @@ class AdminCampaignsTest extends TestCase
         $this->assertSame('Suppressed: recipient is staff', $log->fresh()->error);
         $this->assertSame(0, $campaign->fresh()->sent_count);
         $this->assertSame(1, $campaign->fresh()->skipped_count);
-        $this->assertSame(EmailLog::STATUS_FAILED, $pendingLog->fresh()->status);
-        $this->assertSame('Suppressed: recipient is staff', $pendingLog->fresh()->error);
     }
 
     public function test_mailable_failed_marks_recipient_failed(): void

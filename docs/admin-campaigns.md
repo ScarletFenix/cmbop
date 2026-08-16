@@ -111,7 +111,7 @@ or marketing, even if that staff account also has a marketplace role.
    (`error`) and recount. If a `sent` campaign later has no queued/delivered
    rows left, status is downgraded to `failed`. A late `marketing_emails`
    opt-out, before the queued mail actually sends, is honored when
-   `respect_preferences` is on. If Email Center disables the
+   `respect_preferences` is on. An unreadable marketing preference is treated as an opt-out so that check cannot fail-open. If Email Center disables the
    `audience_campaign` type, pending rows are skipped (`disabled`) and the
    campaign ends `failed`.
 6. Preview renders a catalog stand-in (not the admin) and a placeholder

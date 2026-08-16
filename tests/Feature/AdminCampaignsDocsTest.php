@@ -65,6 +65,7 @@ class AdminCampaignsDocsTest extends TestCase
         $this->assertStringContainsString('re-check staff roles at send time', $body);
         $this->assertStringContainsString('unreadable roles lookup is treated as staff', $body);
         $this->assertStringContainsString('leftover recipient timestamp must not abort recover', $body);
+        $this->assertStringContainsString('unreadable marketing preference is treated as an opt-out', $body);
         $this->assertStringContainsString('payment_status=completed', $body);
         $this->assertStringContainsString('Preference, disabled, and unverified skips stay skipped', $body);
         $this->assertStringContainsString('inline SMTP (`sync` mail)', $body);
