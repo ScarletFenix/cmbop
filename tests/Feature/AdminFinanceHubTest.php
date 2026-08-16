@@ -926,6 +926,90 @@ class AdminFinanceHubTest extends TestCase
         $this->assertEquals(80.0, $overview['platform']['refunds']);
     }
 
+    public function test_failed_card_cash_in_uses_checkout_date_not_refund_date(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $advRole = Role::firstOrCreate(['name' => 'advertiser']);
+        $wallet = Wallet::create([
+            'user_id' => $advertiser->id,
+            'role_id' => $advRole->id,
+            'balance' => 80,
+            'reserved_balance' => 0,
+            'bonus_balance' => 0,
+            'currency' => 'EUR',
+        ]);
+
+        $order = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => 'ORD-FIN-FAILED-CLOCK',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'failed',
+            'status' => 'cancelled',
+            'paid_at' => null,
+        ]);
+        $order->forceFill(['created_at' => Carbon::parse('2026-07-15 12:00:00')])->save();
+
+        $refund = app(WalletLedgerService::class)->recordRefund(
+            $wallet,
+            80,
+            0,
+            $order,
+            $order->order_number
+        );
+        $refund->forceFill(['created_at' => Carbon::parse('2026-08-10 12:00:00')])->save();
+
+        $july = app(FinanceOverviewService::class)->overview(
+            app(FinanceOverviewService::class)->resolvePeriod(null, '2026-07-01', '2026-07-31')
+        );
+        $august = app(FinanceOverviewService::class)->overview(
+            app(FinanceOverviewService::class)->resolvePeriod(null, '2026-08-01', '2026-08-31')
+        );
+
+        $this->assertEquals(80.0, $july['money_in']['failed_external_collected']);
+        $this->assertEquals(80.0, $july['cash_split']['cash_in_bank']);
+        $this->assertEquals(0.0, $july['platform']['refunds']);
+        $this->assertEquals(0.0, $august['money_in']['failed_external_collected']);
+        $this->assertEquals(0.0, $august['cash_split']['cash_in_bank']);
+        $this->assertEquals(80.0, $august['platform']['refunds']);
+    }
+
+    public function test_dossier_keeps_lifetime_gmv_and_shows_clawback_refunds(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $order = $this->seedCompletedPaidOrder($advertiser, $publisher);
+        $order->update(['subtotal' => 230, 'total_amount' => 230]);
+        $second = $this->addPricedLine($order, $publisher);
+        $this->seedUpheldDispute($admin, $order, $second);
+
+        $dossier = app(FinanceOverviewService::class)->userDossier($advertiser);
+
+        $this->assertEquals(230.0, $dossier['totals']['gmv_as_advertiser']);
+        $this->assertEquals(230.0, $dossier['totals']['current_paid_gmv']);
+        $this->assertEquals(115.0, $dossier['totals']['refunds_as_advertiser']);
+        $this->assertEquals(115.0, $dossier['totals']['net_gmv_as_advertiser']);
+
+        $this->actingAs($admin)
+            ->get(route('admin.finance.user', $advertiser))
+            ->assertOk()
+            ->assertSee('Refunds €115.00', false)
+            ->assertSee('net €115.00', false);
+
+        $first = $order->items()->where('id', '!=', $second->id)->first();
+        $this->seedUpheldDispute($admin, $order, $first);
+        $order->update(['payment_status' => 'refunded']);
+
+        $afterFull = app(FinanceOverviewService::class)->userDossier($advertiser->fresh());
+        $this->assertEquals(230.0, $afterFull['totals']['gmv_as_advertiser']);
+        $this->assertEquals(0.0, $afterFull['totals']['current_paid_gmv']);
+        $this->assertEquals(230.0, $afterFull['totals']['refunds_as_advertiser']);
+        $this->assertEquals(0.0, $afterFull['totals']['net_gmv_as_advertiser']);
+    }
+
     public function test_null_paid_at_does_not_enter_every_period(): void
     {
         $advertiser = $this->makeUser('advertiser');

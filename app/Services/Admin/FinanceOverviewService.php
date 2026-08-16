@@ -102,6 +102,7 @@ class FinanceOverviewService
                 'deposits' => 'approved_at',
                 'orders_paid' => 'paid_at',
                 'completed' => 'completed_at',
+                'failed_cash_in' => 'order_created_at',
                 'refunds' => 'refund_ledger_or_updated_at',
                 'withdrawals_paid' => 'processed_at',
                 'ledger' => 'created_at',
@@ -593,9 +594,13 @@ class FinanceOverviewService
             ->whereHas('order', fn ($q) => $q->where('status', 'completed')->where('payment_status', 'paid'))
             ->sum(OrderItem::platformFeeSqlExpression());
 
-        $gmvAsAdvertiser = (float) Order::where('user_id', $user->id)
+        $currentPaidGmv = (float) Order::where('user_id', $user->id)
             ->where('payment_status', 'paid')
             ->sum('total_amount');
+        $gmvAsAdvertiser = (float) Order::where('user_id', $user->id)
+            ->whereIn('payment_status', ['paid', 'refunded'])
+            ->sum('total_amount');
+        $refundsAsAdvertiser = $this->userAdvertiserRefunds($user);
         $paidOrdersCount = (int) Order::where('user_id', $user->id)
             ->where('payment_status', 'paid')
             ->count();
@@ -613,7 +618,10 @@ class FinanceOverviewService
             'ledger' => $ledger,
             'totals' => [
                 'deposits_completed' => (float) DepositRequest::where('user_id', $user->id)->where('status', 'completed')->sum('amount'),
-                'gmv_as_advertiser' => $gmvAsAdvertiser,
+                'gmv_as_advertiser' => round($gmvAsAdvertiser, 2),
+                'current_paid_gmv' => round($currentPaidGmv, 2),
+                'refunds_as_advertiser' => $refundsAsAdvertiser,
+                'net_gmv_as_advertiser' => round(max(0.0, $gmvAsAdvertiser - $refundsAsAdvertiser), 2),
                 'paid_orders_count' => $paidOrdersCount,
                 'earnings_as_publisher' => round($earnings, 2),
                 'platform_fees_on_their_sites' => round($feesOnTheirSales, 2),
@@ -726,21 +734,40 @@ class FinanceOverviewService
     /**
      * Admin paid→failed clears paid_at but credits the wallet (capture stays
      * in the bank). Count those orders once when a refund ledger row exists.
-     * Dated by the refund write — paid_at is gone.
+     * Cash-in is dated by checkout (created_at) — paid_at is gone, and the
+     * refund write is the wallet return, not the capture.
      */
     private function sumFailedExternalCollected(?Carbon $start, Carbon $end): float
     {
-        return round((float) $this->failedExternalOrdersWithWalletReturn($start, $end)->sum('total_amount'), 2);
+        $query = $this->failedExternalOrdersBase();
+        $this->applyCreatedWindow($query, $start, $end);
+
+        return round((float) $query->sum('total_amount'), 2);
     }
 
-    private function failedExternalOrdersWithWalletReturn(?Carbon $start, Carbon $end)
+    private function failedExternalOrdersBase()
     {
         $methods = array_merge($this->cardOrderMethods(), $this->manualOrderMethods());
         $morph = (new Order)->getMorphClass();
 
-        $query = Order::query()
+        return Order::query()
             ->where('payment_status', 'failed')
             ->whereIn('payment_method', $methods)
+            ->whereExists(function ($exists) use ($morph) {
+                $exists->select(DB::raw('1'))
+                    ->from('wallet_transactions')
+                    ->whereColumn('wallet_transactions.related_id', 'orders.id')
+                    ->where('wallet_transactions.related_type', $morph)
+                    ->where('wallet_transactions.type', WalletTransaction::TYPE_REFUND)
+                    ->where('wallet_transactions.direction', 'credit');
+            });
+    }
+
+    private function failedExternalOrdersWithWalletReturn(?Carbon $start, Carbon $end)
+    {
+        $morph = (new Order)->getMorphClass();
+
+        return $this->failedExternalOrdersBase()
             ->whereExists(function ($exists) use ($morph, $start, $end) {
                 $exists->select(DB::raw('1'))
                     ->from('wallet_transactions')
@@ -754,15 +781,35 @@ class FinanceOverviewService
                     $exists->where('wallet_transactions.created_at', '<=', $end);
                 }
             });
+    }
 
-        return $query;
+    /**
+     * All-time advertiser refunds for a dossier: refunded order totals minus
+     * clawed lines already in those totals, plus each clawback credit, plus
+     * paid→failed wallet returns.
+     */
+    private function userAdvertiserRefunds(User $user): float
+    {
+        $end = now()->endOfDay();
+        $refundOrders = Order::where('payment_status', 'refunded')->where('user_id', $user->id);
+        $this->applyRefundWindow($refundOrders, null, $end);
+        $failedRefundOrders = $this->failedExternalOrdersWithWalletReturn(null, $end)
+            ->where('user_id', $user->id);
+
+        return round(
+            (float) (clone $refundOrders)->sum('total_amount')
+            - $this->clawbackCreditsOnOrders($refundOrders)
+            + (float) (clone $failedRefundOrders)->sum('total_amount')
+            + $this->partialClawbackAdvertiserCredits(null, $end, $user->id),
+            2
+        );
     }
 
     /**
      * Advertiser credits from upheld disputes, including after the last line
      * flips the order to refunded. Dated by dispute resolution.
      */
-    private function partialClawbackAdvertiserCredits(?Carbon $start, Carbon $end): float
+    private function partialClawbackAdvertiserCredits(?Carbon $start, Carbon $end, ?int $userId = null): float
     {
         if (! OrderItemDispute::tableAvailable()) {
             return 0.0;
@@ -771,8 +818,11 @@ class FinanceOverviewService
         $query = OrderItemDispute::query()
             ->where('status', OrderItemDispute::STATUS_UPHELD)
             ->where('advertiser_credited', '>', 0)
-            ->whereHas('order', function ($order) {
+            ->whereHas('order', function ($order) use ($userId) {
                 $this->constrainRecognizedCompleted($order);
+                if ($userId !== null) {
+                    $order->where('user_id', $userId);
+                }
             });
         $this->applyCreatedOrPaidWindow($query, $start, $end, 'resolved_at');
 
