@@ -422,6 +422,11 @@ class FinanceOverviewService
             - $this->clawedPublisherPayouts($start, $end)
             - $this->refundedNonClawedPublisherPayouts($start, $end);
         $earningsCount = (clone $earningsQuery)->count();
+        // A reversal-only window (August clawback of a July sale) has no
+        // completions, so count would read "0 line items" next to −€100.
+        if ($earningsCount === 0 && abs($earnings) > 0.009) {
+            $earningsCount = $this->reversedPublisherPayoutCount($start, $end);
+        }
 
         $ledgerEarnings = WalletTransaction::where('type', WalletTransaction::TYPE_TRANSFER_IN);
         $this->applyCreatedWindow($ledgerEarnings, $start, $end);
@@ -510,7 +515,10 @@ class FinanceOverviewService
         $refundedOrderFees = (float) (clone $refundedFeeItems)->sum(OrderItem::platformFeeSqlExpression())
             + $this->partialClawbackRecognizedFees($start, $end);
 
-        $walletRefunds = WalletTransaction::where('type', WalletTransaction::TYPE_REFUND);
+        // Featured-site leftovers also write TYPE_REFUND (related Site).
+        // This subtitle sits next to "Refunds (order totals)" — order only.
+        $walletRefunds = WalletTransaction::where('type', WalletTransaction::TYPE_REFUND)
+            ->where('related_type', (new Order)->getMorphClass());
         $this->applyCreatedWindow($walletRefunds, $start, $end);
 
         $bonuses = WalletTransaction::where('type', WalletTransaction::TYPE_BONUS_CREDIT);
@@ -930,21 +938,8 @@ class FinanceOverviewService
      */
     private function clawedPublisherPayouts(?Carbon $start, Carbon $end): float
     {
-        if (! OrderItemDispute::tableAvailable()) {
-            return 0.0;
-        }
-
-        $query = OrderItem::query()
-            ->clawedBack()
-            ->whereHas('order', function ($q) {
-                $this->constrainRecognizedCompleted($q);
-            })
-            ->whereHas('disputes', function ($disputes) use ($start, $end) {
-                $disputes->where('status', OrderItemDispute::STATUS_UPHELD);
-                $this->applyCreatedOrPaidWindow($disputes, $start, $end, 'resolved_at');
-            });
-
-        return round((float) $query->sum(OrderItem::publisherPayoutSqlExpression()), 2);
+        return round((float) $this->clawedPublisherPayoutQuery($start, $end)
+            ->sum(OrderItem::publisherPayoutSqlExpression()), 2);
     }
 
     /**
@@ -953,7 +948,39 @@ class FinanceOverviewService
      */
     private function refundedNonClawedPublisherPayouts(?Carbon $start, Carbon $end): float
     {
-        $query = OrderItem::query()
+        return round((float) $this->refundedNonClawedPublisherPayoutQuery($start, $end)
+            ->sum(OrderItem::publisherPayoutSqlExpression()), 2);
+    }
+
+    /**
+     * Lines reversed in this window (clawback or later full-order refund).
+     */
+    private function reversedPublisherPayoutCount(?Carbon $start, Carbon $end): int
+    {
+        return $this->clawedPublisherPayoutQuery($start, $end)->count()
+            + $this->refundedNonClawedPublisherPayoutQuery($start, $end)->count();
+    }
+
+    private function clawedPublisherPayoutQuery(?Carbon $start, Carbon $end)
+    {
+        if (! OrderItemDispute::tableAvailable()) {
+            return OrderItem::query()->whereRaw('0 = 1');
+        }
+
+        return OrderItem::query()
+            ->clawedBack()
+            ->whereHas('order', function ($q) {
+                $this->constrainRecognizedCompleted($q);
+            })
+            ->whereHas('disputes', function ($disputes) use ($start, $end) {
+                $disputes->where('status', OrderItemDispute::STATUS_UPHELD);
+                $this->applyCreatedOrPaidWindow($disputes, $start, $end, 'resolved_at');
+            });
+    }
+
+    private function refundedNonClawedPublisherPayoutQuery(?Carbon $start, Carbon $end)
+    {
+        return OrderItem::query()
             ->when(OrderItemDispute::tableAvailable(), function ($items) {
                 $items->whereDoesntHave('disputes', function ($disputes) {
                     $disputes->where('status', OrderItemDispute::STATUS_UPHELD);
@@ -964,8 +991,6 @@ class FinanceOverviewService
                 $q->where('payment_status', 'refunded');
                 $this->applyRefundWindow($q, $start, $end);
             });
-
-        return round((float) $query->sum(OrderItem::publisherPayoutSqlExpression()), 2);
     }
 
     /**

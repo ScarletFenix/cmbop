@@ -384,6 +384,53 @@ class AdminFinanceHubTest extends TestCase
         $this->assertEquals(29.0, $overview['cash_split']['cash_in_bank']);
     }
 
+    public function test_featured_site_leftover_refund_is_not_an_order_wallet_refund(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $pubRole = Role::firstOrCreate(['name' => 'publisher']);
+        $wallet = Wallet::create([
+            'user_id' => $publisher->id,
+            'role_id' => $pubRole->id,
+            'balance' => 29,
+            'reserved_balance' => 0,
+            'bonus_balance' => 0,
+            'currency' => 'EUR',
+        ]);
+
+        $order = $this->seedCompletedPaidOrder($advertiser, $publisher, [
+            'paid_at' => now(),
+            'completed_at' => now(),
+        ]);
+        $order->forceFill([
+            'payment_status' => 'refunded',
+            'updated_at' => now(),
+        ])->save();
+        app(WalletLedgerService::class)->recordRefund(
+            $wallet,
+            115,
+            0,
+            $order,
+            $order->reference_code
+        );
+
+        $site = Site::query()->where('publisher_id', $publisher->id)->firstOrFail();
+        app(WalletLedgerService::class)->recordRefund(
+            $wallet,
+            29,
+            0,
+            $site,
+            'PROMO-FEATURE-CREDIT-cs_test_leftover'
+        );
+
+        $overview = app(FinanceOverviewService::class)->overview(
+            app(FinanceOverviewService::class)->resolvePeriod('all')
+        );
+
+        $this->assertEquals(115.0, $overview['platform']['refunds']);
+        $this->assertEquals(115.0, $overview['platform']['wallet_refunds']);
+    }
+
     public function test_withdrawable_sums_per_wallet_not_aggregate_bonus(): void
     {
         $admin = $this->makeUser('admin');
@@ -630,8 +677,11 @@ class AdminFinanceHubTest extends TestCase
         $this->assertEquals(15.0, $all['platform']['refunded_order_fees']);
         $this->assertEquals(0.0, $all['platform']['margin']);
         $this->assertEquals(100.0, $july['money_out']['earnings_credited']['amount']);
+        $this->assertEquals(1, $july['money_out']['earnings_credited']['count']);
         $this->assertEquals(-100.0, $august['money_out']['earnings_credited']['amount']);
+        $this->assertEquals(1, $august['money_out']['earnings_credited']['count']);
         $this->assertEquals(0.0, $all['money_out']['earnings_credited']['amount']);
+        $this->assertEquals(1, $all['money_out']['earnings_credited']['count']);
         $this->assertEquals(115.0, $all['cash_split']['cash_in_bank']);
         $this->assertEquals(0.0, $all['money_in']['orders_paid']['stripe_card']);
         $this->assertEquals(115.0, $all['money_in']['stripe_card_collected']);
@@ -913,6 +963,7 @@ class AdminFinanceHubTest extends TestCase
         $this->assertEquals(30.0, $july['platform']['order_fees']);
         $this->assertEquals(15.0, $july['platform']['margin']);
         $this->assertEquals(100.0, $july['money_out']['earnings_credited']['amount']);
+        $this->assertEquals(2, $july['money_out']['earnings_credited']['count']);
         $this->assertEquals(1, $july['platform']['refund_orders_count']);
 
         $this->assertEquals(115.0, $august['platform']['refunds']);
@@ -920,12 +971,14 @@ class AdminFinanceHubTest extends TestCase
         $this->assertEquals(0.0, $august['platform']['order_fees']);
         $this->assertEquals(-15.0, $august['platform']['margin']);
         $this->assertEquals(-100.0, $august['money_out']['earnings_credited']['amount']);
+        $this->assertEquals(1, $august['money_out']['earnings_credited']['count']);
         $this->assertEquals(1, $august['platform']['refund_orders_count']);
 
         $this->assertEquals(230.0, $all['platform']['refunds']);
         $this->assertEquals(30.0, $all['platform']['refunded_order_fees']);
         $this->assertEquals(0.0, $all['platform']['margin']);
         $this->assertEquals(0.0, $all['money_out']['earnings_credited']['amount']);
+        $this->assertEquals(2, $all['money_out']['earnings_credited']['count']);
     }
 
     public function test_failed_after_paid_card_capture_still_counts_as_cash_in(): void

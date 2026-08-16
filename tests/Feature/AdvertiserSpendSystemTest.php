@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\AdvertiserSpendBudget;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\OrderItemDispute;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
@@ -327,6 +328,77 @@ class AdvertiserSpendSystemTest extends TestCase
         $summary = app(AdvertiserSpendService::class)->summary($user->id);
         $this->assertSame(100.0, $summary['refunded']);
         $this->assertSame(0.0, $summary['net']);
+    }
+
+    public function test_featured_site_leftover_refund_does_not_inflate_marketplace_refunded(): void
+    {
+        $user = $this->advertiser();
+        $role = Role::firstOrCreate(['name' => 'advertiser']);
+        $wallet = Wallet::create([
+            'user_id' => $user->id,
+            'role_id' => $role->id,
+            'balance' => 500,
+            'reserved_balance' => 0,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 0,
+            'currency' => 'EUR',
+        ]);
+
+        $this->makeOrder($user, [
+            'total_amount' => 100,
+            'status' => 'completed',
+            'payment_status' => 'paid',
+        ]);
+
+        $site = Site::query()->firstOrFail();
+        WalletTransaction::create([
+            'user_id' => $user->id,
+            'wallet_id' => $wallet->id,
+            'type' => WalletTransaction::TYPE_REFUND,
+            'direction' => 'credit',
+            'amount' => 29,
+            'bonus_amount' => 0,
+            'balance_after' => 529,
+            'bonus_balance_after' => 0,
+            'currency' => 'EUR',
+            'status' => 'completed',
+            'description' => 'Featured leftover',
+            'reference' => 'PROMO-FEATURE-CREDIT-cs_test',
+            'related_type' => $site->getMorphClass(),
+            'related_id' => $site->id,
+        ]);
+
+        $summary = app(AdvertiserSpendService::class)->summary($user->id);
+        $this->assertSame(0.0, $summary['refunded']);
+        $this->assertSame(100.0, $summary['net']);
+    }
+
+    public function test_partial_clawback_appears_on_spend_export(): void
+    {
+        $user = $this->advertiser();
+        $order = $this->makeOrder($user, [
+            'total_amount' => 230,
+            'status' => 'completed',
+            'payment_status' => 'paid',
+        ]);
+        $item = $order->items()->first();
+
+        OrderItemDispute::create([
+            'order_id' => $order->id,
+            'order_item_id' => $item->id,
+            'opened_by' => $user->id,
+            'status' => OrderItemDispute::STATUS_UPHELD,
+            'reason' => 'Live URL was removed after the report window started.',
+            'resolved_at' => now(),
+            'advertiser_credited' => 115,
+            'publisher_debited' => 100,
+        ]);
+
+        $rows = app(AdvertiserSpendService::class)->exportRows($user->id);
+        $this->assertCount(1, $rows);
+        $this->assertSame(230.0, $rows[0]['gross']);
+        $this->assertSame(115.0, $rows[0]['refund']);
+        $this->assertSame(115.0, $rows[0]['net']);
     }
 
     public function test_marketing_fee_scaffold_stays_disabled(): void
