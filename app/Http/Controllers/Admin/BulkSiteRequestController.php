@@ -105,23 +105,28 @@ class BulkSiteRequestController extends Controller
             return back()->with('error', 'Sheet emailed can only be marked before drafts are added.');
         }
 
+        $alreadySent = $bulkRequest->status === BulkSiteRequest::STATUS_SHEET_SENT;
+        $notes = $request->input('admin_notes', $bulkRequest->admin_notes);
+
         $bulkRequest->forceFill([
             'status' => BulkSiteRequest::STATUS_SHEET_SENT,
-            'sheet_sent_at' => now(),
+            'sheet_sent_at' => $alreadySent ? $bulkRequest->sheet_sent_at : now(),
             'handled_by' => auth()->id(),
-            'admin_notes' => $request->input('admin_notes', $bulkRequest->admin_notes),
+            'admin_notes' => $notes,
         ])->save();
 
-        ActivityLogger::log(
-            'bulk_request.sheet_sent',
-            (auth()->user()->name ?? 'Staff').' marked bulk request #'.$bulkRequest->id.' as sheet emailed',
-            $bulkRequest,
-            [
-                'bulk_site_request_id' => $bulkRequest->id,
-                'publisher_id' => $bulkRequest->publisher_id,
-            ],
-            'Bulk request #'.$bulkRequest->id
-        );
+        if (! $alreadySent) {
+            ActivityLogger::log(
+                'bulk_request.sheet_sent',
+                (auth()->user()->name ?? 'Staff').' marked bulk request #'.$bulkRequest->id.' as sheet emailed',
+                $bulkRequest,
+                [
+                    'bulk_site_request_id' => $bulkRequest->id,
+                    'publisher_id' => $bulkRequest->publisher_id,
+                ],
+                'Bulk request #'.$bulkRequest->id
+            );
+        }
 
         return back()->with('success', 'Marked as sheet emailed. Prefer Done from the URL + price list the publisher already submitted.');
     }
@@ -133,6 +138,13 @@ class BulkSiteRequestController extends Controller
         ]);
 
         $bulkRequest = BulkSiteRequest::findOrFail($id);
+        $from = (string) ($bulkRequest->admin_notes ?? '');
+        $to = (string) ($validated['admin_notes'] ?? '');
+
+        if ($from === $to) {
+            return back()->with('success', 'Notes saved.');
+        }
+
         $bulkRequest->forceFill([
             'admin_notes' => $validated['admin_notes'] ?? null,
             'handled_by' => auth()->id(),

@@ -11,6 +11,8 @@ use App\Services\Advertiser\ContentLibrarySearchQuery;
 use App\Services\ContentUpload\ContentUploadService;
 use App\Services\Marketplace\CountryLanguagePairs;
 use App\Services\Marketplace\LanguageCountryMap;
+use App\Services\OrderPaymentService;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Log;
@@ -120,9 +122,9 @@ class ContentLibraryController extends Controller
         }
 
         if ($availability === 'archived') {
-            $query->whereNotNull('archived_at');
+            $query->archived();
         } else {
-            $query->whereNull('archived_at');
+            $query->notArchived();
 
             if ($availability === 'available') {
                 $query->checkoutReady();
@@ -149,14 +151,14 @@ class ContentLibraryController extends Controller
         $baseScope = ContentSubmission::query()->where('user_id', auth()->id());
 
         $groupedByLanguage = (clone $baseScope)
-            ->whereNull('archived_at')
+            ->notArchived()
             ->whereNotNull('language')
             ->selectRaw('language, COUNT(*) as total')
             ->groupBy('language')
             ->pluck('total', 'language');
 
         $groupedByCountry = (clone $baseScope)
-            ->whereNull('archived_at')
+            ->notArchived()
             ->whereNotNull('country')
             ->selectRaw('country, COUNT(*) as total')
             ->groupBy('country')
@@ -165,7 +167,7 @@ class ContentLibraryController extends Controller
         // Counts for moderation boxes: respect search / country / language, ignore status.
         $countScope = ContentSubmission::query()
             ->where('user_id', auth()->id())
-            ->whereNull('archived_at');
+            ->notArchived();
 
         if ($languageFilter !== '' && $languageFilter !== 'all') {
             $countScope->where('language', $languageFilter);
@@ -214,7 +216,7 @@ class ContentLibraryController extends Controller
 
         $archivedCountScope = ContentSubmission::query()
             ->where('user_id', auth()->id())
-            ->whereNotNull('archived_at');
+            ->archived();
         if ($languageFilter !== '' && $languageFilter !== 'all') {
             $archivedCountScope->where('language', $languageFilter);
         }
@@ -502,22 +504,48 @@ class ContentLibraryController extends Controller
         abort_unless((int) $submission->user_id === (int) auth()->id(), 403);
 
         if (! $submission->isContentReadyForOrder()) {
+            // Expired leftovers can still Pay again on the open order, but they
+            // cannot start a new catalog checkout. Unready leftovers (links /
+            // rights) stay in the library so the advertiser can fix them first.
+            if ($submission->isExpired()
+                && $submission->hasFulfillableContent()
+                && ($submission->canReplaceUnpaidLeftover() || $submission->activeClaimOrderId())) {
+                return redirect()
+                    ->route('advertiser.orders')
+                    ->with('error', 'This article is still on an open order. Use Pay again there. Expired articles cannot start a new catalog order.');
+            }
+
             $message = $submission->isExpired()
                 ? 'Expired articles are preview only and cannot be ordered.'
                 : ($submission->hasImages() && ! $submission->imageRightsCoverContent()
                     ? ContentUploadService::imageRightsRequiredMessage()
                     : ($submission->libraryFixSummary() ?: ContentSubmission::CHECKOUT_LINK_MESSAGE));
 
-            return redirect()
-                ->route('advertiser.content-library')
-                ->with('error', $message);
+            return $this->redirectToLibraryChip($submission, $message);
         }
 
         if (! $submission->canOrderFromLibrary()) {
-            return redirect()
-                ->route('advertiser.content-library')
-                ->with('error', $submission->libraryFixSummary()
-                    ?: 'Only approved Content Library articles can be ordered. Please edit and resubmit if corrections are needed.');
+            return $this->redirectToLibraryChip(
+                $submission,
+                $submission->libraryFixSummary()
+                    ?: 'Only approved Content Library articles can be ordered. Please edit and resubmit if corrections are needed.'
+            );
+        }
+
+        app(OrderPaymentService::class)->replaceUnpaidLeftoversForSubmissions(
+            (int) auth()->id(),
+            [(int) $submission->id]
+        );
+        $submission = $submission->fresh() ?? $submission;
+
+        if (! $submission->canBeOrdered() || ! $submission->isReadyForCheckout()) {
+            $message = $submission->isExpired()
+                ? 'Expired articles are preview only and cannot be ordered.'
+                : ($submission->hasImages() && ! $submission->imageRightsCoverContent()
+                    ? ContentUploadService::imageRightsRequiredMessage()
+                    : ($submission->libraryFixSummary() ?: ContentSubmission::CHECKOUT_LINK_MESSAGE));
+
+            return $this->redirectToLibraryChip($submission, $message);
         }
 
         // Keep Pay again until the advertiser actually assigns this article
@@ -546,7 +574,7 @@ class ContentLibraryController extends Controller
             ->forLibraryList()
             ->where('id', $id)
             ->where('user_id', auth()->id())
-            ->whereNull('archived_at')
+            ->notArchived()
             ->needsLibraryFix()
             ->first();
 
@@ -622,5 +650,18 @@ class ContentLibraryController extends Controller
                 : null,
             'created_at' => optional($s->created_at)?->toDateTimeString(),
         ];
+    }
+
+    /**
+     * Failed Order must land on the chip that still lists the row.
+     * The default library URL is Available and hides leftovers / unready articles.
+     */
+    protected function redirectToLibraryChip(ContentSubmission $submission, string $message): RedirectResponse
+    {
+        $url = route('advertiser.content-library', $submission->staffApprovalLibraryParams());
+
+        return redirect()
+            ->to($url.'#library-row-'.$submission->id)
+            ->with('error', $message);
     }
 }

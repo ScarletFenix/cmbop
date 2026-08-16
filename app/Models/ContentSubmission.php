@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\ToleratesUnparseableDates;
 use App\Services\ContentUpload\ArticleDetectedLinks;
 use App\Services\ContentUpload\ArticleHtmlSanitizer;
 use App\Services\ContentUpload\ArticlePreviewHtml;
@@ -15,6 +16,8 @@ use Illuminate\Support\Str;
 
 class ContentSubmission extends Model
 {
+    use ToleratesUnparseableDates;
+
     public const STATUS_PENDING = 'pending';
 
     public const STATUS_PROCESSING = 'processing';
@@ -44,6 +47,8 @@ class ContentSubmission extends Model
     public const CHECKOUT_LINK_MESSAGE = 'Add anchor text and a valid HTTPS target URL, or clear both link fields.';
 
     public const ACTIVE_ORDER_CLAIM_MESSAGE = 'This article is still attached to an unpaid or failed order. Pay again on that order, or start a new checkout to replace it.';
+
+    public const PAID_ORDER_CLAIM_MESSAGE = 'This article is already used on a paid order and cannot start a new catalog checkout.';
 
     /** Leftover / in-flight placements that still own the article. */
     public const ACTIVE_ORDER_CLAIM_PAYMENT_STATUSES = ['paid', 'pending', 'failed'];
@@ -347,12 +352,10 @@ class ContentSubmission extends Model
                     ->withImageRightsCover()
                     ->whereNotNull('path')
                     ->where('path', '!=', '')
-                    ->whereNull('archived_at')
+                    ->notArchived()
                     ->whereNotNull('country')->where('country', '!=', '')
                     ->whereNotNull('language')->where('language', '!=', '')
-                    ->where(function ($exp) {
-                        $exp->whereNull('expires_at')->orWhere('expires_at', '>', now());
-                    });
+                    ->whereNotExpired();
             });
         });
     }
@@ -370,12 +373,10 @@ class ContentSubmission extends Model
             ->withoutOpenOwnerOrder()
             ->whereNotNull('path')
             ->where('path', '!=', '')
-            ->whereNull('archived_at')
+            ->notArchived()
             ->whereNotNull('country')->where('country', '!=', '')
             ->whereNotNull('language')->where('language', '!=', '')
-            ->where(function ($q) {
-                $q->whereNull('expires_at')->orWhere('expires_at', '>', now());
-            })
+            ->whereNotExpired()
             ->where(function ($q) {
                 $q->where(function ($noImages) {
                     $noImages->whereNull('preview_html')
@@ -500,8 +501,7 @@ class ContentSubmission extends Model
     {
         return $query->withoutOpenOwnerOrder()
             ->withoutOpenOrderItemLink()
-            ->whereNotNull('expires_at')
-            ->where('expires_at', '<=', now());
+            ->whereExpired();
     }
 
     /**
@@ -517,9 +517,7 @@ class ContentSubmission extends Model
             self::STATUS_PROCESSING,
         ])->withoutOpenOwnerOrder()
             ->withoutActiveOrderClaim()
-            ->where(function ($exp) {
-                $exp->whereNull('expires_at')->orWhere('expires_at', '>', now());
-            });
+            ->whereNotExpired();
     }
 
     /**
@@ -533,7 +531,7 @@ class ContentSubmission extends Model
         return $query->where('moderation_status', self::STATUS_APPROVED)
             ->withoutOpenOwnerOrder()
             ->withoutOpenOrderItemLink()
-            ->whereNotNull('expires_at')
+            ->whereExpiryIsRecorded()
             ->where('expires_at', '>', now())
             ->where('expires_at', '<=', now()->addDays(max(1, $withinDays)));
     }
@@ -598,7 +596,7 @@ class ContentSubmission extends Model
             ->whereNotNull('path')->where('path', '!=', '')
             ->whereNotNull('country')->where('country', '!=', '')
             ->whereNotNull('language')->where('language', '!=', '')
-            ->whereNull('archived_at')
+            ->notArchived()
             ->hasCheckoutReadyLinks()
             ->withImageRightsCover()
             ->withoutCurrentLivePlacement()
@@ -686,7 +684,7 @@ class ContentSubmission extends Model
                 })->orWhere(function ($ownedUnready) {
                     $ownedUnready->where('moderation_status', self::STATUS_APPROVED)
                         ->withOpenOwnerOrder()
-                        ->whereNull('archived_at')
+                        ->notArchived()
                         ->where(function ($unready) {
                             $unready->withoutCheckoutReadyLinks()
                                 ->orWhere(function ($rights) {
@@ -704,7 +702,7 @@ class ContentSubmission extends Model
                         });
                 })->orWhere(function ($leftover) {
                     $leftover->withoutOpenOwnerOrder()
-                        ->whereNull('archived_at')
+                        ->notArchived()
                         ->withActiveOrderClaim()
                         ->withoutCurrentLivePlacement()
                         ->where(function ($unpaidOrUnready) {
@@ -739,13 +737,12 @@ class ContentSubmission extends Model
                 });
             })
             ->where(function ($exp) {
-                $exp->where(function ($active) {
-                    $active->whereNull('expires_at')->orWhere('expires_at', '>', now());
-                })->orWhere(function ($owned) {
-                    $owned->withOpenOwnerOrder();
-                })->orWhere(function ($claimed) {
-                    $claimed->withActiveOrderClaim();
-                });
+                $exp->whereNotExpired()
+                    ->orWhere(function ($owned) {
+                        $owned->withOpenOwnerOrder();
+                    })->orWhere(function ($claimed) {
+                        $claimed->withActiveOrderClaim();
+                    });
             });
 
         return $query;
@@ -956,12 +953,103 @@ class ContentSubmission extends Model
             ->exists();
     }
 
+    /**
+     * Parseable expires_at in the Gregorian window. Leftover Hostinger
+     * strings compare as unexpired on SQLite (`> now()`) and as expired
+     * on MySQL (zero-date), and 500 PHP casts on the library pages.
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeWhereExpiryIsRecorded($query)
+    {
+        return $query->whereNotNull('expires_at')
+            ->where('expires_at', '>=', static::PLAUSIBLE_SQL_DATETIME_FLOOR)
+            ->where('expires_at', '<=', static::PLAUSIBLE_SQL_DATETIME_CEIL);
+    }
+
+    /**
+     * Missing or leftover expires_at (same as PHP null after cast).
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeWhereExpiryIsMissing($query)
+    {
+        return $query->where(function ($inner) {
+            $inner->whereNull('expires_at')
+                ->orWhere('expires_at', '>', static::PLAUSIBLE_SQL_DATETIME_CEIL)
+                ->orWhere('expires_at', '<', static::PLAUSIBLE_SQL_DATETIME_FLOOR);
+        });
+    }
+
+    /**
+     * SQL counterpart of ! isExpired().
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeWhereNotExpired($query)
+    {
+        return $query->where(function ($q) {
+            $q->whereExpiryIsMissing()
+                ->orWhere(function ($live) {
+                    $live->whereExpiryIsRecorded()
+                        ->where('expires_at', '>', now());
+                });
+        });
+    }
+
+    /**
+     * SQL counterpart of isExpired() — used by content:purge-expired.
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeWhereExpired($query)
+    {
+        return $query->whereExpiryIsRecorded()
+            ->where('expires_at', '<=', now());
+    }
+
+    /**
+     * Leftover archived_at is not a staff archive (same as Site).
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeNotArchived($query)
+    {
+        return $query->where(function ($q) {
+            $q->whereNull('archived_at')
+                ->orWhere('archived_at', '>', static::PLAUSIBLE_SQL_DATETIME_CEIL)
+                ->orWhere('archived_at', '<', static::PLAUSIBLE_SQL_DATETIME_FLOOR);
+        });
+    }
+
+    /**
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeArchived($query)
+    {
+        return $query->whereNotNull('archived_at')
+            ->where('archived_at', '>=', static::PLAUSIBLE_SQL_DATETIME_FLOOR)
+            ->where('archived_at', '<=', static::PLAUSIBLE_SQL_DATETIME_CEIL);
+    }
+
     public function isExpired(): bool
     {
         // Match content:purge-expired (`expires_at <= now()`). Carbon isPast() is
         // strictly before now, which would leave the exact expiry instant orderable
         // in the UI while the nightly strip already treats it as expired.
-        return $this->expires_at !== null && ! $this->expires_at->isFuture();
+        try {
+            $at = $this->expires_at;
+        } catch (\Throwable) {
+            return false;
+        }
+
+        return $at !== null && ! $at->isFuture();
     }
 
     public function hasStoredFile(): bool
@@ -1089,19 +1177,29 @@ class ContentSubmission extends Model
 
     /**
      * Approved file + market + rights + a complete HTTPS link pair.
+     * Ignores leftover/paid claims and catalog expiry so Pay again / attach
+     * on an already-claimed leftover can still settle after the listing ages out.
+     */
+    public function hasFulfillableContent(): bool
+    {
+        return $this->moderation_status === self::STATUS_APPROVED
+            && filled($this->path)
+            && ! $this->isArchived()
+            && filled($this->country)
+            && filled($this->language)
+            && $this->imageRightsCoverContent()
+            && $this->hasCheckoutReadyLinks();
+    }
+
+    /**
+     * Approved file + market + rights + a complete HTTPS link pair.
      * Ignores leftover/paid claims so Order / replace can see whether the
      * article would be usable after the leftover is released.
      */
     public function isContentReadyForOrder(): bool
     {
-        return $this->moderation_status === self::STATUS_APPROVED
-            && filled($this->path)
-            && ! $this->isArchived()
-            && ($this->expires_at === null || $this->expires_at->isFuture())
-            && filled($this->country)
-            && filled($this->language)
-            && $this->imageRightsCoverContent()
-            && $this->hasCheckoutReadyLinks();
+        return $this->hasFulfillableContent()
+            && ($this->expires_at === null || $this->expires_at->isFuture());
     }
 
     /**
@@ -1110,6 +1208,11 @@ class ContentSubmission extends Model
      */
     public function canOrderFromLibrary(): bool
     {
+        // A stale leftover item must not make a paid placement look reusable.
+        if ($this->isLockedByPaidOrder()) {
+            return false;
+        }
+
         if ($this->isReadyForCheckout()) {
             return true;
         }
@@ -1260,7 +1363,11 @@ class ContentSubmission extends Model
         // order_id leftovers cannot be ordered again, but they stay editable
         // until paid. Do not hide the Pay-again notice just because
         // canBeOrdered() is false.
-        if ($this->isClaimedByAnotherOrder() && ! $this->isLockedByPaidOrder()) {
+        if ($this->isLockedByPaidOrder()) {
+            return self::PAID_ORDER_CLAIM_MESSAGE;
+        }
+
+        if ($this->isClaimedByAnotherOrder()) {
             return self::ACTIVE_ORDER_CLAIM_MESSAGE;
         }
 
@@ -1289,7 +1396,13 @@ class ContentSubmission extends Model
 
     public function isArchived(): bool
     {
-        return $this->archived_at !== null;
+        try {
+            $at = $this->archived_at;
+        } catch (\Throwable) {
+            return false;
+        }
+
+        return $at instanceof \DateTimeInterface;
     }
 
     public function archive(): void
@@ -2118,7 +2231,18 @@ class ContentSubmission extends Model
 
         // Do not call isReadyForCheckout() here: that gate also rejects leftover
         // claims, including this order when submission.order_id is still null.
-        return $this->isContentReadyForOrder();
+        if (! $this->hasFulfillableContent()) {
+            return false;
+        }
+
+        // Catalog expiry blocks a *new* checkout. An already-claimed leftover
+        // can still be paid or attached on that same order. Use isExpired()
+        // (expires_at <= now) so the exact expiry instant matches purge.
+        if ($this->isExpired()) {
+            return $this->isOwnedByOrder($orderId);
+        }
+
+        return true;
     }
 
     /**

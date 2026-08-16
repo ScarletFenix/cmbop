@@ -2,10 +2,8 @@
 
 namespace Tests\Feature;
 
-use App\Mail\ContentEvaluationResult;
 use App\Models\ContentModerationSetting;
 use App\Models\ContentSubmission;
-use App\Models\InAppNotification;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Role;
@@ -15,7 +13,6 @@ use App\Services\ContentModeration\ContentModerationService;
 use App\Services\ContentUpload\ArticleEvaluationService;
 use App\Services\ContentUpload\ArticleHtmlSanitizer;
 use App\Services\ContentUpload\ContentUploadService;
-use App\Services\InAppNotificationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -143,6 +140,25 @@ class ContentLibraryImprovementsTest extends TestCase
             ->assertDontSee('Growth Playbook')
             ->assertSee('Reset', false)
             ->assertDontSee('>Apply<', false);
+    }
+
+    public function test_library_ok_when_expires_at_is_unparseable(): void
+    {
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update(['title' => 'Leftover Expiry Guide']);
+        DB::table('content_submissions')->where('id', $submission->id)->update([
+            'expires_at' => 'not-a-date',
+        ]);
+
+        $this->assertNull($submission->fresh()->expires_at);
+        $this->assertFalse($submission->fresh()->isExpired());
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', ['availability' => 'available']))
+            ->assertOk()
+            ->assertSee('Leftover Expiry Guide', false)
+            ->assertDontSee('Something went wrong');
     }
 
     public function test_library_shows_published_live_link(): void
@@ -805,7 +821,10 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->actingAs($advertiser)
             ->from(route('advertiser.content-library'))
             ->get(route('advertiser.content-library.order', $submission))
-            ->assertRedirect(route('advertiser.content-library'))
+            ->assertRedirect(route('advertiser.content-library', [
+                'status' => 'all',
+                'availability' => 'needs_fix',
+            ]).'#library-row-'.$submission->id)
             ->assertSessionHas('error');
 
         $this->assertTrue(session()->missing('checkout_content_submission_id'));
@@ -1318,7 +1337,7 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringNotContainsString('2 unused article', $html);
     }
 
-    public function test_paid_item_only_leftover_shows_view_order_in_needs_corrections(): void
+    public function test_paid_item_only_leftover_shows_view_order_in_progress(): void
     {
         $advertiser = $this->advertiser();
         $publisher = $this->publisher();
@@ -1356,11 +1375,11 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertTrue($fresh->isClaimedByAnotherOrder());
         $this->assertTrue($fresh->isLockedByPaidOrder());
         $this->assertFalse($fresh->canReplaceUnpaidLeftover());
-        $this->assertSame('needs_fix', $fresh->libraryAvailability());
+        $this->assertSame('in_progress', $fresh->libraryAvailability());
         $this->assertNotNull($fresh->libraryOrder());
 
         $this->actingAs($advertiser)
-            ->get(route('advertiser.content-library', ['availability' => 'needs_fix']))
+            ->get(route('advertiser.content-library', ['availability' => 'in_progress']))
             ->assertOk()
             ->assertSee('Paid Item Only Piece', false)
             ->assertSee('View order');
@@ -2685,6 +2704,9 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('function goToLibraryResult', $js);
         $this->assertStringContainsString('function libraryDestinationUrl', $js);
         $this->assertStringContainsString("availability: 'needs_fix'", $js);
+        $this->assertStringContainsString("availability === 'evaluating'", $js);
+        $this->assertStringContainsString("availability === 'published'", $js);
+        $this->assertStringContainsString('stays on Evaluating', $js);
         $this->assertStringContainsString('submission.needs_image_rights', $js);
         $this->assertStringContainsString('submission.ready === false', $js);
         $this->assertStringContainsString('if (stillApproved && sub.ready)', $js);

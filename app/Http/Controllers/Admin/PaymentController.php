@@ -250,7 +250,7 @@ class PaymentController extends Controller
                 // failed when promo cannot be re-reserved. Mark-paid would
                 // hand them the placement on top of that credit.
                 if ($order->payment_method === 'card') {
-                    $alreadyCredited = $payments->unfulfilledCardCreditAmount(
+                    $alreadyCredited = $payments->unfulfilledCardCreditRemaining(
                         (string) ($order->reference_code ?? '')
                     );
                     if ($alreadyCredited > 0.009) {

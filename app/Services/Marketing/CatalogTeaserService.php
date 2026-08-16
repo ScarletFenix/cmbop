@@ -29,7 +29,10 @@ class CatalogTeaserService
                 ->withGoodMetrics();
 
             if (Schema::hasColumn('sites', 'featured_until')) {
-                $query->orderByRaw('(featured_until IS NOT NULL AND featured_until > ?) DESC', [now()]);
+                $query->orderByRaw(
+                    '(featured_until IS NOT NULL AND featured_until > ? AND featured_until <= ?) DESC',
+                    [now(), Site::PLAUSIBLE_SQL_DATETIME_CEIL]
+                );
             }
 
             $candidates = $query

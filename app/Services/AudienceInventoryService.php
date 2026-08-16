@@ -515,7 +515,10 @@ class AudienceInventoryService
         return $query
             ->setEagerLoads([])
             ->reorder()
-            ->orderByRaw('case when email_verified_at is null then 1 else 0 end')
+            ->orderByRaw(
+                'case when email_verified_at is null or email_verified_at > ? or email_verified_at < ? then 1 else 0 end',
+                [User::PLAUSIBLE_SQL_DATETIME_CEIL, User::PLAUSIBLE_SQL_DATETIME_FLOOR]
+            )
             ->orderBy('name')
             ->orderBy('id');
     }
@@ -550,7 +553,7 @@ class AudienceInventoryService
     protected function applyRecipientScope(Builder $query, bool $includeUnverified): Builder
     {
         if (! $includeUnverified) {
-            $query->whereNotNull('email_verified_at');
+            $query->whereEmailVerified();
         }
 
         return $query;
@@ -614,7 +617,10 @@ class AudienceInventoryService
                 ->whereIn('roles.name', self::staffRoleNames())
                 ->exists();
         } catch (\Throwable) {
-            return false;
+            // Fail-closed: compose already dropped staff via SQL. Send
+            // re-checks so a promotion after queue cannot sneak through.
+            // An unreadable roles lookup must not look like “not staff”.
+            return true;
         }
     }
 
@@ -652,9 +658,9 @@ class AudienceInventoryService
     {
         $verified = $filters['verified'] ?? 'all';
         if ($verified === 'yes') {
-            $query->whereNotNull('email_verified_at');
+            $query->whereEmailVerified();
         } elseif ($verified === 'no') {
-            $query->whereNull('email_verified_at');
+            $query->whereEmailUnverified();
         }
 
         if (filled($filters['registered_from'] ?? null)) {
