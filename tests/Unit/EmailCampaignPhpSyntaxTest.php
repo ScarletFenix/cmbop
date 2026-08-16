@@ -168,7 +168,7 @@ class EmailCampaignPhpSyntaxTest extends TestCase
             $queued[1]
         );
 
-        $payloadTest = (string) file_get_contents($files[4]);
+        $payloadTest = (string) file_get_contents($files[5]);
         $this->assertStringContainsString(
             'function test_contains_campaign_mail_matches_model_identifier_without_dedupe_key',
             $payloadTest

@@ -3561,11 +3561,14 @@ class AdminCampaignsTest extends TestCase
 
         EmailCampaign::recoverStalled();
 
-        $this->assertSame(EmailCampaignRecipient::STATUS_QUEUED, $brokenRow->fresh()->status);
-        $this->assertNull($brokenRow->fresh()->email_log_id);
+        $leftover = $brokenRow->fresh();
+        $this->assertNotSame(EmailCampaignRecipient::STATUS_FAILED, $leftover->status);
+        $this->assertNull($leftover->email_log_id);
+        $this->assertSame(EmailCampaignRecipient::STATUS_PENDING, $leftover->status);
         $this->assertSame(EmailCampaignRecipient::STATUS_DELIVERED, $okRow->fresh()->status);
         $this->assertSame($delivered->id, $okRow->fresh()->email_log_id);
-        Queue::assertNothingPushed();
+        Queue::assertPushed(SendEmailCampaignJob::class, fn (SendEmailCampaignJob $job) => $job->campaignId === $broken->id);
+        Queue::assertNotPushed(SendEmailCampaignJob::class, fn (SendEmailCampaignJob $job) => $job->campaignId === $ok->id);
     }
 
     public function test_recover_attaches_delivered_log_when_recipient_updated_at_is_unparseable(): void
