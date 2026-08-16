@@ -154,6 +154,13 @@ class EmailCampaignPhpSyntaxTest extends TestCase
         $this->assertSame(1, preg_match_all('/function healQueuedRecipientsWithTerminalLog\b/', $model));
         $this->assertSame(1, preg_match_all('/function reconcileOneQueuedRecipientFromLogs\b/', $model));
         $this->assertTrue((bool) preg_match(
+            '/protected static function reconcileQueuedRecipientsFromLogs\(int \$staleMinutes = 2\): void\s*\{(.*?)\n    \/\*\*/s',
+            $model,
+            $reconcileParent
+        ));
+        $this->assertStringContainsString('reconcileOneQueuedRecipientFromLogs', $reconcileParent[1]);
+        $this->assertStringNotContainsString('if ($logs->isEmpty())', $reconcileParent[1]);
+        $this->assertTrue((bool) preg_match(
             '/protected static function reconcileOneQueuedRecipientFromLogs\([\s\S]*?\): void\s*\{(.*?)\n    \/\*\*/s',
             $model,
             $reconcile

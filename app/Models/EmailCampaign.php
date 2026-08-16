@@ -913,14 +913,9 @@ class EmailCampaign extends Model
 
         $campaignIds = array_fill_keys($attachedIds, true);
 
-        if ($logs->isEmpty()) {
-            foreach (array_keys($campaignIds) as $id) {
-                static::query()->find($id)?->recountRecipientTotals();
-            }
-
-            return;
-        }
-
+        // Walk every queued row even when grouping found nothing.
+        // latestDeliveredForCampaignUser() still attaches a leftover
+        // generic-key delivery after a failed extras JSON scan.
         foreach ($rows as $row) {
             try {
                 self::reconcileOneQueuedRecipientFromLogs($row, $logs, $cutoff, $campaignIds);
@@ -1155,10 +1150,6 @@ class EmailCampaign extends Model
             }
         } catch (\Throwable) {
             // Canonical-key rows still heal when JSON meta cannot be queried.
-        }
-
-        if ($allLogs->isEmpty()) {
-            return [];
         }
 
         $logsById = $allLogs->keyBy('id');
