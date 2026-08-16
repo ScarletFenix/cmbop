@@ -1395,6 +1395,10 @@ class ContentSubmission extends Model
             return $this->evaluationSummary();
         }
 
+        if ($this->isLockedByPaidOrder()) {
+            return self::PAID_ORDER_CLAIM_MESSAGE;
+        }
+
         if ($this->hasImages() && ! $this->imageRightsCoverContent()) {
             return 'This article contains images. Confirm you own them, or add the source URL or copyright details.';
         }
@@ -1406,9 +1410,6 @@ class ContentSubmission extends Model
         // order_id leftovers cannot be ordered again, but they stay editable
         // until paid. Do not hide the Pay-again notice just because
         // canBeOrdered() is false.
-        if ($this->isLockedByPaidOrder()) {
-            return self::PAID_ORDER_CLAIM_MESSAGE;
-        }
 
         if ($this->isClaimedByAnotherOrder()) {
             return self::ACTIVE_ORDER_CLAIM_MESSAGE;
@@ -1574,6 +1575,15 @@ class ContentSubmission extends Model
         }
 
         return trim((string) $item->live_url) ?: null;
+    }
+
+    /**
+     * Library / admin placement row. Prefer the paid live line over a stale
+     * leftover that still owns order_item_id.
+     */
+    public function libraryPlacementItem(): ?OrderItem
+    {
+        return $this->currentPaidPlacementItem() ?: $this->placementItem();
     }
 
     /**

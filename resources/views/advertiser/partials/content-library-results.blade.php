@@ -165,8 +165,7 @@
                 @forelse($submissions as $submission)
                     @php
                         $availability = $submission->libraryAvailability();
-                        $placement = $submission->currentPaidPlacementItem()
-                            ?: $submission->placementItem();
+                        $placement = $submission->libraryPlacementItem();
                         $libraryOrder = $submission->libraryOrder();
                         $liveUrl = $submission->liveUrl();
                         $siteName = $placement?->site_name
