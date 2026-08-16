@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\ToleratesUnparseableDates;
 use Illuminate\Database\Eloquent\Model;
 
 class DepositRequest extends Model
 {
+    use ToleratesUnparseableDates;
+
     protected $fillable = [
         'user_id',
         'reference_code',
