@@ -28,6 +28,8 @@ class EmailCampaignRecipient extends Model
 
     public const SKIP_DISABLED = 'disabled';
 
+    public const SKIP_STAFF = 'staff';
+
     protected $fillable = [
         'email_campaign_id',
         'user_id',

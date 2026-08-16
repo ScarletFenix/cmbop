@@ -515,7 +515,10 @@ class AudienceInventoryService
         return $query
             ->setEagerLoads([])
             ->reorder()
-            ->orderByRaw('case when email_verified_at is null then 1 else 0 end')
+            ->orderByRaw(
+                'case when email_verified_at is null or email_verified_at > ? or email_verified_at < ? then 1 else 0 end',
+                [User::PLAUSIBLE_SQL_DATETIME_CEIL, User::PLAUSIBLE_SQL_DATETIME_FLOOR]
+            )
             ->orderBy('name')
             ->orderBy('id');
     }
@@ -550,7 +553,7 @@ class AudienceInventoryService
     protected function applyRecipientScope(Builder $query, bool $includeUnverified): Builder
     {
         if (! $includeUnverified) {
-            $query->whereNotNull('email_verified_at');
+            $query->whereEmailVerified();
         }
 
         return $query;
@@ -591,6 +594,34 @@ class AudienceInventoryService
     }
 
     /**
+     * @return list<string>
+     */
+    public static function staffRoleNames(): array
+    {
+        return ['admin', 'marketing'];
+    }
+
+    /**
+     * True when the account has a staff role, even if advertiser/publisher
+     * is still attached and is the active role. Matches excludeStaffAccounts().
+     * User::isStaff() only looks at activeRole() and would miss that case.
+     */
+    public static function userHasStaffRole(?User $user): bool
+    {
+        if ($user === null || (int) $user->id < 1) {
+            return false;
+        }
+
+        try {
+            return $user->roles()
+                ->whereIn('roles.name', self::staffRoleNames())
+                ->exists();
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /**
      * Inventory + campaigns never email staff, including dual-role
      * admin/marketing accounts that still have advertiser or publisher.
      * Reminder queries keep queryForRole() as-is so deposit / add-site /
@@ -599,7 +630,7 @@ class AudienceInventoryService
     protected function excludeStaffAccounts(Builder $query): Builder
     {
         return $query->whereDoesntHave('roles', function (Builder $q) {
-            $q->whereIn('roles.name', ['admin', 'marketing']);
+            $q->whereIn('roles.name', self::staffRoleNames());
         });
     }
 
@@ -624,9 +655,9 @@ class AudienceInventoryService
     {
         $verified = $filters['verified'] ?? 'all';
         if ($verified === 'yes') {
-            $query->whereNotNull('email_verified_at');
+            $query->whereEmailVerified();
         } elseif ($verified === 'no') {
-            $query->whereNull('email_verified_at');
+            $query->whereEmailUnverified();
         }
 
         if (filled($filters['registered_from'] ?? null)) {

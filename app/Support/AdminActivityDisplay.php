@@ -4,16 +4,21 @@ namespace App\Support;
 
 use App\Models\ActivityLog;
 use App\Models\AdBanner;
+use App\Models\AgencySiteImport;
 use App\Models\Blog;
 use App\Models\BulkSiteRequest;
 use App\Models\ContentSubmission;
 use App\Models\DepositRequest;
+use App\Models\EmailCampaign;
 use App\Models\Invoice;
 use App\Models\Order;
+use App\Models\ProblemReport;
 use App\Models\Site;
 use App\Models\SiteAnnouncement;
+use App\Models\Suggestion;
 use App\Models\User;
 use App\Models\Wallet;
+use App\Models\WebsiteSuggestion;
 use App\Models\Withdrawal;
 
 /**
@@ -95,6 +100,8 @@ class AdminActivityDisplay
                 'site_id' => 'site',
                 'bulk_site_request_id' => 'bulk',
                 'user_id' => 'user',
+                'publisher_id' => 'user',
+                'payer_id' => 'user',
                 'order_id' => 'order',
                 'deposit_id' => 'deposit',
                 'withdrawal_id' => 'withdrawal',
@@ -110,16 +117,27 @@ class AdminActivityDisplay
             }
         }
 
+        $depositUsers = self::existingUserMap(DepositRequest::class, $buckets['deposit']);
+        $withdrawalUsers = self::existingUserMap(Withdrawal::class, $buckets['withdrawal']);
+        $walletUsers = self::existingUserMap(Wallet::class, $buckets['wallet']);
+        foreach ([$depositUsers, $withdrawalUsers, $walletUsers] as $map) {
+            foreach ($map as $userId) {
+                if ((int) $userId > 0) {
+                    $buckets['user'][(int) $userId] = (int) $userId;
+                }
+            }
+        }
+
         return [
             'existingSiteIds' => self::existingKeys(Site::class, $buckets['site']),
             'existingBulkIds' => self::existingKeys(BulkSiteRequest::class, $buckets['bulk']),
             'existingUserIds' => self::existingKeys(User::class, $buckets['user']),
             'existingOrderIds' => self::existingKeys(Order::class, $buckets['order']),
-            'existingDepositIds' => self::existingUserMap(DepositRequest::class, $buckets['deposit']),
-            'existingWithdrawalIds' => self::existingUserMap(Withdrawal::class, $buckets['withdrawal']),
+            'existingDepositIds' => $depositUsers,
+            'existingWithdrawalIds' => $withdrawalUsers,
             'existingInvoiceIds' => self::existingKeys(Invoice::class, $buckets['invoice']),
             'existingBlogIds' => self::existingKeys(Blog::class, $buckets['blog']),
-            'existingWalletIds' => self::existingUserMap(Wallet::class, $buckets['wallet']),
+            'existingWalletIds' => $walletUsers,
             'existingAnnouncementIds' => self::existingKeys(SiteAnnouncement::class, $buckets['announcement']),
             'existingBannerIds' => self::existingKeys(AdBanner::class, $buckets['banner']),
             'existingSubmissionIds' => self::existingKeys(ContentSubmission::class, $buckets['submission']),
@@ -135,6 +153,10 @@ class AdminActivityDisplay
             return null;
         }
 
+        if (str_starts_with((string) $log->action, 'withdrawal.batch_')) {
+            return route('admin.withdrawals');
+        }
+
         $type = (string) $log->subject_type;
         $id = (int) $log->subject_id;
 
@@ -143,6 +165,14 @@ class AdminActivityDisplay
             if ($url) {
                 return $url;
             }
+        }
+
+        if ($type === AgencySiteImport::class) {
+            $publisherId = (int) data_get(is_array($log->properties) ? $log->properties : [], 'publisher_id');
+
+            return $publisherId > 0 && isset($lookup['existingUserIds'][$publisherId])
+                ? route('admin.users.index', ['user' => $publisherId])
+                : null;
         }
 
         // Only fall back to site/bulk when this row is about a site or bulk
@@ -358,10 +388,11 @@ class AdminActivityDisplay
         }
 
         $userId = (int) $lookup[$key][$id];
+        if ($userId > 0 && isset($lookup['existingUserIds'][$userId])) {
+            return route('admin.finance.user', $userId);
+        }
 
-        return $userId > 0
-            ? route('admin.finance.user', $userId)
-            : route($fallbackRoute);
+        return route($fallbackRoute);
     }
 
     /**
@@ -390,9 +421,7 @@ class AdminActivityDisplay
             Blog::class => isset($lookup['existingBlogIds'][$id])
                 ? route('admin.blogs.edit', $id)
                 : null,
-            Wallet::class => ($lookup['existingWalletIds'][$id] ?? 0) > 0
-                ? route('admin.finance.user', $lookup['existingWalletIds'][$id])
-                : null,
+            Wallet::class => self::moneySubjectUrl($lookup, 'existingWalletIds', $id, 'admin.finance'),
             SiteAnnouncement::class => isset($lookup['existingAnnouncementIds'][$id])
                 ? route('admin.promotions.announcements.edit', $id)
                 : null,
@@ -402,6 +431,10 @@ class AdminActivityDisplay
             ContentSubmission::class => isset($lookup['existingSubmissionIds'][$id])
                 ? route('admin.content-library.show', $id)
                 : null,
+            EmailCampaign::class => route('admin.campaigns.index'),
+            ProblemReport::class => route('admin.community.index', ['tab' => 'problems']),
+            Suggestion::class => route('admin.community.index', ['tab' => 'suggestions']),
+            WebsiteSuggestion::class => route('admin.community.index', ['tab' => 'websites']),
             default => null,
         };
     }

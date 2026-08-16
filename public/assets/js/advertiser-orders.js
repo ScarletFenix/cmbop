@@ -1429,6 +1429,14 @@ function bootAdvertiserOrdersPage() {
                         window.location.href = data.checkout_url;
                         return;
                     }
+                    if (data.success && data.settled) {
+                        Swal.fire({
+                            title: 'Paid',
+                            text: data.message || 'This leftover was paid using the card credit already in your wallet.',
+                            icon: 'success',
+                        }).then(() => window.location.reload());
+                        return;
+                    }
                     Swal.fire('Unable to retry', data.message || 'Please try again from checkout.', 'error');
                 })
                 .catch(() => {

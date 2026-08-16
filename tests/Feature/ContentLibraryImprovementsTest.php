@@ -2,10 +2,8 @@
 
 namespace Tests\Feature;
 
-use App\Mail\ContentEvaluationResult;
 use App\Models\ContentModerationSetting;
 use App\Models\ContentSubmission;
-use App\Models\InAppNotification;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Role;
@@ -15,7 +13,6 @@ use App\Services\ContentModeration\ContentModerationService;
 use App\Services\ContentUpload\ArticleEvaluationService;
 use App\Services\ContentUpload\ArticleHtmlSanitizer;
 use App\Services\ContentUpload\ContentUploadService;
-use App\Services\InAppNotificationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -1321,17 +1318,27 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringNotContainsString('2 unused article', $html);
     }
 
-    public function test_paid_item_only_leftover_keeps_view_order_on_needs_fix(): void
+    public function test_paid_item_only_leftover_shows_view_order_in_progress(): void
     {
         $advertiser = $this->advertiser();
         $publisher = $this->publisher();
-        $site = $this->activeSite($publisher, 'paid-item-view');
+        $site = $this->activeSite($publisher, 'paid-item-only-view');
         $submission = $this->createApprovedSubmission($advertiser);
-        $submission->update(['title' => 'Paid Item Only Needs Fix']);
-        $order = $this->makeOrder($advertiser);
-        $order->update(['payment_status' => 'paid', 'status' => 'processing', 'paid_at' => now()]);
+        $submission->update(['title' => 'Paid Item Only Piece']);
+        $paid = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => 'ORD-'.uniqid(),
+            'reference_code' => 'REF-'.uniqid(),
+            'subtotal' => 46,
+            'tax' => 0,
+            'total_amount' => 46,
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'status' => 'processing',
+            'paid_at' => now(),
+        ]);
         OrderItem::create([
-            'order_id' => $order->id,
+            'order_id' => $paid->id,
             'site_id' => $site->id,
             'site_name' => $site->site_name,
             'site_url' => $site->site_url,
@@ -1340,104 +1347,23 @@ class ContentLibraryImprovementsTest extends TestCase
             'content_original_name' => $submission->original_filename,
             'content_link' => 'https://example.com/article',
             'price' => 46,
-        ]);
-        $submission->update([
-            'order_id' => null,
-            'order_item_id' => null,
-            'target_url' => null,
+            'accepted_at' => now(),
+            'publisher_status' => 'accepted',
         ]);
 
         $fresh = $submission->fresh()->load(['order', 'orderItems.order']);
+        $this->assertNull($fresh->order_id);
+        $this->assertTrue($fresh->isClaimedByAnotherOrder());
         $this->assertTrue($fresh->isLockedByPaidOrder());
         $this->assertFalse($fresh->canReplaceUnpaidLeftover());
-        $this->assertSame('needs_fix', $fresh->libraryAvailability());
+        $this->assertSame('in_progress', $fresh->libraryAvailability());
+        $this->assertNotNull($fresh->libraryOrder());
 
         $this->actingAs($advertiser)
-            ->get(route('advertiser.content-library', ['availability' => 'needs_fix']))
+            ->get(route('advertiser.content-library', ['availability' => 'in_progress']))
             ->assertOk()
-            ->assertSee('Paid Item Only Needs Fix')
+            ->assertSee('Paid Item Only Piece', false)
             ->assertSee('View order');
-    }
-
-    public function test_evaluating_item_only_leftover_stays_in_needs_fix_not_evaluating(): void
-    {
-        $advertiser = $this->advertiser();
-        $publisher = $this->publisher();
-        $site = $this->activeSite($publisher, 'eval-leftover');
-        $submission = $this->createApprovedSubmission($advertiser);
-        $submission->update([
-            'title' => 'Evaluating Leftover Piece',
-            'moderation_status' => ContentSubmission::STATUS_PROCESSING,
-        ]);
-        $leftover = $this->failedCardOrder($advertiser);
-        OrderItem::create([
-            'order_id' => $leftover->id,
-            'site_id' => $site->id,
-            'site_name' => $site->site_name,
-            'site_url' => $site->site_url,
-            'content_submission_id' => $submission->id,
-            'content_path' => $submission->path,
-            'content_original_name' => $submission->original_filename,
-            'content_link' => 'https://example.com/article',
-            'price' => 46,
-        ]);
-
-        $fresh = $submission->fresh()->load(['order', 'orderItems.order']);
-        $this->assertSame('needs_fix', $fresh->libraryAvailability());
-        $this->assertTrue(
-            ContentSubmission::query()->whereKey($submission->id)->needsLibraryFix()->exists()
-        );
-        $this->assertFalse(
-            ContentSubmission::query()->whereKey($submission->id)->evaluatingInLibrary()->exists()
-        );
-
-        $this->actingAs($advertiser)
-            ->get(route('advertiser.content-library', ['availability' => 'needs_fix']))
-            ->assertOk()
-            ->assertSee('Evaluating Leftover Piece')
-            ->assertSee('View order');
-    }
-
-    public function test_leftover_approval_notice_points_at_needs_fix_not_available(): void
-    {
-        $advertiser = $this->advertiser();
-        $publisher = $this->publisher();
-        $site = $this->activeSite($publisher, 'eval-cta-leftover');
-        $submission = $this->createApprovedSubmission($advertiser);
-        $leftover = $this->failedCardOrder($advertiser);
-        OrderItem::create([
-            'order_id' => $leftover->id,
-            'site_id' => $site->id,
-            'site_name' => $site->site_name,
-            'site_url' => $site->site_url,
-            'content_submission_id' => $submission->id,
-            'content_path' => $submission->path,
-            'content_original_name' => $submission->original_filename,
-            'content_link' => 'https://example.com/article',
-            'price' => 46,
-        ]);
-        $fresh = $submission->fresh()->load(['order', 'orderItems.order']);
-
-        $presented = app(ContentUploadService::class)->presentEvaluationResult($fresh, [
-            'approved' => true,
-            'moderation_status' => ContentSubmission::STATUS_APPROVED,
-            'message' => '',
-        ]);
-
-        $this->assertTrue($presented['approved']);
-        $this->assertTrue($presented['approved_leftover']);
-        $this->assertStringContainsString('availability=needs_fix', (string) $presented['action_url']);
-        $this->assertStringContainsString('Pay again', (string) $presented['message']);
-
-        $html = (new ContentEvaluationResult($fresh, $presented))->render();
-        $this->assertStringContainsString('availability=needs_fix', $html);
-        $this->assertStringContainsString('Pay again', $html);
-        $this->assertStringNotContainsString('place an order', $html);
-
-        app(InAppNotificationService::class)->notifyContentEvaluation($advertiser, $fresh, $presented);
-        $bell = InAppNotification::query()->where('user_id', $advertiser->id)->latest('id')->first();
-        $this->assertNotNull($bell);
-        $this->assertStringContainsString('availability=needs_fix', (string) $bell->action_url);
     }
 
     public function test_library_js_prefers_server_editor_notice_over_link_guess(): void

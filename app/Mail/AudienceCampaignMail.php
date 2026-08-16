@@ -7,6 +7,7 @@ use App\Models\EmailCampaignRecipient;
 use App\Models\EmailLog;
 use App\Models\EmailNotificationPreference;
 use App\Models\User;
+use App\Services\AudienceInventoryService;
 use App\Support\EmailUnsubscribeLink;
 use Carbon\Carbon;
 use Illuminate\Mail\Mailables\Headers;
@@ -61,6 +62,14 @@ class AudienceCampaignMail extends PlatformMailable
 
     public function send($mailer)
     {
+        if (AudienceInventoryService::userHasStaffRole($this->recipient)) {
+            $this->suppressReason = 'staff';
+            $this->abandonOpenLog($this->suppressErrorMessage());
+            $this->markRecipientSkipped(EmailCampaignRecipient::SKIP_STAFF);
+
+            return null;
+        }
+
         $result = parent::send($mailer);
 
         if ($result !== null || $this->suppressReason === 'duplicate') {
@@ -108,6 +117,11 @@ class AudienceCampaignMail extends PlatformMailable
             return EmailCampaignRecipient::SKIP_PREFERENCE;
         }
 
+        if ($this->suppressReason === 'staff'
+            || AudienceInventoryService::userHasStaffRole($this->recipient)) {
+            return EmailCampaignRecipient::SKIP_STAFF;
+        }
+
         return EmailCampaignRecipient::SKIP_DISABLED;
     }
 
@@ -145,14 +159,56 @@ class AudienceCampaignMail extends PlatformMailable
         $this->syncRecipientRow($payload);
     }
 
-    protected function latestLogIdForStatus(string $status): ?int
+    /**
+     * A historical send that wrote the generic default key must still
+     * block a later job that uses `audience_campaign:{id}:user:{id}`.
+     */
+    protected function isDuplicate(string $key): bool
     {
-        if (! filled($this->dedupeKey)) {
-            return null;
+        if (parent::isDuplicate($key)) {
+            return true;
+        }
+
+        [$campaignId, $userId] = $this->campaignAndUserIds();
+        if ($campaignId < 1 || $userId < 1) {
+            return false;
         }
 
         try {
             if (! Schema::hasTable((new EmailLog)->getTable())) {
+                return false;
+            }
+
+            $delivered = EmailLog::latestDeliveredForCampaignUser($campaignId, $userId);
+
+            return $delivered !== null;
+        } catch (\Throwable $e) {
+            Log::warning('Campaign sibling dedupe check failed; allowing send', [
+                'campaign_id' => $campaignId,
+                'user_id' => $userId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
+    }
+
+    protected function latestLogIdForStatus(string $status): ?int
+    {
+        try {
+            if (! Schema::hasTable((new EmailLog)->getTable())) {
+                return null;
+            }
+
+            if ($status === EmailLog::STATUS_DELIVERED) {
+                [$campaignId, $userId] = $this->campaignAndUserIds();
+                $sibling = EmailLog::latestDeliveredForCampaignUser($campaignId, $userId);
+                if ($sibling) {
+                    return (int) $sibling->id;
+                }
+            }
+
+            if (! filled($this->dedupeKey)) {
                 return null;
             }
 

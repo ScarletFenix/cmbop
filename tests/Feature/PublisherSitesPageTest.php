@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ActivityLog;
 use App\Models\Category;
 use App\Models\Country;
 use App\Models\Language;
@@ -133,6 +134,7 @@ class PublisherSitesPageTest extends TestCase
         $this->assertTrue((bool) $site->verified);
         $this->assertTrue((bool) $site->active);
         $this->assertEquals(150, (float) $site->price);
+        $this->assertSame(0, ActivityLog::query()->where('action', 'site.rereview_requested')->count());
     }
 
     public function test_update_rejects_short_description(): void
@@ -220,6 +222,7 @@ class PublisherSitesPageTest extends TestCase
         $site->refresh();
         $this->assertFalse((bool) $site->verified);
         $this->assertFalse((bool) $site->active);
+        $this->assertSame(1, ActivityLog::query()->where('action', 'site.rereview_requested')->count());
     }
 
     public function test_claim_accepts_url_without_scheme(): void
@@ -283,6 +286,8 @@ class PublisherSitesPageTest extends TestCase
         $site->refresh();
         $this->assertNull($site->archived_at);
         $this->assertTrue((bool) $site->active);
+        $this->assertSame(1, ActivityLog::query()->where('action', 'site.archived')->count());
+        $this->assertSame(1, ActivityLog::query()->where('action', 'site.unarchived')->count());
     }
 
     public function test_unarchive_restores_active_unverified_site(): void

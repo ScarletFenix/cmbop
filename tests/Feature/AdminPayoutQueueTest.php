@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ActivityLog;
 use App\Models\Role;
 use App\Models\User;
 use App\Models\Wallet;
@@ -211,6 +212,8 @@ class AdminPayoutQueueTest extends TestCase
         $this->assertSame('completed', $a->fresh()->status);
         $this->assertSame('completed', $b->fresh()->status);
         $this->assertSame('Friday payday', $a->fresh()->admin_notes);
+        $this->assertSame(1, ActivityLog::query()->where('action', 'withdrawal.batch_completed')->count());
+        $this->assertSame(0, ActivityLog::query()->where('action', 'withdrawal.status_updated')->count());
     }
 
     public function test_csv_export_includes_sepa_columns(): void

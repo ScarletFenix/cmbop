@@ -504,6 +504,17 @@ class ContentLibraryController extends Controller
         abort_unless((int) $submission->user_id === (int) auth()->id(), 403);
 
         if (! $submission->isContentReadyForOrder()) {
+            // Expired leftovers can still Pay again on the open order, but they
+            // cannot start a new catalog checkout. Unready leftovers (links /
+            // rights) stay in the library so the advertiser can fix them first.
+            if ($submission->isExpired()
+                && $submission->hasFulfillableContent()
+                && ($submission->canReplaceUnpaidLeftover() || $submission->activeClaimOrderId())) {
+                return redirect()
+                    ->route('advertiser.orders')
+                    ->with('error', 'This article is still on an open order. Use Pay again there. Expired articles cannot start a new catalog order.');
+            }
+
             $message = $submission->isExpired()
                 ? 'Expired articles are preview only and cannot be ordered.'
                 : ($submission->hasImages() && ! $submission->imageRightsCoverContent()
@@ -537,7 +548,8 @@ class ContentLibraryController extends Controller
             return $this->redirectToLibraryChip($submission, $message);
         }
 
-        // Keep existing cart sites and any publication date already chosen at checkout.
+        // Keep Pay again until the advertiser actually assigns this article
+        // or a checkout is about to charge. Opening Catalog is not a replace.
         session()->put('checkout_content_submission_id', $submission->id);
         session()->put('ordering_from_library', true);
 

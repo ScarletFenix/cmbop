@@ -16,6 +16,7 @@ use App\Support\UserFacingError;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Mail\Markdown;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
@@ -42,7 +43,10 @@ class EmailCenterController extends Controller
             ->fragment('ec-recent');
 
         $templateStats = EmailLog::query()
-            ->selectRaw('template_key, COUNT(*) as sent_count, MAX(sent_at) as last_sent_at')
+            ->selectRaw(
+                'template_key, COUNT(*) as sent_count, MAX(CASE WHEN sent_at >= ? AND sent_at <= ? THEN sent_at END) as last_sent_at',
+                [EmailLog::PLAUSIBLE_SQL_DATETIME_FLOOR, EmailLog::PLAUSIBLE_SQL_DATETIME_CEIL]
+            )
             ->where('status', EmailLog::STATUS_DELIVERED)
             ->whereNotNull('template_key')
             ->groupBy('template_key')
@@ -71,7 +75,7 @@ class EmailCenterController extends Controller
 
         $templates = collect(EmailCatalog::templates())->map(function (array $meta) use ($templateStats, $enabledByType) {
             $row = $templateStats->get($meta['key']);
-            $meta['last_sent_at'] = $row?->last_sent_at;
+            $meta['last_sent_at'] = $this->parseLastSentAt($row?->last_sent_at);
             $meta['sent_count'] = (int) ($row?->sent_count ?? 0);
             $meta['enabled'] = (bool) ($enabledByType[$meta['key']] ?? true);
 
@@ -291,6 +295,22 @@ class EmailCenterController extends Controller
         }
 
         $payloads = $this->failedJobPayloadsByUuid($uuids);
+        [$closed, $closedUuids] = $this->closeFailedLogsAlreadyDelivered();
+        $closedUuidSet = array_fill_keys($closedUuids, true);
+        $uuids = array_values(array_filter(
+            $uuids,
+            fn (string $uuid) => empty($closedUuidSet[$uuid])
+                && ! $this->payloadAlreadyDelivered((string) ($payloads[$uuid] ?? ''))
+        ));
+
+        if ($uuids === []) {
+            return back()->with(
+                'success',
+                $closed > 0
+                    ? 'Closed '.$closed.' leftover failed log(s) that already delivered. No jobs were re-queued.'
+                    : 'No failed mail jobs to retry.'
+            );
+        }
 
         try {
             foreach ($uuids as $uuid) {
@@ -319,6 +339,10 @@ class EmailCenterController extends Controller
         $log = EmailLog::query()->findOrFail($logId);
         if ($log->status !== EmailLog::STATUS_FAILED) {
             return back()->with('error', 'That email log is not failed.');
+        }
+
+        if ($this->closeFailedLogAlreadyDelivered($log)) {
+            return back()->with('success', 'This send already delivered — closed the leftover failed log.');
         }
 
         if ($this->shouldRebuildAsTest($log)) {
@@ -460,6 +484,13 @@ class EmailCenterController extends Controller
                 continue;
             }
 
+            if ($this->closeFailedLogAlreadyDelivered($log)) {
+                $marked[$log->id] = true;
+                $claimedUuids[$stored] = true;
+
+                continue;
+            }
+
             $this->pendingMarkRetriedLog($log);
             $marked[$log->id] = true;
             $claimedUuids[$stored] = true;
@@ -484,9 +515,151 @@ class EmailCenterController extends Controller
             }
 
             $log = $matches->first();
+            if ($this->closeFailedLogAlreadyDelivered($log)) {
+                $marked[$log->id] = true;
+                $claimedUuids[$uuid] = true;
+
+                continue;
+            }
+
             $this->pendingMarkRetriedLog($log);
             $marked[$log->id] = true;
             $claimedUuids[$uuid] = true;
+        }
+    }
+
+    /**
+     * Leftover failed rows after a real delivery. Retrying the queue job
+     * would send a second campaign / welcome once the 10-minute window lapses.
+     * Also return stamped job UUIDs so a shared stale stamp cannot
+     * pending-mark a different campaign beside that closed log.
+     *
+     * @return array{0: int, 1: list<string>}
+     */
+    protected function closeFailedLogsAlreadyDelivered(): array
+    {
+        $closed = 0;
+        $uuids = [];
+
+        foreach (EmailLog::query()
+            ->where('status', EmailLog::STATUS_FAILED)
+            ->whereNotNull('dedupe_key')
+            ->where('dedupe_key', '!=', '')
+            ->orderByDesc('id')
+            ->get() as $log) {
+            if ($this->closeFailedLogAlreadyDelivered($log)) {
+                $closed++;
+                $uuid = (string) data_get($log->meta, 'failed_job_uuid');
+                if ($uuid !== '') {
+                    $uuids[$uuid] = true;
+                }
+            }
+        }
+
+        return [$closed, array_keys($uuids)];
+    }
+
+    protected function closeFailedLogAlreadyDelivered(EmailLog $log): bool
+    {
+        if ($log->status !== EmailLog::STATUS_FAILED || ! $this->isOneShotCampaignLog($log)) {
+            return false;
+        }
+
+        $delivered = EmailLog::latestDeliveredByDedupe((string) $log->dedupe_key);
+        if (! $delivered || (int) $delivered->id === (int) $log->id) {
+            [$campaignId, $userId] = EmailLog::campaignUserIds($log);
+            $delivered = EmailLog::latestDeliveredForCampaignUser($campaignId, $userId);
+        }
+        if (! $delivered || (int) $delivered->id === (int) $log->id) {
+            return false;
+        }
+
+        $log->update([
+            'status' => EmailLog::STATUS_DELIVERED,
+            'error' => null,
+            'sent_at' => $delivered->sent_at ?? $log->sent_at ?? now(),
+            'meta' => array_filter(array_merge((array) $log->meta, [
+                'suppressed' => 'duplicate',
+                'superseded_by' => (int) $delivered->id,
+            ])),
+        ]);
+        $this->syncCampaignRecipientFromDeliveredLog($delivered);
+
+        return true;
+    }
+
+    protected function payloadAlreadyDelivered(string $payload): bool
+    {
+        if ($payload === '') {
+            return false;
+        }
+
+        $dedupe = MailJobPayload::dedupeKey($payload);
+        if (! is_string($dedupe) || ! str_starts_with($dedupe, 'audience_campaign:')) {
+            return false;
+        }
+
+        if (EmailLog::latestDeliveredByDedupe($dedupe) !== null) {
+            return true;
+        }
+
+        if (! preg_match('/^audience_campaign:(\d+):user:(\d+)$/', $dedupe, $matches)) {
+            return false;
+        }
+
+        return EmailLog::latestDeliveredForCampaignUser((int) $matches[1], (int) $matches[2]) !== null;
+    }
+
+    protected function isOneShotCampaignLog(EmailLog $log): bool
+    {
+        if (str_starts_with((string) $log->dedupe_key, 'audience_campaign:')) {
+            return true;
+        }
+
+        return (string) $log->template_key === 'audience_campaign'
+            || (string) $log->notification_type === 'audience_campaign';
+    }
+
+    protected function syncCampaignRecipientFromDeliveredLog(EmailLog $delivered): void
+    {
+        $campaignId = (int) data_get($delivered->meta, 'campaign_id');
+        $userId = (int) data_get($delivered->meta, 'user_id');
+        if ($campaignId < 1 || $userId < 1) {
+            if (! preg_match('/^audience_campaign:(\d+):user:(\d+)$/', (string) $delivered->dedupe_key, $matches)) {
+                return;
+            }
+            $campaignId = (int) $matches[1];
+            $userId = (int) $matches[2];
+        }
+
+        try {
+            if (! Schema::hasTable((new EmailCampaignRecipient)->getTable())) {
+                return;
+            }
+
+            $updated = EmailCampaignRecipient::query()
+                ->where('email_campaign_id', $campaignId)
+                ->where('user_id', $userId)
+                ->where(function ($query) {
+                    $query->whereIn('status', [
+                        EmailCampaignRecipient::STATUS_PENDING,
+                        EmailCampaignRecipient::STATUS_QUEUED,
+                        EmailCampaignRecipient::STATUS_FAILED,
+                    ])->orWhere(function ($skipped) {
+                        $skipped->where('status', EmailCampaignRecipient::STATUS_SKIPPED)
+                            ->where('skip_reason', EmailCampaignRecipient::SKIP_STALE);
+                    });
+                })
+                ->update([
+                    'status' => EmailCampaignRecipient::STATUS_DELIVERED,
+                    'skip_reason' => null,
+                    'email_log_id' => (int) $delivered->id,
+                ]);
+
+            if ($updated) {
+                EmailCampaign::query()->find($campaignId)?->recountRecipientTotals();
+            }
+        } catch (\Throwable) {
         }
     }
 
@@ -601,13 +774,11 @@ class EmailCenterController extends Controller
             return null;
         }
 
-        $to = (string) $log->to_email;
-        $dedupe = (string) $log->dedupe_key;
-        $tight = array_values(array_filter($candidates, function ($job) use ($to, $dedupe) {
-            $payload = (string) $job->payload;
-
-            return MailJobPayload::containsToken($payload, $to)
-                || MailJobPayload::containsToken($payload, $dedupe);
+        $tight = array_values(array_filter($candidates, function ($job) use ($log) {
+            // Token or campaign ModelIdentifier (no stamped dedupeKey).
+            // Unique class match without a recipient is how an anonymous
+            // Welcome job was retried against the wrong failed log.
+            return $this->failedJobMatchesLog((string) $job->payload, $log);
         }));
 
         if (count($tight) === 1) {
@@ -817,5 +988,37 @@ class EmailCenterController extends Controller
     protected function renderMarkdown(string $view, array $data = []): string
     {
         return app(Markdown::class)->render($view, $data);
+    }
+
+    /**
+     * Hostinger leftover sent_at strings win SQLite MAX() and 500
+     * Carbon::parse() on the template cards.
+     */
+    private function parseLastSentAt(mixed $value): ?Carbon
+    {
+        try {
+            if ($value instanceof Carbon) {
+                return $value;
+            }
+
+            if ($value instanceof \DateTimeInterface) {
+                return Carbon::parse($value->format('Y-m-d H:i:s'));
+            }
+
+            $raw = trim((string) $value);
+            if ($raw === '') {
+                return null;
+            }
+
+            $parsed = Carbon::parse($raw);
+            if ($parsed->lt(EmailLog::PLAUSIBLE_SQL_DATETIME_FLOOR)
+                || $parsed->gt(EmailLog::PLAUSIBLE_SQL_DATETIME_CEIL)) {
+                return null;
+            }
+
+            return $parsed;
+        } catch (\Throwable) {
+            return null;
+        }
     }
 }

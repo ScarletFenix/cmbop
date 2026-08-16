@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\ToleratesUnparseableDates;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class WelcomeBonusClaim extends Model
 {
+    use ToleratesUnparseableDates;
+
     protected $fillable = [
         'user_id',
         'ip_address',

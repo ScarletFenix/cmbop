@@ -312,6 +312,7 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
             'stale' => 'Dropped as stale',
             'disabled' => 'Suppressed: notification type disabled',
             'preference' => 'Suppressed: recipient opted out',
+            'staff' => 'Suppressed: recipient is staff',
             'duplicate' => 'Suppressed: duplicate of a recent send',
             default => 'Suppressed by notification policy',
         };
@@ -359,11 +360,20 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
 
             $minutes = (int) config('email_notifications.dedupe_window_minutes', 10);
 
-            return EmailLog::query()
+            $query = EmailLog::query()
                 ->where('dedupe_key', $key)
-                ->where('status', EmailLog::STATUS_DELIVERED)
-                ->where('created_at', '>=', now()->subMinutes($minutes))
-                ->exists();
+                ->where('status', EmailLog::STATUS_DELIVERED);
+
+            // audience_campaign:{id}:user:{id} is one send. The 10-minute
+            // window is for transactional keys that reuse the same shape
+            // (welcome, order status). A leftover failed job after a real
+            // campaign delivery must not blast the audience again next day.
+            if (! str_starts_with($key, 'audience_campaign:')
+                && $this->notificationType !== 'audience_campaign') {
+                $query->where('created_at', '>=', now()->subMinutes($minutes));
+            }
+
+            return $query->exists();
         } catch (\Throwable $e) {
             Log::warning('Email dedupe check failed; allowing send', [
                 'dedupe' => $key,

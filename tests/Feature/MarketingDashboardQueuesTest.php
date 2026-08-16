@@ -12,6 +12,7 @@ use Database\Seeders\RolesTableSeeder;
 use DOMDocument;
 use DOMXPath;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class MarketingDashboardQueuesTest extends TestCase
@@ -138,6 +139,27 @@ class MarketingDashboardQueuesTest extends TestCase
         $this->assertStringContainsString('Open', $waitingTable);
         $this->assertStringContainsString('Metrics/geo/niche edits do not email the publisher', $html);
         $this->assertStringContainsString('sites\\/__ID__\\/active', $html);
+    }
+
+    public function test_leftover_publisher_accepted_at_stays_waiting_on_publisher(): void
+    {
+        $invite = $this->makeSite([
+            'site_name' => 'Leftover Accept Invite',
+            'site_url' => 'https://leftover-accept-invite.example',
+            'domain' => 'leftover-accept-invite.example',
+            'onboarding_status' => Site::ONBOARDING_READY_FOR_REVIEW,
+            'assigned_by_user_id' => $this->marketer->id,
+            'publisher_accepted_at' => now(),
+        ]);
+        DB::table('sites')->where('id', $invite->id)->update([
+            'publisher_accepted_at' => 'not-a-date',
+        ]);
+
+        $invite->refresh();
+        $this->assertTrue($invite->isPendingPublisherAcceptance());
+        $this->assertFalse($invite->needsAdminReview());
+        $this->assertTrue(MarketingOpsQueues::sitesWaitingOnPublisher()->whereKey($invite->id)->exists());
+        $this->assertFalse(MarketingOpsQueues::sitesReadyForStaff()->whereKey($invite->id)->exists());
     }
 
     public function test_dashboard_open_bulk_includes_completed_rows_still_needing_done(): void

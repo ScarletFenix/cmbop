@@ -45,6 +45,8 @@ class ContentSubmission extends Model
 
     public const ACTIVE_ORDER_CLAIM_MESSAGE = 'This article is still attached to an unpaid or failed order. Pay again on that order, or start a new checkout to replace it.';
 
+    public const PAID_ORDER_CLAIM_MESSAGE = 'This article is already used on a paid order and cannot start a new catalog checkout.';
+
     /** Leftover / in-flight placements that still own the article. */
     public const ACTIVE_ORDER_CLAIM_PAYMENT_STATUSES = ['paid', 'pending', 'failed'];
 
@@ -1089,19 +1091,29 @@ class ContentSubmission extends Model
 
     /**
      * Approved file + market + rights + a complete HTTPS link pair.
+     * Ignores leftover/paid claims and catalog expiry so Pay again / attach
+     * on an already-claimed leftover can still settle after the listing ages out.
+     */
+    public function hasFulfillableContent(): bool
+    {
+        return $this->moderation_status === self::STATUS_APPROVED
+            && filled($this->path)
+            && ! $this->isArchived()
+            && filled($this->country)
+            && filled($this->language)
+            && $this->imageRightsCoverContent()
+            && $this->hasCheckoutReadyLinks();
+    }
+
+    /**
+     * Approved file + market + rights + a complete HTTPS link pair.
      * Ignores leftover/paid claims so Order / replace can see whether the
      * article would be usable after the leftover is released.
      */
     public function isContentReadyForOrder(): bool
     {
-        return $this->moderation_status === self::STATUS_APPROVED
-            && filled($this->path)
-            && ! $this->isArchived()
-            && ($this->expires_at === null || $this->expires_at->isFuture())
-            && filled($this->country)
-            && filled($this->language)
-            && $this->imageRightsCoverContent()
-            && $this->hasCheckoutReadyLinks();
+        return $this->hasFulfillableContent()
+            && ($this->expires_at === null || $this->expires_at->isFuture());
     }
 
     /**
@@ -1110,6 +1122,11 @@ class ContentSubmission extends Model
      */
     public function canOrderFromLibrary(): bool
     {
+        // A stale leftover item must not make a paid placement look reusable.
+        if ($this->isLockedByPaidOrder()) {
+            return false;
+        }
+
         if ($this->isReadyForCheckout()) {
             return true;
         }
@@ -1118,8 +1135,10 @@ class ContentSubmission extends Model
     }
 
     /**
-     * Catalog / wizard / cart may list this row. Replace runs on assign,
-     * checkout, or Order — not when the picker merely opens.
+     * Catalog / wizard / cart may list this row. Replace runs when a cart
+     * assign or add-to-cart actually attaches the article, or when checkout
+     * is about to charge — not when Order opens the catalog or the picker
+     * merely opens.
      */
     public function isAvailableForPicker(): bool
     {
@@ -1258,7 +1277,11 @@ class ContentSubmission extends Model
         // order_id leftovers cannot be ordered again, but they stay editable
         // until paid. Do not hide the Pay-again notice just because
         // canBeOrdered() is false.
-        if ($this->isClaimedByAnotherOrder() && ! $this->isLockedByPaidOrder()) {
+        if ($this->isLockedByPaidOrder()) {
+            return self::PAID_ORDER_CLAIM_MESSAGE;
+        }
+
+        if ($this->isClaimedByAnotherOrder()) {
             return self::ACTIVE_ORDER_CLAIM_MESSAGE;
         }
 
@@ -2116,7 +2139,18 @@ class ContentSubmission extends Model
 
         // Do not call isReadyForCheckout() here: that gate also rejects leftover
         // claims, including this order when submission.order_id is still null.
-        return $this->isContentReadyForOrder();
+        if (! $this->hasFulfillableContent()) {
+            return false;
+        }
+
+        // Catalog expiry blocks a *new* checkout. An already-claimed leftover
+        // can still be paid or attached on that same order. Use isExpired()
+        // (expires_at <= now) so the exact expiry instant matches purge.
+        if ($this->isExpired()) {
+            return $this->isOwnedByOrder($orderId);
+        }
+
+        return true;
     }
 
     /**

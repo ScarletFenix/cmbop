@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\ToleratesUnparseableDates;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class CatalogCopyEvent extends Model
 {
+    use ToleratesUnparseableDates;
+
     public $timestamps = false;
 
     protected $fillable = [

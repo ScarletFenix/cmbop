@@ -110,16 +110,19 @@ class SiteRatingController extends Controller
 
         $rating->fill($data);
         $rating->save();
+        $changed = $rating->wasChanged();
 
         SiteRating::refreshSiteAggregate($rating->site_id);
 
-        $this->logRatingActivity(
-            'site.rating_updated',
-            (auth()->user()->name ?? 'Staff').' updated rating #'.$rating->id,
-            $rating->site,
-            $data,
-            $rating->site?->site_name
-        );
+        if ($changed) {
+            $this->logRatingActivity(
+                'site.rating_updated',
+                (auth()->user()->name ?? 'Staff').' updated rating #'.$rating->id,
+                $rating->site,
+                $data,
+                $rating->site?->site_name
+            );
+        }
 
         return response()->json([
             'success' => true,

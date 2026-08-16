@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Mail\NewSitesDigest;
 use App\Models\Site;
+use App\Models\User;
 use App\Services\AudienceInventoryService;
 use App\Services\CartPricingService;
 use App\Services\EmailNotificationService;
@@ -47,8 +48,14 @@ class SendNewSitesDigest extends Command
         $recipients = $audiences->queryAdvertisersWithPaidOrders()
             ->whereNotNull('email')
             ->where(function ($q) use ($dueBefore) {
+                // Leftover Hostinger strings are not null and compare as
+                // greater-than a real due date on SQLite, which would silence
+                // the advertiser forever. Treat implausible clocks as due so
+                // the next successful send can write a real timestamp.
                 $q->whereNull('new_sites_digest_sent_at')
-                    ->orWhere('new_sites_digest_sent_at', '<=', $dueBefore);
+                    ->orWhere('new_sites_digest_sent_at', '<=', $dueBefore)
+                    ->orWhere('new_sites_digest_sent_at', '>', User::PLAUSIBLE_SQL_DATETIME_CEIL)
+                    ->orWhere('new_sites_digest_sent_at', '<', User::PLAUSIBLE_SQL_DATETIME_FLOOR);
             })
             ->orderBy('new_sites_digest_sent_at')
             ->limit(max(1, (int) $this->option('limit')))
@@ -63,6 +70,15 @@ class SendNewSitesDigest extends Command
             try {
                 if (! $guard->allows($advertiser)) {
                     $this->line('- skipped (daily cap) advertiser #'.$advertiser->id);
+
+                    continue;
+                }
+
+                // Hide mode dual-masks catalog names. Do not email a fresh
+                // name list, and do not advance the clock — they get the
+                // digest after the window ends.
+                if ($advertiser->inCatalogHideMode()) {
+                    $this->line('- skipped (catalog hide mode) advertiser #'.$advertiser->id);
 
                     continue;
                 }
