@@ -3491,7 +3491,7 @@ class CancelledCardOrderMarkPaidTest extends TestCase
         $submission->update([
             'order_id' => null,
             'order_item_id' => null,
-            'target_url' => null,
+            'target_url' => 'https://example.com/half-filled',
             'anchor_text' => null,
         ]);
 
