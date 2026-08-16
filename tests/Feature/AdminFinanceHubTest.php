@@ -500,6 +500,52 @@ class AdminFinanceHubTest extends TestCase
         ]);
     }
 
+    public function test_earnings_ledger_nets_clawback_transfer_out(): void
+    {
+        $publisher = $this->makeUser('publisher');
+        $pubRole = Role::firstOrCreate(['name' => 'publisher']);
+        $wallet = Wallet::create([
+            'user_id' => $publisher->id,
+            'role_id' => $pubRole->id,
+            'balance' => 100,
+            'reserved_balance' => 0,
+            'bonus_balance' => 0,
+            'currency' => 'EUR',
+        ]);
+
+        $credited = app(WalletLedgerService::class)->recordTransferIn(
+            $wallet,
+            200,
+            null,
+            'EARN-JULY',
+            'July completion credit'
+        );
+        $credited->forceFill(['created_at' => Carbon::parse('2026-07-20 12:00:00')])->save();
+
+        $clawed = app(WalletLedgerService::class)->recordTransferOut(
+            $wallet,
+            100,
+            null,
+            'CLAWBACK-AUG',
+            'August clawback'
+        );
+        $clawed->forceFill(['created_at' => Carbon::parse('2026-08-12 12:00:00')])->save();
+
+        $july = app(FinanceOverviewService::class)->overview(
+            app(FinanceOverviewService::class)->resolvePeriod(null, '2026-07-01', '2026-07-31')
+        );
+        $august = app(FinanceOverviewService::class)->overview(
+            app(FinanceOverviewService::class)->resolvePeriod(null, '2026-08-01', '2026-08-31')
+        );
+        $all = app(FinanceOverviewService::class)->overview(
+            app(FinanceOverviewService::class)->resolvePeriod('all')
+        );
+
+        $this->assertEquals(200.0, $july['money_out']['earnings_credited']['ledger_transfer_in']);
+        $this->assertEquals(-100.0, $august['money_out']['earnings_credited']['ledger_transfer_in']);
+        $this->assertEquals(100.0, $all['money_out']['earnings_credited']['ledger_transfer_in']);
+    }
+
     public function test_invalid_custom_dates_do_not_five_hundred(): void
     {
         $admin = $this->makeUser('admin');

@@ -425,6 +425,8 @@ class FinanceOverviewService
 
         $ledgerEarnings = WalletTransaction::where('type', WalletTransaction::TYPE_TRANSFER_IN);
         $this->applyCreatedWindow($ledgerEarnings, $start, $end);
+        $ledgerClawbacks = WalletTransaction::where('type', WalletTransaction::TYPE_TRANSFER_OUT);
+        $this->applyCreatedWindow($ledgerClawbacks, $start, $end);
 
         $paidWithdrawals = Withdrawal::where('status', 'completed');
         $this->applyCoalesceWindow($paidWithdrawals, $start, $end, 'withdrawals.processed_at', 'withdrawals.updated_at');
@@ -435,7 +437,11 @@ class FinanceOverviewService
             'earnings_credited' => [
                 'count' => $earningsCount,
                 'amount' => round($earnings, 2),
-                'ledger_transfer_in' => (float) (clone $ledgerEarnings)->sum('amount'),
+                'ledger_transfer_in' => round(
+                    (float) (clone $ledgerEarnings)->sum('amount')
+                    - (float) (clone $ledgerClawbacks)->sum('amount'),
+                    2
+                ),
             ],
             'withdrawals_paid' => [
                 'count' => (clone $paidWithdrawals)->count(),
