@@ -593,10 +593,20 @@ class EmailCenterController extends Controller
         }
 
         $class = (string) ($leftover->mailable ?: '');
-
-        return $class !== ''
+        if ($class !== ''
             && MailJobPayload::containsMailable($payload, $class)
-            && MailJobPayload::containsToken($payload, (string) $leftover->to_email);
+            && MailJobPayload::containsToken($payload, (string) $leftover->to_email)) {
+            return true;
+        }
+
+        // Leftover jobs queued before the constructor stamped a key still
+        // serialize campaign+user ModelIdentifiers. Email-only matching
+        // missed those and bulk retry re-queued a send that already went out.
+        [$campaignId, $userId] = EmailLog::campaignUserIds($leftover);
+
+        return $campaignId > 0
+            && $userId > 0
+            && in_array($userId, MailJobPayload::campaignMailUserIds($payload, $campaignId), true);
     }
 
     protected function closeFailedLogAlreadyDelivered(EmailLog $log): bool

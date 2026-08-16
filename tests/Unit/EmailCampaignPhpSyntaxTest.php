@@ -116,6 +116,12 @@ class EmailCampaignPhpSyntaxTest extends TestCase
         $this->assertSame(1, preg_match_all('/function campaignMailUserIds\b/', $payload));
         $this->assertSame(1, preg_match_all('/function containsEmailCampaignModel\b/', $payload));
         $this->assertSame(1, preg_match_all('/function modelIdentifierIds\b/', $payload));
+        $this->assertTrue((bool) preg_match(
+            '/public static function matchesEmailLog\(string \$payload, EmailLog \$log, bool \$requireToken = false\): bool\s*\{(.*?)\n    public static function dedupeKey/s',
+            $payload,
+            $matchesLog
+        ));
+        $this->assertStringContainsString('campaignUserIds', $matchesLog[1]);
 
         $inventory = (string) file_get_contents($files[2]);
         $this->assertSame(1, preg_match_all('/function recipientRowQuery\b/', $inventory));
@@ -236,6 +242,12 @@ class EmailCampaignPhpSyntaxTest extends TestCase
             $requeue
         ));
         $this->assertStringContainsString('clearFailStreak()', $requeue[1]);
+        $this->assertTrue((bool) preg_match(
+            '/protected function leftoverOwnsFailedJob\(EmailLog \$leftover, string \$payload\): bool\s*\{(.*?)\n    protected function closeFailedLogAlreadyDelivered/s',
+            $center,
+            $owns
+        ));
+        $this->assertStringContainsString('campaignUserIds', $owns[1]);
 
         $payloadTest = (string) file_get_contents($files[5]);
         $this->assertSame(1, preg_match_all(

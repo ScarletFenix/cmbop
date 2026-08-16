@@ -48,6 +48,7 @@ class AdminCampaignsDocsTest extends TestCase
         $this->assertStringContainsString('must **not** treat that shared generic key as one-shot', $body);
         $this->assertStringContainsString('must not look like “no prior send”', $body);
         $this->assertStringContainsString('must not scan the newest 100', $body);
+        $this->assertStringContainsString('via campaign+user identity', $body);
         $this->assertStringContainsString('fresh pending Email Center log', $body);
         $this->assertStringContainsString('only one failed log per job UUID', $body);
         $this->assertStringContainsString('drop that job UUID from the retry list', $body);

@@ -91,6 +91,46 @@ class MailJobPayloadTest extends TestCase
         $this->assertSame([34], MailJobPayload::campaignMailUserIds($raw, 12));
         $this->assertSame([34], MailJobPayload::campaignMailUserIds($json, 12));
         $this->assertSame([], MailJobPayload::campaignMailUserIds($json, 123));
+
+        $log = new EmailLog([
+            'mailable' => AudienceCampaignMail::class,
+            'template_key' => 'audience_campaign',
+            'to_email' => 'other@example.com',
+            'dedupe_key' => 'audience_campaign:12:user:34',
+        ]);
+        $this->assertTrue(MailJobPayload::matchesEmailLog($json, $log, requireToken: true));
+        $this->assertFalse(MailJobPayload::matchesEmailLog($json, new EmailLog([
+            'mailable' => AudienceCampaignMail::class,
+            'template_key' => 'audience_campaign',
+            'to_email' => 'other@example.com',
+            'dedupe_key' => 'audience_campaign:12:user:99',
+        ]), requireToken: true));
+        $this->assertFalse(MailJobPayload::matchesEmailLog($json, new EmailLog([
+            'mailable' => AudienceCampaignMail::class,
+            'template_key' => 'audience_campaign',
+            'to_email' => 'other@example.com',
+            'dedupe_key' => 'audience_campaign:123:user:34',
+        ]), requireToken: true));
+        $this->assertTrue(MailJobPayload::matchesEmailLog($json, new EmailLog([
+            'mailable' => AudienceCampaignMail::class,
+            'template_key' => 'audience_campaign',
+            'to_email' => 'other@example.com',
+            'dedupe_key' => 'audience_campaign|other@example.com|AudienceCampaignMail',
+            'meta' => [
+                'campaign_id' => 12,
+                'user_id' => 34,
+            ],
+        ]), requireToken: true));
+        $this->assertFalse(MailJobPayload::matchesEmailLog($json, new EmailLog([
+            'mailable' => AudienceCampaignMail::class,
+            'template_key' => 'audience_campaign',
+            'to_email' => 'other@example.com',
+            'dedupe_key' => 'audience_campaign|other@example.com|AudienceCampaignMail',
+            'meta' => [
+                'campaign_id' => 123,
+                'user_id' => 34,
+            ],
+        ]), requireToken: true));
     }
 
     public function test_matches_email_log_require_token_rejects_unidentified_payload(): void
