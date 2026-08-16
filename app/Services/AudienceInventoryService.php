@@ -617,7 +617,10 @@ class AudienceInventoryService
                 ->whereIn('roles.name', self::staffRoleNames())
                 ->exists();
         } catch (\Throwable) {
-            return false;
+            // Fail-closed: compose already dropped staff via SQL. Send
+            // re-checks so a promotion after queue cannot sneak through.
+            // An unreadable roles lookup must not look like “not staff”.
+            return true;
         }
     }
 

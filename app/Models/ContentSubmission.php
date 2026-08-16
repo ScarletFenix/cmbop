@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\ToleratesUnparseableDates;
 use App\Services\ContentUpload\ArticleDetectedLinks;
 use App\Services\ContentUpload\ArticleHtmlSanitizer;
 use App\Services\ContentUpload\ArticlePreviewHtml;
@@ -15,6 +16,8 @@ use Illuminate\Support\Str;
 
 class ContentSubmission extends Model
 {
+    use ToleratesUnparseableDates;
+
     public const STATUS_PENDING = 'pending';
 
     public const STATUS_PROCESSING = 'processing';
@@ -349,12 +352,10 @@ class ContentSubmission extends Model
                     ->withImageRightsCover()
                     ->whereNotNull('path')
                     ->where('path', '!=', '')
-                    ->whereNull('archived_at')
+                    ->notArchived()
                     ->whereNotNull('country')->where('country', '!=', '')
                     ->whereNotNull('language')->where('language', '!=', '')
-                    ->where(function ($exp) {
-                        $exp->whereNull('expires_at')->orWhere('expires_at', '>', now());
-                    });
+                    ->whereNotExpired();
             });
         });
     }
@@ -372,12 +373,10 @@ class ContentSubmission extends Model
             ->withoutOpenOwnerOrder()
             ->whereNotNull('path')
             ->where('path', '!=', '')
-            ->whereNull('archived_at')
+            ->notArchived()
             ->whereNotNull('country')->where('country', '!=', '')
             ->whereNotNull('language')->where('language', '!=', '')
-            ->where(function ($q) {
-                $q->whereNull('expires_at')->orWhere('expires_at', '>', now());
-            })
+            ->whereNotExpired()
             ->where(function ($q) {
                 $q->where(function ($noImages) {
                     $noImages->whereNull('preview_html')
@@ -502,8 +501,7 @@ class ContentSubmission extends Model
     {
         return $query->withoutOpenOwnerOrder()
             ->withoutOpenOrderItemLink()
-            ->whereNotNull('expires_at')
-            ->where('expires_at', '<=', now());
+            ->whereExpired();
     }
 
     /**
@@ -519,9 +517,7 @@ class ContentSubmission extends Model
             self::STATUS_PROCESSING,
         ])->withoutOpenOwnerOrder()
             ->withoutActiveOrderClaim()
-            ->where(function ($exp) {
-                $exp->whereNull('expires_at')->orWhere('expires_at', '>', now());
-            });
+            ->whereNotExpired();
     }
 
     /**
@@ -535,7 +531,7 @@ class ContentSubmission extends Model
         return $query->where('moderation_status', self::STATUS_APPROVED)
             ->withoutOpenOwnerOrder()
             ->withoutOpenOrderItemLink()
-            ->whereNotNull('expires_at')
+            ->whereExpiryIsRecorded()
             ->where('expires_at', '>', now())
             ->where('expires_at', '<=', now()->addDays(max(1, $withinDays)));
     }
@@ -600,7 +596,7 @@ class ContentSubmission extends Model
             ->whereNotNull('path')->where('path', '!=', '')
             ->whereNotNull('country')->where('country', '!=', '')
             ->whereNotNull('language')->where('language', '!=', '')
-            ->whereNull('archived_at')
+            ->notArchived()
             ->hasCheckoutReadyLinks()
             ->withImageRightsCover()
             ->withoutCurrentLivePlacement()
@@ -688,7 +684,7 @@ class ContentSubmission extends Model
                 })->orWhere(function ($ownedUnready) {
                     $ownedUnready->where('moderation_status', self::STATUS_APPROVED)
                         ->withOpenOwnerOrder()
-                        ->whereNull('archived_at')
+                        ->notArchived()
                         ->where(function ($unready) {
                             $unready->withoutCheckoutReadyLinks()
                                 ->orWhere(function ($rights) {
@@ -706,7 +702,7 @@ class ContentSubmission extends Model
                         });
                 })->orWhere(function ($leftover) {
                     $leftover->withoutOpenOwnerOrder()
-                        ->whereNull('archived_at')
+                        ->notArchived()
                         ->withActiveOrderClaim()
                         ->withoutCurrentLivePlacement()
                         ->where(function ($unpaidOrUnready) {
@@ -741,13 +737,12 @@ class ContentSubmission extends Model
                 });
             })
             ->where(function ($exp) {
-                $exp->where(function ($active) {
-                    $active->whereNull('expires_at')->orWhere('expires_at', '>', now());
-                })->orWhere(function ($owned) {
-                    $owned->withOpenOwnerOrder();
-                })->orWhere(function ($claimed) {
-                    $claimed->withActiveOrderClaim();
-                });
+                $exp->whereNotExpired()
+                    ->orWhere(function ($owned) {
+                        $owned->withOpenOwnerOrder();
+                    })->orWhere(function ($claimed) {
+                        $claimed->withActiveOrderClaim();
+                    });
             });
 
         return $query;
@@ -958,12 +953,103 @@ class ContentSubmission extends Model
             ->exists();
     }
 
+    /**
+     * Parseable expires_at in the Gregorian window. Leftover Hostinger
+     * strings compare as unexpired on SQLite (`> now()`) and as expired
+     * on MySQL (zero-date), and 500 PHP casts on the library pages.
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeWhereExpiryIsRecorded($query)
+    {
+        return $query->whereNotNull('expires_at')
+            ->where('expires_at', '>=', static::PLAUSIBLE_SQL_DATETIME_FLOOR)
+            ->where('expires_at', '<=', static::PLAUSIBLE_SQL_DATETIME_CEIL);
+    }
+
+    /**
+     * Missing or leftover expires_at (same as PHP null after cast).
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeWhereExpiryIsMissing($query)
+    {
+        return $query->where(function ($inner) {
+            $inner->whereNull('expires_at')
+                ->orWhere('expires_at', '>', static::PLAUSIBLE_SQL_DATETIME_CEIL)
+                ->orWhere('expires_at', '<', static::PLAUSIBLE_SQL_DATETIME_FLOOR);
+        });
+    }
+
+    /**
+     * SQL counterpart of ! isExpired().
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeWhereNotExpired($query)
+    {
+        return $query->where(function ($q) {
+            $q->whereExpiryIsMissing()
+                ->orWhere(function ($live) {
+                    $live->whereExpiryIsRecorded()
+                        ->where('expires_at', '>', now());
+                });
+        });
+    }
+
+    /**
+     * SQL counterpart of isExpired() — used by content:purge-expired.
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeWhereExpired($query)
+    {
+        return $query->whereExpiryIsRecorded()
+            ->where('expires_at', '<=', now());
+    }
+
+    /**
+     * Leftover archived_at is not a staff archive (same as Site).
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeNotArchived($query)
+    {
+        return $query->where(function ($q) {
+            $q->whereNull('archived_at')
+                ->orWhere('archived_at', '>', static::PLAUSIBLE_SQL_DATETIME_CEIL)
+                ->orWhere('archived_at', '<', static::PLAUSIBLE_SQL_DATETIME_FLOOR);
+        });
+    }
+
+    /**
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeArchived($query)
+    {
+        return $query->whereNotNull('archived_at')
+            ->where('archived_at', '>=', static::PLAUSIBLE_SQL_DATETIME_FLOOR)
+            ->where('archived_at', '<=', static::PLAUSIBLE_SQL_DATETIME_CEIL);
+    }
+
     public function isExpired(): bool
     {
         // Match content:purge-expired (`expires_at <= now()`). Carbon isPast() is
         // strictly before now, which would leave the exact expiry instant orderable
         // in the UI while the nightly strip already treats it as expired.
-        return $this->expires_at !== null && ! $this->expires_at->isFuture();
+        try {
+            $at = $this->expires_at;
+        } catch (\Throwable) {
+            return false;
+        }
+
+        return $at !== null && ! $at->isFuture();
     }
 
     public function hasStoredFile(): bool
@@ -1310,7 +1396,13 @@ class ContentSubmission extends Model
 
     public function isArchived(): bool
     {
-        return $this->archived_at !== null;
+        try {
+            $at = $this->archived_at;
+        } catch (\Throwable) {
+            return false;
+        }
+
+        return $at instanceof \DateTimeInterface;
     }
 
     public function archive(): void

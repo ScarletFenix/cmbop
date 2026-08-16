@@ -86,8 +86,8 @@ or marketing, even if that staff account also has a marketplace role.
    when no pending or queued rows remain and at least one delivery landed. `queued` rows with no email
    log are first reconciled against `email_logs` by
    `audience_campaign:{id}:user:{id}` **or** `meta.campaign_id` +
-   `meta.user_id`; a delivered/failed log is attached
-   instead of counting as a fake send. A delivered log is attached even when the queued row is younger than the stall window — waiting two minutes let reclaim reset that leftover to pending and dispatch a second send. Failed-log attach still waits. Reclaim and expire also hold user ids from `deliveredUserIdsForCampaign()` (null means email_logs could not be read — do not reclaim or skip-stale). A historical send that wrote the
+   `meta.user_id`;   a delivered/failed log is attached
+   instead of counting as a fake send. A delivered log is attached even when the queued row is younger than the stall window — waiting two minutes let reclaim reset that leftover to pending and dispatch a second send. Failed-log attach still waits. A leftover recipient timestamp must not abort recover — unreadable clocks skip failed-log attach so an in-flight retry is not killed. Reclaim and expire also hold user ids from `deliveredUserIdsForCampaign()` (null means email_logs could not be read — do not reclaim or skip-stale). A historical send that wrote the
    generic default key must still attach — exact-key lookup used to miss
    it, reclaim reset the row to pending, and the next job blasted again. A delivered log still wins when a
    pending Email Center row exists for the same key — skipping that attach
@@ -164,7 +164,7 @@ Throttle: preview `20/min`, send `6/min`, recipient-count `30/min`.
   are dropped, including dual-role staff (admin+advertiser still must not
   receive “all advertisers” blasts). The send job and `AudienceCampaignMail`
   re-check staff roles at send time so a promotion after compose cannot
-  sneak a staff inbox onto a queued blast. `queryForRole()` is unchanged so
+  sneak a staff inbox onto a queued blast. An unreadable roles lookup is treated as staff so that check cannot fail-open. `queryForRole()` is unchanged so
   deposit / add-site / digest reminders can still reach those accounts.
 - Custom picker is capped at 200 users per role (`AudienceInventoryService::PICKER_LIMIT`).
 - `advertisers_no_orders` is an alias of `advertisers_never_checked_out` (no

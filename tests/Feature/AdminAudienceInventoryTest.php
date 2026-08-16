@@ -531,6 +531,21 @@ class AdminAudienceInventoryTest extends TestCase
         $this->assertSame(1, $inventory->count('advertisers_no_paid_orders'));
     }
 
+    public function test_unread_roles_lookup_is_treated_as_staff(): void
+    {
+        $user = new class extends User
+        {
+            public function roles()
+            {
+                throw new \RuntimeException('roles unavailable');
+            }
+        };
+        $user->id = 99;
+
+        $this->assertTrue(AudienceInventoryService::userHasStaffRole($user));
+        $this->assertFalse(AudienceInventoryService::userHasStaffRole(null));
+    }
+
     public function test_staff_who_also_have_a_marketplace_role_are_excluded_from_inventory_and_campaigns(): void
     {
         $adminAdvertiser = $this->makeUser('advertiser');

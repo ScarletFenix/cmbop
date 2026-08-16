@@ -105,6 +105,24 @@ class DepositReminderEmailTest extends TestCase
         });
     }
 
+    public function test_leftover_sent_at_does_not_silence_deposit_reminder(): void
+    {
+        Mail::fake();
+
+        $target = $this->makeAdvertiser([
+            'created_at' => now()->subDays(7)->setTime(9, 15),
+            'updated_at' => now()->subDays(7)->setTime(9, 15),
+        ]);
+        DB::table('users')->where('id', $target->id)->update([
+            'deposit_reminder_day7_sent_at' => 'not-a-date',
+        ]);
+        $this->assertNull($target->fresh()->deposit_reminder_day7_sent_at);
+
+        Artisan::call('emails:send-deposit-reminders', ['--step' => 'day7']);
+
+        Mail::assertQueued(DepositReminderMail::class, fn (DepositReminderMail $m) => $m->hasTo($target->email));
+    }
+
     public function test_skips_unverified_and_wrong_age_and_publishers(): void
     {
         Mail::fake();
