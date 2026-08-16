@@ -5,6 +5,7 @@ namespace App\Services\Advertiser;
 use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\OrderItemDispute;
 use App\Models\WalletTransaction;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
@@ -337,10 +338,16 @@ class AdvertiserSpendService
                 }
 
                 $amount = (float) ($part['amount'] ?? $order->total_amount);
+                $orderTotal = (float) $order->total_amount;
                 $buckets[$key]['orders']++;
                 $buckets[$key]['gross'] += $amount;
                 if ($isRefunded) {
                     $buckets[$key]['refunded'] += $amount;
+                } elseif ($orderTotal > 0) {
+                    $clawback = $this->orderClawbackCredits($order);
+                    if ($clawback > 0.009) {
+                        $buckets[$key]['refunded'] += $amount * ($clawback / $orderTotal);
+                    }
                 }
                 if ($isSpent) {
                     $buckets[$key]['spent'] += $amount;
@@ -391,7 +398,9 @@ class AdvertiserSpendService
             $isActive = $order->payment_status === 'paid'
                 && ! in_array($order->status, ['cancelled', 'rejected', 'failed'], true);
             $gross = round((float) $order->total_amount, 2);
-            $refund = $isRefunded ? $gross : 0.0;
+            $refund = $isRefunded
+                ? $gross
+                : $this->orderClawbackCredits($order);
             $spent = ($isActive && $order->status === 'completed') ? $gross : 0.0;
             $inProgress = ($isActive && in_array($order->status, self::IN_PROGRESS_STATUSES, true)) ? $gross : 0.0;
             $invoiceNumber = $this->taxInvoiceNumber($userId, $order);
@@ -442,7 +451,13 @@ class AdvertiserSpendService
             ->where('user_id', $userId)
             ->where('type', WalletTransaction::TYPE_REFUND)
             ->where('status', 'completed')
-            ->where('direction', 'credit');
+            ->where('direction', 'credit')
+            // Featured-site leftovers also write TYPE_REFUND on the same user.
+            // Keep order refunds and legacy rows with no morph; skip Site/etc.
+            ->where(function ($q) {
+                $q->where('related_type', (new Order)->getMorphClass())
+                    ->orWhereNull('related_type');
+            });
 
         [$from, $to] = $this->normalizeRange($range['from'] ?? null, $range['to'] ?? null);
         if ($from) {
@@ -453,6 +468,21 @@ class AdvertiserSpendService
         }
 
         return round((float) $query->sum('amount'), 2);
+    }
+
+    /**
+     * Advertiser credits from upheld line disputes on a still-paid order.
+     */
+    protected function orderClawbackCredits(Order $order): float
+    {
+        if (! $order->id || ! OrderItemDispute::tableAvailable()) {
+            return 0.0;
+        }
+
+        return round((float) OrderItemDispute::query()
+            ->where('order_id', $order->id)
+            ->where('status', OrderItemDispute::STATUS_UPHELD)
+            ->sum('advertiser_credited'), 2);
     }
 
     protected function taxInvoiceNumber(int $userId, Order $order): ?string

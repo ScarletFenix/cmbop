@@ -2,10 +2,14 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\ToleratesUnparseableDates;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 
 class DepositRequest extends Model
 {
+    use ToleratesUnparseableDates;
+
     protected $fillable = [
         'user_id',
         'reference_code',
@@ -55,6 +59,35 @@ class DepositRequest extends Model
     public function isRejected(): bool
     {
         return $this->status === 'rejected';
+    }
+
+    /**
+     * Real Gregorian user_marked_paid_at. Leftover Hostinger strings are not
+     * a report — PHP casts them to null via ToleratesUnparseableDates.
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeWhereUserMarkedPaidAtIsRecorded($query)
+    {
+        return $query->whereNotNull('user_marked_paid_at')
+            ->where('user_marked_paid_at', '>=', static::PLAUSIBLE_SQL_DATETIME_FLOOR)
+            ->where('user_marked_paid_at', '<=', static::PLAUSIBLE_SQL_DATETIME_CEIL);
+    }
+
+    /**
+     * Missing or leftover user_marked_paid_at (same as PHP null after cast).
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeWhereUserMarkedPaidAtIsMissing($query)
+    {
+        return $query->where(function ($inner) {
+            $inner->whereNull('user_marked_paid_at')
+                ->orWhere('user_marked_paid_at', '>', static::PLAUSIBLE_SQL_DATETIME_CEIL)
+                ->orWhere('user_marked_paid_at', '<', static::PLAUSIBLE_SQL_DATETIME_FLOOR);
+        });
     }
 
     /**

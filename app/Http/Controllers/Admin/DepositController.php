@@ -41,7 +41,7 @@ class DepositController extends Controller
 
         $stats = [
             'pending' => DepositRequest::where('status', 'pending')->count(),
-            'user_reported_paid' => DepositRequest::where('status', 'pending')->whereNotNull('user_marked_paid_at')->count(),
+            'user_reported_paid' => DepositRequest::where('status', 'pending')->whereUserMarkedPaidAtIsRecorded()->count(),
             'approved' => DepositRequest::where('status', 'approved')->count(),
             'completed' => DepositRequest::where('status', 'completed')->count(),
             'rejected' => DepositRequest::where('status', 'rejected')->count(),
@@ -50,7 +50,10 @@ class DepositController extends Controller
 
         // Surface user-reported payments first among pending deposits.
         $deposits = $query
-            ->orderByRaw('CASE WHEN status = ? AND user_marked_paid_at IS NOT NULL THEN 0 WHEN status = ? THEN 1 ELSE 2 END', ['pending', 'pending'])
+            ->orderByRaw(
+                'CASE WHEN status = ? AND user_marked_paid_at IS NOT NULL AND user_marked_paid_at >= ? AND user_marked_paid_at <= ? THEN 0 WHEN status = ? THEN 1 ELSE 2 END',
+                ['pending', DepositRequest::PLAUSIBLE_SQL_DATETIME_FLOOR, DepositRequest::PLAUSIBLE_SQL_DATETIME_CEIL, 'pending']
+            )
             ->latest()
             ->paginate(20);
 

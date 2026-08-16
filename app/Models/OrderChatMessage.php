@@ -4,6 +4,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\ToleratesUnparseableDates;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -11,6 +12,8 @@ use Illuminate\Support\Facades\Schema;
 
 class OrderChatMessage extends Model
 {
+    use ToleratesUnparseableDates;
+
     protected $table = 'order_chat_messages';
 
     protected static ?bool $hasBlockedColumn = null;

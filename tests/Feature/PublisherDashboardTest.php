@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\OrderItemDispute;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
@@ -309,6 +310,58 @@ class PublisherDashboardTest extends TestCase
         // Index for "2 days ago" in the last-7-days window (i=6..0 → index 4)
         $this->assertEqualsWithDelta(100.0, (float) $weekly[4], 0.01);
         $this->assertEqualsWithDelta(0.0, (float) end($weekly), 0.01);
+    }
+
+    public function test_weekly_earnings_keep_completion_day_after_later_clawback(): void
+    {
+        $publisher = $this->publisherWithWallet();
+        $advertiser = $this->advertiser();
+        $site = $this->site($publisher);
+        $adminRole = Role::firstOrCreate(['name' => 'admin']);
+        $admin = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $adminRole->id,
+        ]);
+
+        $completedDay = now()->subDays(2)->startOfDay()->addHours(12);
+
+        $item = $this->createOrderItem($advertiser, $site, [
+            'status' => 'completed',
+            'payment_status' => 'refunded',
+            'completed_at' => $completedDay,
+        ], [
+            'price' => 115,
+            'additional_price' => 0,
+            'publisher_price' => 100,
+            'platform_fee_percent' => 15,
+            'platform_fee_amount' => 15,
+            'completed_at' => $completedDay,
+        ]);
+
+        OrderItemDispute::create([
+            'order_id' => $item->order_id,
+            'order_item_id' => $item->id,
+            'opened_by' => $admin->id,
+            'status' => OrderItemDispute::STATUS_UPHELD,
+            'reason' => 'Live URL was removed after the report window started.',
+            'resolved_at' => now(),
+            'advertiser_credited' => 115,
+            'publisher_debited' => 100,
+        ]);
+
+        $weekly = $this->actingAs($publisher)
+            ->getJson(route('publisher.dashboard.weekly-earnings'))
+            ->assertOk()
+            ->json('data.values');
+
+        $this->assertEqualsWithDelta(100.0, (float) $weekly[4], 0.01);
+        $this->assertEqualsWithDelta(-100.0, (float) end($weekly), 0.01);
+
+        $stats = $this->actingAs($publisher)
+            ->getJson(route('publisher.dashboard.statistics'))
+            ->assertOk()
+            ->json('data');
+        $this->assertEqualsWithDelta(0.0, (float) $stats['total_earnings'], 0.01);
     }
 
     public function test_dashboard_ssr_surfaces_balance_pending_earnings_and_both_task_kpis(): void

@@ -131,7 +131,7 @@
                         $libraryOrder = $submission->libraryOrder();
                         $orderLabel = $libraryOrder?->order_number
                             ?: ($libraryOrder ? '#'.$libraryOrder->id : null);
-                        $placementSite = $submission->placementItem()?->site?->site_name
+                        $placementSite = $submission->libraryPlacementItem()?->site?->site_name
                             ?: $submission->orderItem?->site?->site_name;
                     @endphp
                     <tr>

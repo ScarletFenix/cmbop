@@ -19,7 +19,7 @@ class EmailNotificationPreference extends Model
         return $this->belongsTo(User::class);
     }
 
-    public static function allows(?User $user, ?string $preferenceKey): bool
+    public static function allows(?User $user, ?string $preferenceKey, bool $failClosed = false): bool
     {
         if (! $preferenceKey) {
             return true;
@@ -32,12 +32,12 @@ class EmailNotificationPreference extends Model
 
         $default = (bool) ($meta['default'] ?? true);
         if (! $user || ! $user->id) {
-            return $default;
+            return $failClosed ? false : $default;
         }
 
         try {
             if (! Schema::hasTable((new static)->getTable())) {
-                return $default;
+                return $failClosed ? false : $default;
             }
 
             $row = static::query()
@@ -47,7 +47,7 @@ class EmailNotificationPreference extends Model
 
             return $row ? (bool) $row->enabled : $default;
         } catch (\Throwable) {
-            return $default;
+            return $failClosed ? false : $default;
         }
     }
 

@@ -649,7 +649,7 @@ class SiteController extends Controller
         $publishers = User::query()
             ->whereHas('roles', fn ($q) => $q->where('name', 'publisher'))
             ->where(function ($q) use ($selectedPublisherId) {
-                $q->whereNotNull('email_verified_at');
+                $q->whereEmailVerified();
                 if ($selectedPublisherId > 0) {
                     $q->orWhere('id', $selectedPublisherId);
                 }

@@ -119,17 +119,24 @@ class LogSentEmail
             $existing->save();
 
             foreach ($open->skip(1) as $stale) {
+                // Failed leftovers are retryable. This send already
+                // delivered — marking the extra row failed made Email
+                // Center retry blast a second Welcome / campaign mail
+                // once the 10-minute window lapsed.
                 $stale->fill([
-                    'status' => EmailLog::STATUS_FAILED,
-                    'error' => 'Closed: duplicate open log for the same send',
+                    'status' => EmailLog::STATUS_DELIVERED,
+                    'error' => null,
+                    'sent_at' => $stale->sent_at ?? $existing->sent_at ?? now(),
                 ]);
                 $stale->meta = array_filter(array_merge((array) $stale->meta, [
+                    'suppressed' => 'duplicate',
                     'superseded_by' => $existing->id,
                 ]));
                 $stale->save();
             }
 
             $this->markCampaignRecipientDelivered($campaignId, $userId, (int) $existing->id);
+            $this->closeSiblingCampaignLogs($campaignId, $userId, (int) $existing->id);
 
             return;
         }
@@ -140,6 +147,45 @@ class LogSentEmail
         ]));
 
         $this->markCampaignRecipientDelivered($campaignId, $userId, (int) $log->id);
+        $this->closeSiblingCampaignLogs($campaignId, $userId, (int) $log->id);
+    }
+
+    /**
+     * MessageSent only updates open rows with the exact dedupe string.
+     * A leftover pending/failed row that used the generic default key
+     * (or the reverse) stayed retryable and Email Center blasted again.
+     */
+    protected function closeSiblingCampaignLogs(int $campaignId, int $userId, int $deliveredId): void
+    {
+        if ($campaignId < 1 || $userId < 1 || $deliveredId < 1) {
+            return;
+        }
+
+        try {
+            foreach (EmailLog::openForCampaignUser($campaignId, $userId) as $log) {
+                if ((int) $log->id === $deliveredId) {
+                    continue;
+                }
+
+                $log->fill([
+                    'status' => EmailLog::STATUS_DELIVERED,
+                    'error' => null,
+                    'sent_at' => $log->sent_at ?? now(),
+                ]);
+                $log->meta = array_filter(array_merge((array) $log->meta, [
+                    'suppressed' => 'duplicate',
+                    'superseded_by' => $deliveredId,
+                ]));
+                $log->save();
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Failed to close sibling campaign mail logs', [
+                'campaign_id' => $campaignId,
+                'user_id' => $userId,
+                'delivered_id' => $deliveredId,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     protected function markCampaignRecipientDelivered(int $campaignId, int $userId, int $logId): void

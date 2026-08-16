@@ -289,8 +289,8 @@
                                 <div class="small text-muted mt-2">
                                     {{ $tpl['category'] }}
                                     · Sent {{ number_format($tpl['sent_count']) }}x
-                                    @if($tpl['last_sent_at'])
-                                        · Last {{ \Illuminate\Support\Carbon::parse($tpl['last_sent_at'])->diffForHumans() }}
+                                    @if($tpl['last_sent_at'] instanceof \DateTimeInterface)
+                                        · Last {{ $tpl['last_sent_at']->diffForHumans() }}
                                     @endif
                                 </div>
                                 @if(!empty($tpl['importance']))

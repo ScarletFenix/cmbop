@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Models\Wallet;
 use App\Models\Withdrawal;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class AdminPayoutQueueTest extends TestCase
@@ -631,6 +632,97 @@ class AdminPayoutQueueTest extends TestCase
             ->assertJsonPath('success', true);
 
         $this->assertSame('completed', $open->fresh()->status);
+    }
+
+    public function test_leftover_processed_at_does_not_inflate_completed_this_week(): void
+    {
+        $admin = $this->makeUser('admin');
+        $publisher = $this->makeUser('publisher');
+
+        $this->seedWithdrawal($publisher, [
+            'status' => 'completed',
+            'processed_at' => now()->subDays(2),
+            'amount' => 80,
+            'fee' => 0,
+            'net_amount' => 80,
+        ]);
+        $leftover = $this->seedWithdrawal($publisher, [
+            'status' => 'completed',
+            'processed_at' => now(),
+            'amount' => 50,
+            'fee' => 0,
+            'net_amount' => 50,
+        ]);
+        DB::table('withdrawals')->where('id', $leftover->id)->update([
+            'processed_at' => 'not-a-date',
+        ]);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.withdrawals.statistics'))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.completed_this_week', 1)
+            ->assertJsonPath('data.completed_this_week_amount', 80);
+    }
+
+    public function test_history_and_show_ok_when_processed_at_is_unparseable(): void
+    {
+        $admin = $this->makeUser('admin');
+        $publisher = $this->makeUser('publisher');
+        $paid = $this->seedWithdrawal($publisher, [
+            'status' => 'completed',
+            'processed_at' => now()->subDay(),
+            'amount' => 90,
+            'fee' => 0,
+            'net_amount' => 90,
+        ]);
+        DB::table('withdrawals')->where('id', $paid->id)->update([
+            'processed_at' => 'not-a-date',
+        ]);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.withdrawals.show', $paid->id))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.id', $paid->id)
+            ->assertJsonPath('data.processed_at', null);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.withdrawals.data', ['queue' => 'history']))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.0.id', $paid->id)
+            ->assertJsonPath('data.0.processed_at', null);
+    }
+
+    public function test_leftover_processed_at_does_not_flag_stale_created_duplicate(): void
+    {
+        config(['billing.withdrawal_mark_paid_duplicate_lookback_days' => 30]);
+
+        $admin = $this->makeUser('admin');
+        $publisher = $this->makeUser('publisher');
+        $paid = $this->seedWithdrawal($publisher, [
+            'status' => 'completed',
+            'processed_at' => now()->subDays(2),
+            'amount' => 90,
+            'fee' => 0,
+            'net_amount' => 90,
+        ]);
+        DB::table('withdrawals')->where('id', $paid->id)->update([
+            'processed_at' => 'not-a-date',
+            'created_at' => now()->subDays(40),
+            'updated_at' => now()->subDays(40),
+        ]);
+        $open = $this->seedWithdrawal($publisher, [
+            'amount' => 90,
+            'fee' => 0,
+            'net_amount' => 90,
+        ]);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.withdrawals.show', $open->id))
+            ->assertOk()
+            ->assertJsonPath('data.possible_duplicate', false);
     }
 
     public function test_guest_and_advertiser_cannot_load_or_export_withdrawals(): void
