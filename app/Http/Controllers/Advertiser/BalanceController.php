@@ -412,7 +412,7 @@ class BalanceController extends Controller
             $updates['payout_crypto_trx_verified_at'] = now();
         }
 
-        if (empty($user->payout_profile_locked_at)) {
+        if (! $user->payoutProfileLocked()) {
             $updates['payout_profile_locked_at'] = now();
         }
 

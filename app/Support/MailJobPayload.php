@@ -136,6 +136,36 @@ class MailJobPayload
     }
 
     /**
+     * audience_campaign:{id}:user:{id} keys encoded in this jobs payload.
+     * Covers a stamped dedupeKey and SerializesModels ModelIdentifiers
+     * when the mailable was queued without that token.
+     *
+     * @return list<string>
+     */
+    public static function campaignDedupeKeys(string $payload): array
+    {
+        $keys = [];
+        foreach (self::payloadHaystacks($payload) as $haystack) {
+            if (preg_match_all('/audience_campaign:(\d+):user:(\d+)/', $haystack, $matches, PREG_SET_ORDER)) {
+                foreach ($matches as $match) {
+                    $keys[] = 'audience_campaign:'.$match[1].':user:'.$match[2];
+                }
+            }
+        }
+
+        if ($keys === []
+            && str_contains($payload, 'AudienceCampaignMail')) {
+            foreach (self::modelIdentifierIds($payload, EmailCampaign::class) as $campaignId) {
+                foreach (self::modelIdentifierIds($payload, User::class) as $userId) {
+                    $keys[] = 'audience_campaign:'.$campaignId.':user:'.$userId;
+                }
+            }
+        }
+
+        return array_values(array_unique($keys));
+    }
+
+    /**
      * Match campaign 12 without treating i:123; or "campaignId":123 as a hit.
      * Database-queue rows JSON-escape the serialized command.
      */
@@ -244,9 +274,11 @@ class MailJobPayload
         // AudienceCampaignMail without a stamped dedupeKey still serializes
         // EmailCampaign + User ModelIdentifiers. Expire used requireToken
         // only, so a 72h pending log was failed beside the live job and a
-        // later retry doubled the send.
-        if (preg_match('/^audience_campaign:(\d+):user:(\d+)$/', (string) $log->dedupe_key, $campaign)
-            && in_array((int) $campaign[2], self::campaignMailUserIds($payload, (int) $campaign[1]), true)) {
+        // later retry doubled the send. Canonical-key-only matching missed
+        // leftover generic-key Email Center rows that store the pair in meta.
+        [$campaignId, $userId] = EmailLog::campaignUserIds($log);
+        if ($campaignId > 0 && $userId > 0
+            && in_array($userId, self::campaignMailUserIds($payload, $campaignId), true)) {
             return true;
         }
 

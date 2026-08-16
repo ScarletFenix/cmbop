@@ -70,7 +70,7 @@ or marketing, even if that staff account also has a marketplace role.
    retryable from Email Center. A
    Redis/SQS **mail** queue, inline SMTP (`sync` mail), a missing `payload` column on the **mail**
    table, or a mailable whose user id cannot be parsed is fail-closed: the
-   row stays queued so an in-flight send is not doubled. An `AudienceCampaignMail` that only serializes the campaign as a ModelIdentifier (no `campaignId` property and no `dedupeKey`) must still count as in-flight so reclaim does not treat that jobs row as empty. An unused redis
+   row stays queued so an in-flight send is not doubled. An `AudienceCampaignMail` that only serializes the campaign as a ModelIdentifier (no `campaignId` property and no `dedupeKey`) must still count as in-flight so reclaim does not treat that jobs row as empty, and expire must not fail a pending campaign log beside that jobs row. A leftover generic-key pending log must also match that ModelIdentifier job via campaign+user identity — token-only matching failed the Email Center row and a later retry doubled the send. An unused redis
    `queue.default` or a broken unused database table must not block a
    healthy empty mail queue — recover must still reclaim. A second database table without `payload` on the unused connection must not look like in-flight mail. A successful
    empty scan of the live mail table must still reclaim even if the unused
@@ -79,7 +79,7 @@ or marketing, even if that staff account also has a marketplace role.
    reclaims orphans, and puts the campaign back to `sending`.    A queued row
    that already has a delivered/failed log FK is synced to that log
    (expire/reclaim both require a null FK, so those rows sat queued forever).
-   Heal must look up by `audience_campaign:{id}:user:{id}` **or** `latestDeliveredForCampaignUser()` (generic-key siblings), not only the attached id — an attached failed or leftover pending log FK must not beat a delivered log and must not beat a delivered sibling for the same recipient (that marked a real send failed and a later compose doubled it). Heal runs again after pending-log expire so a leftover pending FK closed in this pass can sync the same recover.
+   Heal must look up by `audience_campaign:{id}:user:{id}` **or** `latestDeliveredForCampaignUser()` (generic-key siblings), not only the attached id — an attached failed or leftover pending log FK must not beat a delivered log and must not beat a delivered sibling for the same recipient (that marked a real send failed and a later compose doubled it). Heal must also treat a leftover generic-key pending sibling as in-flight — attaching only the failed FK marked a live Email Center retry failed and a later compose doubled it. Heal runs again after pending-log expire so a leftover pending FK closed in this pass can sync the same recover.
    A timeout after the last `pending` →
    `queued` claim must **not** finalize as sent (`failed()` used to, because
    `sent_count` includes queued). Recount promotes `sending` → `sent` only
@@ -89,7 +89,7 @@ or marketing, even if that staff account also has a marketplace role.
    `meta.user_id`;   a delivered/failed log is attached
    instead of counting as a fake send. A delivered log is attached even when the queued row is younger than the stall window — waiting two minutes let reclaim reset that leftover to pending and dispatch a second send. Failed-log attach still waits. A leftover recipient timestamp must not abort recover — unreadable clocks skip failed-log attach so an in-flight retry is not killed. Reclaim and expire also hold user ids from `deliveredUserIdsForCampaign()` (null means email_logs could not be read — do not reclaim or skip-stale). A historical send that wrote the
    generic default key must still attach — exact-key lookup used to miss
-   it, reclaim reset the row to pending, and the next job blasted again. Sibling lookup must not scan the newest 100 campaign emails site-wide — a later burst hid a leftover generic-key delivery and `isDuplicate()` blasted again. Sibling dedupe must **not** treat that shared generic key as one-shot across campaigns, and must not look like “no prior delivery” when email_logs cannot be read — the send is held instead of blasting again. A delivered log still wins when a
+   it, reclaim reset the row to pending, and the next job blasted again. Reconcile must also call `latestDeliveredForCampaignUser()` when the grouped extras miss a generic-key sibling — a failed `meta->campaign_id` JSON scan used to leave that queued row forever. The parent must still walk each queued row when that group is empty so the fallback runs. Sibling lookup must not scan the newest 100 campaign emails site-wide — a later burst hid a leftover generic-key delivery and `isDuplicate()` blasted again. Sibling dedupe must **not** treat that shared generic key as one-shot across campaigns, and must not look like “no prior delivery” when email_logs cannot be read — the send is held instead of blasting again. A delivered log still wins when a
    pending Email Center row exists for the same key — skipping that attach
    let expire mark a real send stale, and a later retry doubled it.
    A delivered log is attached even when the queued row is younger than the stall window — waiting let reclaim dispatch a second send.
@@ -105,13 +105,12 @@ or marketing, even if that staff account also has a marketplace role.
    when expire already flipped the row to skipped stale. Preference, disabled, and unverified skips stay skipped — a stray `MessageSent`
    or duplicate suppress must not hide an opt-out as a successful send.
    Recover also attaches a delivered `email_logs` row to those stale
-   leftovers only. A leftover pending Email Center log for a skipped-stale recipient is failed so retry can see it — but not while that user's `AudienceCampaignMail` is still on the queue, or a second retry doubles the send.
-   An unused database table without `payload` must **not** block pending-log expire — a healthy empty mail queue must still close lost Welcome rows.
+   leftovers only. A leftover pending Email Center log for a skipped-stale recipient is failed so retry can see it — but not while that user's `AudienceCampaignMail` is still on the queue, or a second retry doubles the send. Lost transactional pending logs (Welcome / orders) with no campaign recipient are failed after the mail age window when no matching `SendQueuedMailable` is on a readable database queue — retry only accepts failed. An unused queue table without `payload` must **not** abort that expire or those Welcome rows stay pending forever. Email Center retry must **not** treat a generic `audience_campaign|{email}|…` leftover as already delivered just because an earlier campaign mailed that address — that key is per email, not per campaign, and closing it swallowed a later campaign. Transactional `isDuplicate()` must use `sent_at` (not `created_at`) for the 10-minute window — a Welcome that sat in the queue longer than that, then delivered, still has an old `created_at` and a retry blasted a second mail. Email Center retry must **not** re-queue a leftover failed Welcome / order log whose delivered sibling is from the same attempt (`created_at` / `updated_at` within the 10-minute window of `sent_at`) — that leftover is a worker timeout after SMTP, and retry blasted a second mail once the window lapsed. An older Welcome delivery must still retry a later real failure. An unidentified in-flight `SendQueuedMailable` of the same class must leave the pending row pending.
 5. Individual `AudienceCampaignMail` failures mark that recipient `failed`
-   (`error`) and recount. If a `sent` campaign later has no queued/delivered
+   (`error`) and recount. A worker timeout after SMTP already succeeded must **not** invent a leftover failed Email Center log — retry would blast again. Leftover open logs for the same send are closed as delivered, not failed. Bulk retry must also skip a leftover job that only serializes ModelIdentifier campaign+user ids after that send already delivered. If a `sent` campaign later has no queued/delivered
    rows left, status is downgraded to `failed`. A late `marketing_emails`
    opt-out, before the queued mail actually sends, is honored when
-   `respect_preferences` is on. If Email Center disables the
+   `respect_preferences` is on. An unreadable marketing preference is treated as an opt-out so that check cannot fail-open. If Email Center disables the
    `audience_campaign` type, pending rows are skipped (`disabled`) and the
    campaign ends `failed`.
 6. Preview renders a catalog stand-in (not the admin) and a placeholder
@@ -144,6 +143,11 @@ or marketing, even if that staff account also has a marketplace role.
    pending for recover give-up beside the retried mailable.    Bulk retry must mark only one failed log per job UUID — a shared stale stamp plus the same
    `to_email` used to pending-mark two campaigns and reclaim the extra
    recipient beside a single `queue:retry`. Closing a leftover already-delivered log must also drop that job UUID from the retry list — a shared stale stamp would otherwise pending-mark the other campaign.
+   Dropping that job must use campaign+user identity (canonical
+   `audience_campaign:{id}:user:{id}` or a ModelIdentifier), not the shared
+   `audience_campaign|{email}|AudienceCampaignMail` string — that leftover must not swallow another campaign's failed job.
+   Closing a leftover must not treat another campaign's generic-key delivery as this send.
+   A leftover campaign job without an extractable payload dedupe key must still be skipped when that leftover owns it, including on a later bulk click after the leftover was already closed, and a stale stamp must not suppress a Welcome job.
    `user_ids` are integers capped at
    `PICKER_LIMIT * 2` (no `exists:users,id` — a deleted picker row must not
    422 the whole send).
@@ -204,6 +208,9 @@ and add-site / deposit reminders keep their own queries.
 - Transactional `PlatformMailable` drops after `MAIL_MAX_AGE_HOURS` (24).
   Campaign mail uses `MAIL_CAMPAIGN_MAX_AGE_HOURS` (72). A dropped send marks
   the recipient `skipped` (`stale`, `preference`, or `disabled`).
+  Transactional `isDuplicate()` must not look like “no prior send” when
+  `email_logs` cannot be read — the send is held instead of blasting a
+  Welcome / order retry again.
 
 ## Signed unsubscribe
 
