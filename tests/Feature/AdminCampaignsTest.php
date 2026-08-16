@@ -4385,6 +4385,17 @@ class AdminCampaignsTest extends TestCase
         $this->assertSame(0, EmailLog::query()->where('status', EmailLog::STATUS_DELIVERED)->count());
     }
 
+    public function test_campaign_user_ids_read_canonical_template_key(): void
+    {
+        $log = new EmailLog([
+            'dedupe_key' => 'audience_campaign|buyer@example.com|AudienceCampaignMail',
+            'template_key' => 'audience_campaign:12:user:34',
+            'meta' => null,
+        ]);
+
+        $this->assertSame([12, 34], EmailLog::campaignUserIds($log));
+    }
+
     public function test_stall_recovery_does_not_reclaim_queued_row_for_another_campaign_mailable(): void
     {
         Queue::fake();

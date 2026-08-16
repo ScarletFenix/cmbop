@@ -2971,6 +2971,26 @@ class AdminEmailCenterTest extends TestCase
         $this->assertSame(EmailLog::STATUS_PENDING, $log->fresh()->status);
     }
 
+    public function test_recover_does_not_expire_generic_campaign_pending_inside_campaign_window(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $log = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'template_key' => null,
+            'notification_type' => 'audience_campaign',
+            'dedupe_key' => 'audience_campaign|'.$admin->email.'|AudienceCampaignMail',
+            'to_email' => $admin->email,
+            'subject' => 'Campaign',
+            'status' => EmailLog::STATUS_PENDING,
+            'attempts' => 1,
+        ]);
+        $log->forceFill(['updated_at' => now()->subHours(25)])->save();
+
+        EmailCampaign::recoverStalled();
+
+        $this->assertSame(EmailLog::STATUS_PENDING, $log->fresh()->status);
+    }
+
     public function test_recover_expires_pending_when_only_an_unused_queue_table_lacks_payload(): void
     {
         Schema::create('jobs_broken_pending_expire', function ($table) {
