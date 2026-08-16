@@ -434,7 +434,7 @@ class EmailCampaign extends Model
         }
 
         $holdUserIds = $inFlight;
-        $pendingIds = EmailLog::pendingUserIdsForCampaign((int) $campaign->id);
+        $pendingIds = self::campaignLogUserIdsForStatus((int) $campaign->id, EmailLog::STATUS_PENDING);
         if ($pendingIds === null) {
             return 0;
         }
@@ -442,10 +442,8 @@ class EmailCampaign extends Model
 
         // LogSentEmail can persist a delivered row and still miss the
         // recipient FK. Reclaim before reconcile's stall window used to
-        // pending-mark that user and dispatch a second send. Null means
-        // email_logs could not be read — do not treat that as “nobody
-        // was mailed”.
-        $deliveredIds = EmailLog::deliveredUserIdsForCampaign((int) $campaign->id);
+        // pending-mark that user and dispatch a second send.
+        $deliveredIds = self::campaignLogUserIdsForStatus((int) $campaign->id, EmailLog::STATUS_DELIVERED);
         if ($deliveredIds === null) {
             return 0;
         }
@@ -469,50 +467,32 @@ class EmailCampaign extends Model
 
     /**
      * User ids with an audience_campaign log in $status for this campaign.
-     * Includes leftover generic-key rows that only store the pair in meta.
      * Null means the email_logs read failed — reclaim must fail-closed.
      *
      * @return list<int>|null
      */
     protected static function campaignLogUserIdsForStatus(int $campaignId, string $status): ?array
     {
-        if ($status === EmailLog::STATUS_PENDING) {
-            return EmailLog::pendingUserIdsForCampaign($campaignId);
-        }
-
-        if ($status === EmailLog::STATUS_DELIVERED) {
-            return EmailLog::deliveredUserIdsForCampaign($campaignId);
-        }
-
         if ($campaignId < 1) {
             return [];
         }
 
         try {
+            $prefix = 'audience_campaign:'.$campaignId.':user:';
             $ids = [];
             foreach (EmailLog::query()
                 ->where('status', $status)
-                ->where(function ($query) use ($campaignId) {
-                    $prefix = 'audience_campaign:'.$campaignId.':user:';
-                    $query->where('dedupe_key', 'like', $prefix.'%')
-                        ->orWhere('notification_type', 'audience_campaign')
-                        ->orWhere('template_key', 'audience_campaign')
-                        ->orWhere('mailable', 'like', '%AudienceCampaignMail%')
-                        ->orWhere('dedupe_key', 'like', 'audience_campaign|%');
-                })
-                ->get(['id', 'dedupe_key', 'meta', 'notification_type', 'template_key', 'mailable']) as $log) {
-                [$foundCampaign, $foundUser] = EmailLog::campaignUserIds($log);
-                if ($foundCampaign === $campaignId && $foundUser > 0) {
-                    $ids[$foundUser] = true;
+                ->where('dedupe_key', 'like', $prefix.'%')
+                ->pluck('dedupe_key') as $key) {
+                if (preg_match('/^'.preg_quote($prefix, '/').'(\d+)$/', (string) $key, $matches)) {
+                    $ids[] = (int) $matches[1];
                 }
             }
 
-            return array_map('intval', array_keys($ids));
+            return array_values(array_unique(array_filter($ids)));
         } catch (\Throwable) {
             return null;
         }
-
-        return [];
     }
 
     /**
@@ -936,20 +916,21 @@ class EmailCampaign extends Model
                 return (string) $log->dedupe_key;
             });
 
-        $campaignIds = array_fill_keys($attachedIds, true);
-
-        // Walk every queued row even when grouping found nothing.
-        // latestDeliveredForCampaignUser() still attaches a leftover
-        // generic-key delivery after a failed extras JSON scan.
-        foreach ($rows as $row) {
-            try {
-                self::reconcileOneQueuedRecipientFromLogs($row, $logs, $cutoff, $campaignIds);
-            } catch (\Throwable $e) {
-                Log::warning('Campaign recipient reconcile skipped a leftover row', [
-                    'recipient_id' => $row->id ?? null,
-                    'campaign_id' => $row->email_campaign_id ?? null,
-                    'error' => $e->getMessage(),
-                ]);
+            $log = $deliveredLog;
+            if (! $log && $failedLog) {
+                // Failed-log attach still waits out the stall window so a
+                // 10-second-old queued claim is not killed by an older
+                // leftover failure while Mail::send() is still running.
+                if ($row->updated_at && $row->updated_at->greaterThan($cutoff)) {
+                    continue;
+                }
+                // An older failed log must not kill a newer in-flight retry.
+                if ($failedLog->updated_at
+                    && $row->updated_at
+                    && ! $failedLog->updated_at->greaterThan($row->updated_at)) {
+                    continue;
+                }
+                $log = $failedLog;
             }
         }
 
@@ -1335,14 +1316,13 @@ class EmailCampaign extends Model
             // queued a second job beside the backlogged one.
             // failed_jobs is not a live backlog: reclaim still holds
             // those users, but expire must close the 72h orphan.
-            $blocked = $inFlight === null ? [] : array_fill_keys($inFlight, true);
-            $deliveredIds = EmailLog::deliveredUserIdsForCampaign($campaignId);
-            $pendingIds = EmailLog::pendingUserIdsForCampaign($campaignId, $cutoff);
-            if ($deliveredIds === null || $pendingIds === null) {
-                // Unreadable email_logs must not look like “nobody was mailed”.
+            $deliveredIds = self::campaignLogUserIdsForStatus($campaignId, EmailLog::STATUS_DELIVERED);
+            if ($deliveredIds === null) {
+                // Cannot prove who already got the mail — do not skip-stale.
                 continue;
             }
-            foreach (array_merge($deliveredIds, $pendingIds) as $userId) {
+            $blocked = $inFlight === null ? [] : array_fill_keys($inFlight, true);
+            foreach ($deliveredIds as $userId) {
                 $blocked[$userId] = true;
             }
 

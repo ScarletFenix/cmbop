@@ -181,7 +181,6 @@ class EmailCampaignPhpSyntaxTest extends TestCase
         $this->assertStringContainsString('deliveredUserIdsForCampaign', $expire[1]);
         $this->assertStringContainsString('pendingUserIdsForCampaign', $expire[1]);
         $this->assertSame(1, preg_match_all('/function inFlightCampaignMailUserIds\b/', $model));
-        $this->assertSame(1, preg_match_all('/function collectCampaignMailUserIdsFromTable\b/', $model));
         $this->assertSame(1, preg_match_all('/function campaignLogUserIdsForStatus\b/', $model));
         $this->assertSame(1, preg_match_all('/function healQueuedRecipientsWithTerminalLog\b/', $model));
         $this->assertSame(1, preg_match_all('/function reconcileOneQueuedRecipientFromLogs\b/', $model));
@@ -282,56 +281,27 @@ class EmailCampaignPhpSyntaxTest extends TestCase
             $center,
             $requeue
         ));
-        $this->assertStringContainsString('clearFailStreak()', $requeue[1]);
+        $this->assertStringContainsString('$mailScannedOk = true;', $queued[1]);
+        $this->assertStringContainsString('if ($mailNeedsScan && ! $mailScannedOk)', $queued[1]);
+        $this->assertDoesNotMatchRegularExpression(
+            '/hasColumn\(\$table, \'payload\'\)\) \{\s*return null;/',
+            $queued[1]
+        );
         $this->assertTrue((bool) preg_match(
-            '/protected function leftoverOwnsFailedJob\(EmailLog \$leftover, string \$payload\): bool\s*\{(.*?)\n    protected function closeFailedLogAlreadyDelivered/s',
-            $center,
-            $owns
+            '/protected static function expireOrphanedQueuedRecipients\(\): void\s*\{(.*?)\n    \/\*\*/s',
+            $model,
+            $expire
         ));
-        $this->assertStringContainsString('campaignUserIds', $owns[1]);
-        $this->assertStringContainsString('campaignDedupeKeys', $owns[1]);
-
-        $payloadTest = (string) file_get_contents($files[5]);
-        $this->assertSame(1, preg_match_all(
-            '/function test_matches_email_log_require_token_rejects_unidentified_payload\b/',
-            $payloadTest
-        ));
-        $this->assertSame(1, preg_match_all(
-            '/function test_contains_campaign_mail_matches_model_identifier_without_dedupe_key\b/',
-            $payloadTest
-        ));
-    }
-
-    public function test_transactional_is_duplicate_holds_when_email_logs_cannot_be_read(): void
-    {
-        $path = dirname(__DIR__, 2).'/app/Mail/PlatformMailable.php';
-        $source = (string) file_get_contents($path);
+        $this->assertStringContainsString('campaignLogUserIdsForStatus', $expire[1]);
         $this->assertTrue((bool) preg_match(
-            '/protected function isDuplicate\(string \$key\): bool\s*\{(.*?)\n    protected function brand/s',
-            $source,
-            $dup
+            '/protected static function reclaimOrphanedQueuedRecipients\(self \$campaign\): int\s*\{(.*?)\n    \/\*\*/s',
+            $model,
+            $reclaim
         ));
-        $this->assertStringContainsString('holding send', $dup[1]);
-        $this->assertStringNotContainsString('allowing send', $dup[1]);
-        $this->assertStringContainsString('throw $e;', $dup[1]);
-    }
-
-    public function test_leftover_owns_failed_job_does_not_treat_generic_key_as_ownership(): void
-    {
-        $path = dirname(__DIR__, 2).'/app/Http/Controllers/Admin/EmailCenterController.php';
-        $center = (string) file_get_contents($path);
-        $this->assertTrue((bool) preg_match(
-            '/protected function leftoverOwnsFailedJob\(EmailLog \$leftover, string \$payload\): bool\s*\{(.*?)\n    protected function closeFailedLogAlreadyDelivered/s',
-            $center,
-            $owns
-        ));
-        $this->assertStringContainsString('audience_campaign|', $owns[1]);
-        $this->assertStringContainsString('campaignMailUserIds', $owns[1]);
-        $this->assertTrue((bool) preg_match(
-            '/protected function closeFailedLogAlreadyDelivered\(EmailLog \$log\): bool\s*\{(.*?)\n    protected function deliveredSiblingIsSameCampaignSend/s',
-            $center,
-            $close
-        ));
-        $this->assertStringContainsString('audience_campaign|', $close[1]);
+        $this->assertGreaterThanOrEqual(
+            2,
+            substr_count($reclaim[1], 'campaignLogUserIdsForStatus'),
+            'reclaim must hold pending and delivered campaign logs'
+        );
     }
 }

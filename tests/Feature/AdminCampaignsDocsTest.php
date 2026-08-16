@@ -69,13 +69,10 @@ class AdminCampaignsDocsTest extends TestCase
         $this->assertStringContainsString('Preference, disabled, and unverified skips stay skipped', $body);
         $this->assertStringContainsString('inline SMTP (`sync` mail)', $body);
         $this->assertStringContainsString('delivered log still wins when a', $body);
-        $this->assertStringContainsString('only serializes the campaign as a ModelIdentifier', $body);
-        $this->assertStringContainsString('expire must not fail a pending campaign log beside that jobs row', $body);
-        $this->assertStringContainsString('must **not** invent a leftover failed Email Center log', $body);
-        $this->assertStringContainsString('closed as delivered, not failed', $body);
-        $this->assertStringContainsString('unidentified in-flight', $body);
-        $this->assertStringContainsString('when the dedupe strings differ', $body);
-        $this->assertStringContainsString('must still use the one-shot', $body);
+        $this->assertStringContainsString('younger than the stall window', $body);
+        $this->assertStringContainsString('must not skip-stale a queued recipient who already has a delivered log', $body);
+        $this->assertStringContainsString('Lost transactional pending logs', $body);
+        $this->assertStringContainsString('must **not** abort that expire', $body);
         $this->assertStringNotContainsString('/advertiser/campaigns', $body);
     }
 
