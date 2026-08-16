@@ -142,6 +142,8 @@ class EmailCampaignPhpSyntaxTest extends TestCase
         $center = (string) file_get_contents($files[3]);
         $this->assertSame(1, preg_match_all('/function deliveredSiblingIsSameCampaignSend\b/', $center));
         $this->assertSame(1, preg_match_all('/function campaignIdFromLog\b/', $center));
+        $this->assertSame(1, preg_match_all('/function isSameAttemptLeftover\b/', $center));
+        $this->assertSame(1, preg_match_all('/function payloadQueuedAtAlreadyDelivered\b/', $center));
 
         $log = (string) file_get_contents($root.'/app/Models/EmailLog.php');
         $this->assertSame(1, preg_match_all('/function latestDeliveredForCampaignUser\b/', $log));

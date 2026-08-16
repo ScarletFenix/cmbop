@@ -52,6 +52,7 @@ class AdminCampaignsDocsTest extends TestCase
         $this->assertStringContainsString('via campaign+user identity', $body);
         $this->assertStringContainsString('fresh pending Email Center log', $body);
         $this->assertStringContainsString('must use `sent_at` (not `created_at`)', $body);
+        $this->assertStringContainsString('must **not** re-queue a leftover failed Welcome', $body);
         $this->assertStringContainsString('only one failed log per job UUID', $body);
         $this->assertStringContainsString('drop that job UUID from the retry list', $body);
         $this->assertStringContainsString('must not swallow another campaign\'s failed job', $body);
