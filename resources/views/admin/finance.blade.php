@@ -427,7 +427,7 @@
                             <span class="text-muted small">Earnings credited</span>
                             <strong>{{ $euro($d['money_out']['earnings_credited']['amount']) }}</strong>
                         </div>
-                        <div class="small text-muted">{{ $d['money_out']['earnings_credited']['count'] }} line items · ledger transfer-in {{ $euro($d['money_out']['earnings_credited']['ledger_transfer_in']) }} · Dated by completed date</div>
+                        <div class="small text-muted">{{ $d['money_out']['earnings_credited']['count'] }} line items · ledger net {{ $euro($d['money_out']['earnings_credited']['ledger_transfer_in']) }} · Dated by completed date, clawbacks / refunds by refund date</div>
                     </div>
                     <div class="mb-3">
                         <div class="d-flex justify-content-between">
@@ -458,7 +458,7 @@
                             <span class="text-muted small">Cash into your accounts</span>
                             <strong class="text-success">{{ $euro($d['cash_split']['cash_in_bank']) }}</strong>
                         </div>
-                        <div class="small text-muted">Stripe/card + bank/Wise/crypto + leftover card credits + featured-site Stripe + paid→failed captures. Wallet refunds do not remove collected cash.</div>
+                        <div class="small text-muted">Stripe/card + bank/Wise/crypto + leftover card credits + featured-site Stripe + paid→failed captures (dated by checkout). Wallet refunds do not remove collected cash.</div>
                     </div>
                     <div class="mb-3">
                         <div class="d-flex justify-content-between">

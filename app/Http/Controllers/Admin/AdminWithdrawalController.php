@@ -329,9 +329,11 @@ class AdminWithdrawalController extends Controller
                 'processing_amount' => (float) (clone $processingQuery)->sum('net_amount'),
                 'total_to_pay' => (float) (clone $openQuery)->sum('net_amount'),
                 'completed_this_week' => Withdrawal::where('status', 'completed')
+                    ->whereProcessedAtIsRecorded()
                     ->where('processed_at', '>=', now()->startOfWeek())
                     ->count(),
                 'completed_this_week_amount' => (float) Withdrawal::where('status', 'completed')
+                    ->whereProcessedAtIsRecorded()
                     ->where('processed_at', '>=', now()->startOfWeek())
                     ->sum('net_amount'),
                 'total_amount_requested' => (float) Withdrawal::sum('amount'),

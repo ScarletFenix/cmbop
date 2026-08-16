@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Services\AudienceInventoryService;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
@@ -274,13 +275,26 @@ class AdminAudienceInventoryTest extends TestCase
         $de = $this->makeUser('advertiser', ['country' => 'DE']);
         $fr = $this->makeUser('advertiser', ['country' => 'FR']);
         $unverified = $this->makeUser('advertiser', ['email_verified_at' => null, 'country' => 'DE']);
+        $leftover = $this->makeUser('advertiser', ['country' => 'DE']);
+        DB::table('users')->where('id', $leftover->id)->update([
+            'email_verified_at' => 'not-a-date',
+        ]);
+        $this->assertFalse($leftover->fresh()->hasVerifiedEmail());
 
         $this->actingAs($admin)
             ->get(route('admin.audiences.index', ['tab' => 'advertisers', 'verified' => 'yes', 'country' => 'de']))
             ->assertOk()
             ->assertSee($de->email, false)
             ->assertDontSee($fr->email, false)
-            ->assertDontSee($unverified->email, false);
+            ->assertDontSee($unverified->email, false)
+            ->assertDontSee($leftover->email, false);
+
+        $this->actingAs($admin)
+            ->get(route('admin.audiences.index', ['tab' => 'advertisers', 'verified' => 'no', 'country' => 'de']))
+            ->assertOk()
+            ->assertSee($unverified->email, false)
+            ->assertSee($leftover->email, false)
+            ->assertDontSee($de->email, false);
     }
 
     public function test_marketing_and_dual_role_filters(): void
@@ -515,6 +529,21 @@ class AdminAudienceInventoryTest extends TestCase
         $this->assertContains($fundedIdle->id, $inventory->collect('advertisers_deposited_no_orders')->pluck('id'));
         $this->assertSame(1, $inventory->count('advertisers_paid_orders'));
         $this->assertSame(1, $inventory->count('advertisers_no_paid_orders'));
+    }
+
+    public function test_unread_roles_lookup_is_treated_as_staff(): void
+    {
+        $user = new class extends User
+        {
+            public function roles()
+            {
+                throw new \RuntimeException('roles unavailable');
+            }
+        };
+        $user->id = 99;
+
+        $this->assertTrue(AudienceInventoryService::userHasStaffRole($user));
+        $this->assertFalse(AudienceInventoryService::userHasStaffRole(null));
     }
 
     public function test_staff_who_also_have_a_marketplace_role_are_excluded_from_inventory_and_campaigns(): void

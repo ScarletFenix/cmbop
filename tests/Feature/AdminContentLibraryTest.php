@@ -13,6 +13,7 @@ use App\Models\Site;
 use App\Models\User;
 use App\Services\ContentModeration\ContentModerationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Tests\Support\CreatesContentSubmissions;
 use Tests\TestCase;
@@ -158,6 +159,65 @@ class AdminContentLibraryTest extends TestCase
             ->assertOk()
             ->assertSee('Expired Unused Piece')
             ->assertDontSee('Fresh Approved Piece');
+    }
+
+    public function test_leftover_expires_at_does_not_500_or_fake_expiry(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        $leftover = $this->createApprovedSubmission($advertiser);
+        $leftover->update(['title' => 'Leftover Expiry Piece', 'expires_at' => now()->addDays(3)]);
+        DB::table('content_submissions')->where('id', $leftover->id)->update([
+            'expires_at' => 'not-a-date',
+        ]);
+
+        $fresh = $leftover->fresh();
+        $this->assertNull($fresh->expires_at);
+        $this->assertFalse($fresh->isExpired());
+        $this->assertTrue($fresh->canBeOrdered());
+        $this->assertFalse(
+            ContentSubmission::query()->whereKey($leftover->id)->expiredUnused()->exists()
+        );
+
+        $this->actingAs($admin)
+            ->get(route('admin.content-library.index'))
+            ->assertOk()
+            ->assertSee('Leftover Expiry Piece', false)
+            ->assertDontSee('Something went wrong');
+
+        $this->actingAs($admin)
+            ->get(route('admin.content-library.index', ['availability' => 'expired']))
+            ->assertOk()
+            ->assertDontSee('Leftover Expiry Piece', false);
+
+        $this->actingAs($admin)
+            ->get(route('admin.content-library.show', $leftover))
+            ->assertOk()
+            ->assertSee('Leftover Expiry Piece', false)
+            ->assertDontSee('Something went wrong');
+    }
+
+    public function test_leftover_archived_at_stays_on_active_library(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        $leftover = $this->createApprovedSubmission($advertiser);
+        $leftover->update(['title' => 'Leftover Archived Piece']);
+        DB::table('content_submissions')->where('id', $leftover->id)->update([
+            'archived_at' => 'not-a-date',
+        ]);
+
+        $this->assertFalse($leftover->fresh()->isArchived());
+
+        $this->actingAs($admin)
+            ->get(route('admin.content-library.index'))
+            ->assertOk()
+            ->assertSee('Leftover Archived Piece', false);
+
+        $this->actingAs($admin)
+            ->get(route('admin.content-library.index', ['availability' => 'archived']))
+            ->assertOk()
+            ->assertDontSee('Leftover Archived Piece', false);
     }
 
     public function test_expired_article_on_open_order_is_not_in_expired_chip(): void
@@ -1275,5 +1335,81 @@ class AdminContentLibraryTest extends TestCase
     public function test_dead_preview_json_route_is_gone(): void
     {
         $this->assertFalse(Route::has('admin.content-library.preview'));
+    }
+
+    public function test_leftover_owned_paid_placement_shows_paid_site(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $leftoverSite = $this->siteFor($publisher);
+        $leftoverSite->update([
+            'site_name' => 'Stale Leftover Site',
+            'site_url' => 'https://stale-leftover.example',
+            'domain' => 'stale-leftover.example',
+        ]);
+        $paidSite = Site::create([
+            'publisher_id' => $publisher->id,
+            'site_name' => 'Paid Live Site',
+            'site_url' => 'https://paid-live.example',
+            'domain' => 'paid-live.example',
+            'da' => 40,
+            'dr' => 40,
+            'traffic' => 800,
+            'country' => 'us',
+            'language' => 'en',
+            'countries' => ['us'],
+            'languages' => ['en'],
+            'category' => 'marketing',
+            'price' => 80,
+            'publication_time' => '7 days',
+            'link_type' => 'dofollow',
+            'description' => 'Paid live site',
+            'verified' => true,
+            'active' => true,
+        ]);
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update(['title' => 'Leftover Owned Paid']);
+
+        $paid = $this->orderFor($advertiser, [
+            'payment_status' => 'paid',
+            'status' => 'processing',
+            'paid_at' => now(),
+        ]);
+        OrderItem::create([
+            'order_id' => $paid->id,
+            'site_id' => $paidSite->id,
+            'site_name' => $paidSite->site_name,
+            'site_url' => $paidSite->site_url,
+            'price' => 80,
+            'content_link' => 'https://example.com/paid',
+            'content_submission_id' => $submission->id,
+            'live_url' => 'https://live.example/paid-admin',
+            'live_url_submitted_at' => now(),
+            'publisher_status' => 'completed',
+        ]);
+        $leftover = $this->orderFor($advertiser, [
+            'payment_status' => 'failed',
+            'status' => 'pending',
+        ]);
+        $this->attachToOrder($submission, $leftover, $leftoverSite);
+
+        $fresh = $submission->fresh()->load(['order', 'orderItem.site', 'orderItems.site', 'orderItems.order']);
+        $this->assertSame('Paid Live Site', $fresh->libraryPlacementItem()?->site_name);
+        $this->assertSame($paid->id, (int) $fresh->libraryOrder()?->id);
+
+        $this->actingAs($admin)
+            ->get(route('admin.content-library.show', $submission))
+            ->assertOk()
+            ->assertSee('Paid Live Site')
+            ->assertDontSee('Stale Leftover Site')
+            ->assertSee('https://live.example/paid-admin');
+
+        $this->actingAs($admin)
+            ->get(route('admin.content-library.index', ['availability' => 'completed']))
+            ->assertOk()
+            ->assertSee('Leftover Owned Paid')
+            ->assertSee('Paid Live Site')
+            ->assertDontSee('Stale Leftover Site');
     }
 }

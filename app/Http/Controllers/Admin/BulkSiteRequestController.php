@@ -110,7 +110,7 @@ class BulkSiteRequestController extends Controller
 
         $bulkRequest->forceFill([
             'status' => BulkSiteRequest::STATUS_SHEET_SENT,
-            'sheet_sent_at' => $alreadySent ? $bulkRequest->sheet_sent_at : now(),
+            'sheet_sent_at' => ($alreadySent && $bulkRequest->sheet_sent_at) ? $bulkRequest->sheet_sent_at : now(),
             'handled_by' => auth()->id(),
             'admin_notes' => $notes,
         ])->save();

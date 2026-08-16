@@ -4578,11 +4578,18 @@ document.addEventListener('click', async function (e) {
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;');
+        // Hide-mode rows leave data-site-url empty and data-site-name masked.
+        // Do not prefill the mask — owners type the real name/URL they know.
+        const namePrefill = siteUrl ? siteName : '';
+        const urlField = siteUrl
+            ? ''
+            : '<input id="swal-claim-url" class="swal2-input" placeholder="https://your-website.com" autocomplete="url">';
 
         const { value: form } = await Swal.fire({
             title: 'Claim this website',
             html: `<p class="small text-muted mb-2 text-start">If you own <strong>${esc(siteName)}</strong>, submit a claim for review. Include proof of ownership.</p>
-                   <input id="swal-claim-name" class="swal2-input" placeholder="Website name (as listed)" value="${esc(siteName)}">
+                   <input id="swal-claim-name" class="swal2-input" placeholder="Website name (as listed)" value="${esc(namePrefill)}">
+                   ${urlField}
                    <input id="swal-claim-email" class="swal2-input" placeholder="Contact email" value="${esc(contactEmail)}">
                    <textarea id="swal-claim-proof" class="swal2-textarea" placeholder="Proof of ownership (domain registrar, CMS access, etc.)"></textarea>`,
             showCancelButton: true,
@@ -4590,16 +4597,21 @@ document.addEventListener('click', async function (e) {
             focusConfirm: false,
             preConfirm: () => {
                 const website_name = document.getElementById('swal-claim-name').value.trim();
+                const typedUrl = (document.getElementById('swal-claim-url')?.value || '').trim();
                 const contact_email = document.getElementById('swal-claim-email').value.trim();
                 const proof_message = document.getElementById('swal-claim-proof').value.trim();
+                if (!siteUrl && !typedUrl) {
+                    Swal.showValidationMessage('Enter the website URL. We cannot fill it in while the catalog is hiding names.');
+                    return false;
+                }
                 if (proof_message.length < 20) {
                     Swal.showValidationMessage('Please add at least 20 characters of ownership proof.');
                     return false;
                 }
                 return {
                     site_id: parseInt(siteId, 10),
-                    website_name: website_name || siteName,
-                    website_url: siteUrl || undefined,
+                    website_name: website_name || (siteUrl ? siteName : ''),
+                    website_url: siteUrl || typedUrl || undefined,
                     contact_email: contact_email || undefined,
                     proof_message,
                 };

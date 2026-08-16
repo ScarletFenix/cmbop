@@ -11,6 +11,7 @@ use App\Models\User;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class MarketingPanelHistoryTest extends TestCase
@@ -608,5 +609,27 @@ class MarketingPanelHistoryTest extends TestCase
         $this->assertNotEmpty($m[1] ?? null, "Missing data-stat-total for {$stat}");
 
         return $m[1];
+    }
+
+    public function test_history_ok_when_created_at_is_unparseable(): void
+    {
+        $log = ActivityLog::create([
+            'user_id' => $this->marketer->id,
+            'user_name' => $this->marketer->name,
+            'user_email' => $this->marketer->email,
+            'role' => 'marketing',
+            'action' => 'bulk_request.seeded',
+            'description' => 'Leftover marketing stamp',
+            'subject_label' => 'Bulk request #1',
+        ]);
+        DB::table('activity_logs')->where('id', $log->id)->update([
+            'created_at' => 'not-a-date',
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->get(route('marketing.history'))
+            ->assertOk()
+            ->assertSee('Leftover marketing stamp', false)
+            ->assertDontSee('Something went wrong');
     }
 }

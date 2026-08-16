@@ -13,6 +13,7 @@ use App\Models\Site;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -152,6 +153,90 @@ class AdminOrdersConsoleTest extends TestCase
             ->assertSee('Read-only')
             ->assertSee('Message sent')
             ->assertDontSee('chatForm', false);
+    }
+
+    public function test_order_show_ok_when_paid_at_is_unparseable(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $site = $this->siteFor($publisher);
+        $order = $this->orderFor($advertiser, $site);
+        DB::table('orders')->where('id', $order->id)->update([
+            'paid_at' => 'not-a-date',
+        ]);
+
+        $this->assertNull($order->fresh()->paid_at);
+
+        $this->actingAs($admin)
+            ->get(route('admin.orders.show', $order->id))
+            ->assertOk()
+            ->assertSee($order->order_number, false)
+            ->assertDontSee('Something went wrong');
+    }
+
+    public function test_order_show_ok_when_chat_and_dispute_clocks_are_unparseable(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $site = $this->siteFor($publisher);
+        $order = $this->orderFor($advertiser, $site);
+        $order->update(['status' => 'completed', 'completed_at' => now()->subDay()]);
+
+        $message = OrderChatMessage::create([
+            'order_id' => $order->id,
+            'user_id' => $advertiser->id,
+            'sender_type' => 'advertiser',
+            'message' => 'Leftover chat stamp',
+            'is_read' => false,
+        ]);
+        DB::table('order_chat_messages')->where('id', $message->id)->update([
+            'created_at' => 'not-a-date',
+            'updated_at' => 'not-a-date',
+            'read_at' => 'not-a-date',
+        ]);
+
+        $activity = OrderActivity::create([
+            'order_id' => $order->id,
+            'actor_id' => $advertiser->id,
+            'actor_name' => $advertiser->name,
+            'actor_role' => 'advertiser',
+            'event' => 'chat.message',
+            'title' => 'Leftover activity stamp',
+            'description' => 'Leftover chat stamp',
+            'icon' => 'message-circle',
+            'badge_color' => 'secondary',
+        ]);
+        DB::table('order_activities')->where('id', $activity->id)->update([
+            'created_at' => 'not-a-date',
+        ]);
+
+        OrderItemDispute::ensureTable();
+        $dispute = OrderItemDispute::create([
+            'order_id' => $order->id,
+            'order_item_id' => $order->items->first()->id,
+            'opened_by' => $advertiser->id,
+            'status' => OrderItemDispute::STATUS_OPEN,
+            'reason' => 'Leftover dispute stamp live link vanished.',
+        ]);
+        DB::table('order_item_disputes')->where('id', $dispute->id)->update([
+            'created_at' => 'not-a-date',
+            'resolved_at' => 'not-a-date',
+        ]);
+
+        $this->assertNull($message->fresh()->created_at);
+        $this->assertNull($activity->fresh()->created_at);
+        $this->assertNull($dispute->fresh()->created_at);
+        $this->assertNull($dispute->fresh()->resolved_at);
+
+        $this->actingAs($admin)
+            ->get(route('admin.orders.show', $order->id))
+            ->assertOk()
+            ->assertSee('Leftover chat stamp', false)
+            ->assertSee('Leftover activity stamp', false)
+            ->assertSee('Leftover dispute stamp live link vanished.', false)
+            ->assertDontSee('Something went wrong');
     }
 
     public function test_stub_reports_and_settings_routes_are_gone(): void

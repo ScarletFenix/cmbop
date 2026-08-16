@@ -4,6 +4,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\ToleratesUnparseableDates;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -12,6 +13,8 @@ use Illuminate\Support\Facades\Schema;
 
 class OrderItem extends Model
 {
+    use ToleratesUnparseableDates;
+
     /**
      * Advertiser-facing markup multiplier. The extra portion is the platform fee.
      * Example: listing €100 → advertiser pays €115; publisher receives €100.
@@ -104,6 +107,62 @@ class OrderItem extends Model
     ];
 
     /**
+     * Real Gregorian accepted_at. Leftover Hostinger strings are not acceptance.
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder<static>  $query
+     * @return \Illuminate\Database\Eloquent\Builder<static>
+     */
+    public function scopeWhereAcceptedAtIsRecorded($query)
+    {
+        return $query->whereNotNull('accepted_at')
+            ->where('accepted_at', '>=', static::PLAUSIBLE_SQL_DATETIME_FLOOR)
+            ->where('accepted_at', '<=', static::PLAUSIBLE_SQL_DATETIME_CEIL);
+    }
+
+    /**
+     * Missing or leftover accepted_at (same as PHP null after cast).
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder<static>  $query
+     * @return \Illuminate\Database\Eloquent\Builder<static>
+     */
+    public function scopeWhereAcceptedAtIsMissing($query)
+    {
+        return $query->where(function ($inner) {
+            $inner->whereNull('accepted_at')
+                ->orWhere('accepted_at', '>', static::PLAUSIBLE_SQL_DATETIME_CEIL)
+                ->orWhere('accepted_at', '<', static::PLAUSIBLE_SQL_DATETIME_FLOOR);
+        });
+    }
+
+    /**
+     * Real Gregorian live_url_submitted_at. Leftover strings are not a submit clock.
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder<static>  $query
+     * @return \Illuminate\Database\Eloquent\Builder<static>
+     */
+    public function scopeWhereLiveUrlSubmittedAtIsRecorded($query)
+    {
+        return $query->whereNotNull('live_url_submitted_at')
+            ->where('live_url_submitted_at', '>=', static::PLAUSIBLE_SQL_DATETIME_FLOOR)
+            ->where('live_url_submitted_at', '<=', static::PLAUSIBLE_SQL_DATETIME_CEIL);
+    }
+
+    /**
+     * Missing or leftover live_url_submitted_at (same as PHP null after cast).
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder<static>  $query
+     * @return \Illuminate\Database\Eloquent\Builder<static>
+     */
+    public function scopeWhereLiveUrlSubmittedAtIsMissing($query)
+    {
+        return $query->where(function ($inner) {
+            $inner->whereNull('live_url_submitted_at')
+                ->orWhere('live_url_submitted_at', '>', static::PLAUSIBLE_SQL_DATETIME_CEIL)
+                ->orWhere('live_url_submitted_at', '<', static::PLAUSIBLE_SQL_DATETIME_FLOOR);
+        });
+    }
+
+    /**
      * Apply a live URL health-check result onto this item (not saved).
      *
      * @param  array{ok: bool, status: ?int, checked_at: \Illuminate\Support\Carbon}  $result
@@ -153,18 +212,27 @@ class OrderItem extends Model
     }
 
     /**
-     * Clawed lines on a sale that is still paid (partial dispute).
+     * Lines with an upheld dispute, whether the order is still paid or later
+     * flipped to refunded after every line was clawed.
      */
-    public function scopeClawedBackOnPaidSale($query)
+    public function scopeClawedBack($query)
     {
         if (! OrderItemDispute::tableAvailable()) {
             return $query->whereRaw('0 = 1');
         }
 
-        return $query->whereHas('order', fn ($order) => $order->where('payment_status', 'paid'))
-            ->whereHas('disputes', function ($disputes) {
-                $disputes->where('status', OrderItemDispute::STATUS_UPHELD);
-            });
+        return $query->whereHas('disputes', function ($disputes) {
+            $disputes->where('status', OrderItemDispute::STATUS_UPHELD);
+        });
+    }
+
+    /**
+     * Clawed lines on a sale that is still paid (partial dispute).
+     */
+    public function scopeClawedBackOnPaidSale($query)
+    {
+        return $query->clawedBack()
+            ->whereHas('order', fn ($order) => $order->where('payment_status', 'paid'));
     }
 
     public function isClawedBack(): bool

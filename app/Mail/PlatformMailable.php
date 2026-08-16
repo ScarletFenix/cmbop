@@ -15,6 +15,7 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Mail\Mailable;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -325,7 +326,10 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
     protected function abandonOpenLog(string $error): void
     {
         try {
-            $open = EmailLog::openByDedupe($this->dedupeKey);
+            $open = EmailLog::openByDedupe($this->dedupeKey)
+                ->concat($this->openSiblingCampaignLogs())
+                ->unique('id')
+                ->values();
             if ($open->isEmpty()) {
                 return;
             }
@@ -351,11 +355,41 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
         }
     }
 
+    /**
+     * @return Collection<int, EmailLog>
+     */
+    protected function openSiblingCampaignLogs()
+    {
+        $campaignId = 0;
+        $userId = 0;
+        if (isset($this->campaign) && $this->campaign instanceof EmailCampaign && $this->campaign->id) {
+            $campaignId = (int) $this->campaign->id;
+        }
+        $user = $this->recipientUser
+            ?? ((isset($this->recipient) && $this->recipient instanceof User) ? $this->recipient : null);
+        if ($user?->id) {
+            $userId = (int) $user->id;
+        }
+        if (($campaignId < 1 || $userId < 1)
+            && is_string($this->dedupeKey)
+            && preg_match('/^audience_campaign:(\d+):user:(\d+)$/', $this->dedupeKey, $matches)) {
+            $campaignId = $campaignId > 0 ? $campaignId : (int) $matches[1];
+            $userId = $userId > 0 ? $userId : (int) $matches[2];
+        }
+
+        return EmailLog::openForCampaignUser($campaignId, $userId);
+    }
+
     protected function isDuplicate(string $key): bool
     {
         try {
-            if (! Schema::hasTable((new EmailLog)->getTable())) {
+            $table = (new EmailLog)->getTable();
+            if (! Schema::hasTable($table)) {
                 return false;
+            }
+            if (! Schema::hasColumn($table, 'dedupe_key')
+                || ! Schema::hasColumn($table, 'status')) {
+                throw new \RuntimeException('email_logs is missing dedupe columns');
             }
 
             $minutes = (int) config('email_notifications.dedupe_window_minutes', 10);
@@ -368,19 +402,30 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
             // window is for transactional keys that reuse the same shape
             // (welcome, order status). A leftover failed job after a real
             // campaign delivery must not blast the audience again next day.
+            // Use sent_at: MessageSent updates the pending row, so
+            // created_at is when the job was claimed. A Welcome that sat
+            // in the queue longer than the window then delivered still
+            // has an old created_at — a retry blasted a second mail.
             if (! str_starts_with($key, 'audience_campaign:')
                 && $this->notificationType !== 'audience_campaign') {
-                $query->where('created_at', '>=', now()->subMinutes($minutes));
+                $cutoff = now()->subMinutes($minutes);
+                $query->where(function ($window) use ($cutoff) {
+                    $window->where('sent_at', '>=', $cutoff)
+                        ->orWhere(function ($fallback) use ($cutoff) {
+                            $fallback->whereNull('sent_at')
+                                ->where('created_at', '>=', $cutoff);
+                        });
+                });
             }
 
             return $query->exists();
         } catch (\Throwable $e) {
-            Log::warning('Email dedupe check failed; allowing send', [
+            Log::warning('Email dedupe check failed; holding send', [
                 'dedupe' => $key,
                 'error' => $e->getMessage(),
             ]);
 
-            return false;
+            throw $e;
         }
     }
 
@@ -488,8 +533,83 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
         }
     }
 
+    /**
+     * SMTP already persisted a delivered row. A later worker timeout must
+     * not invent a leftover failed Email Center log — retry would blast
+     * again. Shared generic `audience_campaign|{email}|…` is per email,
+     * not per campaign; only campaign+user identity is safe there.
+     */
+    protected function alreadyHasDeliveredLog(): bool
+    {
+        try {
+            $key = (string) $this->dedupeKey;
+            $isForeverCampaignKey = str_starts_with($key, 'audience_campaign:');
+            $isSharedGenericKey = str_starts_with($key, 'audience_campaign|');
+            $isCampaignMail = $this->notificationType === 'audience_campaign'
+                || static::class === AudienceCampaignMail::class
+                || $isForeverCampaignKey
+                || $isSharedGenericKey;
+
+            if ($key !== '' && ! $isSharedGenericKey) {
+                $delivered = EmailLog::latestDeliveredByDedupe($key);
+                if ($delivered) {
+                    if ($isForeverCampaignKey) {
+                        return true;
+                    }
+
+                    $minutes = (int) config('email_notifications.dedupe_window_minutes', 10);
+                    if ($delivered->created_at
+                        && $delivered->created_at->gte(now()->subMinutes(max(1, $minutes)))) {
+                        return true;
+                    }
+                }
+            }
+
+            if ($isCampaignMail) {
+                [$campaignId, $userId] = $this->campaignAndUserIdsForDeliveryCheck();
+                if ($campaignId > 0 && $userId > 0
+                    && EmailLog::latestDeliveredForCampaignUser($campaignId, $userId)) {
+                    return true;
+                }
+            }
+        } catch (\Throwable) {
+        }
+
+        return false;
+    }
+
+    /**
+     * @return array{0: int, 1: int}
+     */
+    protected function campaignAndUserIdsForDeliveryCheck(): array
+    {
+        $campaignId = 0;
+        $userId = 0;
+        if (isset($this->campaign) && $this->campaign instanceof EmailCampaign) {
+            $campaignId = (int) $this->campaign->id;
+        }
+        $user = $this->recipientUser
+            ?? ((isset($this->recipient) && $this->recipient instanceof User) ? $this->recipient : null);
+        $userId = (int) ($user?->id ?? 0);
+        if ($campaignId > 0 && $userId > 0) {
+            return [$campaignId, $userId];
+        }
+        if (preg_match('/^audience_campaign:(\d+):user:(\d+)$/', (string) $this->dedupeKey, $matches)) {
+            return [(int) $matches[1], (int) $matches[2]];
+        }
+
+        return [0, 0];
+    }
+
     public function failed(?\Throwable $exception): void
     {
+        if ($this->alreadyHasDeliveredLog()) {
+            $this->suppressReason = 'duplicate';
+            $this->abandonOpenLog($this->suppressErrorMessage());
+
+            return;
+        }
+
         try {
             $type = $this->notificationType ?: EmailCatalog::keyFromMailable(static::class);
             $envelopeTo = data_get($this->to, '0.address');
