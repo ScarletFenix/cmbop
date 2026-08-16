@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ActivityLog;
 use App\Models\ContentModerationLog;
 use App\Models\ContentModerationSetting;
 use App\Models\ContentSubmission;
@@ -895,6 +896,10 @@ class AdminContentLibraryTest extends TestCase
             ->assertRedirect()
             ->assertSessionHas('success');
         $this->assertNull($unused->fresh()->archived_at);
+        $archived = ActivityLog::query()->where('action', 'content.archived')->first();
+        $this->assertNotNull($archived);
+        $this->assertSame($unused->id, (int) data_get($archived->properties, 'submission_id'));
+        $this->assertSame(1, ActivityLog::query()->where('action', 'content.restored')->count());
     }
 
     public function test_retry_on_paid_article_is_forbidden(): void

@@ -221,6 +221,17 @@ class SiteEnrichmentController extends Controller
             EnrichSiteJob::dispatch($site->id, 'admin', true, true);
         }
 
+        $actor = auth()->user()?->name ?? 'Staff';
+        ActivityLogger::tryLog(
+            $sync ? 'site.enrichment_refreshed' : 'site.enrichment_queued',
+            $sync
+                ? $actor.' enriched "'.$site->site_name.'"'
+                : $actor.' queued enrichment for "'.$site->site_name.'"',
+            $site,
+            ['sync' => $sync],
+            $site->site_name
+        );
+
         return response()->json([
             'success' => true,
             'message' => $sync ? 'Site enriched' : 'Enrichment queued',
@@ -347,6 +358,19 @@ class SiteEnrichmentController extends Controller
                 EnrichSiteJob::dispatch((int) $siteId, 'admin', true, true);
             }
 
+            if ($ids->count() > 0) {
+                ActivityLogger::tryLog(
+                    'site.enrichment_batch_queued',
+                    (auth()->user()?->name ?? 'Staff').' queued '.$ids->count().' stale site(s) for enrichment',
+                    null,
+                    [
+                        'count' => $ids->count(),
+                        'limit' => $limit,
+                        'site_ids' => $ids->values()->take(40)->all(),
+                    ]
+                );
+            }
+
             return response()->json([
                 'success' => true,
                 'message' => 'Queued '.$ids->count().' stale site(s)',
@@ -399,6 +423,19 @@ class SiteEnrichmentController extends Controller
 
             foreach ($ids as $siteId) {
                 EnrichSiteJob::dispatch((int) $siteId, 'admin', true, true);
+            }
+
+            if ($ids->count() > 0) {
+                ActivityLogger::tryLog(
+                    'site.enrichment_rerun_queued',
+                    (auth()->user()?->name ?? 'Staff').' re-queued '.$ids->count().' failed site(s) for enrichment',
+                    null,
+                    [
+                        'count' => $ids->count(),
+                        'limit' => $limit,
+                        'site_ids' => $ids->values()->take(40)->all(),
+                    ]
+                );
             }
 
             return response()->json([

@@ -32,6 +32,10 @@ class PanelController extends Controller
         'site.screenshot_refreshed',
         'site.screenshot_refresh_queued',
         'site.metrics_manual',
+        'site.enrichment_queued',
+        'site.enrichment_refreshed',
+        'site.enrichment_batch_queued',
+        'site.enrichment_rerun_queued',
     ];
 
     public function dashboard()

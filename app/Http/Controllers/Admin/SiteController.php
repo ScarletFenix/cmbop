@@ -224,16 +224,28 @@ class SiteController extends Controller
             : ($countryFilter !== '' ? '-'.$countryFilter : '');
         $filename = 'websites-records'.$suffix.'-'.now()->format('Y-m-d').'.csv';
 
-        return response()->streamDownload(function () use ($countryFilter, $missingMarket) {
+        $query = Site::query()->orderBy('domain')->orderBy('id');
+        if ($missingMarket) {
+            $query->activeMissingMarketplaceCountry();
+        } else {
+            $this->applyRecordsCountryFilter($query, $countryFilter);
+        }
+        $matchCount = (clone $query)->count();
+
+        ActivityLogger::tryLog(
+            'sites.records_exported',
+            ($request->user()?->name ?? 'Admin').' exported the websites records sheet ('.$matchCount.' row(s)).',
+            null,
+            [
+                'country' => $countryFilter,
+                'missing_market' => $missingMarket,
+                'rows_exported' => $matchCount,
+            ]
+        );
+
+        return response()->streamDownload(function () use ($query) {
             $out = fopen('php://output', 'w');
             fputcsv($out, ['url', 'countries', 'categories', 'active']);
-
-            $query = Site::query()->orderBy('domain')->orderBy('id');
-            if ($missingMarket) {
-                $query->activeMissingMarketplaceCountry();
-            } else {
-                $this->applyRecordsCountryFilter($query, $countryFilter);
-            }
 
             foreach ($query->cursor() as $site) {
                 $row = $this->siteRecordRow($site);

@@ -6,6 +6,7 @@ use App\Jobs\SendEmailCampaignJob;
 use App\Listeners\StampEmailLogFailedJobUuid;
 use App\Mail\AudienceCampaignMail;
 use App\Mail\WelcomeEmail;
+use App\Models\ActivityLog;
 use App\Models\DepositRequest;
 use App\Models\EmailCampaign;
 use App\Models\EmailCampaignRecipient;
@@ -618,6 +619,16 @@ class AdminEmailCenterTest extends TestCase
         $this->assertFalse(EmailNotificationSetting::isEnabled('welcome'));
         $this->assertTrue(EmailNotificationSetting::isEnabled('password_reset'));
         $this->assertTrue(EmailNotificationSetting::isEnabled('email_verification'));
+
+        $log = ActivityLog::query()->where('action', 'email.settings_updated')->first();
+        $this->assertNotNull($log);
+        $changedTypes = collect(data_get($log->properties, 'changed', []))->pluck('type')->all();
+        $this->assertContains('welcome', $changedTypes);
+
+        $this->actingAs($admin)
+            ->post(route('admin.emails.settings'), ['enabled' => $enabled])
+            ->assertSessionHas('success');
+        $this->assertSame(1, ActivityLog::query()->where('action', 'email.settings_updated')->count());
     }
 
     public function test_retry_only_retries_mail_failed_jobs_and_leaves_logs(): void

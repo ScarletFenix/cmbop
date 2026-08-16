@@ -153,6 +153,11 @@ class EmailCenterController extends Controller
 
         $data = $request->validate($rules);
 
+        $before = [];
+        foreach ($editable as $type) {
+            $before[$type] = EmailNotificationSetting::isEnabled($type);
+        }
+
         DB::transaction(function () use ($editable, $data) {
             foreach ($editable as $type) {
                 EmailNotificationSetting::updateOrCreate(
@@ -163,6 +168,27 @@ class EmailCenterController extends Controller
         });
 
         EmailNotificationSetting::flushCache();
+
+        $changed = [];
+        foreach ($editable as $type) {
+            $to = (string) $data['enabled'][$type] === '1';
+            if ($before[$type] !== $to) {
+                $changed[] = [
+                    'type' => $type,
+                    'from' => $before[$type],
+                    'to' => $to,
+                ];
+            }
+        }
+
+        if ($changed !== []) {
+            ActivityLogger::tryLog(
+                'email.settings_updated',
+                ($request->user()?->name ?? 'Admin').' updated email notification settings',
+                null,
+                ['changed' => $changed]
+            );
+        }
 
         return back()->with('success', 'Email notification settings saved.');
     }

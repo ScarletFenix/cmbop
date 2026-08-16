@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ActivityLog;
 use App\Models\Country;
 use App\Models\Role;
 use App\Models\Site;
@@ -280,6 +281,11 @@ class AdminWebsiteRecordsSheetTest extends TestCase
         $this->assertStringContainsString('de|at', $csv);
         $this->assertStringContainsString('Technology|Business & Finance', $csv);
         $this->assertStringNotContainsString('Records Sheet Site', $csv);
+
+        $log = ActivityLog::query()->where('action', 'sites.records_exported')->first();
+        $this->assertNotNull($log);
+        $this->assertGreaterThanOrEqual(1, (int) data_get($log->properties, 'rows_exported'));
+        $this->assertFalse((bool) data_get($log->properties, 'missing_market'));
     }
 
     public function test_non_admin_cannot_access_websites_records_sheet(): void

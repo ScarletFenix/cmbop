@@ -154,6 +154,9 @@ class AdminInvoiceOpsTest extends TestCase
         $this->assertSame(0, Invoice::where('order_id', $order->id)->where('type', Invoice::TYPE_PAYMENT_RECEIPT)->count());
         Mail::assertNothingQueued();
         Mail::assertNotQueued(PaymentSuccessfulInvoiceMail::class);
+        $backfill = ActivityLog::query()->where('action', 'invoice.backfill_run')->first();
+        $this->assertNotNull($backfill);
+        $this->assertSame(1, (int) data_get($backfill->properties, 'created'));
     }
 
     public function test_regenerate_missing_pdfs_includes_null_path_and_older_gaps(): void
@@ -177,6 +180,24 @@ class AdminInvoiceOpsTest extends TestCase
         $this->assertSame(0, $result['failed']);
         $this->assertTrue($missingNull->fresh()->pdfExists());
         $this->assertTrue($stale->fresh()->pdfExists());
+    }
+
+    public function test_regenerate_missing_pdfs_http_logs_when_files_are_written(): void
+    {
+        Mail::fake();
+        Storage::fake('local');
+        $admin = $this->admin();
+        $this->stubInvoice($this->advertiser(), ['pdf_path' => null]);
+
+        $this->actingAs($admin)
+            ->from(route('admin.invoices.index'))
+            ->post(route('admin.invoices.regenerate-missing-pdfs'), ['limit' => 10])
+            ->assertRedirect(route('admin.invoices.index'))
+            ->assertSessionHas('success');
+
+        $log = ActivityLog::query()->where('action', 'invoice.pdfs_regenerated')->first();
+        $this->assertNotNull($log);
+        $this->assertGreaterThanOrEqual(1, (int) data_get($log->properties, 'regenerated'));
     }
 
     public function test_resend_cancelled_invoice_fails_without_mail(): void
