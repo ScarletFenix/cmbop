@@ -244,6 +244,11 @@ class AdminOrderPaymentsOpsTest extends TestCase
         $this->assertStringContainsString('PAY-CSV-UNPAID', $csv);
         $this->assertStringNotContainsString('PAY-CSV-PAID', $csv);
         $this->assertStringContainsString('order_number', $csv);
+
+        $log = ActivityLog::query()->where('action', 'payment.exported')->first();
+        $this->assertNotNull($log);
+        $this->assertSame('unpaid', data_get($log->properties, 'payment_status'));
+        $this->assertSame(1, (int) data_get($log->properties, 'rows_exported'));
     }
 
     public function test_date_field_paid_at_filters_settled_rows(): void

@@ -343,9 +343,11 @@ class AdminAudienceInventoryTest extends TestCase
         $this->assertStringContainsString("'=1+1", $csv);
         $this->assertStringContainsString($risky->email, $csv);
 
-        $this->assertTrue(
-            ActivityLog::query()->where('action', 'audience.exported')->exists()
-        );
+        $log = ActivityLog::query()->where('action', 'audience.exported')->first();
+        $this->assertNotNull($log);
+        $this->assertSame('advertisers', data_get($log->properties, 'audience'));
+        $this->assertGreaterThanOrEqual(1, (int) data_get($log->properties, 'rows_exported'));
+        $this->assertFalse((bool) data_get($log->properties, 'truncated'));
     }
 
     public function test_empty_filters_show_clear_copy(): void

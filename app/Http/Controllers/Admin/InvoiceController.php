@@ -241,6 +241,20 @@ class InvoiceController extends Controller
 
         $result = $billing->backfillMissingTaxInvoices((int) ($data['limit'] ?? 50));
 
+        if ((int) ($result['created'] ?? 0) > 0 || (int) ($result['failed'] ?? 0) > 0) {
+            ActivityLogger::tryLog(
+                'invoice.backfill_run',
+                ($request->user()?->name ?? 'Admin').' ran a tax-invoice backfill',
+                null,
+                [
+                    'created' => (int) $result['created'],
+                    'skipped' => (int) ($result['skipped'] ?? 0),
+                    'failed' => (int) ($result['failed'] ?? 0),
+                    'limit' => (int) ($data['limit'] ?? 50),
+                ]
+            );
+        }
+
         return back()->with(
             'success',
             sprintf(
@@ -263,6 +277,19 @@ class InvoiceController extends Controller
 
         $result = $billing->regenerateMissingPdfs((int) ($data['limit'] ?? 50));
 
+        if ((int) ($result['regenerated'] ?? 0) > 0 || (int) ($result['failed'] ?? 0) > 0) {
+            ActivityLogger::tryLog(
+                'invoice.pdfs_regenerated',
+                ($request->user()?->name ?? 'Admin').' ran a missing-invoice PDF regenerate',
+                null,
+                [
+                    'regenerated' => (int) $result['regenerated'],
+                    'failed' => (int) ($result['failed'] ?? 0),
+                    'limit' => (int) ($data['limit'] ?? 50),
+                ]
+            );
+        }
+
         return back()->with(
             'success',
             sprintf(
@@ -280,6 +307,14 @@ class InvoiceController extends Controller
         } catch (\Throwable $e) {
             return back()->with('error', UserFacingError::message($e, 'Could not regenerate the PDF.'));
         }
+
+        ActivityLogger::tryLog(
+            'invoice.pdf_regenerated',
+            (auth()->user()?->name ?? 'Admin').' regenerated the PDF for invoice '.$invoice->invoice_number,
+            $invoice,
+            ['invoice_id' => $invoice->id],
+            $invoice->invoice_number
+        );
 
         return back()->with('success', 'PDF regenerated for '.$invoice->invoice_number);
     }

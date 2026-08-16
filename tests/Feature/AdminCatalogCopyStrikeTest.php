@@ -205,6 +205,74 @@ class AdminCatalogCopyStrikeTest extends TestCase
         );
     }
 
+    public function test_lift_hide_heals_stale_until_and_logs(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $advertiser->forceFill([
+            'catalog_copy_strike_count' => 0,
+            'catalog_copy_warned_at' => null,
+            'catalog_hide_until' => now()->subHour(),
+        ])->save();
+
+        $this->assertFalse($advertiser->inCatalogHideMode());
+
+        $this->actingAs($admin)
+            ->from(route('admin.catalog-activity.show', $advertiser->id))
+            ->post(route('admin.catalog-activity.lift-hide', $advertiser->id))
+            ->assertRedirect()
+            ->assertSessionHas('success', fn ($msg) => ! str_contains((string) $msg, 'already out'));
+
+        $advertiser->refresh();
+        $this->assertNull($advertiser->catalog_hide_until);
+
+        $log = ActivityLog::query()->where('action', 'catalog_hide_lifted')->first();
+        $this->assertNotNull($log);
+        $this->assertTrue((bool) data_get($log->properties, 'healed_stale_until'));
+    }
+
+    public function test_lift_hide_true_noop_does_not_log(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $advertiser->forceFill([
+            'catalog_copy_strike_count' => 0,
+            'catalog_hide_until' => null,
+        ])->save();
+
+        $this->actingAs($admin)
+            ->from(route('admin.catalog-activity.show', $advertiser->id))
+            ->post(route('admin.catalog-activity.lift-hide', $advertiser->id))
+            ->assertRedirect()
+            ->assertSessionHas('success', fn ($msg) => str_contains((string) $msg, 'already out'));
+
+        $this->assertSame(0, ActivityLog::query()->where('action', 'catalog_hide_lifted')->count());
+    }
+
+    public function test_clear_copy_hide_heals_stale_until_and_logs(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $advertiser->forceFill([
+            'catalog_copy_strike_count' => 0,
+            'catalog_copy_warned_at' => null,
+            'catalog_hide_until' => now()->subMinutes(30),
+        ])->save();
+
+        $this->actingAs($admin)
+            ->from(route('admin.catalog-activity.show', $advertiser->id))
+            ->post(route('admin.catalog-activity.clear-copy-hide', $advertiser->id))
+            ->assertRedirect()
+            ->assertSessionHas('success', fn ($msg) => ! str_contains((string) $msg, 'already out'));
+
+        $advertiser->refresh();
+        $this->assertNull($advertiser->catalog_hide_until);
+
+        $log = ActivityLog::query()->where('action', 'catalog_activity.copy_hide_cleared')->first();
+        $this->assertNotNull($log);
+        $this->assertTrue((bool) data_get($log->properties, 'healed_stale_until'));
+    }
+
     public function test_non_admin_cannot_lift_hide_or_reset_strikes(): void
     {
         $advertiser = $this->userWithRole('advertiser');

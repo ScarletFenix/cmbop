@@ -235,10 +235,23 @@ class AdminWithdrawalController extends Controller
     public function exportCsv(Request $request): StreamedResponse
     {
         $query = Withdrawal::with('user:id,name,email');
-        $this->applyWithdrawalFilters($query, $request);
+        $filters = $this->applyWithdrawalFilters($query, $request);
         $rows = $query->orderBy('payment_method')->orderBy('created_at')->get();
 
         $filename = 'withdrawals-export-'.now()->format('Y-m-d-His').'.csv';
+
+        ActivityLogger::tryLog(
+            'withdrawal.exported',
+            ($request->user()?->name ?? 'Admin').' exported withdrawals ('.$rows->count().' row(s)).',
+            null,
+            [
+                'queue' => $filters['queue'],
+                'status' => $filters['status'],
+                'search' => search_text($request->input('search')),
+                'payment_method' => search_text($request->input('payment_method')),
+                'rows_exported' => $rows->count(),
+            ]
+        );
 
         return response()->streamDownload(function () use ($rows) {
             $out = fopen('php://output', 'w');

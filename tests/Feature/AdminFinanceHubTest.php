@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ActivityLog;
 use App\Models\DepositRequest;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -518,6 +519,11 @@ class AdminFinanceHubTest extends TestCase
         $this->assertStringContainsString('stripe_card_collected', $csv);
         $this->assertStringContainsString('site_feature_stripe', $csv);
         $this->assertStringContainsString('failed_external_collected', $csv);
+
+        $log = ActivityLog::query()->where('action', 'finance.period_exported')->first();
+        $this->assertNotNull($log);
+        $this->assertSame('month', data_get($log->properties, 'period'));
+        $this->assertGreaterThan(0, (int) data_get($log->properties, 'rows_exported'));
     }
 
     public function test_billing_config_exposes_withdrawal_fee_percent(): void

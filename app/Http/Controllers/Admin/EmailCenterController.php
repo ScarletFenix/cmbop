@@ -153,6 +153,11 @@ class EmailCenterController extends Controller
 
         $data = $request->validate($rules);
 
+        $before = [];
+        foreach ($editable as $type) {
+            $before[$type] = EmailNotificationSetting::isEnabled($type);
+        }
+
         DB::transaction(function () use ($editable, $data) {
             foreach ($editable as $type) {
                 EmailNotificationSetting::updateOrCreate(
@@ -163,6 +168,27 @@ class EmailCenterController extends Controller
         });
 
         EmailNotificationSetting::flushCache();
+
+        $changed = [];
+        foreach ($editable as $type) {
+            $to = (string) $data['enabled'][$type] === '1';
+            if ($before[$type] !== $to) {
+                $changed[] = [
+                    'type' => $type,
+                    'from' => $before[$type],
+                    'to' => $to,
+                ];
+            }
+        }
+
+        if ($changed !== []) {
+            ActivityLogger::tryLog(
+                'email.settings_updated',
+                ($request->user()?->name ?? 'Admin').' updated email notification settings',
+                null,
+                ['changed' => $changed]
+            );
+        }
 
         return back()->with('success', 'Email notification settings saved.');
     }
@@ -331,9 +357,21 @@ class EmailCenterController extends Controller
             return back()->with('error', 'Could not retry mail jobs. Please try again.');
         }
 
-        $this->markRetriedMailLogsPending($this->actuallyRetriedJobUuids($uuids), $payloads);
+        $retried = $this->actuallyRetriedJobUuids($uuids);
+        $this->markRetriedMailLogsPending($retried, $payloads);
 
-        return back()->with('success', 'Retried '.count($uuids).' failed mail job(s). Other failed jobs were left untouched.');
+        if ($retried === []) {
+            return back()->with('success', 'No failed mail jobs were re-queued.');
+        }
+
+        ActivityLogger::tryLog(
+            'email.retried',
+            ($request->user()?->name ?? 'Admin').' retried '.count($retried).' failed mail job(s)',
+            null,
+            ['count' => count($retried)]
+        );
+
+        return back()->with('success', 'Retried '.count($retried).' failed mail job(s). Other failed jobs were left untouched.');
     }
 
     protected function retryFailedLog(int $logId)
@@ -372,6 +410,13 @@ class EmailCenterController extends Controller
             ]);
             $this->requeueFailedCampaignRecipient($log);
 
+            ActivityLogger::tryLog(
+                'email.retried',
+                (auth()->user()?->name ?? 'Admin').' retried failed mail log #'.$log->id,
+                null,
+                ['count' => 1, 'log_id' => $log->id, 'template' => $log->template_key]
+            );
+
             return back()->with('success', 'Re-queued the failed mail job for this log.');
         }
 
@@ -403,6 +448,13 @@ class EmailCenterController extends Controller
                 }
                 Mail::to($adminEmail)->sendNow($mailable);
             }
+
+            ActivityLogger::tryLog(
+                'email_center.test_sent',
+                (auth()->user()?->name ?? 'Admin').' retried a test email ('.$key.') to '.$adminEmail,
+                null,
+                ['template' => $key, 'email' => $adminEmail, 'retry' => true, 'log_id' => $log->id]
+            );
 
             return back()->with('success', 'Retried the Email Center test send to '.$adminEmail.'.');
         } catch (\Throwable $e) {

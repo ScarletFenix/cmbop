@@ -168,19 +168,9 @@ class CampaignController extends Controller
             ]);
             $campaign->refresh()->recountRecipientTotals();
             if ($campaign->status === EmailCampaign::STATUS_SENT) {
-                ActivityLogger::tryLog(
-                    'campaign.queued',
-                    "Queued campaign \"{$campaign->name}\" for {$count} recipient(s).",
-                    $campaign,
-                    [
-                        'audience' => $campaign->audience,
-                        'recipients' => $count,
-                    ]
-                );
-
                 return redirect()
                     ->route('admin.campaigns.index')
-                    ->with('success', "Campaign queued for {$count} recipient(s).");
+                    ->with('success', 'This campaign was already sent. Recipients were not queued again.');
             }
 
             EmailCampaignRecipient::query()

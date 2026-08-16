@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\ContentSubmission;
 use App\Models\User;
+use App\Services\ActivityLogger;
 use App\Services\Advertiser\ContentLibrarySearchQuery;
 use App\Services\ContentUpload\AdminLibraryStaffActions;
 use App\Services\ContentUpload\ArticleHtmlSanitizer;
@@ -131,8 +132,22 @@ class ContentLibraryController extends Controller
             return back()->with('error', collect($e->errors())->flatten()->first() ?: 'Could not re-evaluate this article.');
         }
 
-        $status = (string) ($result['moderation_status'] ?? $submission->fresh()?->moderation_status);
+        $fresh = $submission->fresh() ?? $submission;
+        $status = (string) ($result['moderation_status'] ?? $fresh->moderation_status);
         $message = trim((string) ($result['message'] ?? ''));
+
+        ActivityLogger::tryLog(
+            'content.re_evaluated',
+            (auth()->user()?->name ?? 'Admin').' re-evaluated library article #'.$fresh->id,
+            $fresh,
+            [
+                'submission_id' => $fresh->id,
+                'user_id' => $fresh->user_id,
+                'moderation_status' => $status,
+                'approved' => (bool) ($result['approved'] ?? false),
+            ],
+            'Article #'.$fresh->id
+        );
 
         return back()->with(
             'success',
@@ -151,20 +166,41 @@ class ContentLibraryController extends Controller
         abort_unless($admin instanceof User, 403);
 
         try {
-            $this->staffActions->override($submission, $data['decision'], $admin, $data['notes']);
+            $result = $this->staffActions->override($submission, $data['decision'], $admin, $data['notes']);
         } catch (ValidationException $e) {
             return back()->with('error', collect($e->errors())->flatten()->first() ?: 'Override failed.');
         }
 
-        return back()->with('success', $this->overrideFlash($submission->fresh(), $data['decision']));
+        $fresh = $result['submission'] ?? $submission->fresh();
+        $flash = ! empty($result['already'])
+            ? (string) ($result['message'] ?: $this->overrideFlash($fresh, $data['decision']))
+            : $this->overrideFlash($fresh, $data['decision']);
+
+        return back()->with('success', $flash);
     }
 
     public function archive(ContentSubmission $submission): RedirectResponse
     {
+        $wasArchived = $submission->isArchived();
+
         try {
             $this->staffActions->archive($submission);
         } catch (ValidationException $e) {
             return back()->with('error', collect($e->errors())->flatten()->first() ?: 'Could not archive this article.');
+        }
+
+        $fresh = $submission->fresh() ?? $submission;
+        if (! $wasArchived && $fresh->isArchived()) {
+            ActivityLogger::tryLog(
+                'content.archived',
+                (auth()->user()?->name ?? 'Admin').' archived library article #'.$fresh->id,
+                $fresh,
+                [
+                    'submission_id' => $fresh->id,
+                    'user_id' => $fresh->user_id,
+                ],
+                'Article #'.$fresh->id
+            );
         }
 
         return back()->with('success', 'Article #'.$submission->id.' archived.');
@@ -172,7 +208,22 @@ class ContentLibraryController extends Controller
 
     public function restore(ContentSubmission $submission): RedirectResponse
     {
+        $wasArchived = $submission->isArchived();
         $this->staffActions->restore($submission);
+        $fresh = $submission->fresh() ?? $submission;
+
+        if ($wasArchived && ! $fresh->isArchived()) {
+            ActivityLogger::tryLog(
+                'content.restored',
+                (auth()->user()?->name ?? 'Admin').' restored library article #'.$fresh->id,
+                $fresh,
+                [
+                    'submission_id' => $fresh->id,
+                    'user_id' => $fresh->user_id,
+                ],
+                'Article #'.$fresh->id
+            );
+        }
 
         return back()->with('success', 'Article #'.$submission->id.' restored from archive.');
     }

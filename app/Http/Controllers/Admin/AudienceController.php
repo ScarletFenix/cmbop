@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Services\ActivityLogger;
 use App\Services\AudienceInventoryService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
 
 class AudienceController extends Controller
 {
@@ -38,23 +37,20 @@ class AudienceController extends Controller
         $search = search_text($request->get('q'));
         $filters = $this->inventoryFilters($request);
 
-        try {
-            ActivityLogger::log(
-                'audience.exported',
-                'Exported '.AudienceInventoryService::label($audienceKey).' audience CSV.',
-                null,
-                [
-                    'audience' => $audienceKey,
-                    'search' => $search,
-                    'filters' => $filters,
-                ]
-            );
-        } catch (\Throwable $e) {
-            Log::warning('Audience export activity log failed', [
+        $rowCount = $inventory->exportMatchCount($audienceKey, $search !== '' ? $search : null, $filters);
+
+        ActivityLogger::tryLog(
+            'audience.exported',
+            'Exported '.AudienceInventoryService::label($audienceKey).' audience CSV.',
+            null,
+            [
                 'audience' => $audienceKey,
-                'error' => $e->getMessage(),
-            ]);
-        }
+                'search' => $search,
+                'filters' => $filters,
+                'rows_exported' => min($rowCount, AudienceInventoryService::EXPORT_LIMIT),
+                'truncated' => $rowCount > AudienceInventoryService::EXPORT_LIMIT,
+            ]
+        );
 
         return $inventory->exportCsv($audienceKey, $search !== '' ? $search : null, $filters);
     }

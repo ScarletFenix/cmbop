@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Jobs\CaptureSiteScreenshotJob;
 use App\Jobs\EnrichSiteJob;
 use App\Jobs\RefreshSiteMetricsJob;
+use App\Models\ActivityLog;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\SiteEnrichmentRun;
@@ -387,12 +388,35 @@ class AdminSiteEnrichmentPageTest extends TestCase
         Queue::assertPushed(EnrichSiteJob::class, function (EnrichSiteJob $job) use ($third) {
             return $job->siteId === $third->id;
         });
+
+        $log = ActivityLog::query()->where('action', 'site.enrichment_batch_queued')->first();
+        $this->assertNotNull($log);
+        $this->assertSame(2, (int) data_get($log->properties, 'count'));
         Queue::assertNotPushed(EnrichSiteJob::class, function (EnrichSiteJob $job) use ($second) {
             return $job->siteId === $second->id;
         });
         Queue::assertNotPushed(EnrichSiteJob::class, function (EnrichSiteJob $job) use ($fresh) {
             return $job->siteId === $fresh->id;
         });
+    }
+
+    public function test_enrich_queues_job_and_logs(): void
+    {
+        Queue::fake();
+        config(['site_enrichment.enabled' => true]);
+        $site = $this->makeSite([
+            'site_name' => 'Enrich Me',
+            'domain' => 'enrich-me.example',
+            'site_url' => 'https://enrich-me.example',
+        ]);
+
+        $this->actingAs($this->admin)
+            ->postJson(route('admin.sites.enrich', $site->id))
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        Queue::assertPushed(EnrichSiteJob::class, fn (EnrichSiteJob $job) => $job->siteId === $site->id);
+        $this->assertSame(1, ActivityLog::query()->where('action', 'site.enrichment_queued')->count());
     }
 
     public function test_config_cards_show_when_apis_are_missing(): void

@@ -306,11 +306,7 @@ class CommunityFeedbackController extends Controller
                 'tab' => $tab,
                 'id' => $model->id,
             ]);
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Updated.',
-            ]);
+            $model->forceFill($payload);
         }
 
         try {

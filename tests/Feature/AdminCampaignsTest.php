@@ -764,6 +764,39 @@ class AdminCampaignsTest extends TestCase
         $this->assertSame(EmailCampaign::STATUS_FAILED, EmailCampaign::query()->latest('id')->value('status'));
     }
 
+    public function test_failed_dispatch_when_already_sent_does_not_log_queued(): void
+    {
+        $this->mock(Dispatcher::class, function ($mock) {
+            $mock->shouldReceive('dispatch')->andReturnUsing(function () {
+                $campaign = EmailCampaign::query()->latest('id')->first();
+                $this->assertNotNull($campaign);
+                EmailCampaignRecipient::query()
+                    ->where('email_campaign_id', $campaign->id)
+                    ->update(['status' => EmailCampaignRecipient::STATUS_DELIVERED]);
+                $campaign->update([
+                    'status' => EmailCampaign::STATUS_SENT,
+                    'sent_at' => now(),
+                ]);
+
+                throw new \RuntimeException('broker down after send');
+            });
+        });
+
+        $admin = $this->makeUser('admin');
+        $this->makeUser('advertiser');
+
+        $this->actingAs($admin)
+            ->from(route('admin.campaigns.index'))
+            ->post(route('admin.campaigns.send'), $this->campaignPayload([
+                'respect_preferences' => '0',
+            ]))
+            ->assertRedirect(route('admin.campaigns.index'))
+            ->assertSessionHas('success', fn ($msg) => str_contains((string) $msg, 'already sent'));
+
+        $this->assertSame(0, ActivityLog::query()->where('action', 'campaign.queued')->count());
+        $this->assertSame(EmailCampaign::STATUS_SENT, EmailCampaign::query()->latest('id')->value('status'));
+    }
+
     public function test_send_job_uses_mail_database_when_app_queue_is_sync(): void
     {
         Mail::fake();

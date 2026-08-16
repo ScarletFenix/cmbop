@@ -190,12 +190,21 @@ class CatalogActivityController extends Controller
             $strikesWere = (int) ($model->catalog_copy_strike_count ?? 0);
 
             if (! $wasHidden) {
-                if ($model->catalog_hide_until !== null) {
-                    $model->catalog_hide_until = null;
-                    $model->save();
+                if ($model->catalog_hide_until === null) {
+                    return ['noop' => true, 'model' => $model];
                 }
 
-                return ['noop' => true, 'model' => $model];
+                $model->catalog_hide_until = null;
+                CatalogCopyStrikeGuard::watermarkEvents($model);
+                $model->save();
+
+                return [
+                    'noop' => false,
+                    'healed_stale_until' => true,
+                    'model' => $model,
+                    'hide_until_was' => $hideUntilWas,
+                    'strikes_were' => $strikesWere,
+                ];
             }
 
             $model->catalog_hide_until = null;
@@ -226,6 +235,7 @@ class CatalogActivityController extends Controller
             [
                 'hide_until_was' => $result['hide_until_was']?->toIso8601String(),
                 'strikes_were' => $result['strikes_were'],
+                'healed_stale_until' => (bool) ($result['healed_stale_until'] ?? false),
             ]
         );
 
@@ -315,12 +325,21 @@ class CatalogActivityController extends Controller
             $warnedAtWas = $model->catalog_copy_warned_at;
 
             if (! $wasHidden && $strikesWere === 0 && $warnedAtWas === null) {
-                if ($model->catalog_hide_until !== null) {
-                    $model->catalog_hide_until = null;
-                    $model->save();
+                if ($model->catalog_hide_until === null) {
+                    return ['noop' => true, 'model' => $model];
                 }
 
-                return ['noop' => true, 'model' => $model];
+                $model->catalog_hide_until = null;
+                CatalogCopyStrikeGuard::watermarkEvents($model);
+                $model->save();
+
+                return [
+                    'noop' => false,
+                    'healed_stale_until' => true,
+                    'model' => $model,
+                    'hide_until_was' => $hideUntilWas,
+                    'strikes_were' => $strikesWere,
+                ];
             }
 
             $model->catalog_hide_until = null;
@@ -353,6 +372,7 @@ class CatalogActivityController extends Controller
             [
                 'hide_until_was' => $result['hide_until_was']?->toIso8601String(),
                 'strikes_were' => $result['strikes_were'] ?? 0,
+                'healed_stale_until' => (bool) ($result['healed_stale_until'] ?? false),
             ]
         );
 

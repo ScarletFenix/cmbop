@@ -1128,7 +1128,7 @@ class ContentModerationService
      * Library staff approve/reject. Always fingerprints the current article so
      * checkout honors the decision until the advertiser edits.
      *
-     * @return array{ok:bool, submission:?ContentSubmission, message:string}
+     * @return array{ok:bool, already:bool, submission:?ContentSubmission, message:string}
      */
     public function applyStaffOverride(ContentSubmission $submission, string $decision, User $admin, string $notes): array
     {
@@ -1149,7 +1149,12 @@ class ContentModerationService
                     ? 'Article #'.$submission->id.' is already approved by override.'
                     : 'Article #'.$submission->id.' is already rejected by override.';
 
-                return ['ok' => true, 'submission' => $submission->fresh(), 'message' => $message];
+                return [
+                    'ok' => true,
+                    'already' => true,
+                    'submission' => $submission->fresh(),
+                    'message' => $message,
+                ];
             }
 
             $this->stampOverride($log, $submission, $admin, $notes, $decision);
@@ -1159,7 +1164,12 @@ class ContentModerationService
                 ? 'Article #'.$submission->id.' approved by override. Checkout will accept it until the advertiser edits the content.'
                 : 'Article #'.$submission->id.' rejected. Checkout will block this version until the advertiser edits.';
 
-            return ['ok' => true, 'submission' => $submission->fresh(), 'message' => $message];
+            return [
+                'ok' => true,
+                'already' => false,
+                'submission' => $submission->fresh(),
+                'message' => $message,
+            ];
         });
     }
 
@@ -1209,7 +1219,7 @@ class ContentModerationService
     }
 
     /**
-     * @return array{ok:bool, submission:?ContentSubmission, message:string}
+     * @return array{ok:bool, already?:bool, submission:?ContentSubmission, message:string}
      */
     public function applyAdminOverride(ContentModerationLog $log, User $admin, string $notes): array
     {
@@ -1257,6 +1267,7 @@ class ContentModerationService
 
                 return [
                     'ok' => true,
+                    'already' => true,
                     'submission' => $submission?->fresh(),
                     'message' => $submission
                         ? 'Article #'.$submission->id.' is already approved by override.'
@@ -1278,7 +1289,7 @@ class ContentModerationService
                 $message = 'Article #'.$fresh->id.' approved by override, but it is still not checkout-ready.';
             }
 
-            return ['ok' => true, 'submission' => $fresh, 'message' => $message];
+            return ['ok' => true, 'already' => false, 'submission' => $fresh, 'message' => $message];
         });
     }
 

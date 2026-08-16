@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ActivityLog;
 use App\Models\ContentModerationLog;
 use App\Models\ContentModerationSetting;
 use App\Models\ContentSubmission;
@@ -833,6 +834,22 @@ class AdminContentLibraryTest extends TestCase
         $this->assertNotEmpty($log->fresh()->signals['override_fingerprint'] ?? null);
         $this->assertTrue($submission->fresh()->isReadyForCheckout());
         $this->assertTrue(app(ContentModerationService::class)->usableAdminOverride($submission->fresh()->load('moderationLog')));
+        $this->assertSame(1, ActivityLog::query()->where('action', 'moderation.overridden')->count());
+        $this->assertSame(1, InAppNotification::query()->where('user_id', $advertiser->id)->count());
+
+        $this->actingAs($admin)
+            ->from(route('admin.content-library.show', $submission))
+            ->post(route('admin.content-library.override', $submission), [
+                'decision' => 'approved',
+                'notes' => 'False positive on brand name.',
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success', function ($message) {
+                return is_string($message) && str_contains($message, 'already approved by override');
+            });
+
+        $this->assertSame(1, ActivityLog::query()->where('action', 'moderation.overridden')->count());
+        $this->assertSame(1, InAppNotification::query()->where('user_id', $advertiser->id)->count());
     }
 
     public function test_reject_while_paid_is_forbidden(): void
@@ -895,6 +912,10 @@ class AdminContentLibraryTest extends TestCase
             ->assertRedirect()
             ->assertSessionHas('success');
         $this->assertNull($unused->fresh()->archived_at);
+        $archived = ActivityLog::query()->where('action', 'content.archived')->first();
+        $this->assertNotNull($archived);
+        $this->assertSame($unused->id, (int) data_get($archived->properties, 'submission_id'));
+        $this->assertSame(1, ActivityLog::query()->where('action', 'content.restored')->count());
     }
 
     public function test_retry_on_paid_article_is_forbidden(): void
@@ -1256,6 +1277,9 @@ class AdminContentLibraryTest extends TestCase
             ->assertSessionHas('success');
 
         $this->assertNotSame(ContentSubmission::STATUS_ERROR, $submission->fresh()->moderation_status);
+        $log = ActivityLog::query()->where('action', 'content.re_evaluated')->first();
+        $this->assertNotNull($log);
+        $this->assertSame($submission->id, (int) data_get($log->properties, 'submission_id'));
     }
 
     public function test_moderation_override_updates_linked_article(): void
