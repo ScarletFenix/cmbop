@@ -952,26 +952,36 @@ class EmailCampaign extends Model
             (int) $row->email_campaign_id,
             (int) $row->user_id
         ));
-        if (! $group) {
-            return;
-        }
 
-        $deliveredLog = $group->first(
+        $deliveredLog = $group?->first(
             fn (EmailLog $log) => $log->status === EmailLog::STATUS_DELIVERED
         );
+        // Exact-key / extras grouping misses a leftover generic
+        // audience_campaign|{email}|AudienceCampaignMail row when the
+        // JSON meta scan fails. Heal already falls back; reclaim and
+        // expire then hold that user forever and never attach.
+        if (! $deliveredLog) {
+            $deliveredLog = EmailLog::latestDeliveredForCampaignUser(
+                (int) $row->email_campaign_id,
+                (int) $row->user_id
+            );
+        }
         // A pending log means a retry may be in flight — do not attach
         // a failed log over that. A delivered log still wins: expire
         // would otherwise skip-stale someone who already received the
         // mail, and a later retry doubles the send.
+        if (! $deliveredLog && ! $group) {
+            return;
+        }
         if (! $deliveredLog && $group->contains(fn (EmailLog $log) => $log->status === EmailLog::STATUS_PENDING)) {
             return;
         }
-        $failedLog = $group->first(
+        $failedLog = $group?->first(
             fn (EmailLog $log) => $log->status === EmailLog::STATUS_FAILED
         );
-        $pendingLogs = $group->filter(
-            fn (EmailLog $log) => $log->status === EmailLog::STATUS_PENDING
-        );
+        $pendingLogs = $group
+            ? $group->filter(fn (EmailLog $log) => $log->status === EmailLog::STATUS_PENDING)
+            : collect();
 
         // A leftover pending row must not block a real delivery. Only a
         // newer pending (retry after that delivery) stays in-flight.

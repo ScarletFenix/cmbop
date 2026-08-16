@@ -152,6 +152,13 @@ class EmailCampaignPhpSyntaxTest extends TestCase
         $this->assertSame(1, preg_match_all('/function collectCampaignMailUserIdsFromTable\b/', $model));
         $this->assertSame(1, preg_match_all('/function campaignLogUserIdsForStatus\b/', $model));
         $this->assertSame(1, preg_match_all('/function healQueuedRecipientsWithTerminalLog\b/', $model));
+        $this->assertSame(1, preg_match_all('/function reconcileOneQueuedRecipientFromLogs\b/', $model));
+        $this->assertTrue((bool) preg_match(
+            '/protected static function reconcileOneQueuedRecipientFromLogs\([\s\S]*?\): void\s*\{(.*?)\n    \/\*\*/s',
+            $model,
+            $reconcile
+        ));
+        $this->assertStringContainsString('latestDeliveredForCampaignUser', $reconcile[1]);
         $this->assertSame(0, preg_match_all('/function syncQueuedRecipientsWithAttachedLogs\b/', $model));
         $this->assertSame(1, preg_match_all('/function failPendingLogsForStaleRecipients\b/', $model));
         $this->assertSame(1, preg_match_all('/function expireOrphanedPendingLogs\b/', $model));
