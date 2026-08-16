@@ -3149,6 +3149,47 @@ class AdminCampaignsTest extends TestCase
         Queue::assertNothingPushed();
     }
 
+    public function test_stall_recovery_does_not_reclaim_when_email_logs_cannot_be_read(): void
+    {
+        Queue::fake();
+        $this->useDatabaseMailQueue();
+
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+
+        $campaign = EmailCampaign::create([
+            'name' => 'Unread logs reclaim',
+            'subject' => 'Unread logs reclaim',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'sent_count' => 1,
+            'status' => EmailCampaign::STATUS_SENDING,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_QUEUED,
+        ]);
+        $campaign->forceFill(['updated_at' => now()->subMinutes(5)])->save();
+
+        Schema::rename('email_logs', 'email_logs_hidden_reclaim');
+        try {
+            $this->assertNull(EmailLog::pendingUserIdsForCampaign((int) $campaign->id));
+            $this->assertSame(0, EmailCampaign::recoverStalled());
+            $this->assertSame(
+                EmailCampaignRecipient::STATUS_QUEUED,
+                $campaign->recipients()->where('user_id', $advertiser->id)->value('status')
+            );
+            Queue::assertNothingPushed();
+        } finally {
+            Schema::rename('email_logs_hidden_reclaim', 'email_logs');
+        }
+    }
+
     public function test_stall_recovery_does_not_reclaim_queued_row_with_generic_pending_log(): void
     {
         Queue::fake();

@@ -65,7 +65,7 @@ or marketing, even if that staff account also has a marketplace role.
    + user pair (meta or `audience_campaign:{id}:user:{id}`), not only the
    exact dedupe string — a leftover generic
    `audience_campaign|{email}|AudienceCampaignMail` retry still blocks
-   reclaim. A matching
+   reclaim. An unreadable email_logs table must not look like “no pending retries” — reclaim fail-closes the same way as a failed jobs-table scan. A matching
    `failed_jobs` AudienceCampaignMail is also held — that row is still
    retryable from Email Center. A
    Redis/SQS **mail** queue, inline SMTP (`sync` mail), a missing `payload` column on the **mail**
