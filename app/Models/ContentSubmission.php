@@ -50,7 +50,7 @@ class ContentSubmission extends Model
 
     public const PAID_ORDER_CLAIM_MESSAGE = 'This article is already used on a paid order and cannot start a new catalog checkout.';
 
-    /** Leftover / in-flight placements that still own the article. */
+    /** Canonical leftover payment states for Pay again / settle. */
     public const ACTIVE_ORDER_CLAIM_PAYMENT_STATUSES = ['paid', 'pending', 'failed'];
 
     /** The advertiser owns or created every image. */
@@ -237,8 +237,9 @@ class ContentSubmission extends Model
 
     /**
      * True when another checkout already owns this article (direct order_id
-     * or a paid/pending/failed, non-cancelled placement). Callers must lock
-     * the row first. Cancelled leftovers stay reusable after refund/release.
+     * or a non-cancelled, non-refunded placement). Legacy null / unpaid
+     * payment_status still locks the row. Callers must lock the row first.
+     * Cancelled leftovers stay reusable after refund/release.
      */
     public function isClaimedByAnotherOrder(?int $orderId = null): bool
     {
@@ -421,8 +422,8 @@ class ContentSubmission extends Model
     }
 
     /**
-     * Hide articles still pointed at by a paid, pending, or failed
-     * (non-cancelled) order item. Cancelled leftovers stay orderable.
+     * Hide articles still pointed at by a non-cancelled, non-refunded
+     * order item (including legacy null / unpaid). Cancelled leftovers stay orderable.
      *
      * @param  Builder<static>  $query
      * @return Builder<static>
@@ -963,15 +964,13 @@ class ContentSubmission extends Model
                     : $item->order()->first();
 
                 return $order instanceof Order
-                    && $order->status !== 'cancelled'
-                    && $order->payment_status !== 'refunded';
+                    && $this->orderLooksLikeActiveClaim($order);
             });
         }
 
         return $this->orderItems()
             ->whereHas('order', function ($q) {
-                $q->where('status', '!=', 'cancelled')
-                    ->where('payment_status', '!=', 'refunded');
+                $this->constrainActiveOrderClaim($q);
             })
             ->tap(fn ($item) => $this->excludeClawedBackItems($item))
             ->exists();
@@ -2164,8 +2163,12 @@ class ContentSubmission extends Model
      */
     protected function constrainActiveOrderClaim($orderQuery, ?int $exceptOrderId = null): void
     {
-        $orderQuery->whereIn('payment_status', self::ACTIVE_ORDER_CLAIM_PAYMENT_STATUSES)
-            ->where('status', '!=', 'cancelled');
+        // Include legacy null / unpaid. SQL `!= refunded` alone drops NULL.
+        $orderQuery->where('status', '!=', 'cancelled')
+            ->where(function ($payment) {
+                $payment->whereNull('payment_status')
+                    ->orWhere('payment_status', '!=', 'refunded');
+            });
 
         if ($exceptOrderId !== null) {
             $orderQuery->where('orders.id', '!=', $exceptOrderId);
@@ -2179,7 +2182,7 @@ class ContentSubmission extends Model
         }
 
         return $order->status !== 'cancelled'
-            && in_array($order->payment_status, self::ACTIVE_ORDER_CLAIM_PAYMENT_STATUSES, true);
+            && ($order->payment_status === null || $order->payment_status !== 'refunded');
     }
 
     protected function relatedOwnerOrder(): ?Order

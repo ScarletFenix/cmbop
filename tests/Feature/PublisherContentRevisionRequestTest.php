@@ -14,8 +14,10 @@ use App\Models\User;
 use App\Models\Wallet;
 use App\Support\AdvertiserOrderStatus;
 use App\Support\EmailCatalog;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 use Tests\Support\CreatesContentSubmissions;
 use Tests\TestCase;
 
@@ -954,6 +956,71 @@ class PublisherContentRevisionRequestTest extends TestCase
         $this->assertSame('failed', $leftover->payment_status);
         $this->assertSame($leftover->id, (int) $leftoverArticle->fresh()->order_id);
         $this->assertTrue($item->fresh()->isContentRevisionRequested());
+        $this->assertSame($current->id, (int) $item->fresh()->content_submission_id);
+        Mail::assertNotQueued(ContentRevisionFulfilled::class);
+    }
+
+    public function test_revision_fulfill_does_not_steal_a_null_payment_item_only_leftover(): void
+    {
+        Schema::table('orders', function (Blueprint $table) {
+            $table->string('payment_status')->nullable()->change();
+        });
+
+        $current = $this->createApprovedSubmission($this->advertiser);
+        $leftoverArticle = $this->createApprovedSubmission($this->advertiser);
+        $item = $this->makeProcessingItem();
+        $item->update([
+            'content_submission_id' => $current->id,
+            'content_revision_requested' => 'yes',
+            'content_revision_requested_at' => now(),
+            'content_revision_reason' => 'Please send a different approved article.',
+        ]);
+        $current->update([
+            'order_id' => $item->order_id,
+            'order_item_id' => $item->id,
+        ]);
+
+        $leftover = Order::create([
+            'user_id' => $this->advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-REV-NULL-LEFTOVER',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'wallet',
+            'payment_status' => null,
+            'status' => 'pending',
+        ]);
+        OrderItem::create([
+            'order_id' => $leftover->id,
+            'site_id' => $this->site->id,
+            'site_name' => $this->site->site_name,
+            'site_url' => $this->site->site_url,
+            'content_submission_id' => $leftoverArticle->id,
+            'content_link' => 'https://example.com/leftover',
+            'price' => 80,
+        ]);
+
+        $orderableIds = collect(
+            $this->actingAs($this->advertiser)
+                ->getJson(route('advertiser.orders.content-revision-options', $item->order_id))
+                ->assertOk()
+                ->json('orderable')
+        )->pluck('id')->all();
+        $this->assertNotContains($leftoverArticle->id, $orderableIds);
+
+        $this->actingAs($this->advertiser)
+            ->postJson(route('advertiser.orders.fulfill-content-revision', $item->order_id), [
+                'content_submission_id' => $leftoverArticle->id,
+                'order_item_id' => $item->id,
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['content_submission_id']);
+
+        $leftover->refresh();
+        $this->assertSame('pending', $leftover->status);
+        $this->assertNull($leftover->payment_status);
+        $this->assertTrue($leftoverArticle->fresh()->load('orderItems.order')->isClaimedByAnotherOrder());
         $this->assertSame($current->id, (int) $item->fresh()->content_submission_id);
         Mail::assertNotQueued(ContentRevisionFulfilled::class);
     }
