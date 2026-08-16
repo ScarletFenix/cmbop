@@ -3334,4 +3334,244 @@ class CancelledCardOrderMarkPaidTest extends TestCase
             ->assertSee('Unpaid Leftover Live')
             ->assertDontSee('https://live.example/unpaid-leftover');
     }
+
+    public function test_pay_again_does_not_charge_a_paid_locked_sibling(): void
+    {
+        config(['content_moderation.enabled' => false]);
+
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $siteA = $this->makeSite($publisher, 'pay-again-paid-lock-a.example');
+        $siteB = $this->makeSite($publisher, 'pay-again-paid-lock-b.example');
+        $articleA = $this->createApprovedSubmission(
+            $advertiser,
+            $siteA->id,
+            0,
+            'paid lock sibling a',
+            'https://example.com/target-a'
+        );
+        $articleB = $this->createApprovedSubmission(
+            $advertiser,
+            $siteB->id,
+            1,
+            'ready sibling b',
+            'https://example.com/target-b'
+        );
+
+        $paid = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-PAID-LOCK-OWN',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'status' => 'pending',
+            'paid_at' => now(),
+        ]);
+        OrderItem::create([
+            'order_id' => $paid->id,
+            'site_id' => $siteA->id,
+            'site_name' => $siteA->site_name,
+            'site_url' => $siteA->site_url,
+            'content_link' => 'https://example.com/paid',
+            'content_submission_id' => $articleA->id,
+            'price' => 80,
+        ]);
+
+        $leftoverA = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-PAY-AGAIN-PAID-LOCK',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'failed',
+            'status' => 'pending',
+        ]);
+        $leftoverItemA = OrderItem::create([
+            'order_id' => $leftoverA->id,
+            'site_id' => $siteA->id,
+            'site_name' => $siteA->site_name,
+            'site_url' => $siteA->site_url,
+            'content_link' => 'https://example.com/stale-a',
+            'content_submission_id' => $articleA->id,
+            'price' => 80,
+        ]);
+        $articleA->update([
+            'order_id' => $leftoverA->id,
+            'order_item_id' => $leftoverItemA->id,
+        ]);
+
+        $leftoverB = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-PAY-AGAIN-PAID-LOCK',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'failed',
+            'status' => 'pending',
+        ]);
+        $leftoverItemB = OrderItem::create([
+            'order_id' => $leftoverB->id,
+            'site_id' => $siteB->id,
+            'site_name' => $siteB->site_name,
+            'site_url' => $siteB->site_url,
+            'content_link' => 'https://example.com/stale-b',
+            'content_submission_id' => $articleB->id,
+            'price' => 80,
+        ]);
+        $articleB->update([
+            'order_id' => $leftoverB->id,
+            'order_item_id' => $leftoverItemB->id,
+        ]);
+
+        $this->mock(StripeCustomerService::class, function ($mock) {
+            $mock->shouldReceive('configured')->andReturn(true);
+            $mock->shouldReceive('createCheckoutSession')
+                ->once()
+                ->withArgs(function (array $payload) {
+                    return (int) ($payload['line_items'][0]['price_data']['unit_amount'] ?? 0) === 8000
+                        && (string) ($payload['metadata']['order_total'] ?? '') === '80'
+                        && (string) ($payload['metadata']['order_count'] ?? '') === '1';
+                })
+                ->andReturn(Session::constructFrom([
+                    'id' => 'cs_pay_again_drop_paid_lock',
+                    'object' => 'checkout.session',
+                    'url' => 'https://checkout.stripe.test/pay-again-paid-lock',
+                ]));
+        });
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.orders.retry-payment', $leftoverB))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('amount_due', 80);
+
+        $leftoverA->refresh();
+        $leftoverB->refresh();
+        $this->assertSame('failed', $leftoverA->payment_status);
+        $this->assertSame('pending', $leftoverA->status);
+        $this->assertNull($leftoverA->stripe_session_id);
+        $this->assertSame('pending', $leftoverB->payment_status);
+        $this->assertSame('cs_pay_again_drop_paid_lock', $leftoverB->stripe_session_id);
+    }
+
+    public function test_paid_lock_missing_links_uses_paid_claim_notice(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher, 'paid-lock-notice.example');
+        $submission = $this->createApprovedSubmission($advertiser);
+        $paid = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-PAID-LOCK-NOTICE',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'status' => 'pending',
+            'paid_at' => now(),
+        ]);
+        OrderItem::create([
+            'order_id' => $paid->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/paid',
+            'content_submission_id' => $submission->id,
+            'price' => 80,
+        ]);
+        $submission->update([
+            'order_id' => null,
+            'order_item_id' => null,
+            'target_url' => null,
+            'anchor_text' => null,
+        ]);
+
+        $fresh = $submission->fresh()->load(['order', 'orderItems.order']);
+        $this->assertTrue($fresh->isLockedByPaidOrder());
+        $this->assertTrue($fresh->canBeOrdered());
+        $this->assertFalse($fresh->hasCheckoutReadyLinks());
+        $this->assertSame(ContentSubmission::PAID_ORDER_CLAIM_MESSAGE, $fresh->editorNotice());
+        $this->assertSame(ContentSubmission::PAID_ORDER_CLAIM_MESSAGE, $fresh->libraryFixSummary());
+    }
+
+    public function test_cart_assign_of_paid_locked_article_returns_paid_claim_message(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher, 'paid-lock-assign.example');
+        $submission = $this->createApprovedSubmission($advertiser);
+        $paid = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-PAID-LOCK-ASSIGN',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'status' => 'pending',
+            'paid_at' => now(),
+        ]);
+        OrderItem::create([
+            'order_id' => $paid->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/paid',
+            'content_submission_id' => $submission->id,
+            'price' => 80,
+        ]);
+        $leftover = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-PAID-LOCK-ASSIGN-LEFT',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'failed',
+            'status' => 'pending',
+        ]);
+        $leftoverItem = OrderItem::create([
+            'order_id' => $leftover->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/stale',
+            'content_submission_id' => $submission->id,
+            'price' => 80,
+        ]);
+        $submission->update([
+            'order_id' => $leftover->id,
+            'order_item_id' => $leftoverItem->id,
+        ]);
+
+        $this->actingAs($advertiser)
+            ->withSession([
+                'cart' => [[
+                    'id' => $site->id,
+                    'name' => $site->site_name,
+                    'quantity' => 1,
+                ]],
+            ])
+            ->postJson(route('advertiser.cart.assign-article'), [
+                'id' => $site->id,
+                'content_submission_id' => $submission->id,
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('error', ContentSubmission::PAID_ORDER_CLAIM_MESSAGE);
+
+        $leftover->refresh();
+        $this->assertSame('pending', $leftover->status);
+        $this->assertSame('failed', $leftover->payment_status);
+    }
 }

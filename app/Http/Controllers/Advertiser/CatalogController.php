@@ -1517,6 +1517,12 @@ class CatalogController extends Controller
             [$submissionId]
         )) {
             $submission = $submission->fresh() ?? $submission;
+            if ($submission->isLockedByPaidOrder()) {
+                return response()->json([
+                    'success' => false,
+                    'error' => ContentSubmission::PAID_ORDER_CLAIM_MESSAGE,
+                ], 422);
+            }
 
             return response()->json([
                 'success' => false,
@@ -1645,6 +1651,12 @@ class CatalogController extends Controller
                             [$sessionArticleId]
                         )) {
                             $librarySubmission = $librarySubmission->fresh() ?? $librarySubmission;
+                            if ($librarySubmission->isLockedByPaidOrder()) {
+                                return response()->json([
+                                    'success' => false,
+                                    'error' => ContentSubmission::PAID_ORDER_CLAIM_MESSAGE,
+                                ], 422);
+                            }
                             if ($librarySubmission->canReplaceUnpaidLeftover()
                                 || $librarySubmission->activeClaimOrderId()) {
                                 return response()->json([
@@ -3892,13 +3904,24 @@ class CatalogController extends Controller
             }
 
             // Sibling orders sharing the same reference (multi-site checkout package).
+            // Drop paid-locked / unready leftovers so Pay again still charges the
+            // remaining sibling instead of capturing cash for a dead line.
             $package = Order::with('items')
                 ->where('user_id', auth()->id())
                 ->where('reference_code', $order->reference_code)
                 ->where('payment_method', 'card')
                 ->where('payment_status', 'failed')
                 ->where('status', 'pending')
-                ->get();
+                ->get()
+                ->filter(fn (Order $row) => $this->orderCanRetryPayment($row))
+                ->values();
+
+            if ($package->isEmpty()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This order cannot be paid again. Open checkout if your cart was restored.',
+                ], 422);
+            }
 
             $packageTotal = round((float) $package->sum('total_amount'), 2);
             $referenceCode = (string) $order->reference_code;
