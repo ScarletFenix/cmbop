@@ -434,7 +434,7 @@ class FinanceOverviewService
         $this->applyCreatedWindow($ledgerClawbacks, $start, $end);
 
         $paidWithdrawals = Withdrawal::where('status', 'completed');
-        $this->applyCoalesceWindow($paidWithdrawals, $start, $end, 'withdrawals.processed_at', 'withdrawals.updated_at');
+        $this->applyWithdrawalProcessedWindow($paidWithdrawals, $start, $end);
 
         $openWithdrawals = Withdrawal::whereIn('status', ['pending', 'processing']);
 
@@ -484,7 +484,7 @@ class FinanceOverviewService
         $gmvCompleted = (float) $completedPaid->sum('total_amount');
 
         $withdrawalFees = Withdrawal::where('status', 'completed');
-        $this->applyCoalesceWindow($withdrawalFees, $start, $end, 'withdrawals.processed_at', 'withdrawals.updated_at');
+        $this->applyWithdrawalProcessedWindow($withdrawalFees, $start, $end);
         $withdrawalFeeSum = (float) (clone $withdrawalFees)->sum('fee');
 
         $refundOrders = Order::where('payment_status', 'refunded');
@@ -564,7 +564,7 @@ class FinanceOverviewService
         );
 
         $cashOutQuery = Withdrawal::where('status', 'completed');
-        $this->applyCoalesceWindow($cashOutQuery, $start, $end, 'withdrawals.processed_at', 'withdrawals.updated_at');
+        $this->applyWithdrawalProcessedWindow($cashOutQuery, $start, $end);
         $cashOut = (float) $cashOutQuery->sum('net_amount');
 
         return [
@@ -1112,6 +1112,25 @@ class FinanceOverviewService
             $query->whereRaw($expr.' BETWEEN ? AND ?', [$floor, $ceil, $floor, $ceil, $start, $end]);
         } else {
             $query->whereRaw($expr.' <= ?', [$floor, $ceil, $floor, $ceil, $end]);
+        }
+    }
+
+    /**
+     * Paid-clock window. Leftover Hostinger processed_at strings are not a
+     * payout date — treat them as null and fall back to updated_at so cash-out
+     * stays in the period of the last real write (same as a missing stamp).
+     */
+    private function applyWithdrawalProcessedWindow($query, ?Carbon $start, Carbon $end): void
+    {
+        $floor = Withdrawal::PLAUSIBLE_SQL_DATETIME_FLOOR;
+        $ceil = Withdrawal::PLAUSIBLE_SQL_DATETIME_CEIL;
+        $expr = 'COALESCE(CASE WHEN withdrawals.processed_at >= ? AND withdrawals.processed_at <= ?'
+            .' THEN withdrawals.processed_at END, withdrawals.updated_at)';
+
+        if ($start) {
+            $query->whereRaw($expr.' BETWEEN ? AND ?', [$floor, $ceil, $start, $end]);
+        } else {
+            $query->whereRaw($expr.' <= ?', [$floor, $ceil, $end]);
         }
     }
 

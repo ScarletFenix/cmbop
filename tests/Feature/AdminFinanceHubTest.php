@@ -1488,4 +1488,42 @@ class AdminFinanceHubTest extends TestCase
         $this->assertEquals(115.0, $august['platform']['refunds']);
         $this->assertEquals(1, $august['platform']['refund_orders_count']);
     }
+
+    public function test_leftover_processed_at_falls_back_to_updated_at_for_cash_out(): void
+    {
+        $publisher = $this->makeUser('publisher');
+        $withdrawal = Withdrawal::create([
+            'user_id' => $publisher->id,
+            'amount' => 80,
+            'fee' => 5,
+            'net_amount' => 75,
+            'payment_method' => 'paypal',
+            'payment_details' => ['email' => 'pay@example.com'],
+            'status' => 'completed',
+            'processed_at' => Carbon::parse('2026-08-12 10:00:00'),
+            'created_at' => Carbon::parse('2026-07-01 10:00:00'),
+            'updated_at' => Carbon::parse('2026-08-12 10:00:00'),
+        ]);
+        DB::table('withdrawals')->where('id', $withdrawal->id)->update([
+            'processed_at' => 'not-a-date',
+            'updated_at' => '2026-08-12 10:00:00',
+        ]);
+
+        $july = app(FinanceOverviewService::class)->overview(
+            app(FinanceOverviewService::class)->resolvePeriod(null, '2026-07-01', '2026-07-31')
+        );
+        $august = app(FinanceOverviewService::class)->overview(
+            app(FinanceOverviewService::class)->resolvePeriod(null, '2026-08-01', '2026-08-31')
+        );
+        $all = app(FinanceOverviewService::class)->overview(
+            app(FinanceOverviewService::class)->resolvePeriod('all')
+        );
+
+        $this->assertEquals(0.0, $july['money_out']['withdrawals_paid']['net']);
+        $this->assertEquals(0.0, $july['cash_split']['cash_out_payouts']);
+        $this->assertEquals(75.0, $august['money_out']['withdrawals_paid']['net']);
+        $this->assertEquals(5.0, $august['platform']['withdrawal_fees']);
+        $this->assertEquals(75.0, $august['cash_split']['cash_out_payouts']);
+        $this->assertEquals(75.0, $all['cash_split']['cash_out_payouts']);
+    }
 }
