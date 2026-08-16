@@ -1049,6 +1049,21 @@ class EmailCampaign extends Model
                 'skip_reason' => $delivered ? null : EmailCampaignRecipient::SKIP_ERROR,
             ]);
 
+        // Heal only sees rows that already have an email_log_id. After this
+        // attach the recipient is delivered, so leftover pending siblings
+        // would stay open and look in-flight to a later compose.
+        if ($delivered && $pendingLogs->isNotEmpty()) {
+            foreach ($pendingLogs as $pending) {
+                EmailLog::query()
+                    ->whereKey($pending->id)
+                    ->where('status', EmailLog::STATUS_PENDING)
+                    ->update([
+                        'status' => EmailLog::STATUS_FAILED,
+                        'error' => 'Closed: duplicate open log for the same send',
+                    ]);
+            }
+        }
+
         $campaignIds[(int) $row->email_campaign_id] = true;
     }
 
