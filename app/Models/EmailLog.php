@@ -112,12 +112,17 @@ class EmailLog extends Model
     {
         $campaignId = (int) data_get($log->meta, 'campaign_id');
         $userId = (int) data_get($log->meta, 'user_id');
-        if ($campaignId > 0 && $userId > 0) {
-            return [$campaignId, $userId];
+
+        foreach ([(string) $log->dedupe_key, (string) $log->template_key] as $key) {
+            if (preg_match('/^audience_campaign:(\d+):user:(\d+)$/', $key, $matches)) {
+                $campaignId = $campaignId > 0 ? $campaignId : (int) $matches[1];
+                $userId = $userId > 0 ? $userId : (int) $matches[2];
+                break;
+            }
         }
 
-        if (preg_match('/^audience_campaign:(\d+):user:(\d+)$/', (string) $log->dedupe_key, $matches)) {
-            return [(int) $matches[1], (int) $matches[2]];
+        if ($campaignId > 0 && $userId > 0) {
+            return [$campaignId, $userId];
         }
 
         return [0, 0];
