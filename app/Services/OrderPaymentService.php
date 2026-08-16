@@ -943,7 +943,7 @@ class OrderPaymentService
         }
         $aliases = array_values(array_unique($aliases));
 
-        return (float) DB::transaction(function () use ($userId, $roleId, $amount, $reference, $referenceCode, $aliases, $unkeyed, $prefix) {
+        return (float) DB::transaction(function () use ($userId, $roleId, $amount, $reference, $referenceCode, $aliases, $unkeyed, $prefix, $captureIds) {
             if (! User::query()->whereKey($userId)->exists()) {
                 Log::warning('Cannot credit unfulfilled card capture; user missing', [
                     'user_id' => $userId,
@@ -1028,7 +1028,11 @@ class OrderPaymentService
             ->filter(fn (Order $order) => $order->payment_status === 'paid')
             ->sum(fn (Order $order) => (float) $order->total_amount), 2);
         $expected = $this->capturedStripeEurosForCredit($orders, $meta);
-        $unfulfilled = round(max(0, $expected - $paidTotal), 2);
+        $refundedThisCapture = $this->refundedCardEurosForStripeCapture($orders, $session);
+        // expected_amount is THIS capture. cancelAndRefund already returned
+        // unready/taken siblings from that same object — subtract them or
+        // hidden leftovers are credited on top of those refunds.
+        $unfulfilled = round(max(0, $expected - $paidTotal - $refundedThisCapture), 2);
         // Same leftover may already have a session-keyed credit (#831 bonus
         // fail, amount mismatch). An unkeyed top-up here paid the capture
         // twice after the listing left the catalog and the webhook retried.

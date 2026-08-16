@@ -1244,6 +1244,29 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
         $this->assertEqualsWithDelta(120.0, $payments->walletCreditForUnfulfillableCardCheckout($ref), 0.01);
     }
 
+    public function test_unfulfilled_card_credit_writes_capture_ids_without_fatalling(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $wallet = $this->advertiserWallet($advertiser, 0);
+        $payments = app(OrderPaymentService::class);
+
+        $this->assertEqualsWithDelta(
+            80.0,
+            $payments->creditUnfulfilledCardCapture(
+                (int) $advertiser->id,
+                'CAPTURE-IDS-1',
+                80,
+                'cs_capture_ids_1',
+                ['cs_capture_ids_1', 'pi_cs_capture_ids_1']
+            ),
+            0.01
+        );
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(80.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(80.0, $payments->unfulfilledCardCreditAmount('CAPTURE-IDS-1'), 0.01);
+    }
+
     public function test_pay_again_does_not_reapply_already_consumed_leftover_credit(): void
     {
         $advertiser = $this->makeUser('advertiser');
