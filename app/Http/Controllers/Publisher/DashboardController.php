@@ -5,9 +5,11 @@ namespace App\Http\Controllers\Publisher;
 use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\OrderItemDispute;
 use App\Models\Site;
+use App\Models\WalletTransaction;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -363,7 +365,11 @@ class DashboardController extends Controller
             $labels[] = $date->format('D');
             $values[] = $siteIds === []
                 ? 0.0
-                : $this->earningsCompletedOnDate($siteIds, $date->toDateString());
+                : $this->netEarningsInWindow(
+                    $siteIds,
+                    $date->copy()->startOfDay(),
+                    $date->copy()->endOfDay()
+                );
         }
 
         return [
@@ -386,7 +392,11 @@ class DashboardController extends Controller
             $labels[] = $date->format('M');
             $values[] = $siteIds === []
                 ? 0.0
-                : $this->earningsCompletedInMonth($siteIds, (int) $date->year, (int) $date->month);
+                : $this->netEarningsInWindow(
+                    $siteIds,
+                    $date->copy()->startOfMonth(),
+                    $date->copy()->endOfMonth()
+                );
         }
 
         return [
@@ -408,39 +418,114 @@ class DashboardController extends Controller
     }
 
     /**
+     * Recognize completed payouts (including later-refunded sales), then
+     * reverse clawed / refunded-non-clawed lines in this window. Filtering
+     * to currently-paid recognizedForFinance() rows erases the completion
+     * week after a full clawback flips the order to refunded.
+     *
      * @param  array<int>  $siteIds
      */
     private function completedEarningsQuery(array $siteIds)
     {
         return OrderItem::query()
-            ->recognizedForFinance()
             ->whereIn('order_items.site_id', $siteIds)
             ->join('orders', 'orders.id', '=', 'order_items.order_id')
-            ->where('orders.status', 'completed')
-            ->where('orders.payment_status', 'paid');
+            ->whereIn('orders.payment_status', ['paid', 'refunded'])
+            ->where(function ($q) {
+                $q->where('orders.status', 'completed')
+                    ->orWhereNotNull('orders.completed_at');
+            });
     }
 
     /**
      * @param  array<int>  $siteIds
      */
-    private function earningsCompletedOnDate(array $siteIds, string $date): float
-    {
-        return round((float) $this->completedEarningsQuery($siteIds)
-            ->whereDate(DB::raw($this->completionTimestampSql()), $date)
-            ->sum(OrderItem::publisherPayoutSqlExpression('order_items')), 2);
-    }
-
-    /**
-     * @param  array<int>  $siteIds
-     */
-    private function earningsCompletedInMonth(array $siteIds, int $year, int $month): float
+    private function netEarningsInWindow(array $siteIds, Carbon $start, Carbon $end): float
     {
         $ts = $this->completionTimestampSql();
+        $recognized = (float) $this->completedEarningsQuery($siteIds)
+            ->whereRaw($ts.' BETWEEN ? AND ?', [$start, $end])
+            ->sum(OrderItem::publisherPayoutSqlExpression('order_items'));
 
-        return round((float) $this->completedEarningsQuery($siteIds)
-            ->whereYear(DB::raw($ts), $year)
-            ->whereMonth(DB::raw($ts), $month)
-            ->sum(OrderItem::publisherPayoutSqlExpression('order_items')), 2);
+        return round(
+            $recognized
+            - $this->clawedPublisherPayoutsInWindow($siteIds, $start, $end)
+            - $this->refundedNonClawedPayoutsInWindow($siteIds, $start, $end),
+            2
+        );
+    }
+
+    /**
+     * @param  array<int>  $siteIds
+     */
+    private function clawedPublisherPayoutsInWindow(array $siteIds, Carbon $start, Carbon $end): float
+    {
+        if (! OrderItemDispute::tableAvailable()) {
+            return 0.0;
+        }
+
+        return (float) OrderItem::query()
+            ->clawedBack()
+            ->whereIn('site_id', $siteIds)
+            ->whereHas('order', function ($q) {
+                $q->whereIn('payment_status', ['paid', 'refunded'])
+                    ->where(function ($order) {
+                        $order->where('status', 'completed')
+                            ->orWhereNotNull('completed_at');
+                    });
+            })
+            ->whereHas('disputes', function ($disputes) use ($start, $end) {
+                $disputes->where('status', OrderItemDispute::STATUS_UPHELD)
+                    ->whereRaw('COALESCE(resolved_at, created_at) BETWEEN ? AND ?', [$start, $end]);
+            })
+            ->sum(OrderItem::publisherPayoutSqlExpression());
+    }
+
+    /**
+     * @param  array<int>  $siteIds
+     */
+    private function refundedNonClawedPayoutsInWindow(array $siteIds, Carbon $start, Carbon $end): float
+    {
+        return (float) OrderItem::query()
+            ->whereIn('site_id', $siteIds)
+            ->when(OrderItemDispute::tableAvailable(), function ($items) {
+                $items->whereDoesntHave('disputes', function ($disputes) {
+                    $disputes->where('status', OrderItemDispute::STATUS_UPHELD);
+                });
+            })
+            ->whereHas('order', function ($q) use ($start, $end) {
+                $q->where('payment_status', 'refunded')
+                    ->where(function ($order) {
+                        $order->where('status', 'completed')
+                            ->orWhereNotNull('completed_at');
+                    });
+                $this->constrainOrderRefundedInWindow($q, $start, $end);
+            })
+            ->sum(OrderItem::publisherPayoutSqlExpression());
+    }
+
+    private function constrainOrderRefundedInWindow($query, Carbon $start, Carbon $end): void
+    {
+        if (! Schema::hasTable('wallet_transactions')) {
+            $query->whereBetween('orders.updated_at', [$start, $end]);
+
+            return;
+        }
+
+        $refundAt = '(SELECT MAX(wallet_transactions.created_at) FROM wallet_transactions'
+            .' WHERE wallet_transactions.related_id = orders.id'
+            .' AND wallet_transactions.related_type = ?'
+            .' AND wallet_transactions.type = ?'
+            .' AND wallet_transactions.direction = ?)';
+        $expr = 'COALESCE('.$refundAt.', orders.updated_at)';
+
+        $query->whereRaw($expr.' BETWEEN ? AND ?', [
+            (new Order)->getMorphClass(),
+            WalletTransaction::TYPE_REFUND,
+            'credit',
+            $start,
+            $end,
+        ]);
     }
 
     /**
