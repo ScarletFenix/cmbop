@@ -2,8 +2,10 @@
 
 namespace App\Models;
 
+use App\Services\Catalog\SiteUrlVisibility;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Collection;
 
 class SiteClaim extends Model
 {
@@ -43,5 +45,60 @@ class SiteClaim extends Model
     public function reviewer(): BelongsTo
     {
         return $this->belongsTo(User::class, 'reviewed_by');
+    }
+
+    /**
+     * Listing name the claimer may see. Hide mode stays masked until the eye
+     * (or hide expiry) — My Claims must not unmask a catalog row.
+     */
+    public function displayNameFor(?User $user, ?SiteUrlVisibility $visibility = null): string
+    {
+        $visibility ??= app(SiteUrlVisibility::class);
+
+        if ($this->site) {
+            return $visibility->nameFor($user, $this->site);
+        }
+
+        $raw = (string) ($this->website_name ?: 'Website');
+
+        return $visibility->inHideMode($user)
+            ? $visibility->maskName($raw)
+            : $raw;
+    }
+
+    /**
+     * Listing host the claimer may see. Same hide-mode rule as the catalog.
+     */
+    public function displayHostFor(?User $user, ?SiteUrlVisibility $visibility = null): string
+    {
+        $visibility ??= app(SiteUrlVisibility::class);
+
+        if ($this->site) {
+            return $visibility->hostFor($user, $this->site);
+        }
+
+        $raw = (string) ($this->website_url ?: $this->domain ?: '');
+
+        return $visibility->inHideMode($user)
+            ? $visibility->mask($raw)
+            : (string) ($this->domain ?: $visibility->host($raw));
+    }
+
+    /**
+     * @param  Collection<int, self>|iterable<self>  $claims
+     */
+    public static function applyCatalogIdentity(iterable $claims, ?User $user): void
+    {
+        $visibility = app(SiteUrlVisibility::class);
+        $sites = collect($claims)->pluck('site')->filter();
+        $visibility->warmFor($user, $sites);
+
+        foreach ($claims as $claim) {
+            if (! $claim instanceof self) {
+                continue;
+            }
+            $claim->display_name = $claim->displayNameFor($user, $visibility);
+            $claim->display_host = $claim->displayHostFor($user, $visibility);
+        }
     }
 }

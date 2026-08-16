@@ -2258,9 +2258,12 @@ class InAppNotificationService
             return;
         }
 
-        $claim->loadMissing(['site']);
+        $claim->loadMissing(['site', 'claimer']);
         $approved = $claim->status === 'approved';
-        $siteName = $claim->site?->site_name ?: ($claim->website_name ?: 'the website');
+        $siteName = (string) ($claim->website_name ?: 'the website');
+        if ($claim->claimer && ! $claim->claimer->inCatalogHideMode() && $claim->site?->site_name) {
+            $siteName = (string) $claim->site->site_name;
+        }
         $notes = trim((string) ($claim->admin_notes ?? ''));
 
         if ($approved) {
