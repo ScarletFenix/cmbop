@@ -13,6 +13,7 @@ use App\Services\ContentModeration\ContentModerationService;
 use App\Services\ContentUpload\ArticleEvaluationService;
 use App\Services\ContentUpload\ArticleHtmlSanitizer;
 use App\Services\ContentUpload\ContentUploadService;
+use App\Services\OrderPaymentService;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -1302,6 +1303,77 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertSame('pending', $leftover->status);
         $this->assertSame('failed', $leftover->payment_status);
         $this->assertTrue($submission->fresh()->load('orderItems.order')->isReadyToFulfill((int) $leftover->id));
+    }
+
+    public function test_expired_wallet_leftover_can_start_a_replacement_checkout(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->activeSite($publisher, 'expired-wallet-cta');
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'title' => 'Expired Wallet Leftover',
+            'expires_at' => now()->subDay(),
+        ]);
+        $leftover = $this->makeOrder($advertiser);
+        OrderItem::create([
+            'order_id' => $leftover->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_submission_id' => $submission->id,
+            'content_path' => $submission->path,
+            'content_original_name' => $submission->original_filename,
+            'content_link' => 'https://example.com/article',
+            'price' => 46,
+        ]);
+
+        $fresh = $submission->fresh()->load(['order', 'orderItems.order']);
+        $this->assertTrue($fresh->isExpired());
+        $this->assertTrue($fresh->canReplaceUnpaidLeftover());
+        $this->assertFalse($fresh->leftoverCanPayAgain());
+        $this->assertTrue($fresh->canOrderFromLibrary());
+        $this->assertTrue($fresh->isAvailableForPicker());
+        $this->assertTrue($fresh->isReadyToFulfill((int) $leftover->id));
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', ['availability' => 'needs_fix']))
+            ->assertOk()
+            ->assertSee('Expired Wallet Leftover')
+            ->assertSee(route('advertiser.content-library.order', $submission, false), false)
+            ->assertSee('View order');
+
+        $this->actingAs($advertiser)
+            ->from(route('advertiser.content-library'))
+            ->get(route('advertiser.content-library.order', $submission))
+            ->assertRedirect(route('advertiser.catalog', [
+                'content_submission_id' => $submission->id,
+            ]));
+
+        $leftover->refresh();
+        $this->assertSame('pending', $leftover->status);
+        $this->assertSame('unpaid', $leftover->payment_status);
+        $this->assertTrue($submission->fresh()->load('orderItems.order')->isClaimedByAnotherOrder());
+
+        $payments = app(OrderPaymentService::class);
+        $this->assertTrue($payments->replaceUnpaidLeftoversIfStillOrderable((int) $advertiser->id, [$submission->id]));
+        $leftover->refresh();
+        $this->assertSame('pending', $leftover->status);
+        $this->assertSame('unpaid', $leftover->payment_status);
+
+        $this->assertTrue($payments->replaceUnpaidLeftoversIfStillOrderable(
+            (int) $advertiser->id,
+            [$submission->id],
+            null,
+            true,
+            true
+        ));
+        $leftover->refresh();
+        $this->assertSame('cancelled', $leftover->status);
+        $released = $submission->fresh()->load(['order', 'orderItems.order']);
+        $this->assertFalse($released->isClaimedByAnotherOrder());
+        $this->assertTrue($released->hasFulfillableContent());
+        $this->assertTrue($released->isReadyToFulfill((int) $this->makeOrder($advertiser)->id));
     }
 
     public function test_item_only_leftover_is_not_counted_as_unused_near_expiry(): void

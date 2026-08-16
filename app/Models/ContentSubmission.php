@@ -1246,7 +1246,8 @@ class ContentSubmission extends Model
 
     /**
      * Library Order button: free checkout-ready rows, or a leftover whose
-     * article is already content-ready. Unready leftovers keep Pay again.
+     * article is already content-ready. Card leftovers that can Pay again
+     * stay on that order when the listing has expired.
      */
     public function canOrderFromLibrary(): bool
     {
@@ -1259,7 +1260,33 @@ class ContentSubmission extends Model
             return true;
         }
 
-        return $this->canReplaceUnpaidLeftover() && $this->isContentReadyForOrder();
+        if (! $this->canReplaceUnpaidLeftover() || ! $this->hasFulfillableContent()) {
+            return false;
+        }
+
+        // Unused-inventory expiry. Claimed leftovers that cannot Pay again
+        // must still start a replacement checkout or the article is stuck.
+        if ($this->isExpired() && $this->leftoverCanPayAgain()) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Card + failed + pending — the only leftover Orders → Pay again settles.
+     * Wallet / Wise / bank / legacy unpaid rows cannot use that button.
+     */
+    public function leftoverCanPayAgain(): bool
+    {
+        $order = $this->libraryOrder();
+        if (! $order instanceof Order) {
+            return false;
+        }
+
+        return $order->payment_method === 'card'
+            && $order->payment_status === 'failed'
+            && $order->status === 'pending';
     }
 
     /**
@@ -1409,7 +1436,6 @@ class ContentSubmission extends Model
         // order_id leftovers cannot be ordered again, but they stay editable
         // until paid. Do not hide the Pay-again notice just because
         // canBeOrdered() is false.
-
         if ($this->isClaimedByAnotherOrder()) {
             return self::ACTIVE_ORDER_CLAIM_MESSAGE;
         }
@@ -2311,11 +2337,12 @@ class ContentSubmission extends Model
             return false;
         }
 
-        // Catalog expiry blocks a *new* checkout. An already-claimed leftover
-        // can still be paid or attached on that same order. Use isExpired()
-        // (expires_at <= now) so the exact expiry instant matches purge.
+        // Catalog expiry is unused-inventory only. The same leftover can
+        // still be paid. A replacement checkout may attach after that
+        // leftover is released — do not require isOwnedByOrder for that.
         if ($this->isExpired()) {
-            return $this->isOwnedByOrder($orderId);
+            return $this->isOwnedByOrder($orderId)
+                || ($orderId !== null && ! $this->isLockedByPaidOrder());
         }
 
         return true;
