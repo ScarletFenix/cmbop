@@ -178,6 +178,59 @@ class ContentLibraryModerationUxTest extends TestCase
         $this->assertGreaterThanOrEqual(70, $result['max_confidence']);
     }
 
+    public function test_engine_rejects_underscore_and_camelcase_casino_slugs(): void
+    {
+        $engine = new ContentModerationEngine;
+        $cfg = require dirname(__DIR__, 2).'/config/content_moderation.php';
+        $categories = $cfg['categories'];
+
+        foreach ([
+            'best_online_casino_bonus.jpg',
+            'BestOnlineCasinoBonus.docx',
+            'https://cdn.example/best_online_casino_bonus',
+        ] as $text) {
+            $result = $engine->score(
+                title: 'Marketing tips',
+                text: $text,
+                links: [],
+                categories: $categories,
+            );
+            $this->assertSame('gambling', $result['detected_category'], $text);
+            $this->assertGreaterThanOrEqual(70, $result['max_confidence'], $text);
+        }
+
+        $result = $engine->score(
+            title: 'Marketing tips',
+            text: 'This article shares helpful SEO strategies for growing organic traffic with useful content.',
+            links: ['https://example.com/best_online_casino_bonus'],
+            categories: $categories,
+        );
+        $this->assertSame('gambling', $result['detected_category']);
+        $this->assertGreaterThanOrEqual(70, $result['max_confidence']);
+    }
+
+    public function test_engine_rejects_html_entity_casino(): void
+    {
+        $engine = new ContentModerationEngine;
+        $cfg = require dirname(__DIR__, 2).'/config/content_moderation.php';
+        $categories = $cfg['categories'];
+
+        foreach ([
+            'Play at the best online cas&#105;no tonight.',
+            'Play at the best online cas&#x69;no tonight.',
+            'Play at the best online cas&amp;#105;no tonight.',
+        ] as $text) {
+            $result = $engine->score(
+                title: 'Marketing tips',
+                text: $text,
+                links: [],
+                categories: $categories,
+            );
+            $this->assertSame('gambling', $result['detected_category'], $text);
+            $this->assertGreaterThanOrEqual(70, $result['max_confidence'], $text);
+        }
+    }
+
     public function test_engine_rejects_percent_encoded_casino(): void
     {
         $engine = new ContentModerationEngine;

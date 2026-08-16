@@ -34,6 +34,23 @@ class ContentModerationHardeningTest extends TestCase
         $this->assertContains('casino', $result['matched_terms']);
     }
 
+    public function test_underscore_filename_and_camelcase_slug_are_rejected(): void
+    {
+        foreach ([
+            'Download best_online_casino_bonus.jpg for the chart.',
+            'Attached file BestOnlineCasinoBonus.docx for the publisher.',
+        ] as $text) {
+            $result = $this->engine->score(
+                title: 'Entertainment notes',
+                text: $text,
+                links: [],
+                categories: $this->categories,
+            );
+            $this->assertSame('gambling', $result['detected_category'], $text);
+            $this->assertContains('casino', $result['matched_terms'], $text);
+        }
+    }
+
     public function test_adult_keyword_porn_is_rejected(): void
     {
         $result = $this->engine->score(

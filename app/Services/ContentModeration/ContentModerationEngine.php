@@ -122,12 +122,12 @@ class ContentModerationEngine
         array $extraKeywords,
         array $exceptions,
     ): array {
-        $rawHaystack = mb_strtolower($title."\n".$text);
+        $rawHaystack = mb_strtolower($this->splitCamelCase($title."\n".$text));
         $haystack = $this->applyExceptions($this->deobfuscate($rawHaystack), $exceptions);
         $urlStrings = $this->normalizeLinkList($links);
         $urlStrings = $this->enrichLinksFromContent($urlStrings, $haystack, $categories);
         $linkHosts = array_map(fn (string $u) => $this->hostForMatch($u), $urlStrings);
-        $linkBlob = mb_strtolower(implode(' ', array_merge($urlStrings, $linkHosts)));
+        $linkBlob = mb_strtolower($this->splitCamelCase(implode(' ', array_merge($urlStrings, $linkHosts))));
         if ($linkBlob !== '') {
             $haystack = trim($haystack."\n".$this->deobfuscate($linkBlob));
         }
@@ -537,8 +537,23 @@ class ContentModerationEngine
     /**
      * Normalize common link cloaking before keyword/domain scans.
      */
+    /**
+     * Insert a break before capitals so BestOnlineCasinoBonus still matches casino.
+     */
+    public function splitCamelCase(string $text): string
+    {
+        return preg_replace('/(?<=\p{Ll})(?=\p{Lu})/u', ' ', $text) ?? $text;
+    }
+
     public function deobfuscate(string $text): string
     {
+        for ($i = 0; $i < 3; $i++) {
+            $next = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            if ($next === $text) {
+                break;
+            }
+            $text = $next;
+        }
         $text = preg_replace('/\[\s*dot\s*\]/iu', '.', $text) ?? $text;
         $text = preg_replace('/\(\s*dot\s*\)/iu', '.', $text) ?? $text;
         $text = preg_replace('/\{\s*dot\s*\}/iu', '.', $text) ?? $text;
@@ -699,8 +714,9 @@ class ContentModerationEngine
             return substr_count($haystack, $term);
         }
 
-        // Unicode-aware word boundaries; also catch glued variants like "casino!" already via \b.
-        return preg_match_all('/(?<![\p{L}\p{N}_])'.preg_quote($term, '/').'(?![\p{L}\p{N}_])/u', $haystack) ?: 0;
+        // Underscore is a separator (filenames, slugs, URLs), not a letter.
+        // `best_online_casino_bonus.jpg` must still match `casino`.
+        return preg_match_all('/(?<![\p{L}\p{N}])'.preg_quote($term, '/').'(?![\p{L}\p{N}])/u', $haystack) ?: 0;
     }
 
     protected function phrasePresent(string $haystack, string $tightHaystack, string $phrase): bool
