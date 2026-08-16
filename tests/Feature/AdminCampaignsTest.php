@@ -4475,6 +4475,7 @@ class AdminCampaignsTest extends TestCase
             'subject' => 'Failed then stale',
             'status' => EmailLog::STATUS_PENDING,
         ]);
+        $log->forceFill(['updated_at' => now()->subHours(80)])->save();
         $row = EmailCampaignRecipient::create([
             'email_campaign_id' => $campaign->id,
             'user_id' => $advertiser->id,
