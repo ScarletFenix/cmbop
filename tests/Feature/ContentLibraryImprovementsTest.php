@@ -150,6 +150,7 @@ class ContentLibraryImprovementsTest extends TestCase
         $submission = $this->createApprovedSubmission($advertiser, $site->id);
         $submission->update(['title' => 'Live Article']);
         $order = $this->makeOrder($advertiser);
+        $order->update(['payment_status' => 'paid', 'status' => 'processing', 'paid_at' => now()]);
         $item = OrderItem::create([
             'order_id' => $order->id,
             'site_id' => $site->id,

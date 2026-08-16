@@ -2954,6 +2954,17 @@ class CancelledCardOrderMarkPaidTest extends TestCase
         $this->assertFalse($fresh->isReadyToFulfill((int) $leftover->id));
         $this->assertSame('in_progress', $fresh->libraryAvailability());
         $this->assertSame($paid->id, (int) $fresh->libraryOrder()?->id);
+        $this->assertSame($paid->id, (int) $fresh->activeClaimOrderId());
+        $this->assertFalse($fresh->isAvailableForPicker());
+        $this->assertFalse(
+            ContentSubmission::query()->whereKey($submission->id)->availableForPicker()->exists()
+        );
+        $this->assertTrue(
+            ContentSubmission::query()->whereKey($submission->id)->inProgressInLibrary()->exists()
+        );
+        $this->assertFalse(
+            ContentSubmission::query()->whereKey($submission->id)->withCurrentLivePlacement()->exists()
+        );
 
         $this->actingAs($advertiser)
             ->from(route('advertiser.content-library'))
@@ -3174,5 +3185,153 @@ class CancelledCardOrderMarkPaidTest extends TestCase
         $this->assertSame('pending', $leftover->status);
         $this->assertSame('failed', $leftover->payment_status);
         $this->assertSame($leftover->id, (int) $submission->fresh()->order_id);
+    }
+
+    public function test_stale_leftover_plus_paid_live_url_is_completed_not_in_progress(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher, 'leftover-paid-live.example');
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update(['title' => 'Leftover Paid Live']);
+
+        $paid = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-LEFTOVER-PAID-LIVE',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'status' => 'processing',
+            'paid_at' => now(),
+        ]);
+        OrderItem::create([
+            'order_id' => $paid->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/paid',
+            'content_submission_id' => $submission->id,
+            'price' => 80,
+            'live_url' => 'https://live.example/leftover-paid',
+            'live_url_submitted_at' => now(),
+            'publisher_status' => 'completed',
+        ]);
+        $leftover = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-STALE-LEFTOVER-LIVE',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'failed',
+            'status' => 'pending',
+        ]);
+        $leftoverItem = OrderItem::create([
+            'order_id' => $leftover->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/stale',
+            'content_submission_id' => $submission->id,
+            'price' => 80,
+        ]);
+        $submission->update([
+            'order_id' => $leftover->id,
+            'order_item_id' => $leftoverItem->id,
+        ]);
+
+        $fresh = $submission->fresh()->load(['order', 'orderItems.order', 'orderItem']);
+        $this->assertTrue($fresh->isLockedByPaidOrder());
+        $this->assertTrue($fresh->isPublished());
+        $this->assertSame('published', $fresh->libraryAvailability());
+        $this->assertSame('https://live.example/leftover-paid', $fresh->liveUrl());
+        $this->assertSame($paid->id, (int) $fresh->libraryOrder()?->id);
+        $this->assertSame($paid->id, (int) $fresh->activeClaimOrderId());
+        $this->assertFalse($fresh->canOrderFromLibrary());
+        $this->assertFalse($fresh->isAvailableForPicker());
+        $this->assertTrue(
+            ContentSubmission::query()->whereKey($submission->id)->withCurrentLivePlacement()->exists()
+        );
+        $this->assertFalse(
+            ContentSubmission::query()->whereKey($submission->id)->inProgressInLibrary()->exists()
+        );
+        $this->assertFalse(
+            ContentSubmission::query()->whereKey($submission->id)->availableForPicker()->exists()
+        );
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', ['availability' => 'completed']))
+            ->assertOk()
+            ->assertSee('Leftover Paid Live')
+            ->assertSee('https://live.example/leftover-paid')
+            ->assertSee('Published', false)
+            ->assertSee('>Order:</strong> #'.$paid->id, false);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', ['availability' => 'in_progress']))
+            ->assertOk()
+            ->assertDontSee('Leftover Paid Live');
+    }
+
+    public function test_unpaid_leftover_live_url_is_in_progress_not_completed(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher, 'unpaid-leftover-live.example');
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update(['title' => 'Unpaid Leftover Live']);
+        $leftover = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-UNPAID-LEFTOVER-LIVE',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'failed',
+            'status' => 'pending',
+        ]);
+        $item = OrderItem::create([
+            'order_id' => $leftover->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/stale',
+            'content_submission_id' => $submission->id,
+            'price' => 80,
+            'live_url' => 'https://live.example/unpaid-leftover',
+            'live_url_submitted_at' => now(),
+        ]);
+        $submission->update([
+            'order_id' => $leftover->id,
+            'order_item_id' => $item->id,
+        ]);
+
+        $fresh = $submission->fresh()->load(['order', 'orderItems.order', 'orderItem']);
+        $this->assertFalse($fresh->isPublished());
+        $this->assertNull($fresh->liveUrl());
+        $this->assertSame('in_progress', $fresh->libraryAvailability());
+        $this->assertTrue($fresh->canReplaceUnpaidLeftover());
+        $this->assertFalse(
+            ContentSubmission::query()->whereKey($submission->id)->withCurrentLivePlacement()->exists()
+        );
+        $this->assertTrue(
+            ContentSubmission::query()->whereKey($submission->id)->inProgressInLibrary()->exists()
+        );
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', ['availability' => 'completed']))
+            ->assertOk()
+            ->assertDontSee('Unpaid Leftover Live');
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', ['availability' => 'in_progress']))
+            ->assertOk()
+            ->assertSee('Unpaid Leftover Live')
+            ->assertDontSee('https://live.example/unpaid-leftover');
     }
 }
