@@ -838,7 +838,7 @@ class FinanceOverviewService
                     $order->where('user_id', $userId);
                 }
             });
-        $this->applyCreatedOrPaidWindow($query, $start, $end, 'resolved_at');
+        $this->applyDisputeResolvedWindow($query, $start, $end);
 
         return round((float) $query->sum('advertiser_credited'), 2);
     }
@@ -875,7 +875,7 @@ class FinanceOverviewService
             ->whereHas('order', function ($order) {
                 $this->constrainRecognizedCompleted($order);
             });
-        $this->applyCreatedOrPaidWindow($query, $start, $end, 'resolved_at');
+        $this->applyDisputeResolvedWindow($query, $start, $end);
 
         return $query->pluck('order_id')->unique()->count();
     }
@@ -927,7 +927,7 @@ class FinanceOverviewService
             })
             ->whereHas('disputes', function ($disputes) use ($start, $end) {
                 $disputes->where('status', OrderItemDispute::STATUS_UPHELD);
-                $this->applyCreatedOrPaidWindow($disputes, $start, $end, 'resolved_at');
+                $this->applyDisputeResolvedWindow($disputes, $start, $end);
             });
 
         return round((float) $query->sum(OrderItem::platformFeeSqlExpression()), 2);
@@ -1092,6 +1092,27 @@ class FinanceOverviewService
     {
         $table = $query->getModel()->getTable();
         $this->applyCoalesceWindow($query, $start, $end, $table.'.'.$preferred, $table.'.created_at');
+    }
+
+    /**
+     * Resolution-clock window. Leftover Hostinger resolved_at strings are
+     * not a clawback date — treat them as null and fall back to a parseable
+     * created_at so refunds stay in the period of the last real write.
+     */
+    private function applyDisputeResolvedWindow($query, ?Carbon $start, Carbon $end): void
+    {
+        $table = $query->getModel()->getTable();
+        $floor = OrderItemDispute::PLAUSIBLE_SQL_DATETIME_FLOOR;
+        $ceil = OrderItemDispute::PLAUSIBLE_SQL_DATETIME_CEIL;
+        $expr = 'COALESCE('
+            .'CASE WHEN '.$table.'.resolved_at >= ? AND '.$table.'.resolved_at <= ? THEN '.$table.'.resolved_at END, '
+            .'CASE WHEN '.$table.'.created_at >= ? AND '.$table.'.created_at <= ? THEN '.$table.'.created_at END)';
+
+        if ($start) {
+            $query->whereRaw($expr.' BETWEEN ? AND ?', [$floor, $ceil, $floor, $ceil, $start, $end]);
+        } else {
+            $query->whereRaw($expr.' <= ?', [$floor, $ceil, $floor, $ceil, $end]);
+        }
     }
 
     /**

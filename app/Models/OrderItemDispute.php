@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\ToleratesUnparseableDates;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Schema\Blueprint;
@@ -10,6 +12,8 @@ use Illuminate\Support\Facades\Schema;
 
 class OrderItemDispute extends Model
 {
+    use ToleratesUnparseableDates;
+
     public const STATUS_OPEN = 'open';
 
     public const STATUS_UPHELD = 'upheld';
@@ -151,6 +155,35 @@ class OrderItemDispute extends Model
     public function resolver(): BelongsTo
     {
         return $this->belongsTo(User::class, 'resolved_by');
+    }
+
+    /**
+     * Parseable resolved_at in the Gregorian window. Leftover Hostinger
+     * strings are not a resolution clock — PHP casts them to null.
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeWhereResolvedAtIsRecorded($query)
+    {
+        return $query->whereNotNull('resolved_at')
+            ->where('resolved_at', '>=', static::PLAUSIBLE_SQL_DATETIME_FLOOR)
+            ->where('resolved_at', '<=', static::PLAUSIBLE_SQL_DATETIME_CEIL);
+    }
+
+    /**
+     * Missing or leftover resolved_at (same as PHP null after cast).
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeWhereResolvedAtIsMissing($query)
+    {
+        return $query->where(function ($inner) {
+            $inner->whereNull('resolved_at')
+                ->orWhere('resolved_at', '>', static::PLAUSIBLE_SQL_DATETIME_CEIL)
+                ->orWhere('resolved_at', '<', static::PLAUSIBLE_SQL_DATETIME_FLOOR);
+        });
     }
 
     public function isOpen(): bool

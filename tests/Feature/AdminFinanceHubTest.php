@@ -18,6 +18,7 @@ use App\Services\OrderPaymentService;
 use App\Services\Wallet\WalletLedgerService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use ReflectionMethod;
 use Tests\TestCase;
 
@@ -1446,5 +1447,45 @@ class AdminFinanceHubTest extends TestCase
             'advertiser_credited' => 115,
             'publisher_debited' => 100,
         ], $overrides));
+    }
+
+    public function test_leftover_dispute_resolved_at_falls_back_to_created_at(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $order = $this->seedCompletedPaidOrder($advertiser, $publisher, [
+            'paid_at' => Carbon::parse('2026-07-15 12:00:00'),
+            'completed_at' => Carbon::parse('2026-07-20 12:00:00'),
+        ]);
+        $item = $order->items()->first();
+        $this->assertNotNull($item);
+
+        OrderItemDispute::ensureTable();
+        $dispute = OrderItemDispute::create([
+            'order_id' => $order->id,
+            'order_item_id' => $item->id,
+            'opened_by' => $admin->id,
+            'status' => OrderItemDispute::STATUS_UPHELD,
+            'reason' => 'Live URL was removed after the report window started.',
+            'resolved_at' => Carbon::parse('2026-08-12 12:00:00'),
+            'advertiser_credited' => 115,
+            'publisher_debited' => 100,
+        ]);
+        DB::table('order_item_disputes')->where('id', $dispute->id)->update([
+            'resolved_at' => 'not-a-date',
+            'created_at' => '2026-08-12 12:00:00',
+        ]);
+
+        $july = app(FinanceOverviewService::class)->overview(
+            app(FinanceOverviewService::class)->resolvePeriod(null, '2026-07-01', '2026-07-31')
+        );
+        $august = app(FinanceOverviewService::class)->overview(
+            app(FinanceOverviewService::class)->resolvePeriod(null, '2026-08-01', '2026-08-31')
+        );
+
+        $this->assertEquals(0.0, $july['platform']['refunds']);
+        $this->assertEquals(115.0, $august['platform']['refunds']);
+        $this->assertEquals(1, $august['platform']['refund_orders_count']);
     }
 }

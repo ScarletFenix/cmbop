@@ -17,6 +17,7 @@ use App\Models\WebsiteSuggestion;
 use App\Models\Withdrawal;
 use App\Services\Admin\FinanceOverviewService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class AdminDashboardTest extends TestCase
@@ -594,6 +595,74 @@ class AdminDashboardTest extends TestCase
             ->assertJsonPath('success', true)
             ->assertJsonFragment(['order_number' => 'ORD-DSP-1'])
             ->assertJsonMissing(['order_number' => 'ORD-UNPAID-1']);
+    }
+
+    public function test_action_queue_ok_when_dispute_created_at_is_unparseable(): void
+    {
+        $admin = $this->makeAdmin();
+        $publisherRole = Role::firstOrCreate(['name' => 'publisher']);
+        $publisher = User::factory()->create([
+            'active_role_id' => $publisherRole->id,
+            'email_verified_at' => now(),
+        ]);
+        $publisher->roles()->attach($publisherRole->id);
+
+        $site = Site::create([
+            'publisher_id' => $publisher->id,
+            'site_name' => 'Leftover Dispute Site',
+            'site_url' => 'https://leftover-dispute.example',
+            'domain' => 'leftover-dispute.example',
+            'da' => 10,
+            'dr' => 10,
+            'traffic' => 100,
+            'country' => 'us',
+            'language' => 'en',
+            'category' => 'marketing',
+            'price' => 80,
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => 'Leftover dispute fixture site',
+            'verified' => 1,
+            'active' => 1,
+        ]);
+        $paid = Order::create([
+            'user_id' => $admin->id,
+            'order_number' => 'ORD-DSP-LEFTOVER',
+            'reference_code' => 'REF-DSP-LEFTOVER',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'status' => 'completed',
+            'paid_at' => now()->subDay(),
+        ]);
+        $item = OrderItem::create([
+            'order_id' => $paid->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'price' => 80,
+            'publisher_price' => 68,
+            'content_link' => 'https://example.com/article',
+        ]);
+        OrderItemDispute::ensureTable();
+        $dispute = OrderItemDispute::create([
+            'order_id' => $paid->id,
+            'order_item_id' => $item->id,
+            'opened_by' => $admin->id,
+            'status' => OrderItemDispute::STATUS_OPEN,
+            'reason' => 'Live link was removed after approval.',
+        ]);
+        DB::table('order_item_disputes')->where('id', $dispute->id)->update([
+            'created_at' => 'not-a-date',
+        ]);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.dashboard.action-queue'))
+            ->assertOk()
+            ->assertJsonPath('disputes.0.order_number', 'ORD-DSP-LEFTOVER')
+            ->assertJsonPath('disputes.0.url', route('admin.orders.show', $paid->id));
     }
 
     public function test_metrics_cache_is_off_by_default_and_can_be_enabled(): void
