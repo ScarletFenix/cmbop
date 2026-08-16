@@ -241,10 +241,10 @@ class InvoiceController extends Controller
 
         $result = $billing->backfillMissingTaxInvoices((int) ($data['limit'] ?? 50));
 
-        if ((int) ($result['created'] ?? 0) > 0) {
+        if ((int) ($result['created'] ?? 0) > 0 || (int) ($result['failed'] ?? 0) > 0) {
             ActivityLogger::tryLog(
                 'invoice.backfill_run',
-                ($request->user()?->name ?? 'Admin').' backfilled '.(int) $result['created'].' tax invoice(s)',
+                ($request->user()?->name ?? 'Admin').' ran a tax-invoice backfill',
                 null,
                 [
                     'created' => (int) $result['created'],
@@ -277,10 +277,10 @@ class InvoiceController extends Controller
 
         $result = $billing->regenerateMissingPdfs((int) ($data['limit'] ?? 50));
 
-        if ((int) ($result['regenerated'] ?? 0) > 0) {
+        if ((int) ($result['regenerated'] ?? 0) > 0 || (int) ($result['failed'] ?? 0) > 0) {
             ActivityLogger::tryLog(
                 'invoice.pdfs_regenerated',
-                ($request->user()?->name ?? 'Admin').' regenerated '.(int) $result['regenerated'].' missing invoice PDF(s)',
+                ($request->user()?->name ?? 'Admin').' ran a missing-invoice PDF regenerate',
                 null,
                 [
                     'regenerated' => (int) $result['regenerated'],
