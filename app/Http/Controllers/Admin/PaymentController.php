@@ -23,6 +23,7 @@ use App\Support\BillingCustomerMailSuppressor;
 use App\Support\OrderLifecycleMailSuppressor;
 use App\Support\UserFacingError;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -442,6 +443,16 @@ class PaymentController extends Controller
                 ],
             ]);
 
+        } catch (ModelNotFoundException $e) {
+            DB::rollBack();
+            if (! $sendNotification) {
+                app(OrderLifecycleMailSuppressor::class)->forget((int) $id);
+            }
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Payment not found',
+            ], 404);
         } catch (\Exception $e) {
             DB::rollBack();
             if (! $sendNotification) {

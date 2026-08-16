@@ -64,7 +64,7 @@
         @else
             <dt class="col-sm-4">Listing</dt>
             <dd class="col-sm-8">
-                {{ $item->site->site_name ?? $item->website_name }}
+                {{ $item->site?->site_name ?? $item->website_name }}
                 <div class="text-muted">{{ $item->domain }}</div>
                 @if($item->site_id)
                     <a href="{{ route('admin.sites.edit', $item->site_id) }}">Open listing</a>
@@ -83,8 +83,8 @@
             </dd>
             <dt class="col-sm-4">Current owner</dt>
             <dd class="col-sm-8">
-                {{ $item->site->publisher?->name ?? '—' }}
-                <div class="text-muted">{{ $item->site->publisher?->email ?? '' }}</div>
+                {{ $item->site?->publisher?->name ?? '—' }}
+                <div class="text-muted">{{ $item->site?->publisher?->email ?? '' }}</div>
                 @if($item->site?->publisher_id)
                     <a href="{{ route('admin.users.index', ['user' => $item->site->publisher_id]) }}#user-{{ $item->site->publisher_id }}">Open user</a>
                 @endif
