@@ -444,7 +444,8 @@ class EmailCampaign extends Model
         // recipient FK. Reclaim before reconcile's stall window used to
         // pending-mark that user and dispatch a second send. Generic-key
         // deliveries are included — prefix-only scans missed those and
-        // queued a second mail.
+        // queued a second mail. Null means email_logs could not be read
+        // — do not treat that as “nobody was mailed”.
         $deliveredIds = EmailLog::deliveredUserIdsForCampaign((int) $campaign->id);
         if ($deliveredIds === null) {
             return 0;
@@ -473,28 +474,20 @@ class EmailCampaign extends Model
      *
      * @return list<int>|null
      */
-    protected static function campaignLogUserIdsForStatus(int $campaignId, string $status): ?array
-    {
-        if ($campaignId < 1) {
-            return [];
+    protected static function campaignLogUserIdsForStatus(
+        int $campaignId,
+        string $status,
+        ?\DateTimeInterface $updatedAfter = null,
+    ): ?array {
+        if ($status === EmailLog::STATUS_PENDING) {
+            return EmailLog::pendingUserIdsForCampaign($campaignId, $updatedAfter);
         }
 
-        try {
-            $prefix = 'audience_campaign:'.$campaignId.':user:';
-            $ids = [];
-            foreach (EmailLog::query()
-                ->where('status', $status)
-                ->where('dedupe_key', 'like', $prefix.'%')
-                ->pluck('dedupe_key') as $key) {
-                if (preg_match('/^'.preg_quote($prefix, '/').'(\d+)$/', (string) $key, $matches)) {
-                    $ids[] = (int) $matches[1];
-                }
-            }
-
-            return array_values(array_unique(array_filter($ids)));
-        } catch (\Throwable) {
-            return null;
+        if ($status === EmailLog::STATUS_DELIVERED) {
+            return EmailLog::deliveredUserIdsForCampaign($campaignId);
         }
+
+        return [];
     }
 
     /**
@@ -920,14 +913,9 @@ class EmailCampaign extends Model
 
         $campaignIds = array_fill_keys($attachedIds, true);
 
-        if ($logs->isEmpty()) {
-            foreach (array_keys($campaignIds) as $id) {
-                static::query()->find($id)?->recountRecipientTotals();
-            }
-
-            return;
-        }
-
+        // Walk every queued row even when grouping found nothing.
+        // latestDeliveredForCampaignUser() still attaches a leftover
+        // generic-key delivery after a failed extras JSON scan.
         foreach ($rows as $row) {
             try {
                 self::reconcileOneQueuedRecipientFromLogs($row, $logs, $cutoff, $campaignIds);
@@ -959,26 +947,36 @@ class EmailCampaign extends Model
             (int) $row->email_campaign_id,
             (int) $row->user_id
         ));
-        if (! $group) {
-            return;
-        }
 
-        $deliveredLog = $group->first(
+        $deliveredLog = $group?->first(
             fn (EmailLog $log) => $log->status === EmailLog::STATUS_DELIVERED
         );
+        // Exact-key / extras grouping misses a leftover generic
+        // audience_campaign|{email}|AudienceCampaignMail row when the
+        // JSON meta scan fails. Heal already falls back; reclaim and
+        // expire then hold that user forever and never attach.
+        if (! $deliveredLog) {
+            $deliveredLog = EmailLog::latestDeliveredForCampaignUser(
+                (int) $row->email_campaign_id,
+                (int) $row->user_id
+            );
+        }
         // A pending log means a retry may be in flight — do not attach
         // a failed log over that. A delivered log still wins: expire
         // would otherwise skip-stale someone who already received the
         // mail, and a later retry doubles the send.
+        if (! $deliveredLog && ! $group) {
+            return;
+        }
         if (! $deliveredLog && $group->contains(fn (EmailLog $log) => $log->status === EmailLog::STATUS_PENDING)) {
             return;
         }
-        $failedLog = $group->first(
+        $failedLog = $group?->first(
             fn (EmailLog $log) => $log->status === EmailLog::STATUS_FAILED
         );
-        $pendingLogs = $group->filter(
-            fn (EmailLog $log) => $log->status === EmailLog::STATUS_PENDING
-        );
+        $pendingLogs = $group
+            ? $group->filter(fn (EmailLog $log) => $log->status === EmailLog::STATUS_PENDING)
+            : collect();
 
         // A leftover pending row must not block a real delivery. Only a
         // newer pending (retry after that delivery) stays in-flight.
@@ -993,21 +991,11 @@ class EmailCampaign extends Model
                 return;
             }
 
-            $log = $deliveredLog;
-            if (! $log && $failedLog) {
-                // Failed-log attach still waits out the stall window so a
-                // 10-second-old queued claim is not killed by an older
-                // leftover failure while Mail::send() is still running.
-                if ($row->updated_at && $row->updated_at->greaterThan($cutoff)) {
-                    return;
-                }
-                // An older failed log must not kill a newer in-flight retry.
-                if ($failedLog->updated_at
-                    && $row->updated_at
-                    && ! $failedLog->updated_at->greaterThan($row->updated_at)) {
-                    return;
-                }
-                $log = $failedLog;
+            foreach ($pendingLogs as $pending) {
+                $pending->update([
+                    'status' => EmailLog::STATUS_FAILED,
+                    'error' => 'Closed: duplicate open log for the same send',
+                ]);
             }
         }
 
@@ -1164,10 +1152,6 @@ class EmailCampaign extends Model
             // Canonical-key rows still heal when JSON meta cannot be queried.
         }
 
-        if ($allLogs->isEmpty()) {
-            return [];
-        }
-
         $logsById = $allLogs->keyBy('id');
         $logsByKey = $allLogs
             ->filter(fn (EmailLog $log) => filled($log->dedupe_key) || EmailLog::campaignUserIds($log) !== [0, 0])
@@ -1319,10 +1303,25 @@ class EmailCampaign extends Model
             // failed_jobs is not a live backlog: reclaim still holds
             // those users, but expire must close the 72h orphan.
             $blocked = $inFlight === null ? [] : array_fill_keys($inFlight, true);
-            foreach (EmailLog::deliveredUserIdsForCampaign($campaignId) ?? [] as $userId) {
-                $blocked[$userId] = true;
+            $deliveredIds = EmailLog::deliveredUserIdsForCampaign($campaignId);
+            if ($deliveredIds === null) {
+                continue;
             }
-            foreach (EmailLog::pendingUserIdsForCampaign($campaignId) ?? [] as $userId) {
+            // Reclaim already holds a pending Email Center log. Expire
+            // must too: retry pending-marks that log and leaves an 80h
+            // queued leftover untouched. A missed jobs scan then
+            // skip-staled it beside the live mailable. Only a pending
+            // log newer than 72h is in-flight; an older one expires.
+            // campaignLogUserIdsForStatus → pendingUserIdsForCampaign.
+            $pendingIds = self::campaignLogUserIdsForStatus(
+                $campaignId,
+                EmailLog::STATUS_PENDING,
+                $cutoff
+            );
+            if ($pendingIds === null) {
+                continue;
+            }
+            foreach (array_merge($deliveredIds, $pendingIds) as $userId) {
                 $blocked[$userId] = true;
             }
 

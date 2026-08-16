@@ -43,6 +43,14 @@ class AdminCampaignsDocsTest extends TestCase
         $this->assertStringContainsString('must **not** skip a recipient whose', $body);
         $this->assertStringContainsString('queued row with a pending Email Center log', $body);
         $this->assertStringContainsString('must **not** treat a generic `audience_campaign|{email}|…` leftover', $body);
+        $this->assertStringContainsString('must not look like “no pending retries”', $body);
+        $this->assertStringContainsString('meta.campaign_id', $body);
+        $this->assertStringContainsString('audience_campaign|{email}|AudienceCampaignMail', $body);
+        $this->assertStringContainsString('must **not** treat that shared generic key as one-shot', $body);
+        $this->assertStringContainsString('must not look like “no prior send”', $body);
+        $this->assertStringContainsString('must not scan the newest 100', $body);
+        $this->assertStringContainsString('via campaign+user identity', $body);
+        $this->assertStringContainsString('fresh pending Email Center log', $body);
         $this->assertStringContainsString('only one failed log per job UUID', $body);
         $this->assertStringContainsString('drop that job UUID from the retry list', $body);
         $this->assertStringContainsString('must also clear the fail streak', $body);
@@ -50,6 +58,7 @@ class AdminCampaignsDocsTest extends TestCase
         $this->assertStringContainsString('must not beat a delivered log', $body);
         $this->assertStringContainsString('must not beat a delivered sibling', $body);
         $this->assertStringContainsString('generic-key pending sibling as in-flight', $body);
+        $this->assertStringContainsString('when the grouped extras miss', $body);
         $this->assertStringContainsString('second database table without `payload`', $body);
         $this->assertStringContainsString('failed_jobs', $body);
         $this->assertStringContainsString('must **not** block expire', $body);
