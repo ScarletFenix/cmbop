@@ -110,7 +110,24 @@ class FinanceController extends Controller
     public function ledgerExport(Request $request): StreamedResponse
     {
         $query = $this->ledgerQuery($request)->with(['user:id,name,email']);
+        $matchCount = (clone $query)->count();
         $filename = 'wallet-ledger-'.now()->format('Y-m-d-His').'.csv';
+
+        ActivityLogger::tryLog(
+            'finance.ledger_exported',
+            ($request->user()?->name ?? 'Admin').' exported the wallet ledger ('.min($matchCount, self::LEDGER_EXPORT_LIMIT).' row(s)).',
+            null,
+            [
+                'user_id' => (int) $request->input('user_id') ?: null,
+                'type' => is_string($request->input('type')) ? $request->input('type') : '',
+                'direction' => is_string($request->input('direction')) ? $request->input('direction') : '',
+                'search' => search_text($request->input('search')),
+                'date_from' => is_string($request->input('date_from')) ? $request->input('date_from') : null,
+                'date_to' => is_string($request->input('date_to')) ? $request->input('date_to') : null,
+                'rows_exported' => min($matchCount, self::LEDGER_EXPORT_LIMIT),
+                'truncated' => $matchCount > self::LEDGER_EXPORT_LIMIT,
+            ]
+        );
 
         return response()->streamDownload(function () use ($query) {
             $out = fopen('php://output', 'w');
@@ -231,6 +248,19 @@ class FinanceController extends Controller
         );
         $rows = $this->finance->exportRows($period);
         $filename = 'finance-'.$period['key'].'-'.now()->format('Y-m-d-His').'.csv';
+
+        ActivityLogger::tryLog(
+            'finance.period_exported',
+            ($request->user()?->name ?? 'Admin').' exported the '.$period['label'].' finance summary.',
+            null,
+            [
+                'period' => $period['key'] ?? null,
+                'label' => $period['label'] ?? null,
+                'date_from' => $input['date_from'] ?? null,
+                'date_to' => $input['date_to'] ?? null,
+                'rows_exported' => count($rows),
+            ]
+        );
 
         return response()->streamDownload(function () use ($rows, $period) {
             $out = fopen('php://output', 'w');

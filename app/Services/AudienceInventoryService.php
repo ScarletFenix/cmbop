@@ -742,6 +742,20 @@ class AudienceInventoryService
     }
 
     /**
+     * Matching export rows before the CSV stream starts (same filters as exportCsv).
+     *
+     * @param  array<string, mixed>  $filters
+     */
+    public function exportMatchCount(string $audienceKey, ?string $search = null, array $filters = []): int
+    {
+        $query = $this->queryForAudienceKey($audienceKey);
+        $this->applySearch($query, $search);
+        $this->applyInventoryFilters($query, $filters, $audienceKey);
+
+        return (int) $query->count();
+    }
+
+    /**
      * @param  array<string, mixed>  $filters
      */
     public function exportCsv(string $audienceKey, ?string $search = null, array $filters = []): StreamedResponse

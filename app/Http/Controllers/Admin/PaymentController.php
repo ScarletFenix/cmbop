@@ -95,6 +95,23 @@ class PaymentController extends Controller
         $rows = $this->paymentsQuery($request)->limit(self::EXPORT_LIMIT)->get();
         $filename = 'order-payments-'.now()->format('Y-m-d-His').'.csv';
 
+        ActivityLogger::tryLog(
+            'payment.exported',
+            ($request->user()?->name ?? 'Admin').' exported order payments ('.$rows->count().' row(s)).',
+            null,
+            [
+                'search' => is_string($request->input('search')) ? trim($request->input('search')) : '',
+                'payment_status' => is_string($request->input('payment_status')) ? $request->input('payment_status') : '',
+                'payment_method' => is_string($request->input('payment_method')) ? $request->input('payment_method') : '',
+                'status' => is_string($request->input('status')) ? $request->input('status') : '',
+                'date_from' => is_string($request->input('date_from')) ? $request->input('date_from') : null,
+                'date_to' => is_string($request->input('date_to')) ? $request->input('date_to') : null,
+                'date_field' => is_string($request->input('date_field')) ? $request->input('date_field') : 'created_at',
+                'rows_exported' => $rows->count(),
+                'truncated' => $rows->count() >= self::EXPORT_LIMIT,
+            ]
+        );
+
         return response()->streamDownload(function () use ($rows) {
             $out = fopen('php://output', 'w');
             fputcsv($out, [

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ActivityLog;
 use App\Models\DepositRequest;
 use App\Models\Order;
 use App\Models\Role;
@@ -298,6 +299,11 @@ class AdminFinanceOpsGapsTest extends TestCase
         $this->assertStringContainsString('LEDGER-KEEP', $csv);
         $this->assertStringNotContainsString('LEDGER-SKIP', $csv);
         $this->assertStringNotContainsString($other->email, $csv);
+
+        $log = ActivityLog::query()->where('action', 'finance.ledger_exported')->first();
+        $this->assertNotNull($log);
+        $this->assertSame($publisher->id, (int) data_get($log->properties, 'user_id'));
+        $this->assertGreaterThanOrEqual(1, (int) data_get($log->properties, 'rows_exported'));
     }
 
     public function test_ledger_search_treats_underscore_as_literal(): void

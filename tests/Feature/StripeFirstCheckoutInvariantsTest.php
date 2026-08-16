@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ActivityLog;
 use App\Models\CheckoutIntent;
 use App\Models\ContentSubmission;
 use App\Models\Order;
@@ -2344,5 +2345,25 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
         $wallet->refresh();
         $this->assertEqualsWithDelta(60.0, (float) $wallet->balance, 0.01);
         $this->assertEqualsWithDelta(60.0, $payments->unfulfilledCardCreditAmount($ref), 0.01);
+    }
+
+    public function test_unfulfilled_card_credit_writes_activity_once(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $wallet = $this->advertiserWallet($advertiser, 0);
+        $ref = 'LEFTOVER-AUDIT-1';
+        $payments = app(OrderPaymentService::class);
+
+        $this->assertEqualsWithDelta(40.0, $payments->creditUnfulfilledCardCapture($advertiser->id, $ref, 40), 0.01);
+        $this->assertEqualsWithDelta(0.0, $payments->creditUnfulfilledCardCapture($advertiser->id, $ref, 40), 0.01);
+
+        $logs = ActivityLog::query()->where('action', 'wallet.leftover_card_credited')->get();
+        $this->assertCount(1, $logs);
+        $this->assertSame($advertiser->id, (int) $logs->first()->user_id);
+        $this->assertSame(Wallet::class, $logs->first()->subject_type);
+        $this->assertSame($wallet->id, (int) $logs->first()->subject_id);
+        $this->assertEqualsWithDelta(40.0, (float) data_get($logs->first()->properties, 'amount'), 0.01);
+        $this->assertSame($ref, data_get($logs->first()->properties, 'reference_code'));
+        $this->assertSame('Credited leftover card payment', activity_action_label('wallet.leftover_card_credited'));
     }
 }

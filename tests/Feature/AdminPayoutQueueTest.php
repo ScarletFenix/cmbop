@@ -240,6 +240,10 @@ class AdminPayoutQueueTest extends TestCase
         $this->assertStringContainsString('iban_account', $csv);
         $this->assertStringContainsString('DE89370400440532013000', $csv);
         $this->assertStringContainsString('WD-', $csv);
+
+        $log = ActivityLog::query()->where('action', 'withdrawal.exported')->first();
+        $this->assertNotNull($log);
+        $this->assertSame(1, (int) data_get($log->properties, 'rows_exported'));
     }
 
     public function test_publisher_sees_requested_paid_labels(): void

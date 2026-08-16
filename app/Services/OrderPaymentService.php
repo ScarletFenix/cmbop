@@ -944,7 +944,7 @@ class OrderPaymentService
         }
         $aliases = array_values(array_unique($aliases));
 
-        return (float) DB::transaction(function () use ($userId, $roleId, $amount, $reference, $referenceCode, $aliases, $unkeyed, $prefix, $captureIds) {
+        $credited = (float) DB::transaction(function () use ($userId, $roleId, $amount, $reference, $referenceCode, $aliases, $unkeyed, $prefix, $captureIds) {
             if (! User::query()->whereKey($userId)->exists()) {
                 Log::warning('Cannot credit unfulfilled card capture; user missing', [
                     'user_id' => $userId,
@@ -994,6 +994,40 @@ class OrderPaymentService
 
             return $amount;
         });
+
+        if ($credited > 0.009) {
+            $this->logLeftoverCardCredit($userId, $roleId, $referenceCode, $credited, $captureIds);
+        }
+
+        return $credited;
+    }
+
+    /**
+     * @param  list<string>  $captureIds
+     */
+    private function logLeftoverCardCredit(int $userId, int $roleId, string $referenceCode, float $amount, array $captureIds): void
+    {
+        $user = User::query()->find($userId);
+        $wallet = Wallet::query()
+            ->where('user_id', $userId)
+            ->where('role_id', $roleId)
+            ->first();
+
+        $who = $user?->name ?: $user?->email ?: 'Advertiser';
+        ActivityLogger::tryLog(
+            'wallet.leftover_card_credited',
+            $who.' was credited €'.number_format($amount, 2).' because listing(s) left the catalog',
+            $wallet,
+            [
+                'user_id' => $userId,
+                'wallet_id' => $wallet?->id,
+                'reference_code' => $referenceCode,
+                'amount' => $amount,
+                'capture_ids' => $captureIds,
+            ],
+            $user?->email,
+            $user
+        );
     }
 
     /**
