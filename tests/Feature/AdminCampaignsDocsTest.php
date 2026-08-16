@@ -57,6 +57,8 @@ class AdminCampaignsDocsTest extends TestCase
         $this->assertStringContainsString('ops-mail-reminders.md', $body);
         $this->assertStringContainsString('even if that staff account also has a marketplace role', $body);
         $this->assertStringContainsString('re-check staff roles at send time', $body);
+        $this->assertStringContainsString('unreadable roles lookup is treated as staff', $body);
+        $this->assertStringContainsString('leftover recipient timestamp must not abort recover', $body);
         $this->assertStringContainsString('payment_status=completed', $body);
         $this->assertStringContainsString('Preference, disabled, and unverified skips stay skipped', $body);
         $this->assertStringContainsString('inline SMTP (`sync` mail)', $body);
