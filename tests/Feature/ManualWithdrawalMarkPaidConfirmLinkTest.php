@@ -7,7 +7,9 @@ use App\Models\User;
 use App\Models\Wallet;
 use App\Models\Withdrawal;
 use App\Services\Wallet\ManualWithdrawalMarkPaidLink;
+use App\Services\Wallet\WithdrawalDuplicatePayoutWarning;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\URL;
 use Tests\TestCase;
@@ -198,5 +200,100 @@ class ManualWithdrawalMarkPaidConfirmLinkTest extends TestCase
             ->assertOk()
             ->assertSee('Withdrawal already settled', false)
             ->assertDontSee('Confirm marked paid —', false);
+    }
+
+    public function test_confirm_ui_ok_when_sibling_processed_at_is_unparseable(): void
+    {
+        $admin = $this->makeUser('admin');
+        $publisher = $this->makeUser('publisher');
+        Wallet::create([
+            'user_id' => $publisher->id,
+            'role_id' => Wallet::publisherRoleId(),
+            'balance' => 10,
+            'reserved_balance' => 0,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 0,
+            'currency' => 'EUR',
+        ]);
+
+        $prior = Withdrawal::create([
+            'user_id' => $publisher->id,
+            'amount' => 40,
+            'fee' => 0,
+            'net_amount' => 40,
+            'payment_method' => 'wise',
+            'payment_details' => ['email' => 'old@example.com'],
+            'status' => 'completed',
+            'processed_at' => now()->subDays(3),
+            'created_at' => now()->subDays(40),
+        ]);
+        DB::table('withdrawals')->where('id', $prior->id)->update([
+            'processed_at' => 'not-a-date',
+        ]);
+
+        $this->assertNull($prior->fresh()->processed_at);
+
+        $withdrawal = $this->pendingWithdrawal($publisher, 90);
+        $url = $this->relativeSignedUrl(ManualWithdrawalMarkPaidLink::url($withdrawal));
+
+        $this->actingAs($admin)
+            ->get($url)
+            ->assertOk()
+            ->assertSee('Confirm marked paid', false)
+            ->assertSee('Recent paid withdrawals', false)
+            ->assertSee('WD-'.$prior->id, false)
+            ->assertDontSee('Possible duplicate payout', false);
+    }
+
+    public function test_leftover_processed_at_does_not_fake_recent_duplicate(): void
+    {
+        config(['billing.withdrawal_mark_paid_duplicate_lookback_days' => 30]);
+
+        $publisher = $this->makeUser('publisher');
+        $paid = Withdrawal::create([
+            'user_id' => $publisher->id,
+            'amount' => 90,
+            'fee' => 0,
+            'net_amount' => 90,
+            'payment_method' => 'wise',
+            'payment_details' => ['email' => 'old@example.com'],
+            'status' => 'completed',
+            'processed_at' => now()->subDays(2),
+            'created_at' => now()->subDays(40),
+        ]);
+        DB::table('withdrawals')->where('id', $paid->id)->update([
+            'processed_at' => 'not-a-date',
+        ]);
+
+        $open = $this->pendingWithdrawal($publisher, 90);
+
+        $this->assertTrue(app(WithdrawalDuplicatePayoutWarning::class)->matches($open)->isEmpty());
+    }
+
+    public function test_leftover_processed_at_falls_back_to_recent_created_at(): void
+    {
+        config(['billing.withdrawal_mark_paid_duplicate_lookback_days' => 30]);
+
+        $publisher = $this->makeUser('publisher');
+        $paid = Withdrawal::create([
+            'user_id' => $publisher->id,
+            'amount' => 90,
+            'fee' => 0,
+            'net_amount' => 90,
+            'payment_method' => 'wise',
+            'payment_details' => ['email' => 'old@example.com'],
+            'status' => 'completed',
+            'processed_at' => now()->subDays(2),
+            'created_at' => now()->subDays(2),
+        ]);
+        DB::table('withdrawals')->where('id', $paid->id)->update([
+            'processed_at' => 'not-a-date',
+        ]);
+
+        $open = $this->pendingWithdrawal($publisher, 90);
+        $matches = app(WithdrawalDuplicatePayoutWarning::class)->matches($open);
+
+        $this->assertSame([$paid->id], $matches->pluck('id')->all());
+        $this->assertNull($matches->first()->processed_at);
     }
 }

@@ -47,6 +47,36 @@ class Withdrawal extends Model
         'publisher_status_label',
     ];
 
+    /**
+     * Parseable processed_at in the Gregorian window. Leftover Hostinger
+     * strings compare as recent on SQLite (`>= $since`) and as zero-dates
+     * on MySQL, so they must not count as a paid clock.
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeWhereProcessedAtIsRecorded($query)
+    {
+        return $query->whereNotNull('processed_at')
+            ->where('processed_at', '>=', static::PLAUSIBLE_SQL_DATETIME_FLOOR)
+            ->where('processed_at', '<=', static::PLAUSIBLE_SQL_DATETIME_CEIL);
+    }
+
+    /**
+     * Missing or leftover processed_at (same as PHP null after cast).
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeWhereProcessedAtIsMissing($query)
+    {
+        return $query->where(function ($inner) {
+            $inner->whereNull('processed_at')
+                ->orWhere('processed_at', '>', static::PLAUSIBLE_SQL_DATETIME_CEIL)
+                ->orWhere('processed_at', '<', static::PLAUSIBLE_SQL_DATETIME_FLOOR);
+        });
+    }
+
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
