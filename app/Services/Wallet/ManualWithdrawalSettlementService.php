@@ -149,7 +149,7 @@ class ManualWithdrawalSettlementService
                 'notes' => $notes,
             ]);
 
-            ActivityLogger::log(
+            ActivityLogger::tryLog(
                 'withdrawal.status_updated',
                 $actorName.' set withdrawal #'.$result['withdrawal']->id.' to '.$result['new_status'],
                 $result['withdrawal'],

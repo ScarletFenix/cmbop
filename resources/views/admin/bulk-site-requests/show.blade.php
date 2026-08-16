@@ -8,8 +8,8 @@
         </a>
         <h3 class="bulk-request-show__title">Bulk request #{{ $bulkRequest->id }}</h3>
         <p class="text-muted small mb-0">
-            Publisher: <strong>{{ $bulkRequest->publisher->name }}</strong>
-            ({{ $bulkRequest->publisher->email }})
+            Publisher: <strong>{{ $bulkRequest->publisher?->name ?? 'Unknown' }}</strong>
+            ({{ $bulkRequest->publisher?->email ?? '—' }})
             · Status: <strong>{{ $bulkRequest->statusLabel() }}</strong>
             · Sites submitted: {{ $bulkRequest->items->count() ?: ($bulkRequest->estimated_count ?? '—') }}
             · Pending to add: {{ $pendingItems->count() }}

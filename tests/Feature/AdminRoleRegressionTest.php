@@ -3,10 +3,12 @@
 namespace Tests\Feature;
 
 use App\Models\Blog;
+use App\Models\DepositRequest;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\SiteClaim;
 use App\Models\User;
+use App\Models\Withdrawal;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Blade;
@@ -216,5 +218,68 @@ class AdminRoleRegressionTest extends TestCase
             ->assertNotFound()
             ->assertJsonPath('success', false)
             ->assertJsonPath('message', 'Order item not found.');
+    }
+
+    public function test_deposit_approve_confirm_survives_a_missing_user(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $deposit = DepositRequest::create([
+            'user_id' => $advertiser->id,
+            'reference_code' => 'DEP-ORPHAN-USER',
+            'amount' => 40,
+            'payment_method' => 'bank',
+            'status' => 'pending',
+        ]);
+        $deposit->setRelation('user', null);
+
+        $this->actingAs($admin)->withViewErrors([]);
+
+        $html = view('admin.deposits.approve-confirm', [
+            'deposit' => $deposit,
+            'canApprove' => true,
+            'confirmAction' => 'https://example.test/confirm',
+            'currentBalance' => 0.0,
+            'incomingAmount' => 40.0,
+            'projectedBalance' => 40.0,
+            'priorDeposits' => collect(),
+            'bonusBalance' => 0.0,
+            'possibleDuplicate' => false,
+            'duplicateMatches' => collect(),
+        ])->render();
+
+        $this->assertStringContainsString('Unknown', $html);
+        $this->assertStringContainsString('DEP-ORPHAN-USER', $html);
+    }
+
+    public function test_withdrawal_mark_paid_confirm_survives_a_missing_user(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $publisher = $this->userWithRole('publisher');
+        $withdrawal = Withdrawal::create([
+            'user_id' => $publisher->id,
+            'amount' => 80,
+            'fee' => 0,
+            'net_amount' => 80,
+            'payment_method' => 'wise',
+            'payment_details' => ['email' => 'pay@example.com'],
+            'status' => 'pending',
+        ]);
+        $withdrawal->setRelation('user', null);
+
+        $this->actingAs($admin)->withViewErrors([]);
+
+        $html = view('admin.withdrawals.mark-paid-confirm', [
+            'withdrawal' => $withdrawal,
+            'canMarkPaid' => true,
+            'confirmAction' => 'https://example.test/confirm',
+            'currentBalance' => 0.0,
+            'priorPaid' => collect(),
+            'possibleDuplicate' => false,
+            'duplicateMatches' => collect(),
+        ])->render();
+
+        $this->assertStringContainsString('Unknown', $html);
+        $this->assertStringContainsString('WD-'.$withdrawal->id, $html);
     }
 }

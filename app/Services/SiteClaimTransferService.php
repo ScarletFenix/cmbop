@@ -180,7 +180,7 @@ class SiteClaimTransferService
                 $closedSiblings[] = $sibling;
             }
 
-            ActivityLogger::log(
+            ActivityLogger::tryLog(
                 'site.claim_approved',
                 $admin->name.' approved site claim #'.$lockedClaim->id.' (publisher '.$previousPublisherId.' → '.$claimer->id.')',
                 $locked,
@@ -225,7 +225,7 @@ class SiteClaimTransferService
                 'reviewed_by' => $admin->id,
             ])->save();
 
-            ActivityLogger::log(
+            ActivityLogger::tryLog(
                 'site.claim_rejected',
                 $admin->name.' rejected site claim #'.$lockedClaim->id,
                 $lockedClaim->site,

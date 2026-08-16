@@ -13,6 +13,7 @@ use App\Models\Wallet;
 use App\Services\Orders\AdminOrderStatusOverride;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 /**
@@ -276,6 +277,20 @@ class AdminOrderStatusOverrideTest extends TestCase
         $this->assertSame([], $override->availableFor($this->order($advertiser, $site, 'completed')));
         $this->assertSame([], $override->availableFor($this->order($advertiser, $site, 'cancelled')));
         $this->assertSame([], $override->availableFor($this->order($advertiser, $site, 'pending', 'pending')));
+    }
+
+    public function test_status_override_still_succeeds_when_activity_log_table_is_gone(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $site = $this->siteFor($this->userWithRole('publisher'));
+        $order = $this->order($advertiser, $site, 'processing');
+
+        Schema::dropIfExists('activity_logs');
+
+        $this->move($admin, $order, 'pending')->assertRedirect();
+
+        $this->assertSame('pending', $order->fresh()->status);
     }
 
     public function test_the_admin_page_offers_the_control_and_explains_the_limit(): void

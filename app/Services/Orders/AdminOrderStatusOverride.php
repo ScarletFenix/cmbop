@@ -72,7 +72,7 @@ class AdminOrderStatusOverride
 
         $fresh = $order->fresh(['items', 'user']);
 
-        ActivityLogger::log(
+        ActivityLogger::tryLog(
             'order.status_overridden',
             $admin->name.' moved order '.$order->order_number." from {$from} to {$target}",
             $fresh,

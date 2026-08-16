@@ -15,6 +15,7 @@ use App\Models\SiteClaim;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 class SiteClaimHardeningTest extends TestCase
@@ -154,6 +155,28 @@ class SiteClaimHardeningTest extends TestCase
 
         Mail::assertQueued(SiteClaimReviewed::class);
         Mail::assertQueued(SiteClaimOwnershipTransferred::class);
+    }
+
+    public function test_approve_still_transfers_when_activity_log_table_is_gone(): void
+    {
+        Mail::fake();
+
+        $admin = $this->admin();
+        $owner = $this->userWithRole('publisher');
+        $claimer = $this->userWithRole('advertiser');
+        Role::firstOrCreate(['name' => 'publisher']);
+
+        $site = $this->siteFor($owner);
+        $claim = $this->pendingClaimFor($site, $claimer);
+
+        Schema::dropIfExists('activity_logs');
+
+        $this->actingAs($admin)->postJson(route('admin.community.claims.approve', $claim->id), [
+            'admin_notes' => 'Verified via domain email.',
+        ])->assertOk()->assertJson(['success' => true]);
+
+        $this->assertSame($claimer->id, (int) $site->fresh()->publisher_id);
+        $this->assertSame('approved', $claim->fresh()->status);
     }
 
     public function test_approve_blocked_when_site_has_open_order_item(): void

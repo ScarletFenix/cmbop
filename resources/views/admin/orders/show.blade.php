@@ -92,12 +92,12 @@
                                 <div class="small text-muted">Advertiser</div>
                                 <div class="fw-semibold">
                                     @if($advertiserAdminUrl)
-                                        <a href="{{ $advertiserAdminUrl }}" class="link-dark">{{ $order->user->name }}</a>
+                                        <a href="{{ $advertiserAdminUrl }}" class="link-dark">{{ $order->user?->name }}</a>
                                     @else
-                                        {{ $order->user->name ?? '—' }}
+                                        {{ $order->user?->name ?? '—' }}
                                     @endif
                                 </div>
-                                <div class="small text-muted">{{ $order->user->email ?? '' }}</div>
+                                <div class="small text-muted">{{ $order->user?->email ?? '' }}</div>
                             </div>
                             <div>
                                 <div class="small text-muted">Publisher</div>
