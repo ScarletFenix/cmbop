@@ -102,6 +102,7 @@ class FinanceOverviewService
                 'deposits' => 'approved_at',
                 'orders_paid' => 'paid_at',
                 'completed' => 'completed_at',
+                'failed_cash_in' => 'order_created_at',
                 'refunds' => 'refund_ledger_or_updated_at',
                 'withdrawals_paid' => 'processed_at',
                 'ledger' => 'created_at',
@@ -407,18 +408,30 @@ class FinanceOverviewService
      */
     public function moneyOut(?Carbon $start, Carbon $end): array
     {
+        // Recognize payouts on completed sales, then reverse clawed / later-
+        // refunded lines in their own window. Filtering to currently-paid
+        // recognizedForFinance() rows would erase a July credit after an
+        // August full clawback (order flips to refunded).
         $earningsQuery = OrderItem::query()
-            ->recognizedForFinance()
             ->whereHas('order', function ($q) use ($start, $end) {
-                $q->where('status', 'completed')->where('payment_status', 'paid');
+                $this->constrainRecognizedCompleted($q);
                 $this->applyCompletedWindow($q, $start, $end);
             });
 
-        $earnings = (float) (clone $earningsQuery)->sum(OrderItem::publisherPayoutSqlExpression());
+        $earnings = (float) (clone $earningsQuery)->sum(OrderItem::publisherPayoutSqlExpression())
+            - $this->clawedPublisherPayouts($start, $end)
+            - $this->refundedNonClawedPublisherPayouts($start, $end);
         $earningsCount = (clone $earningsQuery)->count();
+        // A reversal-only window (August clawback of a July sale) has no
+        // completions, so count would read "0 line items" next to −€100.
+        if ($earningsCount === 0 && abs($earnings) > 0.009) {
+            $earningsCount = $this->reversedPublisherPayoutCount($start, $end);
+        }
 
         $ledgerEarnings = WalletTransaction::where('type', WalletTransaction::TYPE_TRANSFER_IN);
         $this->applyCreatedWindow($ledgerEarnings, $start, $end);
+        $ledgerClawbacks = WalletTransaction::where('type', WalletTransaction::TYPE_TRANSFER_OUT);
+        $this->applyCreatedWindow($ledgerClawbacks, $start, $end);
 
         $paidWithdrawals = Withdrawal::where('status', 'completed');
         $this->applyCoalesceWindow($paidWithdrawals, $start, $end, 'withdrawals.processed_at', 'withdrawals.updated_at');
@@ -429,7 +442,11 @@ class FinanceOverviewService
             'earnings_credited' => [
                 'count' => $earningsCount,
                 'amount' => round($earnings, 2),
-                'ledger_transfer_in' => (float) (clone $ledgerEarnings)->sum('amount'),
+                'ledger_transfer_in' => round(
+                    (float) (clone $ledgerEarnings)->sum('amount')
+                    - (float) (clone $ledgerClawbacks)->sum('amount'),
+                    2
+                ),
             ],
             'withdrawals_paid' => [
                 'count' => (clone $paidWithdrawals)->count(),
@@ -473,13 +490,24 @@ class FinanceOverviewService
         $refundOrders = Order::where('payment_status', 'refunded');
         $this->applyRefundWindow($refundOrders, $start, $end);
         $failedRefundOrders = $this->failedExternalOrdersWithWalletReturn($start, $end);
+        // When the last line is clawed the order flips to refunded and the
+        // refund clock becomes MAX(ledger). Subtract those line credits here
+        // and add them back by resolved_at so July's clawback does not jump
+        // into August — and so all-time does not count 230 + 230.
         $refundOrderSum = (float) (clone $refundOrders)->sum('total_amount')
+            - $this->clawbackCreditsOnOrders($refundOrders)
             + (float) (clone $failedRefundOrders)->sum('total_amount')
             + $this->partialClawbackAdvertiserCredits($start, $end);
         $refundedFeeItems = OrderItem::query()
+            ->when(OrderItemDispute::tableAvailable(), function ($items) {
+                $items->whereDoesntHave('disputes', function ($disputes) {
+                    $disputes->where('status', OrderItemDispute::STATUS_UPHELD);
+                });
+            })
             ->whereHas('order', function ($q) use ($start, $end) {
                 // Only reverse fees that were recognized on a completed sale.
                 // In-progress cancel/refunds never earned a platform fee.
+                // Clawed lines reverse on the dispute date, not this clock.
                 $this->constrainRecognizedCompleted($q);
                 $q->where('payment_status', 'refunded');
                 $this->applyRefundWindow($q, $start, $end);
@@ -487,7 +515,10 @@ class FinanceOverviewService
         $refundedOrderFees = (float) (clone $refundedFeeItems)->sum(OrderItem::platformFeeSqlExpression())
             + $this->partialClawbackRecognizedFees($start, $end);
 
-        $walletRefunds = WalletTransaction::where('type', WalletTransaction::TYPE_REFUND);
+        // Featured-site leftovers also write TYPE_REFUND (related Site).
+        // This subtitle sits next to "Refunds (order totals)" — order only.
+        $walletRefunds = WalletTransaction::where('type', WalletTransaction::TYPE_REFUND)
+            ->where('related_type', (new Order)->getMorphClass());
         $this->applyCreatedWindow($walletRefunds, $start, $end);
 
         $bonuses = WalletTransaction::where('type', WalletTransaction::TYPE_BONUS_CREDIT);
@@ -500,9 +531,7 @@ class FinanceOverviewService
             'withdrawal_fee_percent' => (float) config('billing.withdrawal_fee_percent', 0),
             'refunds' => round($refundOrderSum, 2),
             'refunded_order_fees' => round($refundedOrderFees, 2),
-            'refund_orders_count' => (clone $refundOrders)->count()
-                + (clone $failedRefundOrders)->count()
-                + $this->partialClawbackRefundOrderCount($start, $end),
+            'refund_orders_count' => $this->refundOrdersCount($refundOrders, $failedRefundOrders, $start, $end),
             'wallet_refunds' => (float) (clone $walletRefunds)->sum('amount'),
             'bonuses_issued' => (float) (clone $bonuses)->sum('amount'),
             'payment_processor_costs_tracked' => false,
@@ -579,9 +608,13 @@ class FinanceOverviewService
             ->whereHas('order', fn ($q) => $q->where('status', 'completed')->where('payment_status', 'paid'))
             ->sum(OrderItem::platformFeeSqlExpression());
 
-        $gmvAsAdvertiser = (float) Order::where('user_id', $user->id)
+        $currentPaidGmv = (float) Order::where('user_id', $user->id)
             ->where('payment_status', 'paid')
             ->sum('total_amount');
+        $gmvAsAdvertiser = (float) Order::where('user_id', $user->id)
+            ->whereIn('payment_status', ['paid', 'refunded'])
+            ->sum('total_amount');
+        $refundsAsAdvertiser = $this->userAdvertiserRefunds($user);
         $paidOrdersCount = (int) Order::where('user_id', $user->id)
             ->where('payment_status', 'paid')
             ->count();
@@ -599,7 +632,10 @@ class FinanceOverviewService
             'ledger' => $ledger,
             'totals' => [
                 'deposits_completed' => (float) DepositRequest::where('user_id', $user->id)->where('status', 'completed')->sum('amount'),
-                'gmv_as_advertiser' => $gmvAsAdvertiser,
+                'gmv_as_advertiser' => round($gmvAsAdvertiser, 2),
+                'current_paid_gmv' => round($currentPaidGmv, 2),
+                'refunds_as_advertiser' => $refundsAsAdvertiser,
+                'net_gmv_as_advertiser' => round(max(0.0, $gmvAsAdvertiser - $refundsAsAdvertiser), 2),
                 'paid_orders_count' => $paidOrdersCount,
                 'earnings_as_publisher' => round($earnings, 2),
                 'platform_fees_on_their_sites' => round($feesOnTheirSales, 2),
@@ -712,21 +748,40 @@ class FinanceOverviewService
     /**
      * Admin paid→failed clears paid_at but credits the wallet (capture stays
      * in the bank). Count those orders once when a refund ledger row exists.
-     * Dated by the refund write — paid_at is gone.
+     * Cash-in is dated by checkout (created_at) — paid_at is gone, and the
+     * refund write is the wallet return, not the capture.
      */
     private function sumFailedExternalCollected(?Carbon $start, Carbon $end): float
     {
-        return round((float) $this->failedExternalOrdersWithWalletReturn($start, $end)->sum('total_amount'), 2);
+        $query = $this->failedExternalOrdersBase();
+        $this->applyCreatedWindow($query, $start, $end);
+
+        return round((float) $query->sum('total_amount'), 2);
     }
 
-    private function failedExternalOrdersWithWalletReturn(?Carbon $start, Carbon $end)
+    private function failedExternalOrdersBase()
     {
         $methods = array_merge($this->cardOrderMethods(), $this->manualOrderMethods());
         $morph = (new Order)->getMorphClass();
 
-        $query = Order::query()
+        return Order::query()
             ->where('payment_status', 'failed')
             ->whereIn('payment_method', $methods)
+            ->whereExists(function ($exists) use ($morph) {
+                $exists->select(DB::raw('1'))
+                    ->from('wallet_transactions')
+                    ->whereColumn('wallet_transactions.related_id', 'orders.id')
+                    ->where('wallet_transactions.related_type', $morph)
+                    ->where('wallet_transactions.type', WalletTransaction::TYPE_REFUND)
+                    ->where('wallet_transactions.direction', 'credit');
+            });
+    }
+
+    private function failedExternalOrdersWithWalletReturn(?Carbon $start, Carbon $end)
+    {
+        $morph = (new Order)->getMorphClass();
+
+        return $this->failedExternalOrdersBase()
             ->whereExists(function ($exists) use ($morph, $start, $end) {
                 $exists->select(DB::raw('1'))
                     ->from('wallet_transactions')
@@ -740,14 +795,35 @@ class FinanceOverviewService
                     $exists->where('wallet_transactions.created_at', '<=', $end);
                 }
             });
-
-        return $query;
     }
 
     /**
-     * Advertiser credits from upheld disputes while the order is still paid.
+     * All-time advertiser refunds for a dossier: refunded order totals minus
+     * clawed lines already in those totals, plus each clawback credit, plus
+     * paid→failed wallet returns.
      */
-    private function partialClawbackAdvertiserCredits(?Carbon $start, Carbon $end): float
+    private function userAdvertiserRefunds(User $user): float
+    {
+        $end = now()->endOfDay();
+        $refundOrders = Order::where('payment_status', 'refunded')->where('user_id', $user->id);
+        $this->applyRefundWindow($refundOrders, null, $end);
+        $failedRefundOrders = $this->failedExternalOrdersWithWalletReturn(null, $end)
+            ->where('user_id', $user->id);
+
+        return round(
+            (float) (clone $refundOrders)->sum('total_amount')
+            - $this->clawbackCreditsOnOrders($refundOrders)
+            + (float) (clone $failedRefundOrders)->sum('total_amount')
+            + $this->partialClawbackAdvertiserCredits(null, $end, $user->id),
+            2
+        );
+    }
+
+    /**
+     * Advertiser credits from upheld disputes, including after the last line
+     * flips the order to refunded. Dated by dispute resolution.
+     */
+    private function partialClawbackAdvertiserCredits(?Carbon $start, Carbon $end, ?int $userId = null): float
     {
         if (! OrderItemDispute::tableAvailable()) {
             return 0.0;
@@ -755,14 +831,37 @@ class FinanceOverviewService
 
         $query = OrderItemDispute::query()
             ->where('status', OrderItemDispute::STATUS_UPHELD)
-            ->whereHas('order', fn ($order) => $order->where('payment_status', 'paid'));
+            ->where('advertiser_credited', '>', 0)
+            ->whereHas('order', function ($order) use ($userId) {
+                $this->constrainRecognizedCompleted($order);
+                if ($userId !== null) {
+                    $order->where('user_id', $userId);
+                }
+            });
         $this->applyCreatedOrPaidWindow($query, $start, $end, 'resolved_at');
 
         return round((float) $query->sum('advertiser_credited'), 2);
     }
 
     /**
-     * Distinct still-paid orders that returned advertiser credit this window.
+     * Clawback credits already sitting on refunded orders in this window.
+     * Those orders' totals still include the clawed lines; subtract here so
+     * the same euros are not counted again via partialClawbackAdvertiserCredits.
+     */
+    private function clawbackCreditsOnOrders($ordersQuery): float
+    {
+        if (! OrderItemDispute::tableAvailable()) {
+            return 0.0;
+        }
+
+        return round((float) OrderItemDispute::query()
+            ->where('status', OrderItemDispute::STATUS_UPHELD)
+            ->whereIn('order_id', (clone $ordersQuery)->select('orders.id'))
+            ->sum('advertiser_credited'), 2);
+    }
+
+    /**
+     * Distinct orders that returned advertiser credit this window.
      */
     private function partialClawbackRefundOrderCount(?Carbon $start, Carbon $end): int
     {
@@ -773,14 +872,46 @@ class FinanceOverviewService
         $query = OrderItemDispute::query()
             ->where('status', OrderItemDispute::STATUS_UPHELD)
             ->where('advertiser_credited', '>', 0)
-            ->whereHas('order', fn ($order) => $order->where('payment_status', 'paid'));
+            ->whereHas('order', function ($order) {
+                $this->constrainRecognizedCompleted($order);
+            });
         $this->applyCreatedOrPaidWindow($query, $start, $end, 'resolved_at');
 
         return $query->pluck('order_id')->unique()->count();
     }
 
     /**
-     * Platform fees on clawed lines that are still on a paid completed sale.
+     * Refunded-order count plus clawbacks, without double-counting a sale
+     * that flipped to refunded only because every line was already clawed.
+     */
+    private function refundOrdersCount($refundOrders, $failedRefundOrders, ?Carbon $start, Carbon $end): int
+    {
+        $classic = 0;
+        if (OrderItemDispute::tableAvailable()) {
+            $orders = (clone $refundOrders)->get(['id', 'total_amount']);
+            $credits = OrderItemDispute::query()
+                ->where('status', OrderItemDispute::STATUS_UPHELD)
+                ->whereIn('order_id', $orders->pluck('id'))
+                ->selectRaw('order_id, SUM(advertiser_credited) as credited')
+                ->groupBy('order_id')
+                ->pluck('credited', 'order_id');
+            foreach ($orders as $order) {
+                $remaining = (float) $order->total_amount - (float) ($credits[$order->id] ?? 0);
+                if ($remaining > 0.009) {
+                    $classic++;
+                }
+            }
+        } else {
+            $classic = (clone $refundOrders)->count();
+        }
+
+        return $classic
+            + (clone $failedRefundOrders)->count()
+            + $this->partialClawbackRefundOrderCount($start, $end);
+    }
+
+    /**
+     * Platform fees on clawed lines (paid or later fully refunded).
      * Dated by dispute resolution, not the original completion date.
      */
     private function partialClawbackRecognizedFees(?Carbon $start, Carbon $end): float
@@ -790,9 +921,9 @@ class FinanceOverviewService
         }
 
         $query = OrderItem::query()
-            ->clawedBackOnPaidSale()
+            ->clawedBack()
             ->whereHas('order', function ($q) {
-                $q->where('status', 'completed')->where('payment_status', 'paid');
+                $this->constrainRecognizedCompleted($q);
             })
             ->whereHas('disputes', function ($disputes) use ($start, $end) {
                 $disputes->where('status', OrderItemDispute::STATUS_UPHELD);
@@ -800,6 +931,66 @@ class FinanceOverviewService
             });
 
         return round((float) $query->sum(OrderItem::platformFeeSqlExpression()), 2);
+    }
+
+    /**
+     * Publisher payout on clawed lines, dated by dispute resolution.
+     */
+    private function clawedPublisherPayouts(?Carbon $start, Carbon $end): float
+    {
+        return round((float) $this->clawedPublisherPayoutQuery($start, $end)
+            ->sum(OrderItem::publisherPayoutSqlExpression()), 2);
+    }
+
+    /**
+     * Remaining (non-clawed) payouts reversed when a completed sale is later
+     * marked refunded. Clawed lines reverse via clawedPublisherPayouts.
+     */
+    private function refundedNonClawedPublisherPayouts(?Carbon $start, Carbon $end): float
+    {
+        return round((float) $this->refundedNonClawedPublisherPayoutQuery($start, $end)
+            ->sum(OrderItem::publisherPayoutSqlExpression()), 2);
+    }
+
+    /**
+     * Lines reversed in this window (clawback or later full-order refund).
+     */
+    private function reversedPublisherPayoutCount(?Carbon $start, Carbon $end): int
+    {
+        return $this->clawedPublisherPayoutQuery($start, $end)->count()
+            + $this->refundedNonClawedPublisherPayoutQuery($start, $end)->count();
+    }
+
+    private function clawedPublisherPayoutQuery(?Carbon $start, Carbon $end)
+    {
+        if (! OrderItemDispute::tableAvailable()) {
+            return OrderItem::query()->whereRaw('0 = 1');
+        }
+
+        return OrderItem::query()
+            ->clawedBack()
+            ->whereHas('order', function ($q) {
+                $this->constrainRecognizedCompleted($q);
+            })
+            ->whereHas('disputes', function ($disputes) use ($start, $end) {
+                $disputes->where('status', OrderItemDispute::STATUS_UPHELD);
+                $this->applyCreatedOrPaidWindow($disputes, $start, $end, 'resolved_at');
+            });
+    }
+
+    private function refundedNonClawedPublisherPayoutQuery(?Carbon $start, Carbon $end)
+    {
+        return OrderItem::query()
+            ->when(OrderItemDispute::tableAvailable(), function ($items) {
+                $items->whereDoesntHave('disputes', function ($disputes) {
+                    $disputes->where('status', OrderItemDispute::STATUS_UPHELD);
+                });
+            })
+            ->whereHas('order', function ($q) use ($start, $end) {
+                $this->constrainRecognizedCompleted($q);
+                $q->where('payment_status', 'refunded');
+                $this->applyRefundWindow($q, $start, $end);
+            });
     }
 
     /**

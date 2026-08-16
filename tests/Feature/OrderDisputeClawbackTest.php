@@ -16,6 +16,7 @@ use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
 use App\Services\CheckoutIntentService;
+use App\Services\Orders\OrderRefundService;
 use App\Services\Wallet\WalletLedgerService;
 use App\Support\EmailCatalog;
 use Database\Seeders\RolesTableSeeder;
@@ -309,6 +310,46 @@ class OrderDisputeClawbackTest extends TestCase
         // Full clawback with no debt — withdrawal still allowed.
         $this->assertFalse($pubWallet->hasDebt());
         $this->assertTrue($pubWallet->canWithdraw(0.01) === false); // balance 0
+    }
+
+    public function test_cancel_refund_amount_excludes_prior_clawback_credits(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher);
+        $order = $this->makeCompletedOrder($advertiser, $site, [
+            'subtotal' => 230,
+            'total_amount' => 230,
+        ]);
+        $first = $order->items->first();
+        OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/article-2',
+            'price' => 115,
+            'publisher_price' => 100,
+            'platform_fee_amount' => 15,
+            'additional_price' => 0,
+            'live_url' => 'https://clawback-blog.example/live-post-2',
+        ]);
+
+        OrderItemDispute::create([
+            'order_id' => $order->id,
+            'order_item_id' => $first->id,
+            'opened_by' => $advertiser->id,
+            'status' => OrderItemDispute::STATUS_UPHELD,
+            'reason' => 'Live URL was removed after the report window started.',
+            'resolved_at' => now(),
+            'advertiser_credited' => 115,
+            'publisher_debited' => 100,
+        ]);
+
+        $this->assertSame(
+            115.0,
+            app(OrderRefundService::class)->resolveOrderCancelRefundAmount($order->fresh())
+        );
     }
 
     public function test_uphold_releases_only_the_disputed_library_article(): void

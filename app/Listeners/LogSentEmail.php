@@ -119,11 +119,15 @@ class LogSentEmail
             $existing->save();
 
             foreach ($open->skip(1) as $stale) {
+                // Same SMTP success. Closing extras as failed made them
+                // retryable in Email Center and a later retry doubled.
                 $stale->fill([
-                    'status' => EmailLog::STATUS_FAILED,
-                    'error' => 'Closed: duplicate open log for the same send',
+                    'status' => EmailLog::STATUS_DELIVERED,
+                    'error' => null,
+                    'sent_at' => $stale->sent_at ?? now(),
                 ]);
                 $stale->meta = array_filter(array_merge((array) $stale->meta, [
+                    'suppressed' => 'duplicate',
                     'superseded_by' => $existing->id,
                 ]));
                 $stale->save();
