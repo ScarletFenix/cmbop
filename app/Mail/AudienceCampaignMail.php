@@ -97,6 +97,14 @@ class AudienceCampaignMail extends PlatformMailable
 
     public function failed(?\Throwable $exception): void
     {
+        if ($this->alreadyHasDeliveredLog()) {
+            $this->suppressReason = 'duplicate';
+            $this->abandonOpenLog($this->suppressErrorMessage());
+            $this->markRecipientDelivered();
+
+            return;
+        }
+
         parent::failed($exception);
         $this->markRecipientFailed();
     }

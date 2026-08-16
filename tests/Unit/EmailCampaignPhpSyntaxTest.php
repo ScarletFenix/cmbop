@@ -123,6 +123,18 @@ class EmailCampaignPhpSyntaxTest extends TestCase
         ));
         $this->assertStringContainsString('campaignUserIds', $matchesLog[1]);
 
+        $center = (string) file_get_contents($files[3]);
+        $this->assertTrue((bool) preg_match(
+            '/protected function payloadAlreadyDelivered\(string \$payload\): bool\s*\{(.*?)\n    protected function isOneShotCampaignLog/s',
+            $center,
+            $already
+        ));
+        $this->assertStringContainsString('modelIdentifierIds', $already[1]);
+        $this->assertStringContainsString('latestDeliveredForCampaignUser', $already[1]);
+
+        $mailable = (string) file_get_contents($root.'/app/Mail/PlatformMailable.php');
+        $this->assertSame(1, preg_match_all('/function alreadyHasDeliveredLog\b/', $mailable));
+
         $inventory = (string) file_get_contents($files[2]);
         $this->assertSame(1, preg_match_all('/function recipientRowQuery\b/', $inventory));
 
