@@ -2896,6 +2896,97 @@ class AdminCampaignsTest extends TestCase
         $this->assertSame(1, EmailLog::query()->where('status', EmailLog::STATUS_DELIVERED)->count());
     }
 
+    public function test_campaign_mail_does_not_send_when_email_logs_cannot_be_read(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+
+        $campaign = EmailCampaign::create([
+            'name' => 'Locked logs',
+            'subject' => 'Locked logs',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'status' => EmailCampaign::STATUS_SENDING,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        $row = EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_QUEUED,
+        ]);
+
+        $real = Schema::getFacadeRoot();
+        Schema::partialMock()
+            ->shouldReceive('hasTable')
+            ->andReturnUsing(function ($table) use ($real) {
+                if ($table === (new EmailLog)->getTable()) {
+                    throw new \RuntimeException('email_logs locked');
+                }
+
+                return $real->hasTable($table);
+            });
+
+        $mailable = new AudienceCampaignMail($campaign, $advertiser);
+        $mailable->dedupeKey = EmailCampaignRecipient::dedupeKey((int) $campaign->id, (int) $advertiser->id);
+
+        try {
+            Mail::to($advertiser->email)->send($mailable);
+            $this->fail('Sibling dedupe must hold the send when email_logs cannot be read.');
+        } catch (\RuntimeException $e) {
+            $this->assertSame('email_logs locked', $e->getMessage());
+        }
+
+        $this->assertSame(EmailCampaignRecipient::STATUS_QUEUED, $row->fresh()->status);
+        $this->assertSame(0, EmailLog::query()->where('status', EmailLog::STATUS_DELIVERED)->count());
+    }
+
+    public function test_job_does_not_send_when_email_logs_cannot_be_read(): void
+    {
+        Mail::fake();
+
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+
+        $campaign = EmailCampaign::create([
+            'name' => 'Locked logs job',
+            'subject' => 'Locked logs job',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'status' => EmailCampaign::STATUS_SENDING,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_PENDING,
+        ]);
+
+        $real = Schema::getFacadeRoot();
+        Schema::partialMock()
+            ->shouldReceive('hasTable')
+            ->andReturnUsing(function ($table) use ($real) {
+                if ($table === (new EmailLog)->getTable()) {
+                    throw new \RuntimeException('email_logs locked');
+                }
+
+                return $real->hasTable($table);
+            });
+
+        (new SendEmailCampaignJob($campaign->id))->handle();
+
+        $this->assertSame(
+            EmailCampaignRecipient::STATUS_FAILED,
+            $campaign->recipients()->where('user_id', $advertiser->id)->value('status')
+        );
+        Mail::assertNothingOutgoing();
+    }
+
     public function test_stall_recovery_does_not_reclaim_queued_row_for_another_campaign_mailable(): void
     {
         Queue::fake();
