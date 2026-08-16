@@ -2708,6 +2708,86 @@ class AdminEmailCenterTest extends TestCase
         $this->assertSame('Expired: mail job was not confirmed', $log->fresh()->error);
     }
 
+    public function test_heal_holds_queued_row_when_generic_pending_sibling_is_in_flight(): void
+    {
+        Queue::fake();
+        config([
+            'email_notifications.queue_connection' => 'database',
+            'queue.default' => 'database',
+            'queue.connections.database.driver' => 'database',
+            'queue.connections.database.table' => 'jobs',
+        ]);
+
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $campaign = EmailCampaign::create([
+            'name' => 'Generic pending heal hold',
+            'subject' => 'Generic pending heal hold',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'sent_count' => 0,
+            'skipped_count' => 1,
+            'status' => EmailCampaign::STATUS_SENDING,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        $canonical = EmailCampaignRecipient::dedupeKey((int) $campaign->id, (int) $advertiser->id);
+        $failed = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => AudienceCampaignMail::class,
+            'template_key' => 'audience_campaign',
+            'notification_type' => 'audience_campaign',
+            'dedupe_key' => $canonical,
+            'to_email' => $advertiser->email,
+            'subject' => 'Generic pending heal hold',
+            'status' => EmailLog::STATUS_FAILED,
+            'error' => 'SMTP down',
+            'attempts' => 1,
+            'meta' => [
+                'campaign_id' => $campaign->id,
+                'user_id' => $advertiser->id,
+            ],
+        ]);
+        $failed->forceFill(['updated_at' => now()->subMinutes(10)])->save();
+        $pending = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => AudienceCampaignMail::class,
+            'template_key' => 'audience_campaign',
+            'notification_type' => 'audience_campaign',
+            'dedupe_key' => 'audience_campaign|'.$advertiser->email.'|AudienceCampaignMail',
+            'to_email' => $advertiser->email,
+            'subject' => 'Generic pending heal hold',
+            'status' => EmailLog::STATUS_PENDING,
+            'attempts' => 2,
+            'meta' => [
+                'source' => 'queue',
+                'campaign_id' => $campaign->id,
+                'user_id' => $advertiser->id,
+            ],
+        ]);
+        $pending->forceFill(['updated_at' => now()->subMinutes(1)])->save();
+        $row = EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_QUEUED,
+            'skip_reason' => EmailCampaignRecipient::SKIP_ERROR,
+            'email_log_id' => $failed->id,
+        ]);
+        $campaign->forceFill(['updated_at' => now()->subMinutes(5)])->save();
+
+        EmailCampaign::recoverStalled();
+
+        $fresh = $row->fresh();
+        $this->assertSame(EmailCampaignRecipient::STATUS_QUEUED, $fresh->status);
+        $this->assertSame($failed->id, $fresh->email_log_id);
+        $this->assertSame(EmailLog::STATUS_PENDING, $pending->fresh()->status);
+        $this->assertSame(EmailLog::STATUS_FAILED, $failed->fresh()->status);
+        $this->assertSame(EmailCampaign::STATUS_SENDING, $campaign->fresh()->status);
+        Queue::assertNothingPushed();
+    }
+
     public function test_recover_keeps_fresh_transactional_pending_log(): void
     {
         $admin = $this->userWithRole('admin');
