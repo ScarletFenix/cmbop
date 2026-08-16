@@ -116,9 +116,9 @@ class AudienceCampaignMail extends PlatformMailable
         }
 
         // Generic-key / recent sibling delivery still must not invent a
-        // leftover failed Email Center log. A delivery older than this
-        // job attempt is a prior send — record the later real failure.
-        if ($this->alreadyHasDeliveredLog() && ! $this->deliveredLogIsOlderThanThisAttempt()) {
+        // leftover failed Email Center log. alreadyHasDeliveredLog() now
+        // ignores a leftover older than this job attempt.
+        if ($this->alreadyHasDeliveredLog()) {
             $this->suppressReason = 'duplicate';
             $this->abandonOpenLog($this->suppressErrorMessage());
             $this->markRecipientDelivered();
@@ -154,38 +154,6 @@ class AudienceCampaignMail extends PlatformMailable
             return $delivered->sent_at->greaterThanOrEqualTo(
                 Carbon::parse($this->queuedAt)->subSeconds(5)
             );
-        } catch (\Throwable) {
-            return false;
-        }
-    }
-
-    /**
-     * queuedAt is stamped in the constructor. Tests that call failed()
-     * on a freshly built mailable have queuedAt ≈ now, which would make
-     * a one-minute-old SMTP row look "older than this attempt".
-     */
-    protected function deliveredLogIsOlderThanThisAttempt(): bool
-    {
-        if (blank($this->queuedAt)) {
-            return false;
-        }
-
-        try {
-            $queued = Carbon::parse($this->queuedAt);
-            if ($queued->greaterThan(now()->subSeconds(5))) {
-                return false;
-            }
-
-            $delivered = EmailLog::latestDeliveredByDedupe((string) $this->dedupeKey);
-            if (! $delivered?->sent_at) {
-                [$campaignId, $userId] = $this->campaignAndUserIds();
-                $delivered = EmailLog::latestDeliveredForCampaignUser($campaignId, $userId);
-            }
-            if (! $delivered?->sent_at) {
-                return false;
-            }
-
-            return $delivered->sent_at->lt($queued->copy()->subSeconds(5));
         } catch (\Throwable) {
             return false;
         }

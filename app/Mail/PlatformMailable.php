@@ -554,7 +554,7 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
                 $delivered = EmailLog::latestDeliveredByDedupe($key);
                 if ($delivered) {
                     if ($isForeverCampaignKey) {
-                        return true;
+                        return $this->deliveredLogIsFromThisAttempt($delivered);
                     }
 
                     $minutes = (int) config('email_notifications.dedupe_window_minutes', 10);
@@ -567,8 +567,10 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
 
             if ($isCampaignMail) {
                 [$campaignId, $userId] = $this->campaignAndUserIdsForDeliveryCheck();
-                if ($campaignId > 0 && $userId > 0
-                    && EmailLog::latestDeliveredForCampaignUser($campaignId, $userId)) {
+                $sibling = ($campaignId > 0 && $userId > 0)
+                    ? EmailLog::latestDeliveredForCampaignUser($campaignId, $userId)
+                    : null;
+                if ($sibling && $this->deliveredLogIsFromThisAttempt($sibling)) {
                     return true;
                 }
             }
@@ -576,6 +578,38 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
         }
 
         return false;
+    }
+
+    /**
+     * A leftover delivered row from a prior attempt must not swallow a
+     * later real failure. queuedAt is stamped in the constructor, so a
+     * freshly built mailable (tests that call failed() immediately) still
+     * treats a recent SMTP row as this attempt.
+     */
+    protected function deliveredLogIsFromThisAttempt(?EmailLog $delivered): bool
+    {
+        if (! $delivered?->sent_at) {
+            return false;
+        }
+
+        if (blank($this->queuedAt)) {
+            return true;
+        }
+
+        try {
+            $queued = Carbon::parse($this->queuedAt);
+            if ($queued->greaterThan(now()->subSeconds(5))) {
+                $minutes = (int) config('email_notifications.dedupe_window_minutes', 10);
+
+                return $delivered->sent_at->greaterThanOrEqualTo(
+                    now()->subMinutes(max(1, $minutes))
+                );
+            }
+
+            return $delivered->sent_at->greaterThanOrEqualTo($queued->copy()->subSeconds(5));
+        } catch (\Throwable) {
+            return true;
+        }
     }
 
     /**
