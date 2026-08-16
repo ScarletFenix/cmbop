@@ -996,13 +996,13 @@ class EmailCampaign extends Model
                 // 10-second-old queued claim is not killed by an older
                 // leftover failure while Mail::send() is still running.
                 if ($row->updated_at && $row->updated_at->greaterThan($cutoff)) {
-                    continue;
+                    return;
                 }
                 // An older failed log must not kill a newer in-flight retry.
                 if ($failedLog->updated_at
                     && $row->updated_at
                     && ! $failedLog->updated_at->greaterThan($row->updated_at)) {
-                    continue;
+                    return;
                 }
                 $log = $failedLog;
             }
