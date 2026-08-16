@@ -3150,6 +3150,7 @@ class AdminCampaignsTest extends TestCase
             'status' => EmailLog::STATUS_PENDING,
             'meta' => ['source' => 'queue', 'campaign_id' => $campaign->id, 'user_id' => $advertiser->id],
         ]);
+        $log->forceFill(['updated_at' => now()->subHours(80)])->save();
         $row = EmailCampaignRecipient::create([
             'email_campaign_id' => $campaign->id,
             'user_id' => $advertiser->id,
@@ -5434,5 +5435,167 @@ class AdminCampaignsTest extends TestCase
         $this->assertNull($fresh->email_log_id);
         $this->assertSame(EmailLog::STATUS_PENDING, $pending->fresh()->status);
         $this->assertSame(EmailLog::STATUS_DELIVERED, $delivered->fresh()->status);
+    }
+
+    public function test_expire_does_not_skip_queued_recipient_with_a_fresh_pending_email_center_log(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+
+        $campaign = EmailCampaign::create([
+            'name' => 'Expire hold fresh pending',
+            'subject' => 'Expire hold fresh pending',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'sent_count' => 1,
+            'status' => EmailCampaign::STATUS_SENDING,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+            'sent_at' => now()->subHours(80),
+        ]);
+        $row = EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_QUEUED,
+        ]);
+        $log = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => AudienceCampaignMail::class,
+            'template_key' => 'audience_campaign',
+            'notification_type' => 'audience_campaign',
+            'dedupe_key' => 'audience_campaign|'.$advertiser->email.'|AudienceCampaignMail',
+            'to_email' => $advertiser->email,
+            'subject' => 'Expire hold fresh pending',
+            'status' => EmailLog::STATUS_PENDING,
+            'meta' => [
+                'campaign_id' => $campaign->id,
+                'user_id' => $advertiser->id,
+            ],
+        ]);
+        $row->forceFill(['updated_at' => now()->subHours(80)])->save();
+        $campaign->forceFill(['updated_at' => now()->subHours(80)])->save();
+
+        EmailCampaign::recoverStalled();
+
+        $fresh = $row->fresh();
+        $this->assertSame(EmailCampaignRecipient::STATUS_QUEUED, $fresh->status);
+        $this->assertNull($fresh->skip_reason);
+        $this->assertSame(EmailLog::STATUS_PENDING, $log->fresh()->status);
+        $this->assertSame(EmailCampaign::STATUS_SENDING, $campaign->fresh()->status);
+    }
+
+    public function test_expire_does_not_fail_a_generic_key_pending_log_inside_the_campaign_window(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+
+        $campaign = EmailCampaign::create([
+            'name' => 'Generic pending 30h',
+            'subject' => 'Generic pending 30h',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'sent_count' => 1,
+            'status' => EmailCampaign::STATUS_SENDING,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_QUEUED,
+        ]);
+        $log = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => null,
+            'template_key' => null,
+            'notification_type' => 'audience_campaign',
+            'dedupe_key' => 'audience_campaign|'.$advertiser->email.'|AudienceCampaignMail',
+            'to_email' => $advertiser->email,
+            'subject' => 'Generic pending 30h',
+            'status' => EmailLog::STATUS_PENDING,
+            'meta' => [
+                'campaign_id' => $campaign->id,
+                'user_id' => $advertiser->id,
+            ],
+        ]);
+        $log->forceFill(['updated_at' => now()->subHours(30)])->save();
+
+        EmailCampaign::recoverStalled();
+
+        $this->assertSame(EmailLog::STATUS_PENDING, $log->fresh()->status);
+    }
+
+    public function test_latest_delivered_finds_a_generic_key_row_buried_under_newer_campaign_mail(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+
+        $campaign = EmailCampaign::create([
+            'name' => 'Buried generic delivery',
+            'subject' => 'Buried generic delivery',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'status' => EmailCampaign::STATUS_SENDING,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        $row = EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_QUEUED,
+        ]);
+        $generic = 'audience_campaign|'.$advertiser->email.'|AudienceCampaignMail';
+        $delivered = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => AudienceCampaignMail::class,
+            'template_key' => 'audience_campaign',
+            'notification_type' => 'audience_campaign',
+            'dedupe_key' => $generic,
+            'to_email' => $advertiser->email,
+            'subject' => 'Buried generic delivery',
+            'status' => EmailLog::STATUS_DELIVERED,
+            'sent_at' => now()->subDay(),
+            'meta' => [
+                'campaign_id' => $campaign->id,
+                'user_id' => $advertiser->id,
+            ],
+        ]);
+
+        for ($i = 0; $i < 120; $i++) {
+            $other = $this->makeUser('advertiser');
+            EmailLog::create([
+                'uuid' => (string) Str::uuid(),
+                'mailable' => AudienceCampaignMail::class,
+                'template_key' => 'audience_campaign',
+                'notification_type' => 'audience_campaign',
+                'dedupe_key' => 'audience_campaign|'.$other->email.'|AudienceCampaignMail',
+                'to_email' => $other->email,
+                'subject' => 'Later burst '.$i,
+                'status' => EmailLog::STATUS_DELIVERED,
+                'sent_at' => now(),
+                'meta' => [
+                    'campaign_id' => $campaign->id + 1000 + $i,
+                    'user_id' => $other->id,
+                ],
+            ]);
+        }
+
+        $found = EmailLog::latestDeliveredForCampaignUser((int) $campaign->id, (int) $advertiser->id);
+        $this->assertNotNull($found);
+        $this->assertSame($delivered->id, $found->id);
+
+        $mailable = new AudienceCampaignMail($campaign, $advertiser);
+        $mailable->dedupeKey = EmailCampaignRecipient::dedupeKey((int) $campaign->id, (int) $advertiser->id);
+        $mailable->to($advertiser->email);
+
+        $this->assertNull($mailable->send(app('mailer')));
+        $this->assertSame('duplicate', $mailable->suppressReason);
+        $this->assertSame(EmailCampaignRecipient::STATUS_DELIVERED, $row->fresh()->status);
     }
 }

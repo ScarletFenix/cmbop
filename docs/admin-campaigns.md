@@ -89,7 +89,7 @@ or marketing, even if that staff account also has a marketplace role.
    `meta.user_id`;   a delivered/failed log is attached
    instead of counting as a fake send. A delivered log is attached even when the queued row is younger than the stall window — waiting two minutes let reclaim reset that leftover to pending and dispatch a second send. Failed-log attach still waits. A leftover recipient timestamp must not abort recover — unreadable clocks skip failed-log attach so an in-flight retry is not killed. Reclaim and expire also hold user ids from `deliveredUserIdsForCampaign()` (null means email_logs could not be read — do not reclaim or skip-stale). A historical send that wrote the
    generic default key must still attach — exact-key lookup used to miss
-   it, reclaim reset the row to pending, and the next job blasted again. Sibling dedupe must **not** treat that shared generic key as one-shot across campaigns, and must not look like “no prior delivery” when email_logs cannot be read — the send is held instead of blasting again. A delivered log still wins when a
+   it, reclaim reset the row to pending, and the next job blasted again. Sibling lookup must not scan the newest 100 campaign emails site-wide — a later burst hid a leftover generic-key delivery and `isDuplicate()` blasted again. Sibling dedupe must **not** treat that shared generic key as one-shot across campaigns, and must not look like “no prior delivery” when email_logs cannot be read — the send is held instead of blasting again. A delivered log still wins when a
    pending Email Center row exists for the same key — skipping that attach
    let expire mark a real send stale, and a later retry doubled it.
    Leftovers older than
@@ -97,7 +97,7 @@ or marketing, even if that staff account also has a marketplace role.
    claim `pending` → `queued` and die before `Mail::send()` inserts the
    mailable.    Expire must **not** skip a recipient whose
    `AudienceCampaignMail` is still on a readable mail queue (a 72h
-   backlog is not a lost job; a second retry doubles the send). A matching row in `failed_jobs` still
+   backlog is not a lost job; a second retry doubles the send). Expire must also hold a queued row with a fresh pending Email Center log (newer than `MAIL_CAMPAIGN_MAX_AGE_HOURS`) — Email Center retry pending-marks that log and leaves an old queued leftover untouched, and a missed jobs-table scan then skip-staled it beside the live mailable. A leftover `audience_campaign|{email}|AudienceCampaignMail` or `notification_type=audience_campaign` pending log uses the 72h campaign window, not the 24h transactional one. A matching row in `failed_jobs` still
    blocks reclaim (Email Center retry would double) but must **not** block expire — that job already died, and treating it as in-flight
    left the recipient `queued` past `MAIL_CAMPAIGN_MAX_AGE_HOURS`. A later SMTP success or a send suppressed as a duplicate
    still marks the recipient `delivered` (it already went out), including
