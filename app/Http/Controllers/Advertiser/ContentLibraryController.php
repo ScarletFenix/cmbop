@@ -122,9 +122,9 @@ class ContentLibraryController extends Controller
         }
 
         if ($availability === 'archived') {
-            $query->whereNotNull('archived_at');
+            $query->archived();
         } else {
-            $query->whereNull('archived_at');
+            $query->notArchived();
 
             if ($availability === 'available') {
                 $query->checkoutReady();
@@ -151,14 +151,14 @@ class ContentLibraryController extends Controller
         $baseScope = ContentSubmission::query()->where('user_id', auth()->id());
 
         $groupedByLanguage = (clone $baseScope)
-            ->whereNull('archived_at')
+            ->notArchived()
             ->whereNotNull('language')
             ->selectRaw('language, COUNT(*) as total')
             ->groupBy('language')
             ->pluck('total', 'language');
 
         $groupedByCountry = (clone $baseScope)
-            ->whereNull('archived_at')
+            ->notArchived()
             ->whereNotNull('country')
             ->selectRaw('country, COUNT(*) as total')
             ->groupBy('country')
@@ -167,7 +167,7 @@ class ContentLibraryController extends Controller
         // Counts for moderation boxes: respect search / country / language, ignore status.
         $countScope = ContentSubmission::query()
             ->where('user_id', auth()->id())
-            ->whereNull('archived_at');
+            ->notArchived();
 
         if ($languageFilter !== '' && $languageFilter !== 'all') {
             $countScope->where('language', $languageFilter);
@@ -216,7 +216,7 @@ class ContentLibraryController extends Controller
 
         $archivedCountScope = ContentSubmission::query()
             ->where('user_id', auth()->id())
-            ->whereNotNull('archived_at');
+            ->archived();
         if ($languageFilter !== '' && $languageFilter !== 'all') {
             $archivedCountScope->where('language', $languageFilter);
         }
@@ -574,7 +574,7 @@ class ContentLibraryController extends Controller
             ->forLibraryList()
             ->where('id', $id)
             ->where('user_id', auth()->id())
-            ->whereNull('archived_at')
+            ->notArchived()
             ->needsLibraryFix()
             ->first();
 
