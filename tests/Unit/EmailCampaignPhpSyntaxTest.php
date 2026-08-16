@@ -276,4 +276,23 @@ class EmailCampaignPhpSyntaxTest extends TestCase
         $this->assertStringNotContainsString('allowing send', $dup[1]);
         $this->assertStringContainsString('throw $e;', $dup[1]);
     }
+
+    public function test_leftover_owns_failed_job_does_not_treat_generic_key_as_ownership(): void
+    {
+        $path = dirname(__DIR__, 2).'/app/Http/Controllers/Admin/EmailCenterController.php';
+        $center = (string) file_get_contents($path);
+        $this->assertTrue((bool) preg_match(
+            '/protected function leftoverOwnsFailedJob\(EmailLog \$leftover, string \$payload\): bool\s*\{(.*?)\n    protected function closeFailedLogAlreadyDelivered/s',
+            $center,
+            $owns
+        ));
+        $this->assertStringContainsString('audience_campaign|', $owns[1]);
+        $this->assertStringContainsString('campaignMailUserIds', $owns[1]);
+        $this->assertTrue((bool) preg_match(
+            '/protected function closeFailedLogAlreadyDelivered\(EmailLog \$log\): bool\s*\{(.*?)\n    protected function deliveredSiblingIsSameCampaignSend/s',
+            $center,
+            $close
+        ));
+        $this->assertStringContainsString('audience_campaign|', $close[1]);
+    }
 }

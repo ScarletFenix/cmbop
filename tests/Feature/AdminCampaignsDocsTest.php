@@ -53,6 +53,8 @@ class AdminCampaignsDocsTest extends TestCase
         $this->assertStringContainsString('fresh pending Email Center log', $body);
         $this->assertStringContainsString('only one failed log per job UUID', $body);
         $this->assertStringContainsString('drop that job UUID from the retry list', $body);
+        $this->assertStringContainsString('must not swallow another campaign\'s failed job', $body);
+        $this->assertStringContainsString('must not treat another campaign\'s generic-key delivery as this send', $body);
         $this->assertStringContainsString('must also clear the fail streak', $body);
         $this->assertStringContainsString('already has a delivered/failed log FK', $body);
         $this->assertStringContainsString('must not beat a delivered log', $body);
