@@ -250,12 +250,12 @@ class ContentLibraryController extends Controller
     protected function applyAvailability(Builder $query, string $availability): void
     {
         if ($availability === 'archived') {
-            $query->whereNotNull('archived_at');
+            $query->archived();
 
             return;
         }
 
-        $query->whereNull('archived_at');
+        $query->notArchived();
 
         if ($availability === 'expired') {
             $query->expiredUnused();
@@ -286,13 +286,12 @@ class ContentLibraryController extends Controller
     protected function excludeExpiredUnused(Builder $query): void
     {
         $query->where(function ($q) {
-            $q->where(function ($active) {
-                $active->whereNull('expires_at')->orWhere('expires_at', '>', now());
-            })->orWhere(function ($owned) {
-                $owned->withOpenOwnerOrder();
-            })->orWhere(function ($claimed) {
-                $claimed->withActiveOrderClaim();
-            });
+            $q->whereNotExpired()
+                ->orWhere(function ($owned) {
+                    $owned->withOpenOwnerOrder();
+                })->orWhere(function ($claimed) {
+                    $claimed->withActiveOrderClaim();
+                });
         });
     }
 
@@ -330,7 +329,7 @@ class ContentLibraryController extends Controller
             $this->applySearch($base, $filters['search']);
         }
 
-        $active = (clone $base)->whereNull('archived_at');
+        $active = (clone $base)->notArchived();
         $this->excludeExpiredUnused($active);
 
         return [
@@ -340,8 +339,8 @@ class ContentLibraryController extends Controller
             'in_progress' => (int) (clone $active)->inProgressInLibrary()->count(),
             'needs_fix' => (int) (clone $active)->needsLibraryFix()->count(),
             'completed' => (int) (clone $active)->withCurrentLivePlacement()->count(),
-            'expired' => (int) (clone $base)->whereNull('archived_at')->expiredUnused()->count(),
-            'archived' => (int) (clone $base)->whereNotNull('archived_at')->count(),
+            'expired' => (int) (clone $base)->notArchived()->expiredUnused()->count(),
+            'archived' => (int) (clone $base)->archived()->count(),
         ];
     }
 

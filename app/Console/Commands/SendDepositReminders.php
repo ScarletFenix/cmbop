@@ -100,12 +100,12 @@ class SendDepositReminders extends Command
             : 'deposit_reminder_day14_sent_at';
 
         $query = $inventory->queryAdvertisersNeverDeposited()
-            ->whereNotNull('email_verified_at')
+            ->whereEmailVerified()
             ->where('created_at', '>=', $oldest)
             ->where('created_at', '<=', $newest);
 
         if (Schema::hasColumn('users', $sentColumn)) {
-            $query->whereNull($sentColumn);
+            $query->whereOnboardingReminderUnsent($sentColumn);
         }
 
         return $query;

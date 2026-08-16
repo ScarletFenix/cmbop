@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\ToleratesUnparseableDates;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 
 class EmailLog extends Model
 {
+    use ToleratesUnparseableDates;
+
     public const STATUS_PENDING = 'pending';
 
     public const STATUS_DELIVERED = 'delivered';
@@ -182,9 +185,12 @@ class EmailLog extends Model
      * Recipients with a pending Email Center row for this campaign.
      * Includes leftover generic-key retries that only store the pair in meta.
      *
-     * @return list<int>
+     * Null means email_logs could not be read. Reclaim must fail-closed
+     * instead of treating an unread table as "no pending retries".
+     *
+     * @return list<int>|null
      */
-    public static function pendingUserIdsForCampaign(int $campaignId): array
+    public static function pendingUserIdsForCampaign(int $campaignId): ?array
     {
         if ($campaignId < 1) {
             return [];
@@ -210,7 +216,46 @@ class EmailLog extends Model
                 }
             }
         } catch (\Throwable) {
+            return null;
+        }
+
+        return array_map('intval', array_keys($ids));
+    }
+
+    /**
+     * Recipients who already have a delivered Email Center row for this
+     * campaign. Null means email_logs could not be read — reclaim/expire
+     * must not treat that as “nobody was mailed”.
+     *
+     * @return list<int>|null
+     */
+    public static function deliveredUserIdsForCampaign(int $campaignId): ?array
+    {
+        if ($campaignId < 1) {
             return [];
+        }
+
+        $ids = [];
+        $prefix = 'audience_campaign:'.$campaignId.':user:';
+
+        try {
+            foreach (static::query()
+                ->where('status', self::STATUS_DELIVERED)
+                ->where(function ($query) use ($prefix) {
+                    $query->where('dedupe_key', 'like', $prefix.'%')
+                        ->orWhere('notification_type', 'audience_campaign')
+                        ->orWhere('template_key', 'audience_campaign')
+                        ->orWhere('mailable', 'like', '%AudienceCampaignMail%')
+                        ->orWhere('dedupe_key', 'like', 'audience_campaign|%');
+                })
+                ->get(['id', 'dedupe_key', 'meta', 'notification_type', 'template_key', 'mailable']) as $log) {
+                [$foundCampaign, $foundUser] = static::campaignUserIds($log);
+                if ($foundCampaign === $campaignId && $foundUser > 0) {
+                    $ids[$foundUser] = true;
+                }
+            }
+        } catch (\Throwable) {
+            return null;
         }
 
         return array_map('intval', array_keys($ids));
