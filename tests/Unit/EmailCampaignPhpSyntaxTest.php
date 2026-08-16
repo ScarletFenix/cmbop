@@ -30,6 +30,10 @@ class EmailCampaignPhpSyntaxTest extends TestCase
             $source = (string) file_get_contents($path);
             token_get_all($source, TOKEN_PARSE);
 
+            $lint = [];
+            exec('php -l '.escapeshellarg($path).' 2>&1', $lint, $lintCode);
+            $this->assertSame(0, $lintCode, implode("\n", $lint));
+
             preg_match_all('/function\s+(\w+)\s*\(/', $source, $matches);
             $counts = array_count_values($matches[1] ?? []);
             foreach ($counts as $name => $times) {
@@ -45,6 +49,10 @@ class EmailCampaignPhpSyntaxTest extends TestCase
 
         $source = (string) file_get_contents($path);
         token_get_all($source, TOKEN_PARSE);
+
+        $lint = [];
+        exec('php -l '.escapeshellarg($path).' 2>&1', $lint, $lintCode);
+        $this->assertSame(0, $lintCode, implode("\n", $lint));
 
         $this->assertMatchesRegularExpression(
             '/foreach \(self::sendJobQueueConnections\(\) as \$connection\) \{.*?try \{/s',
@@ -186,13 +194,16 @@ class EmailCampaignPhpSyntaxTest extends TestCase
             $expire
         ));
         $this->assertStringContainsString('inFlightCampaignMailUserIds', $expire[1]);
-        $this->assertStringContainsString('campaignLogUserIdsForStatus', $expire[1]);
+        $this->assertStringContainsString('deliveredUserIdsForCampaign', $expire[1]);
+        $this->assertStringContainsString('pendingUserIdsForCampaign', $expire[1]);
         $this->assertTrue((bool) preg_match(
             '/protected static function healQueuedRecipientsWithTerminalLog\(\): array\s*\{(.*?)\n    \/\*\*/s',
             $model,
             $heal
         ));
         $this->assertSame(0, substr_count($heal[1], "return;\n"), 'healQueued must return [] not void');
+        $this->assertStringContainsString('meta->campaign_id', $heal[1]);
+        $this->assertStringContainsString('campaignUserIds', $heal[1]);
         $this->assertTrue((bool) preg_match(
             '/protected static function failPendingLogsForStaleRecipients\(\): void\s*\{(.*?)\n    \/\*\*/s',
             $model,
@@ -212,7 +223,7 @@ class EmailCampaignPhpSyntaxTest extends TestCase
         ));
         $this->assertStringContainsString('clearFailStreak()', $requeue[1]);
 
-        $payloadTest = (string) file_get_contents($files[4]);
+        $payloadTest = (string) file_get_contents($files[5]);
         $this->assertSame(1, preg_match_all(
             '/function test_matches_email_log_require_token_rejects_unidentified_payload\b/',
             $payloadTest
@@ -221,5 +232,19 @@ class EmailCampaignPhpSyntaxTest extends TestCase
             '/function test_contains_campaign_mail_matches_model_identifier_without_dedupe_key\b/',
             $payloadTest
         ));
+    }
+
+    public function test_transactional_is_duplicate_holds_when_email_logs_cannot_be_read(): void
+    {
+        $path = dirname(__DIR__, 2).'/app/Mail/PlatformMailable.php';
+        $source = (string) file_get_contents($path);
+        $this->assertTrue((bool) preg_match(
+            '/protected function isDuplicate\(string \$key\): bool\s*\{(.*?)\n    protected function brand/s',
+            $source,
+            $dup
+        ));
+        $this->assertStringContainsString('holding send', $dup[1]);
+        $this->assertStringNotContainsString('allowing send', $dup[1]);
+        $this->assertStringContainsString('throw $e;', $dup[1]);
     }
 }

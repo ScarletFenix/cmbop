@@ -31,7 +31,7 @@ class StalledOrderQueue
         $acceptStages = count((array) config('reminders.publisher_accept.stages_hours', [12, 36, 72]));
 
         $unpublished = OrderItem::query()
-            ->whereNotNull('accepted_at')
+            ->whereAcceptedAtIsRecorded()
             ->where(fn ($q) => $q->whereNull('live_url')->orWhere('live_url', ''))
             ->where('publish_nudge_stage', '>=', $stalledFrom)
             ->whereHas('order', function ($q) {
@@ -47,7 +47,7 @@ class StalledOrderQueue
         // Unaccepted orders are the worse case — nothing has happened at all —
         // so they are surfaced in the same list once the cadence is exhausted.
         $unaccepted = OrderItem::query()
-            ->whereNull('accepted_at')
+            ->whereAcceptedAtIsMissing()
             ->where('accept_nudge_stage', '>=', $acceptStages)
             ->whereHas('order', function ($q) {
                 $q->where('payment_status', 'paid')
@@ -75,7 +75,7 @@ class StalledOrderQueue
         $acceptStages = count((array) config('reminders.publisher_accept.stages_hours', [12, 36, 72]));
 
         $unpublished = OrderItem::query()
-            ->whereNotNull('accepted_at')
+            ->whereAcceptedAtIsRecorded()
             ->where(fn ($q) => $q->whereNull('live_url')->orWhere('live_url', ''))
             ->where('publish_nudge_stage', '>=', $stalledFrom)
             ->whereHas('order', function ($q) {
@@ -86,7 +86,7 @@ class StalledOrderQueue
             ->count();
 
         $unaccepted = OrderItem::query()
-            ->whereNull('accepted_at')
+            ->whereAcceptedAtIsMissing()
             ->where('accept_nudge_stage', '>=', $acceptStages)
             ->whereHas('order', function ($q) {
                 $q->where('payment_status', 'paid')

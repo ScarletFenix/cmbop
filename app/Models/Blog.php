@@ -4,6 +4,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\ToleratesUnparseableDates;
 use App\Support\PublicI18n;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -14,6 +15,7 @@ use Illuminate\Support\Str;
 class Blog extends Model
 {
     use HasFactory;
+    use ToleratesUnparseableDates;
 
     protected $fillable = [
         'title',
@@ -172,7 +174,10 @@ class Blog extends Model
     public function scopePublished($query)
     {
         return $query->where('status', 'published')
-            ->where('published_at', '<=', now());
+            ->whereNotNull('published_at')
+            ->where('published_at', '>=', static::PLAUSIBLE_SQL_DATETIME_FLOOR)
+            ->where('published_at', '<=', now())
+            ->where('published_at', '<=', static::PLAUSIBLE_SQL_DATETIME_CEIL);
     }
 
     public function getFormattedTagsAttribute()

@@ -39,5 +39,8 @@
         <env name="SITE_SCREENSHOT_PROVIDER" value="none"/>
         <!-- Keep MessageLogged events for assertions; do not write laravel.log during tests. -->
         <env name="LOG_CHANNEL" value="null"/>
+        <!-- HTTP tests must not autoload EmailCampaign via DrainQueuedMail.
+             Master currently fatals on compile (`continue` outside a loop). -->
+        <env name="MAIL_QUEUE_AUTO_DRAIN" value="false"/>
     </php>
 </phpunit>

@@ -661,6 +661,82 @@ class CheckoutCancelBonusGuardTest extends TestCase
         $this->assertEqualsWithDelta(60.0, $payments->unfulfilledCardCreditAmount('REF-PAY-AGAIN-SPENT'), 0.01);
     }
 
+    public function test_pay_again_shortfall_does_not_partial_debit_leftover_credit(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $wallet = $this->wallet($advertiser, 0);
+        $item = $this->cardOrder($advertiser, $this->site($publisher), 80, 'REF-PAY-AGAIN-PARTIAL', 'failed');
+        $payments = app(OrderPaymentService::class);
+        $payments->creditUnfulfilledCardCapture(
+            $advertiser->id,
+            'REF-PAY-AGAIN-PARTIAL',
+            60,
+            'cs_partial_late'
+        );
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(60.0, $wallet->withdrawableBalance(), 0.01);
+        $wallet->debit(25);
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(35.0, $wallet->withdrawableBalance(), 0.01);
+
+        $retrySession = (object) [
+            'id' => 'cs_pay_again_partial_shortfall',
+            'object' => 'checkout.session',
+            'amount_total' => 2000,
+            'payment_intent' => 'pi_pay_again_partial_shortfall',
+            'metadata' => (object) [
+                'type' => 'order_payment',
+                'reference_code' => 'REF-PAY-AGAIN-PARTIAL',
+                'expected_amount' => '20',
+                'order_total' => '80',
+                'bonus_applied' => '0',
+                'is_retry' => '1',
+                'unfulfilled_credit_applied' => '60',
+                'user_id' => (string) $advertiser->id,
+            ],
+        ];
+
+        $paid = $payments->markOrdersPaidFromStripeSession('REF-PAY-AGAIN-PARTIAL', $retrySession);
+        $this->assertTrue($paid->isEmpty());
+        $this->assertSame('failed', $item->order->fresh()->payment_status);
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(35.0, $wallet->withdrawableBalance(), 0.01);
+        $this->assertEqualsWithDelta(60.0, $payments->unfulfilledCardCreditAmount('REF-PAY-AGAIN-PARTIAL'), 0.01);
+        $this->assertEqualsWithDelta(0.0, $payments->unfulfilledCardCreditAppliedAmount('REF-PAY-AGAIN-PARTIAL'), 0.01);
+    }
+
+    public function test_wallet_only_pay_again_does_not_settle_on_partial_leftover_credit(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $wallet = $this->wallet($advertiser, 0);
+        $item = $this->cardOrder($advertiser, $this->site($publisher), 80, 'REF-PAY-AGAIN-WALLET-PARTIAL', 'failed');
+        $payments = app(OrderPaymentService::class);
+        $payments->creditUnfulfilledCardCapture(
+            $advertiser->id,
+            'REF-PAY-AGAIN-WALLET-PARTIAL',
+            80,
+            'cs_wallet_partial'
+        );
+        $wallet->refresh();
+        $wallet->debit(25);
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(55.0, $wallet->withdrawableBalance(), 0.01);
+
+        $settled = $payments->settleFailedCardLeftoversFromAppliedCredit(
+            'REF-PAY-AGAIN-WALLET-PARTIAL',
+            (int) $advertiser->id,
+            80
+        );
+
+        $this->assertTrue($settled->isEmpty());
+        $this->assertSame('failed', $item->order->fresh()->payment_status);
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(55.0, $wallet->withdrawableBalance(), 0.01);
+        $this->assertEqualsWithDelta(0.0, $payments->unfulfilledCardCreditAppliedAmount('REF-PAY-AGAIN-WALLET-PARTIAL'), 0.01);
+    }
+
     public function test_pay_again_shortfall_consumes_leftover_credit_before_marking_paid(): void
     {
         $advertiser = $this->userWithRole('advertiser');
