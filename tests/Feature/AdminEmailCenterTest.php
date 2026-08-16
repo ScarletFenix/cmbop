@@ -4097,7 +4097,6 @@ class AdminEmailCenterTest extends TestCase
         $this->assertSame(EmailCampaign::STATUS_SENT, $campaign->fresh()->status);
     }
 
-
     public function test_retry_closes_leftover_welcome_after_this_attempt_delivered(): void
     {
         $admin = $this->userWithRole('admin');
@@ -4756,5 +4755,47 @@ class AdminEmailCenterTest extends TestCase
             'data' => ['commandName' => 'Illuminate\\Mail\\SendQueuedMailable'],
             'to' => $email,
         ], JSON_UNESCAPED_SLASHES);
+    }
+
+    public function test_successful_campaign_send_closes_open_log_with_the_other_dedupe_shape(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $campaign = EmailCampaign::create([
+            'name' => 'Sibling close',
+            'subject' => 'Sibling close',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'status' => EmailCampaign::STATUS_SENDING,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        $canonical = EmailCampaignRecipient::dedupeKey((int) $campaign->id, (int) $advertiser->id);
+        $leftover = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => AudienceCampaignMail::class,
+            'template_key' => 'audience_campaign',
+            'notification_type' => 'audience_campaign',
+            'dedupe_key' => 'audience_campaign|'.$advertiser->email.'|AudienceCampaignMail',
+            'to_email' => $advertiser->email,
+            'subject' => 'Sibling close',
+            'status' => EmailLog::STATUS_FAILED,
+            'error' => 'SMTP down',
+            'attempts' => 1,
+            'meta' => [
+                'campaign_id' => $campaign->id,
+                'user_id' => $advertiser->id,
+            ],
+        ]);
+
+        $mailable = new AudienceCampaignMail($campaign, $advertiser);
+        $mailable->skipUserPreference = true;
+        $mailable->dedupeKey = $canonical;
+        Mail::to($advertiser->email)->sendNow($mailable);
+
+        $this->assertSame(EmailLog::STATUS_DELIVERED, $leftover->fresh()->status);
+        $this->assertSame('duplicate', data_get($leftover->fresh()->meta, 'suppressed'));
+        $this->assertNotNull(data_get($leftover->fresh()->meta, 'superseded_by'));
     }
 }

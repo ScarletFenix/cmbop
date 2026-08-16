@@ -15,6 +15,7 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Mail\Mailable;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -325,7 +326,10 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
     protected function abandonOpenLog(string $error): void
     {
         try {
-            $open = EmailLog::openByDedupe($this->dedupeKey);
+            $open = EmailLog::openByDedupe($this->dedupeKey)
+                ->concat($this->openSiblingCampaignLogs())
+                ->unique('id')
+                ->values();
             if ($open->isEmpty()) {
                 return;
             }
@@ -349,6 +353,31 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    /**
+     * @return Collection<int, EmailLog>
+     */
+    protected function openSiblingCampaignLogs()
+    {
+        $campaignId = 0;
+        $userId = 0;
+        if (isset($this->campaign) && $this->campaign instanceof EmailCampaign && $this->campaign->id) {
+            $campaignId = (int) $this->campaign->id;
+        }
+        $user = $this->recipientUser
+            ?? ((isset($this->recipient) && $this->recipient instanceof User) ? $this->recipient : null);
+        if ($user?->id) {
+            $userId = (int) $user->id;
+        }
+        if (($campaignId < 1 || $userId < 1)
+            && is_string($this->dedupeKey)
+            && preg_match('/^audience_campaign:(\d+):user:(\d+)$/', $this->dedupeKey, $matches)) {
+            $campaignId = $campaignId > 0 ? $campaignId : (int) $matches[1];
+            $userId = $userId > 0 ? $userId : (int) $matches[2];
+        }
+
+        return EmailLog::openForCampaignUser($campaignId, $userId);
     }
 
     protected function isDuplicate(string $key): bool
