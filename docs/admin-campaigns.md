@@ -148,6 +148,7 @@ or marketing, even if that staff account also has a marketplace role.
    `audience_campaign|{email}|AudienceCampaignMail` string — that leftover must not swallow another campaign's failed job.
    Closing a leftover must not treat another campaign's generic-key delivery as this send.
    A leftover campaign job without an extractable payload dedupe key must still be skipped when that leftover owns it, including on a later bulk click after the leftover was already closed, and a stale stamp must not suppress a Welcome job.
+   An empty campaign `dedupeKey` must still use the one-shot `audience_campaign:{id}:user:{id}` key — `parent::send()` used to fill `audience_campaign|{email}|AudienceCampaignMail`, so `isDuplicate()` missed a real delivery.
    `user_ids` are integers capped at
    `PICKER_LIMIT * 2` (no `exists:users,id` — a deleted picker row must not
    422 the whole send).

@@ -152,6 +152,10 @@ class EmailCampaignPhpSyntaxTest extends TestCase
         $mailable = (string) file_get_contents($root.'/app/Mail/PlatformMailable.php');
         $this->assertSame(1, preg_match_all('/function alreadyHasDeliveredLog\b/', $mailable));
 
+        $campaignMail = (string) file_get_contents($root.'/app/Mail/AudienceCampaignMail.php');
+        $this->assertSame(1, preg_match_all('/function defaultDedupeKey\b/', $campaignMail));
+        $this->assertStringContainsString('EmailCampaignRecipient::dedupeKey', $campaignMail);
+
         $inventory = (string) file_get_contents($files[2]);
         $this->assertSame(1, preg_match_all('/function recipientRowQuery\b/', $inventory));
 

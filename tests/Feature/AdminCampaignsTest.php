@@ -6140,4 +6140,49 @@ class AdminCampaignsTest extends TestCase
         $this->assertSame(EmailCampaignRecipient::STATUS_DELIVERED, $row->fresh()->status);
         $this->assertSame(0, EmailLog::query()->where('status', EmailLog::STATUS_FAILED)->count());
     }
+
+    public function test_empty_dedupe_key_still_uses_the_one_shot_campaign_key(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $campaign = EmailCampaign::create([
+            'name' => 'Default key',
+            'subject' => 'Default key',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'sent_count' => 1,
+            'status' => EmailCampaign::STATUS_SENT,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        $dedupe = EmailCampaignRecipient::dedupeKey((int) $campaign->id, (int) $advertiser->id);
+        EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => AudienceCampaignMail::class,
+            'template_key' => 'audience_campaign',
+            'dedupe_key' => $dedupe,
+            'to_email' => $advertiser->email,
+            'subject' => 'Default key',
+            'status' => EmailLog::STATUS_DELIVERED,
+            'sent_at' => now()->subHours(3),
+            'attempts' => 1,
+        ]);
+        EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_DELIVERED,
+        ]);
+
+        $mailable = new AudienceCampaignMail($campaign, $advertiser);
+        $mailable->skipUserPreference = true;
+        $mailable->dedupeKey = null;
+        $mailable->to($advertiser->email);
+
+        $this->assertNull($mailable->send(app('mailer')));
+        $this->assertSame('duplicate', $mailable->suppressReason);
+        $this->assertSame($dedupe, $mailable->dedupeKey);
+        $this->assertSame(1, EmailLog::query()->where('dedupe_key', $dedupe)->where('status', EmailLog::STATUS_DELIVERED)->count());
+    }
 }
