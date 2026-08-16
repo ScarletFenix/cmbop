@@ -3279,6 +3279,190 @@ class AdminEmailCenterTest extends TestCase
         $this->assertTrue(DB::table('failed_jobs')->where('uuid', $mailUuid)->exists());
     }
 
+    public function test_bulk_retry_skips_unidentified_leftover_campaign_job(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $mailUuid = (string) Str::uuid();
+        $campaign = EmailCampaign::create([
+            'name' => 'Unidentified leftover',
+            'subject' => 'Unidentified leftover',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'sent_count' => 1,
+            'status' => EmailCampaign::STATUS_SENT,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        $dedupe = EmailCampaignRecipient::dedupeKey((int) $campaign->id, (int) $advertiser->id);
+        EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => AudienceCampaignMail::class,
+            'template_key' => 'audience_campaign',
+            'dedupe_key' => $dedupe,
+            'to_email' => $advertiser->email,
+            'subject' => 'Unidentified leftover',
+            'status' => EmailLog::STATUS_DELIVERED,
+            'sent_at' => now()->subHours(3),
+            'attempts' => 1,
+            'meta' => [
+                'campaign_id' => $campaign->id,
+                'user_id' => $advertiser->id,
+            ],
+        ]);
+        $leftover = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => AudienceCampaignMail::class,
+            'template_key' => 'audience_campaign',
+            'dedupe_key' => $dedupe,
+            'to_email' => $advertiser->email,
+            'subject' => 'Unidentified leftover',
+            'status' => EmailLog::STATUS_FAILED,
+            'error' => 'SMTP down after send',
+            'attempts' => 1,
+            'meta' => [
+                'source' => 'queue',
+                'failed_job_uuid' => $mailUuid,
+                'campaign_id' => $campaign->id,
+                'user_id' => $advertiser->id,
+            ],
+        ]);
+        $welcome = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => WelcomeEmail::class,
+            'template_key' => 'welcome',
+            'dedupe_key' => 'welcome|'.$advertiser->email.'|WelcomeEmail',
+            'to_email' => $advertiser->email,
+            'subject' => 'Welcome to SEOLinkBuildings',
+            'status' => EmailLog::STATUS_FAILED,
+            'error' => 'SMTP down',
+            'attempts' => 1,
+        ]);
+        EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_DELIVERED,
+        ]);
+
+        DB::table('failed_jobs')->insert([
+            'uuid' => $mailUuid,
+            'connection' => 'database',
+            'queue' => 'emails',
+            'payload' => $this->unidentifiedCampaignMailJobPayload($advertiser->email),
+            'exception' => 'SMTP failed after send',
+            'failed_at' => now(),
+        ]);
+
+        Artisan::shouldReceive('call')->never();
+
+        $this->actingAs($admin)
+            ->from(route('admin.emails.index'))
+            ->post(route('admin.emails.retry'))
+            ->assertRedirect(route('admin.emails.index'))
+            ->assertSessionHas('success');
+
+        $this->assertSame(EmailLog::STATUS_DELIVERED, $leftover->fresh()->status);
+        $this->assertSame(EmailLog::STATUS_FAILED, $welcome->fresh()->status);
+        $this->assertSame(EmailCampaign::STATUS_SENT, $campaign->fresh()->status);
+        $this->assertTrue(DB::table('failed_jobs')->where('uuid', $mailUuid)->exists());
+    }
+
+    public function test_bulk_retry_still_retries_welcome_when_leftover_has_stale_stamp(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $welcomeUuid = (string) Str::uuid();
+        $campaign = EmailCampaign::create([
+            'name' => 'Stale welcome stamp',
+            'subject' => 'Stale welcome stamp',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'sent_count' => 1,
+            'status' => EmailCampaign::STATUS_SENT,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        $dedupe = EmailCampaignRecipient::dedupeKey((int) $campaign->id, (int) $advertiser->id);
+        EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => AudienceCampaignMail::class,
+            'template_key' => 'audience_campaign',
+            'dedupe_key' => $dedupe,
+            'to_email' => $advertiser->email,
+            'subject' => 'Stale welcome stamp',
+            'status' => EmailLog::STATUS_DELIVERED,
+            'sent_at' => now()->subHours(3),
+            'attempts' => 1,
+            'meta' => [
+                'campaign_id' => $campaign->id,
+                'user_id' => $advertiser->id,
+            ],
+        ]);
+        $leftover = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => AudienceCampaignMail::class,
+            'template_key' => 'audience_campaign',
+            'dedupe_key' => $dedupe,
+            'to_email' => $advertiser->email,
+            'subject' => 'Stale welcome stamp',
+            'status' => EmailLog::STATUS_FAILED,
+            'error' => 'SMTP down after send',
+            'attempts' => 1,
+            'meta' => [
+                'source' => 'queue',
+                'failed_job_uuid' => $welcomeUuid,
+                'campaign_id' => $campaign->id,
+                'user_id' => $advertiser->id,
+            ],
+        ]);
+        $welcome = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => WelcomeEmail::class,
+            'template_key' => 'welcome',
+            'dedupe_key' => 'welcome|'.$advertiser->email.'|WelcomeEmail',
+            'to_email' => $advertiser->email,
+            'subject' => 'Welcome to SEOLinkBuildings',
+            'status' => EmailLog::STATUS_FAILED,
+            'error' => 'SMTP down',
+            'attempts' => 1,
+            'meta' => ['source' => 'queue', 'failed_job_uuid' => $welcomeUuid],
+        ]);
+        EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_DELIVERED,
+        ]);
+
+        DB::table('failed_jobs')->insert([
+            'uuid' => $welcomeUuid,
+            'connection' => 'database',
+            'queue' => 'emails',
+            'payload' => json_encode([
+                'displayName' => WelcomeEmail::class,
+                'data' => ['commandName' => 'Illuminate\\Mail\\SendQueuedMailable'],
+                'to' => $advertiser->email,
+            ]),
+            'exception' => 'SMTP down',
+            'failed_at' => now(),
+        ]);
+
+        $this->mockQueueRetry([$welcomeUuid]);
+
+        $this->actingAs($admin)
+            ->from(route('admin.emails.index'))
+            ->post(route('admin.emails.retry'))
+            ->assertRedirect(route('admin.emails.index'))
+            ->assertSessionHas('success');
+
+        $this->assertSame(EmailLog::STATUS_DELIVERED, $leftover->fresh()->status);
+        $this->assertSame(EmailLog::STATUS_PENDING, $welcome->fresh()->status);
+        $this->assertSame(EmailCampaign::STATUS_SENT, $campaign->fresh()->status);
+    }
+
     public function test_retry_still_requeues_a_failed_welcome_after_an_old_delivery(): void
     {
         $admin = $this->userWithRole('admin');
@@ -3503,6 +3687,15 @@ class AdminEmailCenterTest extends TestCase
                 'commandName' => 'Illuminate\\Mail\\SendQueuedMailable',
                 'command' => 'O:36:"Illuminate\\Mail\\SendQueuedMailable":2:{s:9:"dedupeKey";s:'.strlen($dedupe).':"'.$dedupe.'";s:2:"to";s:'.strlen($email).':"'.$email.'";}',
             ],
+            'to' => $email,
+        ], JSON_UNESCAPED_SLASHES);
+    }
+
+    private function unidentifiedCampaignMailJobPayload(string $email): string
+    {
+        return json_encode([
+            'displayName' => AudienceCampaignMail::class,
+            'data' => ['commandName' => 'Illuminate\\Mail\\SendQueuedMailable'],
             'to' => $email,
         ], JSON_UNESCAPED_SLASHES);
     }

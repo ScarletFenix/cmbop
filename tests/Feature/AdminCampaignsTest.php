@@ -1290,10 +1290,26 @@ class AdminCampaignsTest extends TestCase
             'email' => $advertiser->email,
             'status' => EmailCampaignRecipient::STATUS_QUEUED,
         ]);
+        $dedupe = EmailCampaignRecipient::dedupeKey((int) $campaign->id, (int) $advertiser->id);
+        $pendingLog = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => AudienceCampaignMail::class,
+            'template_key' => 'audience_campaign',
+            'dedupe_key' => $dedupe,
+            'to_email' => $advertiser->email,
+            'subject' => 'Queued then staff',
+            'status' => EmailLog::STATUS_PENDING,
+            'attempts' => 1,
+            'meta' => [
+                'source' => 'retry',
+                'campaign_id' => $campaign->id,
+                'user_id' => $advertiser->id,
+            ],
+        ]);
 
         $mailable = new AudienceCampaignMail($campaign, $advertiser);
         $mailable->skipUserPreference = true;
-        $mailable->dedupeKey = EmailCampaignRecipient::dedupeKey((int) $campaign->id, (int) $advertiser->id);
+        $mailable->dedupeKey = $dedupe;
         $mailable->to($advertiser->email);
         $log = EmailLog::create([
             'uuid' => (string) Str::uuid(),
@@ -1404,6 +1420,8 @@ class AdminCampaignsTest extends TestCase
         $this->assertSame('Suppressed: recipient is staff', $log->fresh()->error);
         $this->assertSame(0, $campaign->fresh()->sent_count);
         $this->assertSame(1, $campaign->fresh()->skipped_count);
+        $this->assertSame(EmailLog::STATUS_FAILED, $pendingLog->fresh()->status);
+        $this->assertSame('Suppressed: recipient is staff', $pendingLog->fresh()->error);
     }
 
     public function test_mailable_failed_marks_recipient_failed(): void
