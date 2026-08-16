@@ -1304,6 +1304,326 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
         $this->assertEqualsWithDelta(80.0, (float) $wallet->balance, 0.01);
     }
 
+    public function test_hidden_leftover_credit_ignores_sibling_paid_on_an_earlier_capture(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $siteA = $this->makeSite($publisher, 'earlier-paid-a.example', 80);
+        $siteB = $this->makeSite($publisher, 'later-hidden-b.example', 80);
+        $wallet = $this->advertiserWallet($advertiser, 0);
+        $ref = 'EARLIER-PAID-HIDDEN-1';
+        $payments = app(OrderPaymentService::class);
+
+        $orderA = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => $ref,
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'paid',
+            'status' => 'pending',
+            'paid_at' => now(),
+            'stripe_session_id' => 'cs_earlier_paid',
+            'stripe_payment_intent_id' => 'pi_cs_earlier_paid',
+        ]);
+        OrderItem::create([
+            'order_id' => $orderA->id,
+            'site_id' => $siteA->id,
+            'site_name' => $siteA->site_name,
+            'site_url' => $siteA->site_url,
+            'content_link' => 'https://example.com/a',
+            'price' => 80,
+        ]);
+
+        $orderB = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => $ref,
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'failed',
+            'status' => 'pending',
+        ]);
+        OrderItem::create([
+            'order_id' => $orderB->id,
+            'site_id' => $siteB->id,
+            'site_name' => $siteB->site_name,
+            'site_url' => $siteB->site_url,
+            'content_link' => 'https://example.com/b',
+            'price' => 80,
+        ]);
+        $siteB->update(['verified' => false, 'active' => false]);
+
+        $session = $this->paidSession($ref, 80, 'cs_later_hidden');
+        $session->metadata->user_id = (string) $advertiser->id;
+
+        $paid = $payments->markOrdersPaidFromStripeSession($ref, $session);
+
+        $this->assertCount(0, $paid);
+        $this->assertSame('paid', $orderA->fresh()->payment_status);
+        $this->assertSame('cancelled', $orderB->fresh()->status);
+        $this->assertSame('failed', $orderB->fresh()->payment_status);
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(80.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(80.0, $payments->unfulfilledCardCreditAmount($ref), 0.01);
+        $this->assertEqualsWithDelta(0.0, $payments->refundedCardOrderAmount($ref), 0.01);
+    }
+
+    public function test_hidden_sibling_does_not_stack_credit_on_same_capture_refund(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $siteA = $this->makeSite($publisher, 'same-capture-unready.example', 80);
+        $siteB = $this->makeSite($publisher, 'same-capture-hidden.example', 40);
+        $wallet = $this->advertiserWallet($advertiser, 0);
+        $submission = $this->createApprovedSubmission($advertiser, $siteA->id);
+        $ref = 'SAME-CAPTURE-HIDDEN-1';
+        $payments = app(OrderPaymentService::class);
+
+        $orderA = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => $ref,
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'failed',
+            'status' => 'pending',
+        ]);
+        $itemA = OrderItem::create([
+            'order_id' => $orderA->id,
+            'site_id' => $siteA->id,
+            'site_name' => $siteA->site_name,
+            'site_url' => $siteA->site_url,
+            'content_submission_id' => $submission->id,
+            'content_link' => 'https://example.com/a',
+            'price' => 80,
+        ]);
+        $submission->update([
+            'order_id' => $orderA->id,
+            'order_item_id' => $itemA->id,
+            'target_url' => null,
+        ]);
+
+        $orderB = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => $ref,
+            'subtotal' => 40,
+            'tax' => 0,
+            'total_amount' => 40,
+            'payment_method' => 'card',
+            'payment_status' => 'failed',
+            'status' => 'pending',
+        ]);
+        OrderItem::create([
+            'order_id' => $orderB->id,
+            'site_id' => $siteB->id,
+            'site_name' => $siteB->site_name,
+            'site_url' => $siteB->site_url,
+            'content_link' => 'https://example.com/b',
+            'price' => 40,
+        ]);
+        $siteB->update(['verified' => false, 'active' => false]);
+
+        $session = $this->paidSession($ref, 120, 'cs_same_capture_hidden');
+        $session->metadata->user_id = (string) $advertiser->id;
+
+        $paid = $payments->markOrdersPaidFromStripeSession($ref, $session);
+
+        $this->assertCount(0, $paid);
+        $this->assertSame('refunded', $orderA->fresh()->payment_status);
+        $this->assertSame('cancelled', $orderB->fresh()->status);
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(120.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(40.0, $payments->unfulfilledCardCreditAmount($ref), 0.01);
+        $this->assertEqualsWithDelta(80.0, $payments->refundedCardOrderAmount($ref), 0.01);
+    }
+
+    public function test_hidden_sibling_does_not_stack_credit_on_unready_leftover_refund(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $siteA = $this->makeSite($publisher, 'unready-hidden-a.example', 80);
+        $siteB = $this->makeSite($publisher, 'unready-hidden-b.example', 40);
+        $wallet = $this->advertiserWallet($advertiser, 0);
+        $submission = $this->createApprovedSubmission($advertiser, $siteA->id);
+        $ref = 'UNREADY-HIDDEN-1';
+        $payments = app(OrderPaymentService::class);
+
+        $orderA = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => $ref,
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'failed',
+            'status' => 'pending',
+        ]);
+        $itemA = OrderItem::create([
+            'order_id' => $orderA->id,
+            'site_id' => $siteA->id,
+            'site_name' => $siteA->site_name,
+            'site_url' => $siteA->site_url,
+            'content_submission_id' => $submission->id,
+            'content_link' => 'https://example.com/a',
+            'price' => 80,
+        ]);
+        $submission->update([
+            'order_id' => $orderA->id,
+            'order_item_id' => $itemA->id,
+            'target_url' => null,
+        ]);
+
+        $orderB = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => $ref,
+            'subtotal' => 40,
+            'tax' => 0,
+            'total_amount' => 40,
+            'payment_method' => 'card',
+            'payment_status' => 'failed',
+            'status' => 'pending',
+        ]);
+        OrderItem::create([
+            'order_id' => $orderB->id,
+            'site_id' => $siteB->id,
+            'site_name' => $siteB->site_name,
+            'site_url' => $siteB->site_url,
+            'content_link' => 'https://example.com/b',
+            'price' => 40,
+        ]);
+        $siteB->update(['verified' => false, 'active' => false]);
+
+        $session = $this->paidSession($ref, 120, 'cs_unready_hidden');
+        $session->metadata->user_id = (string) $advertiser->id;
+
+        $paid = $payments->markOrdersPaidFromStripeSession($ref, $session);
+
+        $this->assertCount(0, $paid);
+        $this->assertSame('refunded', $orderA->fresh()->payment_status);
+        $this->assertSame('cancelled', $orderA->fresh()->status);
+        $this->assertSame('cancelled', $orderB->fresh()->status);
+        $this->assertSame('failed', $orderB->fresh()->payment_status);
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(120.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(40.0, $payments->unfulfilledCardCreditAmount($ref), 0.01);
+        $this->assertEqualsWithDelta(80.0, $payments->refundedCardOrderAmount($ref), 0.01);
+        $this->assertEqualsWithDelta(120.0, $payments->walletCreditForUnfulfillableCardCheckout($ref), 0.01);
+    }
+
+    public function test_unfulfilled_card_credit_writes_capture_ids_without_fatalling(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $wallet = $this->advertiserWallet($advertiser, 0);
+        $payments = app(OrderPaymentService::class);
+
+        $this->assertEqualsWithDelta(
+            80.0,
+            $payments->creditUnfulfilledCardCapture(
+                (int) $advertiser->id,
+                'CAPTURE-IDS-1',
+                80,
+                'cs_capture_ids_1',
+                ['cs_capture_ids_1', 'pi_cs_capture_ids_1']
+            ),
+            0.01
+        );
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(80.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(80.0, $payments->unfulfilledCardCreditAmount('CAPTURE-IDS-1'), 0.01);
+    }
+
+    public function test_pay_again_does_not_reapply_already_consumed_leftover_credit(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $wallet = $this->advertiserWallet($advertiser, 0);
+        $wallet->update(['balance' => 100]);
+        $ref = 'APPLY-ONCE-1';
+        $payments = app(OrderPaymentService::class);
+
+        $this->assertEqualsWithDelta(50.0, $payments->creditUnfulfilledCardCapture($advertiser->id, $ref, 50), 0.01);
+        $this->assertEqualsWithDelta(50.0, $payments->consumeUnfulfilledCardCreditForLeftover($advertiser->id, $ref, 50), 0.01);
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(100.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(50.0, $payments->unfulfilledCardCreditAmount($ref), 0.01);
+        $this->assertEqualsWithDelta(0.0, $payments->unfulfilledCardCreditRemaining($ref), 0.01);
+        $this->assertEqualsWithDelta(0.0, $payments->unfulfilledCardCreditToApply($advertiser->id, $ref, 80), 0.01);
+    }
+
+    public function test_applied_credit_settle_does_not_mark_pending_sibling_paid(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $siteA = $this->makeSite($publisher, 'apply-failed-a.example', 50);
+        $siteB = $this->makeSite($publisher, 'apply-pending-b.example', 80);
+        $this->advertiserWallet($advertiser, 0);
+        $ref = 'APPLY-NO-PENDING-SIB';
+        $payments = app(OrderPaymentService::class);
+
+        $orderA = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => $ref,
+            'subtotal' => 50,
+            'tax' => 0,
+            'total_amount' => 50,
+            'payment_method' => 'card',
+            'payment_status' => 'failed',
+            'status' => 'pending',
+        ]);
+        OrderItem::create([
+            'order_id' => $orderA->id,
+            'site_id' => $siteA->id,
+            'site_name' => $siteA->site_name,
+            'site_url' => $siteA->site_url,
+            'content_link' => 'https://example.com/a',
+            'price' => 50,
+        ]);
+
+        $orderB = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => $ref,
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'pending',
+            'status' => 'pending',
+        ]);
+        OrderItem::create([
+            'order_id' => $orderB->id,
+            'site_id' => $siteB->id,
+            'site_name' => $siteB->site_name,
+            'site_url' => $siteB->site_url,
+            'content_link' => 'https://example.com/b',
+            'price' => 80,
+        ]);
+
+        $payments->creditUnfulfilledCardCapture($advertiser->id, $ref, 50);
+        $settled = $payments->settleFailedCardLeftoversFromAppliedCredit($ref, $advertiser->id, 50);
+
+        $this->assertCount(1, $settled);
+        $this->assertSame($orderA->id, $settled->first()->id);
+        $this->assertSame('paid', $orderA->fresh()->payment_status);
+        $this->assertSame('pending', $orderB->fresh()->payment_status);
+        $this->assertSame('pending', $orderB->fresh()->status);
+    }
+
     public function test_taken_content_library_line_is_refunded_once_not_double_credited(): void
     {
         $advertiser = $this->makeUser('advertiser');

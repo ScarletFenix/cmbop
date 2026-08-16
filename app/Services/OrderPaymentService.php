@@ -1090,15 +1090,13 @@ class OrderPaymentService
         }
 
         $userId = (int) ($hiddenPending->first()->user_id ?? 0);
-        $paidTotal = round((float) $orders
-            ->filter(fn (Order $order) => $order->payment_status === 'paid')
-            ->sum(fn (Order $order) => (float) $order->total_amount), 2);
         $expected = $this->capturedStripeEurosForCredit($orders, $meta);
-        $refundedThisCapture = $this->refundedCardEurosForStripeCapture($orders, $session);
-        // expected_amount is THIS capture. cancelAndRefund already returned
-        // unready/taken siblings from that same object — subtract them or
-        // hidden leftovers are credited on top of those refunds.
-        $unfulfilled = round(max(0, $expected - $paidTotal - $refundedThisCapture), 2);
+        $paidThisCapture = $this->settledCardEurosForStripeCapture($orders, $session, 'paid');
+        $refundedThisCapture = $this->settledCardEurosForStripeCapture($orders, $session, 'refunded');
+        // expected_amount is THIS capture. Paid/refunded siblings from an
+        // earlier session must not shrink (or zero) the hidden leftover's
+        // credit, and same-capture refunds must not be credited again.
+        $unfulfilled = round(max(0, $expected - $paidThisCapture - $refundedThisCapture), 2);
         // Same leftover may already have a session-keyed credit (#831 bonus
         // fail, amount mismatch). An unkeyed top-up here paid the capture
         // twice after the listing left the catalog and the webhook retried.
@@ -2205,12 +2203,16 @@ class OrderPaymentService
     }
 
     /**
-     * Card cash already returned by cancelAndRefund for this Stripe object.
+     * Card cash already settled on this Stripe object (paid or refunded).
      *
      * @param  Collection<int, Order>  $orders
+     * @param  'paid'|'refunded'  $paymentStatus
      */
-    private function refundedCardEurosForStripeCapture(Collection $orders, ?object $session): float
-    {
+    private function settledCardEurosForStripeCapture(
+        Collection $orders,
+        ?object $session,
+        string $paymentStatus
+    ): float {
         if ($session === null) {
             return 0.0;
         }
@@ -2221,8 +2223,8 @@ class OrderPaymentService
         }
 
         return round((float) $orders
-            ->filter(function (Order $order) use ($ids) {
-                if ((string) $order->payment_status !== 'refunded') {
+            ->filter(function (Order $order) use ($ids, $paymentStatus) {
+                if ((string) $order->payment_status !== $paymentStatus) {
                     return false;
                 }
 
