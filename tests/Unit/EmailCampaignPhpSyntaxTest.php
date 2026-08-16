@@ -183,6 +183,12 @@ class EmailCampaignPhpSyntaxTest extends TestCase
             $ids
         ));
         $this->assertStringContainsString('template_key', $ids[1]);
+        $this->assertStringContainsString('return [0, 0];', $ids[1]);
+        $this->assertStringNotContainsString(
+            'return static::query()',
+            $ids[1],
+            'campaignUserIds must parse identity, not return open leftover rows'
+        );
         $this->assertSame(
             0,
             preg_match_all('/->limit\(100\)/', $log),

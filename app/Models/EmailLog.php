@@ -125,6 +125,21 @@ class EmailLog extends Model
             return [$campaignId, $userId];
         }
 
+        return [0, 0];
+    }
+
+    /**
+     * Leftover pending/failed rows for this recipient, including a
+     * historical generic default key that only stores the pair in meta.
+     *
+     * @return Collection<int, self>
+     */
+    public static function openForCampaignUser(int $campaignId, int $userId)
+    {
+        if ($campaignId < 1 || $userId < 1) {
+            return static::query()->whereRaw('0 = 1')->get();
+        }
+
         $canonical = EmailCampaignRecipient::dedupeKey($campaignId, $userId);
 
         try {
