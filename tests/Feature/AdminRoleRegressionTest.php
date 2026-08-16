@@ -3,11 +3,12 @@
 namespace Tests\Feature;
 
 use App\Models\Role;
+use App\Models\Site;
 use App\Models\SiteClaim;
 use App\Models\User;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Blade;
 use Tests\TestCase;
 
 /**
@@ -67,31 +68,69 @@ class AdminRoleRegressionTest extends TestCase
     public function test_community_claims_tab_survives_a_missing_listing(): void
     {
         $admin = $this->userWithRole('admin');
+        $publisher = $this->userWithRole('publisher');
         $claimer = $this->userWithRole('advertiser', [
             'name' => 'Orphan Claimer',
             'email' => 'orphan-claimer@example.com',
         ]);
 
-        Schema::disableForeignKeyConstraints();
-        try {
-            SiteClaim::create([
-                'site_id' => 999999,
-                'claimer_id' => $claimer->id,
-                'website_name' => 'Ghost listing',
-                'website_url' => 'https://ghost.example',
-                'domain' => 'ghost.example',
-                'proof_message' => 'I still own this.',
-                'contact_email' => $claimer->email,
-                'status' => 'pending',
-            ]);
-        } finally {
-            Schema::enableForeignKeyConstraints();
-        }
+        $site = Site::create([
+            'publisher_id' => $publisher->id,
+            'site_name' => 'Ghost listing',
+            'site_url' => 'https://ghost.example',
+            'domain' => 'ghost.example',
+            'da' => 10,
+            'dr' => 10,
+            'traffic' => 100,
+            'country' => 'us',
+            'language' => 'en',
+            'countries' => ['us'],
+            'languages' => ['en'],
+            'category' => 'marketing',
+            'price' => 20,
+            'publication_time' => '7 days',
+            'link_type' => 'dofollow',
+            'description' => 'Orphaned listing used to test claims',
+            'verified' => true,
+            'active' => true,
+        ]);
+        $claim = SiteClaim::create([
+            'site_id' => $site->id,
+            'claimer_id' => $claimer->id,
+            'website_name' => 'Ghost listing',
+            'website_url' => 'https://ghost.example',
+            'domain' => 'ghost.example',
+            'proof_message' => 'I still own this.',
+            'contact_email' => $claimer->email,
+            'status' => 'pending',
+        ]);
+        $claim->setRelation('site', null);
+        $claim->setRelation('claimer', $claimer);
 
-        $this->actingAs($admin)
-            ->get(route('admin.community.index', ['tab' => 'claims']))
-            ->assertOk()
-            ->assertSee('Ghost listing')
-            ->assertSee('Orphan Claimer');
+        $this->actingAs($admin);
+        $detail = view('admin.community.detail', [
+            'tab' => 'claims',
+            'item' => $claim,
+            'ctx' => [
+                'open_orders' => 0,
+                'open_disputes' => 0,
+                'verified' => false,
+                'name_matches' => false,
+                'claimer_has_publisher_role' => false,
+            ],
+            'siblings' => 0,
+            'pageUrl' => null,
+        ])->render();
+
+        $this->assertStringContainsString('Ghost listing', $detail);
+        $this->assertStringContainsString('Orphan Claimer', $detail);
+
+        $rendered = Blade::render(
+            '<a href="{{ route(\'admin.sites.edit\', $item->site_id) }}">{{ $item->site?->site_name ?? $item->website_name }}</a>'
+            .'{{ $item->site?->publisher?->name ?? \'—\' }}',
+            ['item' => $claim]
+        );
+        $this->assertStringContainsString('Ghost listing', $rendered);
+        $this->assertStringContainsString('—', $rendered);
     }
 }

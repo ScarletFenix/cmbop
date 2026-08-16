@@ -361,6 +361,19 @@ class PaymentController extends Controller
                 $order->paid_at = null;
             }
 
+            // Unpaid failure: release leftover checkout bonus and cancel
+            // non-card methods in this same save so lifecycle mail sees both
+            // payment_status + status with the same suppressor snapshot.
+            if ($newStatus === 'failed' && $oldStatus !== 'failed' && $oldStatus !== 'paid') {
+                $this->refundReservedCheckoutBonus($order);
+                if ($order->payment_method !== 'card') {
+                    if ($order->status !== 'cancelled') {
+                        $order->status = 'cancelled';
+                    }
+                    ContentSubmission::releaseAllForOrder((int) $order->id);
+                }
+            }
+
             $order->save();
 
             if ($newStatus === 'paid' && $oldStatus !== 'paid') {
@@ -395,22 +408,6 @@ class PaymentController extends Controller
                 'notes' => $notes !== '' ? $notes : null,
                 'payment_reference' => $paymentReference !== '' ? $paymentReference : null,
             ]);
-
-            // Unpaid failure: release this line's leftover checkout bonus.
-            // Paid failures already restored promo via creditAdvertiserRefund /
-            // releaseWalletHoldOnAdminFailed — do not dump the sibling share.
-            if ($newStatus === 'failed' && $oldStatus !== 'failed' && $oldStatus !== 'paid') {
-                $this->refundReservedCheckoutBonus($order);
-                // Card leftovers stay pending so Pay again works. Wise/bank/crypto
-                // have no retry, so cancel and free the library article.
-                if ($order->payment_method !== 'card') {
-                    if ($order->status !== 'cancelled') {
-                        $order->status = 'cancelled';
-                    }
-                    ContentSubmission::releaseAllForOrder((int) $order->id);
-                    $order->save();
-                }
-            }
 
             DB::commit();
 

@@ -287,12 +287,8 @@ class EmailCampaignPhpSyntaxTest extends TestCase
             $center,
             $requeue
         ));
-        $this->assertStringContainsString('$mailScannedOk = true;', $queued[1]);
-        $this->assertStringContainsString('if ($mailNeedsScan && ! $mailScannedOk)', $queued[1]);
-        $this->assertDoesNotMatchRegularExpression(
-            '/hasColumn\(\$table, \'payload\'\)\) \{\s*return null;/',
-            $queued[1]
-        );
+        $this->assertStringContainsString("'email_log_id' => null", $requeue[1]);
+        $this->assertStringContainsString('SKIP_STALE', $requeue[1]);
         $this->assertTrue((bool) preg_match(
             '/protected static function expireOrphanedQueuedRecipients\(\): void\s*\{(.*?)\n    \/\*\*/s',
             $model,

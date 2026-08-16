@@ -76,9 +76,10 @@ class AdminBlogLocaleTabsTest extends TestCase
             ])
             ->assertRedirect(route('admin.blogs.index'));
 
-        $blog = Blog::query()->where('slug', 'uk-english-title')->first();
+        $blog = Blog::query()->where('title', 'UK English title')->first();
         $this->assertNotNull($blog);
         $this->assertSame('es', $blog->primary_locale);
+        $this->assertSame('titulo-en-espanol', $blog->slug);
 
         $this->assertDatabaseHas('blog_translations', [
             'blog_id' => $blog->id,

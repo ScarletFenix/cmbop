@@ -262,7 +262,7 @@
                                 <td>
                                     <div class="fw-semibold">
                                         @if($item->site_id)
-                                            <a href="{{ route('admin.sites.edit', $item->site_id) }}">{{ $item->site->site_name ?? $item->website_name }}</a>
+                                            <a href="{{ route('admin.sites.edit', $item->site_id) }}">{{ $item->site?->site_name ?? $item->website_name }}</a>
                                         @else
                                             {{ $item->website_name }}
                                         @endif
