@@ -4051,10 +4051,16 @@ class CatalogController extends Controller
             // Pay again settles leftover rows, not the abandoned Stripe-first
             // package. Drop it so success-URL finalize cannot treat the new
             // session as a stale package mismatch and skip mark-paid.
-            $payments->forgetPendingCheckoutKeepLeftoverHold(
-                $referenceCode,
-                (int) auth()->id()
-            );
+            // KeepLeftoverHold re-wrote the fail snapshot (bonus_applied) after
+            // a full-card retry, so reject treated the card-only settle as promo.
+            // A paid sibling may still own a live hold — keep that, drop the rest.
+            $userId = (int) auth()->id();
+            $held = app(CheckoutIntentService::class)->heldBonus($userId, $referenceCode);
+            if ($held > 0.009) {
+                $payments->forgetPendingCheckoutKeepLeftoverHold($referenceCode, $userId);
+            } else {
+                $payments->forgetPendingCheckout($referenceCode);
+            }
 
             session()->put('pending_card_reference', $referenceCode);
 

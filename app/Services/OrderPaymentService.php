@@ -76,6 +76,11 @@ class OrderPaymentService
 
                 return collect();
             }
+            if ($hasMarkable && ! $this->consumeAppliedLeftoverCreditForMarkPaid($orders, $meta, $referenceCode)) {
+                $amountMismatch = true;
+
+                return collect();
+            }
 
             $newlyPaid = collect();
 
@@ -95,20 +100,18 @@ class OrderPaymentService
                 }
             }
 
+            if ($hasMarkable && $newlyPaid->isEmpty() && $this->appliedLeftoverCreditFromMeta($meta) > 0.009) {
+                throw new \RuntimeException(
+                    'Consumed leftover card credit but no leftover could be marked paid for ref '.$referenceCode
+                );
+            }
+
             if ($newlyPaid->isNotEmpty()) {
                 $this->rereserveReleasedCheckoutBonus(
                     (int) $newlyPaid->first()->user_id,
                     $referenceCode,
                     (float) ($meta['bonus_applied'] ?? 0)
                 );
-                $appliedCredit = round((float) ($meta['unfulfilled_credit_applied'] ?? 0), 2);
-                if ($appliedCredit > 0.009) {
-                    $this->consumeUnfulfilledCardCreditForLeftover(
-                        (int) $newlyPaid->first()->user_id,
-                        $referenceCode,
-                        $appliedCredit
-                    );
-                }
             }
 
             // Keep leftover checkout bonus reserved until approve/reject.
@@ -128,7 +131,7 @@ class OrderPaymentService
             (float) ($sessionMeta['order_total'] ?? 0)
         );
         $this->evaluateSpendBudgetAfterPaidOrders($newlyPaid);
-        $this->creditHiddenCardOrdersAfterMarkPaid($referenceCode, $sessionMeta);
+        $this->creditHiddenCardOrdersAfterMarkPaid($referenceCode, $sessionMeta, $session);
 
         return $newlyPaid;
     }
@@ -176,6 +179,11 @@ class OrderPaymentService
 
                 return collect();
             }
+            if ($hasMarkable && ! $this->consumeAppliedLeftoverCreditForMarkPaid($orders, $meta, $referenceCode)) {
+                $amountMismatch = true;
+
+                return collect();
+            }
 
             $newlyPaid = collect();
             foreach ($orders as $order) {
@@ -193,20 +201,18 @@ class OrderPaymentService
                 }
             }
 
+            if ($hasMarkable && $newlyPaid->isEmpty() && $this->appliedLeftoverCreditFromMeta($meta) > 0.009) {
+                throw new \RuntimeException(
+                    'Consumed leftover card credit but no leftover could be marked paid for ref '.$referenceCode
+                );
+            }
+
             if ($newlyPaid->isNotEmpty()) {
                 $this->rereserveReleasedCheckoutBonus(
                     (int) $newlyPaid->first()->user_id,
                     $referenceCode,
                     (float) ($meta['bonus_applied'] ?? 0)
                 );
-                $appliedCredit = round((float) ($meta['unfulfilled_credit_applied'] ?? 0), 2);
-                if ($appliedCredit > 0.009) {
-                    $this->consumeUnfulfilledCardCreditForLeftover(
-                        (int) $newlyPaid->first()->user_id,
-                        $referenceCode,
-                        $appliedCredit
-                    );
-                }
             }
 
             // Keep leftover checkout bonus reserved until approve/reject.
@@ -225,7 +231,7 @@ class OrderPaymentService
             (float) ($meta['order_total'] ?? 0)
         );
         $this->evaluateSpendBudgetAfterPaidOrders($newlyPaid);
-        $this->creditHiddenCardOrdersAfterMarkPaid($referenceCode, $meta);
+        $this->creditHiddenCardOrdersAfterMarkPaid($referenceCode, $meta, $intent);
 
         return $newlyPaid;
     }
@@ -928,15 +934,17 @@ class OrderPaymentService
 
         $reference = self::unfulfilledCardCreditReference($referenceCode, $settlementKey);
         $aliases = [$reference];
-        if (is_string($settlementKey) && $settlementKey !== '') {
-            $aliases[] = self::unfulfilledCardCreditReference($referenceCode);
+        $unkeyed = ! is_string($settlementKey) || $settlementKey === '';
+        $prefix = self::unfulfilledCardCreditReference($referenceCode);
+        if (! $unkeyed) {
+            $aliases[] = $prefix;
         }
         foreach ($captureIds as $captureId) {
             $aliases[] = self::unfulfilledCardCreditReference($referenceCode, $captureId);
         }
         $aliases = array_values(array_unique($aliases));
 
-        return (float) DB::transaction(function () use ($userId, $roleId, $amount, $reference, $referenceCode, $aliases, $captureIds) {
+        return (float) DB::transaction(function () use ($userId, $roleId, $amount, $reference, $referenceCode, $aliases, $unkeyed, $prefix) {
             if (! User::query()->whereKey($userId)->exists()) {
                 Log::warning('Cannot credit unfulfilled card capture; user missing', [
                     'user_id' => $userId,
@@ -951,7 +959,15 @@ class OrderPaymentService
             if (Schema::hasTable((new WalletTransaction)->getTable())
                 && WalletTransaction::query()
                     ->where('wallet_id', $wallet->id)
-                    ->whereIn('reference', $aliases)
+                    ->where(function ($query) use ($aliases, $unkeyed, $prefix) {
+                        $query->whereIn('reference', $aliases);
+                        // Hidden-line leftover credit is unkeyed. A prior
+                        // session-keyed credit for this leftover is the same
+                        // capture — stacking it minted the card cash twice.
+                        if ($unkeyed) {
+                            $query->orWhere('reference', 'like', $prefix.'-%');
+                        }
+                    })
                     ->exists()) {
                 return 0.0;
             }
@@ -986,7 +1002,7 @@ class OrderPaymentService
      *
      * @param  array<string, mixed>  $meta
      */
-    private function creditHiddenCardOrdersAfterMarkPaid(string $referenceCode, array $meta): void
+    private function creditHiddenCardOrdersAfterMarkPaid(string $referenceCode, array $meta, ?object $session = null): void
     {
         $orders = Order::with('items.site')
             ->where('reference_code', $referenceCode)
@@ -1014,7 +1030,11 @@ class OrderPaymentService
             ->sum(fn (Order $order) => (float) $order->total_amount), 2);
         $expected = $this->capturedStripeEurosForCredit($orders, $meta);
         $unfulfilled = round(max(0, $expected - $paidTotal), 2);
-        if ($userId > 0 && $unfulfilled > 0.009) {
+        // Same leftover may already have a session-keyed credit (#831 bonus
+        // fail, amount mismatch). An unkeyed top-up here paid the capture
+        // twice after the listing left the catalog and the webhook retried.
+        $alreadyCredited = $this->unfulfilledCardCreditAmount($referenceCode) > 0.009;
+        if ($userId > 0 && $unfulfilled > 0.009 && ! $alreadyCredited) {
             $this->creditUnfulfilledCardCapture($userId, $referenceCode, $unfulfilled);
         }
 
@@ -1059,10 +1079,31 @@ class OrderPaymentService
      * Cash from an earlier unfulfilled leftover capture that Pay again can
      * spend toward this package. Capped by what is still withdrawable.
      */
+    public function unfulfilledCardCreditAppliedAmount(string $referenceCode): float
+    {
+        if (! Schema::hasTable((new WalletTransaction)->getTable())) {
+            return 0.0;
+        }
+
+        return round((float) WalletTransaction::query()
+            ->where('direction', 'debit')
+            ->where('reference', self::unfulfilledCardCreditApplyReference($referenceCode))
+            ->sum('amount'), 2);
+    }
+
+    public function unfulfilledCardCreditRemaining(string $referenceCode): float
+    {
+        return round(max(
+            0,
+            $this->unfulfilledCardCreditAmount($referenceCode)
+            - $this->unfulfilledCardCreditAppliedAmount($referenceCode)
+        ), 2);
+    }
+
     public function unfulfilledCardCreditToApply(int $userId, string $referenceCode, float $packageTotal): float
     {
         $packageTotal = round($packageTotal, 2);
-        $credited = $this->unfulfilledCardCreditAmount($referenceCode);
+        $credited = $this->unfulfilledCardCreditRemaining($referenceCode);
         if ($userId <= 0 || $packageTotal <= 0.009 || $credited <= 0.009) {
             return 0.0;
         }
@@ -1096,13 +1137,15 @@ class OrderPaymentService
 
         return (float) DB::transaction(function () use ($userId, $roleId, $amount, $reference, $referenceCode) {
             $wallet = Wallet::lockOrCreateForRole($userId, $roleId);
-            if (Schema::hasTable((new WalletTransaction)->getTable())
-                && WalletTransaction::query()
+            if (Schema::hasTable((new WalletTransaction)->getTable())) {
+                $already = WalletTransaction::query()
                     ->where('wallet_id', $wallet->id)
                     ->where('direction', 'debit')
                     ->where('reference', $reference)
-                    ->exists()) {
-                return 0.0;
+                    ->first();
+                if ($already) {
+                    return round((float) $already->amount, 2);
+                }
             }
 
             $apply = round(min($amount, $wallet->withdrawableBalance()), 2);
@@ -1123,6 +1166,37 @@ class OrderPaymentService
 
             return $apply;
         });
+    }
+
+    /**
+     * @param  Collection<int, Order>  $orders
+     * @param  array<string, mixed>  $meta
+     */
+    private function consumeAppliedLeftoverCreditForMarkPaid(
+        Collection $orders,
+        array $meta,
+        string $referenceCode
+    ): bool {
+        $appliedCredit = $this->appliedLeftoverCreditFromMeta($meta);
+        if ($appliedCredit <= 0.009) {
+            return true;
+        }
+
+        $userId = (int) ($orders->first()?->user_id ?? ($meta['user_id'] ?? 0));
+        if ($userId <= 0) {
+            return false;
+        }
+
+        return $this->consumeUnfulfilledCardCreditForLeftover($userId, $referenceCode, $appliedCredit) + 0.009
+            >= $appliedCredit;
+    }
+
+    /**
+     * @param  array<string, mixed>  $meta
+     */
+    private function appliedLeftoverCreditFromMeta(array $meta): float
+    {
+        return round((float) ($meta['unfulfilled_credit_applied'] ?? 0), 2);
     }
 
     /**
@@ -1150,6 +1224,8 @@ class OrderPaymentService
                 ->where('reference_code', $referenceCode)
                 ->where('user_id', $userId)
                 ->where('payment_method', 'card')
+                ->where('payment_status', 'failed')
+                ->where('status', 'pending')
                 ->lockForUpdate()
                 ->get();
 
@@ -1284,7 +1360,7 @@ class OrderPaymentService
     public function walletCreditForUnfulfillableCardCheckout(string $referenceCode): float
     {
         return round(
-            $this->unfulfilledCardCreditAmount($referenceCode)
+            $this->unfulfilledCardCreditRemaining($referenceCode)
             + $this->refundedCardOrderAmount($referenceCode),
             2
         );
@@ -2030,6 +2106,34 @@ class OrderPaymentService
         }
 
         return $this->expectedStripeEurosForOrders($orders, $meta);
+    }
+
+    /**
+     * Card cash already returned by cancelAndRefund for this Stripe object.
+     *
+     * @param  Collection<int, Order>  $orders
+     */
+    private function refundedCardEurosForStripeCapture(Collection $orders, ?object $session): float
+    {
+        if ($session === null) {
+            return 0.0;
+        }
+
+        $ids = $this->stripeCaptureIds($session);
+        if ($ids === []) {
+            return 0.0;
+        }
+
+        return round((float) $orders
+            ->filter(function (Order $order) use ($ids) {
+                if ((string) $order->payment_status !== 'refunded') {
+                    return false;
+                }
+
+                return in_array((string) $order->stripe_session_id, $ids, true)
+                    || in_array((string) $order->stripe_payment_intent_id, $ids, true);
+            })
+            ->sum(fn (Order $order) => (float) $order->total_amount), 2);
     }
 
     /**

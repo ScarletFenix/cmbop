@@ -142,6 +142,25 @@ class ContentLibraryImprovementsTest extends TestCase
             ->assertDontSee('>Apply<', false);
     }
 
+    public function test_library_ok_when_expires_at_is_unparseable(): void
+    {
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update(['title' => 'Leftover Expiry Guide']);
+        DB::table('content_submissions')->where('id', $submission->id)->update([
+            'expires_at' => 'not-a-date',
+        ]);
+
+        $this->assertNull($submission->fresh()->expires_at);
+        $this->assertFalse($submission->fresh()->isExpired());
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', ['availability' => 'available']))
+            ->assertOk()
+            ->assertSee('Leftover Expiry Guide', false)
+            ->assertDontSee('Something went wrong');
+    }
+
     public function test_library_shows_published_live_link(): void
     {
         $advertiser = $this->advertiser();
@@ -803,7 +822,10 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->actingAs($advertiser)
             ->from(route('advertiser.content-library'))
             ->get(route('advertiser.content-library.order', $submission))
-            ->assertRedirect(route('advertiser.content-library'))
+            ->assertRedirect(route('advertiser.content-library', [
+                'status' => 'all',
+                'availability' => 'needs_fix',
+            ]).'#library-row-'.$submission->id)
             ->assertSessionHas('error');
 
         $this->assertTrue(session()->missing('checkout_content_submission_id'));
@@ -2683,6 +2705,9 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('function goToLibraryResult', $js);
         $this->assertStringContainsString('function libraryDestinationUrl', $js);
         $this->assertStringContainsString("availability: 'needs_fix'", $js);
+        $this->assertStringContainsString("availability === 'evaluating'", $js);
+        $this->assertStringContainsString("availability === 'published'", $js);
+        $this->assertStringContainsString('stays on Evaluating', $js);
         $this->assertStringContainsString('submission.needs_image_rights', $js);
         $this->assertStringContainsString('submission.ready === false', $js);
         $this->assertStringContainsString('if (stillApproved && sub.ready)', $js);

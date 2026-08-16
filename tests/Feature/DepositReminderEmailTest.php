@@ -12,6 +12,7 @@ use App\Models\Wallet;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
@@ -104,6 +105,24 @@ class DepositReminderEmailTest extends TestCase
         });
     }
 
+    public function test_leftover_sent_at_does_not_silence_deposit_reminder(): void
+    {
+        Mail::fake();
+
+        $target = $this->makeAdvertiser([
+            'created_at' => now()->subDays(7)->setTime(9, 15),
+            'updated_at' => now()->subDays(7)->setTime(9, 15),
+        ]);
+        DB::table('users')->where('id', $target->id)->update([
+            'deposit_reminder_day7_sent_at' => 'not-a-date',
+        ]);
+        $this->assertNull($target->fresh()->deposit_reminder_day7_sent_at);
+
+        Artisan::call('emails:send-deposit-reminders', ['--step' => 'day7']);
+
+        Mail::assertQueued(DepositReminderMail::class, fn (DepositReminderMail $m) => $m->hasTo($target->email));
+    }
+
     public function test_skips_unverified_and_wrong_age_and_publishers(): void
     {
         Mail::fake();
@@ -113,6 +132,14 @@ class DepositReminderEmailTest extends TestCase
             'created_at' => now()->subDays(14)->setTime(12, 0),
             'updated_at' => now()->subDays(14)->setTime(12, 0),
         ]);
+        $leftover = $this->makeAdvertiser([
+            'created_at' => now()->subDays(14)->setTime(12, 0),
+            'updated_at' => now()->subDays(14)->setTime(12, 0),
+        ]);
+        DB::table('users')->where('id', $leftover->id)->update([
+            'email_verified_at' => 'not-a-date',
+        ]);
+        $this->assertFalse($leftover->fresh()->hasVerifiedEmail());
         // Inside the day7 catch-up window, not yet eligible for day14.
         $wrongAge = $this->makeAdvertiser([
             'created_at' => now()->subDays(10)->setTime(12, 0),
@@ -130,6 +157,7 @@ class DepositReminderEmailTest extends TestCase
         Artisan::call('emails:send-deposit-reminders', ['--step' => 'day14']);
 
         Mail::assertNotQueued(DepositReminderMail::class, fn (DepositReminderMail $m) => $m->hasTo($unverified->email));
+        Mail::assertNotQueued(DepositReminderMail::class, fn (DepositReminderMail $m) => $m->hasTo($leftover->email));
         Mail::assertNotQueued(DepositReminderMail::class, fn (DepositReminderMail $m) => $m->hasTo($wrongAge->email));
         Mail::assertNotQueued(DepositReminderMail::class, fn (DepositReminderMail $m) => $m->hasTo($publisher->email));
     }
