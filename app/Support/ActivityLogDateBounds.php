@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Models\ActivityLog;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 
@@ -59,6 +60,12 @@ class ActivityLogDateBounds
             }
             if ($toBound) {
                 $query->where('created_at', '<=', $toBound);
+            }
+            // Leftover Hostinger strings compare as recent on SQLite and as
+            // zero-dates on MySQL. Bound them out of staff date filters.
+            if ($fromBound || $toBound) {
+                $query->where('created_at', '>=', ActivityLog::PLAUSIBLE_SQL_DATETIME_FLOOR)
+                    ->where('created_at', '<=', ActivityLog::PLAUSIBLE_SQL_DATETIME_CEIL);
             }
         }
 

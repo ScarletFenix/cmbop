@@ -990,13 +990,6 @@ class EmailCampaign extends Model
             if ($freshPending) {
                 return;
             }
-
-            foreach ($pendingLogs as $pending) {
-                $pending->update([
-                    'status' => EmailLog::STATUS_FAILED,
-                    'error' => 'Closed: duplicate open log for the same send',
-                ]);
-            }
         }
 
         $staleSkip = $row->status === EmailCampaignRecipient::STATUS_SKIPPED;
