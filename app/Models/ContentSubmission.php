@@ -317,19 +317,47 @@ class ContentSubmission extends Model
      */
     public function scopeReplaceableUnpaidLeftover($query)
     {
-        return $query->where(function ($claim) {
-            $claim->whereHas('order', function ($order) {
-                $this->constrainReplaceableLeftoverOrder($order);
-            });
+        return $query->withoutPaidOrderClaim()
+            ->where(function ($claim) {
+                $claim->whereHas('order', function ($order) {
+                    $this->constrainReplaceableLeftoverOrder($order);
+                });
 
-            if (Schema::hasColumn('order_items', 'content_submission_id')) {
-                $claim->orWhereHas('orderItems', function ($item) {
-                    $item->whereHas('order', function ($order) {
-                        $this->constrainReplaceableLeftoverOrder($order);
+                if (Schema::hasColumn('order_items', 'content_submission_id')) {
+                    $claim->orWhereHas('orderItems', function ($item) {
+                        $item->whereHas('order', function ($order) {
+                            $this->constrainReplaceableLeftoverOrder($order);
+                        });
+                    });
+                }
+            });
+    }
+
+    /**
+     * SQL mirror of !isLockedByPaidOrder() — a paid line still owns this row.
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeWithoutPaidOrderClaim($query)
+    {
+        $query->where(function ($owner) {
+            $owner->withoutOpenOwnerOrder()
+                ->orWhereHas('order', function ($order) {
+                    $order->where(function ($payment) {
+                        $payment->whereNull('payment_status')
+                            ->orWhere('payment_status', '!=', 'paid');
                     });
                 });
-            }
         });
+
+        if (Schema::hasColumn('order_items', 'content_submission_id')) {
+            $query->whereDoesntHave('orderItems', function ($item) {
+                $this->constrainPaidOpenPlacement($item);
+            });
+        }
+
+        return $query;
     }
 
     /**
@@ -612,10 +640,10 @@ class ContentSubmission extends Model
     }
 
     /**
-     * Current owner line is live. A sibling's live URL on the same order,
-     * or a historical URL on a cancelled leftover, must not keep this
-     * article in Completed. Paid item-only leftovers (order_id never
-     * written) still count once the publisher posts the live URL.
+     * Current paid owner line is live. A sibling's live URL on the same
+     * order, or a historical URL on a cancelled leftover, must not keep
+     * this article in Completed. A paid live line still counts when a
+     * stale leftover still owns order_id, or when order_id was never written.
      *
      * @param  Builder<static>  $query
      * @return Builder<static>
@@ -630,11 +658,10 @@ class ContentSubmission extends Model
                     ->whereHas('orderItems', function ($item) use ($table) {
                         $this->constrainCurrentOwnerLiveItem($item, $table);
                     });
-            })->orWhere(function ($itemOnly) use ($table) {
-                $itemOnly->withoutOpenOwnerOrder()
-                    ->whereHas('orderItems', function ($item) use ($table) {
-                        $this->constrainPaidLiveItem($item, $table);
-                    });
+            })->orWhere(function ($paidLive) use ($table) {
+                $paidLive->whereHas('orderItems', function ($item) use ($table) {
+                    $this->constrainPaidLiveItem($item, $table);
+                });
             });
         });
     }
@@ -652,11 +679,8 @@ class ContentSubmission extends Model
                 ->orWhereDoesntHave('orderItems', function ($item) use ($table) {
                     $this->constrainCurrentOwnerLiveItem($item, $table);
                 });
-        })->where(function ($notItemOnlyLive) use ($table) {
-            $notItemOnlyLive->withOpenOwnerOrder()
-                ->orWhereDoesntHave('orderItems', function ($item) use ($table) {
-                    $this->constrainPaidLiveItem($item, $table);
-                });
+        })->whereDoesntHave('orderItems', function ($item) use ($table) {
+            $this->constrainPaidLiveItem($item, $table);
         });
     }
 
@@ -2026,6 +2050,7 @@ class ContentSubmission extends Model
                     $q->orWhere('publisher_status', 'completed');
                 }
             });
+        $this->constrainPaidOpenPlacement($itemQuery);
     }
 
     /**
@@ -2205,6 +2230,11 @@ class ContentSubmission extends Model
      */
     public function activeClaimOrderId(): ?int
     {
+        $paidId = $this->paidClaimOrderId();
+        if ($paidId) {
+            return $paidId;
+        }
+
         $owner = $this->relatedOwnerOrder();
         if ($owner instanceof Order && $this->orderLooksLikeActiveClaim($owner)) {
             return (int) $owner->id;
