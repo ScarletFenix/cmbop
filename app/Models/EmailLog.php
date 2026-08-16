@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\ToleratesUnparseableDates;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 
 class EmailLog extends Model
 {
+    use ToleratesUnparseableDates;
+
     public const STATUS_PENDING = 'pending';
 
     public const STATUS_DELIVERED = 'delivered';

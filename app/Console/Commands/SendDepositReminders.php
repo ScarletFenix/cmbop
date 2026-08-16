@@ -100,7 +100,7 @@ class SendDepositReminders extends Command
             : 'deposit_reminder_day14_sent_at';
 
         $query = $inventory->queryAdvertisersNeverDeposited()
-            ->whereNotNull('email_verified_at')
+            ->whereEmailVerified()
             ->where('created_at', '>=', $oldest)
             ->where('created_at', '<=', $newest);
 
