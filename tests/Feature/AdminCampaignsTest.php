@@ -770,6 +770,9 @@ class AdminCampaignsTest extends TestCase
             $mock->shouldReceive('dispatch')->andReturnUsing(function () {
                 $campaign = EmailCampaign::query()->latest('id')->first();
                 $this->assertNotNull($campaign);
+                EmailCampaignRecipient::query()
+                    ->where('email_campaign_id', $campaign->id)
+                    ->update(['status' => EmailCampaignRecipient::STATUS_DELIVERED]);
                 $campaign->update([
                     'status' => EmailCampaign::STATUS_SENT,
                     'sent_at' => now(),
