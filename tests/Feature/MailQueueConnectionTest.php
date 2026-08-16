@@ -58,6 +58,9 @@ class MailQueueConnectionTest extends TestCase
         config([
             'email_notifications.queue_connection' => 'sync',
             'queue.default' => 'sync',
+            // phpunit.xml disables auto-drain so HTTP tests do not load EmailCampaign.
+            // This test asserts the sync-mail short-circuit, so drain must run.
+            'email_notifications.auto_drain' => true,
         ]);
 
         $this->artisan('mail:drain-queue')
