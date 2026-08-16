@@ -989,23 +989,6 @@ class EmailCampaign extends Model
             if ($freshPending) {
                 return;
             }
-
-            $log = $deliveredLog;
-            if (! $log && $failedLog) {
-                // Failed-log attach still waits out the stall window so a
-                // 10-second-old queued claim is not killed by an older
-                // leftover failure while Mail::send() is still running.
-                if ($row->updated_at && $row->updated_at->greaterThan($cutoff)) {
-                    continue;
-                }
-                // An older failed log must not kill a newer in-flight retry.
-                if ($failedLog->updated_at
-                    && $row->updated_at
-                    && ! $failedLog->updated_at->greaterThan($row->updated_at)) {
-                    continue;
-                }
-                $log = $failedLog;
-            }
         }
 
         $staleSkip = $row->status === EmailCampaignRecipient::STATUS_SKIPPED;
