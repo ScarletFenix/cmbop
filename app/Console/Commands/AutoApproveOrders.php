@@ -63,7 +63,7 @@ class AutoApproveOrders extends Command
         $query = OrderItem::query()
             ->whereNotNull('live_url')
             ->where('live_url', '!=', '')
-            ->whereNotNull('live_url_submitted_at')
+            ->whereLiveUrlSubmittedAtIsRecorded()
             ->where('live_url_submitted_at', '<=', $reminderEligibleAt)
             ->where('live_url_submitted_at', '>', $notYetDueAt)
             ->whereNull('auto_approve_reminder_sent_at')
@@ -146,7 +146,7 @@ class AutoApproveOrders extends Command
         $query = OrderItem::query()
             ->whereNotNull('live_url')
             ->where('live_url', '!=', '')
-            ->whereNotNull('live_url_submitted_at')
+            ->whereLiveUrlSubmittedAtIsRecorded()
             ->where('live_url_submitted_at', '<=', Carbon::now()->subHours($windowHours))
             ->where(function ($q) {
                 $q->where('modification_requested', 'no')
