@@ -61,7 +61,11 @@ or marketing, even if that staff account also has a marketplace role.
    recover reclaims them to `pending` and dispatches a send job. A
    queued row with a pending Email Center log is held — that is a
    just-retried mailable, and reclaiming it would dispatch a second send
-   if the jobs-table scan missed the retried job. A matching
+   if the jobs-table scan missed the retried job. Hold uses the campaign
+   + user pair (meta or `audience_campaign:{id}:user:{id}`), not only the
+   exact dedupe string — a leftover generic
+   `audience_campaign|{email}|AudienceCampaignMail` retry still blocks
+   reclaim. A matching
    `failed_jobs` AudienceCampaignMail is also held — that row is still
    retryable from Email Center. A
    Redis/SQS **mail** queue, inline SMTP (`sync` mail), a missing `payload` column on the **mail**
@@ -80,8 +84,11 @@ or marketing, even if that staff account also has a marketplace role.
    `sent_count` includes queued). Recount promotes `sending` → `sent` only
    when no pending or queued rows remain and at least one delivery landed. `queued` rows with no email
    log are first reconciled against `email_logs` by
-   `audience_campaign:{id}:user:{id}`; a delivered/failed log is attached
-   instead of counting as a fake send. A delivered log still wins when a
+   `audience_campaign:{id}:user:{id}` **or** `meta.campaign_id` +
+   `meta.user_id`; a delivered/failed log is attached
+   instead of counting as a fake send. A historical send that wrote the
+   generic default key must still attach — exact-key lookup used to miss
+   it, reclaim reset the row to pending, and the next job blasted again. A delivered log still wins when a
    pending Email Center row exists for the same key — skipping that attach
    let expire mark a real send stale, and a later retry doubled it.
    Leftovers older than

@@ -159,14 +159,56 @@ class AudienceCampaignMail extends PlatformMailable
         $this->syncRecipientRow($payload);
     }
 
-    protected function latestLogIdForStatus(string $status): ?int
+    /**
+     * A historical send that wrote the generic default key must still
+     * block a later job that uses `audience_campaign:{id}:user:{id}`.
+     */
+    protected function isDuplicate(string $key): bool
     {
-        if (! filled($this->dedupeKey)) {
-            return null;
+        if (parent::isDuplicate($key)) {
+            return true;
+        }
+
+        [$campaignId, $userId] = $this->campaignAndUserIds();
+        if ($campaignId < 1 || $userId < 1) {
+            return false;
         }
 
         try {
             if (! Schema::hasTable((new EmailLog)->getTable())) {
+                return false;
+            }
+
+            $delivered = EmailLog::latestDeliveredForCampaignUser($campaignId, $userId);
+
+            return $delivered !== null;
+        } catch (\Throwable $e) {
+            Log::warning('Campaign sibling dedupe check failed; allowing send', [
+                'campaign_id' => $campaignId,
+                'user_id' => $userId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
+    }
+
+    protected function latestLogIdForStatus(string $status): ?int
+    {
+        try {
+            if (! Schema::hasTable((new EmailLog)->getTable())) {
+                return null;
+            }
+
+            if ($status === EmailLog::STATUS_DELIVERED) {
+                [$campaignId, $userId] = $this->campaignAndUserIds();
+                $sibling = EmailLog::latestDeliveredForCampaignUser($campaignId, $userId);
+                if ($sibling) {
+                    return (int) $sibling->id;
+                }
+            }
+
+            if (! filled($this->dedupeKey)) {
                 return null;
             }
 
