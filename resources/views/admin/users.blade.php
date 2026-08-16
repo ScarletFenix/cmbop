@@ -180,7 +180,7 @@
 
                     <div class="detail-line">
                         <strong>Payout:</strong>
-                        @if($user->payout_profile_locked_at)
+                        @if($user->payoutProfileLocked())
                             <span class="badge status-pending">Locked</span>
                             <span class="text-muted small">{{ strtoupper((string) $user->payout_preferred_method) ?: '—' }}</span>
                         @else

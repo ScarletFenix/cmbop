@@ -4,6 +4,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\ToleratesUnparseableDates;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -12,6 +13,8 @@ use Illuminate\Support\Facades\Schema;
 
 class OrderItem extends Model
 {
+    use ToleratesUnparseableDates;
+
     /**
      * Advertiser-facing markup multiplier. The extra portion is the platform fee.
      * Example: listing €100 → advertiser pays €115; publisher receives €100.
@@ -102,6 +105,62 @@ class OrderItem extends Model
         'review_nudge_sent_at' => 'datetime',
         'stalled_notice_sent_at' => 'datetime',
     ];
+
+    /**
+     * Real Gregorian accepted_at. Leftover Hostinger strings are not acceptance.
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder<static>  $query
+     * @return \Illuminate\Database\Eloquent\Builder<static>
+     */
+    public function scopeWhereAcceptedAtIsRecorded($query)
+    {
+        return $query->whereNotNull('accepted_at')
+            ->where('accepted_at', '>=', static::PLAUSIBLE_SQL_DATETIME_FLOOR)
+            ->where('accepted_at', '<=', static::PLAUSIBLE_SQL_DATETIME_CEIL);
+    }
+
+    /**
+     * Missing or leftover accepted_at (same as PHP null after cast).
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder<static>  $query
+     * @return \Illuminate\Database\Eloquent\Builder<static>
+     */
+    public function scopeWhereAcceptedAtIsMissing($query)
+    {
+        return $query->where(function ($inner) {
+            $inner->whereNull('accepted_at')
+                ->orWhere('accepted_at', '>', static::PLAUSIBLE_SQL_DATETIME_CEIL)
+                ->orWhere('accepted_at', '<', static::PLAUSIBLE_SQL_DATETIME_FLOOR);
+        });
+    }
+
+    /**
+     * Real Gregorian live_url_submitted_at. Leftover strings are not a submit clock.
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder<static>  $query
+     * @return \Illuminate\Database\Eloquent\Builder<static>
+     */
+    public function scopeWhereLiveUrlSubmittedAtIsRecorded($query)
+    {
+        return $query->whereNotNull('live_url_submitted_at')
+            ->where('live_url_submitted_at', '>=', static::PLAUSIBLE_SQL_DATETIME_FLOOR)
+            ->where('live_url_submitted_at', '<=', static::PLAUSIBLE_SQL_DATETIME_CEIL);
+    }
+
+    /**
+     * Missing or leftover live_url_submitted_at (same as PHP null after cast).
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder<static>  $query
+     * @return \Illuminate\Database\Eloquent\Builder<static>
+     */
+    public function scopeWhereLiveUrlSubmittedAtIsMissing($query)
+    {
+        return $query->where(function ($inner) {
+            $inner->whereNull('live_url_submitted_at')
+                ->orWhere('live_url_submitted_at', '>', static::PLAUSIBLE_SQL_DATETIME_CEIL)
+                ->orWhere('live_url_submitted_at', '<', static::PLAUSIBLE_SQL_DATETIME_FLOOR);
+        });
+    }
 
     /**
      * Apply a live URL health-check result onto this item (not saved).

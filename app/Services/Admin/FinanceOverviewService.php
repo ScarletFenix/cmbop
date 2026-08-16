@@ -115,7 +115,7 @@ class FinanceOverviewService
     public function opsQueues(): array
     {
         $pendingDeposits = DepositRequest::where('status', 'pending');
-        $userMarked = (clone $pendingDeposits)->whereNotNull('user_marked_paid_at');
+        $userMarked = (clone $pendingDeposits)->whereUserMarkedPaidAtIsRecorded();
         $openWithdrawals = Withdrawal::whereIn('status', ['pending', 'processing']);
         $pendingPayments = Order::query()->unpaidOps();
 
