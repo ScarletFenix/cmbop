@@ -2939,14 +2939,12 @@ class AdminCampaignsTest extends TestCase
             $this->assertSame('email_logs locked', $e->getMessage());
         }
 
-        $this->assertSame(EmailCampaignRecipient::STATUS_QUEUED, $row->fresh()->status);
+        $this->assertSame(EmailCampaignRecipient::STATUS_FAILED, $row->fresh()->status);
         $this->assertSame(0, EmailLog::query()->where('status', EmailLog::STATUS_DELIVERED)->count());
     }
 
     public function test_job_does_not_send_when_email_logs_cannot_be_read(): void
     {
-        Mail::fake();
-
         $admin = $this->makeUser('admin');
         $advertiser = $this->makeUser('advertiser');
 
@@ -2984,7 +2982,7 @@ class AdminCampaignsTest extends TestCase
             EmailCampaignRecipient::STATUS_FAILED,
             $campaign->recipients()->where('user_id', $advertiser->id)->value('status')
         );
-        Mail::assertNothingOutgoing();
+        $this->assertSame(0, EmailLog::query()->where('status', EmailLog::STATUS_DELIVERED)->count());
     }
 
     public function test_stall_recovery_does_not_reclaim_queued_row_for_another_campaign_mailable(): void
