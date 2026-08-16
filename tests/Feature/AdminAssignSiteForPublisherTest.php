@@ -843,6 +843,28 @@ class AdminAssignSiteForPublisherTest extends TestCase
         $this->assertDoesNotMatchRegularExpression('/<select[^>]+id="language"[^>]*disabled/', $html);
     }
 
+    public function test_admin_create_picker_excludes_leftover_unverified_publishers(): void
+    {
+        $publisherRole = Role::where('name', 'publisher')->firstOrFail();
+        $leftover = User::factory()->create([
+            'email' => 'leftover-unverified-pub@example.com',
+            'email_verified_at' => now(),
+            'active_role_id' => $publisherRole->id,
+        ]);
+        $leftover->roles()->attach($publisherRole->id);
+        DB::table('users')->where('id', $leftover->id)->update([
+            'email_verified_at' => 'not-a-date',
+        ]);
+        $this->assertFalse($leftover->fresh()->hasVerifiedEmail());
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.sites.create'))
+            ->assertOk()
+            ->assertSee($this->publisher->email, false)
+            ->assertDontSee($leftover->email, false)
+            ->assertDontSee('Something went wrong');
+    }
+
     public function test_admin_create_with_suggestion_id_marks_the_website_suggestion_accepted(): void
     {
         Mail::fake();

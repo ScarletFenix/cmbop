@@ -909,11 +909,12 @@
 
     @php
         $myClaims = \App\Models\SiteClaim::query()
-            ->with('site:id,site_name,domain')
+            ->with('site:id,site_name,domain,site_url,publisher_id')
             ->where('claimer_id', auth()->id())
             ->latest('id')
             ->limit(10)
             ->get();
+        \App\Models\SiteClaim::applyCatalogIdentity($myClaims, auth()->user());
     @endphp
     @if($myClaims->isNotEmpty())
     <div class="card shadow-sm border-0 mb-3" id="myClaimsPanel">
@@ -943,8 +944,8 @@
                             @endphp
                             <tr>
                                 <td>
-                                    <div class="fw-semibold">{{ $claim->site->site_name ?? $claim->website_name }}</div>
-                                    <div class="small text-muted">{{ $claim->domain }}</div>
+                                    <div class="fw-semibold">{{ $claim->display_name }}</div>
+                                    <div class="small text-muted">{{ $claim->display_host }}</div>
                                     @if($claim->status !== 'pending' && filled($claim->admin_notes))
                                         <div class="small text-muted fst-italic">Note: {{ $claim->admin_notes }}</div>
                                     @endif

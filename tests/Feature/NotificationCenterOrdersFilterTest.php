@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Services\InAppNotificationService;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -120,6 +121,28 @@ class NotificationCenterOrdersFilterTest extends TestCase
         $this->assertSame(InAppNotificationService::CATEGORY_ORDERS, $seeded['orders']->category);
         $this->assertSame(InAppNotificationService::CATEGORY_ACCOUNT, $seeded['account']->category);
         $this->assertSame(InAppNotificationService::CATEGORY_SYSTEM, $seeded['system']->category);
+    }
+
+    public function test_leftover_archived_at_does_not_hide_bell(): void
+    {
+        $admin = $this->admin();
+        $seeded = $this->seedMixedNotifications($admin);
+        DB::table('in_app_notifications')->where('id', $seeded['orders']->id)->update([
+            'archived_at' => 'not-a-date',
+        ]);
+
+        $this->assertFalse($seeded['orders']->fresh()->isArchived());
+        $this->assertSame(4, app(InAppNotificationService::class)->unreadCount($admin->id));
+
+        $titles = collect($this->actingAs($admin)
+            ->getJson(route('notifications.index', [
+                'status' => 'active',
+                'per_page' => 20,
+            ]))
+            ->assertOk()
+            ->json('notifications'))->pluck('title')->all();
+
+        $this->assertContains('New order #ORD-100', $titles);
     }
 
     public function test_search_q_filters_title_and_message_not_action_label(): void

@@ -185,8 +185,8 @@ class ScheduledOrderService
         return $this->baseScheduledQuery($userId)
             ->where('publication_mode', 'scheduled')
             ->whereNotIn('status', ['processing', 'review'])
-            ->whereNotNull('scheduled_publish_at')
-            ->whereNull('schedule_released_at')
+            ->whereScheduledPublishAtIsRecorded()
+            ->whereScheduleReleasedAtIsMissing()
             ->where(function ($q) {
                 $q->where('scheduled_publish_at', '>', now())
                     ->orWhere(function ($unpaidPastDue) {
@@ -205,10 +205,12 @@ class ScheduledOrderService
         return $this->baseScheduledQuery($userId)
             ->where('publication_mode', 'scheduled')
             ->where('payment_status', 'paid')
-            ->whereNotNull('scheduled_publish_at')
+            ->whereScheduledPublishAtIsRecorded()
             ->where(function ($q) {
                 $q->whereIn('status', ['processing', 'review'])
-                    ->orWhereNotNull('schedule_released_at')
+                    ->orWhere(function ($released) {
+                        $released->whereScheduleReleasedAtIsRecorded();
+                    })
                     ->orWhere('scheduled_publish_at', '<=', now());
             })
             ->orderBy('scheduled_publish_at');
@@ -247,9 +249,9 @@ class ScheduledOrderService
             ->with(['user', 'items.site'])
             ->where('publication_mode', 'scheduled')
             ->where('payment_status', 'paid')
-            ->whereNotNull('scheduled_publish_at')
+            ->whereScheduledPublishAtIsRecorded()
             ->where('scheduled_publish_at', '<=', now())
-            ->whereNull('schedule_released_at')
+            ->whereScheduleReleasedAtIsMissing()
             ->whereNotIn('status', ['cancelled', 'completed', 'processing', 'review'])
             ->limit(100)
             ->get();
@@ -296,8 +298,9 @@ class ScheduledOrderService
             ->where('publication_mode', 'scheduled')
             ->where('payment_status', 'paid')
             ->whereNull('schedule_reminder_sent_at')
-            ->whereNull('schedule_released_at')
+            ->whereScheduleReleasedAtIsMissing()
             ->whereNotIn('status', ['cancelled', 'completed', 'processing', 'review'])
+            ->whereScheduledPublishAtIsRecorded()
             ->whereBetween('scheduled_publish_at', [$windowStart, $windowEnd])
             ->limit(100)
             ->get();

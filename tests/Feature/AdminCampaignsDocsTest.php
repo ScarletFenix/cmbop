@@ -47,6 +47,8 @@ class AdminCampaignsDocsTest extends TestCase
         $this->assertStringContainsString('drop that job UUID from the retry list', $body);
         $this->assertStringContainsString('must also clear the fail streak', $body);
         $this->assertStringContainsString('already has a delivered/failed log FK', $body);
+        $this->assertStringContainsString('must not beat a delivered log', $body);
+        $this->assertStringContainsString('must not beat a delivered sibling', $body);
         $this->assertStringContainsString('second database table without `payload`', $body);
         $this->assertStringContainsString('failed_jobs', $body);
         $this->assertStringContainsString('must **not** block expire', $body);
@@ -54,12 +56,13 @@ class AdminCampaignsDocsTest extends TestCase
         $this->assertStringContainsString('ops-mail-reminders.md', $body);
         $this->assertStringContainsString('even if that staff account also has a marketplace role', $body);
         $this->assertStringContainsString('re-check staff roles at send time', $body);
+        $this->assertStringContainsString('unreadable roles lookup is treated as staff', $body);
+        $this->assertStringContainsString('leftover recipient timestamp must not abort recover', $body);
         $this->assertStringContainsString('payment_status=completed', $body);
         $this->assertStringContainsString('Preference, disabled, and unverified skips stay skipped', $body);
         $this->assertStringContainsString('inline SMTP (`sync` mail)', $body);
         $this->assertStringContainsString('delivered log still wins when a', $body);
-        $this->assertStringContainsString('Lost transactional pending logs', $body);
-        $this->assertStringContainsString('must **not** abort that expire', $body);
+        $this->assertStringContainsString('only serializes the campaign as a ModelIdentifier', $body);
         $this->assertStringNotContainsString('/advertiser/campaigns', $body);
     }
 

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\ToleratesUnparseableDates;
 use App\Services\ContentUpload\ArticleDetectedLinks;
 use App\Services\ContentUpload\ArticleHtmlSanitizer;
 use App\Services\ContentUpload\ArticlePreviewHtml;
@@ -15,6 +16,8 @@ use Illuminate\Support\Str;
 
 class ContentSubmission extends Model
 {
+    use ToleratesUnparseableDates;
+
     public const STATUS_PENDING = 'pending';
 
     public const STATUS_PROCESSING = 'processing';
@@ -314,19 +317,47 @@ class ContentSubmission extends Model
      */
     public function scopeReplaceableUnpaidLeftover($query)
     {
-        return $query->where(function ($claim) {
-            $claim->whereHas('order', function ($order) {
-                $this->constrainReplaceableLeftoverOrder($order);
-            });
+        return $query->withoutPaidOrderClaim()
+            ->where(function ($claim) {
+                $claim->whereHas('order', function ($order) {
+                    $this->constrainReplaceableLeftoverOrder($order);
+                });
 
-            if (Schema::hasColumn('order_items', 'content_submission_id')) {
-                $claim->orWhereHas('orderItems', function ($item) {
-                    $item->whereHas('order', function ($order) {
-                        $this->constrainReplaceableLeftoverOrder($order);
+                if (Schema::hasColumn('order_items', 'content_submission_id')) {
+                    $claim->orWhereHas('orderItems', function ($item) {
+                        $item->whereHas('order', function ($order) {
+                            $this->constrainReplaceableLeftoverOrder($order);
+                        });
+                    });
+                }
+            });
+    }
+
+    /**
+     * SQL mirror of !isLockedByPaidOrder() — a paid line still owns this row.
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeWithoutPaidOrderClaim($query)
+    {
+        $query->where(function ($owner) {
+            $owner->withoutOpenOwnerOrder()
+                ->orWhereHas('order', function ($order) {
+                    $order->where(function ($payment) {
+                        $payment->whereNull('payment_status')
+                            ->orWhere('payment_status', '!=', 'paid');
                     });
                 });
-            }
         });
+
+        if (Schema::hasColumn('order_items', 'content_submission_id')) {
+            $query->whereDoesntHave('orderItems', function ($item) {
+                $this->constrainPaidOpenPlacement($item);
+            });
+        }
+
+        return $query;
     }
 
     /**
@@ -349,12 +380,10 @@ class ContentSubmission extends Model
                     ->withImageRightsCover()
                     ->whereNotNull('path')
                     ->where('path', '!=', '')
-                    ->whereNull('archived_at')
+                    ->notArchived()
                     ->whereNotNull('country')->where('country', '!=', '')
                     ->whereNotNull('language')->where('language', '!=', '')
-                    ->where(function ($exp) {
-                        $exp->whereNull('expires_at')->orWhere('expires_at', '>', now());
-                    });
+                    ->whereNotExpired();
             });
         });
     }
@@ -372,12 +401,10 @@ class ContentSubmission extends Model
             ->withoutOpenOwnerOrder()
             ->whereNotNull('path')
             ->where('path', '!=', '')
-            ->whereNull('archived_at')
+            ->notArchived()
             ->whereNotNull('country')->where('country', '!=', '')
             ->whereNotNull('language')->where('language', '!=', '')
-            ->where(function ($q) {
-                $q->whereNull('expires_at')->orWhere('expires_at', '>', now());
-            })
+            ->whereNotExpired()
             ->where(function ($q) {
                 $q->where(function ($noImages) {
                     $noImages->whereNull('preview_html')
@@ -502,8 +529,7 @@ class ContentSubmission extends Model
     {
         return $query->withoutOpenOwnerOrder()
             ->withoutOpenOrderItemLink()
-            ->whereNotNull('expires_at')
-            ->where('expires_at', '<=', now());
+            ->whereExpired();
     }
 
     /**
@@ -519,9 +545,7 @@ class ContentSubmission extends Model
             self::STATUS_PROCESSING,
         ])->withoutOpenOwnerOrder()
             ->withoutActiveOrderClaim()
-            ->where(function ($exp) {
-                $exp->whereNull('expires_at')->orWhere('expires_at', '>', now());
-            });
+            ->whereNotExpired();
     }
 
     /**
@@ -535,7 +559,7 @@ class ContentSubmission extends Model
         return $query->where('moderation_status', self::STATUS_APPROVED)
             ->withoutOpenOwnerOrder()
             ->withoutOpenOrderItemLink()
-            ->whereNotNull('expires_at')
+            ->whereExpiryIsRecorded()
             ->where('expires_at', '>', now())
             ->where('expires_at', '<=', now()->addDays(max(1, $withinDays)));
     }
@@ -600,7 +624,7 @@ class ContentSubmission extends Model
             ->whereNotNull('path')->where('path', '!=', '')
             ->whereNotNull('country')->where('country', '!=', '')
             ->whereNotNull('language')->where('language', '!=', '')
-            ->whereNull('archived_at')
+            ->notArchived()
             ->hasCheckoutReadyLinks()
             ->withImageRightsCover()
             ->withoutCurrentLivePlacement()
@@ -616,10 +640,10 @@ class ContentSubmission extends Model
     }
 
     /**
-     * Current owner line is live. A sibling's live URL on the same order,
-     * or a historical URL on a cancelled leftover, must not keep this
-     * article in Completed. Paid item-only leftovers (order_id never
-     * written) still count once the publisher posts the live URL.
+     * Current paid owner line is live. A sibling's live URL on the same
+     * order, or a historical URL on a cancelled leftover, must not keep
+     * this article in Completed. A paid live line still counts when a
+     * stale leftover still owns order_id, or when order_id was never written.
      *
      * @param  Builder<static>  $query
      * @return Builder<static>
@@ -634,11 +658,10 @@ class ContentSubmission extends Model
                     ->whereHas('orderItems', function ($item) use ($table) {
                         $this->constrainCurrentOwnerLiveItem($item, $table);
                     });
-            })->orWhere(function ($itemOnly) use ($table) {
-                $itemOnly->withoutOpenOwnerOrder()
-                    ->whereHas('orderItems', function ($item) use ($table) {
-                        $this->constrainPaidLiveItem($item, $table);
-                    });
+            })->orWhere(function ($paidLive) use ($table) {
+                $paidLive->whereHas('orderItems', function ($item) use ($table) {
+                    $this->constrainPaidLiveItem($item, $table);
+                });
             });
         });
     }
@@ -656,11 +679,8 @@ class ContentSubmission extends Model
                 ->orWhereDoesntHave('orderItems', function ($item) use ($table) {
                     $this->constrainCurrentOwnerLiveItem($item, $table);
                 });
-        })->where(function ($notItemOnlyLive) use ($table) {
-            $notItemOnlyLive->withOpenOwnerOrder()
-                ->orWhereDoesntHave('orderItems', function ($item) use ($table) {
-                    $this->constrainPaidLiveItem($item, $table);
-                });
+        })->whereDoesntHave('orderItems', function ($item) use ($table) {
+            $this->constrainPaidLiveItem($item, $table);
         });
     }
 
@@ -688,7 +708,7 @@ class ContentSubmission extends Model
                 })->orWhere(function ($ownedUnready) {
                     $ownedUnready->where('moderation_status', self::STATUS_APPROVED)
                         ->withOpenOwnerOrder()
-                        ->whereNull('archived_at')
+                        ->notArchived()
                         ->where(function ($unready) {
                             $unready->withoutCheckoutReadyLinks()
                                 ->orWhere(function ($rights) {
@@ -706,7 +726,7 @@ class ContentSubmission extends Model
                         });
                 })->orWhere(function ($leftover) {
                     $leftover->withoutOpenOwnerOrder()
-                        ->whereNull('archived_at')
+                        ->notArchived()
                         ->withActiveOrderClaim()
                         ->withoutCurrentLivePlacement()
                         ->where(function ($unpaidOrUnready) {
@@ -741,13 +761,12 @@ class ContentSubmission extends Model
                 });
             })
             ->where(function ($exp) {
-                $exp->where(function ($active) {
-                    $active->whereNull('expires_at')->orWhere('expires_at', '>', now());
-                })->orWhere(function ($owned) {
-                    $owned->withOpenOwnerOrder();
-                })->orWhere(function ($claimed) {
-                    $claimed->withActiveOrderClaim();
-                });
+                $exp->whereNotExpired()
+                    ->orWhere(function ($owned) {
+                        $owned->withOpenOwnerOrder();
+                    })->orWhere(function ($claimed) {
+                        $claimed->withActiveOrderClaim();
+                    });
             });
 
         return $query;
@@ -958,12 +977,103 @@ class ContentSubmission extends Model
             ->exists();
     }
 
+    /**
+     * Parseable expires_at in the Gregorian window. Leftover Hostinger
+     * strings compare as unexpired on SQLite (`> now()`) and as expired
+     * on MySQL (zero-date), and 500 PHP casts on the library pages.
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeWhereExpiryIsRecorded($query)
+    {
+        return $query->whereNotNull('expires_at')
+            ->where('expires_at', '>=', static::PLAUSIBLE_SQL_DATETIME_FLOOR)
+            ->where('expires_at', '<=', static::PLAUSIBLE_SQL_DATETIME_CEIL);
+    }
+
+    /**
+     * Missing or leftover expires_at (same as PHP null after cast).
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeWhereExpiryIsMissing($query)
+    {
+        return $query->where(function ($inner) {
+            $inner->whereNull('expires_at')
+                ->orWhere('expires_at', '>', static::PLAUSIBLE_SQL_DATETIME_CEIL)
+                ->orWhere('expires_at', '<', static::PLAUSIBLE_SQL_DATETIME_FLOOR);
+        });
+    }
+
+    /**
+     * SQL counterpart of ! isExpired().
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeWhereNotExpired($query)
+    {
+        return $query->where(function ($q) {
+            $q->whereExpiryIsMissing()
+                ->orWhere(function ($live) {
+                    $live->whereExpiryIsRecorded()
+                        ->where('expires_at', '>', now());
+                });
+        });
+    }
+
+    /**
+     * SQL counterpart of isExpired() — used by content:purge-expired.
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeWhereExpired($query)
+    {
+        return $query->whereExpiryIsRecorded()
+            ->where('expires_at', '<=', now());
+    }
+
+    /**
+     * Leftover archived_at is not a staff archive (same as Site).
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeNotArchived($query)
+    {
+        return $query->where(function ($q) {
+            $q->whereNull('archived_at')
+                ->orWhere('archived_at', '>', static::PLAUSIBLE_SQL_DATETIME_CEIL)
+                ->orWhere('archived_at', '<', static::PLAUSIBLE_SQL_DATETIME_FLOOR);
+        });
+    }
+
+    /**
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeArchived($query)
+    {
+        return $query->whereNotNull('archived_at')
+            ->where('archived_at', '>=', static::PLAUSIBLE_SQL_DATETIME_FLOOR)
+            ->where('archived_at', '<=', static::PLAUSIBLE_SQL_DATETIME_CEIL);
+    }
+
     public function isExpired(): bool
     {
         // Match content:purge-expired (`expires_at <= now()`). Carbon isPast() is
         // strictly before now, which would leave the exact expiry instant orderable
         // in the UI while the nightly strip already treats it as expired.
-        return $this->expires_at !== null && ! $this->expires_at->isFuture();
+        try {
+            $at = $this->expires_at;
+        } catch (\Throwable) {
+            return false;
+        }
+
+        return $at !== null && ! $at->isFuture();
     }
 
     public function hasStoredFile(): bool
@@ -1011,40 +1121,55 @@ class ContentSubmission extends Model
      */
     public function isLockedByPaidOrder(): bool
     {
+        return $this->paidClaimOrderId() !== null;
+    }
+
+    /**
+     * Paid, non-cancelled owner or item. Prefers the live placement over a
+     * stale leftover that still has order_id / a failed line pointing here.
+     */
+    public function paidClaimOrderId(): ?int
+    {
         $owner = $this->relatedOwnerOrder();
         if ($owner instanceof Order
             && $owner->status !== 'cancelled'
             && $owner->payment_status === 'paid') {
-            return true;
+            return (int) $owner->id;
         }
 
         if (! Schema::hasColumn('order_items', 'content_submission_id')) {
-            return false;
+            return null;
         }
 
         if ($this->relationLoaded('orderItems')) {
-            return $this->orderItems->contains(function (OrderItem $item) {
+            foreach ($this->orderItems as $item) {
                 if ($item->isClawedBack()) {
-                    return false;
+                    continue;
                 }
 
                 $order = $item->relationLoaded('order')
                     ? $item->order
                     : $item->order()->first();
 
-                return $order instanceof Order
+                if ($order instanceof Order
                     && $order->status !== 'cancelled'
-                    && $order->payment_status === 'paid';
-            });
+                    && $order->payment_status === 'paid') {
+                    return (int) $order->id;
+                }
+            }
+
+            return null;
         }
 
-        return $this->orderItems()
+        $item = $this->orderItems()
             ->whereHas('order', function ($q) {
                 $q->where('status', '!=', 'cancelled')
                     ->where('payment_status', 'paid');
             })
-            ->tap(fn ($item) => $this->excludeClawedBackItems($item))
-            ->exists();
+            ->tap(fn ($row) => $this->excludeClawedBackItems($row))
+            ->first();
+
+        return $item ? (int) $item->order_id : null;
     }
 
     /**
@@ -1062,6 +1187,10 @@ class ContentSubmission extends Model
      */
     public function canReplaceUnpaidLeftover(): bool
     {
+        if ($this->isLockedByPaidOrder()) {
+            return false;
+        }
+
         $owner = $this->relatedOwnerOrder();
         if ($owner instanceof Order) {
             return $this->orderLooksLikeReplaceableLeftover($owner);
@@ -1266,6 +1395,10 @@ class ContentSubmission extends Model
             return $this->evaluationSummary();
         }
 
+        if ($this->isLockedByPaidOrder()) {
+            return self::PAID_ORDER_CLAIM_MESSAGE;
+        }
+
         if ($this->hasImages() && ! $this->imageRightsCoverContent()) {
             return 'This article contains images. Confirm you own them, or add the source URL or copyright details.';
         }
@@ -1277,9 +1410,6 @@ class ContentSubmission extends Model
         // order_id leftovers cannot be ordered again, but they stay editable
         // until paid. Do not hide the Pay-again notice just because
         // canBeOrdered() is false.
-        if ($this->isLockedByPaidOrder()) {
-            return self::PAID_ORDER_CLAIM_MESSAGE;
-        }
 
         if ($this->isClaimedByAnotherOrder()) {
             return self::ACTIVE_ORDER_CLAIM_MESSAGE;
@@ -1310,7 +1440,13 @@ class ContentSubmission extends Model
 
     public function isArchived(): bool
     {
-        return $this->archived_at !== null;
+        try {
+            $at = $this->archived_at;
+        } catch (\Throwable) {
+            return false;
+        }
+
+        return $at instanceof \DateTimeInterface;
     }
 
     public function archive(): void
@@ -1383,6 +1519,16 @@ class ContentSubmission extends Model
      */
     public function libraryOrder(): ?Order
     {
+        $paidId = $this->paidClaimOrderId();
+        if ($paidId) {
+            $owner = $this->relatedOwnerOrder();
+            if ($owner instanceof Order && (int) $owner->id === $paidId) {
+                return $owner;
+            }
+
+            return Order::query()->find($paidId);
+        }
+
         $claimId = $this->activeClaimOrderId();
         if ($claimId) {
             $owner = $this->relatedOwnerOrder();
@@ -1429,6 +1575,15 @@ class ContentSubmission extends Model
         }
 
         return trim((string) $item->live_url) ?: null;
+    }
+
+    /**
+     * Library / admin placement row. Prefer the paid live line over a stale
+     * leftover that still owns order_item_id.
+     */
+    public function libraryPlacementItem(): ?OrderItem
+    {
+        return $this->currentPaidPlacementItem() ?: $this->placementItem();
     }
 
     /**
@@ -1543,7 +1698,7 @@ class ContentSubmission extends Model
         }
 
         if ($this->isInUse() || $this->isLockedByPaidOrder()) {
-            $claimId = (int) ($this->order_id ?? 0);
+            $claimId = (int) ($this->paidClaimOrderId() ?? $this->order_id ?? 0);
             if ($claimId <= 0) {
                 $claimId = (int) ($this->activeClaimOrderId() ?? 0);
             }
@@ -1905,6 +2060,7 @@ class ContentSubmission extends Model
                     $q->orWhere('publisher_status', 'completed');
                 }
             });
+        $this->constrainPaidOpenPlacement($itemQuery);
     }
 
     /**
@@ -2084,6 +2240,11 @@ class ContentSubmission extends Model
      */
     public function activeClaimOrderId(): ?int
     {
+        $paidId = $this->paidClaimOrderId();
+        if ($paidId) {
+            return $paidId;
+        }
+
         $owner = $this->relatedOwnerOrder();
         if ($owner instanceof Order && $this->orderLooksLikeActiveClaim($owner)) {
             return (int) $owner->id;
@@ -2134,7 +2295,11 @@ class ContentSubmission extends Model
     public function isReadyToFulfill(?int $orderId = null): bool
     {
         if ($this->isClaimedByAnotherOrder($orderId)) {
-            return false;
+            $paidId = $this->paidClaimOrderId();
+            // A stale leftover line must not block the paid placement.
+            if ($orderId === null || $paidId === null || (int) $orderId !== (int) $paidId) {
+                return false;
+            }
         }
 
         // Do not call isReadyForCheckout() here: that gate also rejects leftover
