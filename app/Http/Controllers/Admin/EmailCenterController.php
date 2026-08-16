@@ -566,6 +566,13 @@ class EmailCenterController extends Controller
             return false;
         }
 
+        // Generic default keys are per email, not per campaign. A prior
+        // campaign delivery to the same address must not swallow a later
+        // campaign's leftover — retry would never fire.
+        if (! $this->deliveredSiblingIsSameCampaignSend($log, $delivered)) {
+            return false;
+        }
+
         $log->update([
             'status' => EmailLog::STATUS_DELIVERED,
             'error' => null,
@@ -578,6 +585,67 @@ class EmailCenterController extends Controller
         $this->syncCampaignRecipientFromDeliveredLog($delivered);
 
         return true;
+    }
+
+    /**
+     * Canonical `audience_campaign:{id}:user:{id}` already names one send.
+     * The generic default key (`audience_campaign|{email}|…`) is reused
+     * across campaigns, so the delivered sibling must be the same
+     * campaign (and user when both rows have one).
+     */
+    protected function deliveredSiblingIsSameCampaignSend(EmailLog $leftover, EmailLog $delivered): bool
+    {
+        $leftoverKey = (string) $leftover->dedupe_key;
+        if (str_starts_with($leftoverKey, 'audience_campaign:')
+            && $leftoverKey === (string) $delivered->dedupe_key) {
+            return true;
+        }
+
+        $leftoverCampaign = $this->campaignIdFromLog($leftover);
+        $deliveredCampaign = $this->campaignIdFromLog($delivered);
+        if ($leftoverCampaign < 1 || $deliveredCampaign < 1) {
+            return false;
+        }
+
+        if ($leftoverCampaign !== $deliveredCampaign) {
+            return false;
+        }
+
+        $leftoverUser = $this->userIdFromLog($leftover);
+        $deliveredUser = $this->userIdFromLog($delivered);
+        if ($leftoverUser > 0 && $deliveredUser > 0 && $leftoverUser !== $deliveredUser) {
+            return false;
+        }
+
+        return true;
+    }
+
+    protected function campaignIdFromLog(EmailLog $log): int
+    {
+        $campaignId = (int) data_get($log->meta, 'campaign_id');
+        if ($campaignId > 0) {
+            return $campaignId;
+        }
+
+        if (preg_match('/^audience_campaign:(\d+):user:(\d+)$/', (string) $log->dedupe_key, $matches)) {
+            return (int) $matches[1];
+        }
+
+        return 0;
+    }
+
+    protected function userIdFromLog(EmailLog $log): int
+    {
+        $userId = (int) data_get($log->meta, 'user_id');
+        if ($userId > 0) {
+            return $userId;
+        }
+
+        if (preg_match('/^audience_campaign:(\d+):user:(\d+)$/', (string) $log->dedupe_key, $matches)) {
+            return (int) $matches[2];
+        }
+
+        return 0;
     }
 
     protected function payloadAlreadyDelivered(string $payload): bool

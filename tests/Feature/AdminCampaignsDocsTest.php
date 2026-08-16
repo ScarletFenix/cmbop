@@ -42,6 +42,7 @@ class AdminCampaignsDocsTest extends TestCase
         $this->assertStringContainsString('second retry doubles the send', $body);
         $this->assertStringContainsString('must **not** skip a recipient whose', $body);
         $this->assertStringContainsString('queued row with a pending Email Center log', $body);
+        $this->assertStringContainsString('must **not** treat a generic `audience_campaign|{email}|…` leftover', $body);
         $this->assertStringContainsString('only one failed log per job UUID', $body);
         $this->assertStringContainsString('drop that job UUID from the retry list', $body);
         $this->assertStringContainsString('must also clear the fail streak', $body);

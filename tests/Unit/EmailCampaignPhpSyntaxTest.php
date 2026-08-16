@@ -107,6 +107,10 @@ class EmailCampaignPhpSyntaxTest extends TestCase
         $inventory = (string) file_get_contents($files[2]);
         $this->assertSame(1, preg_match_all('/function recipientRowQuery\b/', $inventory));
 
+        $center = (string) file_get_contents($files[3]);
+        $this->assertSame(1, preg_match_all('/function deliveredSiblingIsSameCampaignSend\b/', $center));
+        $this->assertSame(1, preg_match_all('/function campaignIdFromLog\b/', $center));
+
         $model = (string) file_get_contents($files[0]);
         $this->assertSame(1, preg_match_all('/function reclaimOrphanedQueuedRecipients\b/', $model));
         $this->assertSame(1, preg_match_all('/function inFlightCampaignMailUserIds\b/', $model));
