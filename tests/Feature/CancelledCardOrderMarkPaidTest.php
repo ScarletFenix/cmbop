@@ -2946,10 +2946,14 @@ class CancelledCardOrderMarkPaidTest extends TestCase
 
         $fresh = $submission->fresh()->load(['order', 'orderItems.order']);
         $this->assertTrue($fresh->isLockedByPaidOrder());
-        $this->assertTrue($fresh->canReplaceUnpaidLeftover());
+        $this->assertFalse($fresh->canReplaceUnpaidLeftover());
         $this->assertTrue($fresh->isContentReadyForOrder());
         $this->assertFalse($fresh->canOrderFromLibrary());
         $this->assertSame(ContentSubmission::PAID_ORDER_CLAIM_MESSAGE, $fresh->editorNotice());
+        $this->assertTrue($fresh->isReadyToFulfill((int) $paid->id));
+        $this->assertFalse($fresh->isReadyToFulfill((int) $leftover->id));
+        $this->assertSame('in_progress', $fresh->libraryAvailability());
+        $this->assertSame($paid->id, (int) $fresh->libraryOrder()?->id);
 
         $this->actingAs($advertiser)
             ->from(route('advertiser.content-library'))
@@ -3092,5 +3096,83 @@ class CancelledCardOrderMarkPaidTest extends TestCase
         $this->assertTrue($fresh->isReadyToFulfill((int) $leftover->id));
         $this->assertFalse($fresh->isReadyToFulfill(null));
         $this->assertFalse($fresh->canOrderFromLibrary());
+    }
+
+    public function test_expired_leftover_plus_paid_lock_does_not_send_order_to_pay_again(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher, 'expired-paid-lock.example');
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'title' => 'Expired Paid Lock',
+            'expires_at' => now()->subDay(),
+        ]);
+
+        $paid = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-EXPIRED-PAID-LOCK',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'status' => 'pending',
+            'paid_at' => now(),
+        ]);
+        OrderItem::create([
+            'order_id' => $paid->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/paid',
+            'content_submission_id' => $submission->id,
+            'price' => 80,
+        ]);
+        $leftover = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-EXPIRED-STALE-LEFTOVER',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'failed',
+            'status' => 'pending',
+        ]);
+        $leftoverItem = OrderItem::create([
+            'order_id' => $leftover->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/stale',
+            'content_submission_id' => $submission->id,
+            'price' => 80,
+        ]);
+        $submission->update([
+            'order_id' => $leftover->id,
+            'order_item_id' => $leftoverItem->id,
+        ]);
+
+        $fresh = $submission->fresh()->load(['order', 'orderItems.order']);
+        $this->assertTrue($fresh->isExpired());
+        $this->assertTrue($fresh->isLockedByPaidOrder());
+        $this->assertFalse($fresh->canReplaceUnpaidLeftover());
+        $this->assertFalse($fresh->canOrderFromLibrary());
+        $this->assertTrue($fresh->isReadyToFulfill((int) $paid->id));
+        $this->assertFalse($fresh->isReadyToFulfill((int) $leftover->id));
+        $this->assertSame('in_progress', $fresh->libraryAvailability());
+
+        $this->actingAs($advertiser)
+            ->from(route('advertiser.content-library'))
+            ->get(route('advertiser.content-library.order', $submission))
+            ->assertRedirect(route('advertiser.orders'))
+            ->assertSessionHas('error', ContentSubmission::PAID_ORDER_CLAIM_MESSAGE);
+
+        $leftover->refresh();
+        $this->assertSame('pending', $leftover->status);
+        $this->assertSame('failed', $leftover->payment_status);
+        $this->assertSame($leftover->id, (int) $submission->fresh()->order_id);
     }
 }
