@@ -204,6 +204,9 @@ and add-site / deposit reminders keep their own queries.
 - Transactional `PlatformMailable` drops after `MAIL_MAX_AGE_HOURS` (24).
   Campaign mail uses `MAIL_CAMPAIGN_MAX_AGE_HOURS` (72). A dropped send marks
   the recipient `skipped` (`stale`, `preference`, or `disabled`).
+  Transactional `isDuplicate()` must not look like “no prior send” when
+  `email_logs` cannot be read — the send is held instead of blasting a
+  Welcome / order retry again.
 
 ## Signed unsubscribe
 

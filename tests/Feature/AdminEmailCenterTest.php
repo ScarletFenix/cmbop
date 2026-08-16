@@ -740,6 +740,44 @@ class AdminEmailCenterTest extends TestCase
         ]);
     }
 
+    public function test_is_duplicate_holds_send_when_email_logs_cannot_be_read(): void
+    {
+        $mail = EmailCatalog::makeMailable('welcome');
+        $this->assertNotNull($mail);
+        $mail->dedupeKey = 'welcome|customer@example.com|WelcomeEmail';
+
+        Schema::rename('email_logs', 'email_logs_hidden_dedupe');
+        Schema::create('email_logs', function ($table) {
+            $table->id();
+        });
+
+        $isDuplicate = new \ReflectionMethod($mail, 'isDuplicate');
+        $this->expectException(\Throwable::class);
+        try {
+            $isDuplicate->invoke($mail, $mail->dedupeKey);
+        } finally {
+            Schema::dropIfExists('email_logs');
+            if (Schema::hasTable('email_logs_hidden_dedupe')) {
+                Schema::rename('email_logs_hidden_dedupe', 'email_logs');
+            }
+        }
+    }
+
+    public function test_is_duplicate_still_allows_send_when_email_logs_table_is_missing(): void
+    {
+        $mail = EmailCatalog::makeMailable('welcome');
+        $this->assertNotNull($mail);
+        $mail->dedupeKey = 'welcome|customer@example.com|WelcomeEmail';
+
+        Schema::rename('email_logs', 'email_logs_hidden_missing');
+        try {
+            $isDuplicate = new \ReflectionMethod($mail, 'isDuplicate');
+            $this->assertFalse($isDuplicate->invoke($mail, $mail->dedupeKey));
+        } finally {
+            Schema::rename('email_logs_hidden_missing', 'email_logs');
+        }
+    }
+
     public function test_successful_send_updates_failed_log_with_same_dedupe_key(): void
     {
         $admin = $this->userWithRole('admin');
