@@ -143,6 +143,22 @@ class EmailCampaignPhpSyntaxTest extends TestCase
         $this->assertSame(1, preg_match_all('/function deliveredSiblingIsSameCampaignSend\b/', $center));
         $this->assertSame(1, preg_match_all('/function campaignIdFromLog\b/', $center));
 
+        $log = (string) file_get_contents($root.'/app/Models/EmailLog.php');
+        $this->assertSame(1, preg_match_all('/function latestDeliveredForCampaignUser\b/', $log));
+        $this->assertSame(1, preg_match_all('/function pendingUserIdsForCampaign\b/', $log));
+        $this->assertSame(1, preg_match_all('/function campaignUserIds\b/', $log));
+        $this->assertTrue((bool) preg_match(
+            '/public static function campaignUserIds\(self \$log\): array\s*\{(.*?)\n    \/\*\*/s',
+            $log,
+            $ids
+        ));
+        $this->assertStringContainsString('template_key', $ids[1]);
+        $this->assertSame(
+            0,
+            preg_match_all('/->limit\(100\)/', $log),
+            'latestDeliveredForCampaignUser must not cap a global 100-row scan'
+        );
+
         $model = (string) file_get_contents($files[0]);
         $this->assertSame(1, preg_match_all('/function reclaimOrphanedQueuedRecipients\b/', $model));
         $this->assertTrue((bool) preg_match(
@@ -186,6 +202,7 @@ class EmailCampaignPhpSyntaxTest extends TestCase
         ));
         $this->assertStringContainsString('audience_campaign|', $campaignLog[1]);
         $this->assertStringContainsString('notification_type', $campaignLog[1]);
+        $this->assertStringContainsString("str_starts_with((string) \$log->template_key, 'audience_campaign')", $campaignLog[1]);
         $this->assertSame(1, preg_match_all('/function queuedMailablePayloads\b/', $model));
         $this->assertSame(1, preg_match_all('/function mailConnectionIsInline\b/', $model));
         $this->assertTrue((bool) preg_match(

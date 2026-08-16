@@ -1512,7 +1512,7 @@ class EmailCampaign extends Model
 
     protected static function isCampaignEmailLog(EmailLog $log): bool
     {
-        if ((string) $log->template_key === 'audience_campaign'
+        if (str_starts_with((string) $log->template_key, 'audience_campaign')
             || (string) $log->notification_type === 'audience_campaign') {
             return true;
         }
