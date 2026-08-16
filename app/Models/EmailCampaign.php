@@ -434,6 +434,12 @@ class EmailCampaign extends Model
             return 0;
         }
 
+        $deliveredIds = EmailLog::deliveredUserIdsForCampaign((int) $campaign->id);
+        if ($deliveredIds === null) {
+            return 0;
+        }
+        $holdUserIds = array_merge($holdUserIds, $deliveredIds);
+
         $query = EmailCampaignRecipient::query()
             ->where('email_campaign_id', $campaign->id)
             ->where('status', EmailCampaignRecipient::STATUS_QUEUED)
@@ -782,9 +788,13 @@ class EmailCampaign extends Model
 
         $cutoff = now()->subMinutes(max(1, $staleMinutes));
         $attachedIds = self::healQueuedRecipientsWithTerminalLog();
+        // Delivered attach must not wait the stall window. LogSentEmail can
+        // persist a delivered row and miss the FK; a young queued leftover
+        // then looks like an orphan and reclaim dispatches a second send.
+        // Failed-log attach still waits — a just-retried row must not be
+        // killed by an older failure.
         $rows = EmailCampaignRecipient::query()
             ->whereNull('email_log_id')
-            ->where('updated_at', '<=', $cutoff)
             ->where(function ($query) {
                 $query->where('status', EmailCampaignRecipient::STATUS_QUEUED)
                     ->orWhere(function ($skipped) {
@@ -930,6 +940,11 @@ class EmailCampaign extends Model
             // Expire already parked the row. Only a delivered log proves the
             // mail went out — do not revive a stale skip from an old failure.
             if ($staleSkip && ! $deliveredLog) {
+                continue;
+            }
+            if (! $deliveredLog
+                && $row->updated_at
+                && $row->updated_at->greaterThan($cutoff)) {
                 continue;
             }
 
@@ -1082,9 +1097,18 @@ class EmailCampaign extends Model
             // failed_jobs is not a live backlog: reclaim still holds
             // those users, but expire must close the 72h orphan.
             $blocked = $inFlight === null ? [] : array_fill_keys($inFlight, true);
+            $deliveredIds = EmailLog::deliveredUserIdsForCampaign($campaignId);
+            if ($deliveredIds === null) {
+                continue;
+            }
+            $deliveredBlocked = array_fill_keys($deliveredIds, true);
 
             foreach ($group as $row) {
-                if ($inFlight !== null && isset($blocked[(int) $row->user_id])) {
+                $userId = (int) $row->user_id;
+                if ($inFlight !== null && isset($blocked[$userId])) {
+                    continue;
+                }
+                if (isset($deliveredBlocked[$userId])) {
                     continue;
                 }
 
