@@ -133,6 +133,21 @@ class AudienceCampaignMail extends PlatformMailable
         }
     }
 
+    /**
+     * parent::send() fills an empty key with type|email|class. That string
+     * is not the one-shot campaign key, so isDuplicate() misses a real
+     * delivery and Email Center leftover rows cannot find their sibling.
+     */
+    protected function defaultDedupeKey(?string $type, ?User $recipient): ?string
+    {
+        [$campaignId, $userId] = $this->campaignAndUserIds();
+        if ($campaignId > 0 && $userId > 0) {
+            return EmailCampaignRecipient::dedupeKey($campaignId, $userId);
+        }
+
+        return parent::defaultDedupeKey($type, $recipient);
+    }
+
     protected function skipReasonForSuppressedSend(): string
     {
         if ($this->suppressReason === 'stale' || $this->isStale()) {
