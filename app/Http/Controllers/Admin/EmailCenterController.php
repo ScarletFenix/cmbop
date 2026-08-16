@@ -645,19 +645,44 @@ class EmailCenterController extends Controller
         }
 
         $dedupe = MailJobPayload::dedupeKey($payload);
-        if (! is_string($dedupe) || ! str_starts_with($dedupe, 'audience_campaign:')) {
+        if (is_string($dedupe) && str_starts_with($dedupe, 'audience_campaign:')) {
+            if (EmailLog::latestDeliveredByDedupe($dedupe) !== null) {
+                return true;
+            }
+            if (preg_match('/^audience_campaign:(\d+):user:(\d+)$/', $dedupe, $matches)
+                && EmailLog::latestDeliveredForCampaignUser((int) $matches[1], (int) $matches[2])) {
+                return true;
+            }
+        }
+
+        // Leftover jobs may only serialize ModelIdentifier ids, or the
+        // shared generic key. That key is per email, not per campaign —
+        // only campaign+user identity is safe.
+        if (! str_contains($payload, 'AudienceCampaignMail')
+            && ! str_contains($payload, 'audience_campaign')) {
             return false;
         }
 
-        if (EmailLog::latestDeliveredByDedupe($dedupe) !== null) {
-            return true;
+        $campaignIds = MailJobPayload::modelIdentifierIds($payload, EmailCampaign::class);
+        if (preg_match_all('/audience_campaign:(\d+):user:(\d+)/', $payload, $pairs, PREG_SET_ORDER)) {
+            foreach ($pairs as $pair) {
+                $campaignIds[] = (int) $pair[1];
+            }
+        }
+        $campaignIds = array_values(array_unique(array_filter(
+            $campaignIds,
+            static fn (int $id): bool => $id > 0
+        )));
+
+        foreach ($campaignIds as $campaignId) {
+            foreach (MailJobPayload::campaignMailUserIds($payload, $campaignId) as $userId) {
+                if (EmailLog::latestDeliveredForCampaignUser($campaignId, $userId)) {
+                    return true;
+                }
+            }
         }
 
-        if (! preg_match('/^audience_campaign:(\d+):user:(\d+)$/', $dedupe, $matches)) {
-            return false;
-        }
-
-        return EmailLog::latestDeliveredForCampaignUser((int) $matches[1], (int) $matches[2]) !== null;
+        return false;
     }
 
     protected function isOneShotCampaignLog(EmailLog $log): bool

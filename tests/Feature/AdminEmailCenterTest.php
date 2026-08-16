@@ -3862,6 +3862,96 @@ class AdminEmailCenterTest extends TestCase
         $this->assertTrue(DB::table('failed_jobs')->where('uuid', $mailUuid)->exists());
     }
 
+    public function test_bulk_retry_skips_model_identifier_job_that_already_delivered(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $mailUuid = (string) Str::uuid();
+        $campaign = EmailCampaign::create([
+            'name' => 'Model id already sent',
+            'subject' => 'Model id already sent',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'sent_count' => 1,
+            'status' => EmailCampaign::STATUS_SENT,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => AudienceCampaignMail::class,
+            'template_key' => 'audience_campaign',
+            'notification_type' => 'audience_campaign',
+            'dedupe_key' => 'audience_campaign|'.$advertiser->email.'|AudienceCampaignMail',
+            'to_email' => $advertiser->email,
+            'subject' => 'Model id already sent',
+            'status' => EmailLog::STATUS_DELIVERED,
+            'sent_at' => now()->subHours(2),
+            'meta' => [
+                'campaign_id' => $campaign->id,
+                'user_id' => $advertiser->id,
+            ],
+        ]);
+
+        $command = 'O:36:"Illuminate\\Mail\\SendQueuedMailable":1:{s:8:"mailable";O:32:"App\\Mail\\AudienceCampaignMail":2:{s:8:"campaign";O:45:"Illuminate\\Contracts\\Database\\ModelIdentifier":2:{s:5:"class";s:24:"App\\Models\\EmailCampaign";s:2:"id";i:'.$campaign->id.';}s:9:"recipient";O:45:"Illuminate\\Contracts\\Database\\ModelIdentifier":2:{s:5:"class";s:15:"App\\Models\\User";s:2:"id";i:'.$advertiser->id.';}}}';
+        DB::table('failed_jobs')->insert([
+            'uuid' => $mailUuid,
+            'connection' => 'database',
+            'queue' => 'emails',
+            'payload' => json_encode([
+                'displayName' => AudienceCampaignMail::class,
+                'data' => [
+                    'commandName' => 'Illuminate\\Mail\\SendQueuedMailable',
+                    'command' => $command,
+                ],
+                'to' => $advertiser->email,
+            ], JSON_UNESCAPED_SLASHES),
+            'exception' => 'Timed out after SMTP',
+            'failed_at' => now(),
+        ]);
+
+        Artisan::shouldReceive('call')->never();
+
+        $this->actingAs($admin)
+            ->from(route('admin.emails.index'))
+            ->post(route('admin.emails.retry'))
+            ->assertRedirect(route('admin.emails.index'))
+            ->assertSessionHas('success');
+
+        $this->assertTrue(DB::table('failed_jobs')->where('uuid', $mailUuid)->exists());
+        $this->assertSame(0, EmailLog::query()->where('status', EmailLog::STATUS_FAILED)->count());
+    }
+
+    public function test_welcome_failed_still_records_after_an_old_delivery(): void
+    {
+        $user = $this->userWithRole('advertiser');
+        $key = 'welcome|'.$user->email.'|WelcomeEmail';
+        $old = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => WelcomeEmail::class,
+            'template_key' => 'welcome',
+            'dedupe_key' => $key,
+            'to_email' => $user->email,
+            'subject' => 'Welcome',
+            'status' => EmailLog::STATUS_DELIVERED,
+            'sent_at' => now()->subDays(3),
+        ]);
+        $old->forceFill([
+            'created_at' => now()->subDays(3),
+            'updated_at' => now()->subDays(3),
+        ])->save();
+
+        $mailable = new WelcomeEmail($user);
+        $mailable->dedupeKey = $key;
+        $mailable->failed(new \RuntimeException('SMTP down'));
+
+        $this->assertSame(1, EmailLog::query()
+            ->where('dedupe_key', $key)
+            ->where('status', EmailLog::STATUS_FAILED)
+            ->count());
+    }
+
     private function campaignMailJobPayload(string $email, string $dedupe): string
     {
         return json_encode([

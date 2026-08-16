@@ -108,7 +108,7 @@ or marketing, even if that staff account also has a marketplace role.
    leftovers only. A leftover pending Email Center log for a skipped-stale recipient is failed so retry can see it — but not while that user's `AudienceCampaignMail` is still on the queue, or a second retry doubles the send.
    An unused database table without `payload` must **not** block pending-log expire — a healthy empty mail queue must still close lost Welcome rows.
 5. Individual `AudienceCampaignMail` failures mark that recipient `failed`
-   (`error`) and recount. If a `sent` campaign later has no queued/delivered
+   (`error`) and recount. A worker timeout after SMTP already succeeded must **not** invent a leftover failed Email Center log — retry would blast again. Leftover open logs for the same send are closed as delivered, not failed. Bulk retry must also skip a leftover job that only serializes ModelIdentifier campaign+user ids after that send already delivered. If a `sent` campaign later has no queued/delivered
    rows left, status is downgraded to `failed`. A late `marketing_emails`
    opt-out, before the queued mail actually sends, is honored when
    `respect_preferences` is on. If Email Center disables the
