@@ -1247,6 +1247,29 @@ class OrderPaymentService
         return array_values(array_unique($ids));
     }
 
+    /**
+     * cancelAndRefund already returned this capture after mark-paid found the
+     * library article unusable. Webhook / finalize last-resort credits must
+     * not stack a second wallet credit for the same Stripe object.
+     */
+    private function stripeCaptureAlreadyRefunded(string $referenceCode, object $session): bool
+    {
+        $ids = $this->stripeCaptureIds($session);
+        if ($ids === [] || $referenceCode === '') {
+            return false;
+        }
+
+        return Order::query()
+            ->where('reference_code', $referenceCode)
+            ->where('payment_method', 'card')
+            ->where('payment_status', 'refunded')
+            ->where(function ($query) use ($ids) {
+                $query->whereIn('stripe_session_id', $ids)
+                    ->orWhereIn('stripe_payment_intent_id', $ids);
+            })
+            ->exists();
+    }
+
     private function creditUnfulfilledFromStripeObject(
         int $userId,
         string $referenceCode,
@@ -2186,6 +2209,10 @@ class OrderPaymentService
      */
     private function creditCapturedCardWhenPackageMissing(string $referenceCode, object $session): float
     {
+        if ($this->stripeCaptureAlreadyRefunded($referenceCode, $session)) {
+            return 0.0;
+        }
+
         $meta = $this->sessionMetadataArray($session);
         $userId = isset($meta['user_id']) ? (int) $meta['user_id'] : 0;
         $amount = isset($meta['expected_amount']) && $meta['expected_amount'] !== ''
@@ -2210,6 +2237,10 @@ class OrderPaymentService
      */
     public function creditCapturedCardWhenAlreadySettled(string $referenceCode, object $session): float
     {
+        if ($this->stripeCaptureAlreadyRefunded($referenceCode, $session)) {
+            return 0.0;
+        }
+
         $paidOrders = Order::query()
             ->where('reference_code', $referenceCode)
             ->where('payment_method', 'card')
