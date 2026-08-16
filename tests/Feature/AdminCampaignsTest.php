@@ -3426,6 +3426,51 @@ class AdminCampaignsTest extends TestCase
         $this->assertSame([12, 34], EmailLog::campaignUserIds($log));
     }
 
+    public function test_campaign_user_ids_returns_zeros_when_log_has_no_identity(): void
+    {
+        $log = new EmailLog([
+            'dedupe_key' => 'audience_campaign|buyer@example.com|AudienceCampaignMail',
+            'template_key' => 'audience_campaign',
+            'meta' => null,
+        ]);
+
+        $this->assertSame([0, 0], EmailLog::campaignUserIds($log));
+    }
+
+    public function test_open_for_campaign_user_finds_generic_key_leftover(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $campaign = EmailCampaign::create([
+            'name' => 'Generic leftover',
+            'subject' => 'Generic leftover',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'sent_count' => 1,
+            'status' => EmailCampaign::STATUS_SENT,
+            'respect_preferences' => false,
+            'created_by' => $this->makeUser('admin')->id,
+        ]);
+        $leftover = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => AudienceCampaignMail::class,
+            'template_key' => 'audience_campaign',
+            'dedupe_key' => 'audience_campaign|'.$advertiser->email.'|AudienceCampaignMail',
+            'to_email' => $advertiser->email,
+            'subject' => 'Generic leftover',
+            'status' => EmailLog::STATUS_PENDING,
+            'attempts' => 1,
+            'meta' => [
+                'campaign_id' => $campaign->id,
+                'user_id' => $advertiser->id,
+            ],
+        ]);
+
+        $open = EmailLog::openForCampaignUser((int) $campaign->id, (int) $advertiser->id);
+
+        $this->assertTrue($open->contains('id', $leftover->id));
+    }
+
     public function test_job_stays_sending_while_mail_is_only_queued(): void
     {
         Mail::fake();
@@ -4485,17 +4530,6 @@ class AdminCampaignsTest extends TestCase
             $campaign->recipients()->where('user_id', $advertiser->id)->value('status')
         );
         $this->assertSame(0, EmailLog::query()->where('status', EmailLog::STATUS_DELIVERED)->count());
-    }
-
-    public function test_campaign_user_ids_read_canonical_template_key(): void
-    {
-        $log = new EmailLog([
-            'dedupe_key' => 'audience_campaign|buyer@example.com|AudienceCampaignMail',
-            'template_key' => 'audience_campaign:12:user:34',
-            'meta' => null,
-        ]);
-
-        $this->assertSame([12, 34], EmailLog::campaignUserIds($log));
     }
 
     public function test_stall_recovery_does_not_reclaim_queued_row_for_another_campaign_mailable(): void
