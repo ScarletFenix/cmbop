@@ -404,7 +404,8 @@ class EmailCampaign extends Model
      *
      * Email Center retry pending-marks the log and leaves the recipient
      * queued. A missed jobs-table scan must not reclaim that row and
-     * dispatch a send job beside the retried mailable.
+     * dispatch a send job beside the retried mailable. An unreadable
+     * email_logs table must not look like “no pending retries”.
      */
     protected static function reclaimOrphanedQueuedRecipients(self $campaign): int
     {
@@ -422,14 +423,11 @@ class EmailCampaign extends Model
         }
 
         $holdUserIds = $inFlight;
-        try {
-            $holdUserIds = array_merge(
-                $holdUserIds,
-                EmailLog::pendingUserIdsForCampaign((int) $campaign->id)
-            );
-        } catch (\Throwable) {
+        $pendingHoldUserIds = EmailLog::pendingUserIdsForCampaign((int) $campaign->id);
+        if ($pendingHoldUserIds === null) {
             return 0;
         }
+        $holdUserIds = array_merge($holdUserIds, $pendingHoldUserIds);
 
         $query = EmailCampaignRecipient::query()
             ->where('email_campaign_id', $campaign->id)

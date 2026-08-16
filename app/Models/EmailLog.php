@@ -182,9 +182,12 @@ class EmailLog extends Model
      * Recipients with a pending Email Center row for this campaign.
      * Includes leftover generic-key retries that only store the pair in meta.
      *
-     * @return list<int>
+     * Null means email_logs could not be read. Reclaim must fail-closed
+     * instead of treating an unread table as "no pending retries".
+     *
+     * @return list<int>|null
      */
-    public static function pendingUserIdsForCampaign(int $campaignId): array
+    public static function pendingUserIdsForCampaign(int $campaignId): ?array
     {
         if ($campaignId < 1) {
             return [];
@@ -210,7 +213,7 @@ class EmailLog extends Model
                 }
             }
         } catch (\Throwable) {
-            return [];
+            return null;
         }
 
         return array_map('intval', array_keys($ids));
