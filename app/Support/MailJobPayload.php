@@ -136,6 +136,36 @@ class MailJobPayload
     }
 
     /**
+     * audience_campaign:{id}:user:{id} keys encoded in this jobs payload.
+     * Covers a stamped dedupeKey and SerializesModels ModelIdentifiers
+     * when the mailable was queued without that token.
+     *
+     * @return list<string>
+     */
+    public static function campaignDedupeKeys(string $payload): array
+    {
+        $keys = [];
+        foreach (self::payloadHaystacks($payload) as $haystack) {
+            if (preg_match_all('/audience_campaign:(\d+):user:(\d+)/', $haystack, $matches, PREG_SET_ORDER)) {
+                foreach ($matches as $match) {
+                    $keys[] = 'audience_campaign:'.$match[1].':user:'.$match[2];
+                }
+            }
+        }
+
+        if ($keys === []
+            && str_contains($payload, 'AudienceCampaignMail')) {
+            foreach (self::modelIdentifierIds($payload, EmailCampaign::class) as $campaignId) {
+                foreach (self::modelIdentifierIds($payload, User::class) as $userId) {
+                    $keys[] = 'audience_campaign:'.$campaignId.':user:'.$userId;
+                }
+            }
+        }
+
+        return array_values(array_unique($keys));
+    }
+
+    /**
      * Match campaign 12 without treating i:123; or "campaignId":123 as a hit.
      * Database-queue rows JSON-escape the serialized command.
      */

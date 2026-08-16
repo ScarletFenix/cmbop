@@ -55,6 +55,36 @@ class MailJobPayloadTest extends TestCase
         $this->assertFalse(MailJobPayload::containsCampaignMail($payload, 1));
         $this->assertSame([34], MailJobPayload::campaignMailUserIds($payload, 12));
         $this->assertSame([], MailJobPayload::campaignMailUserIds($payload, 123));
+        $this->assertSame(['audience_campaign:12:user:34'], MailJobPayload::campaignDedupeKeys($payload));
+    }
+
+    public function test_campaign_dedupe_keys_from_model_identifier_without_dedupe_key(): void
+    {
+        $campaign = new EmailCampaign([
+            'subject' => 'Hi',
+            'body_html' => '<p>x</p>',
+            'audience' => 'advertisers',
+        ]);
+        $campaign->id = 12;
+        $user = new User(['email' => 'queued@example.com', 'name' => 'Queued']);
+        $user->id = 34;
+        $mailable = new AudienceCampaignMail($campaign, $user);
+        $mailable->notificationType = 'audience_campaign';
+        $mailable->dedupeKey = null;
+
+        $raw = serialize($mailable);
+        $json = json_encode([
+            'displayName' => AudienceCampaignMail::class,
+            'data' => [
+                'commandName' => 'Illuminate\\Mail\\SendQueuedMailable',
+                'command' => $raw,
+            ],
+        ], JSON_THROW_ON_ERROR);
+
+        $this->assertSame(['audience_campaign:12:user:34'], MailJobPayload::campaignDedupeKeys($raw));
+        $this->assertSame(['audience_campaign:12:user:34'], MailJobPayload::campaignDedupeKeys($json));
+        $this->assertSame([12], MailJobPayload::modelIdentifierIds($raw, EmailCampaign::class));
+        $this->assertSame([34], MailJobPayload::modelIdentifierIds($raw, User::class));
     }
 
     public function test_contains_campaign_mail_matches_model_identifier_without_dedupe_key(): void
