@@ -1168,6 +1168,141 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
         $this->assertEqualsWithDelta(80.0, (float) $wallet->balance, 0.01);
     }
 
+    public function test_finalize_does_not_stack_unfulfilled_credit_after_unready_leftover_refund(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher, 'finalize-unready.example', 80);
+        $wallet = $this->advertiserWallet($advertiser, 0);
+        $submission = $this->createApprovedSubmission($advertiser);
+        $ref = 'FINALIZE-UNREADY-1';
+        $payments = app(OrderPaymentService::class);
+
+        $order = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => $ref,
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'failed',
+            'status' => 'pending',
+        ]);
+        $item = OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_submission_id' => $submission->id,
+            'content_link' => 'https://example.com/a',
+            'price' => 80,
+        ]);
+        $submission->update([
+            'order_id' => $order->id,
+            'order_item_id' => $item->id,
+            'target_url' => null,
+        ]);
+
+        $session = $this->paidSession($ref, 80, 'cs_finalize_unready');
+        $session->metadata->user_id = (string) $advertiser->id;
+
+        $paid = $payments->finalizeStripeFirstCheckout($ref, $session);
+
+        $this->assertCount(0, $paid);
+        $fresh = $order->fresh();
+        $this->assertSame('cancelled', $fresh->status);
+        $this->assertSame('refunded', $fresh->payment_status);
+        $this->assertNull($submission->fresh()->order_id);
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(80.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(0.0, $payments->unfulfilledCardCreditAmount($ref), 0.01);
+        $this->assertEqualsWithDelta(80.0, $payments->refundedCardOrderAmount($ref), 0.01);
+        $this->assertEqualsWithDelta(80.0, $payments->walletCreditForUnfulfillableCardCheckout($ref), 0.01);
+    }
+
+    public function test_already_settled_credit_does_not_stack_after_unready_sibling_refund(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $siteA = $this->makeSite($publisher, 'unready-sibling-a.example', 80);
+        $siteB = $this->makeSite($publisher, 'unready-sibling-b.example', 80);
+        $wallet = $this->advertiserWallet($advertiser, 0);
+        $articleB = $this->createApprovedSubmission($advertiser, $siteB->id);
+        $ref = 'UNREADY-SIBLING-1';
+        $payments = app(OrderPaymentService::class);
+
+        $orderA = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => $ref,
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'paid',
+            'status' => 'pending',
+            'paid_at' => now(),
+        ]);
+        OrderItem::create([
+            'order_id' => $orderA->id,
+            'site_id' => $siteA->id,
+            'site_name' => $siteA->site_name,
+            'site_url' => $siteA->site_url,
+            'content_link' => 'https://example.com/a',
+            'price' => 80,
+        ]);
+
+        $orderB = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => $ref,
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'failed',
+            'status' => 'pending',
+        ]);
+        $itemB = OrderItem::create([
+            'order_id' => $orderB->id,
+            'site_id' => $siteB->id,
+            'site_name' => $siteB->site_name,
+            'site_url' => $siteB->site_url,
+            'content_submission_id' => $articleB->id,
+            'content_link' => 'https://example.com/b',
+            'price' => 80,
+        ]);
+        $articleB->update([
+            'order_id' => $orderB->id,
+            'order_item_id' => $itemB->id,
+            'target_url' => null,
+        ]);
+
+        $session = $this->paidSession($ref, 80, 'cs_unready_sibling');
+        $session->metadata->user_id = (string) $advertiser->id;
+
+        $paid = $payments->finalizeStripeFirstCheckout($ref, $session);
+
+        $this->assertCount(0, $paid);
+        $this->assertSame('refunded', $orderB->fresh()->payment_status);
+        $this->assertSame('cancelled', $orderB->fresh()->status);
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(80.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(0.0, $payments->unfulfilledCardCreditAmount($ref), 0.01);
+        $this->assertEqualsWithDelta(80.0, $payments->refundedCardOrderAmount($ref), 0.01);
+
+        $this->assertEqualsWithDelta(
+            0.0,
+            $payments->creditCapturedCardWhenAlreadySettled($ref, $session),
+            0.01
+        );
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(80.0, (float) $wallet->balance, 0.01);
+    }
+
     public function test_hidden_sibling_does_not_stack_credit_on_unready_leftover_refund(): void
     {
         $advertiser = $this->makeUser('advertiser');
