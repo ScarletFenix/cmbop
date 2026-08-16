@@ -55,7 +55,10 @@ class MailQueueConnectionTest extends TestCase
 
     public function test_drain_is_a_no_op_when_mail_is_sent_synchronously(): void
     {
-        config(['email_notifications.queue_connection' => 'sync']);
+        config([
+            'email_notifications.queue_connection' => 'sync',
+            'queue.default' => 'sync',
+        ]);
 
         $this->artisan('mail:drain-queue')
             ->expectsOutputToContain('there is no queue to drain')

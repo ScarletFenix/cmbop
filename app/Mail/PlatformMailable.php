@@ -354,8 +354,13 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
     protected function isDuplicate(string $key): bool
     {
         try {
-            if (! Schema::hasTable((new EmailLog)->getTable())) {
+            $table = (new EmailLog)->getTable();
+            if (! Schema::hasTable($table)) {
                 return false;
+            }
+            if (! Schema::hasColumn($table, 'dedupe_key')
+                || ! Schema::hasColumn($table, 'status')) {
+                throw new \RuntimeException('email_logs is missing dedupe columns');
             }
 
             $minutes = (int) config('email_notifications.dedupe_window_minutes', 10);
