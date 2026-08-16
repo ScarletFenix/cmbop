@@ -503,6 +503,12 @@ class ContentLibraryController extends Controller
 
         abort_unless((int) $submission->user_id === (int) auth()->id(), 403);
 
+        if ($submission->isLockedByPaidOrder()) {
+            return redirect()
+                ->route('advertiser.orders')
+                ->with('error', ContentSubmission::PAID_ORDER_CLAIM_MESSAGE);
+        }
+
         if (! $submission->isContentReadyForOrder()) {
             // Expired leftovers can still Pay again on the open order, but they
             // cannot start a new catalog checkout. Unready leftovers (links /

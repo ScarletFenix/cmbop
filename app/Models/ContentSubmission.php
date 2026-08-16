@@ -1097,40 +1097,55 @@ class ContentSubmission extends Model
      */
     public function isLockedByPaidOrder(): bool
     {
+        return $this->paidClaimOrderId() !== null;
+    }
+
+    /**
+     * Paid, non-cancelled owner or item. Prefers the live placement over a
+     * stale leftover that still has order_id / a failed line pointing here.
+     */
+    public function paidClaimOrderId(): ?int
+    {
         $owner = $this->relatedOwnerOrder();
         if ($owner instanceof Order
             && $owner->status !== 'cancelled'
             && $owner->payment_status === 'paid') {
-            return true;
+            return (int) $owner->id;
         }
 
         if (! Schema::hasColumn('order_items', 'content_submission_id')) {
-            return false;
+            return null;
         }
 
         if ($this->relationLoaded('orderItems')) {
-            return $this->orderItems->contains(function (OrderItem $item) {
+            foreach ($this->orderItems as $item) {
                 if ($item->isClawedBack()) {
-                    return false;
+                    continue;
                 }
 
                 $order = $item->relationLoaded('order')
                     ? $item->order
                     : $item->order()->first();
 
-                return $order instanceof Order
+                if ($order instanceof Order
                     && $order->status !== 'cancelled'
-                    && $order->payment_status === 'paid';
-            });
+                    && $order->payment_status === 'paid') {
+                    return (int) $order->id;
+                }
+            }
+
+            return null;
         }
 
-        return $this->orderItems()
+        $item = $this->orderItems()
             ->whereHas('order', function ($q) {
                 $q->where('status', '!=', 'cancelled')
                     ->where('payment_status', 'paid');
             })
-            ->tap(fn ($item) => $this->excludeClawedBackItems($item))
-            ->exists();
+            ->tap(fn ($row) => $this->excludeClawedBackItems($row))
+            ->first();
+
+        return $item ? (int) $item->order_id : null;
     }
 
     /**
@@ -1148,6 +1163,10 @@ class ContentSubmission extends Model
      */
     public function canReplaceUnpaidLeftover(): bool
     {
+        if ($this->isLockedByPaidOrder()) {
+            return false;
+        }
+
         $owner = $this->relatedOwnerOrder();
         if ($owner instanceof Order) {
             return $this->orderLooksLikeReplaceableLeftover($owner);
@@ -1475,6 +1494,16 @@ class ContentSubmission extends Model
      */
     public function libraryOrder(): ?Order
     {
+        $paidId = $this->paidClaimOrderId();
+        if ($paidId) {
+            $owner = $this->relatedOwnerOrder();
+            if ($owner instanceof Order && (int) $owner->id === $paidId) {
+                return $owner;
+            }
+
+            return Order::query()->find($paidId);
+        }
+
         $claimId = $this->activeClaimOrderId();
         if ($claimId) {
             $owner = $this->relatedOwnerOrder();
@@ -1635,7 +1664,7 @@ class ContentSubmission extends Model
         }
 
         if ($this->isInUse() || $this->isLockedByPaidOrder()) {
-            $claimId = (int) ($this->order_id ?? 0);
+            $claimId = (int) ($this->paidClaimOrderId() ?? $this->order_id ?? 0);
             if ($claimId <= 0) {
                 $claimId = (int) ($this->activeClaimOrderId() ?? 0);
             }
@@ -2226,7 +2255,11 @@ class ContentSubmission extends Model
     public function isReadyToFulfill(?int $orderId = null): bool
     {
         if ($this->isClaimedByAnotherOrder($orderId)) {
-            return false;
+            $paidId = $this->paidClaimOrderId();
+            // A stale leftover line must not block the paid placement.
+            if ($orderId === null || $paidId === null || (int) $orderId !== (int) $paidId) {
+                return false;
+            }
         }
 
         // Do not call isReadyForCheckout() here: that gate also rejects leftover
