@@ -144,7 +144,15 @@ class User extends Authenticatable implements MustVerifyEmail
 
     public function payoutProfileLocked(): bool
     {
-        return $this->payout_profile_locked_at !== null;
+        if ($this->payout_profile_locked_at !== null) {
+            return true;
+        }
+
+        // Hostinger leftover strings cast to null. A junk lock stamp is still
+        // a lock — fail-closed so publishers cannot rewrite bank details.
+        $raw = $this->getAttributes()['payout_profile_locked_at'] ?? null;
+
+        return is_string($raw) && trim($raw) !== '';
     }
 
     /**
