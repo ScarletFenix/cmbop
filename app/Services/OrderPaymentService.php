@@ -76,6 +76,11 @@ class OrderPaymentService
 
                 return collect();
             }
+            if ($hasMarkable && ! $this->consumeAppliedLeftoverCreditForMarkPaid($orders, $meta, $referenceCode)) {
+                $amountMismatch = true;
+
+                return collect();
+            }
 
             $newlyPaid = collect();
 
@@ -95,20 +100,18 @@ class OrderPaymentService
                 }
             }
 
+            if ($hasMarkable && $newlyPaid->isEmpty() && $this->appliedLeftoverCreditFromMeta($meta) > 0.009) {
+                throw new \RuntimeException(
+                    'Consumed leftover card credit but no leftover could be marked paid for ref '.$referenceCode
+                );
+            }
+
             if ($newlyPaid->isNotEmpty()) {
                 $this->rereserveReleasedCheckoutBonus(
                     (int) $newlyPaid->first()->user_id,
                     $referenceCode,
                     (float) ($meta['bonus_applied'] ?? 0)
                 );
-                $appliedCredit = round((float) ($meta['unfulfilled_credit_applied'] ?? 0), 2);
-                if ($appliedCredit > 0.009) {
-                    $this->consumeUnfulfilledCardCreditForLeftover(
-                        (int) $newlyPaid->first()->user_id,
-                        $referenceCode,
-                        $appliedCredit
-                    );
-                }
             }
 
             // Keep leftover checkout bonus reserved until approve/reject.
@@ -176,6 +179,11 @@ class OrderPaymentService
 
                 return collect();
             }
+            if ($hasMarkable && ! $this->consumeAppliedLeftoverCreditForMarkPaid($orders, $meta, $referenceCode)) {
+                $amountMismatch = true;
+
+                return collect();
+            }
 
             $newlyPaid = collect();
             foreach ($orders as $order) {
@@ -193,20 +201,18 @@ class OrderPaymentService
                 }
             }
 
+            if ($hasMarkable && $newlyPaid->isEmpty() && $this->appliedLeftoverCreditFromMeta($meta) > 0.009) {
+                throw new \RuntimeException(
+                    'Consumed leftover card credit but no leftover could be marked paid for ref '.$referenceCode
+                );
+            }
+
             if ($newlyPaid->isNotEmpty()) {
                 $this->rereserveReleasedCheckoutBonus(
                     (int) $newlyPaid->first()->user_id,
                     $referenceCode,
                     (float) ($meta['bonus_applied'] ?? 0)
                 );
-                $appliedCredit = round((float) ($meta['unfulfilled_credit_applied'] ?? 0), 2);
-                if ($appliedCredit > 0.009) {
-                    $this->consumeUnfulfilledCardCreditForLeftover(
-                        (int) $newlyPaid->first()->user_id,
-                        $referenceCode,
-                        $appliedCredit
-                    );
-                }
             }
 
             // Keep leftover checkout bonus reserved until approve/reject.
@@ -1130,13 +1136,15 @@ class OrderPaymentService
 
         return (float) DB::transaction(function () use ($userId, $roleId, $amount, $reference, $referenceCode) {
             $wallet = Wallet::lockOrCreateForRole($userId, $roleId);
-            if (Schema::hasTable((new WalletTransaction)->getTable())
-                && WalletTransaction::query()
+            if (Schema::hasTable((new WalletTransaction)->getTable())) {
+                $already = WalletTransaction::query()
                     ->where('wallet_id', $wallet->id)
                     ->where('direction', 'debit')
                     ->where('reference', $reference)
-                    ->exists()) {
-                return 0.0;
+                    ->first();
+                if ($already) {
+                    return round((float) $already->amount, 2);
+                }
             }
 
             $apply = round(min($amount, $wallet->withdrawableBalance()), 2);
@@ -1157,6 +1165,37 @@ class OrderPaymentService
 
             return $apply;
         });
+    }
+
+    /**
+     * @param  Collection<int, Order>  $orders
+     * @param  array<string, mixed>  $meta
+     */
+    private function consumeAppliedLeftoverCreditForMarkPaid(
+        Collection $orders,
+        array $meta,
+        string $referenceCode
+    ): bool {
+        $appliedCredit = $this->appliedLeftoverCreditFromMeta($meta);
+        if ($appliedCredit <= 0.009) {
+            return true;
+        }
+
+        $userId = (int) ($orders->first()?->user_id ?? ($meta['user_id'] ?? 0));
+        if ($userId <= 0) {
+            return false;
+        }
+
+        return $this->consumeUnfulfilledCardCreditForLeftover($userId, $referenceCode, $appliedCredit) + 0.009
+            >= $appliedCredit;
+    }
+
+    /**
+     * @param  array<string, mixed>  $meta
+     */
+    private function appliedLeftoverCreditFromMeta(array $meta): float
+    {
+        return round((float) ($meta['unfulfilled_credit_applied'] ?? 0), 2);
     }
 
     /**

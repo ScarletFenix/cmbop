@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Site;
 use App\Models\SiteClaim;
 use App\Services\ActivityLogger;
+use App\Services\Catalog\SiteUrlVisibility;
 use App\Services\SiteClaimTransferService;
 use App\Support\NormalizesHttpUrls;
 use Illuminate\Http\Request;
@@ -23,20 +24,23 @@ class SiteClaimController extends Controller
      */
     public function index(Request $request)
     {
+        $user = auth()->user();
         $claims = SiteClaim::query()
-            ->with(['site:id,site_name,domain', 'reviewer:id,name'])
-            ->where('claimer_id', auth()->id())
+            ->with(['site:id,site_name,domain,site_url,publisher_id', 'reviewer:id,name'])
+            ->where('claimer_id', $user->id)
             ->latest('id')
             ->paginate(20)
             ->withQueryString();
+
+        SiteClaim::applyCatalogIdentity($claims->getCollection(), $user);
 
         if ($request->wantsJson()) {
             return response()->json([
                 'success' => true,
                 'claims' => $claims->getCollection()->map(fn (SiteClaim $c) => [
                     'id' => $c->id,
-                    'site_name' => $c->site?->site_name ?: $c->website_name,
-                    'domain' => $c->domain,
+                    'site_name' => $c->display_name,
+                    'domain' => $c->display_host,
                     'name_matches' => (bool) $c->name_matches,
                     'status' => $c->status,
                     'admin_notes' => $c->admin_notes,
@@ -91,14 +95,37 @@ class SiteClaimController extends Controller
             ], 422);
         }
 
-        $websiteUrl = $data['website_url'] ?? $site->site_url;
-        if (! $websiteUrl && $site->domain) {
-            $websiteUrl = 'https://'.$site->domain;
+        $claimer = auth()->user();
+        $visibility = app(SiteUrlVisibility::class);
+        $canSeeListing = $claimer && $visibility->canSee($claimer, $site);
+
+        // Hide mode must not fill name/URL from the listing. Claiming by
+        // site_id and then opening My Claims used to print the real domain.
+        if (! $canSeeListing && empty($data['website_url'])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Please enter the website URL. We cannot fill it in from the catalog while names are hidden.',
+            ], 422);
+        }
+
+        $websiteUrl = $data['website_url'] ?? null;
+        if (! $websiteUrl && $canSeeListing) {
+            $websiteUrl = $site->site_url ?: ($site->domain ? 'https://'.$site->domain : null);
         }
 
         $websiteName = trim((string) ($data['website_name'] ?? ''));
-        if ($websiteName === '') {
+        if ($websiteName === '' && $canSeeListing) {
             $websiteName = (string) $site->site_name;
+        }
+        if ($websiteName === '') {
+            $websiteName = 'Ownership claim';
+        }
+
+        if (! is_string($websiteUrl) || $websiteUrl === '') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Please enter a valid website URL.',
+            ], 422);
         }
 
         $domain = $site->domain ?: $this->extractDomain((string) $websiteUrl);

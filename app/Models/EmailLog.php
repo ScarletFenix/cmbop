@@ -158,18 +158,38 @@ class EmailLog extends Model
         } catch (\Throwable) {
         }
 
+        // JSON meta path can miss leftover generic-key rows. Do not scan
+        // the newest 100 campaign emails site-wide — a later burst hides
+        // this user's delivery and isDuplicate() blasts again.
+        $email = null;
         try {
-            foreach (static::query()
+            $email = User::query()->whereKey($userId)->value('email');
+        } catch (\Throwable) {
+        }
+        $email = is_string($email) && $email !== '' ? $email : null;
+        $generic = $email !== null
+            ? 'audience_campaign|'.$email.'|AudienceCampaignMail'
+            : null;
+
+        try {
+            $query = static::query()
                 ->where('status', self::STATUS_DELIVERED)
-                ->where(function ($query) {
-                    $query->where('notification_type', 'audience_campaign')
+                ->where(function ($type) {
+                    $type->where('notification_type', 'audience_campaign')
                         ->orWhere('template_key', 'audience_campaign')
                         ->orWhere('mailable', 'like', '%AudienceCampaignMail%')
                         ->orWhere('dedupe_key', 'like', 'audience_campaign%');
-                })
-                ->orderByDesc('id')
-                ->limit(100)
-                ->get() as $log) {
+                });
+            if ($email !== null) {
+                $query->where(function ($who) use ($email, $generic) {
+                    $who->where('to_email', $email);
+                    if ($generic !== null) {
+                        $who->orWhere('dedupe_key', $generic);
+                    }
+                });
+            }
+
+            foreach ($query->orderByDesc('id')->cursor() as $log) {
                 [$foundCampaign, $foundUser] = static::campaignUserIds($log);
                 if ($foundCampaign === $campaignId && $foundUser === $userId) {
                     return $log;
@@ -190,7 +210,7 @@ class EmailLog extends Model
      *
      * @return list<int>|null
      */
-    public static function pendingUserIdsForCampaign(int $campaignId): ?array
+    public static function pendingUserIdsForCampaign(int $campaignId, ?\DateTimeInterface $updatedAfter = null): ?array
     {
         if ($campaignId < 1) {
             return [];
@@ -209,7 +229,14 @@ class EmailLog extends Model
                         ->orWhere('mailable', 'like', '%AudienceCampaignMail%')
                         ->orWhere('dedupe_key', 'like', 'audience_campaign|%');
                 })
-                ->get(['id', 'dedupe_key', 'meta', 'notification_type', 'template_key', 'mailable']) as $log) {
+                ->get(['id', 'dedupe_key', 'meta', 'notification_type', 'template_key', 'mailable', 'updated_at']) as $log) {
+                if ($updatedAfter !== null
+                    && $log->updated_at
+                    && ! $log->updated_at->greaterThan($updatedAfter)) {
+                    // Stale pending = lost retry. Expire may close it.
+                    // Missing/unreadable clocks stay held (fail-closed).
+                    continue;
+                }
                 [$foundCampaign, $foundUser] = static::campaignUserIds($log);
                 if ($foundCampaign === $campaignId && $foundUser > 0) {
                     $ids[$foundUser] = true;

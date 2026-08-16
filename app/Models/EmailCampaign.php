@@ -1144,7 +1144,7 @@ class EmailCampaign extends Model
             ->filter(fn (EmailLog $log) => filled($log->dedupe_key))
             ->groupBy('dedupe_key');
 
-        $campaignIds = [];
+        $healedCampaigns = [];
 
         foreach ($rows as $row) {
             $attached = $logsById->get((int) $row->email_log_id);
@@ -1158,6 +1158,16 @@ class EmailCampaign extends Model
             );
             if (! $deliveredLog && $attached?->status === EmailLog::STATUS_DELIVERED) {
                 $deliveredLog = $attached;
+            }
+            // Exact-key grouping misses a leftover generic
+            // audience_campaign|{email}|AudienceCampaignMail row. Trusting
+            // only the attached failed/pending FK then marked a real send
+            // failed and a later compose doubled the audience.
+            if (! $deliveredLog) {
+                $deliveredLog = EmailLog::latestDeliveredForCampaignUser(
+                    (int) $row->email_campaign_id,
+                    (int) $row->user_id
+                );
             }
 
             $pendingLogs = $group
@@ -1233,21 +1243,6 @@ class EmailCampaign extends Model
                 'skip_reason' => $delivered ? null : EmailCampaignRecipient::SKIP_ERROR,
             ]);
 
-            if ($staleSkip) {
-                $query->where('status', EmailCampaignRecipient::STATUS_SKIPPED)
-                    ->where('skip_reason', EmailCampaignRecipient::SKIP_STALE);
-            } else {
-                $query->where('status', $row->status);
-            }
-
-            $query->update([
-                'status' => $delivered
-                    ? EmailCampaignRecipient::STATUS_DELIVERED
-                    : EmailCampaignRecipient::STATUS_FAILED,
-                'email_log_id' => (int) $log->id,
-                'skip_reason' => $delivered ? null : EmailCampaignRecipient::SKIP_ERROR,
-            ]);
-
             $healedCampaigns[(int) $row->email_campaign_id] = true;
         }
 
@@ -1294,6 +1289,9 @@ class EmailCampaign extends Model
 
             foreach ($group as $row) {
                 if (isset($blocked[(int) $row->user_id])) {
+                    continue;
+                }
+                if (isset($pendingBlocked[$userId])) {
                     continue;
                 }
 
@@ -1479,15 +1477,21 @@ class EmailCampaign extends Model
 
     protected static function isCampaignEmailLog(EmailLog $log): bool
     {
-        if ((string) $log->template_key === 'audience_campaign') {
+        if ((string) $log->template_key === 'audience_campaign'
+            || (string) $log->notification_type === 'audience_campaign') {
             return true;
         }
 
-        if ((string) $log->mailable === AudienceCampaignMail::class) {
+        $mailable = (string) $log->mailable;
+        if ($mailable === AudienceCampaignMail::class
+            || str_contains($mailable, 'AudienceCampaignMail')) {
             return true;
         }
 
-        return str_starts_with((string) $log->dedupe_key, 'audience_campaign:');
+        $key = (string) $log->dedupe_key;
+
+        return str_starts_with($key, 'audience_campaign:')
+            || str_starts_with($key, 'audience_campaign|');
     }
 
     /**

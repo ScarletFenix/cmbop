@@ -162,10 +162,17 @@ class AudienceCampaignMail extends PlatformMailable
     /**
      * A historical send that wrote the generic default key must still
      * block a later job that uses `audience_campaign:{id}:user:{id}`.
+     *
+     * The generic string is per email, not per campaign. parent::isDuplicate()
+     * is one-shot for any `audience_campaign` key, so campaign 2 would be
+     * suppressed after campaign 1 mailed the same address under
+     * `audience_campaign|{email}|AudienceCampaignMail`. Only campaign+user
+     * identity is safe for that leftover shape.
      */
     protected function isDuplicate(string $key): bool
     {
-        if (parent::isDuplicate($key)) {
+        $sharedGenericKey = str_starts_with($key, 'audience_campaign|');
+        if (! $sharedGenericKey && parent::isDuplicate($key)) {
             return true;
         }
 
@@ -179,17 +186,22 @@ class AudienceCampaignMail extends PlatformMailable
                 return false;
             }
 
+            // latestDeliveredForCampaignUser() swallows query errors as
+            // "not delivered". Probe first so a locked table cannot look
+            // like a first-time send and blast someone who already got it.
+            EmailLog::query()->whereKey(0)->exists();
+
             $delivered = EmailLog::latestDeliveredForCampaignUser($campaignId, $userId);
 
             return $delivered !== null;
         } catch (\Throwable $e) {
-            Log::warning('Campaign sibling dedupe check failed; allowing send', [
+            Log::warning('Campaign sibling dedupe check failed; holding send', [
                 'campaign_id' => $campaignId,
                 'user_id' => $userId,
                 'error' => $e->getMessage(),
             ]);
 
-            return false;
+            throw $e;
         }
     }
 
