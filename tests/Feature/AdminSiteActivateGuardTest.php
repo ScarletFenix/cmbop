@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Mail\SiteStatusNotification;
 use App\Models\ActivityLog;
 use App\Models\BulkSiteRequest;
 use App\Models\BulkSiteRequestItem;
@@ -270,10 +271,35 @@ class AdminSiteActivateGuardTest extends TestCase
         $this->actingAs($this->marketer)
             ->postJson(route('marketing.sites.active', $site->id), ['active' => 1])
             ->assertOk()
-            ->assertJsonPath('success', true);
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('email_sent', false);
 
         $this->assertSame(1, ActivityLog::query()->where('action', 'site.activated')->count());
         $this->assertSame(1, ActivityLog::query()->where('action', 'site.approved')->count());
+        Mail::assertQueued(SiteStatusNotification::class, 1);
+    }
+
+    public function test_reverify_does_not_email_or_log_again(): void
+    {
+        $site = $this->site(['verified' => false, 'active' => false]);
+
+        $this->actingAs($this->admin)
+            ->postJson(route('admin.sites.verify', $site->id), ['verified' => 1])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('email_sent', true);
+
+        $this->assertSame(1, ActivityLog::query()->where('action', 'site.approved')->count());
+        Mail::assertQueued(SiteStatusNotification::class, 1);
+
+        $this->actingAs($this->admin)
+            ->postJson(route('admin.sites.verify', $site->id), ['verified' => 1])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('email_sent', false);
+
+        $this->assertSame(1, ActivityLog::query()->where('action', 'site.approved')->count());
+        Mail::assertQueued(SiteStatusNotification::class, 1);
     }
 
     public function test_marketer_list_allows_activate_for_unverified_review_site(): void

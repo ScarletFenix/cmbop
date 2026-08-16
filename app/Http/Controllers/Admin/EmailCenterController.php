@@ -357,7 +357,17 @@ class EmailCenterController extends Controller
             return back()->with('error', 'Could not retry mail jobs. Please try again.');
         }
 
-        $this->markRetriedMailLogsPending($this->actuallyRetriedJobUuids($uuids), $payloads);
+        $retried = $this->actuallyRetriedJobUuids($uuids);
+        $this->markRetriedMailLogsPending($retried, $payloads);
+
+        if ($retried !== []) {
+            ActivityLogger::tryLog(
+                'email.retried',
+                ($request->user()?->name ?? 'Admin').' retried '.count($retried).' failed mail job(s)',
+                null,
+                ['count' => count($retried)]
+            );
+        }
 
         return back()->with('success', 'Retried '.count($uuids).' failed mail job(s). Other failed jobs were left untouched.');
     }
@@ -397,6 +407,13 @@ class EmailCenterController extends Controller
                 'attempts' => max(1, (int) $log->attempts) + 1,
             ]);
             $this->requeueFailedCampaignRecipient($log);
+
+            ActivityLogger::tryLog(
+                'email.retried',
+                (auth()->user()?->name ?? 'Admin').' retried failed mail log #'.$log->id,
+                null,
+                ['count' => 1, 'log_id' => $log->id, 'template' => $log->template_key]
+            );
 
             return back()->with('success', 'Re-queued the failed mail job for this log.');
         }

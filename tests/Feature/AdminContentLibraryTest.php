@@ -1261,6 +1261,9 @@ class AdminContentLibraryTest extends TestCase
             ->assertSessionHas('success');
 
         $this->assertNotSame(ContentSubmission::STATUS_ERROR, $submission->fresh()->moderation_status);
+        $log = ActivityLog::query()->where('action', 'content.re_evaluated')->first();
+        $this->assertNotNull($log);
+        $this->assertSame($submission->id, (int) data_get($log->properties, 'submission_id'));
     }
 
     public function test_moderation_override_updates_linked_article(): void

@@ -685,6 +685,9 @@ class AdminEmailCenterTest extends TestCase
         // has a recipient — requireToken rejects the unique-class fallback.
         $this->assertSame(EmailLog::STATUS_FAILED, EmailLog::query()->first()->status);
         $this->assertTrue(DB::table('failed_jobs')->where('uuid', $otherUuid)->exists());
+        $retryLog = ActivityLog::query()->where('action', 'email.retried')->first();
+        $this->assertNotNull($retryLog);
+        $this->assertSame(1, (int) data_get($retryLog->properties, 'count'));
     }
 
     public function test_kpis_do_not_double_count_queue_jobs(): void

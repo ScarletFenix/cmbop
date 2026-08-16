@@ -2764,8 +2764,9 @@ class SiteController extends Controller
 
             $action = $site->verified ? 'site.approved' : 'site.rejected';
             $label = $site->verified ? 'approved' : 'rejected';
+            $verifiedChanged = $oldStatus !== (int) $site->verified;
 
-            if ($oldStatus !== (int) $site->verified) {
+            if ($verifiedChanged) {
                 ActivityLogger::log(
                     $action,
                     auth()->user()->name.' '.$label.' site "'.$site->site_name.'"',
@@ -2780,9 +2781,9 @@ class SiteController extends Controller
                 );
             }
 
-            // After verification: always refresh homepage screenshot.
+            // After a real verify: refresh homepage screenshot.
             // Skip automated metrics when the publisher entered DA/DR/traffic manually.
-            if ($site->verified && config('site_enrichment.enabled', true)) {
+            if ($verifiedChanged && $site->verified && config('site_enrichment.enabled', true)) {
                 $runMetrics = ! (bool) $site->metrics_manual;
                 EnrichSiteJob::dispatch($site->id, 'verify', $runMetrics, true);
             }
@@ -2798,17 +2799,19 @@ class SiteController extends Controller
             $status = $site->verified ? 'verified' : 'unverified';
             $notifyReason = $approving ? null : $reason;
 
-            try {
-                $publisher = $site->publisher;
-                if ($publisher && $publisher->email) {
-                    Mail::to($publisher->email)->send(new SiteStatusNotification($site, $status, null, $notifyReason));
-                    $emailSent = true;
+            if ($verifiedChanged) {
+                try {
+                    $publisher = $site->publisher;
+                    if ($publisher && $publisher->email) {
+                        Mail::to($publisher->email)->send(new SiteStatusNotification($site, $status, null, $notifyReason));
+                        $emailSent = true;
+                    }
+                    if ($publisher) {
+                        app(InAppNotificationService::class)->notifySiteStatusChanged($site->fresh(), $status, $notifyReason);
+                    }
+                } catch (\Exception $e) {
+                    Log::error('Failed to send verification notification: '.$e->getMessage());
                 }
-                if ($publisher) {
-                    app(InAppNotificationService::class)->notifySiteStatusChanged($site->fresh(), $status, $notifyReason);
-                }
-            } catch (\Exception $e) {
-                Log::error('Failed to send verification notification: '.$e->getMessage());
             }
 
             return response()->json([
@@ -2943,7 +2946,10 @@ class SiteController extends Controller
             $site->save();
             $this->syncLinkedBulkAfterSiteRemoved($site->bulk_site_request_id);
 
-            if ($oldStatus !== (int) $site->active) {
+            $activeChanged = $oldStatus !== (int) $site->active;
+            $justVerified = $verifyOnActivate && (int) $site->verified === 1;
+
+            if ($activeChanged) {
                 $action = $site->active ? 'site.activated' : 'site.deactivated';
                 $label = $site->active ? 'activated' : 'deactivated';
 
@@ -2962,7 +2968,7 @@ class SiteController extends Controller
                 );
             }
 
-            if ($verifyOnActivate && (int) $site->verified === 1) {
+            if ($justVerified) {
                 ActivityLogger::log(
                     'site.approved',
                     ($actor->name ?? 'Staff').' approved site "'.$site->site_name.'" (verified on activate)',
@@ -2993,17 +2999,19 @@ class SiteController extends Controller
                 ? 'Activated below the quality bar (DA ≥ 30, DR ≥ 30, traffic ≥ 10,000). Listing is live; consider updating metrics before promoting it.'
                 : null;
 
-            try {
-                $publisher = $site->publisher;
-                if ($publisher && $publisher->email) {
-                    Mail::to($publisher->email)->send(new SiteStatusNotification($site, $status, null, $notifyReason));
-                    $emailSent = true;
+            if ($activeChanged || $justVerified) {
+                try {
+                    $publisher = $site->publisher;
+                    if ($publisher && $publisher->email) {
+                        Mail::to($publisher->email)->send(new SiteStatusNotification($site, $status, null, $notifyReason));
+                        $emailSent = true;
+                    }
+                    if ($publisher) {
+                        app(InAppNotificationService::class)->notifySiteStatusChanged($site->fresh(), $status, $notifyReason);
+                    }
+                } catch (\Exception $e) {
+                    Log::error('Failed to send status notification: '.$e->getMessage());
                 }
-                if ($publisher) {
-                    app(InAppNotificationService::class)->notifySiteStatusChanged($site->fresh(), $status, $notifyReason);
-                }
-            } catch (\Exception $e) {
-                Log::error('Failed to send status notification: '.$e->getMessage());
             }
 
             return response()->json([

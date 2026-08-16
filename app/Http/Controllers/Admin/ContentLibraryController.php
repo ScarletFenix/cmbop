@@ -132,8 +132,22 @@ class ContentLibraryController extends Controller
             return back()->with('error', collect($e->errors())->flatten()->first() ?: 'Could not re-evaluate this article.');
         }
 
-        $status = (string) ($result['moderation_status'] ?? $submission->fresh()?->moderation_status);
+        $fresh = $submission->fresh() ?? $submission;
+        $status = (string) ($result['moderation_status'] ?? $fresh->moderation_status);
         $message = trim((string) ($result['message'] ?? ''));
+
+        ActivityLogger::tryLog(
+            'content.re_evaluated',
+            (auth()->user()?->name ?? 'Admin').' re-evaluated library article #'.$fresh->id,
+            $fresh,
+            [
+                'submission_id' => $fresh->id,
+                'user_id' => $fresh->user_id,
+                'moderation_status' => $status,
+                'approved' => (bool) ($result['approved'] ?? false),
+            ],
+            'Article #'.$fresh->id
+        );
 
         return back()->with(
             'success',
