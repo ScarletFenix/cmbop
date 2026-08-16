@@ -1152,8 +1152,12 @@ class OrderPaymentService
                 }
             }
 
+            // All-or-nothing: a shortfall used to debit whatever was left,
+            // then mark-paid returned false and committed the partial take.
+            // Pay again had already charged the card shortfall, so the
+            // leftover stayed failed and the advertiser lost wallet cash.
             $apply = round(min($amount, $wallet->withdrawableBalance()), 2);
-            if ($apply <= 0.009) {
+            if ($apply + 0.009 < $amount) {
                 return 0.0;
             }
 
@@ -1220,7 +1224,7 @@ class OrderPaymentService
 
         $newlyPaid = DB::transaction(function () use ($referenceCode, $userId, $applied) {
             $consumed = $this->consumeUnfulfilledCardCreditForLeftover($userId, $referenceCode, $applied);
-            if ($consumed <= 0.009) {
+            if ($consumed + 0.009 < $applied) {
                 return collect();
             }
 
