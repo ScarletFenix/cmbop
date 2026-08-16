@@ -2997,8 +2997,9 @@ class AdminCampaignsTest extends TestCase
 
         $mailable = new AudienceCampaignMail($campaign, $advertiser);
         $mailable->dedupeKey = $generic;
-        Mail::to($advertiser->email)->send($mailable);
+        $mailable->to($advertiser->email);
 
+        $this->assertNull($mailable->send(app('mailer')));
         $this->assertSame('duplicate', $mailable->suppressReason);
         $this->assertSame(EmailCampaignRecipient::STATUS_DELIVERED, $row->fresh()->status);
         $this->assertSame($delivered->id, $row->fresh()->email_log_id);
