@@ -46,11 +46,14 @@ class AdminCampaignsDocsTest extends TestCase
         $this->assertStringContainsString('meta.campaign_id', $body);
         $this->assertStringContainsString('audience_campaign|{email}|AudienceCampaignMail', $body);
         $this->assertStringContainsString('must **not** treat that shared generic key as one-shot', $body);
+        $this->assertStringContainsString('must not scan the newest 100', $body);
+        $this->assertStringContainsString('fresh pending Email Center log', $body);
         $this->assertStringContainsString('only one failed log per job UUID', $body);
         $this->assertStringContainsString('drop that job UUID from the retry list', $body);
         $this->assertStringContainsString('must also clear the fail streak', $body);
         $this->assertStringContainsString('already has a delivered/failed log FK', $body);
         $this->assertStringContainsString('must not beat a delivered log', $body);
+        $this->assertStringContainsString('must not beat a delivered sibling', $body);
         $this->assertStringContainsString('second database table without `payload`', $body);
         $this->assertStringContainsString('failed_jobs', $body);
         $this->assertStringContainsString('must **not** block expire', $body);

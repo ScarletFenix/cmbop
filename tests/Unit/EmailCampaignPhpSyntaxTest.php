@@ -93,6 +93,7 @@ class EmailCampaignPhpSyntaxTest extends TestCase
             $root.'/app/Http/Controllers/Admin/EmailCenterController.php',
             $root.'/app/Models/EmailLog.php',
             $root.'/tests/Unit/MailJobPayloadTest.php',
+            $root.'/tests/Feature/AdminCampaignsTest.php',
         ];
 
         foreach ($files as $path) {
@@ -113,6 +114,13 @@ class EmailCampaignPhpSyntaxTest extends TestCase
 
         $log = (string) file_get_contents($root.'/app/Models/EmailLog.php');
         $this->assertSame(1, preg_match_all('/function latestDeliveredForCampaignUser\b/', $log));
+        $this->assertTrue((bool) preg_match(
+            '/public static function latestDeliveredForCampaignUser\(int \$campaignId, int \$userId\): \?self\s*\{(.*?)\n    \/\*\*/s',
+            $log,
+            $latest
+        ));
+        $this->assertStringNotContainsString('limit(100)', $latest[1]);
+        $this->assertStringContainsString('audience_campaign|', $latest[1]);
         $this->assertSame(1, preg_match_all('/function pendingUserIdsForCampaign\b/', $log));
         $this->assertSame(1, preg_match_all('/function deliveredUserIdsForCampaign\b/', $log));
         $this->assertSame(1, preg_match_all('/function campaignUserIds\b/', $log));
@@ -131,11 +139,19 @@ class EmailCampaignPhpSyntaxTest extends TestCase
             $expire
         ));
         $this->assertStringContainsString('deliveredUserIdsForCampaign', $expire[1]);
+        $this->assertStringContainsString('pendingUserIdsForCampaign', $expire[1]);
         $this->assertSame(1, preg_match_all('/function inFlightCampaignMailUserIds\b/', $model));
         $this->assertSame(1, preg_match_all('/function healQueuedRecipientsWithTerminalLog\b/', $model));
         $this->assertSame(0, preg_match_all('/function syncQueuedRecipientsWithAttachedLogs\b/', $model));
         $this->assertSame(1, preg_match_all('/function failPendingLogsForStaleRecipients\b/', $model));
         $this->assertSame(1, preg_match_all('/function expireOrphanedPendingLogs\b/', $model));
+        $this->assertTrue((bool) preg_match(
+            '/protected static function isCampaignEmailLog\(EmailLog \$log\): bool\s*\{(.*?)\n    \/\*\*/s',
+            $model,
+            $campaignLog
+        ));
+        $this->assertStringContainsString('audience_campaign|', $campaignLog[1]);
+        $this->assertStringContainsString('notification_type', $campaignLog[1]);
         $this->assertSame(1, preg_match_all('/function queuedMailablePayloads\b/', $model));
         $this->assertTrue((bool) preg_match(
             '/protected static function healQueuedRecipientsWithTerminalLog\(\): array\s*\{(.*?)\n    \/\*\*/s',
@@ -150,6 +166,9 @@ class EmailCampaignPhpSyntaxTest extends TestCase
         $this->assertStringContainsString('dedupeKey(', $heal[1]);
         $this->assertStringContainsString('user_id', $heal[1]);
         $this->assertStringContainsString('STATUS_DELIVERED', $heal[1]);
+        $this->assertStringContainsString('latestDeliveredForCampaignUser', $heal[1]);
+        $this->assertSame(1, substr_count($heal[1], '$healedCampaigns = []'));
+        $this->assertSame(1, substr_count($heal[1], 'return array_keys($healedCampaigns);'));
         $this->assertTrue(
             (bool) preg_match(
                 '/expireOrphanedPendingLogs\(\);.*?healQueuedRecipientsWithTerminalLog\(\)/s',
