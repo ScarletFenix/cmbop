@@ -11,7 +11,6 @@ use App\Services\Advertiser\ContentLibrarySearchQuery;
 use App\Services\ContentUpload\ContentUploadService;
 use App\Services\Marketplace\CountryLanguagePairs;
 use App\Services\Marketplace\LanguageCountryMap;
-use App\Services\OrderPaymentService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -546,26 +545,6 @@ class ContentLibraryController extends Controller
                 $submission->libraryFixSummary()
                     ?: 'Only approved Content Library articles can be ordered. Please edit and resubmit if corrections are needed.'
             );
-        }
-
-        app(OrderPaymentService::class)->replaceUnpaidLeftoversForSubmissions(
-            (int) auth()->id(),
-            [(int) $submission->id]
-        );
-        $submission = $submission->fresh() ?? $submission;
-
-        // Master's Order-click replace skips expired leftovers. Those stay
-        // claimed, so canBeOrdered() / isReadyForCheckout() stay false.
-        // Wallet leftovers can still start a replacement checkout.
-        if ((! $submission->canBeOrdered() || ! $submission->isReadyForCheckout())
-            && ! $submission->canOrderFromLibrary()) {
-            $message = $submission->isExpired()
-                ? 'Expired articles are preview only and cannot be ordered.'
-                : ($submission->hasImages() && ! $submission->imageRightsCoverContent()
-                    ? ContentUploadService::imageRightsRequiredMessage()
-                    : ($submission->libraryFixSummary() ?: ContentSubmission::CHECKOUT_LINK_MESSAGE));
-
-            return $this->redirectToLibraryChip($submission, $message);
         }
 
         // Keep Pay again until the advertiser actually assigns this article
