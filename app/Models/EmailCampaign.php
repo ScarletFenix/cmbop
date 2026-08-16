@@ -434,17 +434,19 @@ class EmailCampaign extends Model
         }
 
         $holdUserIds = $inFlight;
-        $pendingHoldUserIds = EmailLog::pendingUserIdsForCampaign((int) $campaign->id);
-        if ($pendingHoldUserIds === null) {
+        $pendingIds = self::campaignLogUserIdsForStatus((int) $campaign->id, EmailLog::STATUS_PENDING);
+        if ($pendingIds === null) {
             return 0;
         }
-        $holdUserIds = array_merge($holdUserIds, $pendingHoldUserIds);
+        $holdUserIds = array_merge($holdUserIds, $pendingIds);
 
-        $deliveredIds = EmailLog::deliveredUserIdsForCampaign((int) $campaign->id);
-        if ($deliveredIds === null) {
-            return 0;
-        }
-        $holdUserIds = array_merge($holdUserIds, $deliveredIds);
+        // LogSentEmail can persist a delivered row and still miss the
+        // recipient FK. Reclaim before reconcile's stall window used to
+        // pending-mark that user and dispatch a second send.
+        $holdUserIds = array_merge(
+            $holdUserIds,
+            self::campaignLogUserIdsForStatus((int) $campaign->id, EmailLog::STATUS_DELIVERED) ?? []
+        );
 
         $query = EmailCampaignRecipient::query()
             ->where('email_campaign_id', $campaign->id)
@@ -460,6 +462,36 @@ class EmailCampaign extends Model
             'status' => EmailCampaignRecipient::STATUS_PENDING,
             'skip_reason' => null,
         ]);
+    }
+
+    /**
+     * User ids with an audience_campaign log in $status for this campaign.
+     * Null means the email_logs read failed — reclaim must fail-closed.
+     *
+     * @return list<int>|null
+     */
+    protected static function campaignLogUserIdsForStatus(int $campaignId, string $status): ?array
+    {
+        if ($campaignId < 1) {
+            return [];
+        }
+
+        try {
+            $prefix = 'audience_campaign:'.$campaignId.':user:';
+            $ids = [];
+            foreach (EmailLog::query()
+                ->where('status', $status)
+                ->where('dedupe_key', 'like', $prefix.'%')
+                ->pluck('dedupe_key') as $key) {
+                if (preg_match('/^'.preg_quote($prefix, '/').'(\d+)$/', (string) $key, $matches)) {
+                    $ids[] = (int) $matches[1];
+                }
+            }
+
+            return array_values(array_unique(array_filter($ids)));
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     /**
@@ -794,11 +826,9 @@ class EmailCampaign extends Model
 
         $cutoff = now()->subMinutes(max(1, $staleMinutes));
         $attachedIds = self::healQueuedRecipientsWithTerminalLog();
-        // Delivered attach must not wait the stall window. LogSentEmail can
-        // persist a delivered row and miss the FK; a young queued leftover
-        // then looks like an orphan and reclaim dispatches a second send.
-        // Failed-log attach still waits — a just-retried row must not be
-        // killed by an older failure.
+        // Delivered logs are attached even when the queued row is younger
+        // than the stall window. Waiting let reclaim dispatch a second send
+        // beside a MessageSent that had already written email_logs.
         $rows = EmailCampaignRecipient::query()
             ->whereNull('email_log_id')
             ->where(function ($query) {
@@ -960,11 +990,21 @@ class EmailCampaign extends Model
                 return;
             }
 
-            foreach ($pendingLogs as $pending) {
-                $pending->update([
-                    'status' => EmailLog::STATUS_FAILED,
-                    'error' => 'Closed: duplicate open log for the same send',
-                ]);
+            $log = $deliveredLog;
+            if (! $log && $failedLog) {
+                // Failed-log attach still waits out the stall window so a
+                // 10-second-old queued claim is not killed by an older
+                // leftover failure while Mail::send() is still running.
+                if ($row->updated_at && $row->updated_at->greaterThan($cutoff)) {
+                    continue;
+                }
+                // An older failed log must not kill a newer in-flight retry.
+                if ($failedLog->updated_at
+                    && $row->updated_at
+                    && ! $failedLog->updated_at->greaterThan($row->updated_at)) {
+                    continue;
+                }
+                $log = $failedLog;
             }
         }
 
@@ -1243,30 +1283,12 @@ class EmailCampaign extends Model
             // failed_jobs is not a live backlog: reclaim still holds
             // those users, but expire must close the 72h orphan.
             $blocked = $inFlight === null ? [] : array_fill_keys($inFlight, true);
-            $deliveredIds = EmailLog::deliveredUserIdsForCampaign($campaignId);
-            if ($deliveredIds === null) {
-                continue;
+            foreach (self::campaignLogUserIdsForStatus($campaignId, EmailLog::STATUS_DELIVERED) ?? [] as $userId) {
+                $blocked[$userId] = true;
             }
-            $deliveredBlocked = array_fill_keys($deliveredIds, true);
-            // Reclaim already holds a pending Email Center log. Expire
-            // must too: Email Center retry pending-marks the log and
-            // leaves an 80h queued leftover untouched. A missed jobs
-            // scan then skip-staled that row and failed the fresh
-            // pending log — a second retry sat beside the live mailable.
-            // Only a pending log newer than the 72h window is in-flight;
-            // an older one is a lost retry and still expires.
-            $pendingIds = EmailLog::pendingUserIdsForCampaign($campaignId, $cutoff);
-            if ($pendingIds === null) {
-                continue;
-            }
-            $pendingBlocked = array_fill_keys($pendingIds, true);
 
             foreach ($group as $row) {
-                $userId = (int) $row->user_id;
-                if ($inFlight !== null && isset($blocked[$userId])) {
-                    continue;
-                }
-                if (isset($deliveredBlocked[$userId])) {
+                if (isset($blocked[(int) $row->user_id])) {
                     continue;
                 }
                 if (isset($pendingBlocked[$userId])) {
@@ -1503,10 +1525,10 @@ class EmailCampaign extends Model
                     continue;
                 }
 
-                // Same trap as inFlight / hasQueuedSendJob: a missing
-                // payload column on the unused default must not abort a
-                // healthy mail-queue scan. That discarded the payloads
-                // and left lost Welcome rows pending forever.
+                // Same trap as reclaim: a second database table without
+                // payload (or a lock-timeout on the unused default) must
+                // not look like “mail still in flight”. That parked every
+                // lost Welcome/order pending log so retry could never run.
                 if (! Schema::hasColumn($table, 'payload')) {
                     continue;
                 }
@@ -1527,8 +1549,8 @@ class EmailCampaign extends Model
                     $mailScannedOk = true;
                 }
             } catch (\Throwable) {
-                // A lock-timeout on the unused default table must not
-                // discard a successful mail-queue scan.
+                // Unused default lock-timeout must not discard a successful
+                // mail-queue scan.
             }
         }
 

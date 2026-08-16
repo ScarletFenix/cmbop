@@ -92,6 +92,7 @@ or marketing, even if that staff account also has a marketplace role.
    it, reclaim reset the row to pending, and the next job blasted again. Sibling lookup must not scan the newest 100 campaign emails site-wide — a later burst hid a leftover generic-key delivery and `isDuplicate()` blasted again. Sibling dedupe must **not** treat that shared generic key as one-shot across campaigns, and must not look like “no prior delivery” when email_logs cannot be read — the send is held instead of blasting again. A delivered log still wins when a
    pending Email Center row exists for the same key — skipping that attach
    let expire mark a real send stale, and a later retry doubled it.
+   A delivered log is attached even when the queued row is younger than the stall window — waiting let reclaim dispatch a second send.
    Leftovers older than
    `MAIL_CAMPAIGN_MAX_AGE_HOURS` are skipped (`stale`) — a timeout can
    claim `pending` → `queued` and die before `Mail::send()` inserts the
@@ -104,7 +105,8 @@ or marketing, even if that staff account also has a marketplace role.
    when expire already flipped the row to skipped stale. Preference, disabled, and unverified skips stay skipped — a stray `MessageSent`
    or duplicate suppress must not hide an opt-out as a successful send.
    Recover also attaches a delivered `email_logs` row to those stale
-   leftovers only. A leftover pending Email Center log for a skipped-stale recipient is failed so retry can see it — but not while that user's `AudienceCampaignMail` is still on the queue, or a second retry doubles the send. Lost transactional pending logs (Welcome / orders) with no campaign recipient are failed after the mail age window when no matching `SendQueuedMailable` is on a readable database queue — retry only accepts failed. An unused queue table without `payload` must **not** abort that expire or those Welcome rows stay pending forever.
+   leftovers only. A leftover pending Email Center log for a skipped-stale recipient is failed so retry can see it — but not while that user's `AudienceCampaignMail` is still on the queue, or a second retry doubles the send.
+   An unused database table without `payload` must **not** block pending-log expire — a healthy empty mail queue must still close lost Welcome rows.
 5. Individual `AudienceCampaignMail` failures mark that recipient `failed`
    (`error`) and recount. If a `sent` campaign later has no queued/delivered
    rows left, status is downgraded to `failed`. A late `marketing_emails`

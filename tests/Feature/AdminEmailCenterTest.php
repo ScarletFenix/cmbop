@@ -2787,7 +2787,7 @@ class AdminEmailCenterTest extends TestCase
         $this->assertSame(EmailLog::STATUS_PENDING, $log->fresh()->status);
     }
 
-    public function test_recover_fails_orphaned_pending_log_when_unused_queue_table_lacks_payload(): void
+    public function test_recover_expires_pending_when_only_an_unused_queue_table_lacks_payload(): void
     {
         Schema::create('jobs_broken_pending_expire', function ($table) {
             $table->id();
@@ -2821,17 +2821,19 @@ class AdminEmailCenterTest extends TestCase
         $this->assertSame('Expired: mail job was not confirmed', $log->fresh()->error);
     }
 
-    public function test_recover_keeps_pending_log_when_mail_queue_table_lacks_payload(): void
+    public function test_recover_does_not_expire_pending_when_mail_queue_table_lacks_payload(): void
     {
-        Schema::create('jobs_broken_mail_pending_expire', function ($table) {
+        Schema::create('jobs_broken_mail_pending', function ($table) {
             $table->id();
             $table->string('queue')->nullable();
         });
         config([
             'email_notifications.queue_connection' => 'broken-db',
-            'queue.default' => 'broken-db',
+            'queue.default' => 'database',
+            'queue.connections.database.driver' => 'database',
+            'queue.connections.database.table' => 'jobs',
             'queue.connections.broken-db.driver' => 'database',
-            'queue.connections.broken-db.table' => 'jobs_broken_mail_pending_expire',
+            'queue.connections.broken-db.table' => 'jobs_broken_mail_pending',
         ]);
 
         $admin = $this->userWithRole('admin');

@@ -141,6 +141,8 @@ class EmailCampaignPhpSyntaxTest extends TestCase
         $this->assertStringContainsString('deliveredUserIdsForCampaign', $expire[1]);
         $this->assertStringContainsString('pendingUserIdsForCampaign', $expire[1]);
         $this->assertSame(1, preg_match_all('/function inFlightCampaignMailUserIds\b/', $model));
+        $this->assertSame(1, preg_match_all('/function collectCampaignMailUserIdsFromTable\b/', $model));
+        $this->assertSame(1, preg_match_all('/function campaignLogUserIdsForStatus\b/', $model));
         $this->assertSame(1, preg_match_all('/function healQueuedRecipientsWithTerminalLog\b/', $model));
         $this->assertSame(0, preg_match_all('/function syncQueuedRecipientsWithAttachedLogs\b/', $model));
         $this->assertSame(1, preg_match_all('/function failPendingLogsForStaleRecipients\b/', $model));
@@ -153,45 +155,67 @@ class EmailCampaignPhpSyntaxTest extends TestCase
         $this->assertStringContainsString('audience_campaign|', $campaignLog[1]);
         $this->assertStringContainsString('notification_type', $campaignLog[1]);
         $this->assertSame(1, preg_match_all('/function queuedMailablePayloads\b/', $model));
+        $this->assertSame(1, preg_match_all('/function mailConnectionIsInline\b/', $model));
+        $this->assertTrue((bool) preg_match(
+            '/protected static function queuedMailablePayloads\(\): \?array\s*\{(.*)\n\}\n/s',
+            $model,
+            $queuedMail
+        ));
+        $this->assertStringContainsString('$mailScannedOk = true;', $queuedMail[1]);
+        $this->assertStringContainsString('if ($mailNeedsScan && ! $mailScannedOk)', $queuedMail[1]);
+        $this->assertDoesNotMatchRegularExpression(
+            '/hasColumn\(\$table, \'payload\'\)\) \{\s*return null;/',
+            $queuedMail[1]
+        );
+        $this->assertTrue((bool) preg_match(
+            '/protected static function recoverStalledLocked\(int \$staleMinutes\): int\s*\{(.*?)\n    protected static function reclaimOrphanedQueuedRecipients/s',
+            $model,
+            $recover
+        ));
+        $this->assertNotFalse(strpos($recover[1], 'hasQueuedSendJob'));
+        $this->assertNotFalse(strpos($recover[1], 'currentFailStreak()'));
+        $this->assertLessThan(
+            strpos($recover[1], 'currentFailStreak()'),
+            strpos($recover[1], 'hasQueuedSendJob'),
+            'recover must see an in-flight send job before fail-streak give-up'
+        );
+
+        $this->assertTrue((bool) preg_match(
+            '/protected static function expireOrphanedQueuedRecipients\(\): void\s*\{(.*?)\n    \/\*\*/s',
+            $model,
+            $expire
+        ));
+        $this->assertStringContainsString('inFlightCampaignMailUserIds', $expire[1]);
+        $this->assertStringContainsString('campaignLogUserIdsForStatus', $expire[1]);
         $this->assertTrue((bool) preg_match(
             '/protected static function healQueuedRecipientsWithTerminalLog\(\): array\s*\{(.*?)\n    \/\*\*/s',
             $model,
             $heal
         ));
-        $this->assertSame(
-            0,
-            preg_match_all('/^\s*return;\s*$/m', $heal[1]),
-            'healQueuedRecipientsWithTerminalLog must return [] — a bare return is a TypeError'
-        );
-        $this->assertStringContainsString('dedupeKey(', $heal[1]);
-        $this->assertStringContainsString('user_id', $heal[1]);
-        $this->assertStringContainsString('STATUS_DELIVERED', $heal[1]);
-        $this->assertStringContainsString('latestDeliveredForCampaignUser', $heal[1]);
-        $this->assertSame(1, substr_count($heal[1], '$healedCampaigns = []'));
-        $this->assertSame(1, substr_count($heal[1], 'return array_keys($healedCampaigns);'));
-        $this->assertTrue(
-            (bool) preg_match(
-                '/expireOrphanedPendingLogs\(\);.*?healQueuedRecipientsWithTerminalLog\(\)/s',
-                $model
-            ),
-            'heal must run again after pending-log expire so a leftover FK can sync this pass'
-        );
+        $this->assertSame(0, substr_count($heal[1], "return;\n"), 'healQueued must return [] not void');
         $this->assertTrue((bool) preg_match(
-            '/protected static function queuedMailablePayloads\(\): \?array\s*\{(.*)\n    \}\n\}\n/s',
+            '/protected static function failPendingLogsForStaleRecipients\(\): void\s*\{(.*?)\n    \/\*\*/s',
             $model,
-            $queued
+            $failPending
         ));
-        $this->assertStringContainsString('$mailScannedOk = true;', $queued[1]);
-        $this->assertStringContainsString('if ($mailNeedsScan && ! $mailScannedOk)', $queued[1]);
-        $this->assertDoesNotMatchRegularExpression(
-            '/hasColumn\(\$table, \'payload\'\)\) \{\s*return null;/',
-            $queued[1]
-        );
+        $this->assertStringContainsString('inFlightCampaignMailUserIds', $failPending[1]);
+        $this->assertStringNotContainsString('$expired', $failPending[1]);
+        $this->assertStringContainsString("'updated_at'", $failPending[1]);
 
-        $payloadTest = (string) file_get_contents($files[5]);
-        $this->assertStringContainsString(
-            'function test_contains_campaign_mail_matches_model_identifier_without_dedupe_key',
+        $center = (string) file_get_contents($files[3]);
+        $this->assertSame(1, preg_match_all('/function markRetriedMailLogsPending\b/', $center));
+        $this->assertSame(1, preg_match_all('/function failedJobMatchesLog\b/', $center));
+        $this->assertTrue((bool) preg_match(
+            '/protected function requeueFailedCampaignRecipient\(EmailLog \$log\): void\s*\{(.*)\n    protected function failedJobUuidForLog/s',
+            $center,
+            $requeue
+        ));
+        $this->assertStringContainsString('clearFailStreak()', $requeue[1]);
+
+        $payloadTest = (string) file_get_contents($files[4]);
+        $this->assertSame(1, preg_match_all(
+            '/function test_matches_email_log_require_token_rejects_unidentified_payload\b/',
             $payloadTest
-        );
+        ));
     }
 }
