@@ -116,7 +116,7 @@ class BulkSiteRequestController extends Controller
         ])->save();
 
         if (! $alreadySent) {
-            ActivityLogger::log(
+            ActivityLogger::tryLog(
                 'bulk_request.sheet_sent',
                 (auth()->user()->name ?? 'Staff').' marked bulk request #'.$bulkRequest->id.' as sheet emailed',
                 $bulkRequest,
@@ -150,7 +150,7 @@ class BulkSiteRequestController extends Controller
             'handled_by' => auth()->id(),
         ])->save();
 
-        ActivityLogger::log(
+        ActivityLogger::tryLog(
             'bulk_request.notes_updated',
             (auth()->user()->name ?? 'Staff').' updated notes on bulk request #'.$bulkRequest->id,
             $bulkRequest,
@@ -255,7 +255,7 @@ class BulkSiteRequestController extends Controller
             return back()->with('error', $blockedByOpenOrders);
         }
 
-        ActivityLogger::log(
+        ActivityLogger::tryLog(
             'bulk_request.cancelled',
             (auth()->user()->name ?? 'Staff').' cancelled bulk request #'.$bulkRequest->id,
             $bulkRequest,
@@ -803,7 +803,7 @@ class BulkSiteRequestController extends Controller
                 ? 'marked Done and added'
                 : 'seeded';
 
-            ActivityLogger::log(
+            ActivityLogger::tryLog(
                 $action,
                 (auth()->user()->name ?? 'Staff').' '.$verb.' '.$created.' draft site(s) to publisher panel on bulk request #'.$bulkRequest->id,
                 $bulkRequest,
@@ -839,7 +839,7 @@ class BulkSiteRequestController extends Controller
 
         if ($deletedCount > 0) {
             $note = trim((string) $rejectionNote);
-            ActivityLogger::log(
+            ActivityLogger::tryLog(
                 'bulk_request.items_rejected',
                 (auth()->user()->name ?? 'Staff').' removed '.$deletedCount.' pending site(s) from bulk request #'.$bulkRequest->id,
                 $bulkRequest,

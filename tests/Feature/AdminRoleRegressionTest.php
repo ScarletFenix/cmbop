@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Blog;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\SiteClaim;
@@ -9,6 +10,8 @@ use App\Models\User;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Blade;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 /**
@@ -132,5 +135,86 @@ class AdminRoleRegressionTest extends TestCase
         );
         $this->assertStringContainsString('Ghost listing', $rendered);
         $this->assertStringContainsString('—', $rendered);
+    }
+
+    public function test_blogs_index_and_show_survive_a_null_created_at(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $blog = Blog::factory()->create([
+            'title' => 'Null Created Blog',
+            'status' => 'draft',
+        ]);
+        DB::table('blogs')->where('id', $blog->id)->update(['created_at' => null]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.blogs.index', ['q' => 'Null Created Blog']))
+            ->assertOk()
+            ->assertSee('Null Created Blog');
+
+        $this->actingAs($admin)
+            ->get(route('admin.blogs.show', $blog))
+            ->assertOk()
+            ->assertSee('Null Created Blog');
+    }
+
+    public function test_site_active_toggle_for_missing_site_is_404_not_500(): void
+    {
+        $admin = $this->userWithRole('admin');
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.sites.active', 999999), [
+                'active' => 0,
+                'reason' => 'Listing was removed from the catalog.',
+            ])
+            ->assertNotFound();
+    }
+
+    public function test_site_active_toggle_still_succeeds_when_activity_log_table_is_gone(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $publisher = $this->userWithRole('publisher');
+        $site = Site::create([
+            'publisher_id' => $publisher->id,
+            'site_name' => 'Toggle After Log Drop',
+            'site_url' => 'https://toggle-log.example',
+            'domain' => 'toggle-log.example',
+            'da' => 40,
+            'dr' => 40,
+            'traffic' => 1000,
+            'country' => 'us',
+            'language' => 'en',
+            'countries' => ['us'],
+            'languages' => ['en'],
+            'category' => 'marketing',
+            'price' => 50,
+            'publication_time' => '7 days',
+            'link_type' => 'dofollow',
+            'description' => 'Used to prove activate still works without activity_logs.',
+            'verified' => true,
+            'active' => true,
+        ]);
+
+        Schema::dropIfExists('activity_logs');
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.sites.active', $site->id), [
+                'active' => 0,
+                'reason' => 'Pause this listing after a quality review.',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertFalse((bool) $site->fresh()->active);
+    }
+
+    public function test_publisher_reminder_for_missing_item_is_404_not_500(): void
+    {
+        $admin = $this->userWithRole('admin');
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.orders.remind-publisher', 999999))
+            ->assertNotFound()
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'Order item not found.');
     }
 }

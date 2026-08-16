@@ -149,7 +149,7 @@ class UserController extends Controller
             report($e);
         }
 
-        ActivityLogger::log(
+        ActivityLogger::tryLog(
             'user.payout_profile_updated',
             auth()->user()->name.' updated payout profile for user #'.$user->id.' ('.$method.')',
             $user,

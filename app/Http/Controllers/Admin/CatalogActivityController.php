@@ -389,6 +389,10 @@ class CatalogActivityController extends Controller
      */
     public function toggleExempt(int $user): RedirectResponse
     {
+        if (! $this->revealExemptColumnsReady()) {
+            return back()->with('error', 'Catalog pace exemption columns are not available yet — run migrations.');
+        }
+
         $minutes = max(1, (int) config('catalog.url_reveal.pace.exemption_minutes', 60));
         $result = $this->mutateLockedUser($user, function (User $model) use ($minutes) {
             if ($model->catalog_reveal_exempt_until && $model->catalog_reveal_exempt_until->isFuture()) {
@@ -782,6 +786,16 @@ class CatalogActivityController extends Controller
         try {
             return Schema::hasColumn('users', 'catalog_copy_strike_count')
                 && Schema::hasColumn('users', 'catalog_hide_until');
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    private function revealExemptColumnsReady(): bool
+    {
+        try {
+            return Schema::hasColumn('users', 'catalog_reveal_exempt')
+                && Schema::hasColumn('users', 'catalog_reveal_exempt_until');
         } catch (\Throwable) {
             return false;
         }

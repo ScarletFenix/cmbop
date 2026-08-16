@@ -184,6 +184,12 @@ class OrderClawbackService
             $debtCreated = 0.0;
             $publisherWallet = null;
 
+            if ($targetPayout > 0 && ! $publisherId) {
+                throw ValidationException::withMessages([
+                    'dispute' => 'Cannot uphold this dispute: the listing (and publisher) is missing, so the publisher clawback cannot be applied. Restore the site first.',
+                ]);
+            }
+
             if ($publisherId && $publisherRoleId && $targetPayout > 0) {
                 $publisherWallet = Wallet::lockOrCreateForRole((int) $publisherId, (int) $publisherRoleId);
                 $available = $publisherWallet->withdrawableBalance();

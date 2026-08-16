@@ -138,7 +138,7 @@
                                     <span class="text-muted">—</span>
                                 @endif
                             </td>
-                            <td>{{ $blog->created_at->format('M d, Y') }}</td>
+                            <td>{{ optional($blog->created_at)->format('M d, Y') ?: '—' }}</td>
                             <td>
                                 <div class="btn-group" role="group">
                                     <a href="{{ route('admin.blogs.show', $blog->id) }}" class="btn btn-sm btn-outline-info"

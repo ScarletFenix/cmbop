@@ -8,9 +8,11 @@ use App\Models\Site;
 use App\Models\SiteUrlReveal;
 use App\Models\User;
 use App\Services\Catalog\RevealPaceGuard;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 /**
@@ -300,6 +302,22 @@ class CatalogPaceGuardTest extends TestCase
         $advertiser->refresh();
         $this->assertFalse((bool) $advertiser->catalog_reveal_exempt);
         $this->assertNull($advertiser->catalog_reveal_exempt_until);
+    }
+
+    public function test_admin_exempt_does_not_500_when_columns_are_missing(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+
+        Schema::table('users', function (Blueprint $table) {
+            $table->dropColumn(['catalog_reveal_exempt', 'catalog_reveal_exempt_until']);
+        });
+
+        $this->actingAs($admin)
+            ->from(route('admin.catalog-activity.show', $advertiser))
+            ->post(route('admin.catalog-activity.exempt', $advertiser->id))
+            ->assertRedirect(route('admin.catalog-activity.show', $advertiser))
+            ->assertSessionHas('error');
     }
 
     public function test_freeze_message_explains_reason_and_how_to_get_help(): void

@@ -1273,7 +1273,7 @@ class SiteController extends Controller
             $this->deleteStoredSiteImage($previous);
         }
 
-        ActivityLogger::log(
+        ActivityLogger::tryLog(
             'site.image_uploaded',
             auth()->user()->name.' uploaded an image for site "'.$site->site_name.'"',
             $site,
@@ -2770,7 +2770,7 @@ class SiteController extends Controller
             $verifiedChanged = $oldStatus !== (int) $site->verified;
 
             if ($verifiedChanged) {
-                ActivityLogger::log(
+                ActivityLogger::tryLog(
                     $action,
                     auth()->user()->name.' '.$label.' site "'.$site->site_name.'"',
                     $site,
@@ -2956,7 +2956,7 @@ class SiteController extends Controller
                 $action = $site->active ? 'site.activated' : 'site.deactivated';
                 $label = $site->active ? 'activated' : 'deactivated';
 
-                ActivityLogger::log(
+                ActivityLogger::tryLog(
                     $action,
                     ($actor->name ?? 'Staff').' '.$label.' site "'.$site->site_name.'"',
                     $site,
@@ -2972,7 +2972,7 @@ class SiteController extends Controller
             }
 
             if ($justVerified) {
-                ActivityLogger::log(
+                ActivityLogger::tryLog(
                     'site.approved',
                     ($actor->name ?? 'Staff').' approved site "'.$site->site_name.'" (verified on activate)',
                     $site,
@@ -3028,6 +3028,8 @@ class SiteController extends Controller
                 'below_quality_bar' => $belowQualityBar,
             ]);
         } catch (ValidationException $e) {
+            throw $e;
+        } catch (ModelNotFoundException $e) {
             throw $e;
         } catch (\Throwable $e) {
             Log::error('Failed to toggle site active status', [
@@ -3198,7 +3200,7 @@ class SiteController extends Controller
 
             $this->notifyPublisherSiteRemoved($site, $publisher, $rejectionReason, 'archived');
 
-            ActivityLogger::log(
+            ActivityLogger::tryLog(
                 'site.archived',
                 ($user->name ?? 'Staff').' archived site "'.$siteName.'"'.($domain ? ' ('.$domain.')' : ''),
                 $site,
@@ -3249,7 +3251,7 @@ class SiteController extends Controller
             $this->notifyPublisherSiteRemoved($notifySnapshot, $publisher, $rejectionReason, 'removed');
         }
 
-        ActivityLogger::log(
+        ActivityLogger::tryLog(
             $isMarketingPendingDelete && ! $isAdmin ? 'site.deleted_by_marketing' : 'site.deleted',
             ($user->name ?? 'Staff').' deleted site "'.$siteName.'"'.($domain ? ' ('.$domain.')' : ''),
             null,
