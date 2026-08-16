@@ -11,6 +11,8 @@ use App\Services\Advertiser\ContentLibrarySearchQuery;
 use App\Services\ContentUpload\ContentUploadService;
 use App\Services\Marketplace\CountryLanguagePairs;
 use App\Services\Marketplace\LanguageCountryMap;
+use App\Services\OrderPaymentService;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Log;
@@ -519,22 +521,31 @@ class ContentLibraryController extends Controller
                     ? ContentUploadService::imageRightsRequiredMessage()
                     : ($submission->libraryFixSummary() ?: ContentSubmission::CHECKOUT_LINK_MESSAGE));
 
-            return redirect()
-                ->route('advertiser.content-library')
-                ->with('error', $message);
-        }
-
-        if ($submission->isLockedByPaidOrder()) {
-            return redirect()
-                ->route('advertiser.orders')
-                ->with('error', ContentSubmission::PAID_ORDER_CLAIM_MESSAGE);
+            return $this->redirectToLibraryChip($submission, $message);
         }
 
         if (! $submission->canOrderFromLibrary()) {
-            return redirect()
-                ->route('advertiser.content-library')
-                ->with('error', $submission->libraryFixSummary()
-                    ?: 'Only approved Content Library articles can be ordered. Please edit and resubmit if corrections are needed.');
+            return $this->redirectToLibraryChip(
+                $submission,
+                $submission->libraryFixSummary()
+                    ?: 'Only approved Content Library articles can be ordered. Please edit and resubmit if corrections are needed.'
+            );
+        }
+
+        app(OrderPaymentService::class)->replaceUnpaidLeftoversForSubmissions(
+            (int) auth()->id(),
+            [(int) $submission->id]
+        );
+        $submission = $submission->fresh() ?? $submission;
+
+        if (! $submission->canBeOrdered() || ! $submission->isReadyForCheckout()) {
+            $message = $submission->isExpired()
+                ? 'Expired articles are preview only and cannot be ordered.'
+                : ($submission->hasImages() && ! $submission->imageRightsCoverContent()
+                    ? ContentUploadService::imageRightsRequiredMessage()
+                    : ($submission->libraryFixSummary() ?: ContentSubmission::CHECKOUT_LINK_MESSAGE));
+
+            return $this->redirectToLibraryChip($submission, $message);
         }
 
         // Keep Pay again until the advertiser actually assigns this article
@@ -639,5 +650,18 @@ class ContentLibraryController extends Controller
                 : null,
             'created_at' => optional($s->created_at)?->toDateTimeString(),
         ];
+    }
+
+    /**
+     * Failed Order must land on the chip that still lists the row.
+     * The default library URL is Available and hides leftovers / unready articles.
+     */
+    protected function redirectToLibraryChip(ContentSubmission $submission, string $message): RedirectResponse
+    {
+        $url = route('advertiser.content-library', $submission->staffApprovalLibraryParams());
+
+        return redirect()
+            ->to($url.'#library-row-'.$submission->id)
+            ->with('error', $message);
     }
 }
