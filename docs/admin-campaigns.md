@@ -79,7 +79,7 @@ or marketing, even if that staff account also has a marketplace role.
    reclaims orphans, and puts the campaign back to `sending`.    A queued row
    that already has a delivered/failed log FK is synced to that log
    (expire/reclaim both require a null FK, so those rows sat queued forever).
-   Heal must look up by `audience_campaign:{id}:user:{id}` **or** `latestDeliveredForCampaignUser()` (generic-key siblings), not only the attached id — an attached failed or leftover pending log FK must not beat a delivered log and must not beat a delivered sibling for the same recipient (that marked a real send failed and a later compose doubled it). Heal runs again after pending-log expire so a leftover pending FK closed in this pass can sync the same recover.
+   Heal must look up by `audience_campaign:{id}:user:{id}` **or** `latestDeliveredForCampaignUser()` (generic-key siblings), not only the attached id — an attached failed or leftover pending log FK must not beat a delivered log and must not beat a delivered sibling for the same recipient (that marked a real send failed and a later compose doubled it). Heal must also treat a leftover generic-key pending sibling as in-flight — attaching only the failed FK marked a live Email Center retry failed and a later compose doubled it. Heal runs again after pending-log expire so a leftover pending FK closed in this pass can sync the same recover.
    A timeout after the last `pending` →
    `queued` claim must **not** finalize as sent (`failed()` used to, because
    `sent_count` includes queued). Recount promotes `sending` → `sent` only
@@ -204,6 +204,9 @@ and add-site / deposit reminders keep their own queries.
 - Transactional `PlatformMailable` drops after `MAIL_MAX_AGE_HOURS` (24).
   Campaign mail uses `MAIL_CAMPAIGN_MAX_AGE_HOURS` (72). A dropped send marks
   the recipient `skipped` (`stale`, `preference`, or `disabled`).
+  Transactional `isDuplicate()` must not look like “no prior send” when
+  `email_logs` cannot be read — the send is held instead of blasting a
+  Welcome / order retry again.
 
 ## Signed unsubscribe
 

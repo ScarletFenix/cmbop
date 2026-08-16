@@ -496,7 +496,8 @@ class OrderPaymentService
             ->whereIn('id', $submissionIds)
             ->where('user_id', $userId)
             ->get()
-            ->filter(fn (ContentSubmission $submission) => $submission->isContentReadyForOrder())
+            ->filter(fn (ContentSubmission $submission) => $submission->isContentReadyForOrder()
+                && ! $submission->isLockedByPaidOrder())
             ->pluck('id')
             ->map(fn ($id) => (int) $id)
             ->values()
@@ -943,7 +944,7 @@ class OrderPaymentService
         }
         $aliases = array_values(array_unique($aliases));
 
-        return (float) DB::transaction(function () use ($userId, $roleId, $amount, $reference, $referenceCode, $aliases, $unkeyed, $prefix) {
+        return (float) DB::transaction(function () use ($userId, $roleId, $amount, $reference, $referenceCode, $aliases, $unkeyed, $prefix, $captureIds) {
             if (! User::query()->whereKey($userId)->exists()) {
                 Log::warning('Cannot credit unfulfilled card capture; user missing', [
                     'user_id' => $userId,
@@ -1028,7 +1029,11 @@ class OrderPaymentService
             ->filter(fn (Order $order) => $order->payment_status === 'paid')
             ->sum(fn (Order $order) => (float) $order->total_amount), 2);
         $expected = $this->capturedStripeEurosForCredit($orders, $meta);
-        $unfulfilled = round(max(0, $expected - $paidTotal), 2);
+        $refundedThisCapture = $this->refundedCardEurosForStripeCapture($orders, $session);
+        // expected_amount is THIS capture. cancelAndRefund already returned
+        // unready/taken siblings from that same object — subtract them or
+        // hidden leftovers are credited on top of those refunds.
+        $unfulfilled = round(max(0, $expected - $paidTotal - $refundedThisCapture), 2);
         // Same leftover may already have a session-keyed credit (#831 bonus
         // fail, amount mismatch). An unkeyed top-up here paid the capture
         // twice after the listing left the catalog and the webhook retried.
@@ -1147,8 +1152,12 @@ class OrderPaymentService
                 }
             }
 
+            // All-or-nothing: a shortfall used to debit whatever was left,
+            // then mark-paid returned false and committed the partial take.
+            // Pay again had already charged the card shortfall, so the
+            // leftover stayed failed and the advertiser lost wallet cash.
             $apply = round(min($amount, $wallet->withdrawableBalance()), 2);
-            if ($apply <= 0.009) {
+            if ($apply + 0.009 < $amount) {
                 return 0.0;
             }
 
@@ -1215,7 +1224,7 @@ class OrderPaymentService
 
         $newlyPaid = DB::transaction(function () use ($referenceCode, $userId, $applied) {
             $consumed = $this->consumeUnfulfilledCardCreditForLeftover($userId, $referenceCode, $applied);
-            if ($consumed <= 0.009) {
+            if ($consumed + 0.009 < $applied) {
                 return collect();
             }
 
@@ -1321,6 +1330,29 @@ class OrderPaymentService
         }
 
         return array_values(array_unique($ids));
+    }
+
+    /**
+     * cancelAndRefund already returned this capture after mark-paid found the
+     * library article unusable. Webhook / finalize last-resort credits must
+     * not stack a second wallet credit for the same Stripe object.
+     */
+    private function stripeCaptureAlreadyRefunded(string $referenceCode, object $session): bool
+    {
+        $ids = $this->stripeCaptureIds($session);
+        if ($ids === [] || $referenceCode === '') {
+            return false;
+        }
+
+        return Order::query()
+            ->where('reference_code', $referenceCode)
+            ->where('payment_method', 'card')
+            ->where('payment_status', 'refunded')
+            ->where(function ($query) use ($ids) {
+                $query->whereIn('stripe_session_id', $ids)
+                    ->orWhereIn('stripe_payment_intent_id', $ids);
+            })
+            ->exists();
     }
 
     private function creditUnfulfilledFromStripeObject(
@@ -2290,6 +2322,10 @@ class OrderPaymentService
      */
     private function creditCapturedCardWhenPackageMissing(string $referenceCode, object $session): float
     {
+        if ($this->stripeCaptureAlreadyRefunded($referenceCode, $session)) {
+            return 0.0;
+        }
+
         $meta = $this->sessionMetadataArray($session);
         $userId = isset($meta['user_id']) ? (int) $meta['user_id'] : 0;
         $amount = isset($meta['expected_amount']) && $meta['expected_amount'] !== ''
@@ -2314,6 +2350,10 @@ class OrderPaymentService
      */
     public function creditCapturedCardWhenAlreadySettled(string $referenceCode, object $session): float
     {
+        if ($this->stripeCaptureAlreadyRefunded($referenceCode, $session)) {
+            return 0.0;
+        }
+
         $paidOrders = Order::query()
             ->where('reference_code', $referenceCode)
             ->where('payment_method', 'card')

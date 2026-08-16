@@ -734,9 +734,8 @@ class ContentModerationService
     ): array {
         $urls = [];
 
-        if ($html !== '' && preg_match_all('/\b(?:href|src)\s*=\s*(["\'])(.*?)\1/iu', $html, $matches)) {
-            foreach ($matches[2] as $href) {
-                $href = trim(html_entity_decode((string) $href, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+        if ($html !== '') {
+            foreach ($this->htmlQuotedOrBareValues($html, 'href|src') as $href) {
                 if ($href === '') {
                     continue;
                 }
@@ -872,6 +871,33 @@ class ContentModerationService
     }
 
     /**
+     * Quoted or bare HTML attribute values (`src="x"` and `src=x`).
+     *
+     * @return list<string>
+     */
+    public function htmlQuotedOrBareValues(string $html, string $names): array
+    {
+        if ($html === '' || $names === '') {
+            return [];
+        }
+
+        $texts = [];
+        if (! preg_match_all('/\b(?:'.$names.')\s*=\s*(?:(["\'])(.*?)\1|([^\s>]+))/iu', $html, $matches, PREG_SET_ORDER)) {
+            return [];
+        }
+
+        foreach ($matches as $match) {
+            $value = ($match[1] ?? '') !== '' ? ($match[2] ?? '') : ($match[3] ?? '');
+            $value = trim(html_entity_decode((string) $value, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+            if ($value !== '') {
+                $texts[] = $value;
+            }
+        }
+
+        return $texts;
+    }
+
+    /**
      * Attribute text strip_tags drops (image alt, title, aria-label).
      *
      * @return list<string>
@@ -882,16 +908,7 @@ class ContentModerationService
             return [];
         }
 
-        $texts = [];
-        if (preg_match_all('/\b(?:alt|title|aria-label)\s*=\s*(["\'])(.*?)\1/iu', $html, $matches)) {
-            foreach ($matches[2] as $value) {
-                $value = trim(html_entity_decode((string) $value, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
-                if ($value !== '') {
-                    $texts[] = $value;
-                }
-            }
-        }
-
+        $texts = $this->htmlQuotedOrBareValues($html, 'alt|title|aria-label');
         $texts = array_values(array_unique($texts));
         sort($texts);
 
@@ -910,17 +927,11 @@ class ContentModerationService
         }
 
         $texts = [];
-        if (preg_match_all('/\b(?:href|src|srcset|data-src|data-original|data-href|data-lazy-src|poster)\s*=\s*(["\'])(.*?)\1/iu', $html, $matches)) {
-            foreach ($matches[2] as $value) {
-                $value = trim(html_entity_decode((string) $value, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
-                if ($value === '') {
-                    continue;
-                }
-                foreach (preg_split('/\s*,\s*/', $value) ?: [] as $part) {
-                    $url = trim((string) preg_replace('/\s+\d+(?:\.\d+)?[wx]$/i', '', trim($part)));
-                    if ($url !== '') {
-                        $texts[] = $url;
-                    }
+        foreach ($this->htmlQuotedOrBareValues($html, 'href|src|srcset|data-src|data-original|data-href|data-lazy-src|poster') as $value) {
+            foreach (preg_split('/\s*,\s*/', $value) ?: [] as $part) {
+                $url = trim((string) preg_replace('/\s+\d+(?:\.\d+)?[wx]$/i', '', trim($part)));
+                if ($url !== '') {
+                    $texts[] = $url;
                 }
             }
         }
@@ -943,12 +954,12 @@ class ContentModerationService
         }
 
         $texts = [];
-        if (! preg_match_all('/\bstyle\s*=\s*(["\'])(.*?)\1/iu', $html, $matches)) {
+        $styles = $this->htmlQuotedOrBareValues($html, 'style');
+        if ($styles === []) {
             return [];
         }
 
-        foreach ($matches[2] as $style) {
-            $style = html_entity_decode((string) $style, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        foreach ($styles as $style) {
             if (preg_match_all('/url\(\s*([\'"]?)(.*?)\1\s*\)/iu', $style, $urls)) {
                 foreach ($urls[2] as $url) {
                     $url = trim((string) $url);

@@ -434,7 +434,7 @@ class EmailCampaign extends Model
         }
 
         $holdUserIds = $inFlight;
-        $pendingIds = self::campaignLogUserIdsForStatus((int) $campaign->id, EmailLog::STATUS_PENDING);
+        $pendingIds = EmailLog::pendingUserIdsForCampaign((int) $campaign->id);
         if ($pendingIds === null) {
             return 0;
         }
@@ -442,11 +442,14 @@ class EmailCampaign extends Model
 
         // LogSentEmail can persist a delivered row and still miss the
         // recipient FK. Reclaim before reconcile's stall window used to
-        // pending-mark that user and dispatch a second send.
-        $holdUserIds = array_merge(
-            $holdUserIds,
-            self::campaignLogUserIdsForStatus((int) $campaign->id, EmailLog::STATUS_DELIVERED) ?? []
-        );
+        // pending-mark that user and dispatch a second send. Generic-key
+        // deliveries are included — prefix-only scans missed those and
+        // queued a second mail.
+        $deliveredIds = EmailLog::deliveredUserIdsForCampaign((int) $campaign->id);
+        if ($deliveredIds === null) {
+            return 0;
+        }
+        $holdUserIds = array_merge($holdUserIds, $deliveredIds);
 
         $query = EmailCampaignRecipient::query()
             ->where('email_campaign_id', $campaign->id)
@@ -1133,14 +1136,47 @@ class EmailCampaign extends Model
             return [];
         }
 
+        try {
+            $campaignIds = $rows->pluck('email_campaign_id')->unique()->filter()
+                ->map(fn ($id) => (int) $id)->values()->all();
+            if ($campaignIds !== []) {
+                $extras = EmailLog::query()
+                    ->whereIn('status', [
+                        EmailLog::STATUS_PENDING,
+                        EmailLog::STATUS_DELIVERED,
+                        EmailLog::STATUS_FAILED,
+                    ])
+                    ->where(function ($query) use ($campaignIds) {
+                        foreach ($campaignIds as $campaignId) {
+                            $query->orWhere(function ($one) use ($campaignId) {
+                                $one->where('meta->campaign_id', $campaignId)
+                                    ->orWhere('dedupe_key', 'like', 'audience_campaign:'.$campaignId.':user:%');
+                            });
+                        }
+                    })
+                    ->orderByDesc('id')
+                    ->get();
+                $allLogs = $allLogs->concat($extras)->unique('id')->values();
+            }
+        } catch (\Throwable) {
+            // Canonical-key rows still heal when JSON meta cannot be queried.
+        }
+
         if ($allLogs->isEmpty()) {
             return [];
         }
 
         $logsById = $allLogs->keyBy('id');
         $logsByKey = $allLogs
-            ->filter(fn (EmailLog $log) => filled($log->dedupe_key))
-            ->groupBy('dedupe_key');
+            ->filter(fn (EmailLog $log) => filled($log->dedupe_key) || EmailLog::campaignUserIds($log) !== [0, 0])
+            ->groupBy(function (EmailLog $log) {
+                [$campaignId, $userId] = EmailLog::campaignUserIds($log);
+                if ($campaignId > 0 && $userId > 0) {
+                    return EmailCampaignRecipient::dedupeKey($campaignId, $userId);
+                }
+
+                return (string) $log->dedupe_key;
+            });
 
         $healedCampaigns = [];
 
@@ -1281,15 +1317,15 @@ class EmailCampaign extends Model
             // failed_jobs is not a live backlog: reclaim still holds
             // those users, but expire must close the 72h orphan.
             $blocked = $inFlight === null ? [] : array_fill_keys($inFlight, true);
-            foreach (self::campaignLogUserIdsForStatus($campaignId, EmailLog::STATUS_DELIVERED) ?? [] as $userId) {
+            foreach (EmailLog::deliveredUserIdsForCampaign($campaignId) ?? [] as $userId) {
+                $blocked[$userId] = true;
+            }
+            foreach (EmailLog::pendingUserIdsForCampaign($campaignId) ?? [] as $userId) {
                 $blocked[$userId] = true;
             }
 
             foreach ($group as $row) {
                 if (isset($blocked[(int) $row->user_id])) {
-                    continue;
-                }
-                if (isset($pendingBlocked[$userId])) {
                     continue;
                 }
 
