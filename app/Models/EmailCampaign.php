@@ -240,9 +240,8 @@ class EmailCampaign extends Model
         self::expireOrphanedQueuedRecipients();
         self::expireOrphanedPendingLogs();
         // Expire can fail a leftover pending log while the recipient still
-        // points at that id. Heal again so this pass can sync a delivered
-        // sibling (including a generic-key row) instead of leaving the
-        // row queued until the next recover.
+        // points at that id. Heal again so this pass can sync delivered /
+        // failed instead of leaving the row queued until the next recover.
         foreach (self::healQueuedRecipientsWithTerminalLog() as $id) {
             static::query()->find($id)?->recountRecipientTotals();
         }
@@ -1004,10 +1003,10 @@ class EmailCampaign extends Model
      * Queued + a terminal log FK is not in-flight. Expire used to skip
      * those rows forever, so a failed campaign could keep a queued leftover.
      *
-     * Trust campaign+user, not only the attached id. SMTP can persist a
-     * delivered row under the generic default key and leave the recipient
-     * pointing at a leftover pending/failed log. Heal then marked the
-     * row failed, recover finalized the campaign failed, and a later
+     * Look up by audience_campaign:{id}:user:{id}, not only the attached
+     * id. SMTP can persist a delivered row and leave the recipient pointing
+     * at a leftover pending/failed log. Trusting that FK marked a real
+     * send failed, recover finalized the campaign failed, and a later
      * compose doubled the audience.
      *
      * @return list<int>
@@ -1040,87 +1039,79 @@ class EmailCampaign extends Model
         }
 
         $logIds = $rows->pluck('email_log_id')->unique()->filter()->all();
+        $keys = $rows->map(fn (EmailCampaignRecipient $row) => EmailCampaignRecipient::dedupeKey(
+            (int) $row->email_campaign_id,
+            (int) $row->user_id
+        ))->unique()->values()->all();
 
         try {
-            $attachedLogs = EmailLog::query()
-                ->whereIn('id', $logIds)
-                ->get()
-                ->keyBy('id');
+            $allLogs = EmailLog::query()
+                ->where(function ($query) use ($logIds, $keys) {
+                    $query->whereIn('id', $logIds);
+                    if ($keys !== []) {
+                        $query->orWhere(function ($byKey) use ($keys) {
+                            $byKey->whereIn('dedupe_key', $keys)
+                                ->whereIn('status', [
+                                    EmailLog::STATUS_PENDING,
+                                    EmailLog::STATUS_DELIVERED,
+                                    EmailLog::STATUS_FAILED,
+                                ]);
+                        });
+                    }
+                })
+                ->orderByDesc('id')
+                ->get();
         } catch (\Throwable) {
             return [];
         }
 
-        $neededPairs = [];
-        foreach ($rows as $row) {
-            $neededPairs[(int) $row->email_campaign_id.':'.(int) $row->user_id] = true;
+        if ($allLogs->isEmpty()) {
+            return [];
         }
 
-        $pendingByPair = [];
-        try {
-            $campaignIds = $rows->pluck('email_campaign_id')->unique()->filter()
-                ->map(fn ($id) => (int) $id)->values()->all();
-            if ($campaignIds !== []) {
-                $pendingLogs = EmailLog::query()
-                    ->where('status', EmailLog::STATUS_PENDING)
-                    ->where(function ($query) use ($campaignIds) {
-                        foreach ($campaignIds as $campaignId) {
-                            $query->orWhere(function ($one) use ($campaignId) {
-                                $one->where('meta->campaign_id', $campaignId)
-                                    ->orWhere('dedupe_key', 'like', 'audience_campaign:'.$campaignId.':user:%');
-                            });
-                        }
-                    })
-                    ->get();
-                foreach ($pendingLogs as $pending) {
-                    [$campaignId, $userId] = EmailLog::campaignUserIds($pending);
-                    $pair = $campaignId.':'.$userId;
-                    if (isset($neededPairs[$pair])) {
-                        $pendingByPair[$pair][] = $pending;
-                    }
-                }
-            }
-        } catch (\Throwable) {
-            // JSON meta may be unreadable; attached pending still holds below.
-        }
+        $logsById = $allLogs->keyBy('id');
+        $logsByKey = $allLogs
+            ->filter(fn (EmailLog $log) => filled($log->dedupe_key))
+            ->groupBy('dedupe_key');
 
-        $healedCampaigns = [];
+        $campaignIds = [];
 
         foreach ($rows as $row) {
-            $attached = $attachedLogs->get((int) $row->email_log_id);
-            $pair = (int) $row->email_campaign_id.':'.(int) $row->user_id;
+            $attached = $logsById->get((int) $row->email_log_id);
+            $group = $logsByKey->get(EmailCampaignRecipient::dedupeKey(
+                (int) $row->email_campaign_id,
+                (int) $row->user_id
+            ));
 
-            $deliveredLog = ($attached && $attached->status === EmailLog::STATUS_DELIVERED)
-                ? $attached
-                : EmailLog::latestDeliveredForCampaignUser(
-                    (int) $row->email_campaign_id,
-                    (int) $row->user_id
-                );
-
-            $pendingLogs = $pendingByPair[$pair] ?? [];
-            if ($attached && $attached->status === EmailLog::STATUS_PENDING) {
-                $already = false;
-                foreach ($pendingLogs as $pending) {
-                    if ((int) $pending->id === (int) $attached->id) {
-                        $already = true;
-                        break;
-                    }
-                }
-                if (! $already) {
-                    $pendingLogs[] = $attached;
-                }
+            $deliveredLog = $group?->first(
+                fn (EmailLog $log) => $log->status === EmailLog::STATUS_DELIVERED
+            );
+            if (! $deliveredLog && $attached?->status === EmailLog::STATUS_DELIVERED) {
+                $deliveredLog = $attached;
             }
 
-            if ($pendingLogs !== []) {
-                $freshPending = false;
-                foreach ($pendingLogs as $pending) {
-                    if (! $deliveredLog
+            $pendingLogs = $group
+                ? $group->filter(fn (EmailLog $log) => $log->status === EmailLog::STATUS_PENDING)
+                : collect();
+            if ($attached?->status === EmailLog::STATUS_PENDING
+                && ! $pendingLogs->contains(fn (EmailLog $log) => (int) $log->id === (int) $attached->id)) {
+                $pendingLogs = $pendingLogs->push($attached);
+            }
+
+            $failedLog = $group?->first(
+                fn (EmailLog $log) => $log->status === EmailLog::STATUS_FAILED
+            );
+            if (! $failedLog && $attached?->status === EmailLog::STATUS_FAILED) {
+                $failedLog = $attached;
+            }
+
+            if ($pendingLogs->isNotEmpty()) {
+                $freshPending = $pendingLogs->first(function (EmailLog $pending) use ($deliveredLog) {
+                    return ! $deliveredLog
                         || ($pending->updated_at
                             && $deliveredLog->updated_at
-                            && $pending->updated_at->greaterThan($deliveredLog->updated_at))) {
-                        $freshPending = true;
-                        break;
-                    }
-                }
+                            && $pending->updated_at->greaterThan($deliveredLog->updated_at));
+                });
                 if ($freshPending) {
                     continue;
                 }
@@ -1145,9 +1136,8 @@ class EmailCampaign extends Model
             }
 
             $log = $deliveredLog;
-            if (! $log && $row->status === EmailCampaignRecipient::STATUS_QUEUED
-                && $attached && $attached->status === EmailLog::STATUS_FAILED) {
-                $log = $attached;
+            if (! $log && $row->status === EmailCampaignRecipient::STATUS_QUEUED) {
+                $log = $failedLog;
             }
             if (! $log) {
                 continue;
@@ -1157,6 +1147,21 @@ class EmailCampaign extends Model
             $query = EmailCampaignRecipient::query()
                 ->whereKey($row->id)
                 ->where('email_log_id', (int) $row->email_log_id);
+
+            if ($staleSkip) {
+                $query->where('status', EmailCampaignRecipient::STATUS_SKIPPED)
+                    ->where('skip_reason', EmailCampaignRecipient::SKIP_STALE);
+            } else {
+                $query->where('status', $row->status);
+            }
+
+            $query->update([
+                'status' => $delivered
+                    ? EmailCampaignRecipient::STATUS_DELIVERED
+                    : EmailCampaignRecipient::STATUS_FAILED,
+                'email_log_id' => (int) $log->id,
+                'skip_reason' => $delivered ? null : EmailCampaignRecipient::SKIP_ERROR,
+            ]);
 
             if ($staleSkip) {
                 $query->where('status', EmailCampaignRecipient::STATUS_SKIPPED)
