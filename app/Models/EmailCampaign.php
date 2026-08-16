@@ -1015,23 +1015,6 @@ class EmailCampaign extends Model
             if ($freshPending) {
                 return;
             }
-
-            $log = $deliveredLog;
-            if (! $log && $failedLog) {
-                // Failed-log attach still waits out the stall window so a
-                // 10-second-old queued claim is not killed by an older
-                // leftover failure while Mail::send() is still running.
-                if ($row->updated_at && $row->updated_at->greaterThan($cutoff)) {
-                    return;
-                }
-                // An older failed log must not kill a newer in-flight retry.
-                if ($failedLog->updated_at
-                    && $row->updated_at
-                    && ! $failedLog->updated_at->greaterThan($row->updated_at)) {
-                    return;
-                }
-                $log = $failedLog;
-            }
         }
 
         $staleSkip = $row->status === EmailCampaignRecipient::STATUS_SKIPPED;
@@ -1091,6 +1074,21 @@ class EmailCampaign extends Model
                 'email_log_id' => (int) $log->id,
                 'skip_reason' => $delivered ? null : EmailCampaignRecipient::SKIP_ERROR,
             ]);
+
+        // Heal only sees rows that already have an email_log_id. After this
+        // attach the recipient is delivered, so leftover pending siblings
+        // would stay open and look in-flight to a later compose.
+        if ($delivered && $pendingLogs->isNotEmpty()) {
+            foreach ($pendingLogs as $pending) {
+                EmailLog::query()
+                    ->whereKey($pending->id)
+                    ->where('status', EmailLog::STATUS_PENDING)
+                    ->update([
+                        'status' => EmailLog::STATUS_FAILED,
+                        'error' => 'Closed: duplicate open log for the same send',
+                    ]);
+            }
+        }
 
         $campaignIds[(int) $row->email_campaign_id] = true;
     }
