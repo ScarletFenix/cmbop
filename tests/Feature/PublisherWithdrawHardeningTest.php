@@ -10,6 +10,7 @@ use App\Models\WalletTransaction;
 use App\Models\Withdrawal;
 use App\Services\Wallet\ManualWithdrawalSettlementService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
@@ -341,6 +342,34 @@ class PublisherWithdrawHardeningTest extends TestCase
             ->assertOk();
 
         Mail::assertQueued(WithdrawalRequestedConfirmation::class);
+    }
+
+    public function test_history_ok_when_processed_at_is_unparseable(): void
+    {
+        $publisher = $this->publisher();
+        $withdrawal = Withdrawal::create([
+            'user_id' => $publisher->id,
+            'amount' => 40,
+            'fee' => 0,
+            'net_amount' => 40,
+            'payment_method' => 'paypal',
+            'payment_details' => ['email' => 'pay@example.com'],
+            'status' => 'completed',
+            'processed_at' => now()->subDay(),
+        ]);
+        DB::table('withdrawals')->where('id', $withdrawal->id)->update([
+            'processed_at' => 'not-a-date',
+        ]);
+
+        $this->assertNull($withdrawal->fresh()->processed_at);
+
+        $this->actingAs($publisher)
+            ->getJson(route('publisher.withdrawals.history'))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.data.0.id', $withdrawal->id)
+            ->assertJsonPath('data.data.0.processed_at', null)
+            ->assertJsonPath('data.data.0.status_label', 'Paid');
     }
 
     public function test_withdraw_page_shows_minimum_and_disables_when_below_min(): void

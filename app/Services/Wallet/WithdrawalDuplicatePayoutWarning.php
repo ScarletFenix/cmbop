@@ -54,11 +54,18 @@ class WithdrawalDuplicatePayoutWarning
             ->whereIn('user_id', $userIds)
             ->where('status', 'completed')
             ->where(function ($q) use ($since) {
-                $q->where('processed_at', '>=', $since)
-                    ->orWhere(function ($inner) use ($since) {
-                        $inner->whereNull('processed_at')
-                            ->where('created_at', '>=', $since);
-                    });
+                $q->where(function ($inner) use ($since) {
+                    $inner->whereProcessedAtIsRecorded()
+                        ->where('processed_at', '>=', $since);
+                })->orWhere(function ($inner) use ($since) {
+                    // Leftover processed_at is not a paid clock — same as null.
+                    // Bound created_at so leftover request stamps cannot fake
+                    // a recent duplicate on SQLite string compare.
+                    $inner->whereProcessedAtIsMissing()
+                        ->where('created_at', '>=', $since)
+                        ->where('created_at', '>=', Withdrawal::PLAUSIBLE_SQL_DATETIME_FLOOR)
+                        ->where('created_at', '<=', Withdrawal::PLAUSIBLE_SQL_DATETIME_CEIL);
+                });
             })
             ->orderByDesc('processed_at')
             ->orderByDesc('id')

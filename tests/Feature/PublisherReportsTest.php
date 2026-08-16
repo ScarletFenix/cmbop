@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Models\Wallet;
 use App\Models\Withdrawal;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class PublisherReportsTest extends TestCase
@@ -299,6 +300,32 @@ class PublisherReportsTest extends TestCase
             ->assertJsonPath('data.0.amount', 25)
             ->assertJsonPath('data.0.fee', 1.25)
             ->assertJsonPath('data.0.net_amount', 23.75)
+            ->assertJsonPath('data.0.status_label', 'Paid');
+    }
+
+    public function test_withdrawals_ok_when_processed_at_is_unparseable(): void
+    {
+        $publisher = $this->publisher();
+        $withdrawal = Withdrawal::create([
+            'user_id' => $publisher->id,
+            'amount' => 25,
+            'fee' => 1.25,
+            'net_amount' => 23.75,
+            'payment_method' => 'paypal',
+            'payment_details' => ['paypal_email' => 'pay@example.com'],
+            'status' => 'completed',
+            'processed_at' => now(),
+        ]);
+        DB::table('withdrawals')->where('id', $withdrawal->id)->update([
+            'processed_at' => 'not-a-date',
+        ]);
+
+        $this->actingAs($publisher)
+            ->getJson(route('publisher.reports.withdrawals', ['status' => 'completed']))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.0.id', $withdrawal->id)
+            ->assertJsonPath('data.0.processed_at', null)
             ->assertJsonPath('data.0.status_label', 'Paid');
     }
 }

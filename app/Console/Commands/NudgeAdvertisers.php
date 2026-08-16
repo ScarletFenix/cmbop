@@ -81,7 +81,7 @@ class NudgeAdvertisers extends Command
         $items = OrderItem::query()
             ->whereNotNull('live_url')
             ->where('live_url', '!=', '')
-            ->whereNotNull('live_url_submitted_at')
+            ->whereLiveUrlSubmittedAtIsRecorded()
             ->where('live_url_submitted_at', '<=', now()->subHours($after))
             ->where('live_url_submitted_at', '>', now()->subHours($window))
             ->whereNull('review_nudge_sent_at')
@@ -98,7 +98,7 @@ class NudgeAdvertisers extends Command
                 $order = $item->order;
                 $advertiser = $order ? User::find($order->user_id) : null;
 
-                if (! $order || ! $advertiser?->email) {
+                if (! $order || ! $advertiser?->email || ! $item->live_url_submitted_at) {
                     continue;
                 }
 
@@ -168,7 +168,7 @@ class NudgeAdvertisers extends Command
         $after = max(1, (int) config('reminders.advertiser_stalled.hours_after_deadline', 72));
 
         $items = OrderItem::query()
-            ->whereNotNull('accepted_at')
+            ->whereAcceptedAtIsRecorded()
             ->where(fn ($q) => $q->whereNull('live_url')->orWhere('live_url', ''))
             ->whereNull('stalled_notice_sent_at')
             ->whereHas('order', function ($q) {

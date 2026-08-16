@@ -4,11 +4,15 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\ToleratesUnparseableDates;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 
 class Order extends Model
 {
+    use ToleratesUnparseableDates;
+
     protected $fillable = [
         'user_id',
         'order_number',
@@ -86,10 +90,51 @@ class Order extends Model
         return $this->isScheduled();
     }
 
+    /**
+     * Real Gregorian schedule_released_at. Leftover strings are not a release.
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeWhereScheduleReleasedAtIsRecorded($query)
+    {
+        return $query->whereNotNull('schedule_released_at')
+            ->where('schedule_released_at', '>=', static::PLAUSIBLE_SQL_DATETIME_FLOOR)
+            ->where('schedule_released_at', '<=', static::PLAUSIBLE_SQL_DATETIME_CEIL);
+    }
+
+    /**
+     * Missing or leftover schedule_released_at (same as PHP null after cast).
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeWhereScheduleReleasedAtIsMissing($query)
+    {
+        return $query->where(function ($inner) {
+            $inner->whereNull('schedule_released_at')
+                ->orWhere('schedule_released_at', '>', static::PLAUSIBLE_SQL_DATETIME_CEIL)
+                ->orWhere('schedule_released_at', '<', static::PLAUSIBLE_SQL_DATETIME_FLOOR);
+        });
+    }
+
+    /**
+     * Real Gregorian scheduled_publish_at. Leftover strings are not a slot.
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeWhereScheduledPublishAtIsRecorded($query)
+    {
+        return $query->whereNotNull('scheduled_publish_at')
+            ->where('scheduled_publish_at', '>=', static::PLAUSIBLE_SQL_DATETIME_FLOOR)
+            ->where('scheduled_publish_at', '<=', static::PLAUSIBLE_SQL_DATETIME_CEIL);
+    }
+
     public function scopeAwaitingScheduledRelease($query)
     {
         return $query
-            ->whereNull('schedule_released_at')
+            ->whereScheduleReleasedAtIsMissing()
             ->whereNotIn('status', ['cancelled', 'completed', 'processing', 'review'])
             ->where(function ($q) {
                 $q->where('status', 'scheduled')
@@ -100,7 +145,9 @@ class Order extends Model
     public function scopeNotAwaitingScheduledRelease($query)
     {
         return $query->where(function ($q) {
-            $q->whereNotNull('schedule_released_at')
+            $q->where(function ($released) {
+                $released->whereScheduleReleasedAtIsRecorded();
+            })
                 ->orWhereIn('status', ['cancelled', 'completed', 'processing', 'review'])
                 ->orWhere(function ($inner) {
                     $inner->where(function ($status) {

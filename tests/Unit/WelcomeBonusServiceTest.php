@@ -281,6 +281,75 @@ class WelcomeBonusServiceTest extends TestCase
         ));
     }
 
+    public function test_leftover_padded_ipv4_claim_blocks_the_same_place(): void
+    {
+        WelcomeBonusClaim::query()->create([
+            'user_id' => User::factory()->create()->id,
+            'ip_address' => '1.2.3.4 ',
+            'source' => 'registration',
+            'amount' => 20,
+        ]);
+
+        $this->assertSame(0.0, $this->service->amountFor($this->request('1.2.3.4'), 'advertiser'));
+        $this->assertFalse($this->service->recordClaim(
+            User::factory()->create(),
+            $this->request('1.2.3.4'),
+            20.0,
+            'registration'
+        ));
+        $this->assertSame(1, WelcomeBonusClaim::query()->count());
+    }
+
+    public function test_leftover_leading_space_ipv4_claim_blocks_the_same_place(): void
+    {
+        WelcomeBonusClaim::query()->create([
+            'user_id' => User::factory()->create()->id,
+            'ip_address' => ' 1.2.3.4',
+            'source' => 'registration',
+            'amount' => 20,
+        ]);
+
+        $this->assertSame(0.0, $this->service->amountFor($this->request('1.2.3.4'), 'advertiser'));
+        $this->assertFalse($this->service->recordClaim(
+            User::factory()->create(),
+            $this->request('1.2.3.4'),
+            20.0,
+            'registration'
+        ));
+        $this->assertSame(1, WelcomeBonusClaim::query()->count());
+    }
+
+    public function test_leftover_padded_mapped_ipv6_claim_blocks_the_ipv4_key(): void
+    {
+        WelcomeBonusClaim::query()->create([
+            'user_id' => User::factory()->create()->id,
+            'ip_address' => '::ffff:1.2.3.4 ',
+            'source' => 'registration',
+            'amount' => 20,
+        ]);
+
+        $this->assertSame(0.0, $this->service->amountFor($this->request('1.2.3.4'), 'advertiser'));
+        $this->assertFalse($this->service->recordClaim(
+            User::factory()->create(),
+            $this->request('1.2.3.4'),
+            20.0,
+            'registration'
+        ));
+        $this->assertSame(1, WelcomeBonusClaim::query()->count());
+    }
+
+    public function test_nearby_ipv4_claim_does_not_block_a_different_place(): void
+    {
+        WelcomeBonusClaim::query()->create([
+            'user_id' => User::factory()->create()->id,
+            'ip_address' => '1.2.3.40',
+            'source' => 'registration',
+            'amount' => 20,
+        ]);
+
+        $this->assertSame(20.0, $this->service->amountFor($this->request('1.2.3.4'), 'advertiser'));
+    }
+
     public function test_legacy_mapped_ipv4_claim_row_blocks_the_ipv4_key(): void
     {
         WelcomeBonusClaim::query()->create([

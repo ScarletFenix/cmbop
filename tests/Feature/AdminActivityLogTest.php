@@ -18,6 +18,7 @@ use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Tests\TestCase;
 
@@ -723,6 +724,47 @@ class AdminActivityLogTest extends TestCase
     /**
      * @param  array<string, mixed>  $overrides
      */
+    public function test_index_and_export_ok_when_created_at_is_unparseable(): void
+    {
+        $log = $this->makeLog(['description' => 'Leftover activity stamp']);
+        DB::table('activity_logs')->where('id', $log->id)->update([
+            'created_at' => 'not-a-date',
+        ]);
+
+        $this->assertNull($log->fresh()->created_at);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.activity-logs.index'))
+            ->assertOk()
+            ->assertSee('Leftover activity stamp', false)
+            ->assertDontSee('Something went wrong');
+
+        $csv = $this->actingAs($this->admin)
+            ->get(route('admin.activity-logs.export'))
+            ->assertOk()
+            ->streamedContent();
+        $this->assertStringContainsString('Leftover activity stamp', $csv);
+    }
+
+    public function test_date_filter_excludes_unparseable_created_at(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-08-16 12:00:00', 'UTC'));
+        $today = $this->makeLog(['description' => 'Today real stamp']);
+        $leftover = $this->makeLog(['description' => 'Leftover filter stamp']);
+        DB::table('activity_logs')->where('id', $leftover->id)->update([
+            'created_at' => 'not-a-date',
+        ]);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.activity-logs.index', [
+                'from' => '2026-08-16',
+                'to' => '2026-08-16',
+            ]))
+            ->assertOk()
+            ->assertSee('Today real stamp', false)
+            ->assertDontSee('Leftover filter stamp', false);
+    }
+
     private function makeLog(array $overrides = []): ActivityLog
     {
         return ActivityLog::create(array_merge([

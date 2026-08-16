@@ -18,6 +18,7 @@ use App\Services\OrderPaymentService;
 use App\Services\Wallet\WalletLedgerService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use ReflectionMethod;
 use Tests\TestCase;
 
@@ -384,6 +385,53 @@ class AdminFinanceHubTest extends TestCase
         $this->assertEquals(29.0, $overview['cash_split']['cash_in_bank']);
     }
 
+    public function test_featured_site_leftover_refund_is_not_an_order_wallet_refund(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $pubRole = Role::firstOrCreate(['name' => 'publisher']);
+        $wallet = Wallet::create([
+            'user_id' => $publisher->id,
+            'role_id' => $pubRole->id,
+            'balance' => 29,
+            'reserved_balance' => 0,
+            'bonus_balance' => 0,
+            'currency' => 'EUR',
+        ]);
+
+        $order = $this->seedCompletedPaidOrder($advertiser, $publisher, [
+            'paid_at' => now(),
+            'completed_at' => now(),
+        ]);
+        $order->forceFill([
+            'payment_status' => 'refunded',
+            'updated_at' => now(),
+        ])->save();
+        app(WalletLedgerService::class)->recordRefund(
+            $wallet,
+            115,
+            0,
+            $order,
+            $order->reference_code
+        );
+
+        $site = Site::query()->where('publisher_id', $publisher->id)->firstOrFail();
+        app(WalletLedgerService::class)->recordRefund(
+            $wallet,
+            29,
+            0,
+            $site,
+            'PROMO-FEATURE-CREDIT-cs_test_leftover'
+        );
+
+        $overview = app(FinanceOverviewService::class)->overview(
+            app(FinanceOverviewService::class)->resolvePeriod('all')
+        );
+
+        $this->assertEquals(115.0, $overview['platform']['refunds']);
+        $this->assertEquals(115.0, $overview['platform']['wallet_refunds']);
+    }
+
     public function test_withdrawable_sums_per_wallet_not_aggregate_bonus(): void
     {
         $admin = $this->makeUser('admin');
@@ -500,6 +548,52 @@ class AdminFinanceHubTest extends TestCase
         ]);
     }
 
+    public function test_earnings_ledger_nets_clawback_transfer_out(): void
+    {
+        $publisher = $this->makeUser('publisher');
+        $pubRole = Role::firstOrCreate(['name' => 'publisher']);
+        $wallet = Wallet::create([
+            'user_id' => $publisher->id,
+            'role_id' => $pubRole->id,
+            'balance' => 100,
+            'reserved_balance' => 0,
+            'bonus_balance' => 0,
+            'currency' => 'EUR',
+        ]);
+
+        $credited = app(WalletLedgerService::class)->recordTransferIn(
+            $wallet,
+            200,
+            null,
+            'EARN-JULY',
+            'July completion credit'
+        );
+        $credited->forceFill(['created_at' => Carbon::parse('2026-07-20 12:00:00')])->save();
+
+        $clawed = app(WalletLedgerService::class)->recordTransferOut(
+            $wallet,
+            100,
+            null,
+            'CLAWBACK-AUG',
+            'August clawback'
+        );
+        $clawed->forceFill(['created_at' => Carbon::parse('2026-08-12 12:00:00')])->save();
+
+        $july = app(FinanceOverviewService::class)->overview(
+            app(FinanceOverviewService::class)->resolvePeriod(null, '2026-07-01', '2026-07-31')
+        );
+        $august = app(FinanceOverviewService::class)->overview(
+            app(FinanceOverviewService::class)->resolvePeriod(null, '2026-08-01', '2026-08-31')
+        );
+        $all = app(FinanceOverviewService::class)->overview(
+            app(FinanceOverviewService::class)->resolvePeriod('all')
+        );
+
+        $this->assertEquals(200.0, $july['money_out']['earnings_credited']['ledger_transfer_in']);
+        $this->assertEquals(-100.0, $august['money_out']['earnings_credited']['ledger_transfer_in']);
+        $this->assertEquals(100.0, $all['money_out']['earnings_credited']['ledger_transfer_in']);
+    }
+
     public function test_invalid_custom_dates_do_not_five_hundred(): void
     {
         $admin = $this->makeUser('admin');
@@ -583,6 +677,12 @@ class AdminFinanceHubTest extends TestCase
         $this->assertEquals(15.0, $all['platform']['order_fees']);
         $this->assertEquals(15.0, $all['platform']['refunded_order_fees']);
         $this->assertEquals(0.0, $all['platform']['margin']);
+        $this->assertEquals(100.0, $july['money_out']['earnings_credited']['amount']);
+        $this->assertEquals(1, $july['money_out']['earnings_credited']['count']);
+        $this->assertEquals(-100.0, $august['money_out']['earnings_credited']['amount']);
+        $this->assertEquals(1, $august['money_out']['earnings_credited']['count']);
+        $this->assertEquals(0.0, $all['money_out']['earnings_credited']['amount']);
+        $this->assertEquals(1, $all['money_out']['earnings_credited']['count']);
         $this->assertEquals(115.0, $all['cash_split']['cash_in_bank']);
         $this->assertEquals(0.0, $all['money_in']['orders_paid']['stripe_card']);
         $this->assertEquals(115.0, $all['money_in']['stripe_card_collected']);
@@ -797,6 +897,91 @@ class AdminFinanceHubTest extends TestCase
         $this->assertEquals(-15.0, $august['platform']['margin']);
     }
 
+    public function test_full_clawback_does_not_double_count_refunds_or_fees(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $order = $this->seedCompletedPaidOrder($advertiser, $publisher);
+        $order->update(['subtotal' => 230, 'total_amount' => 230]);
+        $first = $order->items()->first();
+        $second = $this->addPricedLine($order, $publisher);
+
+        $this->seedUpheldDispute($admin, $order, $first);
+        $this->seedUpheldDispute($admin, $order, $second);
+        $order->update(['payment_status' => 'refunded']);
+
+        $overview = app(FinanceOverviewService::class)->overview(
+            app(FinanceOverviewService::class)->resolvePeriod('all')
+        );
+
+        $this->assertEquals(230.0, $overview['platform']['gmv_completed']);
+        $this->assertEquals(230.0, $overview['platform']['refunds']);
+        $this->assertEquals(1, $overview['platform']['refund_orders_count']);
+        $this->assertEquals(30.0, $overview['platform']['order_fees']);
+        $this->assertEquals(30.0, $overview['platform']['refunded_order_fees']);
+        $this->assertEquals(0.0, $overview['platform']['margin']);
+        $this->assertEquals(0.0, $overview['money_out']['earnings_credited']['amount']);
+        $this->assertEquals(230.0, $overview['cash_split']['cash_in_bank']);
+    }
+
+    public function test_staggered_full_clawback_keeps_each_line_on_its_resolution_date(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $order = $this->seedCompletedPaidOrder($advertiser, $publisher, [
+            'paid_at' => Carbon::parse('2026-07-15 12:00:00'),
+            'completed_at' => Carbon::parse('2026-07-20 12:00:00'),
+        ]);
+        $order->update(['subtotal' => 230, 'total_amount' => 230]);
+        $first = $order->items()->first();
+        $second = $this->addPricedLine($order, $publisher);
+
+        $this->seedUpheldDispute($admin, $order, $first, [
+            'resolved_at' => Carbon::parse('2026-07-28 12:00:00'),
+        ]);
+        $this->seedUpheldDispute($admin, $order, $second, [
+            'resolved_at' => Carbon::parse('2026-08-12 12:00:00'),
+        ]);
+        $order->forceFill([
+            'payment_status' => 'refunded',
+            'updated_at' => Carbon::parse('2026-08-12 12:00:00'),
+        ])->save();
+
+        $july = app(FinanceOverviewService::class)->overview(
+            app(FinanceOverviewService::class)->resolvePeriod(null, '2026-07-01', '2026-07-31')
+        );
+        $august = app(FinanceOverviewService::class)->overview(
+            app(FinanceOverviewService::class)->resolvePeriod(null, '2026-08-01', '2026-08-31')
+        );
+        $all = app(FinanceOverviewService::class)->overview(
+            app(FinanceOverviewService::class)->resolvePeriod('all')
+        );
+
+        $this->assertEquals(115.0, $july['platform']['refunds']);
+        $this->assertEquals(15.0, $july['platform']['refunded_order_fees']);
+        $this->assertEquals(30.0, $july['platform']['order_fees']);
+        $this->assertEquals(15.0, $july['platform']['margin']);
+        $this->assertEquals(100.0, $july['money_out']['earnings_credited']['amount']);
+        $this->assertEquals(2, $july['money_out']['earnings_credited']['count']);
+        $this->assertEquals(1, $july['platform']['refund_orders_count']);
+
+        $this->assertEquals(115.0, $august['platform']['refunds']);
+        $this->assertEquals(15.0, $august['platform']['refunded_order_fees']);
+        $this->assertEquals(0.0, $august['platform']['order_fees']);
+        $this->assertEquals(-15.0, $august['platform']['margin']);
+        $this->assertEquals(-100.0, $august['money_out']['earnings_credited']['amount']);
+        $this->assertEquals(1, $august['money_out']['earnings_credited']['count']);
+        $this->assertEquals(1, $august['platform']['refund_orders_count']);
+
+        $this->assertEquals(230.0, $all['platform']['refunds']);
+        $this->assertEquals(30.0, $all['platform']['refunded_order_fees']);
+        $this->assertEquals(0.0, $all['platform']['margin']);
+        $this->assertEquals(0.0, $all['money_out']['earnings_credited']['amount']);
+        $this->assertEquals(2, $all['money_out']['earnings_credited']['count']);
+    }
+
     public function test_failed_after_paid_card_capture_still_counts_as_cash_in(): void
     {
         $advertiser = $this->makeUser('advertiser');
@@ -839,6 +1024,90 @@ class AdminFinanceHubTest extends TestCase
         $this->assertEquals(80.0, $overview['money_in']['failed_external_collected']);
         $this->assertEquals(80.0, $overview['cash_split']['cash_in_bank']);
         $this->assertEquals(80.0, $overview['platform']['refunds']);
+    }
+
+    public function test_failed_card_cash_in_uses_checkout_date_not_refund_date(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $advRole = Role::firstOrCreate(['name' => 'advertiser']);
+        $wallet = Wallet::create([
+            'user_id' => $advertiser->id,
+            'role_id' => $advRole->id,
+            'balance' => 80,
+            'reserved_balance' => 0,
+            'bonus_balance' => 0,
+            'currency' => 'EUR',
+        ]);
+
+        $order = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => 'ORD-FIN-FAILED-CLOCK',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'failed',
+            'status' => 'cancelled',
+            'paid_at' => null,
+        ]);
+        $order->forceFill(['created_at' => Carbon::parse('2026-07-15 12:00:00')])->save();
+
+        $refund = app(WalletLedgerService::class)->recordRefund(
+            $wallet,
+            80,
+            0,
+            $order,
+            $order->order_number
+        );
+        $refund->forceFill(['created_at' => Carbon::parse('2026-08-10 12:00:00')])->save();
+
+        $july = app(FinanceOverviewService::class)->overview(
+            app(FinanceOverviewService::class)->resolvePeriod(null, '2026-07-01', '2026-07-31')
+        );
+        $august = app(FinanceOverviewService::class)->overview(
+            app(FinanceOverviewService::class)->resolvePeriod(null, '2026-08-01', '2026-08-31')
+        );
+
+        $this->assertEquals(80.0, $july['money_in']['failed_external_collected']);
+        $this->assertEquals(80.0, $july['cash_split']['cash_in_bank']);
+        $this->assertEquals(0.0, $july['platform']['refunds']);
+        $this->assertEquals(0.0, $august['money_in']['failed_external_collected']);
+        $this->assertEquals(0.0, $august['cash_split']['cash_in_bank']);
+        $this->assertEquals(80.0, $august['platform']['refunds']);
+    }
+
+    public function test_dossier_keeps_lifetime_gmv_and_shows_clawback_refunds(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $order = $this->seedCompletedPaidOrder($advertiser, $publisher);
+        $order->update(['subtotal' => 230, 'total_amount' => 230]);
+        $second = $this->addPricedLine($order, $publisher);
+        $this->seedUpheldDispute($admin, $order, $second);
+
+        $dossier = app(FinanceOverviewService::class)->userDossier($advertiser);
+
+        $this->assertEquals(230.0, $dossier['totals']['gmv_as_advertiser']);
+        $this->assertEquals(230.0, $dossier['totals']['current_paid_gmv']);
+        $this->assertEquals(115.0, $dossier['totals']['refunds_as_advertiser']);
+        $this->assertEquals(115.0, $dossier['totals']['net_gmv_as_advertiser']);
+
+        $this->actingAs($admin)
+            ->get(route('admin.finance.user', $advertiser))
+            ->assertOk()
+            ->assertSee('Refunds €115.00', false)
+            ->assertSee('net €115.00', false);
+
+        $first = $order->items()->where('id', '!=', $second->id)->first();
+        $this->seedUpheldDispute($admin, $order, $first);
+        $order->update(['payment_status' => 'refunded']);
+
+        $afterFull = app(FinanceOverviewService::class)->userDossier($advertiser->fresh());
+        $this->assertEquals(230.0, $afterFull['totals']['gmv_as_advertiser']);
+        $this->assertEquals(0.0, $afterFull['totals']['current_paid_gmv']);
+        $this->assertEquals(230.0, $afterFull['totals']['refunds_as_advertiser']);
+        $this->assertEquals(0.0, $afterFull['totals']['net_gmv_as_advertiser']);
     }
 
     public function test_null_paid_at_does_not_enter_every_period(): void
@@ -1126,5 +1395,135 @@ class AdminFinanceHubTest extends TestCase
         ]);
 
         return $order->fresh();
+    }
+
+    private function addPricedLine(Order $order, User $publisher): OrderItem
+    {
+        $site = Site::create([
+            'publisher_id' => $publisher->id,
+            'site_name' => 'Second Fee Site',
+            'site_url' => 'https://second-fee-site.test',
+            'domain' => 'second-fee-'.uniqid().'.test',
+            'da' => 10,
+            'dr' => 10,
+            'traffic' => 100,
+            'country' => 'de',
+            'language' => 'de',
+            'category' => 'Technology',
+            'price' => 100,
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => 'Second line for finance clawback tests.',
+            'verified' => true,
+            'active' => true,
+        ]);
+
+        return OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/article-2',
+            'price' => 115,
+            'additional_price' => 0,
+            'publisher_price' => 100,
+            'platform_fee_percent' => 15,
+            'platform_fee_amount' => 15,
+        ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $overrides
+     */
+    private function seedUpheldDispute(User $admin, Order $order, OrderItem $item, array $overrides = []): OrderItemDispute
+    {
+        return OrderItemDispute::create(array_merge([
+            'order_id' => $order->id,
+            'order_item_id' => $item->id,
+            'opened_by' => $admin->id,
+            'status' => OrderItemDispute::STATUS_UPHELD,
+            'reason' => 'Live URL was removed after the report window started.',
+            'resolved_at' => now(),
+            'advertiser_credited' => 115,
+            'publisher_debited' => 100,
+        ], $overrides));
+    }
+
+    public function test_leftover_dispute_resolved_at_falls_back_to_created_at(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $order = $this->seedCompletedPaidOrder($advertiser, $publisher, [
+            'paid_at' => Carbon::parse('2026-07-15 12:00:00'),
+            'completed_at' => Carbon::parse('2026-07-20 12:00:00'),
+        ]);
+        $item = $order->items()->first();
+        $this->assertNotNull($item);
+
+        OrderItemDispute::ensureTable();
+        $dispute = OrderItemDispute::create([
+            'order_id' => $order->id,
+            'order_item_id' => $item->id,
+            'opened_by' => $admin->id,
+            'status' => OrderItemDispute::STATUS_UPHELD,
+            'reason' => 'Live URL was removed after the report window started.',
+            'resolved_at' => Carbon::parse('2026-08-12 12:00:00'),
+            'advertiser_credited' => 115,
+            'publisher_debited' => 100,
+        ]);
+        DB::table('order_item_disputes')->where('id', $dispute->id)->update([
+            'resolved_at' => 'not-a-date',
+            'created_at' => '2026-08-12 12:00:00',
+        ]);
+
+        $july = app(FinanceOverviewService::class)->overview(
+            app(FinanceOverviewService::class)->resolvePeriod(null, '2026-07-01', '2026-07-31')
+        );
+        $august = app(FinanceOverviewService::class)->overview(
+            app(FinanceOverviewService::class)->resolvePeriod(null, '2026-08-01', '2026-08-31')
+        );
+
+        $this->assertEquals(0.0, $july['platform']['refunds']);
+        $this->assertEquals(115.0, $august['platform']['refunds']);
+        $this->assertEquals(1, $august['platform']['refund_orders_count']);
+    }
+
+    public function test_leftover_processed_at_falls_back_to_updated_at_for_cash_out(): void
+    {
+        $publisher = $this->makeUser('publisher');
+        $withdrawal = Withdrawal::create([
+            'user_id' => $publisher->id,
+            'amount' => 80,
+            'fee' => 5,
+            'net_amount' => 75,
+            'payment_method' => 'paypal',
+            'payment_details' => ['email' => 'pay@example.com'],
+            'status' => 'completed',
+            'processed_at' => Carbon::parse('2026-08-12 10:00:00'),
+            'created_at' => Carbon::parse('2026-07-01 10:00:00'),
+            'updated_at' => Carbon::parse('2026-08-12 10:00:00'),
+        ]);
+        DB::table('withdrawals')->where('id', $withdrawal->id)->update([
+            'processed_at' => 'not-a-date',
+            'updated_at' => '2026-08-12 10:00:00',
+        ]);
+
+        $july = app(FinanceOverviewService::class)->overview(
+            app(FinanceOverviewService::class)->resolvePeriod(null, '2026-07-01', '2026-07-31')
+        );
+        $august = app(FinanceOverviewService::class)->overview(
+            app(FinanceOverviewService::class)->resolvePeriod(null, '2026-08-01', '2026-08-31')
+        );
+        $all = app(FinanceOverviewService::class)->overview(
+            app(FinanceOverviewService::class)->resolvePeriod('all')
+        );
+
+        $this->assertEquals(0.0, $july['money_out']['withdrawals_paid']['net']);
+        $this->assertEquals(0.0, $july['cash_split']['cash_out_payouts']);
+        $this->assertEquals(75.0, $august['money_out']['withdrawals_paid']['net']);
+        $this->assertEquals(5.0, $august['platform']['withdrawal_fees']);
+        $this->assertEquals(75.0, $august['cash_split']['cash_out_payouts']);
+        $this->assertEquals(75.0, $all['cash_split']['cash_out_payouts']);
     }
 }

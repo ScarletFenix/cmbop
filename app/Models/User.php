@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Models\Concerns\ToleratesUnparseableDates;
 use App\Notifications\VerifyEmail;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -144,7 +145,15 @@ class User extends Authenticatable implements MustVerifyEmail
 
     public function payoutProfileLocked(): bool
     {
-        return $this->payout_profile_locked_at !== null;
+        if ($this->payout_profile_locked_at !== null) {
+            return true;
+        }
+
+        // Hostinger leftover strings cast to null. A junk lock stamp is still
+        // a lock — fail-closed so publishers cannot rewrite bank details.
+        $raw = $this->getAttributes()['payout_profile_locked_at'] ?? null;
+
+        return is_string($raw) && trim($raw) !== '';
     }
 
     /**
@@ -182,6 +191,65 @@ class User extends Authenticatable implements MustVerifyEmail
         }
 
         return ! is_null($this->email_verified_at);
+    }
+
+    /**
+     * Parseable email_verified_at in the Gregorian window.
+     * Leftover Hostinger strings compare as verified in SQL (`IS NOT NULL`)
+     * but PHP hasVerifiedEmail() is false after ToleratesUnparseableDates.
+     *
+     * Google users with a null stamp stay unverified here — same as the
+     * previous whereNotNull filter. Do not treat leftover as verified.
+     *
+     * @param  Builder<User>  $query
+     * @return Builder<User>
+     */
+    public function scopeWhereEmailVerified($query)
+    {
+        return $query->whereNotNull('email_verified_at')
+            ->where('email_verified_at', '>=', static::PLAUSIBLE_SQL_DATETIME_FLOOR)
+            ->where('email_verified_at', '<=', static::PLAUSIBLE_SQL_DATETIME_CEIL);
+    }
+
+    /**
+     * Missing or leftover email_verified_at (same as PHP null after cast).
+     *
+     * @param  Builder<User>  $query
+     * @return Builder<User>
+     */
+    public function scopeWhereEmailUnverified($query)
+    {
+        return $query->where(function ($inner) {
+            $inner->whereNull('email_verified_at')
+                ->orWhere('email_verified_at', '>', static::PLAUSIBLE_SQL_DATETIME_CEIL)
+                ->orWhere('email_verified_at', '<', static::PLAUSIBLE_SQL_DATETIME_FLOOR);
+        });
+    }
+
+    /**
+     * Leftover Hostinger reminder clocks are not a real send. whereNull
+     * misses them, so deposit / add-site nudges stay silenced forever.
+     *
+     * @param  Builder<User>  $query
+     * @return Builder<User>
+     */
+    public function scopeWhereOnboardingReminderUnsent($query, string $column)
+    {
+        $allowed = [
+            'deposit_reminder_day7_sent_at',
+            'deposit_reminder_day14_sent_at',
+            'add_site_reminder_day3_sent_at',
+            'add_site_reminder_day7_sent_at',
+        ];
+        if (! in_array($column, $allowed, true)) {
+            return $query->whereRaw('0 = 1');
+        }
+
+        return $query->where(function ($inner) use ($column) {
+            $inner->whereNull($column)
+                ->orWhere($column, '>', static::PLAUSIBLE_SQL_DATETIME_CEIL)
+                ->orWhere($column, '<', static::PLAUSIBLE_SQL_DATETIME_FLOOR);
+        });
     }
 
     /**

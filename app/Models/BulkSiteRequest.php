@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\ToleratesUnparseableDates;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -9,6 +10,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class BulkSiteRequest extends Model
 {
+    use ToleratesUnparseableDates;
+
     /** Publisher submit and marketer Done/seed share this per-request ceiling. */
     public const MAX_SITES_PER_REQUEST = 200;
 
