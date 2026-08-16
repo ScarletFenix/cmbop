@@ -102,7 +102,12 @@ or marketing, even if that staff account also has a marketplace role.
    blocks reclaim (Email Center retry would double) but must **not** block expire — that job already died, and treating it as in-flight
    left the recipient `queued` past `MAIL_CAMPAIGN_MAX_AGE_HOURS`. A later SMTP success or a send suppressed as a duplicate
    still marks the recipient `delivered` (it already went out), including
-   when expire already flipped the row to skipped stale. Preference, disabled, and unverified skips stay skipped — a stray `MessageSent`
+   when expire already flipped the row to skipped stale. `MessageSent` and
+   `abandonOpenLog` also close leftover pending/failed Email Center rows
+   for the same campaign + user when the dedupe strings differ (generic
+   `audience_campaign|{email}|AudienceCampaignMail` vs
+   `audience_campaign:{id}:user:{id}`) — leaving those open made retry
+   a second blast. Preference, disabled, and unverified skips stay skipped — a stray `MessageSent`
    or duplicate suppress must not hide an opt-out as a successful send.
    Recover also attaches a delivered `email_logs` row to those stale
    leftovers only. A leftover pending Email Center log for a skipped-stale recipient is failed so retry can see it — but not while that user's `AudienceCampaignMail` is still on the queue, or a second retry doubles the send. Lost transactional pending logs (Welcome / orders) with no campaign recipient are failed after the mail age window when no matching `SendQueuedMailable` is on a readable database queue — retry only accepts failed. An unused queue table without `payload` must **not** abort that expire or those Welcome rows stay pending forever. Email Center retry must **not** treat a generic `audience_campaign|{email}|…` leftover as already delivered just because an earlier campaign mailed that address — that key is per email, not per campaign, and closing it swallowed a later campaign. Transactional `isDuplicate()` must use `sent_at` (not `created_at`) for the 10-minute window — a Welcome that sat in the queue longer than that, then delivered, still has an old `created_at` and a retry blasted a second mail. Email Center retry must **not** re-queue a leftover failed Welcome / order log whose delivered sibling is from the same attempt (`created_at` / `updated_at` within the 10-minute window of `sent_at`) — that leftover is a worker timeout after SMTP, and retry blasted a second mail once the window lapsed. An older Welcome delivery must still retry a later real failure. An unidentified in-flight `SendQueuedMailable` of the same class must leave the pending row pending.

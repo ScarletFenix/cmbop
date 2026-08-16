@@ -66,6 +66,12 @@ class AudienceCampaignMail extends PlatformMailable
     {
         if (AudienceInventoryService::userHasStaffRole($this->recipient)) {
             $this->suppressReason = 'staff';
+            if (! filled($this->dedupeKey)) {
+                [$campaignId, $userId] = $this->campaignAndUserIds();
+                if ($campaignId > 0 && $userId > 0) {
+                    $this->dedupeKey = EmailCampaignRecipient::dedupeKey($campaignId, $userId);
+                }
+            }
             // Staff skip runs before parent::send(), so abandonOpenLog
             // never ran — a retried pending Email Center row stayed
             // pending forever (retry only accepts failed).

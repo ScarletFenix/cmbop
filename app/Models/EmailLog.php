@@ -129,6 +129,48 @@ class EmailLog extends Model
     }
 
     /**
+     * Leftover pending/failed rows for this recipient, including a
+     * historical generic default key that only stores the pair in meta.
+     *
+     * @return Collection<int, self>
+     */
+    public static function openForCampaignUser(int $campaignId, int $userId)
+    {
+        if ($campaignId < 1 || $userId < 1) {
+            return static::query()->whereRaw('0 = 1')->get();
+        }
+
+        $canonical = EmailCampaignRecipient::dedupeKey($campaignId, $userId);
+
+        try {
+            return static::query()
+                ->whereIn('status', [self::STATUS_PENDING, self::STATUS_FAILED])
+                ->where(function ($query) use ($canonical) {
+                    $query->where('dedupe_key', $canonical)
+                        ->orWhere('dedupe_key', 'like', 'audience_campaign|%')
+                        ->orWhere('notification_type', 'audience_campaign')
+                        ->orWhere('template_key', 'audience_campaign')
+                        ->orWhere('mailable', 'like', '%AudienceCampaignMail%');
+                })
+                ->orderByDesc('id')
+                ->limit(200)
+                ->get()
+                ->filter(function (self $log) use ($campaignId, $userId, $canonical) {
+                    if ((string) $log->dedupe_key === $canonical) {
+                        return true;
+                    }
+
+                    [$foundCampaign, $foundUser] = static::campaignUserIds($log);
+
+                    return $foundCampaign === $campaignId && $foundUser === $userId;
+                })
+                ->values();
+        } catch (\Throwable) {
+            return static::query()->whereRaw('0 = 1')->get();
+        }
+    }
+
+    /**
      * A real SMTP success for this recipient, regardless of which dedupe
      * string that send wrote. Exact-key lookup misses a leftover generic
      * key after a later canonical send (and the reverse).

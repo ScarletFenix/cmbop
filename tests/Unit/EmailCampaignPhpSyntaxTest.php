@@ -19,6 +19,7 @@ class EmailCampaignPhpSyntaxTest extends TestCase
             $root.'/app/Support/MailJobPayload.php',
             $root.'/app/Http/Controllers/Admin/EmailCenterController.php',
             $root.'/app/Models/EmailLog.php',
+            $root.'/app/Listeners/LogSentEmail.php',
             $root.'/tests/Unit/MailJobPayloadTest.php',
         ];
     }
@@ -118,6 +119,7 @@ class EmailCampaignPhpSyntaxTest extends TestCase
             $root.'/app/Models/EmailLog.php',
             $root.'/tests/Unit/MailJobPayloadTest.php',
             $root.'/tests/Feature/AdminCampaignsTest.php',
+            $root.'/app/Listeners/LogSentEmail.php',
         ];
 
         foreach ($files as $path) {
@@ -165,6 +167,12 @@ class EmailCampaignPhpSyntaxTest extends TestCase
         $this->assertSame(1, preg_match_all('/function latestDeliveredForCampaignUser\b/', $log));
         $this->assertSame(1, preg_match_all('/function pendingUserIdsForCampaign\b/', $log));
         $this->assertSame(1, preg_match_all('/function campaignUserIds\b/', $log));
+        $this->assertSame(1, preg_match_all('/function openForCampaignUser\b/', $log));
+
+        $sent = (string) file_get_contents($root.'/app/Listeners/LogSentEmail.php');
+        $this->assertSame(1, preg_match_all('/function closeSiblingCampaignLogs\b/', $sent));
+
+        $this->assertSame(1, preg_match_all('/function openSiblingCampaignLogs\b/', $mailable));
         $this->assertTrue((bool) preg_match(
             '/public static function campaignUserIds\(self \$log\): array\s*\{(.*?)\n    \/\*\*/s',
             $log,
