@@ -103,7 +103,22 @@ class AudienceCampaignMail extends PlatformMailable
 
     public function failed(?\Throwable $exception): void
     {
-        if ($this->alreadyHasDeliveredLog()) {
+        // A worker timeout after SMTP still runs failed(). MessageSent
+        // already wrote delivered. Marking the recipient failed hid that
+        // send from recover (it only heals queued rows), so the campaign
+        // looked failed and a later compose blasted the audience again.
+        if ($this->thisAttemptAlreadyDelivered()) {
+            $this->suppressReason = 'duplicate';
+            $this->abandonOpenLog($this->suppressErrorMessage());
+            $this->markRecipientDelivered();
+
+            return;
+        }
+
+        // Generic-key / recent sibling delivery still must not invent a
+        // leftover failed Email Center log. A delivery older than this
+        // job attempt is a prior send — record the later real failure.
+        if ($this->alreadyHasDeliveredLog() && ! $this->deliveredLogIsOlderThanThisAttempt()) {
             $this->suppressReason = 'duplicate';
             $this->abandonOpenLog($this->suppressErrorMessage());
             $this->markRecipientDelivered();
@@ -113,6 +128,67 @@ class AudienceCampaignMail extends PlatformMailable
 
         parent::failed($exception);
         $this->markRecipientFailed();
+    }
+
+    /**
+     * True when MessageSent already persisted a delivered log for this
+     * job attempt (sent_at >= queuedAt). An older campaign delivery
+     * must still record a later real failure.
+     */
+    protected function thisAttemptAlreadyDelivered(): bool
+    {
+        if (! filled($this->dedupeKey) || blank($this->queuedAt)) {
+            return false;
+        }
+
+        try {
+            if (! Schema::hasTable((new EmailLog)->getTable())) {
+                return false;
+            }
+
+            $delivered = EmailLog::latestDeliveredByDedupe($this->dedupeKey);
+            if (! $delivered?->sent_at) {
+                return false;
+            }
+
+            return $delivered->sent_at->greaterThanOrEqualTo(
+                Carbon::parse($this->queuedAt)->subSeconds(5)
+            );
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * queuedAt is stamped in the constructor. Tests that call failed()
+     * on a freshly built mailable have queuedAt ≈ now, which would make
+     * a one-minute-old SMTP row look "older than this attempt".
+     */
+    protected function deliveredLogIsOlderThanThisAttempt(): bool
+    {
+        if (blank($this->queuedAt)) {
+            return false;
+        }
+
+        try {
+            $queued = Carbon::parse($this->queuedAt);
+            if ($queued->greaterThan(now()->subSeconds(5))) {
+                return false;
+            }
+
+            $delivered = EmailLog::latestDeliveredByDedupe((string) $this->dedupeKey);
+            if (! $delivered?->sent_at) {
+                [$campaignId, $userId] = $this->campaignAndUserIds();
+                $delivered = EmailLog::latestDeliveredForCampaignUser($campaignId, $userId);
+            }
+            if (! $delivered?->sent_at) {
+                return false;
+            }
+
+            return $delivered->sent_at->lt($queued->copy()->subSeconds(5));
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     /**

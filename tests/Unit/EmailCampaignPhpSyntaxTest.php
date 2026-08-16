@@ -156,12 +156,30 @@ class EmailCampaignPhpSyntaxTest extends TestCase
 
         $campaignMail = (string) file_get_contents($root.'/app/Mail/AudienceCampaignMail.php');
         $this->assertSame(1, preg_match_all('/function defaultDedupeKey\b/', $campaignMail));
+        $this->assertSame(1, preg_match_all('/function thisAttemptAlreadyDelivered\b/', $campaignMail));
         $this->assertStringContainsString('EmailCampaignRecipient::dedupeKey', $campaignMail);
+
+        $log = (string) file_get_contents($root.'/app/Models/EmailLog.php');
+        $this->assertSame(1, preg_match_all('/function campaignUserIds\b/', $log));
+        $this->assertSame(1, preg_match_all('/function openForCampaignUser\b/', $log));
+        $this->assertTrue((bool) preg_match(
+            '/public static function campaignUserIds\(self \$log\): array\s*\{(.*?)\n    \/\*\*/s',
+            $log,
+            $ids
+        ));
+        $this->assertStringContainsString('template_key', $ids[1]);
+        $this->assertStringContainsString('return [0, 0];', $ids[1]);
+        $this->assertStringNotContainsString(
+            'return static::query()',
+            $ids[1],
+            'campaignUserIds must parse identity, not return open leftover rows'
+        );
 
         $inventory = (string) file_get_contents($files[2]);
         $this->assertSame(1, preg_match_all('/function recipientRowQuery\b/', $inventory));
 
         $sent = (string) file_get_contents($root.'/app/Listeners/LogSentEmail.php');
+        $this->assertSame(1, preg_match_all('/function closeSiblingCampaignLogs\b/', $sent));
         $this->assertStringContainsString("'suppressed' => 'duplicate'", $sent);
         $this->assertStringNotContainsString('Closed: duplicate open log for the same send', $sent);
 
