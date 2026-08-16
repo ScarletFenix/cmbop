@@ -13,10 +13,13 @@ use App\Services\ContentModeration\ContentModerationService;
 use App\Services\ContentUpload\ArticleEvaluationService;
 use App\Services\ContentUpload\ArticleHtmlSanitizer;
 use App\Services\ContentUpload\ContentUploadService;
+use App\Services\OrderPaymentService;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Tests\Support\CreatesContentSubmissions;
 use Tests\TestCase;
@@ -68,6 +71,17 @@ class ContentLibraryImprovementsTest extends TestCase
             'verified' => true,
             'active' => true,
         ]);
+    }
+
+    /**
+     * Hostinger leftovers can be null / unpaid / empty. SQLite's NOT NULL
+     * default blocks those inserts until the column is relaxed.
+     */
+    private function allowLegacyOrderPaymentStatuses(): void
+    {
+        Schema::table('orders', function (Blueprint $table) {
+            $table->string('payment_status')->nullable()->change();
+        });
     }
 
     public function test_library_compact_table_filters_and_status_labels(): void
@@ -1291,6 +1305,77 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertTrue($submission->fresh()->load('orderItems.order')->isReadyToFulfill((int) $leftover->id));
     }
 
+    public function test_expired_wallet_leftover_can_start_a_replacement_checkout(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->activeSite($publisher, 'expired-wallet-cta');
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'title' => 'Expired Wallet Leftover',
+            'expires_at' => now()->subDay(),
+        ]);
+        $leftover = $this->makeOrder($advertiser);
+        OrderItem::create([
+            'order_id' => $leftover->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_submission_id' => $submission->id,
+            'content_path' => $submission->path,
+            'content_original_name' => $submission->original_filename,
+            'content_link' => 'https://example.com/article',
+            'price' => 46,
+        ]);
+
+        $fresh = $submission->fresh()->load(['order', 'orderItems.order']);
+        $this->assertTrue($fresh->isExpired());
+        $this->assertTrue($fresh->canReplaceUnpaidLeftover());
+        $this->assertFalse($fresh->leftoverCanPayAgain());
+        $this->assertTrue($fresh->canOrderFromLibrary());
+        $this->assertTrue($fresh->isAvailableForPicker());
+        $this->assertTrue($fresh->isReadyToFulfill((int) $leftover->id));
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', ['availability' => 'needs_fix']))
+            ->assertOk()
+            ->assertSee('Expired Wallet Leftover')
+            ->assertSee(route('advertiser.content-library.order', $submission, false), false)
+            ->assertSee('View order');
+
+        $this->actingAs($advertiser)
+            ->from(route('advertiser.content-library'))
+            ->get(route('advertiser.content-library.order', $submission))
+            ->assertRedirect(route('advertiser.catalog', [
+                'content_submission_id' => $submission->id,
+            ]));
+
+        $leftover->refresh();
+        $this->assertSame('pending', $leftover->status);
+        $this->assertSame('unpaid', $leftover->payment_status);
+        $this->assertTrue($submission->fresh()->load('orderItems.order')->isClaimedByAnotherOrder());
+
+        $payments = app(OrderPaymentService::class);
+        $this->assertTrue($payments->replaceUnpaidLeftoversIfStillOrderable((int) $advertiser->id, [$submission->id]));
+        $leftover->refresh();
+        $this->assertSame('pending', $leftover->status);
+        $this->assertSame('unpaid', $leftover->payment_status);
+
+        $this->assertTrue($payments->replaceUnpaidLeftoversIfStillOrderable(
+            (int) $advertiser->id,
+            [$submission->id],
+            null,
+            true,
+            true
+        ));
+        $leftover->refresh();
+        $this->assertSame('cancelled', $leftover->status);
+        $released = $submission->fresh()->load(['order', 'orderItems.order']);
+        $this->assertFalse($released->isClaimedByAnotherOrder());
+        $this->assertTrue($released->hasFulfillableContent());
+        $this->assertTrue($released->isReadyToFulfill((int) $this->makeOrder($advertiser)->id));
+    }
+
     public function test_item_only_leftover_is_not_counted_as_unused_near_expiry(): void
     {
         $advertiser = $this->advertiser();
@@ -1384,6 +1469,89 @@ class ContentLibraryImprovementsTest extends TestCase
             ->assertOk()
             ->assertSee('Paid Item Only Piece', false)
             ->assertSee('View order');
+    }
+
+    public function test_legacy_null_and_unpaid_item_only_leftovers_are_not_available(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+
+        $this->allowLegacyOrderPaymentStatuses();
+
+        foreach ([null, 'unpaid', ''] as $paymentStatus) {
+            $slug = match ($paymentStatus) {
+                null => 'null',
+                '' => 'empty',
+                default => $paymentStatus,
+            }.'-item-only-claim';
+            $site = $this->activeSite($publisher, $slug);
+            $submission = $this->createApprovedSubmission($advertiser);
+            $submission->update(['title' => 'Legacy '.$slug]);
+            $leftover = Order::create([
+                'user_id' => $advertiser->id,
+                'order_number' => 'ORD-'.uniqid(),
+                'reference_code' => 'REF-'.uniqid(),
+                'subtotal' => 46,
+                'tax' => 0,
+                'total_amount' => 46,
+                'payment_method' => 'wallet',
+                'payment_status' => $paymentStatus,
+                'status' => 'pending',
+            ]);
+            OrderItem::create([
+                'order_id' => $leftover->id,
+                'site_id' => $site->id,
+                'site_name' => $site->site_name,
+                'site_url' => $site->site_url,
+                'content_submission_id' => $submission->id,
+                'content_path' => $submission->path,
+                'content_original_name' => $submission->original_filename,
+                'content_link' => 'https://example.com/article',
+                'price' => 46,
+            ]);
+
+            $fresh = $submission->fresh()->load(['order', 'orderItems.order']);
+            $this->assertNull($fresh->order_id, (string) $paymentStatus);
+            $this->assertTrue($fresh->isClaimedByAnotherOrder(), (string) $paymentStatus);
+            $this->assertTrue($fresh->isLinkedToOpenOrderItem(), (string) $paymentStatus);
+            $this->assertFalse($fresh->isReadyForCheckout(), (string) $paymentStatus);
+            $this->assertSame('needs_fix', $fresh->libraryAvailability(), (string) $paymentStatus);
+            $this->assertSame(
+                ['status' => 'all', 'availability' => 'needs_fix'],
+                $fresh->staffApprovalLibraryParams(),
+                (string) $paymentStatus
+            );
+            $this->assertFalse(
+                ContentSubmission::query()->whereKey($submission->id)->checkoutReady()->exists(),
+                (string) $paymentStatus
+            );
+            $this->assertTrue(
+                ContentSubmission::query()->whereKey($submission->id)->needsLibraryFix()->exists(),
+                (string) $paymentStatus
+            );
+
+            $this->actingAs($advertiser)
+                ->get(route('advertiser.content-library', ['availability' => 'available']))
+                ->assertOk()
+                ->assertDontSee('Legacy '.$slug, false);
+
+            $this->actingAs($advertiser)
+                ->get(route('advertiser.content-library', ['availability' => 'needs_fix']))
+                ->assertOk()
+                ->assertSee('Legacy '.$slug, false)
+                ->assertSee('View order');
+
+            $this->actingAs($advertiser)
+                ->get(route('advertiser.dashboard'))
+                ->assertOk()
+                ->assertViewHas('hasOrderableArticle', false);
+
+            $this->actingAs($advertiser)
+                ->postJson(route('advertiser.content-submissions.archive', $submission))
+                ->assertStatus(422);
+
+            $this->assertNull($submission->fresh()->archived_at);
+        }
     }
 
     public function test_library_js_prefers_server_editor_notice_over_link_guess(): void

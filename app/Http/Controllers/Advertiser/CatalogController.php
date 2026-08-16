@@ -5833,7 +5833,8 @@ class CatalogController extends Controller
             $userId,
             $this->collectSubmissionIdsFromCheckoutContent($checkoutContent),
             $keepReferenceCode,
-            $forgetPackages
+            $forgetPackages,
+            true
         );
     }
 

@@ -50,7 +50,7 @@ class ContentSubmission extends Model
 
     public const PAID_ORDER_CLAIM_MESSAGE = 'This article is already used on a paid order and cannot start a new catalog checkout.';
 
-    /** Leftover / in-flight placements that still own the article. */
+    /** Canonical leftover payment states for Pay again / settle. */
     public const ACTIVE_ORDER_CLAIM_PAYMENT_STATUSES = ['paid', 'pending', 'failed'];
 
     /** The advertiser owns or created every image. */
@@ -237,8 +237,9 @@ class ContentSubmission extends Model
 
     /**
      * True when another checkout already owns this article (direct order_id
-     * or a paid/pending/failed, non-cancelled placement). Callers must lock
-     * the row first. Cancelled leftovers stay reusable after refund/release.
+     * or a non-cancelled, non-refunded placement). Legacy null / unpaid
+     * payment_status still locks the row. Callers must lock the row first.
+     * Cancelled leftovers stay reusable after refund/release.
      */
     public function isClaimedByAnotherOrder(?int $orderId = null): bool
     {
@@ -421,8 +422,8 @@ class ContentSubmission extends Model
     }
 
     /**
-     * Hide articles still pointed at by a paid, pending, or failed
-     * (non-cancelled) order item. Cancelled leftovers stay orderable.
+     * Hide articles still pointed at by a non-cancelled, non-refunded
+     * order item (including legacy null / unpaid). Cancelled leftovers stay orderable.
      *
      * @param  Builder<static>  $query
      * @return Builder<static>
@@ -963,15 +964,13 @@ class ContentSubmission extends Model
                     : $item->order()->first();
 
                 return $order instanceof Order
-                    && $order->status !== 'cancelled'
-                    && $order->payment_status !== 'refunded';
+                    && $this->orderLooksLikeActiveClaim($order);
             });
         }
 
         return $this->orderItems()
             ->whereHas('order', function ($q) {
-                $q->where('status', '!=', 'cancelled')
-                    ->where('payment_status', '!=', 'refunded');
+                $this->constrainActiveOrderClaim($q);
             })
             ->tap(fn ($item) => $this->excludeClawedBackItems($item))
             ->exists();
@@ -1247,7 +1246,8 @@ class ContentSubmission extends Model
 
     /**
      * Library Order button: free checkout-ready rows, or a leftover whose
-     * article is already content-ready. Unready leftovers keep Pay again.
+     * article is already content-ready. Card leftovers that can Pay again
+     * stay on that order when the listing has expired.
      */
     public function canOrderFromLibrary(): bool
     {
@@ -1260,7 +1260,33 @@ class ContentSubmission extends Model
             return true;
         }
 
-        return $this->canReplaceUnpaidLeftover() && $this->isContentReadyForOrder();
+        if (! $this->canReplaceUnpaidLeftover() || ! $this->hasFulfillableContent()) {
+            return false;
+        }
+
+        // Unused-inventory expiry. Claimed leftovers that cannot Pay again
+        // must still start a replacement checkout or the article is stuck.
+        if ($this->isExpired() && $this->leftoverCanPayAgain()) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Card + failed + pending — the only leftover Orders → Pay again settles.
+     * Wallet / Wise / bank / legacy unpaid rows cannot use that button.
+     */
+    public function leftoverCanPayAgain(): bool
+    {
+        $order = $this->libraryOrder();
+        if (! $order instanceof Order) {
+            return false;
+        }
+
+        return $order->payment_method === 'card'
+            && $order->payment_status === 'failed'
+            && $order->status === 'pending';
     }
 
     /**
@@ -1410,7 +1436,6 @@ class ContentSubmission extends Model
         // order_id leftovers cannot be ordered again, but they stay editable
         // until paid. Do not hide the Pay-again notice just because
         // canBeOrdered() is false.
-
         if ($this->isClaimedByAnotherOrder()) {
             return self::ACTIVE_ORDER_CLAIM_MESSAGE;
         }
@@ -2164,8 +2189,12 @@ class ContentSubmission extends Model
      */
     protected function constrainActiveOrderClaim($orderQuery, ?int $exceptOrderId = null): void
     {
-        $orderQuery->whereIn('payment_status', self::ACTIVE_ORDER_CLAIM_PAYMENT_STATUSES)
-            ->where('status', '!=', 'cancelled');
+        // Include legacy null / unpaid. SQL `!= refunded` alone drops NULL.
+        $orderQuery->where('status', '!=', 'cancelled')
+            ->where(function ($payment) {
+                $payment->whereNull('payment_status')
+                    ->orWhere('payment_status', '!=', 'refunded');
+            });
 
         if ($exceptOrderId !== null) {
             $orderQuery->where('orders.id', '!=', $exceptOrderId);
@@ -2179,7 +2208,7 @@ class ContentSubmission extends Model
         }
 
         return $order->status !== 'cancelled'
-            && in_array($order->payment_status, self::ACTIVE_ORDER_CLAIM_PAYMENT_STATUSES, true);
+            && ($order->payment_status === null || $order->payment_status !== 'refunded');
     }
 
     protected function relatedOwnerOrder(): ?Order
@@ -2308,11 +2337,12 @@ class ContentSubmission extends Model
             return false;
         }
 
-        // Catalog expiry blocks a *new* checkout. An already-claimed leftover
-        // can still be paid or attached on that same order. Use isExpired()
-        // (expires_at <= now) so the exact expiry instant matches purge.
+        // Catalog expiry is unused-inventory only. The same leftover can
+        // still be paid. A replacement checkout may attach after that
+        // leftover is released — do not require isOwnedByOrder for that.
         if ($this->isExpired()) {
-            return $this->isOwnedByOrder($orderId);
+            return $this->isOwnedByOrder($orderId)
+                || ($orderId !== null && ! $this->isLockedByPaidOrder());
         }
 
         return true;

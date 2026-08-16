@@ -482,7 +482,8 @@ class OrderPaymentService
         int $userId,
         array $submissionIds,
         ?string $keepReferenceCode = null,
-        bool $forgetPackages = true
+        bool $forgetPackages = true,
+        bool $replaceExpired = false
     ): void {
         $submissionIds = array_values(array_unique(array_filter(array_map('intval', $submissionIds))));
         if ($userId <= 0 || $submissionIds === []) {
@@ -492,12 +493,23 @@ class OrderPaymentService
         // Order / assign / checkout used to cancel leftovers first, then
         // reject unready articles. That dropped Pay again on a leftover the
         // advertiser could still settle after fixing links or rights.
+        // Checkout commit may also replace expired leftovers that cannot
+        // Pay again — assign-time must not, or the cart prune drops them.
         $submissionIds = ContentSubmission::query()
             ->whereIn('id', $submissionIds)
             ->where('user_id', $userId)
             ->get()
-            ->filter(fn (ContentSubmission $submission) => $submission->isContentReadyForOrder()
-                && ! $submission->isLockedByPaidOrder())
+            ->filter(function (ContentSubmission $submission) use ($replaceExpired) {
+                if ($submission->isLockedByPaidOrder() || ! $submission->hasFulfillableContent()) {
+                    return false;
+                }
+
+                if ($submission->isContentReadyForOrder()) {
+                    return true;
+                }
+
+                return $replaceExpired && $submission->isExpired();
+            })
             ->pluck('id')
             ->map(fn ($id) => (int) $id)
             ->values()
@@ -604,7 +616,8 @@ class OrderPaymentService
         int $userId,
         array $submissionIds,
         ?string $keepReferenceCode = null,
-        bool $forgetPackages = true
+        bool $forgetPackages = true,
+        bool $replaceExpired = false
     ): bool {
         $submissionIds = array_values(array_unique(array_filter(array_map('intval', $submissionIds))));
         if ($userId <= 0 || $submissionIds === []) {
@@ -612,11 +625,29 @@ class OrderPaymentService
         }
 
         try {
-            DB::transaction(function () use ($userId, $submissionIds) {
-                $this->replaceUnpaidLeftoversForSubmissions($userId, $submissionIds, null, false);
+            DB::transaction(function () use ($userId, $submissionIds, $replaceExpired) {
+                $this->replaceUnpaidLeftoversForSubmissions($userId, $submissionIds, null, false, $replaceExpired);
                 foreach ($submissionIds as $submissionId) {
                     $fresh = ContentSubmission::query()->whereKey($submissionId)->lockForUpdate()->first();
-                    if (! $fresh || ! $fresh->canBeOrdered() || ! $fresh->isReadyForCheckout()) {
+                    if (! $fresh || $fresh->isLockedByPaidOrder() || ! $fresh->hasFulfillableContent()) {
+                        throw new \RuntimeException('leftover-replace-unready');
+                    }
+
+                    if ($fresh->isClaimedByAnotherOrder()) {
+                        // Assign-time: keep an expired leftover until checkout
+                        // can actually charge. Cancelling here makes the row
+                        // unused-expired and the cart prune drops it.
+                        if (! $replaceExpired
+                            && $fresh->isExpired()
+                            && $fresh->canReplaceUnpaidLeftover()) {
+                            continue;
+                        }
+
+                        throw new \RuntimeException('leftover-replace-unready');
+                    }
+
+                    if (! $fresh->isExpired()
+                        && (! $fresh->canBeOrdered() || ! $fresh->isReadyForCheckout())) {
                         throw new \RuntimeException('leftover-replace-unready');
                     }
                 }
