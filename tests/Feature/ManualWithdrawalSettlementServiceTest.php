@@ -13,6 +13,7 @@ use App\Services\Wallet\ManualWithdrawalSettlementService;
 use App\Services\Wallet\ManualWithdrawalUnknownWalletException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 class ManualWithdrawalSettlementServiceTest extends TestCase
@@ -272,5 +273,24 @@ class ManualWithdrawalSettlementServiceTest extends TestCase
         $this->assertSame('cancelled', $withdrawal->fresh()->status);
         $this->assertSame(50.0, (float) $advertiserWallet->fresh()->balance);
         $this->assertSame(80.0, (float) $publisherWallet->fresh()->balance);
+    }
+
+    public function test_admin_mark_paid_still_succeeds_when_activity_log_table_is_gone(): void
+    {
+        $admin = $this->makeUser('admin');
+        $publisher = $this->makeUser('publisher');
+        $this->publisherWallet($publisher);
+        $withdrawal = $this->pendingWithdrawal($publisher, 60);
+
+        Schema::dropIfExists('activity_logs');
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.withdrawals.paid', $withdrawal->id), [
+                'notes' => 'Sent after the ledger table disappeared.',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertSame('completed', $withdrawal->fresh()->status);
     }
 }

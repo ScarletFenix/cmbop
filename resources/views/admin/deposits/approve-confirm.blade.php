@@ -29,7 +29,7 @@
 
                             <dt class="col-sm-4 text-muted">Advertiser</dt>
                             <dd class="col-sm-8">
-                                {{ $deposit->user->name ?? 'Unknown' }}
+                                {{ $deposit->user?->name ?? 'Unknown' }}
                                 @if($deposit->user?->email)
                                     <br><span class="text-muted small">{{ $deposit->user->email }}</span>
                                 @endif
