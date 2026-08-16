@@ -375,12 +375,12 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
 
             return $query->exists();
         } catch (\Throwable $e) {
-            Log::warning('Email dedupe check failed; allowing send', [
+            Log::warning('Email dedupe check failed; holding send', [
                 'dedupe' => $key,
                 'error' => $e->getMessage(),
             ]);
 
-            return false;
+            throw $e;
         }
     }
 

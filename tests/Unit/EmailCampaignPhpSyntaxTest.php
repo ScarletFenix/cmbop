@@ -222,4 +222,18 @@ class EmailCampaignPhpSyntaxTest extends TestCase
             $payloadTest
         ));
     }
+
+    public function test_transactional_is_duplicate_holds_when_email_logs_cannot_be_read(): void
+    {
+        $path = dirname(__DIR__, 2).'/app/Mail/PlatformMailable.php';
+        $source = (string) file_get_contents($path);
+        $this->assertTrue((bool) preg_match(
+            '/protected function isDuplicate\(string \$key\): bool\s*\{(.*?)\n    protected function brand/s',
+            $source,
+            $dup
+        ));
+        $this->assertStringContainsString('holding send', $dup[1]);
+        $this->assertStringNotContainsString('allowing send', $dup[1]);
+        $this->assertStringContainsString('throw $e;', $dup[1]);
+    }
 }
