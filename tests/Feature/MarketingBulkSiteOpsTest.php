@@ -17,6 +17,7 @@ use Database\Seeders\CountriesTableSeeder;
 use Database\Seeders\LanguagesTableSeeder;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
@@ -767,5 +768,59 @@ class MarketingBulkSiteOpsTest extends TestCase
             ->assertSessionHas('error', 'Sheet emailed can only be marked before drafts are added.');
 
         $this->assertSame(BulkSiteRequest::STATUS_AWAITING_PUBLISHER, $bulk->fresh()->status);
+    }
+
+    public function test_show_heals_when_completed_at_is_unparseable(): void
+    {
+        $bulk = $this->makeBulkRequest();
+        $this->seedDraft($bulk, 'leftover-completed.example');
+        $bulk->forceFill([
+            'status' => BulkSiteRequest::STATUS_COMPLETED,
+            'completed_at' => now(),
+        ])->save();
+        DB::table('bulk_site_requests')->where('id', $bulk->id)->update([
+            'completed_at' => 'not-a-date',
+        ]);
+
+        $this->assertNull($bulk->fresh()->completed_at);
+        $this->assertTrue($bulk->fresh()->needsProgressHeal());
+
+        $this->actingAs($this->marketer)
+            ->get(route('marketing.bulk-site-requests.show', $bulk))
+            ->assertOk()
+            ->assertSee('Waiting on publisher', false)
+            ->assertDontSee('Something went wrong');
+
+        $fresh = $bulk->fresh();
+        $this->assertSame(BulkSiteRequest::STATUS_AWAITING_PUBLISHER, $fresh->status);
+        $this->assertNull($fresh->completed_at);
+    }
+
+    public function test_history_ok_when_activity_created_at_is_unparseable(): void
+    {
+        $bulk = $this->makeBulkRequest();
+        $log = ActivityLog::create([
+            'user_id' => $this->marketer->id,
+            'user_name' => $this->marketer->name,
+            'user_email' => $this->marketer->email,
+            'role' => 'marketing',
+            'action' => 'bulk_request.sheet_sent',
+            'description' => 'Leftover history stamp',
+            'subject_type' => BulkSiteRequest::class,
+            'subject_id' => $bulk->id,
+            'subject_label' => 'Bulk request #'.$bulk->id,
+            'properties' => ['bulk_site_request_id' => $bulk->id],
+        ]);
+        DB::table('activity_logs')->where('id', $log->id)->update([
+            'created_at' => 'not-a-date',
+        ]);
+
+        $this->assertNull($log->fresh()->created_at);
+
+        $this->actingAs($this->marketer)
+            ->get(route('marketing.bulk-site-requests.show', $bulk))
+            ->assertOk()
+            ->assertSee('Leftover history stamp', false)
+            ->assertDontSee('Something went wrong');
     }
 }
