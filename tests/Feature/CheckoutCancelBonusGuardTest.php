@@ -12,10 +12,12 @@ use App\Models\Wallet;
 use App\Services\CheckoutIntentService;
 use App\Services\OrderPaymentService;
 use App\Services\Orders\OrderRefundService;
+use App\Services\StripeCustomerService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Mockery;
 use Stripe\ApiRequestor;
+use Stripe\Checkout\Session;
 use Stripe\HttpClient\ClientInterface;
 use Tests\TestCase;
 
@@ -509,127 +511,210 @@ class CheckoutCancelBonusGuardTest extends TestCase
         $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
     }
 
-    public function test_admin_mark_paid_refuses_after_unfulfilled_card_credit(): void
+    public function test_payment_intent_webhook_does_not_mark_paid_after_session_unfulfilled_credit(): void
     {
-        $admin = $this->userWithRole('admin');
         $advertiser = $this->userWithRole('advertiser');
         $publisher = $this->userWithRole('publisher');
         $wallet = $this->wallet($advertiser, 20);
-        $item = $this->cardOrder($advertiser, $this->site($publisher), 80, 'REF-ADMIN-AFTER-CREDIT', 'pending');
+        $item = $this->cardOrder($advertiser, $this->site($publisher), 80, 'REF-SESSION-THEN-PI', 'pending');
         $payments = app(OrderPaymentService::class);
-        $payments->storePendingCheckout('REF-ADMIN-AFTER-CREDIT', [
-            'user_id' => $advertiser->id,
-            'reference_code' => 'REF-ADMIN-AFTER-CREDIT',
-            'order_total' => 80,
-            'amount_due' => 60,
-            'bonus_applied' => 20,
-            'stripe_session_id' => 'cs_admin_after_credit',
-            'schedule' => ['mode' => 'immediate', 'timezone' => 'UTC'],
-            'lines' => [],
-        ]);
-        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'REF-ADMIN-AFTER-CREDIT', 20);
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'REF-SESSION-THEN-PI', 20);
 
-        $payments->markOrdersFailedFromReference('REF-ADMIN-AFTER-CREDIT', 'expired');
-        $payments->storePendingCheckout('REF-ADMIN-AFTER-CREDIT', [
-            'user_id' => $advertiser->id,
-            'reference_code' => 'REF-ADMIN-AFTER-CREDIT',
-            'order_total' => 80,
-            'amount_due' => 60,
-            'bonus_applied' => 20,
-            'stripe_session_id' => 'cs_admin_after_credit',
-            'schedule' => ['mode' => 'immediate', 'timezone' => 'UTC'],
-            'lines' => [],
-        ]);
-        app(CheckoutIntentService::class)->forgetBonus($advertiser->id, 'REF-ADMIN-AFTER-CREDIT');
+        $payments->markOrdersFailedFromReference('REF-SESSION-THEN-PI', 'expired');
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(20.0, $wallet->reserveBonusOnly(20), 0.01);
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'REF-OTHER-SESSION-PI', 20);
+
+        $session = (object) [
+            'id' => 'cs_session_then_pi',
+            'object' => 'checkout.session',
+            'amount_total' => 6000,
+            'payment_intent' => 'pi_session_then_pi',
+            'metadata' => (object) [
+                'type' => 'order_payment',
+                'reference_code' => 'REF-SESSION-THEN-PI',
+                'expected_amount' => '60',
+                'bonus_applied' => '20',
+            ],
+        ];
+        $this->assertTrue($payments->markOrdersPaidFromStripeSession('REF-SESSION-THEN-PI', $session)->isEmpty());
+        $this->assertEqualsWithDelta(60.0, $payments->unfulfilledCardCreditAmount('REF-SESSION-THEN-PI'), 0.01);
+
+        $wallet->refresh();
+        $wallet->refundReserved(20, 20);
+        app(CheckoutIntentService::class)->forgetBonus($advertiser->id, 'REF-OTHER-SESSION-PI');
+
+        $intent = (object) [
+            'id' => 'pi_session_then_pi',
+            'object' => 'payment_intent',
+            'amount' => 6000,
+            'amount_received' => 6000,
+            'metadata' => (object) [
+                'type' => 'order_payment',
+                'reference_code' => 'REF-SESSION-THEN-PI',
+                'expected_amount' => '60',
+                'bonus_applied' => '20',
+            ],
+        ];
+
+        $this->assertTrue($payments->markOrdersPaidFromPaymentIntent('REF-SESSION-THEN-PI', $intent)->isEmpty());
+        $this->assertSame('failed', $item->order->fresh()->payment_status);
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(60.0, $wallet->withdrawableBalance(), 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
+    }
+
+    public function test_session_webhook_does_not_mark_paid_after_payment_intent_unfulfilled_credit(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $wallet = $this->wallet($advertiser, 20);
+        $item = $this->cardOrder($advertiser, $this->site($publisher), 80, 'REF-PI-THEN-SESSION', 'pending');
+        $payments = app(OrderPaymentService::class);
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'REF-PI-THEN-SESSION', 20);
+
+        $payments->markOrdersFailedFromReference('REF-PI-THEN-SESSION', 'expired');
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(20.0, $wallet->reserveBonusOnly(20), 0.01);
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'REF-OTHER-PI-SESSION', 20);
+
+        $intent = (object) [
+            'id' => 'pi_pi_then_session',
+            'object' => 'payment_intent',
+            'amount' => 6000,
+            'amount_received' => 6000,
+            'metadata' => (object) [
+                'type' => 'order_payment',
+                'reference_code' => 'REF-PI-THEN-SESSION',
+                'expected_amount' => '60',
+                'bonus_applied' => '20',
+            ],
+        ];
+        $this->assertTrue($payments->markOrdersPaidFromPaymentIntent('REF-PI-THEN-SESSION', $intent)->isEmpty());
+        $this->assertEqualsWithDelta(60.0, $payments->unfulfilledCardCreditAmount('REF-PI-THEN-SESSION'), 0.01);
+
+        $wallet->refresh();
+        $wallet->refundReserved(20, 20);
+        app(CheckoutIntentService::class)->forgetBonus($advertiser->id, 'REF-OTHER-PI-SESSION');
+
+        $session = (object) [
+            'id' => 'cs_pi_then_session',
+            'object' => 'checkout.session',
+            'amount_total' => 6000,
+            'payment_intent' => 'pi_pi_then_session',
+            'metadata' => (object) [
+                'type' => 'order_payment',
+                'reference_code' => 'REF-PI-THEN-SESSION',
+                'expected_amount' => '60',
+                'bonus_applied' => '20',
+            ],
+        ];
+
+        $this->assertTrue($payments->markOrdersPaidFromStripeSession('REF-PI-THEN-SESSION', $session)->isEmpty());
+        $this->assertSame('failed', $item->order->fresh()->payment_status);
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(60.0, $wallet->withdrawableBalance(), 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
+    }
+
+    public function test_new_pay_again_session_still_marks_leftover_after_sibling_capture_credit(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $wallet = $this->wallet($advertiser, 20);
+        $item = $this->cardOrder($advertiser, $this->site($publisher), 80, 'REF-NEW-PAY-AGAIN-OK', 'pending');
+        $payments = app(OrderPaymentService::class);
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'REF-NEW-PAY-AGAIN-OK', 20);
+
+        $payments->markOrdersFailedFromReference('REF-NEW-PAY-AGAIN-OK', 'expired');
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(20.0, $wallet->reserveBonusOnly(20), 0.01);
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'REF-OTHER-NEW-PAY-AGAIN', 20);
+
+        $lateSession = (object) [
+            'id' => 'cs_old_capture',
+            'object' => 'checkout.session',
+            'amount_total' => 6000,
+            'payment_intent' => 'pi_old_capture',
+            'metadata' => (object) [
+                'type' => 'order_payment',
+                'reference_code' => 'REF-NEW-PAY-AGAIN-OK',
+                'expected_amount' => '60',
+                'bonus_applied' => '20',
+            ],
+        ];
+        $this->assertTrue($payments->markOrdersPaidFromStripeSession('REF-NEW-PAY-AGAIN-OK', $lateSession)->isEmpty());
+
+        $retrySession = (object) [
+            'id' => 'cs_new_pay_again',
+            'object' => 'checkout.session',
+            'amount_total' => 8000,
+            'payment_intent' => 'pi_new_pay_again',
+            'metadata' => (object) [
+                'type' => 'order_payment',
+                'reference_code' => 'REF-NEW-PAY-AGAIN-OK',
+                'expected_amount' => '80',
+                'order_total' => '80',
+                'bonus_applied' => '0',
+                'is_retry' => '1',
+            ],
+        ];
+
+        $paid = $payments->markOrdersPaidFromStripeSession('REF-NEW-PAY-AGAIN-OK', $retrySession);
+        $this->assertCount(1, $paid);
+        $this->assertSame('paid', $item->order->fresh()->payment_status);
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(60.0, $wallet->withdrawableBalance(), 0.01);
+    }
+
+    public function test_hidden_leftover_replay_does_not_stack_unkeyed_credit_on_bonus_fail_credit(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $site = $this->site($publisher);
+        $wallet = $this->wallet($advertiser, 20);
+        $item = $this->cardOrder($advertiser, $site, 80, 'REF-HIDDEN-REPLAY-CREDIT', 'pending');
+        $payments = app(OrderPaymentService::class);
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'REF-HIDDEN-REPLAY-CREDIT', 20);
+
+        $payments->markOrdersFailedFromReference('REF-HIDDEN-REPLAY-CREDIT', 'expired');
 
         $wallet->refresh();
         $this->assertEqualsWithDelta(20.0, $wallet->reserveBonusOnly(20), 0.01);
-        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'REF-OTHER-AFTER-CREDIT', 20);
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'REF-OTHER-HIDDEN-REPLAY', 20);
 
         $session = (object) [
-            'id' => 'cs_admin_after_credit',
+            'id' => 'cs_hidden_replay_credit',
             'object' => 'checkout.session',
             'amount_total' => 6000,
-            'payment_intent' => 'pi_admin_after_credit',
+            'payment_intent' => 'pi_hidden_replay_credit',
             'metadata' => (object) [
                 'type' => 'order_payment',
-                'reference_code' => 'REF-ADMIN-AFTER-CREDIT',
+                'reference_code' => 'REF-HIDDEN-REPLAY-CREDIT',
                 'expected_amount' => '60',
                 'bonus_applied' => '20',
                 'user_id' => (string) $advertiser->id,
             ],
         ];
 
-        $this->assertTrue($payments->finalizeStripeFirstCheckout('REF-ADMIN-AFTER-CREDIT', $session)->isEmpty());
+        $this->assertTrue($payments->markOrdersPaidFromStripeSession('REF-HIDDEN-REPLAY-CREDIT', $session)->isEmpty());
         $this->assertSame('failed', $item->order->fresh()->payment_status);
-        $this->assertEqualsWithDelta(60.0, $payments->unfulfilledCardCreditAmount('REF-ADMIN-AFTER-CREDIT'), 0.01);
+        $this->assertEqualsWithDelta(60.0, $payments->unfulfilledCardCreditAmount('REF-HIDDEN-REPLAY-CREDIT'), 0.01);
 
-        $this->actingAs($admin)
-            ->postJson(route('admin.payments.updateStatus', $item->order_id), [
-                'payment_status' => 'paid',
-            ])
-            ->assertStatus(422)
-            ->assertJsonPath('success', false);
+        $site->update(['verified' => false, 'active' => false]);
 
+        $this->assertTrue($payments->markOrdersPaidFromStripeSession('REF-HIDDEN-REPLAY-CREDIT', $session)->isEmpty());
+        $this->assertSame('cancelled', $item->order->fresh()->status);
         $this->assertSame('failed', $item->order->fresh()->payment_status);
         $wallet->refresh();
         $this->assertEqualsWithDelta(60.0, $wallet->withdrawableBalance(), 0.01);
+        $this->assertEqualsWithDelta(60.0, $payments->unfulfilledCardCreditAmount('REF-HIDDEN-REPLAY-CREDIT'), 0.01);
         $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_reserved, 0.01);
         $this->assertEqualsWithDelta(
             20.0,
-            app(CheckoutIntentService::class)->heldBonus($advertiser->id, 'REF-OTHER-AFTER-CREDIT'),
+            app(CheckoutIntentService::class)->heldBonus($advertiser->id, 'REF-OTHER-HIDDEN-REPLAY'),
             0.01
         );
-    }
-
-    public function test_admin_mark_paid_refuses_after_late_stripe_unfulfilled_credit(): void
-    {
-        $admin = $this->userWithRole('admin');
-        $advertiser = $this->userWithRole('advertiser');
-        $publisher = $this->userWithRole('publisher');
-        $wallet = $this->wallet($advertiser, 20);
-        $item = $this->cardOrder($advertiser, $this->site($publisher), 80, 'REF-ADMIN-LATE-CREDIT', 'pending');
-        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'REF-ADMIN-LATE-CREDIT', 20);
-
-        app(OrderPaymentService::class)->markOrdersFailedFromReference('REF-ADMIN-LATE-CREDIT', 'expired');
-
-        $wallet->refresh();
-        $this->assertEqualsWithDelta(20.0, $wallet->reserveBonusOnly(20), 0.01);
-        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'REF-OTHER-LATE-CREDIT', 20);
-
-        $session = (object) [
-            'id' => 'cs_admin_late_credit',
-            'object' => 'checkout.session',
-            'amount_total' => 6000,
-            'payment_intent' => 'pi_admin_late_credit',
-            'metadata' => (object) [
-                'type' => 'order_payment',
-                'reference_code' => 'REF-ADMIN-LATE-CREDIT',
-                'expected_amount' => '60',
-                'bonus_applied' => '20',
-            ],
-        ];
-
-        $paid = app(OrderPaymentService::class)->markOrdersPaidFromStripeSession('REF-ADMIN-LATE-CREDIT', $session);
-        $this->assertTrue($paid->isEmpty());
-        $this->assertSame('failed', $item->order->fresh()->payment_status);
-        $this->assertEqualsWithDelta(
-            60.0,
-            app(OrderPaymentService::class)->unfulfilledCardCreditAmount('REF-ADMIN-LATE-CREDIT'),
-            0.01
-        );
-
-        $this->actingAs($admin)
-            ->postJson(route('admin.payments.updateStatus', $item->order_id), [
-                'payment_status' => 'paid',
-            ])
-            ->assertStatus(422)
-            ->assertJsonPath('success', false);
-
-        $this->assertSame('failed', $item->order->fresh()->payment_status);
-        $wallet->refresh();
-        $this->assertEqualsWithDelta(60.0, $wallet->withdrawableBalance(), 0.01);
-        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_reserved, 0.01);
     }
 
     public function test_second_cancel_does_not_steal_another_checkouts_reserved_bonus(): void

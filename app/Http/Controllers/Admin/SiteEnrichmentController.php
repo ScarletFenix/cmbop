@@ -120,20 +120,32 @@ class SiteEnrichmentController extends Controller
             $run = null;
         }
 
-        ActivityLogger::log(
-            'site.metrics_refreshed',
-            auth()->user()->name.' refreshed metrics for "'.$site->site_name.'"',
-            $site,
-            ['provider' => $request->input('provider'), 'sync' => $sync],
-            $site->site_name
-        );
+        $runStatus = (string) data_get($run, 'status', '');
+        $ok = $sync
+            ? in_array($runStatus, ['success', 'partial'], true)
+            : true;
+
+        if ($ok) {
+            $this->logRefreshOutcome(
+                $site,
+                $sync,
+                'site.metrics_refreshed',
+                'site.metrics_refresh_queued',
+                'metrics',
+                ['provider' => $request->input('provider')]
+            );
+        }
+
+        $providerError = trim((string) (data_get($run, 'error') ?? $site->fresh()?->enrichment_error ?? ''));
 
         return response()->json([
-            'success' => true,
-            'message' => $sync ? 'Metrics refreshed' : 'Metrics refresh queued',
+            'success' => $ok,
+            'message' => $sync
+                ? ($ok ? 'Metrics refreshed' : ($providerError !== '' ? $providerError : 'Metrics refresh failed.'))
+                : 'Metrics refresh queued',
             'run' => $run,
             'site' => $site->fresh(),
-        ]);
+        ], $ok ? 200 : 422);
     }
 
     public function refreshScreenshot(Request $request, int $id, SiteEnrichmentService $enrichment)
@@ -155,14 +167,6 @@ class SiteEnrichmentController extends Controller
             $run = null;
         }
 
-        ActivityLogger::log(
-            'site.screenshot_refreshed',
-            auth()->user()->name.' refreshed screenshot for "'.$site->site_name.'"',
-            $site,
-            ['sync' => $sync],
-            $site->site_name
-        );
-
         $fresh = $site->fresh();
         $usedPlaceholder = (bool) data_get($run, 'payload.used_placeholder', false);
         $runStatus = (string) data_get($run, 'status', '');
@@ -176,6 +180,16 @@ class SiteEnrichmentController extends Controller
         $ok = $sync
             ? (! $usedPlaceholder && $runStatus === 'success')
             : true;
+
+        if ($ok) {
+            $this->logRefreshOutcome(
+                $site,
+                $sync,
+                'site.screenshot_refreshed',
+                'site.screenshot_refresh_queued',
+                'screenshot'
+            );
+        }
 
         $message = $sync
             ? ($ok ? 'Screenshot refreshed' : ($providerError !== '' ? $providerError : 'Screenshot capture failed. Upload a site image instead.'))
@@ -227,6 +241,21 @@ class SiteEnrichmentController extends Controller
             'traffic' => 'nullable|integer|min:0|max:4294967295',
         ]);
 
+        $newDr = array_key_exists('dr', $data) ? $data['dr'] : $site->dr;
+        $newDa = array_key_exists('da', $data) ? $data['da'] : $site->da;
+        $newTraffic = array_key_exists('traffic', $data) ? $data['traffic'] : $site->traffic;
+        if ((bool) $site->metrics_manual
+            && (int) ($site->dr ?? 0) === (int) ($newDr ?? 0)
+            && (int) ($site->da ?? 0) === (int) ($newDa ?? 0)
+            && (int) ($site->traffic ?? 0) === (int) ($newTraffic ?? 0)) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Manual metrics saved',
+                'run' => null,
+                'site' => $site->fresh(),
+            ]);
+        }
+
         $run = $enrichment->applyManualMetrics(
             $site,
             isset($data['dr']) ? (int) $data['dr'] : null,
@@ -271,15 +300,18 @@ class SiteEnrichmentController extends Controller
             return back()->withErrors(['metrics_manual' => (string) data_get($denied->getData(true), 'message', 'Not allowed.')]);
         }
 
+        $alreadyUnlocked = ! (bool) $site->metrics_manual;
         $site->forceFill(['metrics_manual' => false])->save();
 
-        ActivityLogger::log(
-            'site.metrics_api_unlocked',
-            auth()->user()->name.' allowed API overwrite for "'.$site->site_name.'"',
-            $site,
-            [],
-            $site->site_name
-        );
+        if (! $alreadyUnlocked) {
+            ActivityLogger::log(
+                'site.metrics_api_unlocked',
+                auth()->user()->name.' allowed API overwrite for "'.$site->site_name.'"',
+                $site,
+                [],
+                $site->site_name
+            );
+        }
 
         $message = 'API overwrite allowed. Queue Enrich to fetch live metrics.';
 
@@ -481,5 +513,29 @@ class SiteEnrichmentController extends Controller
         }
 
         return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $properties
+     */
+    private function logRefreshOutcome(
+        Site $site,
+        bool $sync,
+        string $refreshedAction,
+        string $queuedAction,
+        string $noun,
+        array $properties = []
+    ): void {
+        $actor = auth()->user()?->name ?? 'Staff';
+
+        ActivityLogger::tryLog(
+            $sync ? $refreshedAction : $queuedAction,
+            $sync
+                ? $actor.' refreshed '.$noun.' for "'.$site->site_name.'"'
+                : $actor.' queued a '.$noun.' refresh for "'.$site->site_name.'"',
+            $site,
+            $properties + ['sync' => $sync],
+            $site->site_name
+        );
     }
 }

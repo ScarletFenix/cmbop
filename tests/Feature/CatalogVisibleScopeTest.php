@@ -9,6 +9,7 @@ use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
@@ -102,6 +103,34 @@ class CatalogVisibleScopeTest extends TestCase
         $this->assertStringNotContainsString('Unverified Catalog Site', $html);
         $this->assertStringNotContainsString('Inactive Catalog Site', $html);
         $this->assertStringNotContainsString('Archived Catalog Site', $html);
+    }
+
+    public function test_unparseable_archived_at_does_not_hide_a_live_listing(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+
+        $leftover = $this->site($publisher, [
+            'site_name' => 'Garbage Archived Site',
+            'domain' => 'garbage-archived.example',
+            'site_url' => 'https://garbage-archived.example',
+        ]);
+        DB::table('sites')->where('id', $leftover->id)->update([
+            'archived_at' => 'not-a-date',
+        ]);
+
+        $fresh = $leftover->fresh();
+        $this->assertFalse($fresh->isArchived());
+        $this->assertTrue($fresh->isCatalogVisible());
+        $this->assertTrue(Site::query()->catalogVisible()->whereKey($leftover->id)->exists());
+        $this->assertFalse(Site::query()->archived()->whereKey($leftover->id)->exists());
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog.results'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Garbage Archived Site', $html);
     }
 
     public function test_catalog_excludes_cancelled_bulk_live_leftovers(): void

@@ -13,6 +13,7 @@ use App\Models\SiteUrlReveal;
 use App\Models\User;
 use App\Services\Catalog\CatalogCopyStrikeGuard;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
@@ -140,127 +141,38 @@ class AdminCatalogCopyStrikeTest extends TestCase
             ->assertDontSee('clean-copy@example.com');
     }
 
-    public function test_served_hide_is_not_labelled_warned(): void
+    public function test_leftover_hide_until_is_not_listed_as_hide_mode(): void
     {
         $admin = $this->userWithRole('admin');
-        $served = $this->userWithRole('advertiser', ['email' => 'served-copy@example.com']);
-        $served->forceFill([
+
+        $real = $this->userWithRole('advertiser');
+        $real->forceFill([
+            'email' => 'real-hide@example.com',
             'catalog_copy_strike_count' => 2,
-            'catalog_copy_warned_at' => now()->subDays(3),
-            'catalog_hide_until' => now()->subDay(),
+            'catalog_hide_until' => now()->addHours(20),
         ])->save();
 
-        $html = $this->actingAs($admin)
-            ->get(route('admin.catalog-activity'))
-            ->assertOk()
-            ->assertSee('served-copy@example.com')
-            ->assertSee('Served hide')
-            ->assertSee('Next wave re-hides immediately.')
-            ->getContent();
-
-        $this->assertMatchesRegularExpression(
-            '/id="user-'.$served->id.'"[\\s\\S]*?Served hide[\\s\\S]*?<\\/tr>/',
-            $html
-        );
-        $this->assertDoesNotMatchRegularExpression(
-            '/id="user-'.$served->id.'"[\\s\\S]*?badge bg-warning[\\s\\S]*?Warned[\\s\\S]*?<\\/tr>/',
-            $html
-        );
-    }
-
-    public function test_stale_post_hide_is_hidden_by_default_and_visible_with_copy_all(): void
-    {
-        $admin = $this->userWithRole('admin');
-        $stale = $this->userWithRole('advertiser', ['email' => 'stale-copy@example.com']);
-        $stale->forceFill([
-            'catalog_copy_strike_count' => 2,
-            'catalog_copy_warned_at' => now()->subDays(60),
-            'catalog_hide_until' => now()->subDays(60),
+        $leftover = $this->userWithRole('advertiser');
+        $leftover->forceFill([
+            'email' => 'garbage-hide@example.com',
+            'catalog_copy_strike_count' => 0,
+            'catalog_hide_until' => now()->addDay(),
         ])->save();
+        DB::table('users')->where('id', $leftover->id)->update([
+            'catalog_hide_until' => 'not-a-date',
+        ]);
+
+        $this->assertFalse($leftover->fresh()->inCatalogHideMode());
 
         $this->actingAs($admin)
             ->get(route('admin.catalog-activity'))
             ->assertOk()
-            ->assertDontSee('stale-copy@example.com');
-
-        $this->actingAs($admin)
-            ->get(route('admin.catalog-activity', ['copy' => 'all']))
-            ->assertOk()
-            ->assertSee('stale-copy@example.com')
-            ->assertSee('Served hide');
+            ->assertSee('real-hide@example.com')
+            ->assertDontSee('garbage-hide@example.com')
+            ->assertDontSee('Something went wrong');
     }
 
-    public function test_admin_can_lift_hide_without_resetting_strikes_or_deleting_events(): void
-    {
-        $admin = $this->userWithRole('admin');
-        $advertiser = $this->userWithRole('advertiser');
-        $advertiser->forceFill([
-            'catalog_copy_strike_count' => 2,
-            'catalog_copy_warned_at' => now()->subHour(),
-            'catalog_hide_until' => now()->addDay(),
-        ])->save();
-
-        CatalogCopyEvent::create([
-            'user_id' => $advertiser->id,
-            'site_id' => null,
-            'normalized_host' => 'copied.example',
-            'created_at' => now(),
-        ]);
-
-        $this->actingAs($admin)
-            ->post(route('admin.catalog-activity.lift-hide', $advertiser->id))
-            ->assertRedirect()
-            ->assertSessionHas('success');
-
-        $advertiser->refresh();
-        $this->assertSame(2, (int) $advertiser->catalog_copy_strike_count);
-        $this->assertNotNull($advertiser->catalog_copy_warned_at);
-        $this->assertNull($advertiser->catalog_hide_until);
-        $this->assertFalse($advertiser->inCatalogHideMode());
-        $this->assertSame(User::CATALOG_COPY_POST_HIDE, $advertiser->catalogCopyStatus());
-        $this->assertSame(1, CatalogCopyEvent::where('user_id', $advertiser->id)->count());
-        $this->assertSame(
-            (int) CatalogCopyEvent::where('user_id', $advertiser->id)->max('id'),
-            (int) $advertiser->catalog_copy_after_id
-        );
-        $this->assertSame(1, ActivityLog::where('action', 'catalog_hide_lifted')->count());
-    }
-
-    public function test_admin_can_reset_strikes_without_lifting_hide(): void
-    {
-        $admin = $this->userWithRole('admin');
-        $advertiser = $this->userWithRole('advertiser');
-        $advertiser->forceFill([
-            'catalog_copy_strike_count' => 2,
-            'catalog_copy_warned_at' => now()->subHour(),
-            'catalog_hide_until' => now()->addDay(),
-        ])->save();
-
-        CatalogCopyEvent::create([
-            'user_id' => $advertiser->id,
-            'site_id' => null,
-            'normalized_host' => 'kept.example',
-            'created_at' => now(),
-        ]);
-
-        $this->actingAs($admin)
-            ->post(route('admin.catalog-activity.reset-strikes', $advertiser->id))
-            ->assertRedirect()
-            ->assertSessionHas('success');
-
-        $advertiser->refresh();
-        $this->assertSame(0, (int) $advertiser->catalog_copy_strike_count);
-        $this->assertNull($advertiser->catalog_copy_warned_at);
-        $this->assertTrue($advertiser->inCatalogHideMode());
-        $this->assertSame(1, CatalogCopyEvent::where('user_id', $advertiser->id)->count());
-        $this->assertSame(
-            (int) CatalogCopyEvent::where('user_id', $advertiser->id)->max('id'),
-            (int) $advertiser->catalog_copy_after_id
-        );
-        $this->assertSame(1, ActivityLog::where('action', 'catalog_strikes_reset')->count());
-    }
-
-    public function test_legacy_clear_copy_hide_lifts_and_resets_but_keeps_events(): void
+    public function test_admin_can_clear_copy_hide_mode_and_reset_strikes(): void
     {
         $admin = $this->userWithRole('admin');
         $advertiser = $this->userWithRole('advertiser');

@@ -11,7 +11,6 @@ use App\Models\User;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class MarketingPanelHistoryTest extends TestCase
@@ -538,6 +537,8 @@ class MarketingPanelHistoryTest extends TestCase
             ->assertSee('Showing 1–1 of 1 task', false)
             ->assertSee('Edited site (1)', false)
             ->assertSee('Activated site (0)', false)
+            ->assertSee('Approved site (0)', false)
+            ->assertSee('Queued metrics refresh (0)', false)
             ->assertDontSee('seeding, edits, activations, assigns, and bulk updates', false)
             ->getContent();
 

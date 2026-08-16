@@ -18,6 +18,7 @@ class EmailCampaignPhpSyntaxTest extends TestCase
             $root.'/app/Services/AudienceInventoryService.php',
             $root.'/app/Support/MailJobPayload.php',
             $root.'/app/Http/Controllers/Admin/EmailCenterController.php',
+            $root.'/app/Models/EmailLog.php',
             $root.'/tests/Unit/MailJobPayloadTest.php',
         ];
     }
@@ -90,6 +91,7 @@ class EmailCampaignPhpSyntaxTest extends TestCase
             $root.'/app/Support/MailJobPayload.php',
             $root.'/app/Services/AudienceInventoryService.php',
             $root.'/app/Http/Controllers/Admin/EmailCenterController.php',
+            $root.'/app/Models/EmailLog.php',
             $root.'/tests/Unit/MailJobPayloadTest.php',
         ];
 
@@ -103,12 +105,32 @@ class EmailCampaignPhpSyntaxTest extends TestCase
         $this->assertSame(1, preg_match_all('/function containsSendCampaignJob\b/', $payload));
         $this->assertSame(1, preg_match_all('/function containsCampaignMail\b/', $payload));
         $this->assertSame(1, preg_match_all('/function campaignMailUserIds\b/', $payload));
+        $this->assertSame(1, preg_match_all('/function containsEmailCampaignModel\b/', $payload));
+        $this->assertSame(1, preg_match_all('/function modelIdentifierIds\b/', $payload));
 
         $inventory = (string) file_get_contents($files[2]);
         $this->assertSame(1, preg_match_all('/function recipientRowQuery\b/', $inventory));
 
+        $log = (string) file_get_contents($root.'/app/Models/EmailLog.php');
+        $this->assertSame(1, preg_match_all('/function latestDeliveredForCampaignUser\b/', $log));
+        $this->assertSame(1, preg_match_all('/function pendingUserIdsForCampaign\b/', $log));
+        $this->assertSame(1, preg_match_all('/function deliveredUserIdsForCampaign\b/', $log));
+        $this->assertSame(1, preg_match_all('/function campaignUserIds\b/', $log));
+
         $model = (string) file_get_contents($files[0]);
         $this->assertSame(1, preg_match_all('/function reclaimOrphanedQueuedRecipients\b/', $model));
+        $this->assertTrue((bool) preg_match(
+            '/protected static function reclaimOrphanedQueuedRecipients\(self \$campaign\): int\s*\{(.*?)\n    \/\*\*/s',
+            $model,
+            $reclaim
+        ));
+        $this->assertGreaterThanOrEqual(1, substr_count($reclaim[1], 'deliveredUserIdsForCampaign'));
+        $this->assertTrue((bool) preg_match(
+            '/protected static function expireOrphanedQueuedRecipients\(\): void\s*\{(.*?)\n    \/\*\*/s',
+            $model,
+            $expire
+        ));
+        $this->assertStringContainsString('deliveredUserIdsForCampaign', $expire[1]);
         $this->assertSame(1, preg_match_all('/function inFlightCampaignMailUserIds\b/', $model));
         $this->assertSame(1, preg_match_all('/function collectCampaignMailUserIdsFromTable\b/', $model));
         $this->assertSame(1, preg_match_all('/function campaignLogUserIdsForStatus\b/', $model));

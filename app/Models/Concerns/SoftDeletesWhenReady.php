@@ -36,6 +36,17 @@ trait SoftDeletesWhenReady
             return false;
         }
 
+        $column = $this->getDeletedAtColumn();
+        $raw = $this->getAttributes()[$column] ?? null;
+        if ($raw !== null && $raw !== '' && ! ($this->{$column} instanceof \DateTimeInterface)) {
+            // Leftover unparseable deleted_at is already "not trashed" in PHP.
+            // Eloquent dirty-diff sees null→null and would skip the UPDATE.
+            static::withTrashed()->whereKey($this->getKey())->update([$column => null]);
+            $this->setAttribute($column, null);
+
+            return true;
+        }
+
         return $this->performRestore();
     }
 

@@ -14,12 +14,20 @@ class ContentModerationEngine
     /** Per-window cap so a 10 MB article cannot timeout one regex pass. */
     public const SCORE_TEXT_CHARS = 200000;
 
+    /** Overlap so a keyword cannot hide on a window boundary ("cas" | "ino"). */
+    public const SCORE_TEXT_OVERLAP = 128;
+
     /** Max windows scored in full. Beyond this the article is fail-closed. */
     public const SCORE_TEXT_WINDOWS = 20;
 
+    public static function windowStep(): int
+    {
+        return self::SCORE_TEXT_CHARS - self::SCORE_TEXT_OVERLAP;
+    }
+
     public static function maxScannableChars(): int
     {
-        return self::SCORE_TEXT_CHARS * self::SCORE_TEXT_WINDOWS;
+        return self::SCORE_TEXT_CHARS + (self::SCORE_TEXT_WINDOWS - 1) * self::windowStep();
     }
 
     /**
@@ -77,21 +85,17 @@ class ContentModerationEngine
             return [$text];
         }
 
+        $step = self::windowStep();
         $windows = [];
-        $max = self::SCORE_TEXT_WINDOWS;
-        $fullCover = $max * self::SCORE_TEXT_CHARS;
-        if ($len <= $fullCover) {
-            for ($offset = 0; $offset < $len; $offset += self::SCORE_TEXT_CHARS) {
-                $windows[] = mb_substr($text, $offset, self::SCORE_TEXT_CHARS);
+        for ($offset = 0; $offset < $len; $offset += $step) {
+            $windows[] = mb_substr($text, $offset, self::SCORE_TEXT_CHARS);
+            if (count($windows) >= self::SCORE_TEXT_WINDOWS) {
+                break;
             }
-
-            return $windows;
+            if ($offset + self::SCORE_TEXT_CHARS >= $len) {
+                break;
+            }
         }
-
-        for ($i = 0; $i < $max - 1; $i++) {
-            $windows[] = mb_substr($text, $i * self::SCORE_TEXT_CHARS, self::SCORE_TEXT_CHARS);
-        }
-        $windows[] = mb_substr($text, -self::SCORE_TEXT_CHARS);
 
         return $windows;
     }

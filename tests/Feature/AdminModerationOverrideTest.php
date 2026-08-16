@@ -160,7 +160,16 @@ class AdminModerationOverrideTest extends TestCase
 
         $check = app(ContentModerationService::class)->assertSubmissionsApproved([$submission], $advertiser);
         $this->assertTrue($check['ok'], json_encode($check['failures']));
-        $this->assertTrue(ActivityLog::query()->where('action', 'moderation.overridden')->exists());
+        $this->assertSame(1, ActivityLog::query()->where('action', 'moderation.overridden')->count());
+
+        $this->actingAs($admin)
+            ->post(route('admin.moderation.override', $log), [
+                'notes' => 'News article about regulation, not a promo.',
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $this->assertSame(1, ActivityLog::query()->where('action', 'moderation.overridden')->count());
     }
 
     public function test_title_change_after_override_revokes_the_pass(): void
@@ -580,7 +589,48 @@ class AdminModerationOverrideTest extends TestCase
         $this->assertFalse((bool) ($override['enabled'] ?? true));
         $this->assertSame(75, (int) ($override['confidence_threshold'] ?? 0));
         $this->assertContains('viagra', ContentModerationSetting::getValue('extra_keywords', []));
-        $this->assertTrue(ActivityLog::query()->where('action', 'moderation.settings_updated')->exists());
+        $this->assertSame(1, ActivityLog::query()->where('action', 'moderation.settings_updated')->count());
+
+        $this->actingAs($admin)
+            ->post(route('admin.moderation.settings'), [
+                'confidence_threshold' => 75,
+                'categories' => ['gambling', 'adult', 'cbd', 'alcohol', 'tobacco', 'weapons'],
+                'extra_keywords' => "viagra\n",
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $this->assertSame(1, ActivityLog::query()->where('action', 'moderation.settings_updated')->count());
+    }
+
+    public function test_legacy_override_without_fingerprint_does_not_relog(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        [$submission, $log] = $this->rejectCasinoArticle($advertiser);
+
+        $this->actingAs($admin)
+            ->post(route('admin.moderation.override', $log), [
+                'notes' => 'News article about regulation, not a promo.',
+            ])
+            ->assertRedirect();
+
+        $this->assertSame(1, ActivityLog::query()->where('action', 'moderation.overridden')->count());
+
+        $log->refresh();
+        $signals = is_array($log->signals) ? $log->signals : [];
+        unset($signals['override_fingerprint']);
+        $log->forceFill(['signals' => $signals])->save();
+
+        $this->actingAs($admin)
+            ->post(route('admin.moderation.override', $log), [
+                'notes' => 'News article about regulation, not a promo.',
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $this->assertSame(1, ActivityLog::query()->where('action', 'moderation.overridden')->count());
+        $this->assertNotEmpty($log->fresh()->signals['override_fingerprint'] ?? null);
     }
 
     public function test_log_show_page_lists_matched_terms(): void
@@ -1211,6 +1261,26 @@ class AdminModerationOverrideTest extends TestCase
         $pad = str_repeat('Useful editorial copy about software teams. ', 5500);
         $this->assertGreaterThan(ContentModerationEngine::SCORE_TEXT_CHARS, mb_strlen($pad));
         $hidden = $pad.'Play at the best online casino tonight and claim your bonus.';
+        $submission->update([
+            'extracted_text' => $hidden,
+            'preview_html' => '<p>'.$hidden.'</p>',
+        ]);
+        $this->assertTrue($submission->fresh()->isApproved());
+
+        $check = app(ContentModerationService::class)->assertSubmissionsApproved([$submission->fresh()], $advertiser);
+        $this->assertFalse($check['ok']);
+        $this->assertSame(ContentSubmission::STATUS_REJECTED, $submission->fresh()->moderation_status);
+    }
+
+    public function test_casino_split_across_score_windows_fails_live_policy(): void
+    {
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        config(['content_moderation.enabled' => true]);
+        ContentModerationSetting::clearCache();
+
+        $hidden = str_repeat('x', ContentModerationEngine::SCORE_TEXT_CHARS - 4)
+            .' casino tonight and claim your bonus.';
         $submission->update([
             'extracted_text' => $hidden,
             'preview_html' => '<p>'.$hidden.'</p>',

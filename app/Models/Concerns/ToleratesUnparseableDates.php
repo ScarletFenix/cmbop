@@ -13,6 +13,14 @@ use Illuminate\Support\Carbon;
 trait ToleratesUnparseableDates
 {
     /**
+     * SQL leftover dates compare as strings (SQLite) or zero-dates (MySQL).
+     * Bound comparisons to this window so filters match PHP fail-closed helpers.
+     */
+    public const PLAUSIBLE_SQL_DATETIME_CEIL = '9999-12-31 23:59:59';
+
+    public const PLAUSIBLE_SQL_DATETIME_FLOOR = '1970-01-01 00:00:01';
+
+    /**
      * @param  mixed  $value
      * @return Carbon|null
      */
