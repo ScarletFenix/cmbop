@@ -12,6 +12,7 @@ use App\Models\Wallet;
 use App\Services\Billing\BillingDocumentService;
 use App\Services\CheckoutIntentService;
 use App\Services\InAppNotificationService;
+use App\Services\OrderPaymentService;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -1297,5 +1298,49 @@ class AdminOrderPaymentsOpsTest extends TestCase
         $this->assertSame($order->id, (int) $fresh->order_id);
         $this->assertTrue($fresh->isLockedByPaidOrder());
         $this->assertSame('in_progress', $fresh->libraryAvailability());
+    }
+
+    public function test_admin_mark_paid_stays_blocked_after_leftover_card_credit_is_applied(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        Wallet::create([
+            'user_id' => $advertiser->id,
+            'role_id' => Wallet::advertiserRoleId(),
+            'balance' => 0,
+            'reserved_balance' => 0,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 0,
+            'currency' => 'EUR',
+        ]);
+        $order = $this->makeOrder($advertiser, $this->makeSite($this->makeUser('publisher'), 'credit-applied'), [
+            'payment_method' => 'card',
+            'payment_status' => 'failed',
+            'status' => 'pending',
+            'total_amount' => 80,
+            'reference_code' => 'PAY-CREDIT-APPLIED',
+        ]);
+        $payments = app(OrderPaymentService::class);
+        $this->assertEqualsWithDelta(
+            80.0,
+            $payments->creditUnfulfilledCardCapture((int) $advertiser->id, 'PAY-CREDIT-APPLIED', 80),
+            0.01
+        );
+        $this->assertEqualsWithDelta(
+            80.0,
+            $payments->consumeUnfulfilledCardCreditForLeftover((int) $advertiser->id, 'PAY-CREDIT-APPLIED', 80),
+            0.01
+        );
+        $this->assertEqualsWithDelta(0.0, $payments->unfulfilledCardCreditRemaining('PAY-CREDIT-APPLIED'), 0.01);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.payments.updateStatus', $order->id), [
+                'payment_status' => 'paid',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+
+        $this->assertSame('failed', $order->fresh()->payment_status);
+        $this->assertSame('pending', $order->fresh()->status);
     }
 }

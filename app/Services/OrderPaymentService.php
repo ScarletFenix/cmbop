@@ -1035,9 +1035,17 @@ class OrderPaymentService
         // Same leftover may already have a session-keyed credit (#831 bonus
         // fail, amount mismatch). An unkeyed top-up here paid the capture
         // twice after the listing left the catalog and the webhook retried.
-        $alreadyCredited = $this->unfulfilledCardCreditAmount($referenceCode) > 0.009;
+        // A prior capture on this reference must not skip THIS capture —
+        // unkeyed credit also treats any UNFULFILLED-CARD-{ref}-* as a hit.
+        $alreadyCredited = $session !== null
+            ? $this->sessionAlreadyCreditedAsUnfulfilled($referenceCode, $session)
+            : $this->unfulfilledCardCreditAmount($referenceCode) > 0.009;
         if ($userId > 0 && $unfulfilled > 0.009 && ! $alreadyCredited) {
-            $this->creditUnfulfilledCardCapture($userId, $referenceCode, $unfulfilled);
+            if ($session !== null) {
+                $this->creditUnfulfilledFromStripeObject($userId, $referenceCode, $unfulfilled, $session);
+            } else {
+                $this->creditUnfulfilledCardCapture($userId, $referenceCode, $unfulfilled);
+            }
         }
 
         foreach ($hiddenPending as $order) {

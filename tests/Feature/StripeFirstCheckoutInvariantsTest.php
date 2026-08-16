@@ -1545,6 +1545,54 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
         $this->assertEqualsWithDelta(80.0, $payments->unfulfilledCardCreditAmount('CAPTURE-IDS-1'), 0.01);
     }
 
+    public function test_later_hidden_leftover_still_credits_after_a_prior_keyed_credit(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher, 'later-hidden-after-keyed.example', 80);
+        $wallet = $this->advertiserWallet($advertiser, 0);
+        $ref = 'LATER-HIDDEN-KEYED-1';
+        $payments = app(OrderPaymentService::class);
+
+        $this->assertEqualsWithDelta(
+            80.0,
+            $payments->creditUnfulfilledCardCapture($advertiser->id, $ref, 80, 'cs_earlier_keyed'),
+            0.01
+        );
+
+        $order = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => $ref,
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'failed',
+            'status' => 'pending',
+        ]);
+        OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/b',
+            'price' => 80,
+        ]);
+        $site->update(['verified' => false, 'active' => false]);
+
+        $session = $this->paidSession($ref, 80, 'cs_later_hidden_keyed');
+        $session->metadata->user_id = (string) $advertiser->id;
+
+        $paid = $payments->markOrdersPaidFromStripeSession($ref, $session);
+
+        $this->assertCount(0, $paid);
+        $this->assertSame('cancelled', $order->fresh()->status);
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(160.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(160.0, $payments->unfulfilledCardCreditAmount($ref), 0.01);
+    }
+
     public function test_pay_again_does_not_reapply_already_consumed_leftover_credit(): void
     {
         $advertiser = $this->makeUser('advertiser');
