@@ -8,7 +8,7 @@
     $adv = $dossier['advertiser_wallet'];
     $pub = $dossier['publisher_wallet'];
     $paidOrdersCount = (int) ($t['paid_orders_count'] ?? 0);
-    $paidGmv = (float) ($t['gmv_as_advertiser'] ?? 0);
+    $paidGmv = (float) ($t['current_paid_gmv'] ?? $t['gmv_as_advertiser'] ?? 0);
     $isRepeatBuyer = $paidOrdersCount > 1;
     $isHighSpender = $paidGmv >= 1000;
 @endphp
@@ -59,6 +59,9 @@
                 <div class="card-body">
                     <div class="text-muted small">GMV as advertiser</div>
                     <div class="fs-4 fw-bold">{{ $euro($t['gmv_as_advertiser']) }}</div>
+                    @if(($t['refunds_as_advertiser'] ?? 0) > 0)
+                        <div class="small text-muted">Refunds {{ $euro($t['refunds_as_advertiser']) }} · net {{ $euro($t['net_gmv_as_advertiser'] ?? 0) }}</div>
+                    @endif
                 </div>
             </div>
         </div>
