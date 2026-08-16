@@ -103,6 +103,21 @@ class AudienceCampaignMail extends PlatformMailable
 
     public function failed(?\Throwable $exception): void
     {
+        // A worker timeout after SMTP still runs failed(). MessageSent
+        // already wrote delivered. Marking the recipient failed hid that
+        // send from recover (it only heals queued rows), so the campaign
+        // looked failed and a later compose blasted the audience again.
+        if ($this->thisAttemptAlreadyDelivered()) {
+            $this->suppressReason = 'duplicate';
+            $this->abandonOpenLog($this->suppressErrorMessage());
+            $this->markRecipientDelivered();
+
+            return;
+        }
+
+        // Generic-key / recent sibling delivery still must not invent a
+        // leftover failed Email Center log. alreadyHasDeliveredLog() now
+        // ignores a leftover older than this job attempt.
         if ($this->alreadyHasDeliveredLog()) {
             $this->suppressReason = 'duplicate';
             $this->abandonOpenLog($this->suppressErrorMessage());
@@ -113,6 +128,35 @@ class AudienceCampaignMail extends PlatformMailable
 
         parent::failed($exception);
         $this->markRecipientFailed();
+    }
+
+    /**
+     * True when MessageSent already persisted a delivered log for this
+     * job attempt (sent_at >= queuedAt). An older campaign delivery
+     * must still record a later real failure.
+     */
+    protected function thisAttemptAlreadyDelivered(): bool
+    {
+        if (! filled($this->dedupeKey) || blank($this->queuedAt)) {
+            return false;
+        }
+
+        try {
+            if (! Schema::hasTable((new EmailLog)->getTable())) {
+                return false;
+            }
+
+            $delivered = EmailLog::latestDeliveredByDedupe($this->dedupeKey);
+            if (! $delivered?->sent_at) {
+                return false;
+            }
+
+            return $delivered->sent_at->greaterThanOrEqualTo(
+                Carbon::parse($this->queuedAt)->subSeconds(5)
+            );
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     /**
