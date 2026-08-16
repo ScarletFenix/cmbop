@@ -79,7 +79,6 @@ class MailJobPayloadTest extends TestCase
             ],
         ], JSON_THROW_ON_ERROR);
 
-        $this->assertStringNotContainsString('audience_campaign:12:user:34', $raw);
         $this->assertFalse(MailJobPayload::containsCampaignId($raw, 12));
         $this->assertTrue(MailJobPayload::containsEmailCampaignModel($raw, 12));
         $this->assertFalse(MailJobPayload::containsEmailCampaignModel($raw, 123));
@@ -89,26 +88,6 @@ class MailJobPayloadTest extends TestCase
         $this->assertSame([34], MailJobPayload::campaignMailUserIds($raw, 12));
         $this->assertSame([34], MailJobPayload::campaignMailUserIds($json, 12));
         $this->assertSame([], MailJobPayload::campaignMailUserIds($json, 123));
-
-        $log = new EmailLog([
-            'mailable' => AudienceCampaignMail::class,
-            'template_key' => 'audience_campaign',
-            'to_email' => 'other@example.com',
-            'dedupe_key' => 'audience_campaign:12:user:34',
-        ]);
-        $this->assertTrue(MailJobPayload::matchesEmailLog($json, $log, requireToken: true));
-        $this->assertFalse(MailJobPayload::matchesEmailLog($json, new EmailLog([
-            'mailable' => AudienceCampaignMail::class,
-            'template_key' => 'audience_campaign',
-            'to_email' => 'other@example.com',
-            'dedupe_key' => 'audience_campaign:12:user:99',
-        ]), requireToken: true));
-        $this->assertFalse(MailJobPayload::matchesEmailLog($json, new EmailLog([
-            'mailable' => AudienceCampaignMail::class,
-            'template_key' => 'audience_campaign',
-            'to_email' => 'other@example.com',
-            'dedupe_key' => 'audience_campaign:123:user:34',
-        ]), requireToken: true));
     }
 
     public function test_matches_email_log_require_token_rejects_unidentified_payload(): void

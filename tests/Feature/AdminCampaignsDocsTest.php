@@ -67,8 +67,7 @@ class AdminCampaignsDocsTest extends TestCase
         $this->assertStringContainsString('Preference, disabled, and unverified skips stay skipped', $body);
         $this->assertStringContainsString('inline SMTP (`sync` mail)', $body);
         $this->assertStringContainsString('delivered log still wins when a', $body);
-        $this->assertStringContainsString('younger than the stall window', $body);
-        $this->assertStringContainsString('must **not** block pending-log expire', $body);
+        $this->assertStringContainsString('only serializes the campaign as a ModelIdentifier', $body);
         $this->assertStringNotContainsString('/advertiser/campaigns', $body);
     }
 

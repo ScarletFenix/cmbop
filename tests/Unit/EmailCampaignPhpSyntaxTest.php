@@ -217,5 +217,9 @@ class EmailCampaignPhpSyntaxTest extends TestCase
             '/function test_matches_email_log_require_token_rejects_unidentified_payload\b/',
             $payloadTest
         ));
+        $this->assertSame(1, preg_match_all(
+            '/function test_contains_campaign_mail_matches_model_identifier_without_dedupe_key\b/',
+            $payloadTest
+        ));
     }
 }
