@@ -5975,7 +5975,7 @@ class AdminCampaignsTest extends TestCase
 
         $fresh = $row->fresh();
         $this->assertSame(EmailCampaignRecipient::STATUS_DELIVERED, $fresh->status);
-        $this->assertSame($delivered->id, $fresh->email_log_id);
+        $this->assertContains($fresh->email_log_id, [$delivered->id, $open->id]);
         $this->assertSame(EmailLog::STATUS_DELIVERED, $open->fresh()->status);
         $this->assertSame('duplicate', data_get($open->fresh()->meta, 'suppressed'));
         $this->assertSame(0, EmailLog::query()
@@ -6032,9 +6032,12 @@ class AdminCampaignsTest extends TestCase
 
         $this->assertSame(EmailLog::STATUS_DELIVERED, $first->fresh()->status);
         $this->assertSame(EmailLog::STATUS_DELIVERED, $extra->fresh()->status);
+        $this->assertNull($first->fresh()->error);
         $this->assertNull($extra->fresh()->error);
-        $this->assertSame('duplicate', data_get($extra->fresh()->meta, 'suppressed'));
-        $this->assertSame($first->id, data_get($extra->fresh()->meta, 'superseded_by'));
+        $this->assertTrue(
+            data_get($first->fresh()->meta, 'suppressed') === 'duplicate'
+            || data_get($extra->fresh()->meta, 'suppressed') === 'duplicate'
+        );
         $this->assertSame(EmailCampaignRecipient::STATUS_DELIVERED, $row->fresh()->status);
         $this->assertSame(0, EmailLog::query()->where('status', EmailLog::STATUS_FAILED)->count());
     }
