@@ -503,6 +503,12 @@ class ContentLibraryController extends Controller
 
         abort_unless((int) $submission->user_id === (int) auth()->id(), 403);
 
+        if ($submission->isLockedByPaidOrder()) {
+            return redirect()
+                ->route('advertiser.orders')
+                ->with('error', ContentSubmission::PAID_ORDER_CLAIM_MESSAGE);
+        }
+
         if (! $submission->isContentReadyForOrder()) {
             // Expired leftovers can still Pay again on the open order, but they
             // cannot start a new catalog checkout. Unready leftovers (links /
@@ -525,27 +531,10 @@ class ContentLibraryController extends Controller
         }
 
         if (! $submission->canOrderFromLibrary()) {
-            return $this->redirectToLibraryChip(
-                $submission,
-                $submission->libraryFixSummary()
-                    ?: 'Only approved Content Library articles can be ordered. Please edit and resubmit if corrections are needed.'
-            );
-        }
-
-        app(OrderPaymentService::class)->replaceUnpaidLeftoversForSubmissions(
-            (int) auth()->id(),
-            [(int) $submission->id]
-        );
-        $submission = $submission->fresh() ?? $submission;
-
-        if (! $submission->canBeOrdered() || ! $submission->isReadyForCheckout()) {
-            $message = $submission->isExpired()
-                ? 'Expired articles are preview only and cannot be ordered.'
-                : ($submission->hasImages() && ! $submission->imageRightsCoverContent()
-                    ? ContentUploadService::imageRightsRequiredMessage()
-                    : ($submission->libraryFixSummary() ?: ContentSubmission::CHECKOUT_LINK_MESSAGE));
-
-            return $this->redirectToLibraryChip($submission, $message);
+            return redirect()
+                ->route('advertiser.content-library')
+                ->with('error', $submission->libraryFixSummary()
+                    ?: 'Only approved Content Library articles can be ordered. Please edit and resubmit if corrections are needed.');
         }
 
         // Keep Pay again until the advertiser actually assigns this article

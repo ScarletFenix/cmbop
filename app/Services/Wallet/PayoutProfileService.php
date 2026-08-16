@@ -172,6 +172,8 @@ class PayoutProfileService
     {
         $before = $user->payoutProfile();
 
+        // Leftover lock stamps cast to null; write a real timestamp so later
+        // reads match payoutProfileLocked() and Eloquent dirty-diff can save.
         $updates = [
             'payout_preferred_method' => $method,
             'payout_profile_locked_at' => $user->payout_profile_locked_at ?? now(),

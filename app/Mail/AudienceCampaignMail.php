@@ -66,11 +66,26 @@ class AudienceCampaignMail extends PlatformMailable
     {
         if (AudienceInventoryService::userHasStaffRole($this->recipient)) {
             $this->suppressReason = 'staff';
+            if (! filled($this->dedupeKey)) {
+                [$campaignId, $userId] = $this->campaignAndUserIds();
+                if ($campaignId > 0 && $userId > 0) {
+                    $this->dedupeKey = EmailCampaignRecipient::dedupeKey($campaignId, $userId);
+                }
+            }
             // Staff skip runs before parent::send(), so abandonOpenLog
             // never ran — a retried pending Email Center row stayed
             // pending forever (retry only accepts failed).
             $this->abandonOpenLog($this->suppressErrorMessage());
             $this->markRecipientSkipped(EmailCampaignRecipient::SKIP_STAFF);
+
+            return null;
+        }
+
+        if ($this->campaign->respect_preferences
+            && ! EmailNotificationPreference::allows($this->recipient, 'marketing_emails', failClosed: true)) {
+            $this->suppressReason = 'preference';
+            $this->abandonOpenLog($this->suppressErrorMessage());
+            $this->markRecipientSkipped(EmailCampaignRecipient::SKIP_PREFERENCE);
 
             return null;
         }
@@ -88,6 +103,14 @@ class AudienceCampaignMail extends PlatformMailable
 
     public function failed(?\Throwable $exception): void
     {
+        if ($this->alreadyHasDeliveredLog()) {
+            $this->suppressReason = 'duplicate';
+            $this->abandonOpenLog($this->suppressErrorMessage());
+            $this->markRecipientDelivered();
+
+            return;
+        }
+
         parent::failed($exception);
         $this->markRecipientFailed();
     }
@@ -110,6 +133,21 @@ class AudienceCampaignMail extends PlatformMailable
         }
     }
 
+    /**
+     * parent::send() fills an empty key with type|email|class. That string
+     * is not the one-shot campaign key, so isDuplicate() misses a real
+     * delivery and Email Center leftover rows cannot find their sibling.
+     */
+    protected function defaultDedupeKey(?string $type, ?User $recipient): ?string
+    {
+        [$campaignId, $userId] = $this->campaignAndUserIds();
+        if ($campaignId > 0 && $userId > 0) {
+            return EmailCampaignRecipient::dedupeKey($campaignId, $userId);
+        }
+
+        return parent::defaultDedupeKey($type, $recipient);
+    }
+
     protected function skipReasonForSuppressedSend(): string
     {
         if ($this->suppressReason === 'stale' || $this->isStale()) {
@@ -118,7 +156,7 @@ class AudienceCampaignMail extends PlatformMailable
 
         if ($this->suppressReason === 'preference'
             || ($this->campaign->respect_preferences
-                && ! EmailNotificationPreference::allows($this->recipient, 'marketing_emails'))) {
+                && ! EmailNotificationPreference::allows($this->recipient, 'marketing_emails', failClosed: true))) {
             return EmailCampaignRecipient::SKIP_PREFERENCE;
         }
 

@@ -8,6 +8,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Models\Wallet;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
@@ -242,5 +243,88 @@ class PublisherWithdrawPayoutLockTest extends TestCase
 
         Mail::assertNothingOutgoing();
         $this->assertSame(1, ActivityLog::query()->where('action', 'user.payout_profile_updated')->count());
+    }
+
+    public function test_leftover_lock_stamp_still_blocks_rewriting_payout_details(): void
+    {
+        $publisher = $this->publisher();
+        $publisher->forceFill([
+            'payout_paypal_email' => 'locked@example.com',
+            'payout_preferred_method' => 'paypal',
+            'payout_profile_locked_at' => now(),
+        ])->save();
+        DB::table('users')->where('id', $publisher->id)->update([
+            'payout_profile_locked_at' => 'not-a-date',
+        ]);
+
+        $publisher->refresh();
+        $this->assertNull($publisher->payout_profile_locked_at);
+        $this->assertTrue($publisher->payoutProfileLocked());
+
+        $response = $this->actingAs($publisher)
+            ->postJson(route('publisher.withdraw.request'), [
+                'amount' => 20,
+                'payment_method' => 'paypal',
+                'paypal_email' => 'new@example.com',
+                'paypal_email_confirm' => 'new@example.com',
+                'details_confirmed' => '1',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertTrue($response->json('payout_locked') ?? true);
+        $this->assertSame('locked@example.com', $publisher->fresh()->payout_paypal_email);
+        $this->assertDatabaseHas('withdrawals', [
+            'user_id' => $publisher->id,
+            'payment_method' => 'paypal',
+            'amount' => 20,
+        ]);
+    }
+
+    public function test_leftover_lock_stamp_shows_locked_on_admin_users_page(): void
+    {
+        $publisher = $this->publisher();
+        $publisher->forceFill([
+            'payout_paypal_email' => 'locked@example.com',
+            'payout_preferred_method' => 'paypal',
+            'payout_profile_locked_at' => now(),
+        ])->save();
+        DB::table('users')->where('id', $publisher->id)->update([
+            'payout_profile_locked_at' => 'not-a-date',
+        ]);
+
+        $this->actingAs($this->admin())
+            ->get(route('admin.users.index', ['user' => $publisher->id]))
+            ->assertOk()
+            ->assertSee('Locked', false)
+            ->assertDontSee('>Not set<', false);
+    }
+
+    public function test_admin_payout_update_heals_leftover_lock_stamp(): void
+    {
+        Mail::fake();
+
+        $publisher = $this->publisher();
+        $publisher->forceFill([
+            'payout_paypal_email' => 'old@example.com',
+            'payout_preferred_method' => 'paypal',
+            'payout_profile_locked_at' => now(),
+        ])->save();
+        DB::table('users')->where('id', $publisher->id)->update([
+            'payout_profile_locked_at' => 'not-a-date',
+        ]);
+
+        $this->actingAs($this->admin())
+            ->postJson(route('admin.users.updatePayoutProfile', $publisher->id), [
+                'payment_method' => 'paypal',
+                'paypal_email' => 'new@example.com',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $fresh = $publisher->fresh();
+        $this->assertSame('new@example.com', $fresh->payout_paypal_email);
+        $this->assertNotNull($fresh->payout_profile_locked_at);
+        $this->assertTrue($fresh->payoutProfileLocked());
     }
 }
