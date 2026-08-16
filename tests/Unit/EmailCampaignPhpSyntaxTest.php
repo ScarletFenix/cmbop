@@ -293,6 +293,17 @@ class EmailCampaignPhpSyntaxTest extends TestCase
         $this->assertStringContainsString('inFlightCampaignMailUserIds', $failPending[1]);
         $this->assertStringNotContainsString('$expired', $failPending[1]);
         $this->assertStringContainsString("'updated_at'", $failPending[1]);
+        $this->assertStringContainsString('campaignUserIds', $failPending[1]);
+        $this->assertTrue((bool) preg_match(
+            '/protected static function reconcileOneQueuedRecipientFromLogs\(.*?\): void\s*\{(.*?)\n    \/\*\*/s',
+            $model,
+            $reconcileOne
+        ));
+        $this->assertSame(
+            0,
+            preg_match_all('/^\s*continue;\s*$/m', $reconcileOne[1]),
+            'reconcileOneQueuedRecipientFromLogs is not a loop — continue fatals class load'
+        );
 
         $center = (string) file_get_contents($files[3]);
         $this->assertSame(1, preg_match_all('/function markRetriedMailLogsPending\b/', $center));

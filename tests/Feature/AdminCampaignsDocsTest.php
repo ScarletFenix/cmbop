@@ -46,6 +46,8 @@ class AdminCampaignsDocsTest extends TestCase
         $this->assertStringContainsString('must not look like “no pending retries”', $body);
         $this->assertStringContainsString('meta.campaign_id', $body);
         $this->assertStringContainsString('audience_campaign|{email}|AudienceCampaignMail', $body);
+        $this->assertStringContainsString('pendingUserIdsForCampaign()', $body);
+        $this->assertStringContainsString('must `return`, not `continue`', $body);
         $this->assertStringContainsString('must **not** treat that shared generic key as one-shot', $body);
         $this->assertStringContainsString('must not look like “no prior send”', $body);
         $this->assertStringContainsString('must not scan the newest 100', $body);

@@ -3324,6 +3324,108 @@ class AdminCampaignsTest extends TestCase
         $this->assertSame(EmailCampaign::STATUS_FAILED, $campaign->fresh()->status);
     }
 
+    public function test_expire_closes_generic_pending_log_for_orphaned_queued_recipient(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+
+        $campaign = EmailCampaign::create([
+            'name' => 'Lost generic retry',
+            'subject' => 'Lost generic retry',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'sent_count' => 1,
+            'status' => EmailCampaign::STATUS_SENDING,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        $log = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => AudienceCampaignMail::class,
+            'template_key' => 'audience_campaign',
+            'notification_type' => 'audience_campaign',
+            'dedupe_key' => 'audience_campaign|'.$advertiser->email.'|AudienceCampaignMail',
+            'to_email' => $advertiser->email,
+            'subject' => 'Lost generic retry',
+            'status' => EmailLog::STATUS_PENDING,
+            'meta' => ['source' => 'queue', 'campaign_id' => $campaign->id, 'user_id' => $advertiser->id],
+        ]);
+        $log->forceFill(['updated_at' => now()->subHours(80)])->save();
+        $row = EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_QUEUED,
+        ]);
+        $row->forceFill(['updated_at' => now()->subHours(80)])->save();
+
+        EmailCampaign::recoverStalled();
+
+        $this->assertSame(EmailCampaignRecipient::STATUS_SKIPPED, $row->fresh()->status);
+        $this->assertSame(EmailCampaignRecipient::SKIP_STALE, $row->fresh()->skip_reason);
+        $this->assertSame(EmailLog::STATUS_FAILED, $log->fresh()->status);
+        $this->assertSame('Expired: campaign mail was not confirmed', $log->fresh()->error);
+    }
+
+    public function test_expire_does_not_stale_queued_recipient_with_generic_delivered_log(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+
+        $campaign = EmailCampaign::create([
+            'name' => 'Generic delivered hold',
+            'subject' => 'Generic delivered hold',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'sent_count' => 1,
+            'status' => EmailCampaign::STATUS_SENDING,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        $row = EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_QUEUED,
+        ]);
+        $row->forceFill(['updated_at' => now()->subHours(80)])->save();
+        EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => AudienceCampaignMail::class,
+            'template_key' => 'audience_campaign',
+            'notification_type' => 'audience_campaign',
+            'dedupe_key' => 'audience_campaign|'.$advertiser->email.'|AudienceCampaignMail',
+            'to_email' => $advertiser->email,
+            'subject' => 'Generic delivered hold',
+            'status' => EmailLog::STATUS_DELIVERED,
+            'sent_at' => now()->subHours(79),
+            'meta' => [
+                'campaign_id' => $campaign->id,
+                'user_id' => $advertiser->id,
+            ],
+        ]);
+        $campaign->forceFill(['updated_at' => now()->subHours(80)])->save();
+
+        EmailCampaign::recoverStalled();
+
+        $fresh = $row->fresh();
+        $this->assertNotSame(EmailCampaignRecipient::SKIP_STALE, $fresh->skip_reason);
+        $this->assertNotSame(EmailCampaignRecipient::STATUS_SKIPPED, $fresh->status);
+    }
+
+    public function test_campaign_user_ids_read_canonical_template_key(): void
+    {
+        $log = new EmailLog([
+            'dedupe_key' => 'audience_campaign|buyer@example.com|AudienceCampaignMail',
+            'template_key' => 'audience_campaign:12:user:34',
+            'meta' => null,
+        ]);
+
+        $this->assertSame([12, 34], EmailLog::campaignUserIds($log));
+    }
+
     public function test_job_stays_sending_while_mail_is_only_queued(): void
     {
         Mail::fake();
