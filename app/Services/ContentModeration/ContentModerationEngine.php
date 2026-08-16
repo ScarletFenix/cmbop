@@ -696,6 +696,13 @@ class ContentModerationEngine
 
     protected function countTerm(string $haystack, string $term, ?string $tightHaystack = null): int
     {
+        // Fold the needle the same way as the haystack (NFKD, entities, leet).
+        // Otherwise "glücksspiel" never matches the stripped "glucksspiel" body.
+        $term = $this->deobfuscate($term);
+        if ($term === '') {
+            return 0;
+        }
+
         $count = 0;
         foreach (array_filter([$haystack, $tightHaystack]) as $candidate) {
             $count = max($count, $this->countTermIn($candidate, $term));
@@ -721,6 +728,11 @@ class ContentModerationEngine
 
     protected function phrasePresent(string $haystack, string $tightHaystack, string $phrase): bool
     {
+        $phrase = $this->deobfuscate($phrase);
+        if ($phrase === '') {
+            return false;
+        }
+
         $leetPhrase = $this->leetFold($phrase);
         if (str_contains($haystack, $phrase) || str_contains($this->leetFold($haystack), $leetPhrase)) {
             return true;
