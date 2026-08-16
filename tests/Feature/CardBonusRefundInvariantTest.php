@@ -470,6 +470,38 @@ class CardBonusRefundInvariantTest extends TestCase
         $this->assertEqualsWithDelta(60.0, $wallet->withdrawableBalance(), 0.01);
     }
 
+    public function test_admin_mark_paid_stays_blocked_after_leftover_card_credit_is_applied(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $this->wallet($advertiser, 0);
+        $item = $this->cardOrder($advertiser, $this->site($publisher), 80, 'REF-ADMIN-CREDIT-APPLIED', 'failed');
+        $payments = app(OrderPaymentService::class);
+
+        $this->assertEqualsWithDelta(
+            80.0,
+            $payments->creditUnfulfilledCardCapture((int) $advertiser->id, 'REF-ADMIN-CREDIT-APPLIED', 80),
+            0.01
+        );
+        $this->assertEqualsWithDelta(
+            80.0,
+            $payments->consumeUnfulfilledCardCreditForLeftover((int) $advertiser->id, 'REF-ADMIN-CREDIT-APPLIED', 80),
+            0.01
+        );
+        $this->assertEqualsWithDelta(0.0, $payments->unfulfilledCardCreditRemaining('REF-ADMIN-CREDIT-APPLIED'), 0.01);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.payments.updateStatus', $item->order_id), [
+                'payment_status' => 'paid',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+
+        $this->assertSame('failed', $item->order->fresh()->payment_status);
+        $this->assertSame('pending', $item->order->fresh()->status);
+    }
+
     public function test_pay_again_full_card_settle_does_not_keep_fail_bonus_snapshot(): void
     {
         $advertiser = $this->userWithRole('advertiser');
