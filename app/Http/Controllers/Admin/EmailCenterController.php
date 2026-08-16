@@ -770,13 +770,11 @@ class EmailCenterController extends Controller
             return null;
         }
 
-        $to = (string) $log->to_email;
-        $dedupe = (string) $log->dedupe_key;
-        $tight = array_values(array_filter($candidates, function ($job) use ($to, $dedupe) {
-            $payload = (string) $job->payload;
-
-            return MailJobPayload::containsToken($payload, $to)
-                || MailJobPayload::containsToken($payload, $dedupe);
+        $tight = array_values(array_filter($candidates, function ($job) use ($log) {
+            // Token or campaign ModelIdentifier (no stamped dedupeKey).
+            // Unique class match without a recipient is how an anonymous
+            // Welcome job was retried against the wrong failed log.
+            return $this->failedJobMatchesLog((string) $job->payload, $log);
         }));
 
         if (count($tight) === 1) {

@@ -70,7 +70,7 @@ or marketing, even if that staff account also has a marketplace role.
    retryable from Email Center. A
    Redis/SQS **mail** queue, inline SMTP (`sync` mail), a missing `payload` column on the **mail**
    table, or a mailable whose user id cannot be parsed is fail-closed: the
-   row stays queued so an in-flight send is not doubled. An unused redis
+   row stays queued so an in-flight send is not doubled. An `AudienceCampaignMail` that only serializes the campaign as a ModelIdentifier (no `campaignId` property and no `dedupeKey`) must still count as in-flight so reclaim does not treat that jobs row as empty, and expire must not fail a pending campaign log beside that jobs row. An unused redis
    `queue.default` or a broken unused database table must not block a
    healthy empty mail queue — recover must still reclaim. A second database table without `payload` on the unused connection must not look like in-flight mail. A successful
    empty scan of the live mail table must still reclaim even if the unused
