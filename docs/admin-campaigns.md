@@ -143,6 +143,11 @@ or marketing, even if that staff account also has a marketplace role.
    pending for recover give-up beside the retried mailable.    Bulk retry must mark only one failed log per job UUID — a shared stale stamp plus the same
    `to_email` used to pending-mark two campaigns and reclaim the extra
    recipient beside a single `queue:retry`. Closing a leftover already-delivered log must also drop that job UUID from the retry list — a shared stale stamp would otherwise pending-mark the other campaign.
+   Dropping that job must use campaign+user identity (canonical
+   `audience_campaign:{id}:user:{id}` or a ModelIdentifier), not the shared
+   `audience_campaign|{email}|AudienceCampaignMail` string — that leftover must
+   not swallow another campaign's failed job. Closing a leftover must not treat
+   another campaign's generic-key delivery as this send.
    `user_ids` are integers capped at
    `PICKER_LIMIT * 2` (no `exists:users,id` — a deleted picker row must not
    422 the whole send).

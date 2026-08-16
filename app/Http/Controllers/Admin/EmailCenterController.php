@@ -586,8 +586,27 @@ class EmailCenterController extends Controller
             return true;
         }
 
+        [$campaignId, $userId] = EmailLog::campaignUserIds($leftover);
         $dedupe = MailJobPayload::dedupeKey($payload);
         $leftoverDedupe = (string) $leftover->dedupe_key;
+
+        if ($campaignId > 0 && $userId > 0) {
+            if (in_array($userId, MailJobPayload::campaignMailUserIds($payload, $campaignId), true)) {
+                return true;
+            }
+            if (is_string($dedupe) && $dedupe === EmailCampaignRecipient::dedupeKey($campaignId, $userId)) {
+                return true;
+            }
+        }
+
+        // Shared `audience_campaign|{email}|…` is not one-shot across
+        // campaigns. Exact-key match used to drop campaign 2's job after
+        // campaign 1's leftover closed under the same string.
+        if (str_starts_with($leftoverDedupe, 'audience_campaign|')
+            || (is_string($dedupe) && str_starts_with($dedupe, 'audience_campaign|'))) {
+            return false;
+        }
+
         if (is_string($dedupe) && $dedupe !== '') {
             return $dedupe === $leftoverDedupe;
         }
@@ -615,8 +634,17 @@ class EmailCenterController extends Controller
             return false;
         }
 
-        $delivered = EmailLog::latestDeliveredByDedupe((string) $log->dedupe_key);
-        if (! $delivered || (int) $delivered->id === (int) $log->id) {
+        $delivered = null;
+        $dedupe = (string) $log->dedupe_key;
+        // Exact-key lookup on the shared generic key hits another
+        // campaign's delivery and closed this leftover as "already sent".
+        if ($dedupe !== '' && ! str_starts_with($dedupe, 'audience_campaign|')) {
+            $delivered = EmailLog::latestDeliveredByDedupe($dedupe);
+            if ($delivered && (int) $delivered->id === (int) $log->id) {
+                $delivered = null;
+            }
+        }
+        if (! $delivered) {
             [$campaignId, $userId] = EmailLog::campaignUserIds($log);
             $delivered = EmailLog::latestDeliveredForCampaignUser($campaignId, $userId);
         }
