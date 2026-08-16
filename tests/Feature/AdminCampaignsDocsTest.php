@@ -42,13 +42,7 @@ class AdminCampaignsDocsTest extends TestCase
         $this->assertStringContainsString('second retry doubles the send', $body);
         $this->assertStringContainsString('must **not** skip a recipient whose', $body);
         $this->assertStringContainsString('queued row with a pending Email Center log', $body);
-        $this->assertStringContainsString('must not look like “no pending retries”', $body);
-        $this->assertStringContainsString('meta.campaign_id', $body);
-        $this->assertStringContainsString('audience_campaign|{email}|AudienceCampaignMail', $body);
-        $this->assertStringContainsString('must **not** treat that shared generic key as one-shot', $body);
-        $this->assertStringContainsString('must not look like “no prior send”', $body);
-        $this->assertStringContainsString('must not scan the newest 100', $body);
-        $this->assertStringContainsString('fresh pending Email Center log', $body);
+        $this->assertStringContainsString('must **not** treat a generic `audience_campaign|{email}|…` leftover', $body);
         $this->assertStringContainsString('only one failed log per job UUID', $body);
         $this->assertStringContainsString('drop that job UUID from the retry list', $body);
         $this->assertStringContainsString('must also clear the fail streak', $body);

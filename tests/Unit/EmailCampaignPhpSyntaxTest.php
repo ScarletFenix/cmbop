@@ -120,18 +120,9 @@ class EmailCampaignPhpSyntaxTest extends TestCase
         $inventory = (string) file_get_contents($files[2]);
         $this->assertSame(1, preg_match_all('/function recipientRowQuery\b/', $inventory));
 
-        $log = (string) file_get_contents($root.'/app/Models/EmailLog.php');
-        $this->assertSame(1, preg_match_all('/function latestDeliveredForCampaignUser\b/', $log));
-        $this->assertTrue((bool) preg_match(
-            '/public static function latestDeliveredForCampaignUser\(int \$campaignId, int \$userId\): \?self\s*\{(.*?)\n    \/\*\*/s',
-            $log,
-            $latest
-        ));
-        $this->assertStringNotContainsString('limit(100)', $latest[1]);
-        $this->assertStringContainsString('audience_campaign|', $latest[1]);
-        $this->assertSame(1, preg_match_all('/function pendingUserIdsForCampaign\b/', $log));
-        $this->assertSame(1, preg_match_all('/function deliveredUserIdsForCampaign\b/', $log));
-        $this->assertSame(1, preg_match_all('/function campaignUserIds\b/', $log));
+        $center = (string) file_get_contents($files[3]);
+        $this->assertSame(1, preg_match_all('/function deliveredSiblingIsSameCampaignSend\b/', $center));
+        $this->assertSame(1, preg_match_all('/function campaignIdFromLog\b/', $center));
 
         $model = (string) file_get_contents($files[0]);
         $this->assertSame(1, preg_match_all('/function reclaimOrphanedQueuedRecipients\b/', $model));
