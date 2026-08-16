@@ -259,10 +259,11 @@ class ManualWithdrawalMarkPaidConfirmLinkTest extends TestCase
             'payment_details' => ['email' => 'old@example.com'],
             'status' => 'completed',
             'processed_at' => now()->subDays(2),
-            'created_at' => now()->subDays(40),
         ]);
         DB::table('withdrawals')->where('id', $paid->id)->update([
             'processed_at' => 'not-a-date',
+            'created_at' => now()->subDays(40),
+            'updated_at' => now()->subDays(40),
         ]);
 
         $open = $this->pendingWithdrawal($publisher, 90);

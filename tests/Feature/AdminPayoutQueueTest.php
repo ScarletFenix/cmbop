@@ -704,14 +704,14 @@ class AdminPayoutQueueTest extends TestCase
         $paid = $this->seedWithdrawal($publisher, [
             'status' => 'completed',
             'processed_at' => now()->subDays(2),
-            'created_at' => now()->subDays(40),
-            'updated_at' => now()->subDays(40),
             'amount' => 90,
             'fee' => 0,
             'net_amount' => 90,
         ]);
         DB::table('withdrawals')->where('id', $paid->id)->update([
             'processed_at' => 'not-a-date',
+            'created_at' => now()->subDays(40),
+            'updated_at' => now()->subDays(40),
         ]);
         $open = $this->seedWithdrawal($publisher, [
             'amount' => 90,
