@@ -18,6 +18,7 @@ class EmailCampaignPhpSyntaxTest extends TestCase
             $root.'/app/Services/AudienceInventoryService.php',
             $root.'/app/Support/MailJobPayload.php',
             $root.'/app/Http/Controllers/Admin/EmailCenterController.php',
+            $root.'/app/Models/EmailLog.php',
             $root.'/tests/Unit/MailJobPayloadTest.php',
         ];
     }
@@ -90,7 +91,9 @@ class EmailCampaignPhpSyntaxTest extends TestCase
             $root.'/app/Support/MailJobPayload.php',
             $root.'/app/Services/AudienceInventoryService.php',
             $root.'/app/Http/Controllers/Admin/EmailCenterController.php',
+            $root.'/app/Models/EmailLog.php',
             $root.'/tests/Unit/MailJobPayloadTest.php',
+            $root.'/tests/Feature/AdminCampaignsTest.php',
         ];
 
         foreach ($files as $path) {
@@ -103,38 +106,120 @@ class EmailCampaignPhpSyntaxTest extends TestCase
         $this->assertSame(1, preg_match_all('/function containsSendCampaignJob\b/', $payload));
         $this->assertSame(1, preg_match_all('/function containsCampaignMail\b/', $payload));
         $this->assertSame(1, preg_match_all('/function campaignMailUserIds\b/', $payload));
+        $this->assertSame(1, preg_match_all('/function containsEmailCampaignModel\b/', $payload));
+        $this->assertSame(1, preg_match_all('/function modelIdentifierIds\b/', $payload));
 
         $inventory = (string) file_get_contents($files[2]);
         $this->assertSame(1, preg_match_all('/function recipientRowQuery\b/', $inventory));
 
+        $log = (string) file_get_contents($root.'/app/Models/EmailLog.php');
+        $this->assertSame(1, preg_match_all('/function latestDeliveredForCampaignUser\b/', $log));
+        $this->assertTrue((bool) preg_match(
+            '/public static function latestDeliveredForCampaignUser\(int \$campaignId, int \$userId\): \?self\s*\{(.*?)\n    \/\*\*/s',
+            $log,
+            $latest
+        ));
+        $this->assertStringNotContainsString('limit(100)', $latest[1]);
+        $this->assertStringContainsString('audience_campaign|', $latest[1]);
+        $this->assertSame(1, preg_match_all('/function pendingUserIdsForCampaign\b/', $log));
+        $this->assertSame(1, preg_match_all('/function deliveredUserIdsForCampaign\b/', $log));
+        $this->assertSame(1, preg_match_all('/function campaignUserIds\b/', $log));
+
         $model = (string) file_get_contents($files[0]);
         $this->assertSame(1, preg_match_all('/function reclaimOrphanedQueuedRecipients\b/', $model));
+        $this->assertTrue((bool) preg_match(
+            '/protected static function reclaimOrphanedQueuedRecipients\(self \$campaign\): int\s*\{(.*?)\n    \/\*\*/s',
+            $model,
+            $reclaim
+        ));
+        $this->assertGreaterThanOrEqual(1, substr_count($reclaim[1], 'deliveredUserIdsForCampaign'));
+        $this->assertTrue((bool) preg_match(
+            '/protected static function expireOrphanedQueuedRecipients\(\): void\s*\{(.*?)\n    \/\*\*/s',
+            $model,
+            $expire
+        ));
+        $this->assertStringContainsString('deliveredUserIdsForCampaign', $expire[1]);
+        $this->assertStringContainsString('pendingUserIdsForCampaign', $expire[1]);
         $this->assertSame(1, preg_match_all('/function inFlightCampaignMailUserIds\b/', $model));
+        $this->assertSame(1, preg_match_all('/function collectCampaignMailUserIdsFromTable\b/', $model));
+        $this->assertSame(1, preg_match_all('/function campaignLogUserIdsForStatus\b/', $model));
         $this->assertSame(1, preg_match_all('/function healQueuedRecipientsWithTerminalLog\b/', $model));
         $this->assertSame(0, preg_match_all('/function syncQueuedRecipientsWithAttachedLogs\b/', $model));
         $this->assertSame(1, preg_match_all('/function failPendingLogsForStaleRecipients\b/', $model));
         $this->assertSame(1, preg_match_all('/function expireOrphanedPendingLogs\b/', $model));
+        $this->assertTrue((bool) preg_match(
+            '/protected static function isCampaignEmailLog\(EmailLog \$log\): bool\s*\{(.*?)\n    \/\*\*/s',
+            $model,
+            $campaignLog
+        ));
+        $this->assertStringContainsString('audience_campaign|', $campaignLog[1]);
+        $this->assertStringContainsString('notification_type', $campaignLog[1]);
         $this->assertSame(1, preg_match_all('/function queuedMailablePayloads\b/', $model));
+        $this->assertSame(1, preg_match_all('/function mailConnectionIsInline\b/', $model));
+        $this->assertTrue((bool) preg_match(
+            '/protected static function queuedMailablePayloads\(\): \?array\s*\{(.*)\n\}\n/s',
+            $model,
+            $queuedMail
+        ));
+        $this->assertStringContainsString('$mailScannedOk = true;', $queuedMail[1]);
+        $this->assertStringContainsString('if ($mailNeedsScan && ! $mailScannedOk)', $queuedMail[1]);
+        $this->assertDoesNotMatchRegularExpression(
+            '/hasColumn\(\$table, \'payload\'\)\) \{\s*return null;/',
+            $queuedMail[1]
+        );
+        $this->assertTrue((bool) preg_match(
+            '/protected static function recoverStalledLocked\(int \$staleMinutes\): int\s*\{(.*?)\n    protected static function reclaimOrphanedQueuedRecipients/s',
+            $model,
+            $recover
+        ));
+        $this->assertNotFalse(strpos($recover[1], 'hasQueuedSendJob'));
+        $this->assertNotFalse(strpos($recover[1], 'currentFailStreak()'));
+        $this->assertLessThan(
+            strpos($recover[1], 'currentFailStreak()'),
+            strpos($recover[1], 'hasQueuedSendJob'),
+            'recover must see an in-flight send job before fail-streak give-up'
+        );
+
+        $this->assertTrue((bool) preg_match(
+            '/protected static function expireOrphanedQueuedRecipients\(\): void\s*\{(.*?)\n    \/\*\*/s',
+            $model,
+            $expire
+        ));
+        $this->assertStringContainsString('inFlightCampaignMailUserIds', $expire[1]);
+        $this->assertStringContainsString('campaignLogUserIdsForStatus', $expire[1]);
         $this->assertTrue((bool) preg_match(
             '/protected static function healQueuedRecipientsWithTerminalLog\(\): array\s*\{(.*?)\n    \/\*\*/s',
             $model,
             $heal
         ));
-        $this->assertSame(
-            0,
-            preg_match_all('/^\s*return;\s*$/m', $heal[1]),
-            'healQueuedRecipientsWithTerminalLog must return [] — a bare return is a TypeError'
-        );
+        $this->assertSame(0, substr_count($heal[1], "return;\n"), 'healQueued must return [] not void');
         $this->assertTrue((bool) preg_match(
-            '/protected static function queuedMailablePayloads\(\): \?array\s*\{(.*)\n    \}\n\}\n/s',
+            '/protected static function failPendingLogsForStaleRecipients\(\): void\s*\{(.*?)\n    \/\*\*/s',
             $model,
-            $queued
+            $failPending
         ));
-        $this->assertStringContainsString('$mailScannedOk = true;', $queued[1]);
-        $this->assertStringContainsString('if ($mailNeedsScan && ! $mailScannedOk)', $queued[1]);
-        $this->assertDoesNotMatchRegularExpression(
-            '/hasColumn\(\$table, \'payload\'\)\) \{\s*return null;/',
-            $queued[1]
-        );
+        $this->assertStringContainsString('inFlightCampaignMailUserIds', $failPending[1]);
+        $this->assertStringNotContainsString('$expired', $failPending[1]);
+        $this->assertStringContainsString("'updated_at'", $failPending[1]);
+
+        $center = (string) file_get_contents($files[3]);
+        $this->assertSame(1, preg_match_all('/function markRetriedMailLogsPending\b/', $center));
+        $this->assertSame(1, preg_match_all('/function failedJobMatchesLog\b/', $center));
+        $this->assertTrue((bool) preg_match(
+            '/protected function requeueFailedCampaignRecipient\(EmailLog \$log\): void\s*\{(.*)\n    protected function failedJobUuidForLog/s',
+            $center,
+            $requeue
+        ));
+        $this->assertStringContainsString('clearFailStreak()', $requeue[1]);
+
+        $payloadTest = (string) file_get_contents($files[4]);
+        $this->assertSame(1, preg_match_all(
+            '/function test_matches_email_log_require_token_rejects_unidentified_payload\b/',
+            $payloadTest
+        ));
+        $this->assertSame(1, preg_match_all(
+            '/function test_contains_campaign_mail_matches_model_identifier_without_dedupe_key\b/',
+            $payloadTest
+        ));
     }
 }

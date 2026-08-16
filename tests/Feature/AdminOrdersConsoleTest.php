@@ -13,6 +13,7 @@ use App\Models\Site;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -152,6 +153,26 @@ class AdminOrdersConsoleTest extends TestCase
             ->assertSee('Read-only')
             ->assertSee('Message sent')
             ->assertDontSee('chatForm', false);
+    }
+
+    public function test_order_show_ok_when_paid_at_is_unparseable(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $site = $this->siteFor($publisher);
+        $order = $this->orderFor($advertiser, $site);
+        DB::table('orders')->where('id', $order->id)->update([
+            'paid_at' => 'not-a-date',
+        ]);
+
+        $this->assertNull($order->fresh()->paid_at);
+
+        $this->actingAs($admin)
+            ->get(route('admin.orders.show', $order->id))
+            ->assertOk()
+            ->assertSee($order->order_number, false)
+            ->assertDontSee('Something went wrong');
     }
 
     public function test_stub_reports_and_settings_routes_are_gone(): void

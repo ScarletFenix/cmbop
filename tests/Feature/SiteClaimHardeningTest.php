@@ -486,4 +486,101 @@ class SiteClaimHardeningTest extends TestCase
             ->assertOk()
             ->assertSee('Your ownership claims');
     }
+
+    public function test_hide_mode_claim_by_site_id_does_not_fill_listing_url(): void
+    {
+        $owner = $this->userWithRole('publisher');
+        $claimer = $this->userWithRole('advertiser');
+        $claimer->forceFill([
+            'catalog_copy_strike_count' => 2,
+            'catalog_hide_until' => now()->addDay(),
+        ])->save();
+        $site = $this->siteFor($owner);
+
+        $this->actingAs($claimer->fresh())->postJson(route('advertiser.sites.claim'), [
+            'site_id' => $site->id,
+            'proof_message' => 'I own this domain via registrar account and CMS admin access.',
+            'contact_email' => $claimer->email,
+        ])->assertStatus(422)->assertJson([
+            'success' => false,
+            'message' => 'Please enter the website URL. We cannot fill it in from the catalog while names are hidden.',
+        ]);
+
+        $this->assertDatabaseMissing('site_claims', [
+            'site_id' => $site->id,
+            'claimer_id' => $claimer->id,
+        ]);
+    }
+
+    public function test_hide_mode_claim_with_typed_url_still_masks_my_claims(): void
+    {
+        $owner = $this->userWithRole('publisher');
+        $claimer = $this->userWithRole('advertiser');
+        $claimer->forceFill([
+            'catalog_copy_strike_count' => 2,
+            'catalog_hide_until' => now()->addDay(),
+        ])->save();
+        $site = $this->siteFor($owner);
+
+        $this->actingAs($claimer->fresh())->postJson(route('advertiser.sites.claim'), [
+            'site_id' => $site->id,
+            'website_name' => 'My Company Site',
+            'website_url' => 'https://my-company-site.example',
+            'proof_message' => 'I own this domain via registrar account and CMS admin access.',
+            'contact_email' => $claimer->email,
+        ])->assertOk()->assertJson(['success' => true]);
+
+        $html = $this->actingAs($claimer->fresh())
+            ->get(route('site-claims.index'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringNotContainsString('Owned News Daily', $html);
+        $this->assertStringNotContainsString('owned-news.example', $html);
+    }
+
+    public function test_hide_mode_my_claims_does_not_print_listing_identity(): void
+    {
+        $owner = $this->userWithRole('publisher');
+        $claimer = $this->userWithRole('advertiser');
+        $claimer->forceFill([
+            'catalog_copy_strike_count' => 2,
+            'catalog_hide_until' => now()->addDay(),
+        ])->save();
+        $site = $this->siteFor($owner);
+        $this->pendingClaimFor($site, $claimer);
+
+        $html = $this->actingAs($claimer->fresh())
+            ->get(route('site-claims.index'))
+            ->assertOk()
+            ->assertSee('Your ownership claims')
+            ->getContent();
+
+        $this->assertStringNotContainsString('Owned News Daily', $html);
+        $this->assertStringNotContainsString('owned-news.example', $html);
+
+        $json = $this->actingAs($claimer->fresh())
+            ->getJson(route('site-claims.index'))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->json();
+
+        $row = $json['claims'][0] ?? [];
+        $this->assertStringNotContainsString('Owned News Daily', (string) ($row['site_name'] ?? ''));
+        $this->assertStringNotContainsString('owned-news.example', (string) ($row['domain'] ?? ''));
+    }
+
+    public function test_outside_hide_mode_my_claims_shows_listing_identity(): void
+    {
+        $owner = $this->userWithRole('publisher');
+        $claimer = $this->userWithRole('advertiser');
+        $site = $this->siteFor($owner);
+        $this->pendingClaimFor($site, $claimer);
+
+        $this->actingAs($claimer)
+            ->get(route('site-claims.index'))
+            ->assertOk()
+            ->assertSee('Owned News Daily')
+            ->assertSee('owned-news.example');
+    }
 }
