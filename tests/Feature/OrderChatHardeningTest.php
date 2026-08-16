@@ -10,6 +10,7 @@ use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
@@ -340,6 +341,37 @@ class OrderChatHardeningTest extends TestCase
         $ids = collect($response->json('messages'))->pluck('id')->all();
         $this->assertSame([$newer->id], $ids);
         $this->assertFalse($response->json('has_more_older'));
+    }
+
+    public function test_messages_ok_when_created_at_is_unparseable(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher);
+        $order = $this->orderFor($advertiser, $site);
+
+        $message = OrderChatMessage::create([
+            'order_id' => $order->id,
+            'user_id' => $advertiser->id,
+            'sender_type' => 'advertiser',
+            'message' => 'Leftover stamp',
+            'is_read' => false,
+        ]);
+        DB::table('order_chat_messages')->where('id', $message->id)->update([
+            'created_at' => 'not-a-date',
+            'updated_at' => 'not-a-date',
+            'read_at' => 'not-a-date',
+        ]);
+
+        $this->assertNull($message->fresh()->created_at);
+
+        $this->actingAs($advertiser)
+            ->getJson(route('chat.messages', ['orderId' => $order->id]))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('messages.0.id', $message->id)
+            ->assertJsonPath('messages.0.created_at', null)
+            ->assertJsonPath('messages.0.message', 'Leftover stamp');
     }
 
     public function test_upload_image_route_is_gone(): void
