@@ -88,7 +88,11 @@ or marketing, even if that staff account also has a marketplace role.
    `meta.user_id`; a delivered/failed log is attached
    instead of counting as a fake send. A historical send that wrote the
    generic default key must still attach — exact-key lookup used to miss
-   it, reclaim reset the row to pending, and the next job blasted again. A delivered log still wins when a
+   it, reclaim reset the row to pending, and the next job blasted again.
+   Send-time dedupe must **not** treat that shared generic key as one-shot
+   across campaigns — `parent::isDuplicate()` used to suppress campaign 2
+   after campaign 1 mailed the same address. Same-campaign leftovers still
+   suppress via campaign+user. A delivered log still wins when a
    pending Email Center row exists for the same key — skipping that attach
    let expire mark a real send stale, and a later retry doubled it.
    Leftovers older than

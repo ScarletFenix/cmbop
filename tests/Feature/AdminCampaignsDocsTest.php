@@ -44,6 +44,7 @@ class AdminCampaignsDocsTest extends TestCase
         $this->assertStringContainsString('queued row with a pending Email Center log', $body);
         $this->assertStringContainsString('meta.campaign_id', $body);
         $this->assertStringContainsString('audience_campaign|{email}|AudienceCampaignMail', $body);
+        $this->assertStringContainsString('must **not** treat that shared generic key as one-shot', $body);
         $this->assertStringContainsString('only one failed log per job UUID', $body);
         $this->assertStringContainsString('drop that job UUID from the retry list', $body);
         $this->assertStringContainsString('must also clear the fail streak', $body);
