@@ -202,6 +202,8 @@ class EmailCampaignPhpSyntaxTest extends TestCase
             $heal
         ));
         $this->assertSame(0, substr_count($heal[1], "return;\n"), 'healQueued must return [] not void');
+        $this->assertStringContainsString('meta->campaign_id', $heal[1]);
+        $this->assertStringContainsString('campaignUserIds', $heal[1]);
         $this->assertTrue((bool) preg_match(
             '/protected static function failPendingLogsForStaleRecipients\(\): void\s*\{(.*?)\n    \/\*\*/s',
             $model,

@@ -1138,14 +1138,47 @@ class EmailCampaign extends Model
             return [];
         }
 
+        try {
+            $campaignIds = $rows->pluck('email_campaign_id')->unique()->filter()
+                ->map(fn ($id) => (int) $id)->values()->all();
+            if ($campaignIds !== []) {
+                $extras = EmailLog::query()
+                    ->whereIn('status', [
+                        EmailLog::STATUS_PENDING,
+                        EmailLog::STATUS_DELIVERED,
+                        EmailLog::STATUS_FAILED,
+                    ])
+                    ->where(function ($query) use ($campaignIds) {
+                        foreach ($campaignIds as $campaignId) {
+                            $query->orWhere(function ($one) use ($campaignId) {
+                                $one->where('meta->campaign_id', $campaignId)
+                                    ->orWhere('dedupe_key', 'like', 'audience_campaign:'.$campaignId.':user:%');
+                            });
+                        }
+                    })
+                    ->orderByDesc('id')
+                    ->get();
+                $allLogs = $allLogs->concat($extras)->unique('id')->values();
+            }
+        } catch (\Throwable) {
+            // Canonical-key rows still heal when JSON meta cannot be queried.
+        }
+
         if ($allLogs->isEmpty()) {
             return [];
         }
 
         $logsById = $allLogs->keyBy('id');
         $logsByKey = $allLogs
-            ->filter(fn (EmailLog $log) => filled($log->dedupe_key))
-            ->groupBy('dedupe_key');
+            ->filter(fn (EmailLog $log) => filled($log->dedupe_key) || EmailLog::campaignUserIds($log) !== [0, 0])
+            ->groupBy(function (EmailLog $log) {
+                [$campaignId, $userId] = EmailLog::campaignUserIds($log);
+                if ($campaignId > 0 && $userId > 0) {
+                    return EmailCampaignRecipient::dedupeKey($campaignId, $userId);
+                }
+
+                return (string) $log->dedupe_key;
+            });
 
         $healedCampaigns = [];
 
