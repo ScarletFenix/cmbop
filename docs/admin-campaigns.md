@@ -61,12 +61,16 @@ or marketing, even if that staff account also has a marketplace role.
    recover reclaims them to `pending` and dispatches a send job. A
    queued row with a pending Email Center log is held — that is a
    just-retried mailable, and reclaiming it would dispatch a second send
-   if the jobs-table scan missed the retried job. A matching
+   if the jobs-table scan missed the retried job. Hold uses the campaign
+   + user pair (meta or `audience_campaign:{id}:user:{id}`), not only the
+   exact dedupe string — a leftover generic
+   `audience_campaign|{email}|AudienceCampaignMail` retry still blocks
+   reclaim. An unreadable email_logs table must not look like “no pending retries” — reclaim fail-closes the same way as a failed jobs-table scan. A matching
    `failed_jobs` AudienceCampaignMail is also held — that row is still
    retryable from Email Center. A
    Redis/SQS **mail** queue, inline SMTP (`sync` mail), a missing `payload` column on the **mail**
    table, or a mailable whose user id cannot be parsed is fail-closed: the
-   row stays queued so an in-flight send is not doubled. An unused redis
+   row stays queued so an in-flight send is not doubled. An `AudienceCampaignMail` that only serializes the campaign as a ModelIdentifier (no `campaignId` property and no `dedupeKey`) must still count as in-flight so reclaim does not treat that jobs row as empty, and expire must not fail a pending campaign log beside that jobs row. An unused redis
    `queue.default` or a broken unused database table must not block a
    healthy empty mail queue — recover must still reclaim. A second database table without `payload` on the unused connection must not look like in-flight mail. A successful
    empty scan of the live mail table must still reclaim even if the unused
@@ -81,8 +85,11 @@ or marketing, even if that staff account also has a marketplace role.
    `sent_count` includes queued). Recount promotes `sending` → `sent` only
    when no pending or queued rows remain and at least one delivery landed. `queued` rows with no email
    log are first reconciled against `email_logs` by
-   `audience_campaign:{id}:user:{id}`; a delivered/failed log is attached
-   instead of counting as a fake send. A delivered log still wins when a
+   `audience_campaign:{id}:user:{id}` **or** `meta.campaign_id` +
+   `meta.user_id`; a delivered/failed log is attached
+   instead of counting as a fake send. A delivered log is attached even when the queued row is younger than the stall window — waiting two minutes let reclaim reset that leftover to pending and dispatch a second send. Failed-log attach still waits. Reclaim and expire also hold user ids from `deliveredUserIdsForCampaign()` (null means email_logs could not be read — do not reclaim or skip-stale). A historical send that wrote the
+   generic default key must still attach — exact-key lookup used to miss
+   it, reclaim reset the row to pending, and the next job blasted again. A delivered log still wins when a
    pending Email Center row exists for the same key — skipping that attach
    let expire mark a real send stale, and a later retry doubled it.
    Leftovers older than

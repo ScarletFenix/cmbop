@@ -42,6 +42,9 @@ class AdminCampaignsDocsTest extends TestCase
         $this->assertStringContainsString('second retry doubles the send', $body);
         $this->assertStringContainsString('must **not** skip a recipient whose', $body);
         $this->assertStringContainsString('queued row with a pending Email Center log', $body);
+        $this->assertStringContainsString('must not look like “no pending retries”', $body);
+        $this->assertStringContainsString('meta.campaign_id', $body);
+        $this->assertStringContainsString('audience_campaign|{email}|AudienceCampaignMail', $body);
         $this->assertStringContainsString('only one failed log per job UUID', $body);
         $this->assertStringContainsString('drop that job UUID from the retry list', $body);
         $this->assertStringContainsString('must also clear the fail streak', $body);
@@ -58,8 +61,11 @@ class AdminCampaignsDocsTest extends TestCase
         $this->assertStringContainsString('Preference, disabled, and unverified skips stay skipped', $body);
         $this->assertStringContainsString('inline SMTP (`sync` mail)', $body);
         $this->assertStringContainsString('delivered log still wins when a', $body);
+        $this->assertStringContainsString('younger than the stall window', $body);
         $this->assertStringContainsString('Lost transactional pending logs', $body);
         $this->assertStringContainsString('must **not** abort that expire', $body);
+        $this->assertStringContainsString('only serializes the campaign as a ModelIdentifier', $body);
+        $this->assertStringContainsString('expire must not fail a pending campaign log beside that jobs row', $body);
         $this->assertStringNotContainsString('/advertiser/campaigns', $body);
     }
 

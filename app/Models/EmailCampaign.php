@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Jobs\SendEmailCampaignJob;
 use App\Mail\AudienceCampaignMail;
+use App\Models\Concerns\ToleratesUnparseableDates;
 use App\Services\AudienceInventoryService;
 use App\Support\MailJobPayload;
 use Illuminate\Contracts\Cache\LockProvider;
@@ -17,6 +18,8 @@ use Illuminate\Support\Facades\Schema;
 
 class EmailCampaign extends Model
 {
+    use ToleratesUnparseableDates;
+
     public const STATUS_DRAFT = 'draft';
 
     public const STATUS_QUEUED = 'queued';
@@ -410,7 +413,8 @@ class EmailCampaign extends Model
      *
      * Email Center retry pending-marks the log and leaves the recipient
      * queued. A missed jobs-table scan must not reclaim that row and
-     * dispatch a send job beside the retried mailable.
+     * dispatch a send job beside the retried mailable. An unreadable
+     * email_logs table must not look like “no pending retries”.
      */
     protected static function reclaimOrphanedQueuedRecipients(self $campaign): int
     {
@@ -428,19 +432,17 @@ class EmailCampaign extends Model
         }
 
         $holdUserIds = $inFlight;
-        try {
-            $prefix = 'audience_campaign:'.(int) $campaign->id.':user:';
-            foreach (EmailLog::query()
-                ->where('status', EmailLog::STATUS_PENDING)
-                ->where('dedupe_key', 'like', $prefix.'%')
-                ->pluck('dedupe_key') as $key) {
-                if (preg_match('/^'.preg_quote($prefix, '/').'(\d+)$/', (string) $key, $matches)) {
-                    $holdUserIds[] = (int) $matches[1];
-                }
-            }
-        } catch (\Throwable) {
+        $pendingHoldUserIds = EmailLog::pendingUserIdsForCampaign((int) $campaign->id);
+        if ($pendingHoldUserIds === null) {
             return 0;
         }
+        $holdUserIds = array_merge($holdUserIds, $pendingHoldUserIds);
+
+        $deliveredIds = EmailLog::deliveredUserIdsForCampaign((int) $campaign->id);
+        if ($deliveredIds === null) {
+            return 0;
+        }
+        $holdUserIds = array_merge($holdUserIds, $deliveredIds);
 
         $query = EmailCampaignRecipient::query()
             ->where('email_campaign_id', $campaign->id)
@@ -790,9 +792,13 @@ class EmailCampaign extends Model
 
         $cutoff = now()->subMinutes(max(1, $staleMinutes));
         $attachedIds = self::healQueuedRecipientsWithTerminalLog();
+        // Delivered attach must not wait the stall window. LogSentEmail can
+        // persist a delivered row and miss the FK; a young queued leftover
+        // then looks like an orphan and reclaim dispatches a second send.
+        // Failed-log attach still waits — a just-retried row must not be
+        // killed by an older failure.
         $rows = EmailCampaignRecipient::query()
             ->whereNull('email_log_id')
-            ->where('updated_at', '<=', $cutoff)
             ->where(function ($query) {
                 $query->where('status', EmailCampaignRecipient::STATUS_QUEUED)
                     ->orWhere(function ($skipped) {
@@ -814,6 +820,10 @@ class EmailCampaign extends Model
             (int) $row->email_campaign_id,
             (int) $row->user_id
         ))->unique()->values()->all();
+        $neededPairs = [];
+        foreach ($rows as $row) {
+            $neededPairs[(int) $row->email_campaign_id.':'.(int) $row->user_id] = true;
+        }
 
         try {
             $logs = EmailLog::query()
@@ -824,11 +834,54 @@ class EmailCampaign extends Model
                     EmailLog::STATUS_FAILED,
                 ])
                 ->orderByDesc('id')
-                ->get()
-                ->groupBy('dedupe_key');
+                ->get();
         } catch (\Throwable) {
             return;
         }
+
+        try {
+            $campaignIds = $rows->pluck('email_campaign_id')->unique()->filter()
+                ->map(fn ($id) => (int) $id)->values()->all();
+            if ($campaignIds !== []) {
+                $extras = EmailLog::query()
+                    ->whereIn('status', [
+                        EmailLog::STATUS_PENDING,
+                        EmailLog::STATUS_DELIVERED,
+                        EmailLog::STATUS_FAILED,
+                    ])
+                    ->where(function ($query) use ($campaignIds) {
+                        foreach ($campaignIds as $campaignId) {
+                            $query->orWhere(function ($one) use ($campaignId) {
+                                $one->where('meta->campaign_id', $campaignId)
+                                    ->orWhere('dedupe_key', 'like', 'audience_campaign:'.$campaignId.':user:%');
+                            });
+                        }
+                    })
+                    ->orderByDesc('id')
+                    ->get();
+                $logs = $logs->concat($extras)->unique('id')->values();
+            }
+        } catch (\Throwable) {
+            // Canonical-key rows still attach when JSON meta cannot be queried.
+        }
+
+        $logs = $logs
+            ->filter(function (EmailLog $log) use ($neededPairs, $keys) {
+                [$campaignId, $userId] = EmailLog::campaignUserIds($log);
+                if ($campaignId > 0 && $userId > 0) {
+                    return isset($neededPairs[$campaignId.':'.$userId]);
+                }
+
+                return in_array((string) $log->dedupe_key, $keys, true);
+            })
+            ->groupBy(function (EmailLog $log) {
+                [$campaignId, $userId] = EmailLog::campaignUserIds($log);
+                if ($campaignId > 0 && $userId > 0) {
+                    return EmailCampaignRecipient::dedupeKey($campaignId, $userId);
+                }
+
+                return (string) $log->dedupe_key;
+            });
 
         $campaignIds = array_fill_keys($attachedIds, true);
 
@@ -891,6 +944,11 @@ class EmailCampaign extends Model
             // Expire already parked the row. Only a delivered log proves the
             // mail went out — do not revive a stale skip from an old failure.
             if ($staleSkip && ! $deliveredLog) {
+                continue;
+            }
+            if (! $deliveredLog
+                && $row->updated_at
+                && $row->updated_at->greaterThan($cutoff)) {
                 continue;
             }
 
@@ -1105,10 +1163,25 @@ class EmailCampaign extends Model
                 'skip_reason' => $delivered ? null : EmailCampaignRecipient::SKIP_ERROR,
             ]);
 
-            $campaignIds[(int) $row->email_campaign_id] = true;
+            if ($staleSkip) {
+                $query->where('status', EmailCampaignRecipient::STATUS_SKIPPED)
+                    ->where('skip_reason', EmailCampaignRecipient::SKIP_STALE);
+            } else {
+                $query->where('status', $row->status);
+            }
+
+            $query->update([
+                'status' => $delivered
+                    ? EmailCampaignRecipient::STATUS_DELIVERED
+                    : EmailCampaignRecipient::STATUS_FAILED,
+                'email_log_id' => (int) $log->id,
+                'skip_reason' => $delivered ? null : EmailCampaignRecipient::SKIP_ERROR,
+            ]);
+
+            $healedCampaigns[(int) $row->email_campaign_id] = true;
         }
 
-        return array_keys($campaignIds);
+        return array_keys($healedCampaigns);
     }
 
     /**
@@ -1145,9 +1218,18 @@ class EmailCampaign extends Model
             // failed_jobs is not a live backlog: reclaim still holds
             // those users, but expire must close the 72h orphan.
             $blocked = $inFlight === null ? [] : array_fill_keys($inFlight, true);
+            $deliveredIds = EmailLog::deliveredUserIdsForCampaign($campaignId);
+            if ($deliveredIds === null) {
+                continue;
+            }
+            $deliveredBlocked = array_fill_keys($deliveredIds, true);
 
             foreach ($group as $row) {
-                if ($inFlight !== null && isset($blocked[(int) $row->user_id])) {
+                $userId = (int) $row->user_id;
+                if ($inFlight !== null && isset($blocked[$userId])) {
+                    continue;
+                }
+                if (isset($deliveredBlocked[$userId])) {
                     continue;
                 }
 

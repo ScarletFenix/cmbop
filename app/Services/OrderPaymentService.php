@@ -128,7 +128,7 @@ class OrderPaymentService
             (float) ($sessionMeta['order_total'] ?? 0)
         );
         $this->evaluateSpendBudgetAfterPaidOrders($newlyPaid);
-        $this->creditHiddenCardOrdersAfterMarkPaid($referenceCode, $sessionMeta);
+        $this->creditHiddenCardOrdersAfterMarkPaid($referenceCode, $sessionMeta, $session);
 
         return $newlyPaid;
     }
@@ -225,7 +225,7 @@ class OrderPaymentService
             (float) ($meta['order_total'] ?? 0)
         );
         $this->evaluateSpendBudgetAfterPaidOrders($newlyPaid);
-        $this->creditHiddenCardOrdersAfterMarkPaid($referenceCode, $meta);
+        $this->creditHiddenCardOrdersAfterMarkPaid($referenceCode, $meta, $intent);
 
         return $newlyPaid;
     }
@@ -985,7 +985,7 @@ class OrderPaymentService
      *
      * @param  array<string, mixed>  $meta
      */
-    private function creditHiddenCardOrdersAfterMarkPaid(string $referenceCode, array $meta): void
+    private function creditHiddenCardOrdersAfterMarkPaid(string $referenceCode, array $meta, ?object $session = null): void
     {
         $orders = Order::with('items.site')
             ->where('reference_code', $referenceCode)
@@ -1012,7 +1012,11 @@ class OrderPaymentService
             ->filter(fn (Order $order) => $order->payment_status === 'paid')
             ->sum(fn (Order $order) => (float) $order->total_amount), 2);
         $expected = $this->capturedStripeEurosForCredit($orders, $meta);
-        $unfulfilled = round(max(0, $expected - $paidTotal), 2);
+        $refundedThisCapture = $this->refundedCardEurosForStripeCapture($orders, $session);
+        // expected_amount is the full Stripe capture. cancelAndRefund already
+        // returned unready/taken siblings from that same object — subtract
+        // them or hidden leftovers are credited on top of those refunds.
+        $unfulfilled = round(max(0, $expected - $paidTotal - $refundedThisCapture), 2);
         if ($userId > 0 && $unfulfilled > 0.009) {
             $this->creditUnfulfilledCardCapture($userId, $referenceCode, $unfulfilled);
         }
@@ -1058,10 +1062,31 @@ class OrderPaymentService
      * Cash from an earlier unfulfilled leftover capture that Pay again can
      * spend toward this package. Capped by what is still withdrawable.
      */
+    public function unfulfilledCardCreditAppliedAmount(string $referenceCode): float
+    {
+        if (! Schema::hasTable((new WalletTransaction)->getTable())) {
+            return 0.0;
+        }
+
+        return round((float) WalletTransaction::query()
+            ->where('direction', 'debit')
+            ->where('reference', self::unfulfilledCardCreditApplyReference($referenceCode))
+            ->sum('amount'), 2);
+    }
+
+    public function unfulfilledCardCreditRemaining(string $referenceCode): float
+    {
+        return round(max(
+            0,
+            $this->unfulfilledCardCreditAmount($referenceCode)
+            - $this->unfulfilledCardCreditAppliedAmount($referenceCode)
+        ), 2);
+    }
+
     public function unfulfilledCardCreditToApply(int $userId, string $referenceCode, float $packageTotal): float
     {
         $packageTotal = round($packageTotal, 2);
-        $credited = $this->unfulfilledCardCreditAmount($referenceCode);
+        $credited = $this->unfulfilledCardCreditRemaining($referenceCode);
         if ($userId <= 0 || $packageTotal <= 0.009 || $credited <= 0.009) {
             return 0.0;
         }
@@ -1149,6 +1174,8 @@ class OrderPaymentService
                 ->where('reference_code', $referenceCode)
                 ->where('user_id', $userId)
                 ->where('payment_method', 'card')
+                ->where('payment_status', 'failed')
+                ->where('status', 'pending')
                 ->lockForUpdate()
                 ->get();
 
@@ -1283,7 +1310,7 @@ class OrderPaymentService
     public function walletCreditForUnfulfillableCardCheckout(string $referenceCode): float
     {
         return round(
-            $this->unfulfilledCardCreditAmount($referenceCode)
+            $this->unfulfilledCardCreditRemaining($referenceCode)
             + $this->refundedCardOrderAmount($referenceCode),
             2
         );
@@ -2029,6 +2056,34 @@ class OrderPaymentService
         }
 
         return $this->expectedStripeEurosForOrders($orders, $meta);
+    }
+
+    /**
+     * Card cash already returned by cancelAndRefund for this Stripe object.
+     *
+     * @param  Collection<int, Order>  $orders
+     */
+    private function refundedCardEurosForStripeCapture(Collection $orders, ?object $session): float
+    {
+        if ($session === null) {
+            return 0.0;
+        }
+
+        $ids = $this->stripeCaptureIds($session);
+        if ($ids === []) {
+            return 0.0;
+        }
+
+        return round((float) $orders
+            ->filter(function (Order $order) use ($ids) {
+                if ((string) $order->payment_status !== 'refunded') {
+                    return false;
+                }
+
+                return in_array((string) $order->stripe_session_id, $ids, true)
+                    || in_array((string) $order->stripe_payment_intent_id, $ids, true);
+            })
+            ->sum(fn (Order $order) => (float) $order->total_amount), 2);
     }
 
     /**
