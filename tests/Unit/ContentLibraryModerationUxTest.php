@@ -178,6 +178,31 @@ class ContentLibraryModerationUxTest extends TestCase
         $this->assertGreaterThanOrEqual(70, $result['max_confidence']);
     }
 
+    public function test_engine_rejects_glued_filename_and_punctuation_split_casino(): void
+    {
+        $engine = new ContentModerationEngine;
+        $cfg = require dirname(__DIR__, 2).'/config/content_moderation.php';
+        $categories = $cfg['categories'];
+
+        foreach ([
+            'casinobanner.jpg',
+            'casinologo.png',
+            'mycasino.docx',
+            'Play at the best online cas+ino tonight.',
+            'Play at the best online cas|ino tonight.',
+            'Play at the best online cas(ino) tonight.',
+        ] as $text) {
+            $result = $engine->score(
+                title: 'Marketing tips',
+                text: $text,
+                links: [],
+                categories: $categories,
+            );
+            $this->assertSame('gambling', $result['detected_category'], $text);
+            $this->assertGreaterThanOrEqual(70, $result['max_confidence'], $text);
+        }
+    }
+
     public function test_engine_rejects_underscore_and_camelcase_casino_slugs(): void
     {
         $engine = new ContentModerationEngine;

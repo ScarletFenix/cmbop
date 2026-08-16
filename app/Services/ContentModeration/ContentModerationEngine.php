@@ -604,12 +604,12 @@ class ContentModerationEngine
     }
 
     /**
-     * Join letter-split evasions ("cas-ino", "c a s i n o") without
-     * destroying hyphen boundaries on the original haystack.
+     * Join letter-split evasions ("cas-ino", "cas+ino", "c a s i n o")
+     * without destroying those separators on the original haystack.
      */
     public function tightenHaystack(string $haystack): string
     {
-        return preg_replace('/(?<=\p{L})[\s\-\._\\\\\/]+(?=\p{L})/u', '', $haystack) ?? $haystack;
+        return preg_replace('/(?<=\p{L})[\s\p{P}\p{S}]+(?=\p{L})/u', '', $haystack) ?? $haystack;
     }
 
     /**
@@ -723,7 +723,43 @@ class ContentModerationEngine
 
         // Underscore is a separator (filenames, slugs, URLs), not a letter.
         // `best_online_casino_bonus.jpg` must still match `casino`.
-        return preg_match_all('/(?<![\p{L}\p{N}])'.preg_quote($term, '/').'(?![\p{L}\p{N}])/u', $haystack) ?: 0;
+        $count = preg_match_all('/(?<![\p{L}\p{N}])'.preg_quote($term, '/').'(?![\p{L}\p{N}])/u', $haystack) ?: 0;
+        if (mb_strlen($term) >= 5) {
+            $count = max($count, $this->countTermInSlugs($haystack, $term));
+        }
+
+        return $count;
+    }
+
+    /**
+     * Glued filename / URL tokens ("casinobanner.jpg", "mycasino.docx").
+     */
+    protected function countTermInSlugs(string $haystack, string $term): int
+    {
+        if (! preg_match_all('/[^\s]+/u', $haystack, $matches)) {
+            return 0;
+        }
+
+        $count = 0;
+        foreach ($matches[0] as $token) {
+            if (! $this->tokenLooksLikeSlug($token)) {
+                continue;
+            }
+            if (str_contains($token, $term)) {
+                $count++;
+            }
+        }
+
+        return $count;
+    }
+
+    protected function tokenLooksLikeSlug(string $token): bool
+    {
+        if (preg_match('/[.\/%\\\\_+]/u', $token)) {
+            return true;
+        }
+
+        return (bool) preg_match('/^[a-z0-9]{8,}$/u', $token);
     }
 
     protected function phrasePresent(string $haystack, string $tightHaystack, string $phrase): bool

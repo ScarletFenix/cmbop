@@ -1101,6 +1101,40 @@ class AdminModerationOverrideTest extends TestCase
         $this->assertSame(ContentSubmission::STATUS_REJECTED, $submission->fresh()->moderation_status);
     }
 
+    public function test_casino_glued_into_filename_fails_live_policy(): void
+    {
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        config(['content_moderation.enabled' => true]);
+        ContentModerationSetting::clearCache();
+
+        $submission->update(['original_filename' => 'casinobanner.docx']);
+        $this->assertTrue($submission->fresh()->isApproved());
+
+        $check = app(ContentModerationService::class)->assertSubmissionsApproved([$submission->fresh()], $advertiser);
+        $this->assertFalse($check['ok']);
+        $this->assertSame(ContentSubmission::STATUS_REJECTED, $submission->fresh()->moderation_status);
+    }
+
+    public function test_punctuation_split_casino_in_preview_fails_live_policy(): void
+    {
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        config(['content_moderation.enabled' => true]);
+        ContentModerationSetting::clearCache();
+
+        $hidden = 'Play at the best online cas+ino tonight and claim your bonus.';
+        $submission->update([
+            'extracted_text' => $hidden,
+            'preview_html' => '<p>'.$hidden.'</p>',
+        ]);
+        $this->assertTrue($submission->fresh()->isApproved());
+
+        $check = app(ContentModerationService::class)->assertSubmissionsApproved([$submission->fresh()], $advertiser);
+        $this->assertFalse($check['ok']);
+        $this->assertSame(ContentSubmission::STATUS_REJECTED, $submission->fresh()->moderation_status);
+    }
+
     public function test_casino_only_in_camelcase_filename_fails_live_policy(): void
     {
         $advertiser = $this->advertiser();

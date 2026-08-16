@@ -39,6 +39,8 @@ class ContentModerationHardeningTest extends TestCase
         foreach ([
             'Download best_online_casino_bonus.jpg for the chart.',
             'Attached file BestOnlineCasinoBonus.docx for the publisher.',
+            'Download casinobanner.jpg for the chart.',
+            'Play at the best online cas+ino tonight.',
         ] as $text) {
             $result = $this->engine->score(
                 title: 'Entertainment notes',
