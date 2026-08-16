@@ -63,7 +63,10 @@ class AdminLibraryStaffActions
         return $this->uploads->reEvaluateSubmission($submission, true);
     }
 
-    public function override(ContentSubmission $submission, string $decision, User $admin, string $notes): ContentSubmission
+    /**
+     * @return array{ok:bool, already:bool, submission:ContentSubmission, message:string}
+     */
+    public function override(ContentSubmission $submission, string $decision, User $admin, string $notes): array
     {
         $decision = $decision === ContentSubmission::STATUS_REJECTED
             ? ContentSubmission::STATUS_REJECTED
@@ -88,8 +91,12 @@ class AdminLibraryStaffActions
                 'submission' => $result['message'] ?: 'Override failed.',
             ]);
         }
-        $owner = $fresh?->user;
-        if ($owner && $fresh) {
+
+        $already = (bool) ($result['already'] ?? false);
+        $owner = $fresh->user;
+        // Re-submitting the same decision used to notify the advertiser again
+        // while Activity History stayed silent — a no-op with side effects.
+        if ($owner && ! $already) {
             try {
                 $this->notifications->notifyContentEvaluation($owner, $fresh, [
                     'approved' => $decision === ContentSubmission::STATUS_APPROVED,
@@ -108,7 +115,12 @@ class AdminLibraryStaffActions
             }
         }
 
-        return $fresh;
+        return [
+            'ok' => true,
+            'already' => $already,
+            'submission' => $fresh,
+            'message' => (string) ($result['message'] ?? ''),
+        ];
     }
 
     protected function overrideNotice(ContentSubmission $submission, string $decision, string $notes): string

@@ -360,16 +360,18 @@ class EmailCenterController extends Controller
         $retried = $this->actuallyRetriedJobUuids($uuids);
         $this->markRetriedMailLogsPending($retried, $payloads);
 
-        if ($retried !== []) {
-            ActivityLogger::tryLog(
-                'email.retried',
-                ($request->user()?->name ?? 'Admin').' retried '.count($retried).' failed mail job(s)',
-                null,
-                ['count' => count($retried)]
-            );
+        if ($retried === []) {
+            return back()->with('success', 'No failed mail jobs were re-queued.');
         }
 
-        return back()->with('success', 'Retried '.count($uuids).' failed mail job(s). Other failed jobs were left untouched.');
+        ActivityLogger::tryLog(
+            'email.retried',
+            ($request->user()?->name ?? 'Admin').' retried '.count($retried).' failed mail job(s)',
+            null,
+            ['count' => count($retried)]
+        );
+
+        return back()->with('success', 'Retried '.count($retried).' failed mail job(s). Other failed jobs were left untouched.');
     }
 
     protected function retryFailedLog(int $logId)
@@ -446,6 +448,13 @@ class EmailCenterController extends Controller
                 }
                 Mail::to($adminEmail)->sendNow($mailable);
             }
+
+            ActivityLogger::tryLog(
+                'email_center.test_sent',
+                (auth()->user()?->name ?? 'Admin').' retried a test email ('.$key.') to '.$adminEmail,
+                null,
+                ['template' => $key, 'email' => $adminEmail, 'retry' => true, 'log_id' => $log->id]
+            );
 
             return back()->with('success', 'Retried the Email Center test send to '.$adminEmail.'.');
         } catch (\Throwable $e) {

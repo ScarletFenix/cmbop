@@ -166,12 +166,17 @@ class ContentLibraryController extends Controller
         abort_unless($admin instanceof User, 403);
 
         try {
-            $this->staffActions->override($submission, $data['decision'], $admin, $data['notes']);
+            $result = $this->staffActions->override($submission, $data['decision'], $admin, $data['notes']);
         } catch (ValidationException $e) {
             return back()->with('error', collect($e->errors())->flatten()->first() ?: 'Override failed.');
         }
 
-        return back()->with('success', $this->overrideFlash($submission->fresh(), $data['decision']));
+        $fresh = $result['submission'] ?? $submission->fresh();
+        $flash = ! empty($result['already'])
+            ? (string) ($result['message'] ?: $this->overrideFlash($fresh, $data['decision']))
+            : $this->overrideFlash($fresh, $data['decision']);
+
+        return back()->with('success', $flash);
     }
 
     public function archive(ContentSubmission $submission): RedirectResponse

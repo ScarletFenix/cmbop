@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Mail\SiteStatusNotification;
+use App\Models\ActivityLog;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
@@ -70,6 +71,36 @@ class AdminSiteUpdateGuardTest extends TestCase
             'verified' => true,
             'active' => true,
         ], $overrides));
+    }
+
+    public function test_link_type_only_update_writes_activity_without_emailing(): void
+    {
+        Mail::fake();
+        $site = $this->site(['example_url' => 'https://guard-site.example/sample']);
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'site_name' => 'Guard Site',
+                'site_url' => 'https://guard-site.example',
+                'example_url' => 'https://guard-site.example/sample',
+                'da' => 40,
+                'dr' => 42,
+                'traffic' => 15000,
+                'country' => 'de',
+                'language' => 'de',
+                'price' => 80,
+                'link_type' => 'nofollow',
+                'publication_time' => 'permanent',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('email_sent', false);
+
+        $this->assertSame('nofollow', $site->fresh()->link_type);
+        $log = ActivityLog::query()->where('action', 'site.updated')->first();
+        $this->assertNotNull($log);
+        $this->assertSame('nofollow', data_get($log->properties, 'changes.link_type.to'));
+        Mail::assertNothingOutgoing();
     }
 
     public function test_update_cannot_flip_active_or_verified(): void

@@ -968,6 +968,10 @@ class AdminEmailCenterTest extends TestCase
         $this->assertSame(EmailLog::STATUS_DELIVERED, $fresh->status);
         $this->assertSame($admin->email, $fresh->to_email);
         $this->assertNull($fresh->error);
+        $this->assertDatabaseHas('activity_logs', [
+            'action' => 'email_center.test_sent',
+            'user_id' => $admin->id,
+        ]);
     }
 
     public function test_retry_production_log_without_job_does_not_rebuild(): void

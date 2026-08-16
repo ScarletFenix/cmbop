@@ -1339,6 +1339,9 @@ class SiteController extends Controller
             'language' => $site->language,
             'country' => $site->country,
             'category' => $site->category,
+            'example_url' => $site->example_url,
+            'link_type' => $site->link_type,
+            'publication_time' => $site->publication_time,
             'active' => $site->active,
             'verified' => $site->verified,
         ];
