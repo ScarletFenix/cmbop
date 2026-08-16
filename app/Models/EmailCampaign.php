@@ -434,7 +434,7 @@ class EmailCampaign extends Model
         }
 
         $holdUserIds = $inFlight;
-        $pendingIds = self::campaignLogUserIdsForStatus((int) $campaign->id, EmailLog::STATUS_PENDING);
+        $pendingIds = EmailLog::pendingUserIdsForCampaign((int) $campaign->id);
         if ($pendingIds === null) {
             return 0;
         }
@@ -442,11 +442,14 @@ class EmailCampaign extends Model
 
         // LogSentEmail can persist a delivered row and still miss the
         // recipient FK. Reclaim before reconcile's stall window used to
-        // pending-mark that user and dispatch a second send.
-        $holdUserIds = array_merge(
-            $holdUserIds,
-            self::campaignLogUserIdsForStatus((int) $campaign->id, EmailLog::STATUS_DELIVERED) ?? []
-        );
+        // pending-mark that user and dispatch a second send. Generic-key
+        // deliveries are included — prefix-only scans missed those and
+        // queued a second mail.
+        $deliveredIds = EmailLog::deliveredUserIdsForCampaign((int) $campaign->id);
+        if ($deliveredIds === null) {
+            return 0;
+        }
+        $holdUserIds = array_merge($holdUserIds, $deliveredIds);
 
         $query = EmailCampaignRecipient::query()
             ->where('email_campaign_id', $campaign->id)
@@ -996,13 +999,13 @@ class EmailCampaign extends Model
                 // 10-second-old queued claim is not killed by an older
                 // leftover failure while Mail::send() is still running.
                 if ($row->updated_at && $row->updated_at->greaterThan($cutoff)) {
-                    continue;
+                    return;
                 }
                 // An older failed log must not kill a newer in-flight retry.
                 if ($failedLog->updated_at
                     && $row->updated_at
                     && ! $failedLog->updated_at->greaterThan($row->updated_at)) {
-                    continue;
+                    return;
                 }
                 $log = $failedLog;
             }
@@ -1283,15 +1286,15 @@ class EmailCampaign extends Model
             // failed_jobs is not a live backlog: reclaim still holds
             // those users, but expire must close the 72h orphan.
             $blocked = $inFlight === null ? [] : array_fill_keys($inFlight, true);
-            foreach (self::campaignLogUserIdsForStatus($campaignId, EmailLog::STATUS_DELIVERED) ?? [] as $userId) {
+            foreach (EmailLog::deliveredUserIdsForCampaign($campaignId) ?? [] as $userId) {
+                $blocked[$userId] = true;
+            }
+            foreach (EmailLog::pendingUserIdsForCampaign($campaignId) ?? [] as $userId) {
                 $blocked[$userId] = true;
             }
 
             foreach ($group as $row) {
                 if (isset($blocked[(int) $row->user_id])) {
-                    continue;
-                }
-                if (isset($pendingBlocked[$userId])) {
                     continue;
                 }
 
