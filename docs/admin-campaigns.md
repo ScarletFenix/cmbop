@@ -98,7 +98,14 @@ or marketing, even if that staff account also has a marketplace role.
    claim `pending` → `queued` and die before `Mail::send()` inserts the
    mailable.    Expire must **not** skip a recipient whose
    `AudienceCampaignMail` is still on a readable mail queue (a 72h
-   backlog is not a lost job; a second retry doubles the send). Expire must also hold a queued row with a fresh pending Email Center log (newer than `MAIL_CAMPAIGN_MAX_AGE_HOURS`) — Email Center retry pending-marks that log and leaves an old queued leftover untouched, and a missed jobs-table scan then skip-staled it beside the live mailable. A leftover `audience_campaign|{email}|AudienceCampaignMail` or `notification_type=audience_campaign` pending log uses the 72h campaign window, not the 24h transactional one. A matching row in `failed_jobs` still
+   backlog is not a lost job; a second retry doubles the send).    Expire
+   must also hold a queued row that has a **fresh** pending Email Center
+   log — reclaim already did, but expire skip-stale + fail-pending made
+   a just-retried mailable look lost when the jobs-table scan missed it,
+   and a second retry doubled the send. A leftover generic
+   `audience_campaign|{email}|AudienceCampaignMail` pending row still
+   holds via `meta.campaign_id` + `meta.user_id`. A pending log older
+   than `MAIL_CAMPAIGN_MAX_AGE_HOURS` is a lost retry and still expires. A matching row in `failed_jobs` still
    blocks reclaim (Email Center retry would double) but must **not** block expire — that job already died, and treating it as in-flight
    left the recipient `queued` past `MAIL_CAMPAIGN_MAX_AGE_HOURS`. A later SMTP success or a send suppressed as a duplicate
    still marks the recipient `delivered` (it already went out), including

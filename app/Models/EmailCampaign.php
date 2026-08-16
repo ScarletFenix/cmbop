@@ -433,21 +433,13 @@ class EmailCampaign extends Model
             return 0;
         }
 
-        $holdUserIds = $inFlight;
-        $pendingIds = self::campaignLogUserIdsForStatus((int) $campaign->id, EmailLog::STATUS_PENDING);
-        if ($pendingIds === null) {
-            return 0;
-        }
-        $holdUserIds = array_merge($holdUserIds, $pendingIds);
-
-        // LogSentEmail can persist a delivered row and still miss the
-        // recipient FK. Reclaim before reconcile's stall window used to
-        // pending-mark that user and dispatch a second send.
-        $deliveredIds = self::campaignLogUserIdsForStatus((int) $campaign->id, EmailLog::STATUS_DELIVERED);
-        if ($deliveredIds === null) {
+        $pendingHold = self::pendingLogUserIdsForCampaign((int) $campaign->id);
+        if ($pendingHold === null) {
             return 0;
         }
         $holdUserIds = array_merge($holdUserIds, $deliveredIds);
+
+        $holdUserIds = array_merge($inFlight, $pendingHold);
 
         $query = EmailCampaignRecipient::query()
             ->where('email_campaign_id', $campaign->id)
@@ -466,33 +458,58 @@ class EmailCampaign extends Model
     }
 
     /**
-     * User ids with an audience_campaign log in $status for this campaign.
-     * Null means the email_logs read failed — reclaim must fail-closed.
+     * Recipients with a pending Email Center row for this campaign.
+     * Includes leftover generic-key retries that only store the pair in meta.
+     * Null means the log table could not be read — callers must not treat
+     * that as "no pending retries".
+     *
+     * Expire only holds logs newer than the campaign stale window — a
+     * 72h leftover pending row is a lost retry and must still expire.
      *
      * @return list<int>|null
      */
-    protected static function campaignLogUserIdsForStatus(int $campaignId, string $status): ?array
+    protected static function pendingLogUserIdsForCampaign(int $campaignId, ?\DateTimeInterface $fresherThan = null): ?array
     {
         if ($campaignId < 1) {
             return [];
         }
 
+        $ids = [];
+        $prefix = 'audience_campaign:'.$campaignId.':user:';
+
         try {
-            $prefix = 'audience_campaign:'.$campaignId.':user:';
-            $ids = [];
             foreach (EmailLog::query()
-                ->where('status', $status)
-                ->where('dedupe_key', 'like', $prefix.'%')
-                ->pluck('dedupe_key') as $key) {
-                if (preg_match('/^'.preg_quote($prefix, '/').'(\d+)$/', (string) $key, $matches)) {
-                    $ids[] = (int) $matches[1];
+                ->where('status', EmailLog::STATUS_PENDING)
+                ->where(function ($query) use ($prefix) {
+                    $query->where('dedupe_key', 'like', $prefix.'%')
+                        ->orWhere('notification_type', 'audience_campaign')
+                        ->orWhere('template_key', 'audience_campaign')
+                        ->orWhere('mailable', 'like', '%AudienceCampaignMail%')
+                        ->orWhere('dedupe_key', 'like', 'audience_campaign|%');
+                })
+                ->get(['id', 'dedupe_key', 'meta', 'notification_type', 'template_key', 'mailable', 'updated_at']) as $log) {
+                if ($fresherThan
+                    && $log->updated_at
+                    && ! $log->updated_at->greaterThan($fresherThan)) {
+                    continue;
+                }
+                $userId = 0;
+                $foundCampaign = (int) data_get($log->meta, 'campaign_id');
+                $foundUser = (int) data_get($log->meta, 'user_id');
+                if ($foundCampaign === $campaignId && $foundUser > 0) {
+                    $userId = $foundUser;
+                } elseif (preg_match('/^'.preg_quote($prefix, '/').'(\d+)$/', (string) $log->dedupe_key, $matches)) {
+                    $userId = (int) $matches[1];
+                }
+                if ($userId > 0) {
+                    $ids[$userId] = true;
                 }
             }
-
-            return array_values(array_unique(array_filter($ids)));
         } catch (\Throwable) {
             return null;
         }
+
+        return array_map('intval', array_keys($ids));
     }
 
     /**
@@ -1316,13 +1333,16 @@ class EmailCampaign extends Model
             // queued a second job beside the backlogged one.
             // failed_jobs is not a live backlog: reclaim still holds
             // those users, but expire must close the 72h orphan.
-            $deliveredIds = self::campaignLogUserIdsForStatus($campaignId, EmailLog::STATUS_DELIVERED);
-            if ($deliveredIds === null) {
-                // Cannot prove who already got the mail — do not skip-stale.
+            // A pending Email Center log is a just-retried mailable.
+            // Reclaim already holds those users; expire used to skip-stale
+            // them and fail the pending row when the jobs-table scan
+            // missed the retried job — a second retry doubled the send.
+            $pendingHold = self::pendingLogUserIdsForCampaign($campaignId, $cutoff);
+            if ($pendingHold === null) {
                 continue;
             }
             $blocked = $inFlight === null ? [] : array_fill_keys($inFlight, true);
-            foreach ($deliveredIds as $userId) {
+            foreach ($pendingHold as $userId) {
                 $blocked[$userId] = true;
             }
 

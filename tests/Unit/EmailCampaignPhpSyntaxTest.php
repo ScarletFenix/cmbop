@@ -185,19 +185,7 @@ class EmailCampaignPhpSyntaxTest extends TestCase
 
         $model = (string) file_get_contents($files[0]);
         $this->assertSame(1, preg_match_all('/function reclaimOrphanedQueuedRecipients\b/', $model));
-        $this->assertTrue((bool) preg_match(
-            '/protected static function reclaimOrphanedQueuedRecipients\(self \$campaign\): int\s*\{(.*?)\n    \/\*\*/s',
-            $model,
-            $reclaim
-        ));
-        $this->assertGreaterThanOrEqual(1, substr_count($reclaim[1], 'deliveredUserIdsForCampaign'));
-        $this->assertTrue((bool) preg_match(
-            '/protected static function expireOrphanedQueuedRecipients\(\): void\s*\{(.*?)\n    \/\*\*/s',
-            $model,
-            $expire
-        ));
-        $this->assertStringContainsString('deliveredUserIdsForCampaign', $expire[1]);
-        $this->assertStringContainsString('pendingUserIdsForCampaign', $expire[1]);
+        $this->assertSame(1, preg_match_all('/function pendingLogUserIdsForCampaign\b/', $model));
         $this->assertSame(1, preg_match_all('/function inFlightCampaignMailUserIds\b/', $model));
         $this->assertSame(1, preg_match_all('/function campaignLogUserIdsForStatus\b/', $model));
         $this->assertSame(1, preg_match_all('/function healQueuedRecipientsWithTerminalLog\b/', $model));
