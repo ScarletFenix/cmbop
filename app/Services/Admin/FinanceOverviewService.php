@@ -116,7 +116,13 @@ class FinanceOverviewService
     public function opsQueues(): array
     {
         $pendingDeposits = DepositRequest::where('status', 'pending');
-        $userMarked = (clone $pendingDeposits)->whereUserMarkedPaidAtIsRecorded();
+        $userMarkedPaidCount = 0;
+        $userMarkedPaidAmount = 0.0;
+        if ($this->depositsHaveColumn('user_marked_paid_at')) {
+            $userMarked = (clone $pendingDeposits)->whereUserMarkedPaidAtIsRecorded();
+            $userMarkedPaidCount = (clone $userMarked)->count();
+            $userMarkedPaidAmount = (float) (clone $userMarked)->sum('amount');
+        }
         $openWithdrawals = Withdrawal::whereIn('status', ['pending', 'processing']);
         $pendingPayments = Order::query()->unpaidOps();
 
@@ -124,8 +130,8 @@ class FinanceOverviewService
             'pending_deposits' => [
                 'count' => (clone $pendingDeposits)->count(),
                 'amount' => (float) (clone $pendingDeposits)->sum('amount'),
-                'user_marked_paid_count' => (clone $userMarked)->count(),
-                'user_marked_paid_amount' => (float) (clone $userMarked)->sum('amount'),
+                'user_marked_paid_count' => $userMarkedPaidCount,
+                'user_marked_paid_amount' => $userMarkedPaidAmount,
                 'url' => route('admin.deposits', ['status' => 'pending']),
             ],
             'open_withdrawals' => [
@@ -1170,6 +1176,15 @@ class FinanceOverviewService
     {
         try {
             return Schema::hasColumn('orders', $column);
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    private function depositsHaveColumn(string $column): bool
+    {
+        try {
+            return Schema::hasColumn('deposit_requests', $column);
         } catch (\Throwable) {
             return false;
         }

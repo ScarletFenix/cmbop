@@ -190,6 +190,18 @@ class OrderClawbackService
                 ]);
             }
 
+            if ($advertiserCredit > 0 && ! $advertiserRoleId) {
+                throw ValidationException::withMessages([
+                    'dispute' => 'Cannot uphold this dispute: the advertiser role is missing, so the refund cannot be applied. Seed roles first.',
+                ]);
+            }
+
+            if ($targetPayout > 0 && ! $publisherRoleId) {
+                throw ValidationException::withMessages([
+                    'dispute' => 'Cannot uphold this dispute: the publisher role is missing, so the publisher clawback cannot be applied. Seed roles first.',
+                ]);
+            }
+
             if ($publisherId && $publisherRoleId && $targetPayout > 0) {
                 $publisherWallet = Wallet::lockOrCreateForRole((int) $publisherId, (int) $publisherRoleId);
                 $available = $publisherWallet->withdrawableBalance();
@@ -286,7 +298,15 @@ class OrderClawbackService
                 }
             }
 
-            ContentSubmission::releaseAllForOrderItem((int) $item->id);
+            try {
+                ContentSubmission::releaseAllForOrderItem((int) $item->id);
+            } catch (\Throwable $e) {
+                Log::warning('Dispute uphold could not release the content submission', [
+                    'dispute_id' => $fresh->id,
+                    'order_item_id' => $item->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
 
             $this->logDisputeActivity(
                 'dispute.upheld',
