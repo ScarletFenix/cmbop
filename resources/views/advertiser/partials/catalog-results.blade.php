@@ -617,7 +617,7 @@
                                 <span class="small text-muted">Screenshot not available yet</span>
                             </div>
                             <p class="small text-muted mb-0 mt-1 catalog-preview-caption">
-                                Homepage capture{{ $site->screenshot_fetched_at ? ' · '.$site->screenshot_fetched_at->timezone(config('app.timezone'))->format('j M Y') : '' }}
+                                Homepage capture
                             </p>
                         @else
                             <div class="site-preview-fallback bg-light border rounded d-inline-flex flex-column align-items-center justify-content-center gap-2 px-3" role="img" aria-label="Screenshot not available yet">
@@ -1372,7 +1372,7 @@
                                 <span class="small text-muted">Screenshot not available yet</span>
                             </div>
                             <p class="small text-muted mb-0 mt-1 catalog-preview-caption">
-                                Homepage capture{{ $site->screenshot_fetched_at ? ' · '.$site->screenshot_fetched_at->timezone(config('app.timezone'))->format('j M Y') : '' }}
+                                Homepage capture
                             </p>
                         @else
                             <span class="text-muted small">Screenshot not available yet</span>
