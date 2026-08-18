@@ -246,9 +246,15 @@ class BlogController extends Controller
      */
     public function show($id)
     {
+        if (! $this->schemaTableAvailable('blogs')) {
+            abort(404);
+        }
+
         try {
-            $blog = Blog::with('translations')->findOrFail($id);
-            $en = $blog->translations->firstWhere('locale', 'en');
+            $blog = $this->findAdminBlog($id);
+            $en = $blog->relationLoaded('translations')
+                ? $blog->translations->firstWhere('locale', 'en')
+                : null;
             $safeContent = app(BlogHtmlSanitizer::class)->sanitize(
                 filled($en?->content) ? $en->content : $blog->content
             );
@@ -258,6 +264,10 @@ class BlogController extends Controller
             return redirect()->route('admin.blogs.index')
                 ->with('error', 'Blog not found.');
         } catch (\Throwable $e) {
+            if (! $this->schemaTableAvailable('blogs')) {
+                abort(404);
+            }
+
             Log::error('Error showing blog: '.$e->getMessage());
 
             return redirect()->route('admin.blogs.index')
@@ -270,8 +280,12 @@ class BlogController extends Controller
      */
     public function edit($id)
     {
+        if (! $this->schemaTableAvailable('blogs')) {
+            abort(404);
+        }
+
         try {
-            $blog = Blog::with('translations')->findOrFail($id);
+            $blog = $this->findAdminBlog($id);
 
             return view('admin.blogs.edit', [
                 'blog' => $blog,
@@ -281,6 +295,10 @@ class BlogController extends Controller
             return redirect()->route('admin.blogs.index')
                 ->with('error', 'Blog not found.');
         } catch (\Throwable $e) {
+            if (! $this->schemaTableAvailable('blogs')) {
+                abort(404);
+            }
+
             Log::error('Error editing blog: '.$e->getMessage());
 
             return redirect()->route('admin.blogs.index')
@@ -887,6 +905,26 @@ class BlogController extends Controller
             ->when($ignoreTranslationId, fn ($query) => $query->where('id', '!=', $ignoreTranslationId))
             ->where('slug', $candidate)
             ->exists();
+    }
+
+    /**
+     * Load one admin blog. Skip translations when that leftover table is gone
+     * so show/edit do not 500, and hand the view an empty relation.
+     */
+    private function findAdminBlog(int|string $id): Blog
+    {
+        $query = Blog::query();
+        $translationsAvailable = $this->schemaTableAvailable('blog_translations');
+        if ($translationsAvailable) {
+            $query->with('translations');
+        }
+
+        $blog = $query->findOrFail($id);
+        if (! $translationsAvailable) {
+            $blog->setRelation('translations', $blog->newCollection());
+        }
+
+        return $blog;
     }
 
     private function emptyBlogPaginator(): LengthAwarePaginator

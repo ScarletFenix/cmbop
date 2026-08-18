@@ -127,6 +127,14 @@ class AdminGrowthMenusCrashTest extends TestCase
                 ->assertOk()
                 ->assertSee('Blogs', false)
                 ->assertDontSee('Something went wrong');
+
+            $this->actingAs($admin)
+                ->get(route('admin.blogs.show', 1))
+                ->assertNotFound();
+
+            $this->actingAs($admin)
+                ->get(route('admin.blogs.edit', 1))
+                ->assertNotFound();
         } finally {
             $this->remigrate([
                 'database/migrations/2024_01_01_000000_create_blogs_table.php',
