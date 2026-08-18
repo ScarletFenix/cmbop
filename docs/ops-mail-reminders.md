@@ -11,6 +11,7 @@ Production checklist for Seolinkbuildings email delivery and scheduled reminders
 | Queue worker **or** auto-drain | Mailables **and** `SendEmailCampaignJob` queue on `emails`. Run `php artisan queue:work --queue=default,emails`, **or** leave `MAIL_QUEUE_AUTO_DRAIN=true` (default) so web traffic + `mail:drain-queue` clear the backlog. |
 | Scheduler every minute | Prefer `* * * * * cd /path/to/app && php artisan schedule:run`. When that cron is missing, `HOSTINGER_WEB_HEAL=true` (default) runs `schedule:run` from production page views about once a minute. Quiet overnight sites still need system cron. |
 | `CRON_SECRET` ≥ 32 chars **only if** using HTTP cron | Optional alternate: `GET /cron/run/{key}` when the host cannot run `schedule:run`. Short/empty secret keeps the route disabled. |
+| `TRUSTED_PROXIES` | Empty locally. On Hostinger behind Cloudflare set `cloudflare` so HTTPS/OAuth see the real scheme. Never `*` — that lets clients pick their own IP for login limits. |
 
 ## Scheduled reminder commands (canonical list)
 

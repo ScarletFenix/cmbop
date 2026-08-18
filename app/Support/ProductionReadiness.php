@@ -36,6 +36,7 @@ class ProductionReadiness
             $this->migrationsCheck(),
             $this->mailDrainCheck(),
             $this->schedulerCheck(),
+            $this->trustedProxiesCheck(),
         ];
     }
 
@@ -422,6 +423,41 @@ class ProductionReadiness
             'Confirm the scheduler is running',
             'CRON_SECRET is empty and HOSTINGER_WEB_HEAL is off. Auto-approve, nudges, and mail:drain-queue need `* * * * * php artisan schedule:run`.',
             'Set HOSTINGER_WEB_HEAL=true, add a system cron for schedule:run, or set CRON_SECRET (≥ 32 chars) and hit /cron/run/{key} every minute. See docs/ops-mail-reminders.md.'
+        );
+    }
+
+    /**
+     * @return array{id: string, severity: string, title: string, detail: string, fix: string}
+     */
+    private function trustedProxiesCheck(): array
+    {
+        $proxies = TrustedProxies::addresses();
+        if ($proxies !== []) {
+            return $this->item(
+                'trusted_proxies',
+                self::SEVERITY_OK,
+                'Trusted proxies',
+                'X-Forwarded-* is only accepted from configured hops.',
+                ''
+            );
+        }
+
+        if (! $this->isProduction()) {
+            return $this->item(
+                'trusted_proxies',
+                self::SEVERITY_OK,
+                'Trusted proxies',
+                'None configured — local/dev uses REMOTE_ADDR (do not set TRUSTED_PROXIES=*).',
+                ''
+            );
+        }
+
+        return $this->item(
+            'trusted_proxies',
+            self::SEVERITY_WARN,
+            'Set TRUSTED_PROXIES in production',
+            'Empty TRUSTED_PROXIES is safe against spoofed client IPs, but HTTPS and the real visitor IP may be wrong behind Cloudflare.',
+            'Set TRUSTED_PROXIES=cloudflare on Hostinger, or a comma-separated hop list. Never *.'
         );
     }
 
