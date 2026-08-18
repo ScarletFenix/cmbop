@@ -48,6 +48,7 @@ use App\Services\PlatformFeeService;
 use App\Services\StripeCustomerService;
 use App\Services\StripePaymentService;
 use App\Services\Wallet\WalletLedgerService;
+use App\Support\SiteTag;
 use App\Support\AdvertiserOrderStatus;
 use App\Support\UserFacingError;
 use Carbon\CarbonInterface;
@@ -619,8 +620,9 @@ class CatalogController extends Controller
             $query->whereRaw("({$advPriceSql}) <= ?", [$priceMax]);
         }
 
-        if ($request->filled('sponsored') && $request->sponsored == 1) {
-            $query->where('sponsored', 1);
+        $tagFilter = SiteTag::catalogFilterFromRequest($request);
+        if ($tagFilter !== null) {
+            SiteTag::constrainQuery($query, $tagFilter);
         }
 
         // More → Bulk deals — pack program only (not custom Sale −%).

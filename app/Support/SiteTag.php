@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\Site;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 
 /**
@@ -28,6 +29,10 @@ class SiteTag
     ];
 
     public const NONE_LABEL = 'No tags';
+
+    public const FILTER_NONE = 'none';
+
+    public const FILTER_TOOLTIP = 'Listing disclosure tag — not the DoFollow / NoFollow link attribute.';
 
     public const CONFLICT_MESSAGE = 'Choose only one tag column (sponsored, partner_material, or as_you_prefer).';
 
@@ -86,6 +91,110 @@ class SiteTag
             self::SPONSORED => self::LABELS[self::SPONSORED],
             self::PARTNER => self::LABELS[self::PARTNER],
         ];
+    }
+
+    /**
+     * Catalog More → Tag select, including empty = All tags and none = No tags.
+     *
+     * @return array<string, string>
+     */
+    public static function catalogFilterOptions(): array
+    {
+        return [
+            '' => 'All tags',
+            self::SPONSORED => self::LABELS[self::SPONSORED],
+            self::PARTNER => self::LABELS[self::PARTNER],
+            self::AS_YOU_PREFER => self::LABELS[self::AS_YOU_PREFER],
+            self::FILTER_NONE => self::NONE_LABEL,
+        ];
+    }
+
+    public static function catalogFilterLabel(?string $filter): ?string
+    {
+        $options = self::catalogFilterOptions();
+
+        return $filter !== null && $filter !== '' && isset($options[$filter])
+            ? $options[$filter]
+            : null;
+    }
+
+    public static function catalogChipTitle(?string $tag): ?string
+    {
+        return match (self::normalize($tag)) {
+            self::SPONSORED => 'Paid placement disclosed as sponsored — not the DoFollow / NoFollow link attribute',
+            self::PARTNER => 'Publisher accepts a partner-supplied article',
+            self::AS_YOU_PREFER => 'Placement terms are flexible — agree with the publisher',
+            default => null,
+        };
+    }
+
+    /**
+     * Resolve catalog filter: tag= wins; sponsored=1 aliases to sponsored.
+     * Returns sponsored|partner_material|as_you_prefer|none, or null for all tags.
+     */
+    public static function catalogFilterFromInput(mixed $tag, mixed $sponsored = null): ?string
+    {
+        if (is_array($tag)) {
+            $tag = reset($tag);
+        }
+
+        if (is_scalar($tag) && ! is_bool($tag)) {
+            $value = strtolower(trim((string) $tag));
+            if ($value === self::FILTER_NONE) {
+                return self::FILTER_NONE;
+            }
+            $known = self::normalize($value);
+            if ($known !== null) {
+                return $known;
+            }
+        }
+
+        if ($sponsored === true || $sponsored === 1 || (is_scalar($sponsored) && (string) $sponsored === '1')) {
+            return self::SPONSORED;
+        }
+
+        return null;
+    }
+
+    public static function catalogFilterFromRequest(Request $request): ?string
+    {
+        return self::catalogFilterFromInput($request->input('tag'), $request->input('sponsored'));
+    }
+
+    public static function constrainQuery(Builder $query, ?string $filter): void
+    {
+        match ($filter) {
+            self::SPONSORED => $query->where('sponsored', 1),
+            self::PARTNER => $query->where('partner_material', 1),
+            self::AS_YOU_PREFER => $query->where('as_you_prefer', 1),
+            self::FILTER_NONE => $query
+                ->where(function ($q) {
+                    $q->where('sponsored', 0)->orWhereNull('sponsored');
+                })
+                ->where(function ($q) {
+                    $q->where('partner_material', 0)->orWhereNull('partner_material');
+                })
+                ->where(function ($q) {
+                    $q->where('as_you_prefer', 0)->orWhereNull('as_you_prefer');
+                }),
+            default => null,
+        };
+    }
+
+    /**
+     * Rows with more than one listing-tag flag (legacy / import leftovers).
+     */
+    public static function constrainConflicting(Builder $query): void
+    {
+        $query->where(function (Builder $outer) {
+            $outer->where(function (Builder $q) {
+                $q->where('sponsored', 1)->where('partner_material', 1);
+            })->orWhere(function (Builder $q) {
+                $q->where('sponsored', 1)->where('as_you_prefer', 1);
+            })->orWhere(function (Builder $q) {
+                $q->where('partner_material', 1)->where('as_you_prefer', 1);
+            });
+        });
     }
 
     /**

@@ -83,6 +83,30 @@ class CatalogUrlQueryTest extends TestCase
         ], $params);
     }
 
+    public function test_canonicalize_rewrites_sponsored_alias_to_tag(): void
+    {
+        $this->assertContains('tag', CatalogUrlQuery::KEYS);
+        $this->assertSame(
+            ['tag' => 'sponsored'],
+            CatalogUrlQuery::canonicalize(['sponsored' => '1'])
+        );
+        $this->assertSame(
+            ['tag' => 'partner_material'],
+            CatalogUrlQuery::canonicalize([
+                'tag' => 'partner_material',
+                'sponsored' => '1',
+            ])
+        );
+        $this->assertSame(
+            ['tag' => 'none'],
+            CatalogUrlQuery::canonicalize(['tag' => 'none'])
+        );
+        $this->assertSame(
+            [],
+            CatalogUrlQuery::canonicalize(['tag' => 'guest', 'sponsored' => ''])
+        );
+    }
+
     public function test_from_request_matches_canonicalize(): void
     {
         $request = Request::create('/advertiser/catalog', 'GET', [
