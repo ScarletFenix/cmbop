@@ -39,7 +39,7 @@ class ManualDepositApprovalService
     ): array {
         $depositId = $deposit instanceof DepositRequest ? (int) $deposit->id : (int) $deposit;
 
-        if ($depositId <= 0) {
+        if ($depositId <= 0 || ! DepositRequest::tableAvailable()) {
             throw new RuntimeException('Deposit request not found');
         }
 
@@ -57,11 +57,11 @@ class ManualDepositApprovalService
                 throw ManualDepositAlreadyProcessedException::forDeposit((int) $locked->id);
             }
 
-            $locked->update([
+            $locked->update(DepositRequest::attributesThatExist([
                 'status' => 'approved',
                 'admin_notes' => $adminNotes,
                 'approved_at' => now(),
-            ]);
+            ]));
 
             $advertiserRoleId = Wallet::advertiserRoleId();
             if (! $advertiserRoleId) {

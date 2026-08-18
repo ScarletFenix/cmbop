@@ -33,6 +33,21 @@ class AdminWithdrawalController extends Controller
      */
     public function getWithdrawalsData(Request $request)
     {
+        if (! Withdrawal::tableAvailable()) {
+            return response()->json([
+                'success' => true,
+                'data' => [],
+                'pagination' => [
+                    'current_page' => 1,
+                    'last_page' => 1,
+                    'per_page' => max(1, min((int) $request->get('per_page', 20), 100)),
+                    'total' => 0,
+                    'from' => null,
+                    'to' => null,
+                ],
+            ]);
+        }
+
         try {
             $query = Withdrawal::with('user:id,name,email');
             $filters = $this->applyWithdrawalFilters($query, $request);
@@ -83,6 +98,13 @@ class AdminWithdrawalController extends Controller
      */
     public function show($id)
     {
+        if (! Withdrawal::tableAvailable()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Withdrawal not found',
+            ], 404);
+        }
+
         try {
             $withdrawal = Withdrawal::with('user:id,name,email')->findOrFail($id);
 
@@ -175,6 +197,13 @@ class AdminWithdrawalController extends Controller
             'confirm_duplicates' => 'sometimes|boolean',
         ]);
 
+        if (! Withdrawal::tableAvailable()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Withdrawal not found',
+            ], 404);
+        }
+
         $ids = $request->input('ids');
         $action = $request->input('action');
         $notes = $request->input('notes');
@@ -207,7 +236,7 @@ class AdminWithdrawalController extends Controller
         if ($ok > 0) {
             ActivityLogger::tryLog(
                 'withdrawal.batch_'.$action,
-                auth()->user()->name.' batch '.$action.' on '.$ok.' withdrawal(s) ['.$runId.']',
+                (auth()->user()?->name ?: 'System').' batch '.$action.' on '.$ok.' withdrawal(s) ['.$runId.']',
                 null,
                 [
                     'action' => $action,
@@ -234,9 +263,15 @@ class AdminWithdrawalController extends Controller
      */
     public function exportCsv(Request $request): StreamedResponse
     {
-        $query = Withdrawal::with('user:id,name,email');
-        $filters = $this->applyWithdrawalFilters($query, $request);
-        $rows = $query->orderBy('payment_method')->orderBy('created_at')->get();
+        $query = Withdrawal::tableAvailable()
+            ? Withdrawal::with('user:id,name,email')
+            : null;
+        $filters = $query
+            ? $this->applyWithdrawalFilters($query, $request)
+            : ['queue' => 'open', 'status' => ''];
+        $rows = $query
+            ? $query->orderBy('payment_method')->orderBy('created_at')->get()
+            : collect();
 
         $filename = 'withdrawals-export-'.now()->format('Y-m-d-His').'.csv';
 
@@ -316,6 +351,13 @@ class AdminWithdrawalController extends Controller
      */
     public function getStatistics()
     {
+        if (! Withdrawal::tableAvailable()) {
+            return response()->json([
+                'success' => true,
+                'data' => $this->emptyWithdrawalStatistics(),
+            ]);
+        }
+
         try {
             $pendingQuery = Withdrawal::where('status', 'pending');
             $processingQuery = Withdrawal::where('status', 'processing');
@@ -332,6 +374,14 @@ class AdminWithdrawalController extends Controller
                     ],
                 ]);
 
+            $completedThisWeek = Withdrawal::where('status', 'completed');
+            if (Withdrawal::hasProcessedAtColumn()) {
+                $completedThisWeek->whereProcessedAtIsRecorded()
+                    ->where('processed_at', '>=', now()->startOfWeek());
+            } else {
+                $completedThisWeek->where('created_at', '>=', now()->startOfWeek());
+            }
+
             $stats = [
                 'total_withdrawals' => Withdrawal::count(),
                 'pending' => (clone $pendingQuery)->count(),
@@ -341,14 +391,8 @@ class AdminWithdrawalController extends Controller
                 'pending_amount' => (float) (clone $pendingQuery)->sum('net_amount'),
                 'processing_amount' => (float) (clone $processingQuery)->sum('net_amount'),
                 'total_to_pay' => (float) (clone $openQuery)->sum('net_amount'),
-                'completed_this_week' => Withdrawal::where('status', 'completed')
-                    ->whereProcessedAtIsRecorded()
-                    ->where('processed_at', '>=', now()->startOfWeek())
-                    ->count(),
-                'completed_this_week_amount' => (float) Withdrawal::where('status', 'completed')
-                    ->whereProcessedAtIsRecorded()
-                    ->where('processed_at', '>=', now()->startOfWeek())
-                    ->sum('net_amount'),
+                'completed_this_week' => (clone $completedThisWeek)->count(),
+                'completed_this_week_amount' => (float) (clone $completedThisWeek)->sum('net_amount'),
                 'total_amount_requested' => (float) Withdrawal::sum('amount'),
                 'total_fees_collected' => (float) Withdrawal::where('status', 'completed')->sum('fee'),
                 'total_amount_paid' => (float) Withdrawal::where('status', 'completed')->sum('net_amount'),
@@ -370,6 +414,29 @@ class AdminWithdrawalController extends Controller
     }
 
     /**
+     * @return array<string, mixed>
+     */
+    private function emptyWithdrawalStatistics(): array
+    {
+        return [
+            'total_withdrawals' => 0,
+            'pending' => 0,
+            'processing' => 0,
+            'completed' => 0,
+            'cancelled' => 0,
+            'pending_amount' => 0.0,
+            'processing_amount' => 0.0,
+            'total_to_pay' => 0.0,
+            'completed_this_week' => 0,
+            'completed_this_week_amount' => 0.0,
+            'total_amount_requested' => 0.0,
+            'total_fees_collected' => 0.0,
+            'total_amount_paid' => 0.0,
+            'by_method' => [],
+        ];
+    }
+
+    /**
      * @param  Collection<int, Withdrawal>  $withdrawals
      */
     private function attachDuplicateWarnings($withdrawals): void
@@ -388,6 +455,10 @@ class AdminWithdrawalController extends Controller
      */
     private function batchDuplicateBlock(array $ids): ?JsonResponse
     {
+        if (! Withdrawal::tableAvailable()) {
+            return null;
+        }
+
         $rows = Withdrawal::query()->whereIn('id', $ids)->get();
         $map = app(WithdrawalDuplicatePayoutWarning::class)->matchIdsByWithdrawalId($rows);
         $duplicateIds = [];
@@ -548,6 +619,13 @@ class AdminWithdrawalController extends Controller
      */
     private function transitionWithdrawal(int $id, string $newStatus, ?string $notes = null, bool $quiet = false)
     {
+        if (! Withdrawal::tableAvailable()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Withdrawal not found',
+            ], 404);
+        }
+
         try {
             $result = app(ManualWithdrawalSettlementService::class)->transition(
                 $id,

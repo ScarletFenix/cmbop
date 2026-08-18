@@ -12,6 +12,7 @@ use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Email one-click mark-paid: signed GET shows confirm UI; POST settles via
@@ -92,8 +93,11 @@ class WithdrawalMarkPaidConfirmController extends Controller
         $priorPaid = Withdrawal::query()
             ->where('user_id', $withdrawal->user_id)
             ->where('status', 'completed')
-            ->whereKeyNot($withdrawal->id)
-            ->orderByDesc('processed_at')
+            ->whereKeyNot($withdrawal->id);
+        if (Withdrawal::hasProcessedAtColumn()) {
+            $priorPaid->orderByDesc('processed_at');
+        }
+        $priorPaid = $priorPaid
             ->orderByDesc('id')
             ->limit(5)
             ->get();
@@ -113,6 +117,14 @@ class WithdrawalMarkPaidConfirmController extends Controller
     protected function payoutWallet(int $userId): ?Wallet
     {
         if ($userId <= 0) {
+            return null;
+        }
+
+        try {
+            if (! Schema::hasTable('wallets')) {
+                return null;
+            }
+        } catch (\Throwable) {
             return null;
         }
 

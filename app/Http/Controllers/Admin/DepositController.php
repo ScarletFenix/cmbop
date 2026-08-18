@@ -14,6 +14,7 @@ use App\Services\Wallet\ManualDepositAlreadyProcessedException;
 use App\Services\Wallet\ManualDepositApprovalService;
 use App\Support\UserFacingError;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -22,6 +23,22 @@ class DepositController extends Controller
 {
     public function index(Request $request)
     {
+        if (! DepositRequest::tableAvailable()) {
+            $deposits = new LengthAwarePaginator([], 0, 20);
+            $deposits->withPath($request->url())->appends($request->query());
+            $stats = [
+                'pending' => 0,
+                'user_reported_paid' => 0,
+                'approved' => 0,
+                'completed' => 0,
+                'rejected' => 0,
+                'total_amount' => 0,
+            ];
+            $invoiceLinks = collect();
+
+            return view('admin.deposits', compact('deposits', 'stats', 'invoiceLinks'));
+        }
+
         $query = DepositRequest::with('user');
 
         $status = scalar_text($request->input('status'));
@@ -69,6 +86,13 @@ class DepositController extends Controller
 
     public function show($id)
     {
+        if (! DepositRequest::tableAvailable()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Deposit request not found',
+            ]);
+        }
+
         $deposit = DepositRequest::with('user')->find($id);
 
         if (! $deposit) {
@@ -90,6 +114,13 @@ class DepositController extends Controller
     public function approve(Request $request, $id, ManualDepositApprovalService $approvals)
     {
         $notes = $this->validatedAdminNotes($request);
+
+        if (! DepositRequest::tableAvailable()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Deposit request not found',
+            ]);
+        }
 
         $deposit = DepositRequest::find($id);
 
@@ -131,6 +162,13 @@ class DepositController extends Controller
     {
         $notes = $this->validatedAdminNotes($request);
 
+        if (! DepositRequest::tableAvailable()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Deposit request not found',
+            ]);
+        }
+
         $deposit = DepositRequest::find($id);
 
         if (! $deposit) {
@@ -161,11 +199,11 @@ class DepositController extends Controller
                 ]);
             }
 
-            $deposit->update([
+            $deposit->update(DepositRequest::attributesThatExist([
                 'status' => 'rejected',
                 'admin_notes' => $notes,
                 'rejected_at' => now(),
-            ]);
+            ]));
 
             DB::commit();
         } catch (\Exception $e) {
@@ -215,7 +253,7 @@ class DepositController extends Controller
 
         ActivityLogger::tryLog(
             'deposit.rejected',
-            auth()->user()->name.' rejected deposit #'.$deposit->id.' (€'.number_format($deposit->amount, 2).')',
+            (auth()->user()?->name ?: 'System').' rejected deposit #'.$deposit->id.' (€'.number_format((float) $deposit->amount, 2).')',
             $deposit,
             ['amount' => $deposit->amount, 'user_id' => $deposit->user_id],
             'Deposit #'.$deposit->id
