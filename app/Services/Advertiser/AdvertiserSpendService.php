@@ -412,7 +412,7 @@ class AdvertiserSpendService
                 'site' => $item?->site_name ?? '',
                 'country' => $site ? (string) ($site->countryCodes()[0] ?? $site->country ?? '') : '',
                 'category' => $site ? (string) ($site->category ?? '') : '',
-                'payment_method' => (string) $order->payment_method,
+                'payment_method' => Invoice::paymentMethodLabel($order->payment_method),
                 'gross' => $gross,
                 'refund' => $refund,
                 'net' => max(0, round($gross - $refund, 2)),

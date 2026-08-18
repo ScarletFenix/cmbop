@@ -2026,12 +2026,16 @@ function bootAdvertiserOrdersPage() {
     function getPaymentMethodName(method) {
         const methods = {
             'wallet': 'Wallet Balance',
+            'wallet_balance': 'Wallet Balance',
             'wise': 'Wise Transfer',
             'crypto': 'Cryptocurrency',
             'bank': 'Bank Transfer',
-            'card': 'Card Payment'
+            'bank_transfer': 'Bank Transfer',
+            'card': 'Card Payment',
+            'paypal': 'PayPal'
         };
-        return methods[method] || method;
+        const key = String(method || '').toLowerCase();
+        return methods[key] || method;
     }
 
     function formatDate(dateString) {
