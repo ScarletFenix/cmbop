@@ -58,6 +58,10 @@ class ArticlePreviewHtml
         $base = rtrim($appUrl ?? self::appUrl(), '/');
         $publicBase = rtrim($publicUrl ?? self::publicDiskUrl($base), '/');
 
+        if (preg_match('#^(?:javascript|vbscript):#i', $src) === 1) {
+            return '';
+        }
+
         // data: / blob: URIs stay as-is
         if (str_starts_with($src, 'data:') || str_starts_with($src, 'blob:')) {
             return $src;

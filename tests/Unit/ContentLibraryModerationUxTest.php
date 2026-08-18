@@ -40,6 +40,8 @@ class ContentLibraryModerationUxTest extends TestCase
         $normalized = ArticlePreviewHtml::normalize($html);
         $this->assertStringContainsString('src="/storage/content-articles/1/a.png"', $normalized);
         $this->assertStringContainsString('<img', $normalized);
+        $this->assertSame('', ArticlePreviewHtml::normalizeSrc('javascript:alert(1)'));
+        $this->assertSame('', ArticlePreviewHtml::normalizeSrc('vbscript:msgbox(1)'));
     }
 
     public function test_html_sanitizer_keeps_media_fallback_images_as_storage_paths(): void

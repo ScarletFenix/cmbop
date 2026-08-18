@@ -192,6 +192,8 @@ class AdvertiserOrdersUxAbcTest extends TestCase
         $this->assertStringNotContainsString('href="${safeUrl(siteUrl)}"', $js);
         $this->assertStringNotContainsString('href="${safeUrl(it.site_url)}"', $js);
         $this->assertStringNotContainsString('href="${safeUrl(details.website_url)}"', $js);
+        $this->assertStringContainsString('if (dateString == null || dateString === \'\') return \'—\';', $js);
+        $this->assertStringContainsString('if (Number.isNaN(date.getTime())) return \'—\';', $js);
     }
 
     public function test_awaiting_payment_and_awaiting_publisher_filters_split_pending(): void

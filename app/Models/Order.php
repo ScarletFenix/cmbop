@@ -8,6 +8,7 @@ use App\Models\Concerns\ToleratesUnparseableDates;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Schema;
 
 class Order extends Model
 {
@@ -98,6 +99,10 @@ class Order extends Model
      */
     public function scopeWhereScheduleReleasedAtIsRecorded($query)
     {
+        if (! static::ordersHasColumn('schedule_released_at')) {
+            return $query->whereRaw('0 = 1');
+        }
+
         return $query->whereNotNull('schedule_released_at')
             ->where('schedule_released_at', '>=', static::PLAUSIBLE_SQL_DATETIME_FLOOR)
             ->where('schedule_released_at', '<=', static::PLAUSIBLE_SQL_DATETIME_CEIL);
@@ -111,6 +116,10 @@ class Order extends Model
      */
     public function scopeWhereScheduleReleasedAtIsMissing($query)
     {
+        if (! static::ordersHasColumn('schedule_released_at')) {
+            return $query;
+        }
+
         return $query->where(function ($inner) {
             $inner->whereNull('schedule_released_at')
                 ->orWhere('schedule_released_at', '>', static::PLAUSIBLE_SQL_DATETIME_CEIL)
@@ -126,6 +135,10 @@ class Order extends Model
      */
     public function scopeWhereScheduledPublishAtIsRecorded($query)
     {
+        if (! static::ordersHasColumn('scheduled_publish_at')) {
+            return $query->whereRaw('0 = 1');
+        }
+
         return $query->whereNotNull('scheduled_publish_at')
             ->where('scheduled_publish_at', '>=', static::PLAUSIBLE_SQL_DATETIME_FLOOR)
             ->where('scheduled_publish_at', '<=', static::PLAUSIBLE_SQL_DATETIME_CEIL);
@@ -133,17 +146,27 @@ class Order extends Model
 
     public function scopeAwaitingScheduledRelease($query)
     {
+        if (! static::ordersHasColumn('publication_mode') && ! static::ordersHasColumn('schedule_released_at')) {
+            return $query->whereRaw('0 = 1');
+        }
+
         return $query
             ->whereScheduleReleasedAtIsMissing()
             ->whereNotIn('status', ['cancelled', 'completed', 'processing', 'review'])
             ->where(function ($q) {
-                $q->where('status', 'scheduled')
-                    ->orWhere('publication_mode', 'scheduled');
+                $q->where('status', 'scheduled');
+                if (static::ordersHasColumn('publication_mode')) {
+                    $q->orWhere('publication_mode', 'scheduled');
+                }
             });
     }
 
     public function scopeNotAwaitingScheduledRelease($query)
     {
+        if (! static::ordersHasColumn('publication_mode') && ! static::ordersHasColumn('schedule_released_at')) {
+            return $query;
+        }
+
         return $query->where(function ($q) {
             $q->where(function ($released) {
                 $released->whereScheduleReleasedAtIsRecorded();
@@ -152,12 +175,24 @@ class Order extends Model
                 ->orWhere(function ($inner) {
                     $inner->where(function ($status) {
                         $status->whereNull('status')->orWhere('status', '!=', 'scheduled');
-                    })->where(function ($mode) {
-                        $mode->whereNull('publication_mode')
-                            ->orWhere('publication_mode', '!=', 'scheduled');
                     });
+                    if (static::ordersHasColumn('publication_mode')) {
+                        $inner->where(function ($mode) {
+                            $mode->whereNull('publication_mode')
+                                ->orWhere('publication_mode', '!=', 'scheduled');
+                        });
+                    }
                 });
         });
+    }
+
+    protected static function ordersHasColumn(string $column): bool
+    {
+        try {
+            return Schema::hasColumn((new static)->getTable(), $column);
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     /**

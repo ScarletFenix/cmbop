@@ -4209,6 +4209,7 @@ class CatalogController extends Controller
     public function getOrderStatistics()
     {
         try {
+            app(CheckoutSchemaService::class)->ensureCheckoutTables();
             $userId = auth()->id();
             $base = Order::where('user_id', $userId);
 
@@ -4258,6 +4259,7 @@ class CatalogController extends Controller
     public function getOrders(Request $request)
     {
         try {
+            app(CheckoutSchemaService::class)->ensureCheckoutTables();
             $userId = auth()->id();
 
             $query = Order::where('user_id', $userId)

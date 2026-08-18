@@ -190,8 +190,13 @@
                     @endphp
                     <tr id="library-row-{{ $submission->id }}" @class(['library-row--completed' => $availability === 'published'])>
                         <td>
-                            @if($submission->feature_image_url)
-                                <img src="{{ \App\Services\ContentUpload\ArticlePreviewHtml::normalizeSrc((string) $submission->feature_image_url) }}"
+                            @php
+                                $featureThumb = $submission->feature_image_url
+                                    ? safe_external_url(\App\Services\ContentUpload\ArticlePreviewHtml::normalizeSrc((string) $submission->feature_image_url), '')
+                                    : '';
+                            @endphp
+                            @if($featureThumb !== '')
+                                <img src="{{ $featureThumb }}"
                                      alt=""
                                      class="library-feature-thumb"
                                      loading="lazy"

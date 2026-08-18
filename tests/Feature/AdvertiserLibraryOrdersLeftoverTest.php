@@ -9,6 +9,7 @@ use App\Models\OrderItemDispute;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
+use App\Services\CheckoutSchemaService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
 use Tests\Support\CreatesContentSubmissions;
@@ -225,5 +226,74 @@ class AdvertiserLibraryOrdersLeftoverTest extends TestCase
             ->get(route('advertiser.content-library'))
             ->assertOk()
             ->assertSee('No Archive Column');
+    }
+
+    public function test_library_list_survives_missing_expires_at_column(): void
+    {
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update(['title' => 'No Expiry Column']);
+
+        Schema::table('content_submissions', function ($table) {
+            $table->dropIndex('content_submissions_expires_at_index');
+            $table->dropColumn('expires_at');
+        });
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library'))
+            ->assertOk()
+            ->assertSee('No Expiry Column');
+    }
+
+    public function test_library_strips_leftover_javascript_feature_image(): void
+    {
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'title' => 'Unsafe Thumb Article',
+            'feature_image_url' => 'javascript:alert(1)',
+        ]);
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library'))
+            ->assertOk()
+            ->assertSee('Unsafe Thumb Article')
+            ->getContent();
+
+        $this->assertStringNotContainsString('src="javascript:', $html);
+        $this->assertStringNotContainsString("src='javascript:", $html);
+    }
+
+    public function test_orders_list_and_stats_survive_missing_schedule_columns(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher, 'no-schedule.example');
+        $this->paidOrder($advertiser, $site);
+
+        $this->partialMock(CheckoutSchemaService::class, function ($mock) {
+            $mock->shouldReceive('ensureCheckoutTables')->andReturnNull();
+        });
+
+        Schema::table('orders', function ($table) {
+            $table->dropColumn([
+                'publication_mode',
+                'scheduled_publish_at',
+                'schedule_timezone',
+                'schedule_released_at',
+                'schedule_reminder_sent_at',
+            ]);
+        });
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.orders.list'))
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.orders.statistics'))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.awaiting_payment', 0);
     }
 }
