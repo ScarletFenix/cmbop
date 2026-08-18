@@ -912,6 +912,12 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
             ->name('checkout.schedule');
         // IMPORTANT: This route accepts both POST (create order) and GET (Stripe callback)
         Route::match(['get', 'post'], '/checkout/process', [CatalogController::class, 'processOrder'])->name('checkout.process');
+        Route::get('/checkout/paypal/return', [CatalogController::class, 'paypalCheckoutReturn'])
+            ->middleware('throttle:30,1')
+            ->name('checkout.paypal.return');
+        Route::get('/checkout/paypal/cancel', [CatalogController::class, 'paypalCheckoutCancel'])
+            ->middleware('throttle:30,1')
+            ->name('checkout.paypal.cancel');
 
         // Legacy Google Docs scan (kept for admin/tools; checkout uses native uploads)
         Route::post('/content-moderation/scan', [AdvertiserContentModerationController::class, 'scan'])

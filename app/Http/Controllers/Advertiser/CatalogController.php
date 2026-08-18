@@ -44,6 +44,7 @@ use App\Services\OrderPaymentService;
 use App\Services\Orders\ContentRevisionService;
 use App\Services\Orders\OrderClawbackService;
 use App\Services\Orders\OrderRefundService;
+use App\Services\PaypalCheckoutService;
 use App\Services\PlatformFeeService;
 use App\Services\StripeCustomerService;
 use App\Services\StripePaymentService;
@@ -2042,6 +2043,7 @@ class CatalogController extends Controller
 
         $savedCards = app(StripeCustomerService::class)->listCards(auth()->user());
         $stripeConfigured = app(StripeCustomerService::class)->configured();
+        $paypalConfigured = app(PaypalCheckoutService::class)->configured();
         // Best-effort: auto-add Hostinger-missing Stripe columns before card checkout.
         app(StripeCustomerService::class)->ensureUserStripeColumns();
 
@@ -2069,6 +2071,7 @@ class CatalogController extends Controller
             'checkoutArticles',
             'savedCards',
             'stripeConfigured',
+            'paypalConfigured',
             'checkoutReferenceCode',
         ), $scheduleContext));
     }
@@ -2126,7 +2129,7 @@ class CatalogController extends Controller
                 ], 422);
             }
 
-            if (! in_array($paymentMethod, ['wallet', 'card'], true)) {
+            if (! in_array($paymentMethod, ['wallet', 'card', 'paypal'], true)) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Invalid payment method',
@@ -2138,6 +2141,13 @@ class CatalogController extends Controller
                 return response()->json([
                     'success' => false,
                     'message' => 'Stripe is not configured. Please contact support.',
+                ], 503);
+            }
+
+            if ($paymentMethod === 'paypal' && ! app(PaypalCheckoutService::class)->configured()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'PayPal is not configured. Please pay with wallet or card.',
                 ], 503);
             }
 
@@ -2222,6 +2232,10 @@ class CatalogController extends Controller
                 return $this->processWalletPayment($payableCart, $checkoutContent, $referenceCode, $userId, $useBonus);
             }
 
+            if ($paymentMethod === 'paypal') {
+                return $this->processPaypalPayment($payableCart, $checkoutContent, $referenceCode, $userId, $useBonus);
+            }
+
             $savedCardId = $request->input('payment_method_id');
 
             return $this->processCardPayment(
@@ -2241,6 +2255,217 @@ class CatalogController extends Controller
                 'message' => UserFacingError::message($e, 'We could not process your order. Please try again.'),
             ]);
         }
+    }
+
+    /**
+     * Create a PayPal order first (same capture-then-fulfill pattern as card),
+     * then send the buyer to PayPal. Paid rows are created on return/webhook.
+     *
+     * @param  array{lines: array<int, array{orderItem: array, submission: ContentSubmission}>, schedule: array}  $checkoutContent
+     */
+    private function processPaypalPayment($cart, array $checkoutContent, $referenceCode, $userId, bool $useBonus = false)
+    {
+        $paypal = app(PaypalCheckoutService::class);
+        if (! $paypal->configured()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'PayPal is not configured. Please pay with wallet or card.',
+            ], 503);
+        }
+
+        if ($denied = $this->checkoutLinesFailLivePolicy($checkoutContent, (int) $userId)) {
+            return $denied;
+        }
+
+        $expandedOrders = array_column($checkoutContent['lines'], 'orderItem');
+        $totalAmount = round(array_sum(array_column($expandedOrders, 'price')), 2);
+        $schedule = $checkoutContent['schedule'];
+        $bonusApplied = 0.0;
+        $amountDue = $totalAmount;
+        $paymentService = app(OrderPaymentService::class);
+        $paymentService->releaseAbandonedStripeFirstBonus((int) $userId, (string) $referenceCode);
+
+        try {
+            if ($useBonus) {
+                $advertiserRoleId = Wallet::advertiserRoleId();
+                if ($advertiserRoleId) {
+                    $wallet = Wallet::lockOrCreateForRole((int) $userId, (int) $advertiserRoleId);
+                    $wallet->repairOrphanedWelcomeBonus();
+                    $wallet->reconcileInflatedBonusBalance();
+                    $wallet->refresh();
+                    $bonusApplied = $wallet->reserveBonusOnly(min($wallet->lockedBonusBalance(), $totalAmount));
+                    $amountDue = round(max(0, $totalAmount - $bonusApplied), 2);
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::error('Bonus reserve failed before PayPal checkout', [
+                'reference_code' => $referenceCode,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Unable to apply bonus balance. Please try again without bonus, or contact support.',
+            ]);
+        }
+
+        if ($amountDue <= 0) {
+            if ($bonusApplied > 0) {
+                $this->refundCheckoutBonus((int) $userId, (string) $referenceCode);
+            }
+
+            return response()->json([
+                'success' => false,
+                'message' => 'PayPal requires an amount greater than €0. Use wallet if covered by bonus, or select ready sites that need payment.',
+            ], 422);
+        }
+
+        $packageLines = $this->instantCheckoutPackageLines($checkoutContent, (int) $userId);
+
+        $paymentService->storePendingCheckout($referenceCode, [
+            'user_id' => (int) $userId,
+            'reference_code' => (string) $referenceCode,
+            'order_total' => $totalAmount,
+            'amount_due' => $amountDue,
+            'bonus_applied' => $bonusApplied,
+            'schedule' => $schedule,
+            'lines' => $packageLines,
+            'payment_method' => 'paypal',
+            'paypal_order_id' => null,
+        ]);
+
+        if ($bonusApplied > 0) {
+            $this->rememberCheckoutBonus((int) $userId, (string) $referenceCode, $bonusApplied);
+        }
+
+        try {
+            $created = $paypal->createOrder($amountDue, [
+                'type' => PaypalCheckoutService::TYPE_ORDER_CHECKOUT,
+                'user_id' => $userId,
+                'reference_code' => (string) $referenceCode,
+            ], route('advertiser.checkout.paypal.return', ['ref' => $referenceCode]), route('advertiser.checkout.paypal.cancel', ['ref' => $referenceCode]));
+
+            session()->put('pending_paypal_reference', $referenceCode);
+
+            $storedPackage = $paymentService->getPendingCheckout($referenceCode) ?? [];
+            $storedPackage['paypal_order_id'] = $created['id'];
+            $paymentService->storePendingCheckout($referenceCode, $storedPackage);
+            if (! $this->replaceUnpaidLeftoversAtCheckoutCommit(
+                (int) $userId,
+                $checkoutContent,
+                (string) $referenceCode
+            )) {
+                $paymentService->forgetPendingCheckout((string) $referenceCode);
+                if ($bonusApplied > 0) {
+                    $this->refundCheckoutBonus((int) $userId, (string) $referenceCode);
+                }
+
+                return $this->leftoverReplaceBlockedResponse($checkoutContent);
+            }
+
+            Log::info('PayPal checkout order ready', [
+                'reference_code' => $referenceCode,
+                'paypal_order_id' => $created['id'],
+                'order_count' => count($packageLines),
+                'total_amount' => $totalAmount,
+                'amount_due' => $amountDue,
+                'bonus_applied' => $bonusApplied,
+                'user_id' => $userId,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'requires_payment' => true,
+                'checkout_url' => $created['approve_url'],
+                'paypal_order_id' => $created['id'],
+                'reference_code' => $referenceCode,
+                'bonus_applied' => $bonusApplied,
+                'amount_due' => $amountDue,
+            ]);
+        } catch (\Exception $e) {
+            $this->refundCheckoutBonus((int) $userId, (string) $referenceCode);
+            $paymentService->forgetPendingCheckout((string) $referenceCode);
+
+            Log::error('PayPal checkout error: '.$e->getMessage(), [
+                'reference_code' => $referenceCode,
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'Failed to start PayPal checkout. Please try again.'),
+            ]);
+        }
+    }
+
+    /**
+     * @param  array{lines: array<int, array{orderItem: array, submission: ContentSubmission}>, schedule?: array}  $checkoutContent
+     * @return list<array<string, mixed>>
+     */
+    private function instantCheckoutPackageLines(array $checkoutContent, int $userId): array
+    {
+        $packageLines = [];
+        foreach ($checkoutContent['lines'] as $line) {
+            $orderItem = $line['orderItem'];
+            $submission = $line['submission'];
+            $site = $orderItem['site'];
+            if ($site instanceof Site && (int) $site->publisher_id === (int) $userId) {
+                continue;
+            }
+            $packageLines[] = [
+                'site_id' => $site->id,
+                'site_name' => $site->site_name,
+                'site_url' => $site->site_url,
+                'price' => $orderItem['price'],
+                'sensitive_type' => $orderItem['sensitive_type'] ?? null,
+                'additional_price' => $orderItem['additional_price'] ?? 0,
+                'homepage_days' => $orderItem['homepage_days'] ?? null,
+                'homepage_price' => $orderItem['homepage_price'] ?? 0,
+                'social_channels' => $orderItem['social_channels']
+                    ?? ($site->enabledSocialChannels() ?: []),
+                'publisher_price' => $orderItem['publisher_price'] ?? null,
+                'platform_fee_percent' => $orderItem['platform_fee_percent'] ?? null,
+                'platform_fee_amount' => $orderItem['platform_fee_amount'] ?? null,
+                'content_submission_id' => $submission->id,
+                'content_link' => route('advertiser.content-submissions.download', $submission),
+                'content_disk' => $submission->disk,
+                'content_path' => $submission->path,
+                'content_original_name' => $submission->original_filename,
+                'content_mime' => $submission->mime,
+                'anchor_text' => $submission->anchor_text,
+                'target_url' => $submission->target_url,
+                'feature_image_url' => $submission->feature_image_url,
+                'moderation_status' => $submission->moderation_status,
+            ];
+        }
+
+        return $packageLines;
+    }
+
+    /**
+     * Buyer returned from PayPal. Capture + paid rows land in the next slice.
+     */
+    public function paypalCheckoutReturn(Request $request)
+    {
+        $ref = trim((string) $request->query('ref', ''));
+
+        return redirect()->route('advertiser.checkout', array_filter([
+            'paypal_return' => 1,
+            'token' => $request->query('token'),
+            'ref' => $ref !== '' ? $ref : null,
+        ]));
+    }
+
+    /**
+     * Buyer cancelled on PayPal — same leftover restore as Stripe cancel.
+     */
+    public function paypalCheckoutCancel(Request $request)
+    {
+        $ref = trim((string) $request->query('ref', ''));
+
+        return redirect()->route('advertiser.checkout', array_filter([
+            'canceled' => 1,
+            'ref' => $ref !== '' ? $ref : null,
+        ]));
     }
 
     /**
@@ -2445,40 +2670,7 @@ class CatalogController extends Controller
             ], 422);
         }
 
-        $packageLines = [];
-        foreach ($checkoutContent['lines'] as $line) {
-            $orderItem = $line['orderItem'];
-            $submission = $line['submission'];
-            $site = $orderItem['site'];
-            if ($site instanceof Site && (int) $site->publisher_id === (int) $userId) {
-                continue;
-            }
-            $packageLines[] = [
-                'site_id' => $site->id,
-                'site_name' => $site->site_name,
-                'site_url' => $site->site_url,
-                'price' => $orderItem['price'],
-                'sensitive_type' => $orderItem['sensitive_type'] ?? null,
-                'additional_price' => $orderItem['additional_price'] ?? 0,
-                'homepage_days' => $orderItem['homepage_days'] ?? null,
-                'homepage_price' => $orderItem['homepage_price'] ?? 0,
-                'social_channels' => $orderItem['social_channels']
-                    ?? ($site->enabledSocialChannels() ?: []),
-                'publisher_price' => $orderItem['publisher_price'] ?? null,
-                'platform_fee_percent' => $orderItem['platform_fee_percent'] ?? null,
-                'platform_fee_amount' => $orderItem['platform_fee_amount'] ?? null,
-                'content_submission_id' => $submission->id,
-                'content_link' => route('advertiser.content-submissions.download', $submission),
-                'content_disk' => $submission->disk,
-                'content_path' => $submission->path,
-                'content_original_name' => $submission->original_filename,
-                'content_mime' => $submission->mime,
-                'anchor_text' => $submission->anchor_text,
-                'target_url' => $submission->target_url,
-                'feature_image_url' => $submission->feature_image_url,
-                'moderation_status' => $submission->moderation_status,
-            ];
-        }
+        $packageLines = $this->instantCheckoutPackageLines($checkoutContent, (int) $userId);
 
         $paymentService->storePendingCheckout($referenceCode, [
             'user_id' => (int) $userId,
