@@ -6,6 +6,7 @@ use App\Models\DepositRequest;
 use App\Models\Order;
 use App\Models\OrderChatMessage;
 use App\Models\OrderItem;
+use App\Models\PaypalWebhookLog;
 use App\Models\Site;
 use App\Models\Wallet;
 use Illuminate\Database\Eloquent\Model;
@@ -30,6 +31,7 @@ class SchemaCompletenessTest extends TestCase
     {
         return [
             [Order::class],
+            [PaypalWebhookLog::class],
             [OrderItem::class],
             [OrderChatMessage::class],
             [DepositRequest::class],

@@ -22,6 +22,7 @@ class CheckoutSchemaService
         $this->ensureOrderItemsColumns();
         $this->ensureSitesColumns();
         $this->ensureCheckoutIntentsTable();
+        $this->ensurePaypalWebhookLogsTable();
     }
 
     /**
@@ -79,6 +80,10 @@ class CheckoutSchemaService
         $this->addColumn('orders', 'paid_at', 'timestamp NULL');
         $this->addColumn('orders', 'admin_notes', 'text NULL');
         $this->addColumn('orders', 'payment_reference', 'varchar(120) NULL');
+        $this->addColumn('orders', 'paypal_order_id', 'varchar(255) NULL');
+        $this->addColumn('orders', 'paypal_capture_id', 'varchar(255) NULL');
+        $this->addColumn('orders', 'paypal_refund_id', 'varchar(255) NULL');
+        $this->addNullableJsonColumn('orders', 'paypal_response');
     }
 
     private function ensureOrderItemsColumns(): void
@@ -146,6 +151,29 @@ class CheckoutSchemaService
             Log::info('Created missing checkout_intents table');
         } catch (\Throwable $e) {
             Log::warning('Could not create checkout_intents table', [
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    private function ensurePaypalWebhookLogsTable(): void
+    {
+        if ($this->tableExists('paypal_webhook_logs')) {
+            return;
+        }
+
+        try {
+            Schema::create('paypal_webhook_logs', function (Blueprint $table) {
+                $table->id();
+                $table->string('event_id')->unique();
+                $table->string('event_type');
+                $table->json('payload');
+                $table->boolean('processed')->default(false);
+                $table->timestamps();
+            });
+            Log::info('Created missing paypal_webhook_logs table');
+        } catch (\Throwable $e) {
+            Log::warning('Could not create paypal_webhook_logs table', [
                 'error' => $e->getMessage(),
             ]);
         }

@@ -471,6 +471,29 @@ ALTER TABLE `orders` ADD COLUMN `admin_notes` text NULL;
 ALTER TABLE `orders` ADD COLUMN `payment_reference` varchar(120) NULL;
 
 -- ---------------------------------------------------------------------------
+-- PayPal Orders v2: payment ids on orders + webhook log (ignore Duplicate)
+-- ---------------------------------------------------------------------------
+ALTER TABLE `orders` ADD COLUMN `paypal_order_id` varchar(255) NULL;
+ALTER TABLE `orders` ADD COLUMN `paypal_capture_id` varchar(255) NULL;
+ALTER TABLE `orders` ADD COLUMN `paypal_refund_id` varchar(255) NULL;
+ALTER TABLE `orders` ADD COLUMN `paypal_response` json NULL;
+ALTER TABLE `orders` ADD INDEX `orders_paypal_order_id_index` (`paypal_order_id`);
+ALTER TABLE `orders` ADD UNIQUE KEY `orders_paypal_capture_id_unique` (`paypal_capture_id`);
+ALTER TABLE `orders` ADD UNIQUE KEY `orders_paypal_refund_id_unique` (`paypal_refund_id`);
+
+CREATE TABLE IF NOT EXISTS `paypal_webhook_logs` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `event_id` varchar(255) NOT NULL,
+  `event_type` varchar(255) NOT NULL,
+  `payload` json NOT NULL,
+  `processed` tinyint(1) NOT NULL DEFAULT 0,
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `paypal_webhook_logs_event_id_unique` (`event_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------------
 -- Campaign mindset: attribute order packages to projects
 -- ---------------------------------------------------------------------------
 -- Run only if column missing (Hostinger may error if already present):
