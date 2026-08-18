@@ -1443,16 +1443,18 @@
                         @endif
                     </dd>
                 </div>
-                @if($site->description)
+                @if($site->description || \App\Support\CatalogPlaceholderListing::matches($site))
                     <div class="catalog-card-details__row">
                         <dt>About this site</dt>
                         {{-- Cards stay plain-text; desktop expand keeps rich HTML via safeDescriptionHtml().
                              Hide-mode rows stay gated — publishers often paste the listing URL here. --}}
                         <dd class="catalog-card-details__description text-muted small">
-                            @if($inCatalogHideMode && ! $showsIdentity)
-                                Use the eye to show this listing’s name and URL, then the description appears.
-                            @else
-                                {{ site_description_excerpt($site->description) }}
+                            @if($site->description)
+                                @if($inCatalogHideMode && ! $showsIdentity)
+                                    Use the eye to show this listing’s name and URL, then the description appears.
+                                @else
+                                    {{ site_description_excerpt($site->description) }}
+                                @endif
                             @endif
                             @if(\App\Support\CatalogPlaceholderListing::matches($site))
                                 <span class="d-block mt-1 catalog-placeholder-listing">Placeholder listing — sample copy, not a live publisher brief.</span>

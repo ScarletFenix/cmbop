@@ -338,6 +338,26 @@ class CatalogExpandCorrectnessTest extends TestCase
         $this->assertStringNotContainsString('catalog-preview-caption', $html);
     }
 
+    public function test_host_only_placeholder_shows_mobile_about_badge(): void
+    {
+        $this->makeSite([
+            'site_name' => 'Host Only Demo',
+            'site_url' => 'https://demo86.com',
+            'domain' => 'demo86.com',
+            'example_url' => null,
+            'description' => '',
+        ]);
+
+        $html = $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog', ['search' => 'Host Only Demo']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('catalog-placeholder-listing', $html);
+        $this->assertStringContainsString('About this site', $html);
+        $this->assertStringContainsString('Placeholder listing — sample copy, not a live publisher brief.', $html);
+    }
+
     public function test_mobile_card_details_cover_desktop_decision_fields(): void
     {
         $this->makeSite([
