@@ -225,6 +225,13 @@ class CatalogFilterStatusEmptyUxTest extends TestCase
         $this->assertNotNull($tagOnlyRecovery['clear_tag_url']);
         $this->assertStringContainsString('Clear the tag filter', $tagOnlyRecovery['body']);
         $this->assertStringContainsString('As you prefer', $tagOnlyRecovery['body']);
+
+        $aliasRecovery = $status->emptyRecovery(
+            Request::create('/advertiser/catalog', 'GET', ['sponsored' => '1'])
+        );
+        $this->assertNotNull($aliasRecovery['clear_tag_url']);
+        $this->assertStringNotContainsString('sponsored=', $aliasRecovery['clear_tag_url']);
+        $this->assertStringContainsString('Sponsored', $aliasRecovery['body']);
     }
 
     public function test_germany_has_primary_german_for_try_language(): void

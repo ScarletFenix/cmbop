@@ -195,8 +195,11 @@
 
     <!-- FILTERS SECTION -->
 @php
-    $moreFilterKeys = ['tag','sponsored','favorites_filter','blacklist_filter','bulk_deals','da_min','da_max','dr_min','dr_max','traffic_min','traffic_max','new_badge','on_sale','quality','rating_min','has_completions'];
-    $moreFiltersOpen = collect($moreFilterKeys)->contains(fn ($k) => filled(request($k)));
+    $moreFilterKeys = ['favorites_filter','blacklist_filter','bulk_deals','da_min','da_max','dr_min','dr_max','traffic_min','traffic_max','new_badge','on_sale','quality','rating_min','has_completions'];
+    $moreTagActive = \App\Support\SiteTag::catalogFilterFromRequest(request()) !== null;
+    $moreFilterCount = collect($moreFilterKeys)->filter(fn ($k) => filled(request($k)))->count()
+        + ($moreTagActive ? 1 : 0);
+    $moreFiltersOpen = $moreFilterCount > 0;
     // Each chip carries the query keys it owns so it can be dismissed on its own.
     // Range filters span two inputs, so one chip clears both ends.
     // Category: one named chip per niche (clear removes that niche only).
@@ -475,7 +478,7 @@
                                     More
                                     @if($moreFiltersOpen)
                                         <span class="badge rounded-pill ms-1" data-more-filters-count
-                                              style="background:var(--brand-primary-bg,#e6f5f5);color:var(--brand-primary,#1a585e);border:1px solid var(--brand-primary-border,#b8e4e4);">{{ collect($moreFilterKeys)->filter(fn($k) => filled(request($k)))->count() }}</span>
+                                              style="background:var(--brand-primary-bg,#e6f5f5);color:var(--brand-primary,#1a585e);border:1px solid var(--brand-primary-border,#b8e4e4);">{{ $moreFilterCount }}</span>
                                     @endif
                                 </button>
                                 <a href="{{ route('advertiser.catalog') }}"

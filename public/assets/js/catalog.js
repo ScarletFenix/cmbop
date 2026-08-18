@@ -2732,7 +2732,7 @@ const CatalogLive = (function () {
         const btn = document.getElementById('toggleMoreFiltersBtn');
         if (!btn) return;
         const moreKeys = [
-            'tag', 'sponsored', 'favorites_filter', 'blacklist_filter', 'bulk_deals',
+            'favorites_filter', 'blacklist_filter', 'bulk_deals',
             'da_min', 'da_max', 'dr_min', 'dr_max',
             'traffic_min', 'traffic_max', 'new_badge', 'on_sale', 'quality',
             'rating_min', 'has_completions',
@@ -2742,6 +2742,12 @@ const CatalogLive = (function () {
             const value = params.get(key);
             if (value != null && String(value).trim() !== '') count++;
         });
+        // tag= and legacy sponsored=1 are one More filter, not two.
+        var tagFilter = params.get('tag') || (params.get('sponsored') === '1' ? 'sponsored' : '');
+        if (tagFilter === 'sponsored' || tagFilter === 'partner_material'
+            || tagFilter === 'as_you_prefer' || tagFilter === 'none') {
+            count++;
+        }
         let badge = btn.querySelector('[data-more-filters-count]');
         if (count === 0) {
             if (badge) badge.remove();

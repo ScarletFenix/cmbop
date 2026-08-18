@@ -219,6 +219,10 @@ class CatalogTagFilterTest extends TestCase
 
         $this->assertStringContainsString('Alias Partner', $html);
         $this->assertStringNotContainsString('Alias Sponsored', $html);
+        $this->assertMatchesRegularExpression(
+            '/data-more-filters-count[^>]*>\s*1\s*</',
+            $html
+        );
     }
 
     public function test_live_results_and_recovery_keep_tag(): void
@@ -262,5 +266,10 @@ class CatalogTagFilterTest extends TestCase
         $this->assertStringContainsString("querySelector('[name=\"tag\"]')", $js);
         $this->assertStringContainsString("'tag', 'favorites_filter', 'blacklist_filter'", $js);
         $this->assertStringContainsString("out.set('tag', 'sponsored')", $js);
+        $this->assertStringNotContainsString(
+            "'tag', 'sponsored', 'favorites_filter', 'blacklist_filter', 'bulk_deals'",
+            $js
+        );
+        $this->assertStringContainsString('tag= and legacy sponsored=1 are one More filter', $js);
     }
 }
