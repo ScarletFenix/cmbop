@@ -26,11 +26,12 @@ class WithdrawalDuplicatePayoutWarning
             return collect();
         }
 
-        return Withdrawal::query()
-            ->whereIn('id', $ids)
-            ->orderByDesc('processed_at')
-            ->orderByDesc('id')
-            ->get();
+        $matches = Withdrawal::query()->whereIn('id', $ids);
+        if (Withdrawal::hasProcessedAtColumn()) {
+            $matches->orderByDesc('processed_at');
+        }
+
+        return $matches->orderByDesc('id')->get();
     }
 
     /**
@@ -54,20 +55,29 @@ class WithdrawalDuplicatePayoutWarning
             ->whereIn('user_id', $userIds)
             ->where('status', 'completed')
             ->where(function ($q) use ($since) {
-                $q->where(function ($inner) use ($since) {
-                    $inner->whereProcessedAtIsRecorded()
-                        ->where('processed_at', '>=', $since);
-                })->orWhere(function ($inner) use ($since) {
-                    // Leftover processed_at is not a paid clock — same as null.
-                    // Bound created_at so leftover request stamps cannot fake
-                    // a recent duplicate on SQLite string compare.
-                    $inner->whereProcessedAtIsMissing()
-                        ->where('created_at', '>=', $since)
+                if (Withdrawal::hasProcessedAtColumn()) {
+                    $q->where(function ($inner) use ($since) {
+                        $inner->whereProcessedAtIsRecorded()
+                            ->where('processed_at', '>=', $since);
+                    })->orWhere(function ($inner) use ($since) {
+                        // Leftover processed_at is not a paid clock — same as null.
+                        // Bound created_at so leftover request stamps cannot fake
+                        // a recent duplicate on SQLite string compare.
+                        $inner->whereProcessedAtIsMissing()
+                            ->where('created_at', '>=', $since)
+                            ->where('created_at', '>=', Withdrawal::PLAUSIBLE_SQL_DATETIME_FLOOR)
+                            ->where('created_at', '<=', Withdrawal::PLAUSIBLE_SQL_DATETIME_CEIL);
+                    });
+                } else {
+                    $q->where('created_at', '>=', $since)
                         ->where('created_at', '>=', Withdrawal::PLAUSIBLE_SQL_DATETIME_FLOOR)
                         ->where('created_at', '<=', Withdrawal::PLAUSIBLE_SQL_DATETIME_CEIL);
-                });
-            })
-            ->orderByDesc('processed_at')
+                }
+            });
+        if (Withdrawal::hasProcessedAtColumn()) {
+            $paid->orderByDesc('processed_at');
+        }
+        $paid = $paid
             ->orderByDesc('id')
             ->get(['id', 'user_id', 'net_amount']);
 

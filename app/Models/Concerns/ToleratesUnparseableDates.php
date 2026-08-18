@@ -34,6 +34,29 @@ trait ToleratesUnparseableDates
     }
 
     /**
+     * Leftover timestamp strings become null in asDateTime(). Laravel still
+     * passes that into serializeDate() for created_at / updated_at.
+     *
+     * @param  array<string, mixed>  $attributes
+     * @return array<string, mixed>
+     */
+    protected function addDateAttributesToArray(array $attributes)
+    {
+        foreach ($this->getDates() as $key) {
+            if (is_null($key) || ! isset($attributes[$key])) {
+                continue;
+            }
+
+            $date = $this->asDateTime($attributes[$key]);
+            $attributes[$key] = $date instanceof DateTimeInterface
+                ? $this->serializeDate($date)
+                : null;
+        }
+
+        return $attributes;
+    }
+
+    /**
      * @param  mixed  $value
      */
     public function fromDateTime($value)

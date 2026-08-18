@@ -289,8 +289,16 @@
 
 <script>
 const ROLE_UPDATE_URL = @json(route('admin.users.updateRoles', ['id' => '__ID__']));
+const COMPANY_UPDATE_URL = @json(route('admin.users.updateCompany', ['id' => '__ID__']));
+const PAYOUT_UPDATE_URL = @json(route('admin.users.updatePayoutProfile', ['id' => '__ID__']));
 function roleUpdateUrl(id) {
     return ROLE_UPDATE_URL.replace('__ID__', encodeURIComponent(String(id)));
+}
+function companyUpdateUrl(id) {
+    return COMPANY_UPDATE_URL.replace('__ID__', encodeURIComponent(String(id)));
+}
+function payoutUpdateUrl(id) {
+    return PAYOUT_UPDATE_URL.replace('__ID__', encodeURIComponent(String(id)));
 }
 function escapeHtml(str) {
     if (str == null || str === '') return '';
@@ -503,25 +511,34 @@ document.addEventListener('click', function(e){
         }).then((result) => {
             if(result.isConfirmed){
 
-                fetch(`/admin/users/${id}/update-company`, {
+                fetch(companyUpdateUrl(id), {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content
+                            || '{{ csrf_token() }}'
                     },
+                    credentials: 'same-origin',
                     body: JSON.stringify({
                         company_name: result.value
                     })
                 })
-                .then(res => res.json())
-                .then(data => {
-                    if(data.success){
+                .then(async (res) => {
+                    let data = null;
+                    try { data = await res.json(); } catch (err) { data = null; }
+                    return { ok: res.ok, data };
+                })
+                .then(({ ok, data }) => {
+                    if(ok && data && data.success){
                         span.innerText = result.value || '-';
-                        Swal.fire('Updated!', '', 'success');
+                        Swal.fire('Updated!', data.message || '', 'success');
                     } else {
-                        Swal.fire('Error!', '', 'error');
+                        Swal.fire('Error!', (data && data.message) || 'Update failed', 'error');
                     }
-                });
+                })
+                .catch(() => Swal.fire('Error!', 'Request failed. Please try again.', 'error'));
             }
         });
     }
@@ -567,21 +584,28 @@ document.addEventListener('click', function(e){
             }
         }).then((result) => {
             if (!result.isConfirmed) return;
-            fetch(`/admin/users/${id}/payout-profile`, {
+            fetch(payoutUpdateUrl(id), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Accept': 'application/json',
-                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content
+                        || '{{ csrf_token() }}'
                 },
+                credentials: 'same-origin',
                 body: JSON.stringify(result.value)
             })
-            .then(res => res.json())
-            .then(data => {
-                if (data.success) {
+            .then(async (res) => {
+                let data = null;
+                try { data = await res.json(); } catch (err) { data = null; }
+                return { ok: res.ok, data };
+            })
+            .then(({ ok, data }) => {
+                if (ok && data && data.success) {
                     Swal.fire('Updated!', data.message, 'success').then(() => window.location.reload());
                 } else {
-                    Swal.fire('Error', data.message || 'Update failed', 'error');
+                    Swal.fire('Error', (data && data.message) || 'Update failed', 'error');
                 }
             })
             .catch(() => Swal.fire('Error', 'Network error', 'error'));

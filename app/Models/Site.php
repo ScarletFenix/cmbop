@@ -920,6 +920,14 @@ class Site extends Model
      */
     public static function findOccupyingDomain(string $domain, ?int $exceptId = null, bool $lock = false): ?self
     {
+        try {
+            if (! Schema::hasTable((new static)->getTable())) {
+                return null;
+            }
+        } catch (\Throwable) {
+            return null;
+        }
+
         $candidates = static::domainLookupCandidates($domain);
         if ($candidates === []) {
             return null;

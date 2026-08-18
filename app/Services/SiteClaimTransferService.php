@@ -13,6 +13,7 @@ use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 
 class SiteClaimTransferService
@@ -28,16 +29,28 @@ class SiteClaimTransferService
      */
     public function openOrderItemsCount(Site $site): int
     {
-        return OrderItem::query()
-            ->where('site_id', $site->id)
-            ->where(function ($q) {
-                $q->whereNull('publisher_status')
-                    ->orWhereNotIn('publisher_status', ['completed', 'rejected']);
-            })
-            ->whereHas('order', function ($q) {
-                $q->whereNotIn('status', ['cancelled', 'completed', 'refunded']);
-            })
-            ->count();
+        try {
+            if (! Schema::hasTable('order_items') || ! Schema::hasTable('orders')) {
+                return 0;
+            }
+        } catch (\Throwable) {
+            return 0;
+        }
+
+        try {
+            return OrderItem::query()
+                ->where('site_id', $site->id)
+                ->where(function ($q) {
+                    $q->whereNull('publisher_status')
+                        ->orWhereNotIn('publisher_status', ['completed', 'rejected']);
+                })
+                ->whereHas('order', function ($q) {
+                    $q->whereNotIn('status', ['cancelled', 'completed', 'refunded']);
+                })
+                ->count();
+        } catch (\Throwable) {
+            return 0;
+        }
     }
 
     /**
@@ -50,10 +63,14 @@ class SiteClaimTransferService
             return 0;
         }
 
-        return OrderItemDispute::query()
-            ->where('status', OrderItemDispute::STATUS_OPEN)
-            ->whereHas('orderItem', fn ($q) => $q->where('site_id', $site->id))
-            ->count();
+        try {
+            return OrderItemDispute::query()
+                ->where('status', OrderItemDispute::STATUS_OPEN)
+                ->whereHas('orderItem', fn ($q) => $q->where('site_id', $site->id))
+                ->count();
+        } catch (\Throwable) {
+            return 0;
+        }
     }
 
     /**
@@ -61,9 +78,13 @@ class SiteClaimTransferService
      */
     public function approveContext(SiteClaim $claim): array
     {
-        $claim->loadMissing(['site', 'claimer']);
-        $site = $claim->site;
-        $claimer = $claim->claimer;
+        try {
+            $claim->loadMissing(['site', 'claimer']);
+        } catch (\Throwable) {
+            // Leftover Hostinger: missing sites/users must not 500 the claims tab.
+        }
+        $site = $claim->relationLoaded('site') ? $claim->site : null;
+        $claimer = $claim->relationLoaded('claimer') ? $claim->claimer : null;
 
         return [
             'open_orders' => $site ? $this->openOrderItemsCount($site) : 0,
@@ -83,7 +104,19 @@ class SiteClaimTransferService
      */
     public function approve(SiteClaim $claim, User $admin, ?string $adminNotes = null): SiteClaim
     {
-        $claim->loadMissing(['site', 'claimer']);
+        try {
+            $claim->loadMissing(['site', 'claimer']);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to load site claim relations for approve: '.$e->getMessage(), [
+                'claim_id' => $claim->id,
+            ]);
+            if (! $claim->relationLoaded('site')) {
+                $claim->setRelation('site', null);
+            }
+            if (! $claim->relationLoaded('claimer')) {
+                $claim->setRelation('claimer', null);
+            }
+        }
         $site = $claim->site;
         $claimer = $claim->claimer;
 
@@ -156,12 +189,12 @@ class SiteClaimTransferService
                 $claimer->assignRole('publisher');
             }
 
-            $lockedClaim->forceFill([
+            $lockedClaim->forceFill(SiteClaim::attributesThatExist([
                 'status' => 'approved',
                 'admin_notes' => $adminNotes ?? $lockedClaim->admin_notes,
                 'reviewed_at' => now(),
                 'reviewed_by' => $admin->id,
-            ])->save();
+            ]))->save();
 
             $siblings = SiteClaim::query()
                 ->where('site_id', $locked->id)
@@ -171,12 +204,12 @@ class SiteClaimTransferService
                 ->get();
 
             foreach ($siblings as $sibling) {
-                $sibling->forceFill([
+                $sibling->forceFill(SiteClaim::attributesThatExist([
                     'status' => 'rejected',
                     'admin_notes' => 'Closed because another claim was approved.',
                     'reviewed_at' => now(),
                     'reviewed_by' => $admin->id,
-                ])->save();
+                ]))->save();
                 $closedSiblings[] = $sibling;
             }
 
@@ -193,7 +226,13 @@ class SiteClaimTransferService
             );
         });
 
-        $claim->refresh()->load(['site', 'claimer', 'reviewer']);
+        try {
+            $claim->refresh()->load(['site', 'claimer', 'reviewer']);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to reload approved site claim: '.$e->getMessage(), [
+                'claim_id' => $claim->id,
+            ]);
+        }
         $this->notifyApproved($claim, $previousPublisher);
 
         foreach ($closedSiblings as $sibling) {
@@ -218,12 +257,12 @@ class SiteClaimTransferService
                 ]);
             }
 
-            $lockedClaim->forceFill([
+            $lockedClaim->forceFill(SiteClaim::attributesThatExist([
                 'status' => 'rejected',
                 'admin_notes' => $adminNotes ?? $lockedClaim->admin_notes,
                 'reviewed_at' => now(),
                 'reviewed_by' => $admin->id,
-            ])->save();
+            ]))->save();
 
             ActivityLogger::tryLog(
                 'site.claim_rejected',
@@ -234,7 +273,13 @@ class SiteClaimTransferService
             );
         });
 
-        $claim->refresh()->load(['site', 'claimer', 'reviewer']);
+        try {
+            $claim->refresh()->load(['site', 'claimer', 'reviewer']);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to reload rejected site claim: '.$e->getMessage(), [
+                'claim_id' => $claim->id,
+            ]);
+        }
         $this->notifyRejected($claim);
 
         return $claim;

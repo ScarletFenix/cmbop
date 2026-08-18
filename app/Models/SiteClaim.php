@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\ToleratesMissingSchema;
+use App\Models\Concerns\ToleratesUnparseableDates;
 use App\Services\Catalog\SiteUrlVisibility;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -9,6 +11,8 @@ use Illuminate\Support\Collection;
 
 class SiteClaim extends Model
 {
+    use ToleratesMissingSchema, ToleratesUnparseableDates;
+
     protected $fillable = [
         'site_id',
         'claimer_id',

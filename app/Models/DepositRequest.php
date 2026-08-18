@@ -2,13 +2,14 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\ToleratesMissingSchema;
 use App\Models\Concerns\ToleratesUnparseableDates;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Facades\Schema;
 
 class DepositRequest extends Model
 {
+    use ToleratesMissingSchema;
     use ToleratesUnparseableDates;
 
     protected $fillable = [
@@ -71,11 +72,7 @@ class DepositRequest extends Model
      */
     public static function hasUserMarkedPaidAtColumn(): bool
     {
-        try {
-            return Schema::hasColumn((new static)->getTable(), 'user_marked_paid_at');
-        } catch (\Throwable) {
-            return false;
-        }
+        return static::hasTableColumn('user_marked_paid_at');
     }
 
     public function scopeWhereUserMarkedPaidAtIsRecorded($query)

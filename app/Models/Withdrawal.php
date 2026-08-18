@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\ToleratesMissingSchema;
 use App\Models\Concerns\ToleratesUnparseableDates;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -11,6 +12,7 @@ use Illuminate\Support\Facades\Schema;
 
 class Withdrawal extends Model
 {
+    use ToleratesMissingSchema;
     use ToleratesUnparseableDates;
 
     public const CANCELLED_BY_USER = 'user';
@@ -56,6 +58,11 @@ class Withdrawal extends Model
      * @param  Builder<static>  $query
      * @return Builder<static>
      */
+    public static function hasProcessedAtColumn(): bool
+    {
+        return static::hasTableColumn('processed_at');
+    }
+
     public function scopeWhereProcessedAtIsRecorded($query)
     {
         return $query->whereNotNull('processed_at')
@@ -96,7 +103,7 @@ class Withdrawal extends Model
      */
     public static function walletIdAttributes(?Wallet $wallet): array
     {
-        if (! $wallet || ! Schema::hasColumn((new static)->getTable(), 'wallet_id')) {
+        if (! $wallet || ! static::hasTableColumn('wallet_id')) {
             return [];
         }
 
@@ -108,6 +115,14 @@ class Withdrawal extends Model
      */
     public function resolveDebitedWallet(bool $lockForUpdate = false): ?Wallet
     {
+        try {
+            if (! Schema::hasTable('wallets')) {
+                return null;
+            }
+        } catch (\Throwable) {
+            return null;
+        }
+
         $walletId = $this->resolveDebitedWalletId();
         if (! $walletId) {
             return null;
@@ -123,13 +138,21 @@ class Withdrawal extends Model
 
     public function resolveDebitedWalletId(): ?int
     {
-        if (Schema::hasColumn($this->getTable(), 'wallet_id') && $this->wallet_id) {
+        if (static::hasTableColumn('wallet_id') && $this->wallet_id) {
             return (int) $this->wallet_id;
         }
 
         $fromLedger = $this->ledgerDebitWalletId();
         if ($fromLedger) {
             return $fromLedger;
+        }
+
+        try {
+            if (! Schema::hasTable('wallets')) {
+                return null;
+            }
+        } catch (\Throwable) {
+            return null;
         }
 
         $ids = Wallet::query()
@@ -190,7 +213,7 @@ class Withdrawal extends Model
             $payload['admin_notes'] = $notes;
         }
 
-        $this->update($payload);
+        $this->update(static::attributesThatExist($payload));
     }
 
     public function markAsCancelled(?string $notes = null, string $cancelledBy = self::CANCELLED_BY_ADMIN): void
@@ -205,7 +228,7 @@ class Withdrawal extends Model
             $payload['admin_notes'] = $notes;
         }
 
-        $this->update($payload);
+        $this->update(static::attributesThatExist($payload));
     }
 
     public function isActionable(): bool

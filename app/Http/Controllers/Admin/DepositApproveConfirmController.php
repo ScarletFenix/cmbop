@@ -11,6 +11,7 @@ use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Email one-click approve: signed GET shows a confirm page; POST credits via
@@ -99,8 +100,11 @@ class DepositApproveConfirmController extends Controller
         $priorDeposits = DepositRequest::query()
             ->where('user_id', $deposit->user_id)
             ->where('status', 'completed')
-            ->whereKeyNot($deposit->id)
-            ->orderByDesc('approved_at')
+            ->whereKeyNot($deposit->id);
+        if (DepositRequest::hasTableColumn('approved_at')) {
+            $priorDeposits->orderByDesc('approved_at');
+        }
+        $priorDeposits = $priorDeposits
             ->orderByDesc('id')
             ->limit(5)
             ->get();
@@ -131,19 +135,27 @@ class DepositApproveConfirmController extends Controller
         $lookbackDays = max(1, (int) config('billing.deposit_approve_duplicate_lookback_days', 30));
         $since = now()->subDays($lookbackDays);
 
-        return DepositRequest::query()
+        $matches = DepositRequest::query()
             ->where('user_id', $deposit->user_id)
             ->where('status', 'completed')
             ->whereKeyNot($deposit->id)
             ->where('amount', $incomingAmount)
             ->where(function ($q) use ($since) {
-                $q->where('approved_at', '>=', $since)
-                    ->orWhere(function ($inner) use ($since) {
-                        $inner->whereNull('approved_at')
-                            ->where('created_at', '>=', $since);
-                    });
-            })
-            ->orderByDesc('approved_at')
+                if (DepositRequest::hasTableColumn('approved_at')) {
+                    $q->where('approved_at', '>=', $since)
+                        ->orWhere(function ($inner) use ($since) {
+                            $inner->whereNull('approved_at')
+                                ->where('created_at', '>=', $since);
+                        });
+                } else {
+                    $q->where('created_at', '>=', $since);
+                }
+            });
+        if (DepositRequest::hasTableColumn('approved_at')) {
+            $matches->orderByDesc('approved_at');
+        }
+
+        return $matches
             ->orderByDesc('id')
             ->limit(5)
             ->get();
@@ -153,6 +165,14 @@ class DepositApproveConfirmController extends Controller
     {
         $roleId = Wallet::advertiserRoleId();
         if (! $roleId || $userId <= 0) {
+            return null;
+        }
+
+        try {
+            if (! Schema::hasTable('wallets')) {
+                return null;
+            }
+        } catch (\Throwable) {
             return null;
         }
 

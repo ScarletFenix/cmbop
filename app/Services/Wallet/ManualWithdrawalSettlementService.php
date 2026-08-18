@@ -49,6 +49,10 @@ class ManualWithdrawalSettlementService
             throw new RuntimeException('Withdrawal not found');
         }
 
+        if (! Withdrawal::tableAvailable()) {
+            throw new RuntimeException('Withdrawal not found');
+        }
+
         $result = DB::transaction(function () use ($withdrawalId, $newStatus, $notes) {
             $locked = Withdrawal::query()
                 ->with('user')
@@ -100,22 +104,24 @@ class ManualWithdrawalSettlementService
                 );
             }
 
-            $locked->status = $newStatus;
+            $payload = [
+                'status' => $newStatus,
+            ];
 
             if ($notes !== null && $notes !== '') {
-                $locked->admin_notes = $notes;
+                $payload['admin_notes'] = $notes;
             }
 
             if ($newStatus === 'cancelled') {
-                $locked->cancelled_by = Withdrawal::CANCELLED_BY_ADMIN;
-                $locked->cancelled_at = now();
+                $payload['cancelled_by'] = Withdrawal::CANCELLED_BY_ADMIN;
+                $payload['cancelled_at'] = now();
             }
 
             if ($newStatus === 'completed') {
-                $locked->processed_at = now();
+                $payload['processed_at'] = now();
             }
 
-            $locked->save();
+            $locked->update(Withdrawal::attributesThatExist($payload));
 
             return [
                 'withdrawal' => $locked->fresh(['user:id,name,email']),

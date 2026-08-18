@@ -179,8 +179,12 @@ class DashboardMetricsService
      */
     public function queueCounts(): array
     {
-        $pendingDeposits = DepositRequest::where('status', 'pending')->count();
-        $pendingWithdrawals = Withdrawal::whereIn('status', ['pending', 'processing'])->count();
+        $pendingDeposits = DepositRequest::tableAvailable()
+            ? DepositRequest::where('status', 'pending')->count()
+            : 0;
+        $pendingWithdrawals = Withdrawal::tableAvailable()
+            ? Withdrawal::whereIn('status', ['pending', 'processing'])->count()
+            : 0;
         // Ready-for-admin queue only (exclude unfinished awaiting_details drafts)
         $unverifiedSites = Site::query()->needsAdminReview()->count();
         $pendingPayments = $this->unpaidOrdersCount();
@@ -241,38 +245,42 @@ class DashboardMetricsService
      */
     public function actionQueue(): array
     {
-        $deposits = DepositRequest::with('user:id,name,email')
-            ->where('status', 'pending')
-            ->latest()
-            ->take(5)
-            ->get()
-            ->map(fn ($d) => [
-                'id' => $d->id,
-                'user' => $d->user?->name ?? 'Unknown',
-                'email' => $d->user?->email,
-                'amount' => (float) $d->amount,
-                'method' => $d->payment_method,
-                'date' => optional($d->created_at)->format('d M Y H:i'),
-                // deposits.show is JSON for the list-page modal; the HTML queue is the working page.
-                'url' => route('admin.deposits', ['status' => 'pending']),
-            ]);
+        $deposits = DepositRequest::tableAvailable()
+            ? DepositRequest::with('user:id,name,email')
+                ->where('status', 'pending')
+                ->latest()
+                ->take(5)
+                ->get()
+                ->map(fn ($d) => [
+                    'id' => $d->id,
+                    'user' => $d->user?->name ?? 'Unknown',
+                    'email' => $d->user?->email,
+                    'amount' => (float) $d->amount,
+                    'method' => $d->payment_method,
+                    'date' => optional($d->created_at)->format('d M Y H:i'),
+                    // deposits.show is JSON for the list-page modal; the HTML queue is the working page.
+                    'url' => route('admin.deposits', ['status' => 'pending']),
+                ])
+            : collect();
 
-        $withdrawals = Withdrawal::with('user:id,name,email')
-            ->whereIn('status', ['pending', 'processing'])
-            ->latest()
-            ->take(5)
-            ->get()
-            ->map(fn ($w) => [
-                'id' => $w->id,
-                'user' => $w->user?->name ?? 'Unknown',
-                'email' => $w->user?->email,
-                'amount' => (float) $w->net_amount,
-                'method' => $w->payment_method,
-                'status' => $w->status,
-                'date' => optional($w->created_at)->format('d M Y H:i'),
-                // withdrawals.show is JSON for the list-page modal; the HTML queue is the working page.
-                'url' => route('admin.withdrawals', ['queue' => 'open']),
-            ]);
+        $withdrawals = Withdrawal::tableAvailable()
+            ? Withdrawal::with('user:id,name,email')
+                ->whereIn('status', ['pending', 'processing'])
+                ->latest()
+                ->take(5)
+                ->get()
+                ->map(fn ($w) => [
+                    'id' => $w->id,
+                    'user' => $w->user?->name ?? 'Unknown',
+                    'email' => $w->user?->email,
+                    'amount' => (float) $w->net_amount,
+                    'method' => $w->payment_method,
+                    'status' => $w->status,
+                    'date' => optional($w->created_at)->format('d M Y H:i'),
+                    // withdrawals.show is JSON for the list-page modal; the HTML queue is the working page.
+                    'url' => route('admin.withdrawals', ['queue' => 'open']),
+                ])
+            : collect();
 
         $sites = Site::with('publisher:id,name,email')
             ->needsAdminReview()
@@ -366,57 +374,39 @@ class DashboardMetricsService
     {
         $rows = collect();
 
-        if (Schema::hasTable('problem_reports')) {
-            $rows = $rows->concat(
-                ProblemReport::where('status', 'pending')->latest()->take(5)->get()->map(fn (ProblemReport $r) => [
-                    'type' => 'problem',
-                    'label' => $r->subject ?: 'Problem report',
-                    'from' => $r->name ?: ($r->email ?: 'Unknown'),
-                    'date' => optional($r->created_at)->format('d M Y'),
-                    'sort_at' => optional($r->created_at)?->timestamp ?? 0,
-                    'url' => route('admin.community.index', ['tab' => 'problems', 'status' => 'pending']),
-                ])
-            );
-        }
-
-        if (Schema::hasTable('suggestions')) {
-            $rows = $rows->concat(
-                Suggestion::where('status', 'pending')->latest()->take(5)->get()->map(fn (Suggestion $r) => [
-                    'type' => 'suggestion',
-                    'label' => Str::limit((string) $r->message, 60) ?: 'Suggestion',
-                    'from' => $r->name ?: ($r->email ?: 'Unknown'),
-                    'date' => optional($r->created_at)->format('d M Y'),
-                    'sort_at' => optional($r->created_at)?->timestamp ?? 0,
-                    'url' => route('admin.community.index', ['tab' => 'suggestions', 'status' => 'pending']),
-                ])
-            );
-        }
-
-        if (Schema::hasTable('website_suggestions')) {
-            $rows = $rows->concat(
-                WebsiteSuggestion::where('status', 'pending')->latest()->take(5)->get()->map(fn (WebsiteSuggestion $r) => [
-                    'type' => 'website',
-                    'label' => $r->website_name ?: ($r->website_url ?: 'Website suggestion'),
-                    'from' => $r->website_url ?: 'Unknown',
-                    'date' => optional($r->created_at)->format('d M Y'),
-                    'sort_at' => optional($r->created_at)?->timestamp ?? 0,
-                    'url' => route('admin.community.index', ['tab' => 'websites', 'status' => 'pending']),
-                ])
-            );
-        }
-
-        if (Schema::hasTable('site_claims')) {
-            $rows = $rows->concat(
-                SiteClaim::where('status', 'pending')->latest()->take(5)->get()->map(fn (SiteClaim $r) => [
-                    'type' => 'claim',
-                    'label' => $r->website_name ?: ($r->domain ?: 'Site claim'),
-                    'from' => $r->contact_email ?: 'Unknown',
-                    'date' => optional($r->created_at)->format('d M Y'),
-                    'sort_at' => optional($r->created_at)?->timestamp ?? 0,
-                    'url' => route('admin.community.index', ['tab' => 'claims', 'status' => 'pending']),
-                ])
-            );
-        }
+        $rows = $rows
+            ->concat($this->communityQueueRows(ProblemReport::class, 'problem_reports', fn (ProblemReport $r) => [
+                'type' => 'problem',
+                'label' => $r->subject ?: 'Problem report',
+                'from' => $r->name ?: ($r->email ?: 'Unknown'),
+                'date' => optional($r->created_at)->format('d M Y'),
+                'sort_at' => optional($r->created_at)?->timestamp ?? 0,
+                'url' => route('admin.community.index', ['tab' => 'problems', 'status' => 'pending']),
+            ]))
+            ->concat($this->communityQueueRows(Suggestion::class, 'suggestions', fn (Suggestion $r) => [
+                'type' => 'suggestion',
+                'label' => Str::limit((string) $r->message, 60) ?: 'Suggestion',
+                'from' => $r->name ?: ($r->email ?: 'Unknown'),
+                'date' => optional($r->created_at)->format('d M Y'),
+                'sort_at' => optional($r->created_at)?->timestamp ?? 0,
+                'url' => route('admin.community.index', ['tab' => 'suggestions', 'status' => 'pending']),
+            ]))
+            ->concat($this->communityQueueRows(WebsiteSuggestion::class, 'website_suggestions', fn (WebsiteSuggestion $r) => [
+                'type' => 'website',
+                'label' => $r->website_name ?: ($r->website_url ?: 'Website suggestion'),
+                'from' => $r->website_url ?: 'Unknown',
+                'date' => optional($r->created_at)->format('d M Y'),
+                'sort_at' => optional($r->created_at)?->timestamp ?? 0,
+                'url' => route('admin.community.index', ['tab' => 'websites', 'status' => 'pending']),
+            ]))
+            ->concat($this->communityQueueRows(SiteClaim::class, 'site_claims', fn (SiteClaim $r) => [
+                'type' => 'claim',
+                'label' => $r->website_name ?: ($r->domain ?: 'Site claim'),
+                'from' => $r->contact_email ?: 'Unknown',
+                'date' => optional($r->created_at)->format('d M Y'),
+                'sort_at' => optional($r->created_at)?->timestamp ?? 0,
+                'url' => route('admin.community.index', ['tab' => 'claims', 'status' => 'pending']),
+            ]));
 
         return $rows->sortByDesc('sort_at')->take(5)->values()->map(function (array $row) {
             unset($row['sort_at']);
@@ -474,13 +464,38 @@ class DashboardMetricsService
     /**
      * @param  class-string  $model
      */
+    /**
+     * @param  class-string  $model
+     * @param  callable(object): array<string, mixed>  $mapper
+     * @return Collection<int, array<string, mixed>>
+     */
+    private function communityQueueRows(string $model, string $table, callable $mapper): Collection
+    {
+        try {
+            if (! Schema::hasTable($table)) {
+                return collect();
+            }
+
+            return $model::query()->where('status', 'pending')->latest('id')->take(5)->get()->map($mapper);
+        } catch (\Throwable) {
+            return collect();
+        }
+    }
+
+    /**
+     * @param  class-string  $model
+     */
     private function pendingCount(string $model, string $table): int
     {
-        if (! Schema::hasTable($table)) {
+        try {
+            if (! Schema::hasTable($table)) {
+                return 0;
+            }
+
+            return $model::where('status', 'pending')->count();
+        } catch (\Throwable) {
             return 0;
         }
-
-        return $model::where('status', 'pending')->count();
     }
 
     private function paidAtSql(): string

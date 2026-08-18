@@ -7,6 +7,7 @@ use App\Models\WebsiteSuggestion;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Per-tab status vocabulary for the admin Community inbox.
@@ -190,8 +191,12 @@ class CommunityInbox
      * @param  Builder|\Illuminate\Database\Query\Builder  $query
      * @param  list<string>  $columns
      */
-    public static function constrainSearch($query, array $columns, string $q): void
+    public static function constrainSearch($query, array $columns, string $q, ?string $table = null): void
     {
+        if ($table) {
+            $columns = array_values(array_filter($columns, fn ($column) => self::columnExists($table, $column)));
+        }
+
         if ($q === '' || $columns === []) {
             return;
         }
@@ -207,6 +212,15 @@ class CommunityInbox
                 }
             }
         });
+    }
+
+    public static function columnExists(string $table, string $column): bool
+    {
+        try {
+            return Schema::hasTable($table) && Schema::hasColumn($table, $column);
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     public static function emptyPage(Request $request, string $pageName): LengthAwarePaginator
@@ -311,6 +325,14 @@ class CommunityInbox
      */
     public static function occupyingSitesFor(iterable $suggestions): array
     {
+        try {
+            if (! Schema::hasTable('sites')) {
+                return [];
+            }
+        } catch (\Throwable) {
+            return [];
+        }
+
         $found = [];
         $seen = [];
         foreach ($suggestions as $suggestion) {

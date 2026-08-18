@@ -115,28 +115,41 @@ class FinanceOverviewService
      */
     public function opsQueues(): array
     {
-        $pendingDeposits = DepositRequest::where('status', 'pending');
+        $pendingCount = 0;
+        $pendingAmount = 0.0;
         $userMarkedPaidCount = 0;
         $userMarkedPaidAmount = 0.0;
-        if ($this->depositsHaveColumn('user_marked_paid_at')) {
-            $userMarked = (clone $pendingDeposits)->whereUserMarkedPaidAtIsRecorded();
-            $userMarkedPaidCount = (clone $userMarked)->count();
-            $userMarkedPaidAmount = (float) (clone $userMarked)->sum('amount');
+        if (DepositRequest::tableAvailable()) {
+            $pendingDeposits = DepositRequest::where('status', 'pending');
+            $pendingCount = (clone $pendingDeposits)->count();
+            $pendingAmount = (float) (clone $pendingDeposits)->sum('amount');
+            if ($this->depositsHaveColumn('user_marked_paid_at')) {
+                $userMarked = (clone $pendingDeposits)->whereUserMarkedPaidAtIsRecorded();
+                $userMarkedPaidCount = (clone $userMarked)->count();
+                $userMarkedPaidAmount = (float) (clone $userMarked)->sum('amount');
+            }
         }
-        $openWithdrawals = Withdrawal::whereIn('status', ['pending', 'processing']);
+
+        $openCount = 0;
+        $openAmount = 0.0;
+        if (Withdrawal::tableAvailable()) {
+            $openWithdrawals = Withdrawal::whereIn('status', ['pending', 'processing']);
+            $openCount = (clone $openWithdrawals)->count();
+            $openAmount = (float) (clone $openWithdrawals)->sum('net_amount');
+        }
         $pendingPayments = Order::query()->unpaidOps();
 
         return [
             'pending_deposits' => [
-                'count' => (clone $pendingDeposits)->count(),
-                'amount' => (float) (clone $pendingDeposits)->sum('amount'),
+                'count' => $pendingCount,
+                'amount' => $pendingAmount,
                 'user_marked_paid_count' => $userMarkedPaidCount,
                 'user_marked_paid_amount' => $userMarkedPaidAmount,
                 'url' => route('admin.deposits', ['status' => 'pending']),
             ],
             'open_withdrawals' => [
-                'count' => (clone $openWithdrawals)->count(),
-                'amount' => (float) (clone $openWithdrawals)->sum('net_amount'),
+                'count' => $openCount,
+                'amount' => $openAmount,
                 'url' => route('admin.withdrawals', ['queue' => 'open']),
             ],
             'unpaid_orders' => [
@@ -272,10 +285,12 @@ class FinanceOverviewService
             $topPublishers = array_slice($topPublishers, 0, 8);
         }
 
-        $openWithdrawals = Withdrawal::with('user:id,name,email')
-            ->whereIn('status', ['pending', 'processing'])
-            ->orderBy('created_at')
-            ->get();
+        $openWithdrawals = Withdrawal::tableAvailable()
+            ? Withdrawal::with('user:id,name,email')
+                ->whereIn('status', ['pending', 'processing'])
+                ->orderBy('created_at')
+                ->get()
+            : collect();
         $openWithdrawalNets = round((float) $openWithdrawals->sum('net_amount'), 2);
 
         $openWithdrawalRows = $openWithdrawals->take(8)->map(fn (Withdrawal $w) => [
@@ -316,20 +331,26 @@ class FinanceOverviewService
      */
     public function moneyIn(?Carbon $start, Carbon $end): array
     {
-        $depositsCompleted = DepositRequest::where('status', 'completed');
-        $this->applyCreatedOrPaidWindow($depositsCompleted, $start, $end, 'approved_at');
+        $depositsCompleted = DepositRequest::tableAvailable()
+            ? DepositRequest::where('status', 'completed')
+            : null;
+        if ($depositsCompleted) {
+            $this->applyCreatedOrPaidWindow($depositsCompleted, $start, $end, 'approved_at');
+        }
 
-        $depositsByMethod = (clone $depositsCompleted)
-            ->selectRaw('payment_method, COUNT(*) as count, SUM(amount) as total')
-            ->groupBy('payment_method')
-            ->get()
-            ->mapWithKeys(fn ($r) => [
-                (string) ($r->payment_method ?: 'unknown') => [
-                    'count' => (int) $r->count,
-                    'amount' => (float) $r->total,
-                ],
-            ])
-            ->all();
+        $depositsByMethod = $depositsCompleted
+            ? (clone $depositsCompleted)
+                ->selectRaw('payment_method, COUNT(*) as count, SUM(amount) as total')
+                ->groupBy('payment_method')
+                ->get()
+                ->mapWithKeys(fn ($r) => [
+                    (string) ($r->payment_method ?: 'unknown') => [
+                        'count' => (int) $r->count,
+                        'amount' => (float) $r->total,
+                    ],
+                ])
+                ->all()
+            : [];
 
         $paidOrders = Order::where('payment_status', 'paid');
         $this->applyPaidWindow($paidOrders, $start, $end);
@@ -356,30 +377,37 @@ class FinanceOverviewService
             ->whereIn('payment_method', $this->manualOrderMethods())
             ->sum('total_amount');
 
-        $depositsTotal = (float) (clone $depositsCompleted)->sum('amount');
+        $depositsTotal = $depositsCompleted ? (float) (clone $depositsCompleted)->sum('amount') : 0.0;
         $manualMethods = ['wise', 'bank', 'crypto'];
-        $manualDeposits = (float) (clone $depositsCompleted)
-            ->whereIn('payment_method', $manualMethods)
-            ->sum('amount');
+        $manualDeposits = $depositsCompleted
+            ? (float) (clone $depositsCompleted)
+                ->whereIn('payment_method', $manualMethods)
+                ->sum('amount')
+            : 0.0;
         // Session id alone must not pull a bank/Wise/crypto row into Stripe —
         // cash_in_bank sums stripe + manual and would double-count the deposit.
-        $stripeDeposits = (float) (clone $depositsCompleted)
-            ->where(function ($q) use ($manualMethods) {
-                $q->whereIn('payment_method', ['card', 'stripe'])
-                    ->orWhere(function ($q) use ($manualMethods) {
-                        $q->whereNotNull('stripe_session_id')
-                            ->where('stripe_session_id', '!=', '')
-                            ->where(function ($q) use ($manualMethods) {
-                                $q->whereNull('payment_method')
-                                    ->orWhereNotIn('payment_method', $manualMethods);
-                            });
-                    });
-            })
-            ->sum('amount');
+        $stripeDeposits = 0.0;
+        if ($depositsCompleted) {
+            $stripeDeposits = (float) (clone $depositsCompleted)
+                ->where(function ($q) use ($manualMethods) {
+                    $q->whereIn('payment_method', ['card', 'stripe']);
+                    if ($this->depositsHaveColumn('stripe_session_id')) {
+                        $q->orWhere(function ($q) use ($manualMethods) {
+                            $q->whereNotNull('stripe_session_id')
+                                ->where('stripe_session_id', '!=', '')
+                                ->where(function ($q) use ($manualMethods) {
+                                    $q->whereNull('payment_method')
+                                        ->orWhereNotIn('payment_method', $manualMethods);
+                                });
+                        });
+                    }
+                })
+                ->sum('amount');
+        }
 
         return [
             'deposits_completed' => [
-                'count' => (clone $depositsCompleted)->count(),
+                'count' => $depositsCompleted ? (clone $depositsCompleted)->count() : 0,
                 'amount' => $depositsTotal,
                 'by_method' => $depositsByMethod,
                 'stripe' => $stripeDeposits,
@@ -431,10 +459,16 @@ class FinanceOverviewService
             $earningsCount = $this->reversedPublisherPayoutCount($start, $end);
         }
 
-        $paidWithdrawals = Withdrawal::where('status', 'completed');
-        $this->applyWithdrawalProcessedWindow($paidWithdrawals, $start, $end);
+        $paidWithdrawals = Withdrawal::tableAvailable()
+            ? Withdrawal::where('status', 'completed')
+            : null;
+        if ($paidWithdrawals) {
+            $this->applyWithdrawalProcessedWindow($paidWithdrawals, $start, $end);
+        }
 
-        $openWithdrawals = Withdrawal::whereIn('status', ['pending', 'processing']);
+        $openWithdrawals = Withdrawal::tableAvailable()
+            ? Withdrawal::whereIn('status', ['pending', 'processing'])
+            : null;
 
         return [
             'earnings_credited' => [
@@ -447,14 +481,14 @@ class FinanceOverviewService
                 ),
             ],
             'withdrawals_paid' => [
-                'count' => (clone $paidWithdrawals)->count(),
-                'gross' => (float) (clone $paidWithdrawals)->sum('amount'),
-                'net' => (float) (clone $paidWithdrawals)->sum('net_amount'),
-                'fees' => (float) (clone $paidWithdrawals)->sum('fee'),
+                'count' => $paidWithdrawals ? (clone $paidWithdrawals)->count() : 0,
+                'gross' => $paidWithdrawals ? (float) (clone $paidWithdrawals)->sum('amount') : 0.0,
+                'net' => $paidWithdrawals ? (float) (clone $paidWithdrawals)->sum('net_amount') : 0.0,
+                'fees' => $paidWithdrawals ? (float) (clone $paidWithdrawals)->sum('fee') : 0.0,
             ],
             'withdrawals_open' => [
-                'count' => (clone $openWithdrawals)->count(),
-                'net' => (float) (clone $openWithdrawals)->sum('net_amount'),
+                'count' => $openWithdrawals ? (clone $openWithdrawals)->count() : 0,
+                'net' => $openWithdrawals ? (float) (clone $openWithdrawals)->sum('net_amount') : 0.0,
             ],
         ];
     }
@@ -481,9 +515,12 @@ class FinanceOverviewService
         $this->applyCompletedWindow($completedPaid, $start, $end);
         $gmvCompleted = (float) $completedPaid->sum('total_amount');
 
-        $withdrawalFees = Withdrawal::where('status', 'completed');
-        $this->applyWithdrawalProcessedWindow($withdrawalFees, $start, $end);
-        $withdrawalFeeSum = (float) (clone $withdrawalFees)->sum('fee');
+        $withdrawalFeeSum = 0.0;
+        if (Withdrawal::tableAvailable()) {
+            $withdrawalFees = Withdrawal::where('status', 'completed');
+            $this->applyWithdrawalProcessedWindow($withdrawalFees, $start, $end);
+            $withdrawalFeeSum = (float) (clone $withdrawalFees)->sum('fee');
+        }
 
         $refundOrders = Order::where('payment_status', 'refunded');
         $this->applyRefundWindow($refundOrders, $start, $end);
@@ -559,9 +596,12 @@ class FinanceOverviewService
             2
         );
 
-        $cashOutQuery = Withdrawal::where('status', 'completed');
-        $this->applyWithdrawalProcessedWindow($cashOutQuery, $start, $end);
-        $cashOut = (float) $cashOutQuery->sum('net_amount');
+        $cashOut = 0.0;
+        if (Withdrawal::tableAvailable()) {
+            $cashOutQuery = Withdrawal::where('status', 'completed');
+            $this->applyWithdrawalProcessedWindow($cashOutQuery, $start, $end);
+            $cashOut = (float) $cashOutQuery->sum('net_amount');
+        }
 
         return [
             'cash_in_bank' => $cashIn,
@@ -589,9 +629,13 @@ class FinanceOverviewService
             ? Wallet::where('user_id', $user->id)->where('role_id', $publisherRoleId)->first()
             : null;
 
-        $deposits = DepositRequest::where('user_id', $user->id)->latest()->limit(20)->get();
+        $deposits = DepositRequest::tableAvailable()
+            ? DepositRequest::where('user_id', $user->id)->latest()->limit(20)->get()
+            : collect();
         $orders = Order::where('user_id', $user->id)->latest()->limit(20)->get();
-        $withdrawals = Withdrawal::where('user_id', $user->id)->latest()->limit(20)->get();
+        $withdrawals = Withdrawal::tableAvailable()
+            ? Withdrawal::where('user_id', $user->id)->latest()->limit(20)->get()
+            : collect();
         $ledger = $this->walletTransactionsAvailable()
             ? WalletTransaction::where('user_id', $user->id)->latest()->limit(50)->get()
             : collect();
@@ -629,7 +673,9 @@ class FinanceOverviewService
             'withdrawals' => $withdrawals,
             'ledger' => $ledger,
             'totals' => [
-                'deposits_completed' => (float) DepositRequest::where('user_id', $user->id)->where('status', 'completed')->sum('amount'),
+                'deposits_completed' => DepositRequest::tableAvailable()
+                    ? (float) DepositRequest::where('user_id', $user->id)->where('status', 'completed')->sum('amount')
+                    : 0.0,
                 'gmv_as_advertiser' => round($gmvAsAdvertiser, 2),
                 'current_paid_gmv' => round($currentPaidGmv, 2),
                 'refunds_as_advertiser' => $refundsAsAdvertiser,
@@ -637,8 +683,12 @@ class FinanceOverviewService
                 'paid_orders_count' => $paidOrdersCount,
                 'earnings_as_publisher' => round($earnings, 2),
                 'platform_fees_on_their_sites' => round($feesOnTheirSales, 2),
-                'withdrawals_paid_net' => (float) Withdrawal::where('user_id', $user->id)->where('status', 'completed')->sum('net_amount'),
-                'withdrawals_open_net' => (float) Withdrawal::where('user_id', $user->id)->whereIn('status', ['pending', 'processing'])->sum('net_amount'),
+                'withdrawals_paid_net' => Withdrawal::tableAvailable()
+                    ? (float) Withdrawal::where('user_id', $user->id)->where('status', 'completed')->sum('net_amount')
+                    : 0.0,
+                'withdrawals_open_net' => Withdrawal::tableAvailable()
+                    ? (float) Withdrawal::where('user_id', $user->id)->whereIn('status', ['pending', 'processing'])->sum('net_amount')
+                    : 0.0,
             ],
         ];
     }
@@ -1104,7 +1154,13 @@ class FinanceOverviewService
     private function applyCreatedOrPaidWindow($query, ?Carbon $start, Carbon $end, string $preferred): void
     {
         $table = $query->getModel()->getTable();
-        $this->applyCoalesceWindow($query, $start, $end, $table.'.'.$preferred, $table.'.created_at');
+        $preferredColumn = $table.'.'.$preferred;
+        if ($table === 'deposit_requests' && ! $this->depositsHaveColumn($preferred)) {
+            $this->applyCoalesceWindow($query, $start, $end, $table.'.created_at', $table.'.created_at');
+
+            return;
+        }
+        $this->applyCoalesceWindow($query, $start, $end, $preferredColumn, $table.'.created_at');
     }
 
     /**
@@ -1135,6 +1191,12 @@ class FinanceOverviewService
      */
     private function applyWithdrawalProcessedWindow($query, ?Carbon $start, Carbon $end): void
     {
+        if (! Withdrawal::hasProcessedAtColumn()) {
+            $this->applyCoalesceWindow($query, $start, $end, 'withdrawals.updated_at', 'withdrawals.created_at');
+
+            return;
+        }
+
         $floor = Withdrawal::PLAUSIBLE_SQL_DATETIME_FLOOR;
         $ceil = Withdrawal::PLAUSIBLE_SQL_DATETIME_CEIL;
         $expr = 'COALESCE(CASE WHEN withdrawals.processed_at >= ? AND withdrawals.processed_at <= ?'

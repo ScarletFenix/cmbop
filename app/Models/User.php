@@ -292,7 +292,15 @@ class User extends Authenticatable implements MustVerifyEmail
 
     public function hasRole(string $role): bool
     {
-        return $this->roles()->where('name', $role)->exists();
+        try {
+            if (! Schema::hasTable('roles') || ! Schema::hasTable('role_user')) {
+                return false;
+            }
+
+            return $this->roles()->where('name', $role)->exists();
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     public function activeRoleRelation()
@@ -302,15 +310,28 @@ class User extends Authenticatable implements MustVerifyEmail
 
     public function activeRoleModel(): ?Role
     {
-        $active = $this->activeRoleRelation()->first();
+        try {
+            if (! Schema::hasTable('roles')) {
+                return null;
+            }
 
-        // belongsTo does not check the role pivot — ignore stale active_role_id
-        // values that point at a role the user no longer has.
-        if ($active && $this->roles()->where('roles.id', $active->id)->exists()) {
-            return $active;
+            $active = $this->activeRoleRelation()->first();
+
+            // belongsTo does not check the role pivot — ignore stale active_role_id
+            // values that point at a role the user no longer has.
+            if ($active && Schema::hasTable('role_user')
+                && $this->roles()->where('roles.id', $active->id)->exists()) {
+                return $active;
+            }
+
+            if (! Schema::hasTable('role_user')) {
+                return $active;
+            }
+
+            return $this->roles()->first();
+        } catch (\Throwable) {
+            return null;
         }
-
-        return $this->roles()->first();
     }
 
     public function activeRole(): ?string
@@ -384,6 +405,31 @@ class User extends Authenticatable implements MustVerifyEmail
     public function hasCanActivateSitesColumn(): bool
     {
         return self::ensureCanActivateSitesColumn();
+    }
+
+    public static function hasUsersColumn(string $column): bool
+    {
+        try {
+            return Schema::hasTable('users') && Schema::hasColumn('users', $column);
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $attributes
+     * @return array<string, mixed>
+     */
+    public static function existingAttributes(array $attributes): array
+    {
+        $kept = [];
+        foreach ($attributes as $column => $value) {
+            if (is_string($column) && $column !== '' && static::hasUsersColumn($column)) {
+                $kept[$column] = $value;
+            }
+        }
+
+        return $kept;
     }
 
     /** Staff roles that share the admin panel (with different permissions). */

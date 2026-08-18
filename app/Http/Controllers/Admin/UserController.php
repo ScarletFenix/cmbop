@@ -11,6 +11,8 @@ use App\Services\Wallet\PayoutProfileService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\ValidationException;
 
 class UserController extends Controller
 {
@@ -27,13 +29,21 @@ class UserController extends Controller
     // ✅ Users listing
     public function index(Request $request)
     {
-        $query = User::with('roles')
-            ->withCount([
+        $hasRolePivot = $this->rolePivotAvailable();
+        $query = User::query();
+        if ($hasRolePivot) {
+            $query->with('roles');
+        }
+        if ($this->tableExists('orders') && $this->hasColumn('orders', 'payment_status')) {
+            $query->withCount([
                 'orders as paid_orders_count' => fn ($q) => $q->where('payment_status', 'paid'),
-            ])
-            ->withSum([
-                'orders as paid_orders_total' => fn ($q) => $q->where('payment_status', 'paid'),
-            ], 'total_amount');
+            ]);
+            if ($this->hasColumn('orders', 'total_amount')) {
+                $query->withSum([
+                    'orders as paid_orders_total' => fn ($q) => $q->where('payment_status', 'paid'),
+                ], 'total_amount');
+            }
+        }
 
         // Orders / finance deep-links: /admin/users?user=123#user-123
         // The hash alone misses when the user is not on page 1 of 10.
@@ -41,7 +51,21 @@ class UserController extends Controller
             $query->whereKey($request->integer('user'));
         }
 
-        $users = $query->latest()->paginate(10)->withQueryString();
+        try {
+            $users = $query->latest()->paginate(10)->withQueryString();
+        } catch (\Throwable $e) {
+            report($e);
+            $fallback = User::query();
+            if ($request->integer('user') > 0) {
+                $fallback->whereKey($request->integer('user'));
+            }
+            $users = $fallback->latest()->paginate(10)->withQueryString();
+        }
+        if (! $hasRolePivot) {
+            $users->getCollection()->each(function (User $user) {
+                $user->setRelation('roles', collect());
+            });
+        }
         $adminCount = $this->adminCount();
         $marketingCount = $this->marketingCount();
         $maxMarketing = self::MAX_MARKETING;
@@ -57,6 +81,13 @@ class UserController extends Controller
         ]);
 
         $user = User::findOrFail($id);
+
+        if (! User::hasUsersColumn('company_name')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Company name cannot be saved on this database.',
+            ], 422);
+        }
 
         try {
 
@@ -132,7 +163,14 @@ class UserController extends Controller
 
         $user = User::findOrFail($id);
         $before = $user->payoutProfile();
-        $this->payoutProfiles->adminUpdateProfile($user, $method, $data);
+        try {
+            $this->payoutProfiles->adminUpdateProfile($user, $method, $data);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->validator->errors()->first() ?: 'Payout details cannot be saved on this database.',
+            ], 422);
+        }
         $after = $user->fresh()->payoutProfile();
 
         if (! $this->payoutDestinationsChanged($before, $after)) {
@@ -195,6 +233,12 @@ class UserController extends Controller
         ]);
 
         $user = User::findOrFail($id);
+        if (! $this->rolePivotAvailable()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Roles cannot be updated on this database.',
+            ], 422);
+        }
         $previousRoles = $user->roles()->pluck('name')->all();
 
         // Self-heal if production never re-seeded after marketing was introduced.
@@ -309,6 +353,10 @@ class UserController extends Controller
 
     private function adminCount(): int
     {
+        if (! $this->rolePivotAvailable()) {
+            return 0;
+        }
+
         $adminRoleId = Role::where('name', 'admin')->value('id');
         if (! $adminRoleId) {
             return 0;
@@ -319,12 +367,39 @@ class UserController extends Controller
 
     private function marketingCount(): int
     {
+        if (! $this->rolePivotAvailable()) {
+            return 0;
+        }
+
         $marketingRoleId = Role::where('name', 'marketing')->value('id');
         if (! $marketingRoleId) {
             return 0;
         }
 
         return (int) DB::table('role_user')->where('role_id', $marketingRoleId)->distinct()->count('user_id');
+    }
+
+    private function rolePivotAvailable(): bool
+    {
+        return $this->tableExists('roles') && $this->tableExists('role_user');
+    }
+
+    private function tableExists(string $table): bool
+    {
+        try {
+            return Schema::hasTable($table);
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    private function hasColumn(string $table, string $column): bool
+    {
+        try {
+            return $this->tableExists($table) && Schema::hasColumn($table, $column);
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     /**
