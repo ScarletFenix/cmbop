@@ -12,75 +12,83 @@ use App\Services\Billing\InvoicePdfGenerator;
 use App\Support\UserFacingError;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\Log;
 
 class InvoiceController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Invoice::query()->with(['user:id,name,email', 'order:id,order_number']);
-
         $search = is_string($request->input('search')) ? trim($request->input('search')) : '';
-        if ($search !== '') {
-            $query->where(function ($q) use ($search) {
-                $q->where('invoice_number', 'like', "%{$search}%")
-                    ->orWhere('order_number', 'like', "%{$search}%")
-                    ->orWhere('reference_code', 'like', "%{$search}%")
-                    ->orWhere('customer_name', 'like', "%{$search}%")
-                    ->orWhere('customer_email', 'like', "%{$search}%")
-                    ->orWhere('transaction_id', 'like', "%{$search}%")
-                    ->orWhereHas('user', fn ($user) => $user->where('name', 'like', "%{$search}%"));
-            });
-        }
-
-        $allowedStatuses = [
-            Invoice::STATUS_PAID,
-            Invoice::STATUS_ISSUED,
-            Invoice::STATUS_PENDING,
-            Invoice::STATUS_FAILED,
-            Invoice::STATUS_REFUNDED,
-            Invoice::STATUS_CANCELLED,
-        ];
-        if ($request->filled('status') && in_array($request->status, $allowedStatuses, true)) {
-            $query->where('status', $request->status);
-        }
-
-        $allowedTypes = [
-            Invoice::TYPE_TAX_INVOICE,
-            Invoice::TYPE_PAYMENT_RECEIPT,
-            Invoice::TYPE_REFUND_RECEIPT,
-            Invoice::TYPE_PAYMENT_FAILURE,
-            Invoice::TYPE_DEPOSIT_RECEIPT,
-            Invoice::TYPE_WITHDRAWAL_PAYOUT,
-        ];
-        if ($request->filled('type') && in_array($request->type, $allowedTypes, true)) {
-            $query->where('type', $request->type);
-        }
-
         $from = $this->parseDate($request->input('from'));
         $to = $this->parseDate($request->input('to'));
         if ($from && $to && $from->gt($to)) {
             [$from, $to] = [$to, $from];
         }
-        if ($from) {
-            $query->whereDate('invoice_date', '>=', $from->toDateString());
-        }
-        if ($to) {
-            $query->whereDate('invoice_date', '<=', $to->toDateString());
-        }
 
-        $invoices = $query->latest('invoice_date')->latest('id')->paginate(25)->withQueryString();
+        $invoices = new LengthAwarePaginator([], 0, 25);
+        $invoices->withPath($request->url())->appends($request->query());
+        $stats = $this->emptyInvoiceStats();
 
-        $stats = [
-            'documents' => Invoice::count(),
-            'tax_invoices' => Invoice::where('type', Invoice::TYPE_TAX_INVOICE)->count(),
-            'downloaded' => (int) Invoice::sum('download_count'),
-            'emailed' => (int) Invoice::sum('email_count'),
-            'failures' => BillingEvent::where('event_type', 'invoice_generation_failed')->count(),
-            'payment_failures' => Invoice::where('type', Invoice::TYPE_PAYMENT_FAILURE)->count(),
-            'refunds' => Invoice::where('type', Invoice::TYPE_REFUND_RECEIPT)->count(),
-            'deposits' => Invoice::where('type', Invoice::TYPE_DEPOSIT_RECEIPT)->count(),
-            'payouts' => Invoice::where('type', Invoice::TYPE_WITHDRAWAL_PAYOUT)->count(),
-        ];
+        if (Invoice::tableAvailable()) {
+            try {
+                $query = Invoice::query()->with(['user:id,name,email', 'order:id,order_number']);
+
+                if ($search !== '') {
+                    $query->where(function ($q) use ($search) {
+                        $q->where('invoice_number', 'like', "%{$search}%")
+                            ->orWhere('order_number', 'like', "%{$search}%")
+                            ->orWhere('reference_code', 'like', "%{$search}%")
+                            ->orWhere('customer_name', 'like', "%{$search}%")
+                            ->orWhere('customer_email', 'like', "%{$search}%")
+                            ->orWhere('transaction_id', 'like', "%{$search}%")
+                            ->orWhereHas('user', fn ($user) => $user->where('name', 'like', "%{$search}%"));
+                    });
+                }
+
+                $allowedStatuses = [
+                    Invoice::STATUS_PAID,
+                    Invoice::STATUS_ISSUED,
+                    Invoice::STATUS_PENDING,
+                    Invoice::STATUS_FAILED,
+                    Invoice::STATUS_REFUNDED,
+                    Invoice::STATUS_CANCELLED,
+                ];
+                $status = is_string($request->input('status')) ? $request->input('status') : '';
+                if ($status !== '' && in_array($status, $allowedStatuses, true)) {
+                    $query->where('status', $status);
+                }
+
+                $allowedTypes = [
+                    Invoice::TYPE_TAX_INVOICE,
+                    Invoice::TYPE_PAYMENT_RECEIPT,
+                    Invoice::TYPE_REFUND_RECEIPT,
+                    Invoice::TYPE_PAYMENT_FAILURE,
+                    Invoice::TYPE_DEPOSIT_RECEIPT,
+                    Invoice::TYPE_WITHDRAWAL_PAYOUT,
+                ];
+                $type = is_string($request->input('type')) ? $request->input('type') : '';
+                if ($type !== '' && in_array($type, $allowedTypes, true)) {
+                    $query->where('type', $type);
+                }
+
+                if ($from) {
+                    $query->whereDate('invoice_date', '>=', $from->toDateString());
+                }
+                if ($to) {
+                    $query->whereDate('invoice_date', '<=', $to->toDateString());
+                }
+
+                $invoices = $query->latest('invoice_date')->latest('id')->paginate(25)->withQueryString();
+                $stats = $this->invoiceIndexStats();
+            } catch (\Throwable $e) {
+                Log::warning('Admin invoices index failed', [
+                    'error' => $e->getMessage(),
+                ]);
+                $invoices = new LengthAwarePaginator([], 0, 25);
+                $invoices->withPath($request->url())->appends($request->query());
+            }
+        }
 
         return view('admin.invoices.index', [
             'invoices' => $invoices,
@@ -94,14 +102,29 @@ class InvoiceController extends Controller
 
     public function show(Invoice $invoice)
     {
-        $invoice->load([
+        $with = [
             'user:id,name,email',
             'order:id,order_number',
             'parentInvoice',
             'childInvoices',
             'cancelledBy:id,name,email',
-            'events' => fn ($q) => $q->latest()->limit(30),
-        ]);
+        ];
+        if (BillingEvent::tableAvailable()) {
+            $with['events'] = fn ($q) => $q->latest()->limit(30);
+        }
+
+        try {
+            $invoice->load($with);
+        } catch (\Throwable $e) {
+            Log::warning('Admin invoice show relations failed', [
+                'invoice_id' => $invoice->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        if (! $invoice->relationLoaded('events')) {
+            $invoice->setRelation('events', collect());
+        }
 
         return view('admin.invoices.show', [
             'invoice' => $invoice,
@@ -190,6 +213,10 @@ class InvoiceController extends Controller
 
     public function generate(Request $request, BillingDocumentService $billing)
     {
+        if ($denied = $this->invoicesUnavailableResponse()) {
+            return $denied;
+        }
+
         $data = $request->validate([
             'order_id' => 'required|integer|exists:orders,id',
         ]);
@@ -235,6 +262,10 @@ class InvoiceController extends Controller
      */
     public function backfillMissing(Request $request, BillingDocumentService $billing)
     {
+        if ($denied = $this->invoicesUnavailableResponse()) {
+            return $denied;
+        }
+
         $data = $request->validate([
             'limit' => 'nullable|integer|min:1|max:200',
         ]);
@@ -271,6 +302,10 @@ class InvoiceController extends Controller
      */
     public function regenerateMissingPdfs(Request $request, BillingDocumentService $billing)
     {
+        if ($denied = $this->invoicesUnavailableResponse()) {
+            return $denied;
+        }
+
         $data = $request->validate([
             'limit' => 'nullable|integer|min:1|max:200',
         ]);
@@ -317,6 +352,54 @@ class InvoiceController extends Controller
         );
 
         return back()->with('success', 'PDF regenerated for '.$invoice->invoice_number);
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private function emptyInvoiceStats(): array
+    {
+        return [
+            'documents' => 0,
+            'tax_invoices' => 0,
+            'downloaded' => 0,
+            'emailed' => 0,
+            'failures' => 0,
+            'payment_failures' => 0,
+            'refunds' => 0,
+            'deposits' => 0,
+            'payouts' => 0,
+        ];
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private function invoiceIndexStats(): array
+    {
+        $stats = $this->emptyInvoiceStats();
+        $stats['documents'] = Invoice::count();
+        $stats['tax_invoices'] = Invoice::where('type', Invoice::TYPE_TAX_INVOICE)->count();
+        $stats['downloaded'] = (int) Invoice::sum('download_count');
+        $stats['emailed'] = (int) Invoice::sum('email_count');
+        $stats['payment_failures'] = Invoice::where('type', Invoice::TYPE_PAYMENT_FAILURE)->count();
+        $stats['refunds'] = Invoice::where('type', Invoice::TYPE_REFUND_RECEIPT)->count();
+        $stats['deposits'] = Invoice::where('type', Invoice::TYPE_DEPOSIT_RECEIPT)->count();
+        $stats['payouts'] = Invoice::where('type', Invoice::TYPE_WITHDRAWAL_PAYOUT)->count();
+        if (BillingEvent::tableAvailable()) {
+            $stats['failures'] = BillingEvent::where('event_type', 'invoice_generation_failed')->count();
+        }
+
+        return $stats;
+    }
+
+    private function invoicesUnavailableResponse()
+    {
+        if (Invoice::tableAvailable()) {
+            return null;
+        }
+
+        return back()->with('error', 'Invoices are temporarily unavailable. Please try again after migrations are applied.');
     }
 
     private function parseDate(mixed $value): ?Carbon
