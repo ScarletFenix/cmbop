@@ -10,6 +10,7 @@ use App\Models\Wallet;
 use App\Services\EmailNotificationService;
 use App\Services\Wallet\WalletLedgerService;
 use App\Services\Wallet\WelcomeBonusService;
+use App\Support\UserMessages;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -112,7 +113,7 @@ class SocialiteController extends Controller
             $registerKey = $bonusService->registerRateLimitKey($request);
             if (RateLimiter::tooManyAttempts($registerKey, 5)) {
                 return $this->loginRedirect(
-                    'Too many registration attempts. Please try again later.'
+                    UserMessages::get('register.throttled')
                 );
             }
             RateLimiter::hit($registerKey, 600);

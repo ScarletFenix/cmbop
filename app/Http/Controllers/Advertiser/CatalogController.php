@@ -53,6 +53,7 @@ use App\Support\AdvertiserOrderStatus;
 use App\Support\CatalogVisitUrl;
 use App\Support\SiteTag;
 use App\Support\UserFacingError;
+use App\Support\UserMessages;
 use Carbon\CarbonInterface;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\JsonResponse;
@@ -4328,7 +4329,7 @@ class CatalogController extends Controller
                 if ($settled->isEmpty()) {
                     return response()->json([
                         'success' => false,
-                        'message' => 'The leftover card credit could not be applied. Try again or contact support.',
+                        'message' => UserMessages::get('payment.leftover_credit_failed'),
                     ], 422);
                 }
 
@@ -4337,7 +4338,7 @@ class CatalogController extends Controller
                 return response()->json([
                     'success' => true,
                     'settled' => true,
-                    'message' => 'This leftover was paid using the card credit already in your wallet.',
+                    'message' => UserMessages::get('payment.leftover_credit_applied'),
                     'reference_code' => $referenceCode,
                     'amount_due' => 0,
                     'unfulfilled_credit_applied' => $appliedCredit,

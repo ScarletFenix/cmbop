@@ -7,6 +7,7 @@ use App\Models\PaypalWebhookLog;
 use App\Services\OrderPaymentService;
 use App\Services\PaypalCheckoutService;
 use App\Services\WalletPaypalDepositService;
+use App\Support\UserMessages;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -18,7 +19,7 @@ class PaypalWebhookController extends Controller
         if (! $paypal->configured() || trim((string) config('services.paypal.webhook_id', '')) === '') {
             Log::error('PayPal webhook is not configured');
 
-            return response()->json(['error' => 'Webhook not configured'], 500);
+            return response()->json(['error' => UserMessages::get('payment.webhook_unavailable')], 500);
         }
 
         try {
@@ -28,7 +29,7 @@ class PaypalWebhookController extends Controller
                     'reason' => $verified['reason'] ?? $verified['verification_status'] ?? null,
                 ]);
 
-                return response()->json(['error' => 'Invalid signature'], 400);
+                return response()->json(['error' => UserMessages::get('payment.webhook_signature')], 400);
             }
 
             $event = is_array($verified['event'] ?? null) ? $verified['event'] : [];

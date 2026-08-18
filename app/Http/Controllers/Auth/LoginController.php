@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Support\UserMessages;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\RateLimiter;
@@ -33,7 +34,7 @@ class LoginController extends Controller
         if (RateLimiter::tooManyAttempts($key, 5) || RateLimiter::tooManyAttempts($ipKey, 30)) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Too many login attempts. Please try again later.',
+                'message' => UserMessages::get('login.throttled'),
             ]);
         }
 
@@ -60,7 +61,7 @@ class LoginController extends Controller
         if (! Auth::attempt($credentials, $remember)) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Invalid email or password.',
+                'message' => UserMessages::get('login.invalid'),
             ]);
         }
 
@@ -72,7 +73,7 @@ class LoginController extends Controller
 
             return response()->json([
                 'status' => 'unverified',
-                'message' => 'Your email is not verified.',
+                'message' => UserMessages::get('login.unverified'),
                 'email' => $user->email,
             ]);
         }
@@ -87,7 +88,7 @@ class LoginController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'message' => 'Login successful!',
+            'message' => UserMessages::get('login.success'),
             'redirect' => $redirect,
         ]);
     }
