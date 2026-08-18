@@ -47,8 +47,8 @@ class NewSiteNotification extends PlatformMailable
             ->with([
                 'siteName' => $this->site->site_name,
                 'siteUrl' => $this->site->site_url,
-                'publisherName' => $this->site->publisher->name ?? 'Unknown',
-                'publisherEmail' => $this->site->publisher->email ?? 'Unknown',
+                'publisherName' => $this->site->publisher?->name ?? 'Unknown',
+                'publisherEmail' => $this->site->publisher?->email ?? 'Unknown',
                 'action' => $this->action,
                 'adminUrl' => $this->openUrl ?: self::reviewUrl($this->site),
             ]);

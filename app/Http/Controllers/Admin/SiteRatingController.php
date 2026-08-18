@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Site;
 use App\Models\SiteRating;
 use App\Services\ActivityLogger;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Log;
@@ -18,9 +19,10 @@ class SiteRatingController extends Controller
         $ratings = new LengthAwarePaginator([], 0, 30);
         $ratings->withPath($request->url())->appends($request->query());
         $sites = collect();
+        $ratingsTableReady = $this->ratingsTableReady();
 
         try {
-            if (Schema::hasTable('site_ratings')) {
+            if ($ratingsTableReady) {
                 $query = SiteRating::query()
                     ->with(['site:'.implode(',', $this->siteRelationSelectColumns()), 'user:id,name,email'])
                     ->latest('id');
@@ -59,11 +61,15 @@ class SiteRatingController extends Controller
             $ratings->withPath($request->url())->appends($request->query());
         }
 
-        return view('admin.site-ratings', compact('ratings', 'sites'));
+        return view('admin.site-ratings', compact('ratings', 'sites', 'ratingsTableReady'));
     }
 
     public function store(Request $request)
     {
+        if (! $this->ratingsTableReady()) {
+            return $this->ratingsTableUnavailableResponse();
+        }
+
         $data = $request->validate([
             'site_id' => 'required|exists:sites,id',
             'user_id' => 'nullable|exists:users,id',
@@ -100,6 +106,10 @@ class SiteRatingController extends Controller
 
     public function update(Request $request, int $id)
     {
+        if (! $this->ratingsTableReady()) {
+            return $this->ratingsTableUnavailableResponse();
+        }
+
         $rating = SiteRating::findOrFail($id);
 
         $data = $request->validate([
@@ -133,6 +143,10 @@ class SiteRatingController extends Controller
 
     public function destroy(int $id)
     {
+        if (! $this->ratingsTableReady()) {
+            return $this->ratingsTableUnavailableResponse();
+        }
+
         $rating = SiteRating::findOrFail($id);
         $siteId = $rating->site_id;
         $siteName = $rating->site?->site_name;
@@ -152,6 +166,23 @@ class SiteRatingController extends Controller
             'success' => true,
             'message' => 'Rating deleted',
         ]);
+    }
+
+    private function ratingsTableReady(): bool
+    {
+        try {
+            return Schema::hasTable('site_ratings');
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    private function ratingsTableUnavailableResponse(): JsonResponse
+    {
+        return response()->json([
+            'success' => false,
+            'message' => 'Ratings are unavailable until the database migration has been run.',
+        ], 503);
     }
 
     /**

@@ -453,10 +453,49 @@ class SiteRatingTest extends TestCase
                 ->get(route('admin.site-ratings.index'))
                 ->assertOk()
                 ->assertSee('Publisher Ratings', false)
-                ->assertSee('No ratings yet.', false);
+                ->assertSee('No ratings yet.', false)
+                ->assertDontSee('id="addRatingBtn"', false)
+                ->assertDontSee('>Add rating</button>', false);
         } finally {
             // DROP TABLE commits outside RefreshDatabase's transaction — put the
             // table back so later tests in this process still have a schema.
+            $this->artisan('migrate', [
+                '--path' => 'database/migrations/2026_07_16_240000_create_site_ratings_table.php',
+                '--force' => true,
+            ]);
+            $this->artisan('migrate', [
+                '--path' => 'database/migrations/2026_07_16_250000_tie_site_ratings_to_completed_orders.php',
+                '--force' => true,
+            ]);
+        }
+    }
+
+    public function test_ratings_mutations_are_503_when_table_missing(): void
+    {
+        $publisher = User::factory()->create();
+        $site = $this->site($publisher);
+
+        Schema::dropIfExists('site_ratings');
+
+        try {
+            $this->assertFalse(Schema::hasTable('site_ratings'));
+
+            $this->actingAs($this->admin())->postJson(route('admin.site-ratings.store'), [
+                'site_id' => $site->id,
+                'rating' => 4,
+                'comment' => 'Staff note',
+                'status' => 'approved',
+            ])->assertStatus(503)->assertJsonPath('success', false);
+
+            $this->actingAs($this->admin())->putJson(route('admin.site-ratings.update', 1), [
+                'rating' => 3,
+            ])->assertStatus(503)->assertJsonPath('success', false);
+
+            $this->actingAs($this->admin())
+                ->deleteJson(route('admin.site-ratings.destroy', 1))
+                ->assertStatus(503)
+                ->assertJsonPath('success', false);
+        } finally {
             $this->artisan('migrate', [
                 '--path' => 'database/migrations/2026_07_16_240000_create_site_ratings_table.php',
                 '--force' => true,

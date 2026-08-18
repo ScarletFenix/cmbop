@@ -103,12 +103,12 @@
                                 <div class="small text-muted">Publisher</div>
                                 <div class="fw-semibold">
                                     @if($publisherAdminUrl)
-                                        <a href="{{ $publisherAdminUrl }}" class="link-dark">{{ $publisher->name }}</a>
+                                        <a href="{{ $publisherAdminUrl }}" class="link-dark">{{ $publisher?->name }}</a>
                                     @else
-                                        {{ $publisher->name ?? '—' }}
+                                        {{ $publisher?->name ?? '—' }}
                                     @endif
                                 </div>
-                                <div class="small text-muted">{{ $publisher->email ?? '' }}</div>
+                                <div class="small text-muted">{{ $publisher?->email ?? '' }}</div>
                                 @if($remindableItems->isNotEmpty())
                                     <div class="mt-3 d-flex flex-wrap gap-2 align-items-center" id="remind-publisher">
                                         @foreach($remindableItems as $remindItem)
@@ -432,7 +432,7 @@
                         <div class="d-flex {{ $isAdvertiser ? 'justify-content-start' : 'justify-content-end' }} mb-3">
                             <div class="border rounded-3 px-3 py-2 {{ $msg->is_blocked ? 'bg-secondary-subtle text-secondary' : ($isAdvertiser ? 'bg-light' : 'bg-primary-subtle') }}" style="max-width: 75%;{{ $msg->is_blocked ? ' opacity:.9;' : '' }}">
                                 <div class="small text-muted mb-1">
-                                    {{ $msg->user->name ?? ucfirst($msg->sender_type) }}
+                                    {{ $msg->user?->name ?? ucfirst($msg->sender_type) }}
                                     · {{ ucfirst($msg->sender_type) }}
                                     · {{ optional($msg->created_at)->format('M j, Y g:i A') }}
                                     @if($msg->is_blocked)

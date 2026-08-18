@@ -1,6 +1,6 @@
 @component('mail::message')
 
-Dear {{ $site->publisher->name ?? 'Publisher' }},
+Dear {{ $site->publisher?->name ?? 'Publisher' }},
 
 @switch($action)
     @case('update')
