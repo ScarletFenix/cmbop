@@ -895,6 +895,16 @@ function previewSocialChannels() {
         .join(', ');
 }
 
+function previewSiteTagLabel() {
+    const labels = {
+        sponsored: 'Sponsored',
+        partner_material: 'Partner article',
+        as_you_prefer: 'As you prefer',
+    };
+    const value = previewValue('#addSiteForm [name="site_tag"]');
+    return labels[value] || value;
+}
+
 function previewRow(label, value, opts) {
     opts = opts || {};
     const missing = !value;
@@ -974,7 +984,7 @@ function buildSitePreview() {
     html += previewRow('Link type', previewValue('#addSiteForm [name="link_type"]'));
     html += previewRow('Turnaround time', previewValue('#addSiteForm [name="turnaround_time"]'));
     html += previewRow('Publication time', previewValue('#addSiteForm [name="publicationTime"]'));
-    html += previewRow('Site tag', previewValue('#addSiteForm [name="site_tag"]'), { emptyLabel: 'None', optional: true });
+    html += previewRow('Site tag', previewSiteTagLabel(), { emptyLabel: 'No tags', optional: true });
     html += previewRow('Example post', previewValue('#addSiteForm [name="exampleUrl"]'), { emptyLabel: 'None', optional: true });
     html += previewRow('Homepage promotions', previewHomepagePromotions(), { emptyLabel: 'None', optional: true });
     html += previewRow('Social', previewSocialChannels(), { emptyLabel: 'None', optional: true });
@@ -2284,6 +2294,16 @@ function previewSocialChannels() {
         .join(', ');
 }
 
+function previewSiteTagLabel() {
+    const labels = {
+        sponsored: 'Sponsored',
+        partner_material: 'Partner article',
+        as_you_prefer: 'As you prefer',
+    };
+    const value = previewValue('#addSiteForm [name="site_tag"]');
+    return labels[value] || value;
+}
+
 function previewRow(label, value, opts) {
     opts = opts || {};
     const missing = !value;
@@ -2367,7 +2387,7 @@ function buildSitePreview() {
     html += previewRow('Link type', previewValue('#addSiteForm [name="link_type"]'));
     html += previewRow('Turnaround time', previewValue('#addSiteForm [name="turnaround_time"]'));
     html += previewRow('Publication time', previewValue('#addSiteForm [name="publicationTime"]'));
-    html += previewRow('Site tag', previewValue('#addSiteForm [name="site_tag"]'), { emptyLabel: 'None', optional: true });
+    html += previewRow('Site tag', previewSiteTagLabel(), { emptyLabel: 'No tags', optional: true });
     html += previewRow('Example post', previewValue('#addSiteForm [name="exampleUrl"]'), { emptyLabel: 'None', optional: true });
     html += previewRow('Homepage promotions', previewHomepagePromotions(), { emptyLabel: 'None', optional: true });
     html += previewRow('Social', previewSocialChannels(), { emptyLabel: 'None', optional: true });

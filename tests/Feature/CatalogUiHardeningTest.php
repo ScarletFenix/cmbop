@@ -485,7 +485,7 @@ class CatalogUiHardeningTest extends TestCase
         $drawer = substr($drawer, 0, (int) strpos($drawer, '</form>'));
 
         // Old col-md-2/3 cells summed past 12 and wrapped mid-row. Keep the
-        // shared 6/4/3 grid: four per lg row (Sponsored…Quality = 10 cells).
+        // shared 6/4/3 grid: four per lg row (Tag…Quality = 10 cells).
         $this->assertSame(0, substr_count($drawer, 'class="col-md-2"'));
         $this->assertSame(0, substr_count($drawer, 'class="col-md-3"'));
         $this->assertSame(12, substr_count($drawer, 'class="col-6 col-md-4 col-lg-3"'));

@@ -248,7 +248,7 @@
                     <div class="col-md-6">
                         <label class="form-label fw-semibold d-block">Site tag</label>
                         <div class="d-flex flex-wrap gap-3">
-                            @foreach(['as_you_prefer' => 'As you prefer', 'sponsored' => 'Sponsored', 'partner_material' => 'Partner material'] as $value => $label)
+                            @foreach(\App\Support\SiteTag::staffFormOptions() as $value => $label)
                                 <div class="form-check">
                                     <input class="form-check-input" type="radio" name="site_tag" id="tag_{{ $value }}"
                                            value="{{ $value }}" @checked(old_text('site_tag', 'as_you_prefer') === $value)>

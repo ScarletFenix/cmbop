@@ -1015,7 +1015,7 @@
                     <li><code>publication_time</code> = <code>6months</code>, <code>1year</code>, or <code>permanent</code></li>
                     <li><code>link_type</code> = <code>dofollow</code> or <code>nofollow</code></li>
                     <li><code>description</code> must be at least 50 characters</li>
-                    <li>Flags (<code>sponsored</code>, etc.) use <code>1</code> / <code>0</code></li>
+                    <li>Flags (<code>sponsored</code>, <code>partner_material</code>, <code>as_you_prefer</code>) use <code>1</code> / <code>0</code> — set only one</li>
                 </ul>
             </div>
 
@@ -1270,27 +1270,19 @@
                                 elseif (old('as_you_prefer')) $oldTag = 'as_you_prefer';
                                 else $oldTag = '';
                             }
+                            $oldTag = \App\Support\SiteTag::normalize($oldTag) ?? '';
                         @endphp
                         <div class="row bg-light p-3 rounded g-3 g-form align-items-center">
                             <div class="col-12">
                                 <label class="form-label mb-2">Optional — choose one</label>
                                 <div class="d-flex flex-wrap gap-3" role="radiogroup" aria-label="Site tag">
-                                    <div class="form-check">
-                                        <input type="radio" name="site_tag" id="tagNone" class="form-check-input" value="" {{ $oldTag === '' ? 'checked' : '' }}>
-                                        <label class="form-check-label" for="tagNone">None</label>
-                                    </div>
-                                    <div class="form-check">
-                                        <input type="radio" name="site_tag" id="tagSponsored" class="form-check-input" value="sponsored" {{ $oldTag === 'sponsored' ? 'checked' : '' }}>
-                                        <label class="form-check-label" for="tagSponsored">Sponsored</label>
-                                    </div>
-                                    <div class="form-check">
-                                        <input type="radio" name="site_tag" id="tagPartnerMaterial" class="form-check-input" value="partner_material" {{ $oldTag === 'partner_material' ? 'checked' : '' }}>
-                                        <label class="form-check-label" for="tagPartnerMaterial">Partner Materials</label>
-                                    </div>
-                                    <div class="form-check">
-                                        <input type="radio" name="site_tag" id="tagAsYouPrefer" class="form-check-input" value="as_you_prefer" {{ $oldTag === 'as_you_prefer' ? 'checked' : '' }}>
-                                        <label class="form-check-label" for="tagAsYouPrefer">As You Prefer</label>
-                                    </div>
+                                    @foreach(\App\Support\SiteTag::publisherFormOptions() as $value => $label)
+                                        @php $tagId = $value === '' ? 'tagNone' : 'tag'.str_replace(' ', '', ucwords(str_replace('_', ' ', $value))); @endphp
+                                        <div class="form-check">
+                                            <input type="radio" name="site_tag" id="{{ $tagId }}" class="form-check-input" value="{{ $value }}" {{ $oldTag === $value ? 'checked' : '' }}>
+                                            <label class="form-check-label" for="{{ $tagId }}">{{ $label }}</label>
+                                        </div>
+                                    @endforeach
                                 </div>
                             </div>
                         </div>

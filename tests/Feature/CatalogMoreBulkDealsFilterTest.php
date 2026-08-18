@@ -310,7 +310,7 @@ class CatalogMoreBulkDealsFilterTest extends TestCase
             $js
         );
         $this->assertMatchesRegularExpression(
-            '/\[\'sponsored\', \'favorites_filter\', \'blacklist_filter\'\]/',
+            '/\[\'tag\', \'favorites_filter\', \'blacklist_filter\'\]/',
             $js
         );
         $this->assertStringContainsString('id="bulk_deals"', $blade);
@@ -359,7 +359,8 @@ class CatalogMoreBulkDealsFilterTest extends TestCase
 
         $this->assertSame('1', $kept['bulk_deals'] ?? null);
         $this->assertSame('1', $kept['on_sale'] ?? null);
-        $this->assertSame('1', $kept['sponsored'] ?? null);
+        $this->assertSame('sponsored', $kept['tag'] ?? null);
+        $this->assertArrayNotHasKey('sponsored', $kept);
         $this->assertArrayNotHasKey('country', $kept);
     }
 }

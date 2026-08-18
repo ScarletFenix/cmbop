@@ -393,7 +393,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // Pagination and the sort/recovery links all navigate away.
     document.addEventListener('click', function (e) {
         const link = e.target.closest(
-            '.pagination a.page-link, .catalog-clear-all, .filter-chip__remove, .catalog-clear-country, .catalog-try-language, .catalog-neighbor-market'
+            '.pagination a.page-link, .catalog-clear-all, .filter-chip__remove, .catalog-clear-country, .catalog-clear-tag, .catalog-try-language, .catalog-neighbor-market'
         );
         if (!link || link.getAttribute('href') === null) return;
         markCatalogResultsBusy();
@@ -2158,7 +2158,7 @@ const CatalogUrl = (function () {
         : [
             'search', 'category', 'country', 'language',
             'price_min', 'price_max', 'da_min', 'da_max', 'dr_min', 'dr_max',
-            'traffic_min', 'traffic_max', 'sponsored', 'favorites_filter',
+            'traffic_min', 'traffic_max', 'tag', 'sponsored', 'favorites_filter',
             'blacklist_filter', 'bulk_deals', 'new_badge', 'on_sale', 'verified', 'quality',
             'rating_min', 'has_completions', 'site', 'sort', 'per_page', 'page',
             'wizard',
@@ -2190,6 +2190,21 @@ const CatalogUrl = (function () {
             if (key === 'page' && value === '1') return;
             out.set(key, value);
         });
+        var tag = (out.get('tag') || '').toLowerCase();
+        var allowedTag = {
+            sponsored: 1,
+            partner_material: 1,
+            as_you_prefer: 1,
+            none: 1,
+        };
+        if (!allowedTag[tag]) {
+            out.delete('tag');
+            tag = '';
+        }
+        if (!tag && out.get('sponsored') === '1') {
+            out.set('tag', 'sponsored');
+        }
+        out.delete('sponsored');
         return out;
     }
 
@@ -2326,7 +2341,7 @@ const CatalogUrl = (function () {
         setInputValue(form.querySelector('[name="dr_max"]'), get('dr_max'));
         setInputValue(form.querySelector('[name="traffic_min"]'), get('traffic_min'));
         setInputValue(form.querySelector('[name="traffic_max"]'), get('traffic_max'));
-        setInputValue(form.querySelector('[name="sponsored"]'), get('sponsored'));
+        setInputValue(form.querySelector('[name="tag"]'), get('tag') || (get('sponsored') === '1' ? 'sponsored' : ''));
         setInputValue(form.querySelector('[name="favorites_filter"]'), get('favorites_filter'));
         setInputValue(form.querySelector('[name="blacklist_filter"]'), get('blacklist_filter'));
         setInputValue(form.querySelector('[name="bulk_deals"]'), get('bulk_deals'));
@@ -2638,7 +2653,16 @@ const CatalogLive = (function () {
         if (params.get('country')) chips.push({ label: 'Country', params: ['country'] });
         if (params.get('price_min') || params.get('price_max')) chips.push({ label: 'Price', params: ['price_min', 'price_max'] });
         if (params.get('language')) chips.push({ label: 'Language', params: ['language'] });
-        if (params.get('sponsored') === '1') chips.push({ label: 'Sponsored', params: ['sponsored'] });
+        var tagFilter = params.get('tag') || (params.get('sponsored') === '1' ? 'sponsored' : '');
+        var tagLabels = {
+            sponsored: 'Sponsored',
+            partner_material: 'Partner article',
+            as_you_prefer: 'As you prefer',
+            none: 'No tags',
+        };
+        if (tagFilter && tagLabels[tagFilter]) {
+            chips.push({ label: tagLabels[tagFilter], params: ['tag', 'sponsored'] });
+        }
         if (params.get('favorites_filter') === '1') chips.push({ label: 'Favorites', params: ['favorites_filter'] });
         if (params.get('blacklist_filter') === '1') chips.push({ label: 'Blacklist', params: ['blacklist_filter'] });
         if (params.get('bulk_deals') === '1') chips.push({ label: 'Bulk deals', params: ['bulk_deals'] });
@@ -2708,7 +2732,7 @@ const CatalogLive = (function () {
         const btn = document.getElementById('toggleMoreFiltersBtn');
         if (!btn) return;
         const moreKeys = [
-            'sponsored', 'favorites_filter', 'blacklist_filter', 'bulk_deals',
+            'favorites_filter', 'blacklist_filter', 'bulk_deals',
             'da_min', 'da_max', 'dr_min', 'dr_max',
             'traffic_min', 'traffic_max', 'new_badge', 'on_sale', 'quality',
             'rating_min', 'has_completions',
@@ -2718,6 +2742,12 @@ const CatalogLive = (function () {
             const value = params.get(key);
             if (value != null && String(value).trim() !== '') count++;
         });
+        // tag= and legacy sponsored=1 are one More filter, not two.
+        var tagFilter = params.get('tag') || (params.get('sponsored') === '1' ? 'sponsored' : '');
+        if (tagFilter === 'sponsored' || tagFilter === 'partner_material'
+            || tagFilter === 'as_you_prefer' || tagFilter === 'none') {
+            count++;
+        }
         let badge = btn.querySelector('[data-more-filters-count]');
         if (count === 0) {
             if (badge) badge.remove();
@@ -3020,7 +3050,7 @@ window.scheduleCatalogFilterLive = scheduleCatalogFilterLive;
     }
 
     // More-filters selects + checkbox filters share the live path.
-    ['sponsored', 'favorites_filter', 'blacklist_filter'].forEach(function (name) {
+    ['tag', 'favorites_filter', 'blacklist_filter'].forEach(function (name) {
         const select = document.querySelector('#filterForm select[name="' + name + '"]');
         if (!select) return;
         select.addEventListener('change', function () {

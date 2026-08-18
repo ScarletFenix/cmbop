@@ -11,6 +11,7 @@
         || request()->filled('language')
         || request()->filled('price_min')
         || request()->filled('price_max')
+        || request()->filled('tag')
         || request()->input('sponsored') == '1'
         || request()->input('favorites_filter') == '1'
         || request()->input('blacklist_filter') == '1'
@@ -292,6 +293,7 @@
                                             <span>Verified</span>
                                         </button>
                                     @endif
+                                    @include('advertiser.partials.catalog-tag-chip', ['site' => $site])
                                 </span>
 
                                 <span class="catalog-site-actions">
@@ -744,32 +746,10 @@
 
                         <p class="mb-1"><strong>Tags</strong></p>
                         <div class="d-flex flex-wrap gap-1 mb-3">
-                            @if($site->sponsored)
-                                <span class="badge bg-warning-subtle text-dark border px-2 py-1"
-                                      style="font-size: 11px;"
-                                      title="Sponsored placement">
-                                    <i class="fa-solid fa-star me-1" aria-hidden="true"></i>Sponsored
-                                </span>
-                            @endif
-
-                            @if($site->partner_material)
-                                <span class="badge bg-success-subtle text-success border px-2 py-1"
-                                      style="font-size: 11px;"
-                                      title="Partner content allowed">
-                                    <i class="fa-solid fa-handshake me-1" aria-hidden="true"></i>Partner
-                                </span>
-                            @endif
-
-                            @if($site->as_you_prefer ?? false)
-                                <span class="badge bg-primary-subtle text-primary border px-2 py-1"
-                                      style="font-size: 11px;"
-                                      title="Flexible placement">
-                                    <i class="fa-solid fa-sliders-h me-1" aria-hidden="true"></i>As You Prefer
-                                </span>
-                            @endif
-
-                            @if(!$site->sponsored && !$site->partner_material && !($site->as_you_prefer ?? false))
-                                <span class="text-muted small">No additional tags</span>
+                            @if($site->tagValue())
+                                @include('advertiser.partials.catalog-tag-chip', ['site' => $site])
+                            @else
+                                <span class="text-muted small">{{ \App\Support\SiteTag::NONE_LABEL }}</span>
                             @endif
                         </div>
 
@@ -1046,6 +1026,7 @@
                         @if($site->verified)
                             <span class="site-chip site-chip--verified"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>Verified</span></span>
                         @endif
+                        @include('advertiser.partials.catalog-tag-chip', ['site' => $site])
                         @if($isNew)
                             <span class="site-badge-new" aria-label="New listing">NEW</span>
                         @endif
@@ -1404,17 +1385,10 @@
                 <div class="catalog-card-details__row">
                     <dt>Tags</dt>
                     <dd class="d-flex flex-wrap gap-1">
-                        @if($site->sponsored)
-                            <span class="badge bg-warning-subtle text-dark border">Sponsored</span>
-                        @endif
-                        @if($site->partner_material)
-                            <span class="badge bg-success-subtle text-success border">Partner</span>
-                        @endif
-                        @if($site->as_you_prefer ?? false)
-                            <span class="badge bg-primary-subtle text-primary border">As You Prefer</span>
-                        @endif
-                        @if(!$site->sponsored && !$site->partner_material && !($site->as_you_prefer ?? false))
-                            <span class="text-muted small">No additional tags</span>
+                        @if($site->tagValue())
+                            @include('advertiser.partials.catalog-tag-chip', ['site' => $site])
+                        @else
+                            <span class="text-muted small">{{ \App\Support\SiteTag::NONE_LABEL }}</span>
                         @endif
                     </dd>
                 </div>

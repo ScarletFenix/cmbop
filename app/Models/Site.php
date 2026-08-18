@@ -8,6 +8,7 @@ use App\Services\Catalog\CatalogCountryInventory;
 use App\Services\Catalog\CatalogLanguageFilter;
 use App\Services\Catalog\SiteUrlVisibility;
 use App\Services\SiteDescriptionSanitizer;
+use App\Support\SiteTag;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
@@ -807,6 +808,35 @@ class Site extends Model
     }
 
     /**
+     * Exclusive listing tag (sponsored / partner_material / as_you_prefer).
+     * When legacy rows have more than one flag, sponsored wins, then partner.
+     */
+    public function tagValue(): ?string
+    {
+        return SiteTag::fromFlags(
+            (bool) $this->sponsored,
+            (bool) $this->partner_material,
+            (bool) $this->as_you_prefer
+        );
+    }
+
+    /**
+     * Glossary label, or $fallback when the listing has no tag.
+     */
+    public function tagLabel(?string $fallback = null): ?string
+    {
+        return SiteTag::label($this->tagValue()) ?? $fallback;
+    }
+
+    /**
+     * Set exactly one listing tag (empty / none clears all three flags).
+     */
+    public function applyExclusiveTag(mixed $tag): void
+    {
+        SiteTag::applyExclusive($this, $tag);
+    }
+
+    /**
      * Get the publisher that owns the site.
      */
     public function publisher()
@@ -1586,9 +1616,12 @@ class Site extends Model
             ->when($filters['link_type'] ?? null, function ($query, $linkType) {
                 $query->where('link_type', $linkType);
             })
-            ->when(isset($filters['sponsored']) && in_array($filters['sponsored'], [0, 1]), function ($query) use ($filters) {
-                $query->where('sponsored', $filters['sponsored']);
-            });
+            ->when(
+                SiteTag::catalogFilterFromInput($filters['tag'] ?? null, $filters['sponsored'] ?? null),
+                function ($query, $tag) {
+                    SiteTag::constrainQuery($query, $tag);
+                }
+            );
     }
 
     /**
@@ -1967,6 +2000,8 @@ class Site extends Model
                 is_array($categories) ? $categories : null
             );
         }
+
+        $attributes = SiteTag::exclusiveAttributePatch($attributes, $this);
 
         foreach ($attributes as $column => $value) {
             if (! static::hasSitesColumn($column)) {

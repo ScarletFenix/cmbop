@@ -110,19 +110,12 @@
                     <div class="col-md-4">
                         <label class="form-label">Tag</label>
                         @php
-                            $defaultTag = 'as_you_prefer';
-                            if ($site->sponsored) {
-                                $defaultTag = 'sponsored';
-                            } elseif ($site->partner_material) {
-                                $defaultTag = 'partner_material';
-                            } elseif ($site->as_you_prefer) {
-                                $defaultTag = 'as_you_prefer';
-                            }
+                            $defaultTag = $site->tagValue() ?: 'as_you_prefer';
                         @endphp
                         <select name="site_tag" class="form-select">
-                            <option value="as_you_prefer" @selected(old('site_tag', $defaultTag) === 'as_you_prefer')>As you prefer</option>
-                            <option value="sponsored" @selected(old('site_tag', $defaultTag) === 'sponsored')>Sponsored</option>
-                            <option value="partner_material" @selected(old('site_tag', $defaultTag) === 'partner_material')>Partner material</option>
+                            @foreach(\App\Support\SiteTag::staffFormOptions() as $value => $label)
+                                <option value="{{ $value }}" @selected(old('site_tag', $defaultTag) === $value)>{{ $label }}</option>
+                            @endforeach
                         </select>
                     </div>
                     <div class="col-12">

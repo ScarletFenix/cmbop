@@ -106,7 +106,7 @@ class CatalogLiveClientTest extends TestCase
         $this->assertStringContainsString('catalog-reset-filters', $blade);
         $this->assertStringContainsString('id="catalogResetFilters"', $blade);
         $this->assertStringContainsString('syncMoreFiltersBadge', $js);
-        $this->assertStringContainsString("'sponsored', 'favorites_filter', 'blacklist_filter'", $js);
+        $this->assertStringContainsString("'tag', 'favorites_filter', 'blacklist_filter'", $js);
         $this->assertStringContainsString("getElementById('bulk_deals')", $js);
         $this->assertStringContainsString("getElementById('on_sale')", $js);
         // Unchecked form checkboxes must not be revived from the URL in fromForm.

@@ -13,6 +13,7 @@ use App\Services\EmailNotificationService;
 use App\Services\InAppNotificationService;
 use App\Services\SiteDescriptionSanitizer;
 use App\Support\SiteDescriptionRules;
+use App\Support\SiteTag;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -327,10 +328,7 @@ class BulkSiteRequestController extends Controller
                     'active' => false,
                 ]);
 
-                $tag = $request->input('site_tag', 'as_you_prefer');
-                $site->sponsored = $tag === 'sponsored';
-                $site->partner_material = $tag === 'partner_material';
-                $site->as_you_prefer = $tag === 'as_you_prefer' || $tag === null || $tag === '';
+                SiteTag::applyStaffDefault($site, $request->input('site_tag'));
 
                 // Saved for Review & submit — not yet in the admin queue.
                 // Persist listing fields first, then set onboarding_status safely.

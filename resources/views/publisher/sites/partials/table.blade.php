@@ -1302,17 +1302,10 @@
 
                     <div class="detail-line">
                         <strong>Tags:</strong>
-                        @if($site->sponsored)
-                            <span class="tag-badge">Sponsored</span>
-                        @endif
-                        @if($site->partner_material)
-                            <span class="tag-badge">Partner Material</span>
-                        @endif
-                        @if($site->as_you_prefer)
-                            <span class="tag-badge">As You Prefer</span>
-                        @endif
-                        @if(!$site->sponsored && !$site->partner_material && !$site->as_you_prefer)
-                            <span class="text-muted">No tags</span>
+                        @if($site->tagValue())
+                            <span class="tag-badge">{{ $site->tagLabel() }}</span>
+                        @else
+                            <span class="text-muted">{{ \App\Support\SiteTag::NONE_LABEL }}</span>
                         @endif
                     </div>
 

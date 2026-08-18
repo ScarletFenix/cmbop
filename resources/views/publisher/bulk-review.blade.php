@@ -72,12 +72,7 @@
                         ->values()
                         ->all();
                     $desc = trim((string) $site->description);
-                    $tag = 'As you prefer';
-                    if ($site->sponsored) {
-                        $tag = 'Sponsored';
-                    } elseif ($site->partner_material) {
-                        $tag = 'Partner material';
-                    }
+                    $tag = $site->tagLabel(\App\Support\SiteTag::NONE_LABEL);
                 @endphp
                 <div class="card border-0 shadow-sm mb-3">
                     <div class="card-body">

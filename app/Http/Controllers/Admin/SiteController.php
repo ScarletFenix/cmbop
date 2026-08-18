@@ -26,6 +26,7 @@ use App\Support\MarketingOpsQueues;
 use App\Support\PublicStorageLink;
 use App\Support\SiteDescriptionRules;
 use App\Support\SiteImageUpload;
+use App\Support\SiteTag;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\QueryException;
@@ -972,10 +973,7 @@ class SiteController extends Controller
                     'metrics_fetched_at' => now(),
                 ]);
 
-                $tag = $request->input('site_tag', 'as_you_prefer');
-                $site->sponsored = $tag === 'sponsored';
-                $site->partner_material = $tag === 'partner_material';
-                $site->as_you_prefer = $tag === 'as_you_prefer' || blank($tag);
+                SiteTag::applyStaffDefault($site, $request->input('site_tag'));
 
                 $site->save();
 
@@ -1860,7 +1858,7 @@ class SiteController extends Controller
                 ->sanitize($data['description']);
         }
 
-        return $data;
+        return SiteTag::exclusiveAttributePatch($data, $site);
     }
 
     /**

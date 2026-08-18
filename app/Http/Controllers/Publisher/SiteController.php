@@ -20,6 +20,7 @@ use App\Services\Marketplace\LanguageCountryMap;
 use App\Support\NormalizesHttpUrls;
 use App\Support\SiteDescriptionRules;
 use App\Support\SiteImageUpload;
+use App\Support\SiteTag;
 use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -1287,24 +1288,11 @@ class SiteController extends Controller
     }
 
     /**
-     * Apply a single site tag from radio `site_tag`, with checkbox fallback.
+     * Apply a single site tag from radio `site_tag`, with exclusive checkbox fallback.
      */
     private function applySiteTag(Site $site, Request $request): void
     {
-        $tag = $request->input('site_tag');
-
-        if ($tag === null) {
-            // Legacy checkbox posts / bulk import paths
-            $site->sponsored = $request->boolean('sponsored') || $request->has('sponsored');
-            $site->partner_material = $request->boolean('partner_material') || $request->has('partner_material');
-            $site->as_you_prefer = $request->boolean('as_you_prefer') || $request->has('as_you_prefer');
-
-            return;
-        }
-
-        $site->sponsored = $tag === 'sponsored';
-        $site->partner_material = $tag === 'partner_material';
-        $site->as_you_prefer = $tag === 'as_you_prefer';
+        SiteTag::applyFromRequest($site, $request);
     }
 
     /**

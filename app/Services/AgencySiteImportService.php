@@ -11,6 +11,7 @@ use App\Models\Language;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\Marketplace\CountryLanguagePairs;
+use App\Support\SiteTag;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -473,9 +474,18 @@ class AgencySiteImportService
             }
         }
 
+        $sponsored = $this->csvBool($data['sponsored'] ?? '0');
+        $partnerMaterial = $this->csvBool($data['partner_material'] ?? '0');
+        $asYouPrefer = $this->csvBool($data['as_you_prefer'] ?? '0');
+        if (SiteTag::flagCount($sponsored, $partnerMaterial, $asYouPrefer) > 1) {
+            $errors[] = SiteTag::CONFLICT_MESSAGE;
+        }
+
         if (! empty($errors)) {
             return ['errors' => array_values(array_unique($errors))];
         }
+
+        $tagFlags = SiteTag::flags(SiteTag::fromFlags($sponsored, $partnerMaterial, $asYouPrefer));
 
         return [
             'errors' => [],
@@ -496,9 +506,9 @@ class AgencySiteImportService
             'turnaround_time' => $payload['turnaround_time'],
             'publication_time' => $payload['publication_time'],
             'link_type' => $payload['link_type'],
-            'sponsored' => $this->csvBool($data['sponsored'] ?? '0'),
-            'partner_material' => $this->csvBool($data['partner_material'] ?? '0'),
-            'as_you_prefer' => $this->csvBool($data['as_you_prefer'] ?? '0'),
+            'sponsored' => $tagFlags['sponsored'],
+            'partner_material' => $tagFlags['partner_material'],
+            'as_you_prefer' => $tagFlags['as_you_prefer'],
             'description' => $description,
             'sensitive_prices' => ! empty($sensitivePrices) ? $sensitivePrices : null,
         ];

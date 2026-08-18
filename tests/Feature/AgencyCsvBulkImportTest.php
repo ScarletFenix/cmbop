@@ -253,6 +253,43 @@ class AgencyCsvBulkImportTest extends TestCase
         $this->assertMatchesRegularExpression('/price|99999999/i', implode(' ', $failure->errors));
     }
 
+    public function test_single_sponsored_flag_is_imported_exclusively(): void
+    {
+        $row = $this->validRow('csv-sponsored.example', 'CSV Sponsored');
+        $row[14] = '1';
+        $row[15] = '0';
+        $row[16] = '0';
+
+        $this->uploadCsv([$row])->assertRedirect();
+
+        $site = Site::where('domain', 'csv-sponsored.example')->firstOrFail();
+        $this->assertTrue((bool) $site->sponsored);
+        $this->assertFalse((bool) $site->partner_material);
+        $this->assertFalse((bool) $site->as_you_prefer);
+        $this->assertSame('sponsored', $site->tagValue());
+    }
+
+    public function test_conflicting_tag_columns_are_rejected(): void
+    {
+        $row = $this->validRow('csv-conflict.example', 'CSV Conflict');
+        $row[14] = '1';
+        $row[15] = '1';
+        $row[16] = '0';
+
+        $this->uploadCsv([$row])->assertRedirect();
+
+        $this->assertNull(Site::where('domain', 'csv-conflict.example')->first());
+
+        $import = AgencySiteImport::query()->first();
+        $this->assertNotNull($import);
+        $this->assertSame(0, (int) $import->created_count);
+        $this->assertSame(1, (int) $import->failed_count);
+
+        $failure = AgencySiteImportFailure::query()->first();
+        $this->assertNotNull($failure);
+        $this->assertStringContainsString('only one tag', implode(' ', $failure->errors));
+    }
+
     public function test_admin_site_list_marks_csv_metrics_for_spot_check(): void
     {
         $adminRole = Role::firstOrCreate(['name' => 'admin']);
