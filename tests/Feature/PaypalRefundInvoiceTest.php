@@ -93,6 +93,11 @@ class PaypalRefundInvoiceTest extends TestCase
     {
         $this->assertSame('PayPal', Invoice::paymentMethodLabel('paypal'));
         $this->assertSame('PayPal', Invoice::paymentMethodLabel('PAYPAL'));
+        $this->assertSame('Card', Invoice::paymentMethodLabel('card'));
+        $this->assertSame('Wallet', Invoice::paymentMethodLabel('wallet'));
+        $this->assertSame('Bank Transfer', Invoice::paymentMethodLabel('bank'));
+        $this->assertSame('Wise', Invoice::paymentMethodLabel('wise'));
+        $this->assertSame('Cryptocurrency', Invoice::paymentMethodLabel('crypto'));
     }
 
     public function test_paid_paypal_order_invoice_shows_paypal_method(): void

@@ -164,7 +164,7 @@
                                         <a href="{{ route('admin.deposits', ['search' => $dep->reference_code]) }}">{{ $dep->reference_code }}</a>
                                     </td>
                                     <td>{{ $euro($dep->amount) }}</td>
-                                    <td class="small">{{ $dep->payment_method }}</td>
+                                    <td class="small">{{ $dep->paymentMethodLabel() }}</td>
                                     <td class="small">{{ $dep->status }}</td>
                                 </tr>
                             @empty
@@ -186,7 +186,7 @@
                                         <a href="{{ route('admin.orders.show', $order->id) }}">{{ $order->order_number ?? '#'.$order->id }}</a>
                                     </td>
                                     <td>{{ $euro($order->total_amount) }}</td>
-                                    <td class="small">{{ $order->payment_method }} / {{ $order->payment_status }}</td>
+                                    <td class="small">{{ \App\Models\Invoice::paymentMethodLabel($order->payment_method) }} / {{ $order->payment_status }}</td>
                                     <td class="small">{{ $order->status }}</td>
                                 </tr>
                             @empty
@@ -213,7 +213,7 @@
                                         ])) }}">WD-{{ $w->id }}</a>
                                     </td>
                                     <td>{{ $euro($w->net_amount) }}</td>
-                                    <td class="small">{{ $w->payment_method }}</td>
+                                    <td class="small">{{ \App\Models\Invoice::paymentMethodLabel($w->payment_method) }}</td>
                                     <td class="small">{{ $w->publisher_status_label }}</td>
                                 </tr>
                             @empty

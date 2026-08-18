@@ -302,7 +302,7 @@ class WalletPaypalDepositService
             return;
         }
 
-        app(InAppNotificationService::class)->notifyDepositRefunded($deposit);
+        app(DepositSettlementNotifier::class)->notifyRefunded($deposit);
     }
 
     private function notifyDepositCredited(?int $depositId): void

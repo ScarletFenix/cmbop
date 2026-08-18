@@ -14,7 +14,7 @@ Great news! Your payment for Order **#{{ $order->order_number }}** has been conf
 | **Reference Code** | {{ $order->reference_code }} |   
 | **Order Date** | {{ $orderDate }} |   
 | **Payment Date** | {{ $paidDate }} |
-| **Payment Method** | {{ ucfirst($order->payment_method) }} |
+| **Payment Method** | {{ \App\Models\Invoice::paymentMethodLabel($order->payment_method) }} |
 | **Total Amount** | €{{ number_format($totalAmount, 2) }} |
 
 ## Items Ordered

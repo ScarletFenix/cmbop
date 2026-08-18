@@ -116,4 +116,9 @@ class DepositRequest extends Model
             && ! $this->userHasMarkedPaid()
             && in_array($this->payment_method, ['wise', 'bank', 'crypto'], true);
     }
+
+    public function paymentMethodLabel(): string
+    {
+        return Invoice::paymentMethodLabel($this->payment_method);
+    }
 }

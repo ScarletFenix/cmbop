@@ -27,11 +27,14 @@ class DepositApproved extends PlatformMailable
     public function build()
     {
         $deposit = $this->deposit->loadMissing('user');
-        $isCard = strtolower((string) ($deposit->payment_method ?? '')) === 'card';
+        $method = strtolower((string) ($deposit->payment_method ?? ''));
+        $isCard = $method === 'card';
+        $isPaypal = $method === 'paypal';
+        $isInstant = $isCard || $isPaypal;
         $amount = number_format((float) $deposit->amount, 2);
         $receipt = $this->resolveReceipt($deposit);
 
-        $subject = $isCard
+        $subject = $isInstant
             ? 'Wallet topped up — €'.$amount
             : 'Deposit Approved - €'.$amount;
 
@@ -47,6 +50,8 @@ class DepositApproved extends PlatformMailable
             ->markdown('emails.deposit-approved', [
                 'deposit' => $deposit,
                 'isCard' => $isCard,
+                'isPaypal' => $isPaypal,
+                'isInstant' => $isInstant,
                 'receipt' => $receipt,
                 'walletBalance' => (float) ($advertiserWallet?->balance ?? 0),
                 'balanceUrl' => route('advertiser.balance'),

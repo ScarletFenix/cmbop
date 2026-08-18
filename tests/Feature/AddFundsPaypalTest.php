@@ -2,7 +2,9 @@
 
 namespace Tests\Feature;
 
+use App\Mail\DepositApproved;
 use App\Models\DepositRequest;
+use App\Models\InAppNotification;
 use App\Models\Role;
 use App\Models\User;
 use App\Models\Wallet;
@@ -183,6 +185,18 @@ class AddFundsPaypalTest extends TestCase
             ->where('user_id', $user->id)
             ->where('role_id', Wallet::advertiserRoleId())
             ->value('balance'), 0.01);
+
+        Mail::assertQueued(DepositApproved::class, function (DepositApproved $mail) use ($user) {
+            return (int) $mail->deposit->user_id === (int) $user->id
+                && $mail->deposit->payment_method === 'paypal'
+                && $mail->notificationType === 'deposit_approved';
+        });
+        Mail::assertQueued(DepositApproved::class, 1);
+
+        $this->assertTrue(InAppNotification::query()
+            ->where('user_id', $user->id)
+            ->where('title', 'Wallet topped up — €25.00')
+            ->exists());
     }
 
     public function test_create_paypal_deposit_fails_closed_when_disabled(): void

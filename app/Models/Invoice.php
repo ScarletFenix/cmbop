@@ -307,6 +307,8 @@ class Invoice extends Model
             'paypal' => 'PayPal',
             'wise' => 'Wise',
             'crypto' => 'Cryptocurrency',
+            'card' => 'Card',
+            'wallet', 'wallet_balance' => 'Wallet',
             '' => '—',
             default => ucfirst(str_replace('_', ' ', $key)),
         };

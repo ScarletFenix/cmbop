@@ -12,7 +12,7 @@ Your payment was successful. Your invoice is attached to this email.
 | **Invoice** | {{ $invoice->invoice_number }} |
 | **Order** | #{{ $order?->order_number ?? $invoice->order_number }} |
 | **Amount paid** | {{ $symbol }}{{ number_format((float) $invoice->total_amount, 2) }} {{ $invoice->currency }} |
-| **Payment method** | {{ ucfirst((string) $invoice->payment_method) }} |
+| **Payment method** | {{ \App\Models\Invoice::paymentMethodLabel($invoice->payment_method) }} |
 | **Transaction ID** | {{ $invoice->transaction_id }} |
 | **Paid at** | {{ optional($invoice->paid_at)->format('F j, Y g:i A') ?? '—' }} |
 

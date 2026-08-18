@@ -1300,7 +1300,7 @@
                     <div class="wallet-detail-row"><span>Date</span><strong>${t.date ? new Date(t.date).toLocaleString() : '—'}</strong></div>
                     <div class="wallet-detail-row"><span>Type</span><strong>${escapeHtml(t.type_label || '')}</strong></div>
                     <div class="wallet-detail-row"><span>Amount</span><strong>${money(t.signed_amount ?? t.amount)}</strong></div>
-                    <div class="wallet-detail-row"><span>Payment Method</span><strong>${escapeHtml(t.payment_method || '—')}</strong></div>
+                    <div class="wallet-detail-row"><span>Payment Method</span><strong>${escapeHtml(t.payment_method_label || t.payment_method || '—')}</strong></div>
                     <div class="wallet-detail-row"><span>Order Reference</span><strong>${escapeHtml(t.order_reference || '—')}</strong></div>
                     <div class="wallet-detail-row"><span>Invoice</span><strong>${escapeHtml(t.invoice_number || '—')}</strong></div>
                     <div class="wallet-detail-row"><span>Status</span><strong><span class="${statusClass(t.status)}">${escapeHtml(t.status || '')}</span></strong></div>

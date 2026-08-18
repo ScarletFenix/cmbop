@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Mail\DepositRefunded;
 use App\Models\DepositRequest;
 use App\Models\InAppNotification;
 use App\Models\Order;
@@ -31,6 +32,18 @@ class PaypalWebhookTest extends TestCase
     private function advertiser(): User
     {
         $role = Role::firstOrCreate(['name' => 'advertiser']);
+        $user = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $role->id,
+        ]);
+        $user->roles()->attach($role->id);
+
+        return $user->fresh();
+    }
+
+    private function admin(): User
+    {
+        $role = Role::firstOrCreate(['name' => 'admin']);
         $user = User::factory()->create([
             'email_verified_at' => now(),
             'active_role_id' => $role->id,
@@ -601,6 +614,7 @@ class PaypalWebhookTest extends TestCase
         Mail::fake();
 
         $advertiser = $this->advertiser();
+        $admin = $this->admin();
         $wallet = Wallet::create([
             'user_id' => $advertiser->id,
             'role_id' => Wallet::advertiserRoleId(),
@@ -649,8 +663,31 @@ class PaypalWebhookTest extends TestCase
         $this->assertEqualsWithDelta(15.0, (float) $wallet->fresh()->balance, 0.01);
         $this->assertEqualsWithDelta(0.0, (float) $wallet->fresh()->debt_balance, 0.01);
 
+        Mail::assertQueued(DepositRefunded::class, function (DepositRefunded $mail) use ($advertiser, $deposit) {
+            return (int) $mail->deposit->id === (int) $deposit->id
+                && (int) $mail->deposit->user_id === (int) $advertiser->id
+                && $mail->notificationType === 'deposit_refunded'
+                && $mail->dedupeKey === 'deposit_refunded:'.$deposit->id;
+        });
+        Mail::assertQueued(DepositRefunded::class, 1);
+
+        $html = (new DepositRefunded($deposit->fresh(['user'])))->render();
+        $this->assertStringContainsString('PayPal deposit refunded', $html);
+        $this->assertStringContainsString('removed from your wallet', $html);
+
+        $this->assertTrue(InAppNotification::query()
+            ->where('user_id', $advertiser->id)
+            ->where('title', 'PayPal deposit refunded — €25.00')
+            ->exists());
+        $this->assertTrue(InAppNotification::query()
+            ->where('user_id', $admin->id)
+            ->where('audience', InAppNotification::AUDIENCE_ADMIN)
+            ->where('title', 'PayPal deposit refunded')
+            ->exists());
+
         $this->postWebhook($payload)->assertOk()->assertJsonPath('status', 'duplicate');
         $this->assertEqualsWithDelta(15.0, (float) $wallet->fresh()->balance, 0.01);
+        Mail::assertQueued(DepositRefunded::class, 1);
     }
 
     public function test_refunded_deposit_webhook_records_debt_when_wallet_spent(): void
@@ -706,6 +743,12 @@ class PaypalWebhookTest extends TestCase
         $this->assertEqualsWithDelta(0.0, (float) $wallet->balance, 0.01);
         $this->assertEqualsWithDelta(12.0, (float) $wallet->reserved_balance, 0.01);
         $this->assertEqualsWithDelta(17.0, (float) $wallet->debt_balance, 0.01);
+
+        Mail::assertQueued(DepositRefunded::class, 1);
+        $refunded = DepositRequest::query()->where('paypal_capture_id', 'CAP-DEP-SHORT')->first();
+        $html = (new DepositRefunded($refunded->fresh(['user'])))->render();
+        $this->assertStringContainsString('€17.00', $html);
+        $this->assertStringContainsString('outstanding wallet debt', $html);
     }
 
     public function test_refunded_webhook_does_not_cancel_a_completed_order(): void

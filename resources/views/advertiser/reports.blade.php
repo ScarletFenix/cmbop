@@ -331,7 +331,7 @@ function renderRepFundsTable(activities) {
         else if (activity.status === 'completed') statusBadge = '<span class="badge bg-success">Completed</span>';
         else if (activity.status === 'rejected') statusBadge = '<span class="badge bg-danger">Rejected</span>';
         
-        var paymentMethod = activity.payment_method ? activity.payment_method.charAt(0).toUpperCase() + activity.payment_method.slice(1) : 'N/A';
+        var paymentMethod = paymentMethodLabel(activity.payment_method);
         var type = activity.type ? activity.type.charAt(0).toUpperCase() + activity.type.slice(1) : 'Deposit';
         
         html += '<tr class="rep-report-row">' +
@@ -433,7 +433,7 @@ function renderRepOrdersTable(orders) {
                 else if (order.payment_status === 'paid') paymentStatusBadge = '<span class="badge bg-success">Paid</span>';
                 else if (order.payment_status === 'failed') paymentStatusBadge = '<span class="badge bg-danger">Failed</span>';
                 
-                var paymentMethod = order.payment_method ? order.payment_method.charAt(0).toUpperCase() + order.payment_method.slice(1) : 'N/A';
+                var paymentMethod = paymentMethodLabel(order.payment_method);
                 
                 html += '<tr class="rep-report-row">' +
                     '<td><code class="fw-semibold bg-light px-2 py-1 rounded">#' + escapeRepHtml(order.order_number) + '</code></td>' +
@@ -571,6 +571,21 @@ function renderRepOrdersPagination(pagination) {
             $('html, body').animate({ scrollTop: 0 }, 'fast');
         }
     });
+}
+
+function paymentMethodLabel(method) {
+    var labels = {
+        card: 'Card',
+        paypal: 'PayPal',
+        wallet: 'Wallet',
+        bank: 'Bank Transfer',
+        bank_transfer: 'Bank Transfer',
+        wise: 'Wise',
+        crypto: 'Cryptocurrency'
+    };
+    if (!method) return 'N/A';
+    var key = String(method).toLowerCase();
+    return labels[key] || (key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' '));
 }
 
 function formatRepDate(dateString) {

@@ -163,7 +163,7 @@
                             <td><code class="font-monospace">{{ $deposit->reference_code }}</code></td>
                             <td class="fw-semibold text-primary">€{{ number_format($deposit->amount, 2) }}</td>
                             <td>
-                                <span class="badge bg-secondary">{{ ucfirst($deposit->payment_method) }}</span>
+                                <span class="badge bg-secondary">{{ $deposit->paymentMethodLabel() }}</span>
                             </td>
                             <td>
                                 @if($deposit->status == 'pending')
@@ -246,6 +246,20 @@ document.addEventListener('DOMContentLoaded', function() {
     const csrfToken = @json(csrf_token());
     const approveUrlTemplate = @json(route('admin.deposits.approve', ['id' => '__ID__']));
     const rejectUrlTemplate = @json(route('admin.deposits.reject', ['id' => '__ID__']));
+
+    function paymentMethodLabel(method) {
+        const labels = {
+            card: 'Card',
+            paypal: 'PayPal',
+            wallet: 'Wallet',
+            bank: 'Bank Transfer',
+            bank_transfer: 'Bank Transfer',
+            wise: 'Wise',
+            crypto: 'Cryptocurrency'
+        };
+        const key = String(method || '').toLowerCase();
+        return labels[key] || (key ? String(method) : '—');
+    }
 
     function depositActionUrl(template, id) {
         return String(template).replace('__ID__', encodeURIComponent(id));
@@ -358,7 +372,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         </div>
                         <div class="col-6 mb-2">
                             <small class="text-muted">Payment Method</small>
-                            <div>${escapeHtml(String(deposit.payment_method || '').toUpperCase())}</div>
+                            <div>${escapeHtml(paymentMethodLabel(deposit.payment_method))}</div>
                         </div>
                         <div class="col-6 mb-2">
                             <small class="text-muted">Status</small>
