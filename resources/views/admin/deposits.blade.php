@@ -100,6 +100,7 @@
                         <option value="approved" {{ request('status') == 'approved' ? 'selected' : '' }}>Approved</option>
                         <option value="completed" {{ request('status') == 'completed' ? 'selected' : '' }}>Completed</option>
                         <option value="rejected" {{ request('status') == 'rejected' ? 'selected' : '' }}>Rejected</option>
+                        <option value="refunded" {{ request('status') == 'refunded' ? 'selected' : '' }}>Refunded</option>
                     </select>
                 </div>
                 <div class="col-md-4">
@@ -162,7 +163,7 @@
                             <td><code class="font-monospace">{{ $deposit->reference_code }}</code></td>
                             <td class="fw-semibold text-primary">€{{ number_format($deposit->amount, 2) }}</td>
                             <td>
-                                <span class="badge bg-secondary">{{ ucfirst($deposit->payment_method) }}</span>
+                                <span class="badge bg-secondary">{{ $deposit->paymentMethodLabel() }}</span>
                             </td>
                             <td>
                                 @if($deposit->status == 'pending')
@@ -178,6 +179,8 @@
                                     <span class="badge bg-success">Completed</span>
                                 @elseif($deposit->status == 'rejected')
                                     <span class="badge bg-danger">Rejected</span>
+                                @elseif($deposit->status == 'refunded')
+                                    <span class="badge bg-secondary">Refunded</span>
                                 @endif
                             </td>
                             <td>{{ optional($deposit->created_at)?->format('M d, Y') ?: '—' }}</td>
@@ -220,7 +223,7 @@
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Deposit Request Details</h5>
+                <h5 class="modal-title" id="depositModalTitle">Deposit request details</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body" id="depositModalBody">
@@ -243,6 +246,53 @@ document.addEventListener('DOMContentLoaded', function() {
     const csrfToken = @json(csrf_token());
     const approveUrlTemplate = @json(route('admin.deposits.approve', ['id' => '__ID__']));
     const rejectUrlTemplate = @json(route('admin.deposits.reject', ['id' => '__ID__']));
+    const paypalRefundUrlTemplate = @json(route('admin.deposits.paypal-refund', ['id' => '__ID__']));
+
+    function paypalDepositFields(deposit) {
+        const response = (deposit && typeof deposit.paypal_response === 'object' && deposit.paypal_response)
+            ? deposit.paypal_response
+            : {};
+        const refund = (response.refund && typeof response.refund === 'object') ? response.refund : {};
+        const orderId = deposit.paypal_order_id || '';
+        const captureId = deposit.paypal_capture_id || '';
+        const refundId = refund.id || '';
+        if (!orderId && !captureId && !refundId) {
+            return '';
+        }
+
+        let html = '';
+        if (orderId) {
+            html += `<div class="col-6 mb-2"><small class="text-muted">PayPal order ID</small><div><code class="font-monospace">${escapeHtml(orderId)}</code></div></div>`;
+        }
+        if (captureId) {
+            html += `<div class="col-6 mb-2"><small class="text-muted">PayPal capture ID</small><div><code class="font-monospace">${escapeHtml(captureId)}</code></div></div>`;
+        }
+        if (refundId) {
+            html += `<div class="col-6 mb-2"><small class="text-muted">PayPal refund ID</small><div><code class="font-monospace">${escapeHtml(refundId)}</code></div></div>`;
+        }
+        if (refund.debited != null && refund.debited !== '') {
+            html += `<div class="col-6 mb-2"><small class="text-muted">Wallet debit</small><div>€${parseFloat(refund.debited).toFixed(2)}</div></div>`;
+        }
+        if (refund.debt_created != null && parseFloat(refund.debt_created) > 0.009) {
+            html += `<div class="col-6 mb-2"><small class="text-muted">Wallet debt created</small><div>€${parseFloat(refund.debt_created).toFixed(2)}</div></div>`;
+        }
+
+        return html;
+    }
+
+    function paymentMethodLabel(method) {
+        const labels = {
+            card: 'Card',
+            paypal: 'PayPal',
+            wallet: 'Wallet',
+            bank: 'Bank Transfer',
+            bank_transfer: 'Bank Transfer',
+            wise: 'Wise',
+            crypto: 'Cryptocurrency'
+        };
+        const key = String(method || '').toLowerCase();
+        return labels[key] || (key ? String(method) : '—');
+    }
 
     function depositActionUrl(template, id) {
         return String(template).replace('__ID__', encodeURIComponent(id));
@@ -292,7 +342,7 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(readJsonResponse)
             .then(data => {
                 if (data.success) {
-                    renderDepositModal(data.deposit, data.invoice);
+                    renderDepositModal(data.deposit, data.invoice, data.can_refund_paypal);
                     const modal = new bootstrap.Modal(document.getElementById('depositModal'));
                     modal.show();
                 } else {
@@ -306,7 +356,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     
-    function renderDepositModal(deposit, invoice) {
+    function renderDepositModal(deposit, invoice, canRefundPaypal) {
         let statusBadge = '';
         if (deposit.status === 'pending') {
             statusBadge = '<span class="badge bg-warning">Pending</span>';
@@ -316,6 +366,15 @@ document.addEventListener('DOMContentLoaded', function() {
             statusBadge = '<span class="badge bg-success">Completed</span>';
         } else if (deposit.status === 'rejected') {
             statusBadge = '<span class="badge bg-danger">Rejected</span>';
+        } else if (deposit.status === 'refunded') {
+            statusBadge = '<span class="badge bg-secondary">Refunded</span>';
+        }
+
+        const method = String(deposit.payment_method || '').toLowerCase();
+        const isInstant = method === 'card' || method === 'paypal';
+        const titleEl = document.getElementById('depositModalTitle');
+        if (titleEl) {
+            titleEl.textContent = isInstant ? 'Deposit details' : 'Deposit request details';
         }
         
         const user = deposit.user || {};
@@ -353,7 +412,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         </div>
                         <div class="col-6 mb-2">
                             <small class="text-muted">Payment Method</small>
-                            <div>${escapeHtml(String(deposit.payment_method || '').toUpperCase())}</div>
+                            <div>${escapeHtml(paymentMethodLabel(deposit.payment_method))}</div>
                         </div>
                         <div class="col-6 mb-2">
                             <small class="text-muted">Status</small>
@@ -370,6 +429,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             <small class="text-muted">User payment note</small>
                             <div>${escapeHtml(deposit.user_payment_note)}</div>
                         </div>` : ''}
+                        ${paypalDepositFields(deposit)}
                         <div class="col-12">
                             <small class="text-muted">Submitted Date</small>
                             <div>${formatDateTime(deposit.created_at)}</div>
@@ -402,20 +462,25 @@ document.addEventListener('DOMContentLoaded', function() {
             `;
         }
         
-        if (deposit.status === 'pending') {
+        if (deposit.status === 'pending' || canRefundPaypal) {
             html += `
                 <hr>
                 <div class="mb-3">
                     <label class="fw-semibold text-muted small">Admin Notes (Optional)</label>
                     <textarea id="adminNotes" class="form-control" rows="3" placeholder="Add notes about this deposit..."></textarea>
                 </div>
-                <div class="d-flex gap-2">
+                <div class="d-flex gap-2 flex-wrap">
+                    ${deposit.status === 'pending' ? `
                     <button class="btn btn-success approve-deposit" data-id="${deposit.id}">
                         <i class="fa fa-check"></i> Approve & Add Funds
                     </button>
                     <button class="btn btn-danger reject-deposit" data-id="${deposit.id}">
                         <i class="fa fa-times"></i> Reject
-                    </button>
+                    </button>` : ''}
+                    ${canRefundPaypal ? `
+                    <button class="btn btn-outline-danger refund-paypal-deposit" data-id="${deposit.id}">
+                        <i class="fab fa-paypal"></i> Refund PayPal capture
+                    </button>` : ''}
                 </div>
             `;
         }
@@ -432,6 +497,12 @@ document.addEventListener('DOMContentLoaded', function() {
         document.querySelectorAll('.reject-deposit').forEach(btn => {
             btn.addEventListener('click', function() {
                 rejectDeposit(this.dataset.id);
+            });
+        });
+
+        document.querySelectorAll('.refund-paypal-deposit').forEach(btn => {
+            btn.addEventListener('click', function() {
+                refundPaypalDeposit(this.dataset.id);
             });
         });
     }
@@ -487,6 +558,53 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
+    function refundPaypalDeposit(id) {
+        const notes = document.getElementById('adminNotes')?.value || '';
+
+        Swal.fire({
+            title: 'Refund this PayPal deposit?',
+            text: 'This refunds the PayPal capture to the buyer and removes the credit from their wallet. If they already spent part of it, the leftover becomes wallet debt.',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, refund on PayPal',
+            cancelButtonText: 'Cancel',
+            customClass: { confirmButton: 'slb-swal-danger' }
+        }).then((result) => {
+            if (! result.isConfirmed) {
+                return;
+            }
+
+            Swal.fire({
+                title: 'Refunding PayPal…',
+                text: 'Please wait',
+                allowOutsideClick: false,
+                didOpen: () => {
+                    Swal.showLoading();
+                }
+            });
+
+            fetch(depositActionUrl(paypalRefundUrlTemplate, id), {
+                method: 'POST',
+                headers: jsonHeaders({ 'Content-Type': 'application/json' }),
+                body: JSON.stringify({ admin_notes: notes })
+            })
+            .then(readJsonResponse)
+            .then(data => {
+                if (data.success) {
+                    Swal.fire('Refunded', data.message || 'PayPal capture refunded.', 'success').then(() => {
+                        location.reload();
+                    });
+                } else {
+                    Swal.fire('Error', data.message || 'PayPal refund failed. The wallet was not changed.', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                Swal.fire('Error', error.message || 'PayPal refund failed. The wallet was not changed.', 'error');
+            });
+        });
+    }
+
     function rejectDeposit(id) {
         const notes = document.getElementById('adminNotes')?.value || '';
         

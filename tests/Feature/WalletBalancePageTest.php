@@ -74,7 +74,8 @@ class WalletBalancePageTest extends TestCase
             ->assertSee('proceedBtn', false)
             ->assertSee(Wallet::PROMOTIONAL_BONUS_MESSAGE, false)
             ->assertSee('Bonus €20.00', false)
-            ->assertSee('PayPal coming soon', false)
+            ->assertSee('PayPal', false)
+            ->assertDontSee('PayPal coming soon', false)
             ->assertDontSee('Spending Overview', false)
             ->assertDontSee('Quick Actions', false)
             ->assertDontSee('Processing Fee', false)
@@ -88,8 +89,9 @@ class WalletBalancePageTest extends TestCase
         $this->assertStringNotContainsString('href="#depositSection" class="btn btn-primary"', $html);
         $this->assertStringContainsString('id="kpiSpendable"', $html);
         $this->assertStringContainsString('af-spendable__chip--bonus', $html);
-        $this->assertStringContainsString('PayPal coming soon', $html);
-        $this->assertStringNotContainsString('PayPal Coming Soon', $html);
+        $this->assertStringContainsString('PayPal', $html);
+        $this->assertStringNotContainsString('PayPal coming soon', $html);
+        $this->assertStringContainsString('paypal.svg', $html);
         $this->assertStringContainsString('ref-code', $html);
         $this->assertStringContainsString('Recent activity', $html);
         $this->assertStringContainsString('id="publisherRoleStrip"', $html);

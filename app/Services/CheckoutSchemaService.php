@@ -22,6 +22,8 @@ class CheckoutSchemaService
         $this->ensureOrderItemsColumns();
         $this->ensureSitesColumns();
         $this->ensureCheckoutIntentsTable();
+        $this->ensurePaypalWebhookLogsTable();
+        $this->ensureDepositPaypalColumns();
     }
 
     /**
@@ -79,6 +81,13 @@ class CheckoutSchemaService
         $this->addColumn('orders', 'paid_at', 'timestamp NULL');
         $this->addColumn('orders', 'admin_notes', 'text NULL');
         $this->addColumn('orders', 'payment_reference', 'varchar(120) NULL');
+        $this->addColumn('orders', 'paypal_order_id', 'varchar(255) NULL');
+        $this->addColumn('orders', 'paypal_capture_id', 'varchar(255) NULL');
+        $this->addColumn('orders', 'paypal_refund_id', 'varchar(255) NULL');
+        $this->addNullableJsonColumn('orders', 'paypal_response');
+        $this->addIndexIfMissing('orders', 'paypal_order_id');
+        $this->addUniqueIfMissing('orders', 'paypal_capture_id');
+        $this->addUniqueIfMissing('orders', 'paypal_refund_id');
     }
 
     private function ensureOrderItemsColumns(): void
@@ -151,6 +160,42 @@ class CheckoutSchemaService
         }
     }
 
+    private function ensurePaypalWebhookLogsTable(): void
+    {
+        if ($this->tableExists('paypal_webhook_logs')) {
+            return;
+        }
+
+        try {
+            Schema::create('paypal_webhook_logs', function (Blueprint $table) {
+                $table->id();
+                $table->string('event_id')->unique();
+                $table->string('event_type');
+                $table->json('payload');
+                $table->boolean('processed')->default(false);
+                $table->timestamps();
+            });
+            Log::info('Created missing paypal_webhook_logs table');
+        } catch (\Throwable $e) {
+            Log::warning('Could not create paypal_webhook_logs table', [
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    private function ensureDepositPaypalColumns(): void
+    {
+        if (! $this->tableExists('deposit_requests')) {
+            return;
+        }
+
+        $this->addColumn('deposit_requests', 'paypal_order_id', 'varchar(255) NULL');
+        $this->addColumn('deposit_requests', 'paypal_capture_id', 'varchar(255) NULL');
+        $this->addNullableJsonColumn('deposit_requests', 'paypal_response');
+        $this->addIndexIfMissing('deposit_requests', 'paypal_order_id');
+        $this->addUniqueIfMissing('deposit_requests', 'paypal_capture_id');
+    }
+
     /**
      * Site counters touched during Approve / auto-approve payouts.
      */
@@ -205,6 +250,61 @@ class CheckoutSchemaService
         }
 
         $this->addColumn($table, $column, 'json NULL');
+    }
+
+    /**
+     * Duplicate PayPal captures must not create a second paid order when
+     * Hostinger skipped migrate (columns exist, unique index does not).
+     */
+    private function addUniqueIfMissing(string $table, string $column): void
+    {
+        $this->addIndexIfMissing($table, $column, unique: true);
+    }
+
+    private function addIndexIfMissing(string $table, string $column, bool $unique = false): void
+    {
+        try {
+            if (! Schema::hasColumn($table, $column)) {
+                return;
+            }
+        } catch (\Throwable) {
+            return;
+        }
+
+        $index = $table.'_'.$column.($unique ? '_unique' : '_index');
+        if ($this->hasIndex($table, $index)) {
+            return;
+        }
+
+        try {
+            Schema::table($table, function (Blueprint $blueprint) use ($column, $unique) {
+                if ($unique) {
+                    $blueprint->unique($column);
+                } else {
+                    $blueprint->index($column);
+                }
+            });
+        } catch (\Throwable $e) {
+            $kind = $unique ? 'unique' : 'index';
+            Log::warning("Could not add {$kind} {$table}.{$column} for checkout", [
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    private function hasIndex(string $table, string $index): bool
+    {
+        try {
+            foreach (Schema::getIndexes($table) as $row) {
+                if (($row['name'] ?? '') === $index) {
+                    return true;
+                }
+            }
+        } catch (\Throwable) {
+            return false;
+        }
+
+        return false;
     }
 
     private function tableExists(string $table): bool

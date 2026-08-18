@@ -16,6 +16,7 @@ use App\Services\ActivityLogger;
 use App\Services\InAppNotificationService;
 use App\Services\OrderPaymentService;
 use App\Services\Wallet\WalletLedgerService;
+use App\Support\UserFacingError;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -146,35 +147,26 @@ class OrderClawbackService
             ]);
         }
 
-        return DB::transaction(function () use ($dispute, $admin, $notes) {
-            $dispute = OrderItemDispute::where('id', $dispute->id)->lockForUpdate()->firstOrFail();
-            if (! $dispute->isOpen()) {
-                throw ValidationException::withMessages([
-                    'dispute' => 'Only open disputes can be upheld.',
-                ]);
-            }
+        $preview = OrderItemDispute::query()->findOrFail($dispute->id);
+        $previewItem = OrderItem::query()->findOrFail($preview->order_item_id);
+        $previewOrder = Order::query()->findOrFail($preview->order_id);
+        $this->assertUpholdPreconditions($preview, $previewOrder, $previewItem);
+        $advertiserCredit = round((float) $previewItem->price, 2);
+        $preparedPaypal = $this->refundPaypalCashBeforeUphold($preview, $previewOrder, $advertiserCredit);
 
+        return DB::transaction(function () use ($dispute, $admin, $notes, $advertiserCredit, $preparedPaypal) {
+            $dispute = OrderItemDispute::where('id', $dispute->id)->lockForUpdate()->firstOrFail();
             $item = OrderItem::where('id', $dispute->order_item_id)->lockForUpdate()->firstOrFail();
             $order = Order::where('id', $dispute->order_id)->lockForUpdate()->firstOrFail();
-
-            $existingUpheld = OrderItemDispute::where('order_item_id', $item->id)
-                ->where('status', OrderItemDispute::STATUS_UPHELD)
-                ->where('id', '!=', $dispute->id)
-                ->exists();
-            if ($existingUpheld || $order->payment_status === 'refunded') {
-                throw ValidationException::withMessages([
-                    'dispute' => 'This order item has already been clawed back or refunded.',
-                ]);
-            }
-
-            if ($order->payment_status !== 'paid') {
-                throw ValidationException::withMessages([
-                    'dispute' => 'Only paid orders can be clawed back.',
-                ]);
-            }
+            $this->assertUpholdPreconditions($dispute, $order, $item);
 
             $targetPayout = round((float) $item->publisherPayoutAmount(), 2);
             $advertiserCredit = round((float) $item->price, 2);
+            if (abs($advertiserCredit - $preparedPaypal['expected_credit']) > 0.009) {
+                throw ValidationException::withMessages([
+                    'dispute' => 'The disputed line amount changed. Refresh and try again.',
+                ]);
+            }
 
             $site = Site::find($item->site_id);
             $publisherId = $site?->publisher_id;
@@ -184,24 +176,6 @@ class OrderClawbackService
             $debited = 0.0;
             $debtCreated = 0.0;
             $publisherWallet = null;
-
-            if ($targetPayout > 0 && ! $publisherId) {
-                throw ValidationException::withMessages([
-                    'dispute' => 'Cannot uphold this dispute: the listing (and publisher) is missing, so the publisher clawback cannot be applied. Restore the site first.',
-                ]);
-            }
-
-            if ($advertiserCredit > 0 && ! $advertiserRoleId) {
-                throw ValidationException::withMessages([
-                    'dispute' => 'Cannot uphold this dispute: the advertiser role is missing, so the refund cannot be applied. Seed roles first.',
-                ]);
-            }
-
-            if ($targetPayout > 0 && ! $publisherRoleId) {
-                throw ValidationException::withMessages([
-                    'dispute' => 'Cannot uphold this dispute: the publisher role is missing, so the publisher clawback cannot be applied. Seed roles first.',
-                ]);
-            }
 
             if ($publisherId && $publisherRoleId && $targetPayout > 0) {
                 $publisherWallet = Wallet::lockOrCreateForRole((int) $publisherId, (int) $publisherRoleId);
@@ -236,19 +210,22 @@ class OrderClawbackService
                 $advertiserWallet = Wallet::lockOrCreateForRole((int) $order->user_id, (int) $advertiserRoleId);
                 $bonusShare = $this->bonusShareFromPurchaseLedger($advertiserWallet, $order, $advertiserCredit);
                 $cashShare = round($advertiserCredit - $bonusShare, 2);
+                $skipCash = $preparedPaypal['refund'] !== null;
                 if ($bonusShare > 0) {
                     $advertiserWallet->creditBonus($bonusShare);
                 }
-                if ($cashShare > 0) {
+                if ($cashShare > 0 && ! $skipCash) {
                     $advertiserWallet->credit($cashShare);
                 }
-                $this->ledger->recordRefund(
-                    $advertiserWallet,
-                    $advertiserCredit,
-                    $bonusShare,
-                    $order,
-                    $order->reference_code ?: 'CLAWBACK-REFUND-'.$item->id
-                );
+                if (! $skipCash || $bonusShare > 0) {
+                    $this->ledger->recordRefund(
+                        $advertiserWallet,
+                        $skipCash ? $bonusShare : $advertiserCredit,
+                        $bonusShare,
+                        $order,
+                        $order->reference_code ?: 'CLAWBACK-REFUND-'.$item->id
+                    );
+                }
             }
 
             $dispute->update([
@@ -290,7 +267,12 @@ class OrderClawbackService
 
             if ($advertiser?->email) {
                 try {
-                    Mail::to($advertiser->email)->send(new DisputeRefundAdvertiser($fresh, $advertiser, $advertiserCredit));
+                    Mail::to($advertiser->email)->send(new DisputeRefundAdvertiser(
+                        $fresh,
+                        $advertiser,
+                        $advertiserCredit,
+                        $preparedPaypal['refund'] !== null
+                    ));
                 } catch (\Throwable $e) {
                     Log::warning('Dispute refund advertiser mail failed', [
                         'dispute_id' => $fresh->id,
@@ -396,6 +378,111 @@ class OrderClawbackService
 
             return $cleared;
         });
+    }
+
+    /**
+     * Fail closed before any PayPal HTTP, and again inside the locked TX.
+     */
+    private function assertUpholdPreconditions(OrderItemDispute $dispute, Order $order, OrderItem $item): void
+    {
+        if (! $dispute->isOpen()) {
+            throw ValidationException::withMessages([
+                'dispute' => 'Only open disputes can be upheld.',
+            ]);
+        }
+
+        $existingUpheld = OrderItemDispute::where('order_item_id', $item->id)
+            ->where('status', OrderItemDispute::STATUS_UPHELD)
+            ->where('id', '!=', $dispute->id)
+            ->exists();
+        if ($existingUpheld || $order->payment_status === 'refunded') {
+            throw ValidationException::withMessages([
+                'dispute' => 'This order item has already been clawed back or refunded.',
+            ]);
+        }
+
+        if ($order->payment_status !== 'paid') {
+            throw ValidationException::withMessages([
+                'dispute' => 'Only paid orders can be clawed back.',
+            ]);
+        }
+
+        $targetPayout = round((float) $item->publisherPayoutAmount(), 2);
+        $advertiserCredit = round((float) $item->price, 2);
+        $site = Site::find($item->site_id);
+        $publisherId = $site?->publisher_id;
+
+        if ($targetPayout > 0 && ! $publisherId) {
+            throw ValidationException::withMessages([
+                'dispute' => 'Cannot uphold this dispute: the listing (and publisher) is missing, so the publisher clawback cannot be applied. Restore the site first.',
+            ]);
+        }
+
+        if ($advertiserCredit > 0 && ! Wallet::advertiserRoleId()) {
+            throw ValidationException::withMessages([
+                'dispute' => 'Cannot uphold this dispute: the advertiser role is missing, so the refund cannot be applied. Seed roles first.',
+            ]);
+        }
+
+        if ($targetPayout > 0 && ! Wallet::publisherRoleId()) {
+            throw ValidationException::withMessages([
+                'dispute' => 'Cannot uphold this dispute: the publisher role is missing, so the publisher clawback cannot be applied. Seed roles first.',
+            ]);
+        }
+    }
+
+    /**
+     * PayPal HTTP stays outside the uphold transaction. Cash returns on PayPal;
+     * leftover checkout bonus is still restored on-wallet inside the TX.
+     *
+     * @return array{refund: array{id: string, amount: float, status: string}|null, expected_credit: float}
+     */
+    private function refundPaypalCashBeforeUphold(OrderItemDispute $dispute, Order $order, float $advertiserCredit): array
+    {
+        $result = [
+            'refund' => null,
+            'expected_credit' => $advertiserCredit,
+        ];
+        if (($order->payment_method ?? '') !== 'paypal' || $advertiserCredit < 0.01) {
+            return $result;
+        }
+
+        $advertiserRoleId = Wallet::advertiserRoleId();
+        $bonusShare = 0.0;
+        if ($advertiserRoleId) {
+            $peekWallet = Wallet::query()
+                ->where('user_id', $order->user_id)
+                ->where('role_id', $advertiserRoleId)
+                ->first();
+            if ($peekWallet) {
+                $bonusShare = $this->bonusShareFromPurchaseLedger($peekWallet, $order, $advertiserCredit);
+            }
+        }
+        $cashShare = round($advertiserCredit - $bonusShare, 2);
+        if ($cashShare < 0.01) {
+            return $result;
+        }
+
+        try {
+            $result['refund'] = app(OrderRefundService::class)->refundPaypalCaptureIfPossible(
+                $order,
+                $cashShare,
+                true,
+                'dispute-'.$dispute->id
+            );
+        } catch (\Throwable $e) {
+            Log::error('Dispute PayPal refund API failed', [
+                'dispute_id' => $dispute->id,
+                'order_id' => $order->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            throw ValidationException::withMessages([
+                'dispute' => UserFacingError::message($e, 'PayPal refund failed. The wallet was not credited.'),
+            ]);
+        }
+
+        return $result;
     }
 
     /**

@@ -65,7 +65,7 @@ class LiveLinkRemovedBlogPost
             ],
             [
                 'question' => 'What do I get if the dispute is upheld?',
-                'answer' => 'When we uphold the report, the order amount can be refunded to your wallet and the publisher payout for that order is clawed back. If they already withdrew those funds, we record a debt and block further withdrawals until it is resolved.',
+                'answer' => 'When we uphold the report, wallet and card orders return as wallet credit; PayPal checkout refunds return to the PayPal account that paid. The publisher payout for that order is clawed back. If they already withdrew those funds, we record a debt and block further withdrawals until it is resolved.',
             ],
             [
                 'question' => 'Does every missing page automatically win?',
@@ -156,7 +156,7 @@ class LiveLinkRemovedBlogPost
 <h3>How long do I have to report a removed link?</h3>
 <p>Advertisers can report a completed placement for 30 days after completion. Do not wait until month three to open the ticket.</p>
 <h3>What do I get if the dispute is upheld?</h3>
-<p>When we uphold the report, the order amount can be refunded to your wallet and the publisher payout for that order is clawed back. If they already withdrew those funds, we record a debt and block further withdrawals until it is resolved.</p>
+<p>When we uphold the report, wallet and card orders return as wallet credit; PayPal checkout refunds return to the PayPal account that paid. The publisher payout for that order is clawed back. If they already withdrew those funds, we record a debt and block further withdrawals until it is resolved.</p>
 <h3>Does every missing page automatically win?</h3>
 <p>No. We review the case. Bring the live URL you were given, proof it is gone or altered, and the order ID. Vague claims slow everyone down.</p>
 <h3>Should I still log placements after approval?</h3>

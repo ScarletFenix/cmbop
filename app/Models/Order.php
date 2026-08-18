@@ -22,6 +22,10 @@ class Order extends Model
         'stripe_session_id',
         'stripe_payment_intent_id',
         'stripe_response',
+        'paypal_order_id',
+        'paypal_capture_id',
+        'paypal_refund_id',
+        'paypal_response',
         'paid_at',
         'completed_at',
         'subtotal',
@@ -43,6 +47,7 @@ class Order extends Model
 
     protected $casts = [
         'stripe_response' => 'array',
+        'paypal_response' => 'array',
         'paid_at' => 'datetime',
         'completed_at' => 'datetime',
         'scheduled_publish_at' => 'datetime',
@@ -243,6 +248,12 @@ class Order extends Model
 
         return ($payment === null || ! in_array($payment, ['paid', 'refunded'], true))
             && in_array($this->status, ['pending', 'processing', 'review'], true);
+    }
+
+    public function paidViaPaypal(): bool
+    {
+        return $this->payment_method === 'paypal'
+            && (filled($this->paypal_capture_id) || filled($this->paypal_order_id));
     }
 
     public function user()

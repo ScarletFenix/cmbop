@@ -13,7 +13,7 @@ It's been two weeks since you joined as an advertiser, and your wallet still has
 **How to deposit**
 1. Open **Add funds**
 2. Choose an amount (many teams start with €50–€200)
-3. Pay by **card** (instant) or **bank / Wise** (submit a deposit request; we confirm, then credit your wallet)
+3. Pay by **card or PayPal** (instant) or **bank / Wise / crypto** (submit a deposit request; we confirm, then credit your wallet)
 
 @component('mail::button', ['url' => $addFundsUrl])
 Add funds now

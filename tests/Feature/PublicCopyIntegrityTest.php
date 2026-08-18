@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Support\PublicI18n;
 use Tests\TestCase;
 
 class PublicCopyIntegrityTest extends TestCase
@@ -11,7 +12,7 @@ class PublicCopyIntegrityTest extends TestCase
      */
     private function locales(): array
     {
-        return \App\Support\PublicI18n::supported();
+        return PublicI18n::supported();
     }
 
     private function langPath(string $locale): string
@@ -127,6 +128,11 @@ class PublicCopyIntegrityTest extends TestCase
                 $this->assertNotEmpty($messages[$key] ?? '', $locale.' missing '.$key);
             }
             $this->assertStringContainsString('24', $messages['privacy_section5_list1_4']);
+            $this->assertStringNotContainsString(
+                'do not reverse the Stripe or PayPal charge',
+                $messages['staff_handbook_section7_list3'],
+                $locale.' still says PayPal refunds do not reverse the capture'
+            );
         }
     }
 

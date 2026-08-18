@@ -508,7 +508,7 @@ class AdvertiserSpendService
         return match ($dimension) {
             'payment_method' => [[
                 'key' => (string) ($order->payment_method ?: 'unknown'),
-                'label' => ucfirst((string) ($order->payment_method ?: 'Unknown')),
+                'label' => Invoice::paymentMethodLabel($order->payment_method ?: 'Unknown'),
             ]],
             'site' => $order->items->map(function (OrderItem $item) {
                 $name = $item->site_name ?: ('Site #'.($item->site_id ?: '?'));

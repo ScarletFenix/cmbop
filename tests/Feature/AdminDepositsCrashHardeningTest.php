@@ -179,9 +179,12 @@ class AdminDepositsCrashHardeningTest extends TestCase
         $this->assertStringContainsString(route('admin.deposits.show', $deposit->id), $html);
         $this->assertStringContainsString('data-show-url', $html);
         $this->assertStringContainsString('readJsonResponse', $html);
+        $this->assertStringContainsString('paypalRefundUrlTemplate', $html);
+        $this->assertStringContainsString('/paypal-refund', $html);
         $this->assertStringNotContainsString("fetch('/admin/deposits/'", $html);
         $this->assertStringNotContainsString('fetch(`/admin/deposits/${id}/approve`', $html);
         $this->assertStringNotContainsString('fetch(`/admin/deposits/${id}/reject`', $html);
+        $this->assertStringNotContainsString('fetch(`/admin/deposits/${id}/paypal-refund`', $html);
     }
 
     public function test_approve_still_credits_when_activity_log_table_is_gone(): void

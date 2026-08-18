@@ -979,6 +979,7 @@ class AdminOrderPaymentsOpsTest extends TestCase
         $this->assertStringContainsString("$('#paymentStatusFilter').val('unpaid')", $html);
         $this->assertStringContainsString('Swal.fire({', $html);
         $this->assertStringContainsString('does not refund the Stripe charge', $html);
+        $this->assertStringContainsString('Refunds the PayPal capture back to the buyer', $html);
         $this->assertStringContainsString('Use a dispute clawback', $html);
         $this->assertStringContainsString('willMoveMoney', $html);
         $this->assertStringContainsString('does not credit the wallet again', $html);

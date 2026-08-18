@@ -2,6 +2,7 @@
     $compact = $compact ?? false;
     $showMethods = $showMethods ?? true;
     $asset = fn (string $file) => asset('assets/img/payments/'.$file);
+    $paypalConfigured = app(\App\Services\PaypalCheckoutService::class)->configured();
     $refundUrl = function_exists('localized_url')
         ? localized_url('refund-policy')
         : url('/refund-policy');
@@ -22,6 +23,9 @@
                 <img class="payment-trust__logo payment-trust__logo--card" src="{{ $asset('apple-pay.svg') }}" alt="Apple Pay" title="Apple Pay" width="56" height="30" loading="lazy" decoding="async">
             @endif
             <img class="payment-trust__logo payment-trust__logo--bank" src="{{ $asset('bank.svg') }}" alt="Bank transfer" title="Bank transfer" width="72" height="36" loading="lazy" decoding="async">
+            @if($paypalConfigured)
+                <img class="payment-trust__logo payment-trust__logo--paypal" src="{{ $asset('paypal.svg') }}" alt="PayPal" title="PayPal" width="48" height="16" loading="lazy" decoding="async">
+            @endif
             <img class="payment-trust__logo payment-trust__logo--wise" src="{{ $asset('wise.png') }}" alt="Wise" title="Wise" width="72" height="16" loading="lazy" decoding="async">
             <img class="payment-trust__logo payment-trust__logo--crypto" src="{{ $asset('bitcoin.svg') }}" alt="Cryptocurrency" title="Cryptocurrency" width="24" height="24" loading="lazy" decoding="async">
         </div>
@@ -93,6 +97,9 @@
             max-height: 32px;
         }
         .payment-trust__logo--wise {
+            height: 16px;
+        }
+        .payment-trust__logo--paypal {
             height: 16px;
         }
         .payment-trust__logo--crypto {

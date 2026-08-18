@@ -9,7 +9,7 @@ Here is where it stands:
 
 - The publisher has been reminded and our team is following up directly.
 - Your payment is still held in escrow. It has not been released.
-- If the publisher does not deliver, we will refund the full amount to your wallet balance so you can order on another site.
+- If the publisher does not deliver, we will refund the full amount {{ ($order->payment_method ?? '') === 'paypal' ? 'to the PayPal account that paid' : 'to your wallet balance' }} so you can order on another site.
 
 @component('mail::button', ['url' => $ordersUrl])
 View the order

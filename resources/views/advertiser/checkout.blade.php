@@ -306,7 +306,13 @@
                             <i class="fa fa-credit-card me-2"></i> {{ !empty($schedulingEnabled) ? '3' : '2' }}. Payment
                         </div>
                         <div class="card-body">
-                            <p class="text-muted small mb-3">Pay from your wallet, or by card. Bank, Wise, and crypto fund your wallet via invoice first.</p>
+                            <p class="text-muted small mb-3">Pay from your wallet, by card, or PayPal. Bank, Wise, and crypto fund your wallet via invoice first.</p>
+                            @if(($checkoutDebtBalance ?? 0) > 0.009)
+                                <div class="alert alert-warning py-2 px-3 mb-3 small" role="alert">
+                                    {{ $checkoutDebtReason }}
+                                    <a href="{{ route('advertiser.add-funds') }}" class="alert-link">Add funds</a> to clear the debt first.
+                                </div>
+                            @endif
 
                             <!-- Recommended: Wallet -->
                             <div class="payment-option payment-option-recommended mb-3" data-method="wallet" style="cursor: pointer;" role="button" tabindex="0" aria-label="Pay with wallet balance">
@@ -355,6 +361,33 @@
                             <div class="alert alert-light border py-2 px-3 mb-3 small d-none" id="stripeZeroAmountAlert">
                                 Card / Stripe is only for amounts greater than €0. When bonus covers the order, use <strong>Wallet</strong>.
                             </div>
+                            @php $paypalNeedsAmount = (float) $total > 0; @endphp
+                            <div class="payment-option mb-3 {{ (empty($paypalConfigured) || ! $paypalNeedsAmount) ? 'payment-option-disabled' : '' }}"
+                                 data-method="paypal"
+                                 data-requires-amount="1"
+                                 style="cursor: {{ (empty($paypalConfigured) || ! $paypalNeedsAmount) ? 'not-allowed' : 'pointer' }}; {{ (empty($paypalConfigured) || ! $paypalNeedsAmount) ? 'opacity:.55;' : '' }}"
+                                 role="button"
+                                 tabindex="0"
+                                 aria-label="Pay with PayPal"
+                                 @if(empty($paypalConfigured)) aria-disabled="true" data-paypal-disabled="1" @endif
+                                 @if(! $paypalNeedsAmount) aria-disabled="true" data-zero-amount="1" @endif>
+                                <div class="payment-option-card">
+                                    <div style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: #f3f4f6; border-radius: 8px; flex-shrink:0;">
+                                        <img src="{{ asset('assets/img/payments/paypal.svg') }}" alt="" width="40" height="11" style="width:40px;height:auto;" decoding="async">
+                                    </div>
+                                    <div class="flex-grow-1">
+                                        <span style="font-weight: 700; font-size: 14px; color: #1f2937;">PayPal</span>
+                                        <span style="font-size: 12px; color: #6b7280; display: block; margin-top: 2px;">
+                                            @if(! $paypalNeedsAmount)
+                                                Available when amount due is greater than €0
+                                            @else
+                                                Secure PayPal checkout — ready sites only
+                                            @endif
+                                        </span>
+                                    </div>
+                                    <i class="fa fa-check-circle payment-check" aria-hidden="true"></i>
+                                </div>
+                            </div>
                             @if(empty($stripeConfigured))
                                 <div class="alert alert-warning py-2 px-3 mb-3 small" id="stripeNotConfiguredAlert">
                                     Card payments are not configured on this server. Set <code>STRIPE_KEY</code> and <code>STRIPE_SECRET</code> in <code>.env</code>, then run <code>php artisan config:clear</code>, or pay with wallet.
@@ -363,6 +396,11 @@
                                 <div class="alert alert-warning py-2 px-3 mb-3 small" id="stripeSchemaAlert">
                                     Stripe keys are present, but the database is missing <code>users.stripe_customer_id</code>.
                                     Run <code>database/sql/fix_users_stripe_customer_columns.sql</code> in phpMyAdmin (Hostinger), then retry card checkout.
+                                </div>
+                            @endif
+                            @if(empty($paypalConfigured))
+                                <div class="alert alert-warning py-2 px-3 mb-3 small" id="paypalNotConfiguredAlert">
+                                    PayPal is not configured on this server. Set <code>PAYPAL_CLIENT_ID</code> and <code>PAYPAL_SECRET</code> in <code>.env</code>, then run <code>php artisan config:clear</code>, or pay with wallet or card.
                                 </div>
                             @endif
 
@@ -637,6 +675,23 @@
                                 @endif
 
                                 @include('partials.payment-trust', ['compact' => true])
+                            </div>
+                        </div>
+
+                        <div id="paypalPaymentDetails" class="card border-0 shadow-sm mb-4" style="display: none;">
+                            <div class="card-body">
+                                <div style="display: flex; align-items: center; margin-bottom: 16px;">
+                                    <div style="width: 40px; height: 40px; background: #f3f4f6; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-right: 12px;">
+                                        <img src="{{ asset('assets/img/payments/paypal.svg') }}" alt="" width="32" height="9" style="width:32px;height:auto;" decoding="async">
+                                    </div>
+                                    <div>
+                                        <h3 style="font-size: 18px; font-weight: 600; margin: 0;">PayPal</h3>
+                                        <p style="font-size: 12px; color: #6b7280; margin: 4px 0 0;">You’ll confirm the payment on PayPal’s secure page</p>
+                                    </div>
+                                </div>
+                                <div class="alert alert-light border small mb-0">
+                                    Place Order opens PayPal. After you approve, we capture the payment and create your order — same as card.
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1217,6 +1272,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const paymentDetailsSection = document.getElementById('paymentDetailsSection');
     const walletDetails = document.getElementById('walletPaymentDetails');
     const cardDetails = document.getElementById('cardPaymentDetails');
+    const paypalDetails = document.getElementById('paypalPaymentDetails');
     const placeOrderBtn = document.getElementById('placeOrderBtn');
     // Legacy detail panels (no longer selectable at order checkout)
     const wiseDetails = document.getElementById('wisePaymentDetails');
@@ -1279,33 +1335,39 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
 
-        // Stripe only when amount due > 0 (bonus-covered / €0 orders use wallet).
-        const cardOption = document.querySelector('.payment-option[data-method="card"]');
+        // Stripe / PayPal only when amount due > 0 (bonus-covered / €0 orders use wallet).
         const zeroAlert = document.getElementById('stripeZeroAmountAlert');
-        if (cardOption && cardOption.dataset.stripeDisabled !== '1') {
-            const blockCard = due <= 0;
-            cardOption.classList.toggle('payment-option-disabled', blockCard);
-            cardOption.style.opacity = blockCard ? '.55' : '';
-            cardOption.style.cursor = blockCard ? 'not-allowed' : 'pointer';
-            if (blockCard) {
-                cardOption.setAttribute('aria-disabled', 'true');
-                cardOption.dataset.zeroAmount = '1';
+        [
+            { method: 'card', disabledFlag: 'stripeDisabled', details: cardDetails },
+            { method: 'paypal', disabledFlag: 'paypalDisabled', details: paypalDetails },
+        ].forEach(function (rail) {
+            const option = document.querySelector('.payment-option[data-method="' + rail.method + '"]');
+            if (!option || option.dataset[rail.disabledFlag] === '1') {
+                return;
+            }
+            const blockRail = due <= 0;
+            option.classList.toggle('payment-option-disabled', blockRail);
+            option.style.opacity = blockRail ? '.55' : '';
+            option.style.cursor = blockRail ? 'not-allowed' : 'pointer';
+            if (blockRail) {
+                option.setAttribute('aria-disabled', 'true');
+                option.dataset.zeroAmount = '1';
             } else {
-                cardOption.removeAttribute('aria-disabled');
-                delete cardOption.dataset.zeroAmount;
+                option.removeAttribute('aria-disabled');
+                delete option.dataset.zeroAmount;
             }
-            if (zeroAlert) {
-                zeroAlert.classList.toggle('d-none', !blockCard);
+            if (rail.method === 'card' && zeroAlert) {
+                zeroAlert.classList.toggle('d-none', !blockRail);
             }
-            if (blockCard && selectedMethod === 'card') {
+            if (blockRail && selectedMethod === rail.method) {
                 selectedMethod = null;
-                cardOption.classList.remove('selected');
-                if (cardDetails) cardDetails.style.display = 'none';
+                option.classList.remove('selected');
+                if (rail.details) rail.details.style.display = 'none';
                 if (typeof syncPlaceOrderForModeration === 'function') {
                     syncPlaceOrderForModeration();
                 }
             }
-        }
+        });
     }
 
     if (useBonusEl) {
@@ -1331,11 +1393,19 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
                 return;
             }
-            if (method === 'card' && (this.dataset.zeroAmount === '1' || amountDue() <= 0)) {
+            if (method === 'paypal' && this.dataset.paypalDisabled === '1') {
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'PayPal unavailable',
+                    html: 'PayPal is not configured on this server. Set <code>PAYPAL_CLIENT_ID</code> and <code>PAYPAL_SECRET</code> in <code>.env</code>, then run <code>php artisan config:clear</code> — or pay with wallet or card.'
+                });
+                return;
+            }
+            if ((method === 'card' || method === 'paypal') && (this.dataset.zeroAmount === '1' || amountDue() <= 0)) {
                 Swal.fire({
                     icon: 'info',
-                    title: 'Nothing to charge by card',
-                    text: 'Stripe is only for amounts greater than €0. Use Wallet when bonus covers the order, or assign ready sites that need payment.'
+                    title: method === 'paypal' ? 'Nothing to charge with PayPal' : 'Nothing to charge by card',
+                    text: (method === 'paypal' ? 'PayPal' : 'Stripe') + ' is only for amounts greater than €0. Use Wallet when bonus covers the order, or assign ready sites that need payment.'
                 });
                 return;
             }
@@ -1346,12 +1416,14 @@ document.addEventListener('DOMContentLoaded', function() {
             
             if (walletDetails) walletDetails.style.display = 'none';
             if (cardDetails) cardDetails.style.display = 'none';
+            if (paypalDetails) paypalDetails.style.display = 'none';
             if (wiseDetails) wiseDetails.style.display = 'none';
             if (cryptoDetails) cryptoDetails.style.display = 'none';
             if (bankDetails) bankDetails.style.display = 'none';
 
             if (method === 'wallet' && walletDetails) walletDetails.style.display = 'block';
             else if (method === 'card' && cardDetails) cardDetails.style.display = 'block';
+            else if (method === 'paypal' && paypalDetails) paypalDetails.style.display = 'block';
 
             if (paymentDetailsSection) paymentDetailsSection.style.display = 'block';
 
@@ -1573,12 +1645,13 @@ document.addEventListener('DOMContentLoaded', function() {
                         window.location.href = '{{ route("advertiser.orders") }}';
                     });
                 }
-            } else if (data.code === 'fund_wallet_first' && data.redirect_url) {
+            } else if ((data.code === 'fund_wallet_first' || data.code === 'wallet_debt') && data.redirect_url) {
+                const isDebt = data.code === 'wallet_debt';
                 Swal.fire({
-                    icon: 'info',
-                    title: 'Fund your wallet first',
+                    icon: isDebt ? 'warning' : 'info',
+                    title: isDebt ? 'Clear wallet debt first' : 'Fund your wallet first',
                     html: `<div style="text-align:left;">${escapeHtml(data.message || '')}</div>`,
-                    confirmButtonText: 'Add funds & get invoice',
+                    confirmButtonText: isDebt ? 'Add funds' : 'Add funds & get invoice',
                     showCancelButton: true,
                     cancelButtonText: 'Stay here'
                 }).then((result) => {
@@ -1639,7 +1712,7 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
-        if (!['wallet', 'card'].includes(selectedMethod)) {
+        if (!['wallet', 'card', 'paypal'].includes(selectedMethod)) {
             Swal.fire({
                 icon: 'info',
                 title: 'Fund your wallet first',

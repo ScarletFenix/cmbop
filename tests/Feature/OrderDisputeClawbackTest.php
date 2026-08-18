@@ -21,6 +21,7 @@ use App\Services\Wallet\WalletLedgerService;
 use App\Support\EmailCatalog;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Tests\Support\CreatesContentSubmissions;
 use Tests\TestCase;
@@ -1108,5 +1109,105 @@ class OrderDisputeClawbackTest extends TestCase
 
         $this->assertSame(OrderItemDispute::STATUS_OPEN, $dispute->fresh()->status);
         $this->assertSame('paid', $order->fresh()->payment_status);
+    }
+
+    public function test_uphold_paypal_order_refunds_capture_and_skips_wallet_credit(): void
+    {
+        config([
+            'services.paypal.enabled' => true,
+            'services.paypal.mode' => 'sandbox',
+            'services.paypal.client_id' => 'paypal-client-test',
+            'services.paypal.secret' => 'paypal-secret-test',
+            'services.paypal.webhook_id' => 'WH-TEST-1',
+            'services.paypal.base_url' => null,
+        ]);
+        Http::fake([
+            'https://api-m.sandbox.paypal.com/v1/oauth2/token' => Http::response([
+                'access_token' => 'tok_test',
+                'expires_in' => 300,
+                'token_type' => 'Bearer',
+            ], 200),
+            'https://api-m.sandbox.paypal.com/v2/payments/captures/CAP-DISPUTE-1/refund' => Http::response([
+                'id' => 'RF-DISPUTE-1',
+                'status' => 'COMPLETED',
+                'amount' => ['currency_code' => 'EUR', 'value' => '115.00'],
+            ], 201),
+        ]);
+
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher);
+        $order = $this->makeCompletedOrder($advertiser, $site, [
+            'payment_method' => 'paypal',
+            'paypal_order_id' => 'PO-DISPUTE-1',
+            'paypal_capture_id' => 'CAP-DISPUTE-1',
+        ]);
+        $pubWallet = $this->publisherWallet($publisher, 100);
+        $advWallet = $this->advertiserWallet($advertiser, 10);
+
+        $dispute = OrderItemDispute::create([
+            'order_id' => $order->id,
+            'order_item_id' => $order->items->first()->id,
+            'opened_by' => $advertiser->id,
+            'status' => OrderItemDispute::STATUS_OPEN,
+            'reason' => 'Live URL returns 404 after the publisher deleted the post.',
+        ]);
+
+        $this->actingAs($admin)->postJson(
+            route('admin.orders.disputes.uphold', $dispute->id),
+            ['admin_notes' => 'Confirmed 404. Refund the PayPal capture and claw back the publisher.']
+        )->assertOk()->assertJsonPath('success', true);
+
+        $this->assertEqualsWithDelta(10.0, (float) $advWallet->fresh()->balance, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $pubWallet->fresh()->balance, 0.01);
+        $this->assertSame('RF-DISPUTE-1', $order->fresh()->paypal_refund_id);
+        $this->assertSame('refunded', $order->fresh()->payment_status);
+        $this->assertSame('completed', $order->fresh()->status);
+        $this->assertEquals(115.0, (float) $dispute->fresh()->advertiser_credited);
+        $this->assertDatabaseMissing('wallet_transactions', [
+            'wallet_id' => $advWallet->id,
+            'type' => WalletTransaction::TYPE_REFUND,
+        ]);
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/v2/payments/captures/CAP-DISPUTE-1/refund'));
+        Mail::assertQueued(DisputeRefundAdvertiser::class, fn (DisputeRefundAdvertiser $mail) => $mail->viaPaypal === true);
+    }
+
+    public function test_uphold_paypal_falls_back_to_wallet_when_unconfigured(): void
+    {
+        config([
+            'services.paypal.enabled' => false,
+            'services.paypal.client_id' => '',
+            'services.paypal.secret' => '',
+        ]);
+        Http::fake();
+
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher);
+        $order = $this->makeCompletedOrder($advertiser, $site, [
+            'payment_method' => 'paypal',
+            'paypal_capture_id' => 'CAP-DISPUTE-OFF',
+        ]);
+        $this->publisherWallet($publisher, 100);
+        $advWallet = $this->advertiserWallet($advertiser, 10);
+
+        $dispute = OrderItemDispute::create([
+            'order_id' => $order->id,
+            'order_item_id' => $order->items->first()->id,
+            'opened_by' => $advertiser->id,
+            'status' => OrderItemDispute::STATUS_OPEN,
+            'reason' => 'Live URL returns 404 after the publisher deleted the post.',
+        ]);
+
+        $this->actingAs($admin)->postJson(
+            route('admin.orders.disputes.uphold', $dispute->id),
+            ['admin_notes' => 'Confirmed 404. PayPal is off so credit the wallet.']
+        )->assertOk()->assertJsonPath('success', true);
+
+        $this->assertEqualsWithDelta(125.0, (float) $advWallet->fresh()->balance, 0.01);
+        $this->assertNull($order->fresh()->paypal_refund_id);
+        Http::assertNothingSent();
     }
 }

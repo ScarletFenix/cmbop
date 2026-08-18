@@ -6,7 +6,7 @@ A new deposit request has been submitted by **{{ $user->name }}** ({{ $user->ema
 ## Deposit Details:
 
 - **Amount:** €{{ number_format($deposit->amount, 2) }}
-- **Payment Method:** {{ ucfirst($deposit->payment_method) }}
+- **Payment Method:** {{ \App\Models\Invoice::paymentMethodLabel($deposit->payment_method) }}
 - **Reference Code:** REF{{ $deposit->reference_code }}
 - **Submitted At:** {{ $deposit->created_at->format('M d, Y H:i') }}
 

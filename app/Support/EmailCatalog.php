@@ -20,6 +20,7 @@ use App\Mail\ContentRevisionFulfilled;
 use App\Mail\ContentRevisionRequested;
 use App\Mail\DepositApproved;
 use App\Mail\DepositMarkedPaid;
+use App\Mail\DepositRefunded;
 use App\Mail\DepositRejected;
 use App\Mail\DepositReminderMail;
 use App\Mail\DepositRequestSubmitted;
@@ -258,9 +259,16 @@ class EmailCatalog
             ],
             'deposit_approved' => [
                 'name' => 'Deposit Approved',
-                'description' => 'Advertiser notified when a wallet top-up settles (admin bank/Wise approve or Stripe card), with receipt PDF attached.',
+                'description' => 'Advertiser notified when a wallet top-up settles (admin bank/Wise approve, Stripe card, or PayPal Add Funds), with receipt PDF attached.',
                 'category' => 'Billing',
                 'mailable' => DepositApproved::class,
+                'status' => 'active',
+            ],
+            'deposit_refunded' => [
+                'name' => 'PayPal Deposit Refunded',
+                'description' => 'Advertiser notified when a PayPal Add Funds capture is refunded and the wallet credit is reversed.',
+                'category' => 'Billing',
+                'mailable' => DepositRefunded::class,
                 'status' => 'active',
             ],
             'deposit_rejected' => [
@@ -596,6 +604,7 @@ class EmailCatalog
             'verify your email' => 'email_verification',
             'deposit approved' => 'deposit_approved',
             'wallet topped up' => 'deposit_approved',
+            'paypal deposit refunded' => 'deposit_refunded',
             'deposit request update' => 'deposit_rejected',
             'new deposit request' => 'deposit_submitted',
             'payment reported' => 'deposit_marked_paid',
@@ -732,6 +741,7 @@ class EmailCatalog
             'deposit_submitted' => new DepositRequestSubmitted(self::sampleDeposit()),
             'deposit_marked_paid' => new DepositMarkedPaid(self::sampleDeposit()),
             'deposit_approved' => new DepositApproved(self::sampleDeposit()),
+            'deposit_refunded' => new DepositRefunded(self::samplePaypalRefundedDeposit()),
             'deposit_rejected' => new DepositRejected(self::sampleDeposit()),
             'withdrawal_request' => new WithdrawalRequestNotification(self::sampleWithdrawal(), $user),
             'withdrawal_requested_confirmation' => new WithdrawalRequestedConfirmation(self::sampleWithdrawal()),
@@ -1011,6 +1021,23 @@ class EmailCatalog
         $deposit->approved_at = now();
         $deposit->rejected_at = now();
         $deposit->setRelation('user', $user);
+
+        return $deposit;
+    }
+
+    protected static function samplePaypalRefundedDeposit(): DepositRequest
+    {
+        $deposit = self::sampleDeposit();
+        $deposit->payment_method = 'paypal';
+        $deposit->status = 'refunded';
+        $deposit->paypal_response = [
+            'refund' => [
+                'id' => 'RF-PREVIEW',
+                'amount' => 100,
+                'debited' => 100,
+                'debt_created' => 0,
+            ],
+        ];
 
         return $deposit;
     }

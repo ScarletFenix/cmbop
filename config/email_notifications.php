@@ -18,6 +18,7 @@ use App\Mail\ContentRevisionFulfilled;
 use App\Mail\ContentRevisionRequested;
 use App\Mail\DepositApproved;
 use App\Mail\DepositMarkedPaid;
+use App\Mail\DepositRefunded;
 use App\Mail\DepositRejected;
 use App\Mail\DepositReminderMail;
 use App\Mail\DepositRequestSubmitted;
@@ -449,6 +450,13 @@ return [
             'audience' => 'advertiser',
             'preference' => 'payment_emails',
             'mailable' => DepositApproved::class,
+            'default_enabled' => true,
+        ],
+        'deposit_refunded' => [
+            'name' => 'PayPal Deposit Refunded',
+            'audience' => 'advertiser',
+            'preference' => 'payment_emails',
+            'mailable' => DepositRefunded::class,
             'default_enabled' => true,
         ],
         'deposit_rejected' => [

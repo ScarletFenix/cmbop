@@ -25,7 +25,7 @@
                         <div class="col-md-4"><span class="text-muted d-block">Order</span><strong>#{{ $invoice->order_number }}</strong></div>
                         <div class="col-md-4"><span class="text-muted d-block">Date</span><strong>{{ optional($invoice->invoice_date)->format('M j, Y g:i A') }}</strong></div>
                         <div class="col-md-4"><span class="text-muted d-block">Amount</span><strong>€{{ number_format((float) $invoice->total_amount, 2) }}</strong></div>
-                        <div class="col-md-4"><span class="text-muted d-block">Payment method</span><strong>{{ ucfirst((string) $invoice->payment_method) }}</strong></div>
+                        <div class="col-md-4"><span class="text-muted d-block">Payment method</span><strong>{{ \App\Models\Invoice::paymentMethodLabel($invoice->payment_method) }}</strong></div>
                         <div class="col-md-4"><span class="text-muted d-block">Payment status</span><strong>{{ ucfirst((string) $invoice->payment_status) }}</strong></div>
                         <div class="col-md-4"><span class="text-muted d-block">Transaction</span><strong class="text-break">{{ $invoice->transaction_id ?: '—' }}</strong></div>
                     </div>
