@@ -4104,6 +4104,60 @@ class CatalogController extends Controller
             && $this->orderLibraryContentReadyForPayment($order);
     }
 
+    /**
+     * Row / details flags so the Orders table can show one primary action
+     * without a second leftover state machine in JS.
+     */
+    private function attachAdvertiserOrderActionFlags(Order $order): void
+    {
+        $items = $order->items;
+        $hasLiveUrl = $items->contains(fn ($line) => filled($line->live_url));
+        $needsRevision = Schema::hasColumn('order_items', 'content_revision_requested')
+            && $items->contains(function ($line) {
+                return $line instanceof OrderItem && $line->isContentRevisionRequested();
+            });
+        $canReview = $order->status === 'review' && $hasLiveUrl && ! $needsRevision;
+
+        $order->can_retry_payment = $this->orderCanRetryPayment($order);
+        $order->needs_content_revision = (bool) $needsRevision;
+        $order->can_approve = $canReview;
+        $order->can_request_changes = $canReview;
+        $order->chat_readonly = $order->status === 'cancelled'
+            || $order->payment_status !== 'paid';
+    }
+
+    /**
+     * Publisher-supplied item URLs reach the Orders JSON as hrefs.
+     * Strip leftover javascript:/data: values before action flags so Approve
+     * is not offered for a URL the page will refuse to link.
+     */
+    private function sanitizeAdvertiserOrderItemUrls(Order $order): void
+    {
+        foreach ($order->items as $line) {
+            if (! $line instanceof OrderItem) {
+                continue;
+            }
+            foreach (['live_url', 'target_url', 'feature_image_url', 'content_link'] as $key) {
+                if (! isset($line->{$key})) {
+                    continue;
+                }
+                $line->{$key} = safe_href_url($line->{$key});
+            }
+        }
+    }
+
+    /**
+     * @return 'attention'|'date_desc'|'date_asc'|'total_desc'
+     */
+    private function advertiserOrdersListSort(Request $request): string
+    {
+        $sort = strtolower(search_text($request->input('sort')));
+
+        return in_array($sort, ['attention', 'date_desc', 'date_asc', 'total_desc'], true)
+            ? $sort
+            : 'attention';
+    }
+
     private function orderLibraryContentReadyForPayment(Order $order): bool
     {
         $order->loadMissing('items');
@@ -4330,11 +4384,25 @@ class CatalogController extends Controller
                 $query->whereDate('created_at', '<=', $dateTo);
             }
 
-            AdvertiserOrderStatus::applyQueueOrder($query, $statusFilter);
-            if ($search !== '') {
-                app(AdvertiserOrderSearchQuery::class)->applyRelevanceOrder($query, $search);
+            $sort = $this->advertiserOrdersListSort($request);
+            if ($sort === 'attention') {
+                AdvertiserOrderStatus::applyQueueOrder($query, $statusFilter);
+                if ($search !== '') {
+                    app(AdvertiserOrderSearchQuery::class)->applyRelevanceOrder($query, $search);
+                }
+                $query->orderBy('created_at', 'desc')->orderBy('id', 'desc');
+            } elseif ($sort === 'date_asc') {
+                $query->orderBy('created_at', 'asc')->orderBy('id', 'asc');
+            } elseif ($sort === 'total_desc') {
+                if (Schema::hasColumn('orders', 'total_amount')) {
+                    $query->orderBy('total_amount', 'desc')->orderBy('created_at', 'desc')->orderBy('id', 'desc');
+                } else {
+                    $query->orderBy('created_at', 'desc')->orderBy('id', 'desc');
+                }
+            } else {
+                $query->orderBy('created_at', 'desc')->orderBy('id', 'desc');
             }
-            $orders = $query->orderBy('created_at', 'desc')->orderBy('id', 'desc')->paginate(20);
+            $orders = $query->paginate(20);
 
             $orderIds = collect($orders->items())->pluck('id');
             $unreadByOrder = OrderChatMessage::whereIn('order_id', $orderIds)
@@ -4348,13 +4416,14 @@ class CatalogController extends Controller
             $clawbacks = app(OrderClawbackService::class);
             $ordersPayload = collect($orders->items())->map(function ($order) use ($unreadByOrder, $clawbacks) {
                 $order->unread_chat = (int) ($unreadByOrder[$order->id] ?? 0);
-                $order->can_retry_payment = $this->orderCanRetryPayment($order);
                 $order->items_count = $order->items->count();
                 $meta = AdvertiserOrderStatus::meta($order, $order->items->first());
                 $order->status_label = $meta['label'];
                 $order->next_action = $meta['next'];
                 $order->status_cls = $meta['cls'];
                 $order->auto_approve_hint = $meta['auto_approve_hint'];
+                $this->sanitizeAdvertiserOrderItemUrls($order);
+                $this->attachAdvertiserOrderActionFlags($order);
                 $item = $order->items->first();
                 if ($item) {
                     $item->auto_approve_hours_remaining = (int) $item->getAutoApproveHoursRemaining();
@@ -4410,13 +4479,14 @@ class CatalogController extends Controller
                 ]);
             }
 
-            $order->can_retry_payment = $this->orderCanRetryPayment($order);
             $order->items_count = $order->items->count();
             $meta = AdvertiserOrderStatus::meta($order, $order->items->first());
             $order->status_label = $meta['label'];
             $order->next_action = $meta['next'];
             $order->status_cls = $meta['cls'];
             $order->auto_approve_hint = $meta['auto_approve_hint'];
+            $this->sanitizeAdvertiserOrderItemUrls($order);
+            $this->attachAdvertiserOrderActionFlags($order);
             $item = $order->items->first();
             if ($item) {
                 $item->auto_approve_hours_remaining = (int) $item->getAutoApproveHoursRemaining();

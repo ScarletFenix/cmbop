@@ -24,8 +24,13 @@ class SafeExternalUrlHelperBootTest extends TestCase
     public function test_safe_external_url_is_available_after_app_boot(): void
     {
         $this->assertTrue(function_exists('safe_external_url'));
+        $this->assertTrue(function_exists('safe_href_url'));
         $this->assertSame('https://example.com/post', safe_external_url('https://example.com/post'));
         $this->assertSame('#', safe_external_url('javascript:alert(1)'));
+        $this->assertSame('https://example.com/post', safe_href_url('https://example.com/post'));
+        $this->assertSame('/advertiser/content-submissions/5', safe_href_url('/advertiser/content-submissions/5'));
+        $this->assertNull(safe_href_url('javascript:alert(1)'));
+        $this->assertNull(safe_href_url(''));
     }
 
     public function test_appservice_provider_requires_url_helper(): void

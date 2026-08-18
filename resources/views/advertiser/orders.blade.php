@@ -185,7 +185,15 @@
                     <i class="fa fa-spinner fa-spin me-1"></i>Searching…
                 </span>
             </div>
-            <div>
+            <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
+                <span id="ordersAttentionChip" class="badge rounded-pill text-bg-light border orders-attention-chip{{ in_array(search_text(request('sort')), ['date_desc', 'date_asc', 'total_desc'], true) ? ' d-none' : '' }}">Needs attention first</span>
+                <label class="small text-muted mb-0" for="ordersSort">Sort</label>
+                <select id="ordersSort" name="sort" class="form-select form-select-sm orders-sort-select" aria-label="Sort orders">
+                    <option value="attention" {{ search_text(request('sort')) === '' || search_text(request('sort')) === 'attention' ? 'selected' : '' }}>Needs attention first</option>
+                    <option value="date_desc" {{ search_text(request('sort')) === 'date_desc' ? 'selected' : '' }}>Newest first</option>
+                    <option value="date_asc" {{ search_text(request('sort')) === 'date_asc' ? 'selected' : '' }}>Oldest first</option>
+                    <option value="total_desc" {{ search_text(request('sort')) === 'total_desc' ? 'selected' : '' }}>Highest total</option>
+                </select>
                 <small class="text-muted" id="resultsCount"></small>
             </div>
         </div>
@@ -194,13 +202,13 @@
                 <table class="table table-hover align-middle mb-0 data-table">
                     <thead class="table-light">
                         <tr>
-                            <th>Order ID</th>
+                            <th>Order #</th>
                             <th>Site</th>
                             <th>Date</th>
                             <th>Total</th>
                             <th>Payment</th>
                             <th>Status</th>
-                            <th width="180">Actions</th>
+                            <th width="240">Actions</th>
                         </tr>
                     </thead>
                     <tbody id="ordersTableBody">

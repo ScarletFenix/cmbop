@@ -75,6 +75,32 @@ window.applyOrdersStatusFilter = applyOrdersStatusFilter;
 const ORDERS_SEARCH_LIVE_MS = 350;
 const ORDERS_SEARCH_MIN_CHARS = 2;
 const ORDERS_FETCH_TIMEOUT_MS = 15000;
+const ORDERS_LIST_SORTS = ['attention', 'date_desc', 'date_asc', 'total_desc'];
+
+function ordersListSort() {
+    const raw = String(document.getElementById('ordersSort')?.value || 'attention').toLowerCase();
+
+    return ORDERS_LIST_SORTS.includes(raw) ? raw : 'attention';
+}
+
+function updateOrdersAttentionChip() {
+    const chip = document.getElementById('ordersAttentionChip');
+    if (chip) {
+        chip.classList.toggle('d-none', ordersListSort() !== 'attention');
+    }
+}
+
+function euroNumber(amount) {
+    const n = parseFloat(amount);
+
+    return Number.isFinite(n) ? n : NaN;
+}
+
+function formatEuro(amount) {
+    const n = euroNumber(amount);
+
+    return Number.isFinite(n) ? ('€' + n.toFixed(2)) : '—';
+}
 let ordersSearchTimer = null;
 let ordersFetchController = null;
 let ordersFetchTimeoutId = null;
@@ -226,6 +252,8 @@ function bootAdvertiserOrdersPage() {
         document.getElementById('paymentMethodFilter').value = '';
         document.getElementById('dateFrom').value = '';
         document.getElementById('dateTo').value = '';
+        const sortEl = document.getElementById('ordersSort');
+        if (sortEl) sortEl.value = 'attention';
         updateOrdersSearchClearVisibility();
         currentPage = 1;
         if (ordersSearchTimer) {
@@ -252,7 +280,7 @@ function bootAdvertiserOrdersPage() {
     });
 
     // Dropdown / date filters live-refresh the table (catalog-style), not only on Filter click.
-    ['statusFilter', 'paymentStatusFilter', 'paymentMethodFilter', 'dateFrom', 'dateTo'].forEach(function (id) {
+    ['statusFilter', 'paymentStatusFilter', 'paymentMethodFilter', 'dateFrom', 'dateTo', 'ordersSort'].forEach(function (id) {
         document.getElementById(id)?.addEventListener('change', function () {
             currentPage = 1;
             fetchOrders(1, { historyMode: 'replace', intent: 'search' });
@@ -271,8 +299,9 @@ function bootAdvertiserOrdersPage() {
         setVal('paymentMethodFilter', 'payment_method');
         setVal('dateFrom', 'date_from');
         setVal('dateTo', 'date_to');
+        setVal('ordersSort', 'sort');
         // Clear fields that are no longer in the URL (browser back/forward)
-        ['searchInput', 'statusFilter', 'paymentStatusFilter', 'paymentMethodFilter', 'dateFrom', 'dateTo'].forEach((id) => {
+        ['searchInput', 'statusFilter', 'paymentStatusFilter', 'paymentMethodFilter', 'dateFrom', 'dateTo', 'ordersSort'].forEach((id) => {
             const el = document.getElementById(id);
             if (!el) return;
             const key = id === 'searchInput' ? 'search'
@@ -280,12 +309,20 @@ function bootAdvertiserOrdersPage() {
                 : id === 'paymentStatusFilter' ? 'payment_status'
                 : id === 'paymentMethodFilter' ? 'payment_method'
                 : id === 'dateFrom' ? 'date_from'
-                : 'date_to';
-            if (!params.has(key)) el.value = '';
+                : id === 'dateTo' ? 'date_to'
+                : 'sort';
+            if (!params.has(key)) el.value = id === 'ordersSort' ? 'attention' : '';
         });
+        const sortEl = document.getElementById('ordersSort');
+        if (sortEl) {
+            sortEl.value = ordersListSort();
+        }
         const page = parseInt(params.get('page') || '1', 10);
         currentPage = Number.isFinite(page) && page > 0 ? page : 1;
         updateOrdersSearchClearVisibility();
+        if (typeof updateOrdersAttentionChip === 'function') {
+            updateOrdersAttentionChip();
+        }
     }
     window.hydrateOrdersFiltersFromUrl = hydrateOrdersFiltersFromUrl;
 
@@ -298,6 +335,7 @@ function bootAdvertiserOrdersPage() {
             payment_method: document.getElementById('paymentMethodFilter')?.value || '',
             date_from: document.getElementById('dateFrom')?.value || '',
             date_to: document.getElementById('dateTo')?.value || '',
+            sort: ordersListSort() === 'attention' ? '' : ordersListSort(),
         };
         Object.keys(map).forEach((key) => {
             if (map[key]) url.searchParams.set(key, map[key]);
@@ -710,10 +748,12 @@ function bootAdvertiserOrdersPage() {
             || document.getElementById('paymentMethodFilter')?.value
             || document.getElementById('dateFrom')?.value
             || document.getElementById('dateTo')?.value
+            || ordersListSort() !== 'attention'
         );
     }
 
     function updateResultsCount(pagination) {
+        updateOrdersAttentionChip();
         const el = document.getElementById('resultsCount');
         if (!el) return;
         if (!pagination || !pagination.total) {
@@ -726,6 +766,7 @@ function bootAdvertiserOrdersPage() {
         el.textContent = total
             ? `Showing ${from}–${to} of ${total}`
             : '';
+        updateOrdersAttentionChip();
     }
 
     function fetchOrders(page = 1, options = {}) {
@@ -739,6 +780,7 @@ function bootAdvertiserOrdersPage() {
         const paymentMethod = document.getElementById('paymentMethodFilter')?.value || '';
         const dateFrom = document.getElementById('dateFrom')?.value || '';
         const dateTo = document.getElementById('dateTo')?.value || '';
+        const sort = ordersListSort();
 
         const listUrl = ordersRoute('list');
         if (!listUrl) {
@@ -753,6 +795,8 @@ function bootAdvertiserOrdersPage() {
         if (paymentMethod) url += `&payment_method=${encodeURIComponent(paymentMethod)}`;
         if (dateFrom) url += `&date_from=${encodeURIComponent(dateFrom)}`;
         if (dateTo) url += `&date_to=${encodeURIComponent(dateTo)}`;
+        if (sort && sort !== 'attention') url += `&sort=${encodeURIComponent(sort)}`;
+        updateOrdersAttentionChip();
 
         if (syncUrl && typeof window.syncOrdersFiltersToUrl === 'function') {
             window.syncOrdersFiltersToUrl(page, { historyMode: historyMode === 'none' ? 'push' : historyMode });
@@ -1039,6 +1083,120 @@ function bootAdvertiserOrdersPage() {
         });
     }
 
+    function orderNeedsContentRevision(order) {
+        if (order && order.needs_content_revision === true) return true;
+        if (order && order.needs_content_revision === false) return false;
+        const items = Array.isArray(order?.items) ? order.items : [];
+        return items.some((it) => it && it.content_revision_requested === 'yes');
+    }
+
+    function orderCanApprove(order) {
+        if (order && order.can_approve === true) return true;
+        if (order && order.can_approve === false) return false;
+        const items = Array.isArray(order?.items) ? order.items : [];
+        return order?.status === 'review'
+            && items.some((it) => it && it.live_url)
+            && !orderNeedsContentRevision(order);
+    }
+
+    function orderCanRequestChanges(order) {
+        if (order && order.can_request_changes === true) return true;
+        if (order && order.can_request_changes === false) return false;
+        return orderCanApprove(order);
+    }
+
+    function orderChatReadonly(order) {
+        if (order && order.chat_readonly === true) return true;
+        if (order && order.chat_readonly === false) return false;
+        return order?.status === 'cancelled' || order?.payment_status !== 'paid';
+    }
+
+    function orderPaymentRefunded(order) {
+        return order?.payment_status === 'refunded';
+    }
+
+    function firstRevisionItem(order) {
+        const items = Array.isArray(order?.items) ? order.items : [];
+        return items.find((it) => it && it.content_revision_requested === 'yes') || items[0] || null;
+    }
+
+    function renderOrderRowActions(order) {
+        const unreadBadge = order.unread_chat > 0
+            ? `<span class="chat-unread-dot">${order.unread_chat}</span>`
+            : '';
+        const chatReadonly = orderChatReadonly(order);
+        const chatClass = chatReadonly
+            ? 'btn btn-sm btn-link text-muted action-btn d-flex align-items-center'
+            : 'btn btn-sm btn-outline-success action-btn d-flex align-items-center';
+        const chatTitle = chatReadonly ? ' title="Chat is read-only"' : '';
+        const viewBtn = `
+                            <button 
+                                type="button"
+                                class="btn btn-sm btn-outline-info action-btn d-flex align-items-center"
+                                onclick="viewOrder(${order.id})">
+                                <i class="fa fa-eye me-1"></i>
+                                <span>View</span>
+                            </button>`;
+        const chatBtn = `
+                            <button 
+                                type="button"
+                                class="${chatClass}"
+                                ${chatTitle}
+                                onclick="openChat(${order.id}, ${jsAttr(order.order_number || '')})">
+                                <i class="fa fa-comments me-1"></i>
+                                <span>Chat</span>${unreadBadge}
+                            </button>`;
+
+        let primary = '';
+        if (order.can_retry_payment) {
+            primary = `
+                            <button
+                                type="button"
+                                class="btn btn-sm btn-primary action-btn d-flex align-items-center"
+                                onclick="retryOrderPayment(${order.id})">
+                                <i class="fa fa-credit-card me-1"></i>
+                                <span>Pay again</span>
+                            </button>`;
+        } else if (orderNeedsContentRevision(order) && (order.status === 'processing' || order.status === 'review')) {
+            const revisionItem = firstRevisionItem(order);
+            const isLibrary = !!(revisionItem && revisionItem.content_submission_id);
+            const currentLabel = (revisionItem && (revisionItem.content_original_name || revisionItem.article_title))
+                || (revisionItem && revisionItem.content_submission_id ? ('Library article #' + revisionItem.content_submission_id) : 'article');
+            primary = `
+                            <button
+                                type="button"
+                                class="btn btn-sm btn-warning action-btn d-flex align-items-center"
+                                onclick="fulfillContentRevision(${order.id}, ${revisionItem && revisionItem.id ? revisionItem.id : 'null'}, {isLibrary: ${isLibrary ? 'true' : 'false'}, currentLabel: ${jsAttr(currentLabel)}})">
+                                <i class="fa fa-upload me-1"></i>
+                                <span>Send revised article</span>
+                            </button>`;
+        } else if (orderCanApprove(order)) {
+            primary = `
+                            <button
+                                type="button"
+                                class="btn btn-sm btn-success action-btn d-flex align-items-center"
+                                onclick="approveOrder(${order.id})">
+                                <i class="fa fa-check-circle me-1"></i>
+                                <span>Approve</span>
+                            </button>`;
+            if (orderCanRequestChanges(order)) {
+                primary += `
+                            <button
+                                type="button"
+                                class="btn btn-sm btn-outline-warning action-btn d-flex align-items-center"
+                                onclick="requestModification(${order.id})">
+                                <i class="fa fa-edit me-1"></i>
+                                <span>Request changes</span>
+                            </button>`;
+            }
+        }
+
+        return `
+                        <div class="action-buttons d-flex align-items-center gap-2 flex-wrap">
+                            ${primary}${viewBtn}${chatBtn}
+                        </div>`;
+    }
+
     function renderOrders(orders, pagination) {
         if (!orders || orders.length === 0) {
             const filtered = ordersHaveActiveFilters();
@@ -1099,35 +1257,39 @@ function bootAdvertiserOrdersPage() {
             const siteName = firstItem ? firstItem.site_name : 'N/A';
             const siteUrl = firstItem ? firstItem.site_url : '';
             const siteHref = (firstItem && firstItem.visit_url) ? firstItem.visit_url : siteUrl;
-            const itemsCount = order.items_count || items.length || 0;
+            const itemsCount = Number(order.items_count) || items.length || 0;
             const moreCount = Math.max(0, itemsCount - 1);
-            const totalAmount = parseFloat(order.total_amount || 0);
+            const totalLabel = formatEuro(order.total_amount);
             
             const paymentMethodName = getPaymentMethodName(order.payment_method);
             const paymentStatusClass = getPaymentStatusClass(order.payment_status);
-            const unreadBadge = order.unread_chat > 0
-                ? `<span class="chat-unread-dot">${order.unread_chat}</span>`
-                : '';
             const siteUrlHtml = siteUrl
                 ? `<div class="text-muted small"><a href="${safeUrl(siteHref)}" target="_blank" rel="noopener noreferrer">${escapeHtml(siteUrl)}</a></div>`
                 : '';
+            const siteNames = items.map((it) => it && it.site_name).filter(Boolean);
+            const moreTitle = siteNames.length ? escapeHtml(siteNames.join(', ')) : '';
             const moreHtml = moreCount > 0
-                ? `<div class="small text-muted mt-1">+${moreCount} more</div>`
+                ? `<button type="button" class="btn btn-link btn-sm p-0 orders-more-sites" onclick="viewOrder(${order.id})" title="${moreTitle}">+${moreCount} more</button>`
                 : '';
             const disputeHtml = order.dispute_status
                 ? `<div class="mt-1"><span class="badge text-bg-${order.dispute_status === 'upheld' ? 'danger' : (order.dispute_status === 'dismissed' ? 'secondary' : 'warning')}">Dispute: ${escapeHtml(order.dispute_status)}</span></div>`
                 : '';
+            const totalHtml = orderPaymentRefunded(order)
+                ? `<td class="fw-semibold orders-total--refunded"><s>${totalLabel}</s> <span class="small">Refunded</span></td>`
+                : `<td class="fw-semibold text-primary">${totalLabel}</td>`;
             
             html += `
                 <tr>
-                    <td class="fw-semibold">${escapeHtml(order.order_number)}</td>
+                    <td>
+                        <button type="button" class="btn btn-link p-0 fw-semibold orders-order-number" onclick="viewOrder(${order.id})">${escapeHtml(order.order_number)}</button>
+                    </td>
                     <td>
                         <div class="fw-semibold">${escapeHtml(siteName)}</div>
                         ${siteUrlHtml}
                         ${moreHtml}
                     </td>
                     <td>${formatDate(order.created_at)}</td>
-                    <td class="fw-semibold text-primary">€${totalAmount.toFixed(2)}</td>
+                    ${totalHtml}
                     <td>
                         <div class="small mb-1">${escapeHtml(paymentMethodName)}</div>
                         <span class="status-badge ${paymentStatusClass}">${capitalize(order.payment_status)}</span>
@@ -1139,28 +1301,7 @@ function bootAdvertiserOrdersPage() {
                         ${disputeHtml}
                     </td>
                     <td>
-                        <div class="action-buttons d-flex align-items-center gap-2 flex-wrap">
-                            ${order.can_retry_payment ? `
-                            <button
-                                type="button"
-                                class="btn btn-sm btn-primary action-btn d-flex align-items-center"
-                                onclick="retryOrderPayment(${order.id})">
-                                <i class="fa fa-credit-card me-1"></i>
-                                <span>Pay again</span>
-                            </button>` : ''}
-                            <button 
-                                class="btn btn-sm btn-outline-info action-btn d-flex align-items-center"
-                                onclick="viewOrder(${order.id})">
-                                <i class="fa fa-eye me-1"></i>
-                                <span>View</span>
-                            </button>
-                            <button 
-                                class="btn btn-sm btn-outline-success action-btn d-flex align-items-center"
-                                onclick="openChat(${order.id}, ${jsAttr(order.order_number || '')})">
-                                <i class="fa fa-comments me-1"></i>
-                                <span>Chat</span>${unreadBadge}
-                            </button>
-                        </div>
+                        ${renderOrderRowActions(order)}
                     </td>
                 </tr>
             `;
@@ -1489,21 +1630,23 @@ function bootAdvertiserOrdersPage() {
         const hasAnyLiveUrl = items.some((it) => it.live_url && it.live_url !== '');
         const statusMeta = getAdvertiserStatusMeta(order);
         const timelineHtml = buildAdvertiserTimeline(order);
-        const itemsCount = order.items_count || items.length || 0;
+        const itemsCount = Number(order.items_count) || items.length || 0;
 
         const pricingRows = items.map((it, idx) => {
-            const additionalPrice = parseFloat(it.additional_price || 0);
-            const homepagePrice = parseFloat(it.homepage_price || 0) || 0;
-            const linePrice = parseFloat(it.price || 0);
-            const basePrice = Math.max(0, linePrice - additionalPrice - homepagePrice);
+            const additionalPrice = euroNumber(it.additional_price);
+            const homepagePrice = euroNumber(it.homepage_price);
+            const linePrice = euroNumber(it.price);
+            const extras = (Number.isFinite(additionalPrice) ? additionalPrice : 0)
+                + (Number.isFinite(homepagePrice) ? homepagePrice : 0);
+            const basePrice = Number.isFinite(linePrice) ? Math.max(0, linePrice - extras) : NaN;
             const label = itemsCount > 1 ? `Item ${idx + 1} · ${escapeHtml(it.site_name || 'Site')}` : 'Base';
-            let rows = `<div class="ov-row"><strong>${label}</strong><span>€${basePrice.toFixed(2)}</span></div>`;
-            if (additionalPrice > 0) {
-                rows += `<div class="ov-row"><strong>Sensitive</strong><span class="text-warning">+ €${additionalPrice.toFixed(2)} (${escapeHtml(it.sensitive_type || 'Extra')})</span></div>`;
+            let rows = `<div class="ov-row"><strong>${label}</strong><span>${formatEuro(basePrice)}</span></div>`;
+            if (Number.isFinite(additionalPrice) && additionalPrice > 0) {
+                rows += `<div class="ov-row"><strong>Sensitive</strong><span class="text-warning">+ ${formatEuro(additionalPrice)} (${escapeHtml(it.sensitive_type || 'Extra')})</span></div>`;
             }
-            if (it.homepage_days || homepagePrice > 0) {
+            if (it.homepage_days || (Number.isFinite(homepagePrice) && homepagePrice > 0)) {
                 const days = parseInt(it.homepage_days, 10) || 0;
-                rows += `<div class="ov-row"><strong>Homepage${days ? ` · ${days} day${days === 1 ? '' : 's'}` : ''}</strong><span>${homepagePrice > 0 ? `+ €${homepagePrice.toFixed(2)}` : 'Free'}</span></div>`;
+                rows += `<div class="ov-row"><strong>Homepage${days ? ` · ${days} day${days === 1 ? '' : 's'}` : ''}</strong><span>${Number.isFinite(homepagePrice) && homepagePrice > 0 ? `+ ${formatEuro(homepagePrice)}` : 'Free'}</span></div>`;
             }
             return rows;
         }).join('');
@@ -1534,11 +1677,11 @@ function bootAdvertiserOrdersPage() {
                    </div>`
                 : `<div class="ov-block"><strong>Live URL</strong><div class="text-muted">Not submitted yet</div></div>`;
             const homepageDays = it.homepage_days != null ? parseInt(it.homepage_days, 10) : 0;
-            const homepageFee = parseFloat(it.homepage_price || 0) || 0;
+            const homepageFee = euroNumber(it.homepage_price);
             const homepageHtml = homepageDays
                 ? `<div class="ov-block">
                         <strong>Homepage placement</strong>
-                        <div>${homepageDays} day${homepageDays === 1 ? '' : 's'}${homepageFee > 0 ? ` (+€${homepageFee.toFixed(2)})` : ' · Free'}</div>
+                        <div>${homepageDays} day${homepageDays === 1 ? '' : 's'}${Number.isFinite(homepageFee) && homepageFee > 0 ? ` (+${formatEuro(homepageFee)})` : ' · Free'}</div>
                    </div>`
                 : '';
             const socialChannels = Array.isArray(it.social_channels) ? it.social_channels : [];
@@ -1708,7 +1851,9 @@ function bootAdvertiserOrdersPage() {
                     ${statusMeta.autoHint ? `<p class="small text-muted mb-1"><i class="fa fa-clock-o me-1"></i>${escapeHtml(statusMeta.autoHint)}</p>` : ''}
                     <hr class="my-2">
                     ${pricingRows}
-                    <div class="ov-row"><strong>Total</strong><span class="fw-bold text-primary">€${parseFloat(order.total_amount).toFixed(2)}</span></div>
+                    <div class="ov-row"><strong>Total</strong>${orderPaymentRefunded(order)
+                        ? `<span class="fw-bold orders-total--refunded"><s>${formatEuro(order.total_amount)}</s> <span class="small fw-normal">Refunded</span></span>`
+                        : `<span class="fw-bold text-primary">${formatEuro(order.total_amount)}</span>`}</div>
                     <div class="order-view-refund">
                         Declines refund automatically · request changes before auto-approve ·
                         <a href="${ordersRoute('refundPolicy')}" target="_blank" rel="noopener">Refund policy</a>
@@ -1760,6 +1905,7 @@ function bootAdvertiserOrdersPage() {
             payment_method: document.getElementById('paymentMethodFilter')?.value || '',
             date_from: document.getElementById('dateFrom')?.value || '',
             date_to: document.getElementById('dateTo')?.value || '',
+            sort: ordersListSort() === 'attention' ? '' : ordersListSort(),
         };
         Object.keys(map).forEach((key) => {
             if (map[key]) url.searchParams.set(key, map[key]);

@@ -296,6 +296,52 @@ class AdvertiserLibraryOrdersLeftoverTest extends TestCase
             ->assertOk()
             ->assertJsonPath('success', true)
             ->assertJsonPath('data.awaiting_payment', 0);
+
+        $order = Order::where('user_id', $advertiser->id)->firstOrFail();
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.orders.get', $order->id))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('order.id', $order->id);
+    }
+
+    public function test_orders_list_and_details_strip_javascript_item_urls_and_block_approve(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher, 'js-orders.example');
+        $order = $this->paidOrder($advertiser, $site, [
+            'live_url' => 'javascript:alert(1)',
+            'live_url_submitted_at' => now(),
+            'target_url' => 'javascript:alert(2)',
+            'feature_image_url' => 'javascript:alert(3)',
+            'content_link' => 'javascript:alert(4)',
+        ]);
+        $order->update(['status' => 'review']);
+
+        $list = $this->actingAs($advertiser)
+            ->getJson(route('advertiser.orders.list'))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('orders.0.can_approve', false)
+            ->assertJsonPath('orders.0.items.0.live_url', null)
+            ->assertJsonPath('orders.0.items.0.target_url', null)
+            ->assertJsonPath('orders.0.items.0.feature_image_url', null)
+            ->assertJsonPath('orders.0.items.0.content_link', null)
+            ->json();
+
+        $this->assertSame($order->id, $list['orders'][0]['id']);
+        $this->assertStringNotContainsString('javascript:', json_encode($list));
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.orders.get', $order->id))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('order.can_approve', false)
+            ->assertJsonPath('order.items.0.live_url', null)
+            ->assertJsonPath('order.items.0.target_url', null)
+            ->assertJsonPath('order.items.0.feature_image_url', null)
+            ->assertJsonPath('order.items.0.content_link', null);
     }
 
     public function test_library_list_survives_missing_image_rights_columns(): void

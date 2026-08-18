@@ -111,9 +111,16 @@ class AdvertiserOrdersUxAbcTest extends TestCase
         $this->assertStringContainsString('value="awaiting_payment"', $statusSelect[1]);
         $this->assertStringContainsString('value="awaiting_publisher"', $statusSelect[1]);
 
+        $this->assertStringContainsString('id="ordersSort"', $html);
+        $this->assertStringContainsString('id="ordersAttentionChip"', $html);
+        $this->assertStringContainsString('Needs attention first', $html);
+        $this->assertStringContainsString('value="date_desc"', $html);
+        $this->assertStringContainsString('value="total_desc"', $html);
+        $this->assertStringContainsString('<th>Order #</th>', $html);
         $this->assertStringContainsString('<th>Total</th>', $html);
         $this->assertStringContainsString('<th>Payment</th>', $html);
-        $this->assertStringContainsString('<th width="180">Actions</th>', $html);
+        $this->assertStringContainsString('<th width="240">Actions</th>', $html);
+        $this->assertStringNotContainsString('<th>Order ID</th>', $html);
         $this->assertStringNotContainsString('<th>Sensitive Price</th>', $html);
         $this->assertStringNotContainsString('<th>Reference Code</th>', $html);
         $this->assertStringNotContainsString('<th>Content Link</th>', $html);
@@ -124,6 +131,12 @@ class AdvertiserOrdersUxAbcTest extends TestCase
         $this->assertStringContainsString('AdvertiserOrdersConfig', $html);
         $this->assertStringContainsString('assets/js/advertiser-orders.js', $html);
         $this->assertStringContainsString('assets/css/advertiser-orders.css', $html);
+        $css = file_get_contents(public_path('assets/css/advertiser-orders.css'));
+        $this->assertIsString($css);
+        $this->assertStringContainsString('.orders-order-number', $css);
+        $this->assertStringContainsString('.orders-total--refunded', $css);
+        $this->assertStringContainsString('.orders-more-sites', $css);
+        $this->assertStringContainsString('.orders-sort-select', $css);
         $this->assertStringContainsString('type="search"', $html);
         $this->assertStringContainsString('id="ordersSearchStatus"', $html);
         $this->assertStringContainsString('id="ordersSearchClear"', $html);
@@ -157,6 +170,22 @@ class AdvertiserOrdersUxAbcTest extends TestCase
         $this->assertStringContainsString('popstate', $js);
         $this->assertStringContainsString('window.viewOrder', $js);
         $this->assertStringContainsString('+${moreCount} more', $js);
+        $this->assertStringContainsString('orders-more-sites', $js);
+        $this->assertStringContainsString('onclick="viewOrder(${order.id})"', $js);
+        $this->assertStringContainsString('ordersListSort', $js);
+        $this->assertStringContainsString('sort: ordersListSort()', $js);
+        $this->assertStringContainsString('function euroNumber(amount)', $js);
+        $this->assertStringContainsString('function formatEuro(amount)', $js);
+        $this->assertStringContainsString('Number.isFinite(n)', $js);
+        $this->assertStringContainsString('formatEuro(basePrice)', $js);
+        $this->assertStringContainsString('formatEuro(additionalPrice)', $js);
+        $this->assertStringContainsString('formatEuro(homepagePrice)', $js);
+        $this->assertStringContainsString('Number(order.items_count) || items.length || 0', $js);
+        $this->assertStringNotContainsString('€${basePrice.toFixed(2)}', $js);
+        $this->assertStringNotContainsString('€${additionalPrice.toFixed(2)}', $js);
+        $this->assertStringNotContainsString('€${homepagePrice.toFixed(2)}', $js);
+        $this->assertStringNotContainsString('€${homepageFee.toFixed(2)}', $js);
+        $this->assertStringContainsString('sortEl.value = ordersListSort()', $js);
         $this->assertStringContainsString('ORDERS_SEARCH_LIVE_MS', $js);
         $this->assertStringContainsString('ORDERS_SEARCH_MIN_CHARS', $js);
         $this->assertStringContainsString('AbortController', $js);
@@ -172,16 +201,27 @@ class AdvertiserOrdersUxAbcTest extends TestCase
         $this->assertNotFalse($orderChatInit);
         $this->assertLessThan($orderChatInit, $earlyFetchAssign);
         $this->assertStringContainsString('replaceState', $js);
-        // Row actions stay View/Chat/Pay again — Approve is modal-only markup.
+        // Row primary action follows leftover flags; Approve/Request changes/revise sit on the list.
         $this->assertStringContainsString('onclick="approveOrder(${order.id})"', $js);
+        preg_match('/function renderOrderRowActions\(order\) \{(.*?)\n    \}/s', $js, $rowActionsFn);
+        $this->assertNotEmpty($rowActionsFn[1] ?? null, 'renderOrderRowActions function should be present');
+        $this->assertStringContainsString('action-buttons', $rowActionsFn[1]);
+        $this->assertStringContainsString('Pay again', $rowActionsFn[1]);
+        $this->assertStringContainsString('viewOrder', $rowActionsFn[1]);
+        $this->assertStringContainsString('openChat', $rowActionsFn[1]);
+        $this->assertStringContainsString('approveOrder', $rowActionsFn[1]);
+        $this->assertStringContainsString('requestModification', $rowActionsFn[1]);
+        $this->assertStringContainsString('fulfillContentRevision', $rowActionsFn[1]);
+        $this->assertStringContainsString('Chat is read-only', $rowActionsFn[1]);
+        $this->assertStringNotContainsString('reportLinkRemoved', $rowActionsFn[1]);
         preg_match('/function renderOrders\(orders, pagination\) \{(.*?)\n    \}/s', $js, $renderOrdersFn);
         $this->assertNotEmpty($renderOrdersFn[1] ?? null, 'renderOrders function should be present');
-        $this->assertStringContainsString('action-buttons', $renderOrdersFn[1]);
-        $this->assertStringContainsString('Pay again', $renderOrdersFn[1]);
-        $this->assertStringContainsString('viewOrder', $renderOrdersFn[1]);
-        $this->assertStringContainsString('openChat', $renderOrdersFn[1]);
-        $this->assertStringNotContainsString('approveOrder', $renderOrdersFn[1]);
-        $this->assertStringNotContainsString('requestModification', $renderOrdersFn[1]);
+        $this->assertStringContainsString('orders-order-number', $renderOrdersFn[1]);
+        $this->assertStringContainsString('orders-total--refunded', $renderOrdersFn[1]);
+        $this->assertStringContainsString('formatEuro(order.total_amount)', $renderOrdersFn[1]);
+        $this->assertStringContainsString('renderOrderRowActions(order)', $renderOrdersFn[1]);
+        $this->assertStringContainsString('orders-total--refunded', $js);
+        $this->assertStringContainsString('formatEuro(order.total_amount)', $js);
         $this->assertStringNotContainsString('reportLinkRemoved', $renderOrdersFn[1]);
         $this->assertStringContainsString('window.reportLinkRemoved = function(orderId, itemId)', $js);
         $this->assertStringContainsString('payload.order_item_id', $js);
@@ -384,6 +424,8 @@ class AdvertiserOrdersUxAbcTest extends TestCase
 
         $this->assertSame(2, $detail['items_count']);
         $this->assertCount(2, $detail['items']);
+        $this->assertSame('Multi A', $detail['items'][0]['site_name']);
+        $this->assertSame('Multi B', $detail['items'][1]['site_name']);
     }
 
     public function test_pagination_payload_includes_from_to_for_results_count(): void
@@ -538,5 +580,138 @@ class AdvertiserOrdersUxAbcTest extends TestCase
             ->json('orders'))->pluck('id')->all();
 
         $this->assertSame([$processing->id, $completed->id], $ids);
+    }
+
+    public function test_date_desc_sort_is_chronological_and_skips_attention_queue(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher, 'Sort Date Site');
+
+        $completed = $this->makeOrder($advertiser, $site, [
+            'order_number' => 'ORD-SORT-DONE',
+            'status' => 'completed',
+            'total_amount' => 10,
+        ]);
+        $review = $this->makeOrder($advertiser, $site, [
+            'order_number' => 'ORD-SORT-REV',
+            'status' => 'review',
+            'total_amount' => 80,
+        ], [
+            'live_url' => 'https://live.example/sort-review',
+        ]);
+        $processing = $this->makeOrder($advertiser, $site, [
+            'order_number' => 'ORD-SORT-PROC',
+            'status' => 'processing',
+            'total_amount' => 40,
+        ]);
+        $completed->forceFill(['created_at' => now()->subHours(8)])->save();
+        $review->forceFill(['created_at' => now()->subHours(4)])->save();
+        $processing->forceFill(['created_at' => now()->subHour()])->save();
+
+        $newestFirst = collect($this->actingAs($advertiser)
+            ->getJson(route('advertiser.orders.list', ['sort' => 'date_desc']))
+            ->assertOk()
+            ->json('orders'))->pluck('id')->all();
+        $this->assertSame([$processing->id, $review->id, $completed->id], $newestFirst);
+
+        $oldestFirst = collect($this->actingAs($advertiser)
+            ->getJson(route('advertiser.orders.list', ['sort' => 'date_asc']))
+            ->assertOk()
+            ->json('orders'))->pluck('id')->all();
+        $this->assertSame([$completed->id, $review->id, $processing->id], $oldestFirst);
+
+        $highestTotal = collect($this->actingAs($advertiser)
+            ->getJson(route('advertiser.orders.list', ['sort' => 'total_desc']))
+            ->assertOk()
+            ->json('orders'))->pluck('id')->all();
+        $this->assertSame([$review->id, $processing->id, $completed->id], $highestTotal);
+
+        $unknownFallsBackToAttention = collect($this->actingAs($advertiser)
+            ->getJson(route('advertiser.orders.list', ['sort' => 'not-a-sort']))
+            ->assertOk()
+            ->json('orders'))->pluck('id')->all();
+        $this->assertSame([$review->id, $processing->id, $completed->id], $unknownFallsBackToAttention);
+    }
+
+    public function test_list_and_detail_expose_row_action_flags(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher, 'Row Action Flags Site');
+
+        $review = $this->makeOrder($advertiser, $site, [
+            'order_number' => 'ORD-FLAG-REVIEW',
+            'status' => 'review',
+        ], [
+            'live_url' => 'https://live.example/review-post',
+            'live_url_submitted_at' => now(),
+        ]);
+        $refunded = $this->makeOrder($advertiser, $site, [
+            'order_number' => 'ORD-FLAG-REFUND',
+            'status' => 'cancelled',
+            'payment_status' => 'refunded',
+        ]);
+        $revision = $this->makeOrder($advertiser, $site, [
+            'order_number' => 'ORD-FLAG-REV',
+            'status' => 'processing',
+        ], [
+            'content_revision_requested' => 'yes',
+        ]);
+        $unpaid = $this->makeOrder($advertiser, $site, [
+            'order_number' => 'ORD-FLAG-UNPAID',
+            'status' => 'pending',
+            'payment_status' => 'pending',
+            'paid_at' => null,
+        ]);
+
+        $rows = collect($this->actingAs($advertiser)
+            ->getJson(route('advertiser.orders.list'))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->json('orders'))
+            ->keyBy('order_number');
+
+        $this->assertTrue($rows['ORD-FLAG-REVIEW']['can_approve']);
+        $this->assertTrue($rows['ORD-FLAG-REVIEW']['can_request_changes']);
+        $this->assertFalse($rows['ORD-FLAG-REVIEW']['needs_content_revision']);
+        $this->assertFalse($rows['ORD-FLAG-REVIEW']['chat_readonly']);
+
+        $this->assertFalse($rows['ORD-FLAG-REFUND']['can_approve']);
+        $this->assertTrue($rows['ORD-FLAG-REFUND']['chat_readonly']);
+        $this->assertSame('refunded', $rows['ORD-FLAG-REFUND']['payment_status']);
+
+        $this->assertTrue($rows['ORD-FLAG-REV']['needs_content_revision']);
+        $this->assertFalse($rows['ORD-FLAG-REV']['can_approve']);
+        $this->assertFalse($rows['ORD-FLAG-REV']['chat_readonly']);
+
+        $this->assertTrue($rows['ORD-FLAG-UNPAID']['chat_readonly']);
+        $this->assertFalse($rows['ORD-FLAG-UNPAID']['can_approve']);
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.orders.get', $review->id))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('order.can_approve', true)
+            ->assertJsonPath('order.can_request_changes', true)
+            ->assertJsonPath('order.needs_content_revision', false)
+            ->assertJsonPath('order.chat_readonly', false);
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.orders.get', $refunded->id))
+            ->assertOk()
+            ->assertJsonPath('order.chat_readonly', true)
+            ->assertJsonPath('order.can_approve', false);
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.orders.get', $revision->id))
+            ->assertOk()
+            ->assertJsonPath('order.needs_content_revision', true)
+            ->assertJsonPath('order.can_approve', false);
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.orders.get', $unpaid->id))
+            ->assertOk()
+            ->assertJsonPath('order.chat_readonly', true);
     }
 }
