@@ -135,6 +135,8 @@ class SiteTag
     /**
      * Resolve catalog filter: tag= wins; sponsored=1 aliases to sponsored.
      * Returns sponsored|partner_material|as_you_prefer|none, or null for all tags.
+     * Labels and short slugs (partner, prefer) map to the same values so a
+     * bookmark or live-search miss never silently drops the filter.
      */
     public static function catalogFilterFromInput(mixed $tag, mixed $sponsored = null): ?string
     {
@@ -144,12 +146,19 @@ class SiteTag
 
         if (is_scalar($tag) && ! is_bool($tag)) {
             $value = strtolower(trim((string) $tag));
-            if ($value === self::FILTER_NONE) {
-                return self::FILTER_NONE;
-            }
-            $known = self::normalize($value);
-            if ($known !== null) {
-                return $known;
+            $value = str_replace(['_', '-'], ' ', $value);
+            $aliases = [
+                'none' => self::FILTER_NONE,
+                'no tags' => self::FILTER_NONE,
+                'sponsored' => self::SPONSORED,
+                'partner' => self::PARTNER,
+                'partner material' => self::PARTNER,
+                'partner article' => self::PARTNER,
+                'prefer' => self::AS_YOU_PREFER,
+                'as you prefer' => self::AS_YOU_PREFER,
+            ];
+            if (isset($aliases[$value])) {
+                return $aliases[$value];
             }
         }
 
@@ -160,6 +169,22 @@ class SiteTag
         return null;
     }
 
+    /**
+     * SQL exclusive winner — same priority as fromFlags() / chips.
+     * Any non-zero leftover counts as on. Used so Partner / As you prefer
+     * cannot leak sibling flags through ungrouped OR on MySQL.
+     */
+    public static function exclusiveWinnerSql(?string $table = 'sites'): string
+    {
+        $prefix = ($table !== null && $table !== '') ? $table.'.' : '';
+
+        return 'CASE'
+            .' WHEN COALESCE('.$prefix.'sponsored, 0) != 0 THEN \''.self::SPONSORED.'\''
+            .' WHEN COALESCE('.$prefix.'partner_material, 0) != 0 THEN \''.self::PARTNER.'\''
+            .' WHEN COALESCE('.$prefix.'as_you_prefer, 0) != 0 THEN \''.self::AS_YOU_PREFER.'\''
+            .' ELSE NULL END';
+    }
+
     public static function catalogFilterFromRequest(Request $request): ?string
     {
         return self::catalogFilterFromInput($request->input('tag'), $request->input('sponsored'));
@@ -167,35 +192,23 @@ class SiteTag
 
     public static function constrainQuery(Builder $query, ?string $filter): void
     {
-        // Same winner as tagValue() / chips: leftover multi-flag rows must not
-        // appear under Partner article or As you prefer just because that flag is on.
-        match ($filter) {
-            self::SPONSORED => $query->where('sponsored', 1),
-            self::PARTNER => $query
-                ->where('partner_material', 1)
-                ->where(function (Builder $q) {
-                    $q->where('sponsored', 0)->orWhereNull('sponsored');
-                }),
-            self::AS_YOU_PREFER => $query
-                ->where('as_you_prefer', 1)
-                ->where(function (Builder $q) {
-                    $q->where('sponsored', 0)->orWhereNull('sponsored');
-                })
-                ->where(function (Builder $q) {
-                    $q->where('partner_material', 0)->orWhereNull('partner_material');
-                }),
-            self::FILTER_NONE => $query
-                ->where(function (Builder $q) {
-                    $q->where('sponsored', 0)->orWhereNull('sponsored');
-                })
-                ->where(function (Builder $q) {
-                    $q->where('partner_material', 0)->orWhereNull('partner_material');
-                })
-                ->where(function (Builder $q) {
-                    $q->where('as_you_prefer', 0)->orWhereNull('as_you_prefer');
-                }),
-            default => null,
-        };
+        if ($filter === null || $filter === '') {
+            return;
+        }
+
+        $winner = self::exclusiveWinnerSql($query->getModel()->getTable());
+
+        if ($filter === self::FILTER_NONE) {
+            $query->whereRaw('('.$winner.') IS NULL');
+
+            return;
+        }
+
+        if (! in_array($filter, self::PRIORITY, true)) {
+            return;
+        }
+
+        $query->whereRaw('('.$winner.') = ?', [$filter]);
     }
 
     /**

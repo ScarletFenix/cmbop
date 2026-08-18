@@ -221,6 +221,9 @@ class CatalogTagFilterTest extends TestCase
         $this->assertStringNotContainsString('All Flags Leftover', $prefer);
         $this->assertStringNotContainsString('Partner Plus Prefer Leftover', $prefer);
         $this->assertStringNotContainsString('Untagged Only', $prefer);
+        $this->assertStringContainsString('site-chip--prefer', $prefer);
+        $this->assertStringNotContainsString('site-chip--sponsored', $prefer);
+        $this->assertStringNotContainsString('site-chip--partner', $prefer);
 
         $none = $this->actingAs($advertiser)
             ->get(route('advertiser.catalog', ['tag' => 'none']))
@@ -286,6 +289,49 @@ class CatalogTagFilterTest extends TestCase
         );
     }
 
+    public function test_bulk_rail_follows_exclusive_tag_filter(): void
+    {
+        $publisher = $this->publisher();
+        $this->site($publisher, [
+            'site_name' => 'Bulk Prefer Deal',
+            'as_you_prefer' => true,
+            'bulk_discount_enabled' => true,
+            'bulk_discount_percent' => 15,
+        ]);
+        $this->site($publisher, [
+            'site_name' => 'Bulk Partner Deal',
+            'partner_material' => true,
+            'bulk_discount_enabled' => true,
+            'bulk_discount_percent' => 12,
+        ]);
+        $this->site($publisher, [
+            'site_name' => 'Bulk Leftover Deal',
+            'sponsored' => true,
+            'partner_material' => true,
+            'as_you_prefer' => true,
+            'bulk_discount_enabled' => true,
+            'bulk_discount_percent' => 20,
+        ]);
+
+        $advertiser = $this->advertiser();
+
+        $prefer = $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog.bulk-deals', ['tag' => 'as_you_prefer']))
+            ->assertOk()
+            ->getContent();
+        $this->assertStringContainsString('Bulk Prefer Deal', $prefer);
+        $this->assertStringNotContainsString('Bulk Partner Deal', $prefer);
+        $this->assertStringNotContainsString('Bulk Leftover Deal', $prefer);
+
+        $partner = $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog.bulk-deals', ['tag' => 'partner_material']))
+            ->assertOk()
+            ->getContent();
+        $this->assertStringContainsString('Bulk Partner Deal', $partner);
+        $this->assertStringNotContainsString('Bulk Prefer Deal', $partner);
+        $this->assertStringNotContainsString('Bulk Leftover Deal', $partner);
+    }
+
     public function test_live_results_and_recovery_keep_tag(): void
     {
         $publisher = $this->publisher();
@@ -327,6 +373,9 @@ class CatalogTagFilterTest extends TestCase
         $this->assertStringContainsString("querySelector('[name=\"tag\"]')", $js);
         $this->assertStringContainsString("'tag', 'favorites_filter', 'blacklist_filter'", $js);
         $this->assertStringContainsString("out.set('tag', 'sponsored')", $js);
+        $this->assertStringContainsString("'as you prefer': 'as_you_prefer'", $js);
+        $this->assertStringContainsString("'partner article': 'partner_material'", $js);
+        $this->assertStringContainsString("'tag', 'sponsored'", $js);
         $this->assertStringNotContainsString(
             "'tag', 'sponsored', 'favorites_filter', 'blacklist_filter', 'bulk_deals'",
             $js

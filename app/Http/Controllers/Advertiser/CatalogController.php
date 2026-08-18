@@ -48,8 +48,8 @@ use App\Services\PlatformFeeService;
 use App\Services\StripeCustomerService;
 use App\Services\StripePaymentService;
 use App\Services\Wallet\WalletLedgerService;
-use App\Support\SiteTag;
 use App\Support\AdvertiserOrderStatus;
+use App\Support\SiteTag;
 use App\Support\UserFacingError;
 use Carbon\CarbonInterface;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -390,6 +390,11 @@ class CatalogController extends Controller
             // Option A: all sites offering these languages (AND with country above).
             app(CatalogLanguageFilter::class)
                 ->constrainQuery($query, explode(',', $bulkLanguage));
+        }
+
+        $tagFilter = SiteTag::catalogFilterFromRequest($request);
+        if ($tagFilter !== null) {
+            SiteTag::constrainQuery($query, $tagFilter);
         }
 
         $bulkDeals = $query

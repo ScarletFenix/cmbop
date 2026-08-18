@@ -150,9 +150,29 @@ class SiteTagTest extends TestCase
         $this->assertSame('partner_material', SiteTag::catalogFilterFromInput('partner_material', '1'));
         $this->assertSame('none', SiteTag::catalogFilterFromInput('none'));
         $this->assertSame('as_you_prefer', SiteTag::catalogFilterFromInput('as_you_prefer'));
+        $this->assertSame('as_you_prefer', SiteTag::catalogFilterFromInput('As you prefer'));
+        $this->assertSame('partner_material', SiteTag::catalogFilterFromInput('partner'));
+        $this->assertSame('as_you_prefer', SiteTag::catalogFilterFromInput('prefer'));
         $this->assertNull(SiteTag::catalogFilterFromInput('guest'));
         $this->assertSame('Sponsored', SiteTag::catalogFilterLabel('sponsored'));
         $this->assertSame('No tags', SiteTag::catalogFilterLabel('none'));
         $this->assertSame('All tags', SiteTag::catalogFilterOptions()['']);
+    }
+
+    public function test_constrain_query_uses_exclusive_winner_sql(): void
+    {
+        $prefer = Site::query();
+        SiteTag::constrainQuery($prefer, SiteTag::AS_YOU_PREFER);
+        $preferSql = $prefer->toSql();
+        $this->assertStringContainsString('CASE', $preferSql);
+        $this->assertStringContainsString('as_you_prefer', $preferSql);
+        $this->assertStringContainsString('partner_material', $preferSql);
+        $this->assertStringContainsString('sponsored', $preferSql);
+        $this->assertSame([SiteTag::AS_YOU_PREFER], $prefer->getBindings());
+
+        $none = Site::query();
+        SiteTag::constrainQuery($none, SiteTag::FILTER_NONE);
+        $this->assertStringContainsString('IS NULL', $none->toSql());
+        $this->assertSame([], $none->getBindings());
     }
 }

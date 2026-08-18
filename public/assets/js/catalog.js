@@ -2190,14 +2190,21 @@ const CatalogUrl = (function () {
             if (key === 'page' && value === '1') return;
             out.set(key, value);
         });
-        var tag = (out.get('tag') || '').toLowerCase();
-        var allowedTag = {
-            sponsored: 1,
-            partner_material: 1,
-            as_you_prefer: 1,
-            none: 1,
+        var tag = (out.get('tag') || '').toLowerCase().replace(/[_-]+/g, ' ').trim();
+        var tagAliases = {
+            sponsored: 'sponsored',
+            partner: 'partner_material',
+            'partner material': 'partner_material',
+            'partner article': 'partner_material',
+            prefer: 'as_you_prefer',
+            'as you prefer': 'as_you_prefer',
+            none: 'none',
+            'no tags': 'none',
         };
-        if (!allowedTag[tag]) {
+        if (tagAliases[tag]) {
+            out.set('tag', tagAliases[tag]);
+            tag = tagAliases[tag];
+        } else {
             out.delete('tag');
             tag = '';
         }
@@ -2437,13 +2444,13 @@ const CatalogLive = (function () {
     function bulkDealsEndpoint(params) {
         const base = (window.CatalogConfig && CatalogConfig.routes && CatalogConfig.routes.bulkDeals)
             || '/advertiser/catalog/bulk-deals';
-        // Bulk follows Catalog country= (and blacklist_filter) — drop page noise.
+        // Bulk follows Catalog country= / tag= / blacklist — drop page noise.
         const next = new URLSearchParams();
         if (params) {
-            const country = params.get('country');
-            if (country) next.set('country', country);
-            const blacklist = params.get('blacklist_filter');
-            if (blacklist) next.set('blacklist_filter', blacklist);
+            ['country', 'language', 'blacklist_filter', 'tag', 'sponsored'].forEach(function (key) {
+                const value = params.get(key);
+                if (value) next.set(key, value);
+            });
         }
         const qs = next.toString();
         return qs ? (base + '?' + qs) : base;
@@ -2452,7 +2459,10 @@ const CatalogLive = (function () {
     function bulkFilterKey(params) {
         if (!params) return '||';
         return String(params.get('country') || '')
+            + '|' + String(params.get('language') || '')
             + '|' + String(params.get('blacklist_filter') || '')
+            + '|' + String(params.get('tag') || '')
+            + '|' + String(params.get('sponsored') || '')
             + '|' + String(params.get('bulk_deals') || '');
     }
 
