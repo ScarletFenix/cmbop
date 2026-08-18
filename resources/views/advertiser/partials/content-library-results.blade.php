@@ -114,6 +114,12 @@
 
         return ['category' => $category, 'label' => $label];
     };
+    $submissionRows = $submissions ?? collect();
+    $showExpiryPolicyNote = $activeLibraryChip === 'approved'
+        && collect($submissionRows instanceof \Illuminate\Contracts\Pagination\Paginator
+            ? $submissionRows->items()
+            : $submissionRows
+        )->contains(fn ($row) => filled($row->expires_at ?? null));
 @endphp
 
     <nav class="library-status-row" aria-label="Library status filter">
@@ -139,6 +145,10 @@
         @endforeach
     </nav>
 
+    @if($showExpiryPolicyNote)
+        <p class="library-table-note" role="note">Unused originals are removed after expiry; preview stays.</p>
+    @endif
+
     <div class="library-table border shadow-sm">
         <div class="table-responsive">
             <table class="table table-hover align-middle mb-0">
@@ -149,7 +159,7 @@
                         <th>Status</th>
                         <th>
                             <span class="library-scores-head">
-                                Scores
+                                Uniqueness · Quality
                                 <x-glass-tip
                                     title="Advisory scores"
                                     body="Uniqueness and quality are advisory. Approved articles can still be ordered even when a score is below the warn threshold. Policy and clear language mismatches can block approval."
@@ -305,7 +315,6 @@
                                         @else
                                             Expires in {{ $daysLeft }} days
                                         @endif
-                                        <span class="text-muted">· unused originals are removed after expiry; preview stays</span>
                                     </div>
                                 @endif
                             @endif
@@ -343,9 +352,11 @@
                         </td>
                         <td class="library-scores">
                             @if($submission->evaluated_at)
-                                {{ $submission->uniqueness_score !== null ? $submission->uniqueness_score.'%' : '—' }}
-                                ·
-                                {{ $submission->quality_score !== null ? $submission->quality_score.'%' : '—' }}
+                                <span class="library-scores-pair">
+                                    Unique {{ $submission->uniqueness_score !== null ? $submission->uniqueness_score.'%' : '—' }}
+                                    ·
+                                    Quality {{ $submission->quality_score !== null ? $submission->quality_score.'%' : '—' }}
+                                </span>
                                 @php
                                     $minU = (int) (($uploadCfg['evaluation']['min_uniqueness'] ?? 50));
                                     $minQ = (int) (($uploadCfg['evaluation']['min_quality'] ?? 50));

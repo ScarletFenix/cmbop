@@ -105,6 +105,11 @@ class ContentLibraryPhases36Test extends TestCase
         $this->assertStringContainsString('Expires in', $html);
         $this->assertStringContainsString('library-expiry-hint', $html);
         $this->assertStringContainsString('library-expiry-hint--urgent', $html);
+        $this->assertSame(1, substr_count($html, 'Unused originals are removed after expiry; preview stays.'));
+        $this->assertDoesNotMatchRegularExpression(
+            '/library-expiry-hint[^>]*>[^<]*unused originals are removed after expiry/i',
+            $html
+        );
         $this->assertTrue($submission->fresh()->isNearExpiry(7));
     }
 
@@ -127,6 +132,11 @@ class ContentLibraryPhases36Test extends TestCase
         $this->assertStringContainsString('Expires in', $html);
         $this->assertStringContainsString('library-expiry-hint', $html);
         $this->assertStringNotContainsString('library-expiry-hint--urgent', $html);
+        $this->assertSame(1, substr_count($html, 'Unused originals are removed after expiry; preview stays.'));
+        $this->assertDoesNotMatchRegularExpression(
+            '/library-expiry-hint[^>]*>[^<]*unused originals are removed after expiry/i',
+            $html
+        );
         $this->assertFalse($submission->fresh()->isNearExpiry(7));
     }
 
