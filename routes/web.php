@@ -303,7 +303,9 @@ Route::post('/register', [RegisterController::class, 'register'])
     ->middleware('throttle:register');
 
 // Authentication routes (login, logout)
-Route::post('/login', [LoginController::class, 'login'])->name('login.post');
+Route::post('/login', [LoginController::class, 'login'])
+    ->middleware('throttle:login')
+    ->name('login.post');
 Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
 
 // Forgot Password

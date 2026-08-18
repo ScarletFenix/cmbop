@@ -130,8 +130,8 @@
 
                                 <button type="submit" class="auth-cta">Access Dashboard</button>
 
-                                <div class="text-center mt-3" id="resendDiv" style="display:none;">
-                                    <button type="button" class="btn btn-link p-0 auth-meta-link" id="resendBtn">Resend Verification Email</button>
+                                <div class="text-center mt-3" id="resendDiv">
+                                    <button type="button" class="btn btn-link p-0 auth-meta-link" id="resendBtn">Need a verification email?</button>
                                 </div>
 
                                 <div class="auth-trust-row" aria-label="Trust indicators">
@@ -203,7 +203,10 @@ document.getElementById('loginForm').addEventListener('submit', async function(e
 
     const res = await fetch("{{ route('login.post', absolute: false) }}", {
         method: 'POST',
-        headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+        headers: {
+            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+            'Accept': 'application/json',
+        },
         body: formData
     });
 
@@ -269,55 +272,69 @@ document.getElementById('loginForm').addEventListener('submit', async function(e
         toastContainer.appendChild(toastEl);
         new bootstrap.Toast(toastEl).show();
 
-    } else if(data.status === 'unverified'){
-        const toastEl = buildAuthToast(data.message, 'warning');
-        toastContainer.appendChild(toastEl);
-        new bootstrap.Toast(toastEl).show();
-
-        const resendDiv = document.getElementById('resendDiv');
-        resendDiv.style.display = 'block';
-        const resendBtn = document.getElementById('resendBtn');
-
-        resendBtn.onclick = async function(){
-            if(!data.email) return;
-
-            const sendingToast = buildAuthToast('Sending verification email...', 'info');
-            toastContainer.appendChild(sendingToast);
-            const sendingToastInstance = new bootstrap.Toast(sendingToast);
-            sendingToastInstance.show();
-
-            try {
-                const emailData = new FormData();
-                emailData.append('email', data.email);
-
-                const res2 = await fetch("{{ route('verification.resend') }}", {
-                    method: 'POST',
-                    headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
-                    body: emailData
-                });
-
-                const result = await res2.json();
-
-                sendingToastInstance.hide();
-
-                const toast2 = buildAuthToast(result.message, result.status === 'success' ? 'success' : 'danger');
-                toastContainer.appendChild(toast2);
-                new bootstrap.Toast(toast2).show();
-
-            } catch (err) {
-                sendingToastInstance.hide();
-                const toast2 = buildAuthToast('Failed to send email. Please try again.', 'danger');
-                toastContainer.appendChild(toast2);
-                new bootstrap.Toast(toast2).show();
-            }
-        };
-
     } else {
         const toastEl = buildAuthToast(data.message, 'danger');
         toastContainer.appendChild(toastEl);
         new bootstrap.Toast(toastEl).show();
     }
 });
+
+document.getElementById('resendBtn')?.addEventListener('click', async function () {
+    const email = (document.getElementById('loginEmail')?.value || '').trim();
+    const toastContainer = document.getElementById('toastContainer');
+    if (!email) {
+        const toastEl = buildLoginToast('Enter your email first.', 'danger');
+        toastContainer.appendChild(toastEl);
+        new bootstrap.Toast(toastEl).show();
+        return;
+    }
+
+    const sendingToast = buildLoginToast('Sending verification email...', 'info');
+    toastContainer.appendChild(sendingToast);
+    const sendingToastInstance = new bootstrap.Toast(sendingToast);
+    sendingToastInstance.show();
+
+    try {
+        const emailData = new FormData();
+        emailData.append('email', email);
+
+        const res2 = await fetch("{{ route('verification.resend') }}", {
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+            body: emailData
+        });
+
+        const result = await res2.json();
+        sendingToastInstance.hide();
+
+        const toast2 = buildLoginToast(result.message, result.status === 'success' ? 'success' : 'danger');
+        toastContainer.appendChild(toast2);
+        new bootstrap.Toast(toast2).show();
+    } catch (err) {
+        sendingToastInstance.hide();
+        const toast2 = buildLoginToast('Failed to send email. Please try again.', 'danger');
+        toastContainer.appendChild(toast2);
+        new bootstrap.Toast(toast2).show();
+    }
+});
+
+function buildLoginToast(message, variant) {
+    const solid = variant === 'success' || variant === 'danger';
+    const toastEl = document.createElement('div');
+    toastEl.setAttribute('role', variant === 'success' ? 'status' : 'alert');
+    toastEl.setAttribute('aria-live', variant === 'success' ? 'polite' : 'assertive');
+    toastEl.className = 'toast align-items-center border-0 '
+        + (solid ? 'text-white ' : 'text-dark ')
+        + 'bg-' + variant;
+    const closeClass = solid ? 'btn-close btn-close-white' : 'btn-close';
+    toastEl.innerHTML = `
+        <div class="d-flex">
+            <div class="toast-body">${message}</div>
+            <button type="button" class="${closeClass} me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+    `;
+    return toastEl;
+}
 </script>
 
 @endsection
