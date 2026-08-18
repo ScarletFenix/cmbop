@@ -19,6 +19,7 @@ use App\Services\Wallet\WalletLedgerService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 
 class OrderClawbackService
@@ -349,6 +350,24 @@ class OrderClawbackService
         if (strlen($reason) < 5 || strlen($reason) > 1000) {
             throw ValidationException::withMessages([
                 'reason' => 'Please provide a reason between 5 and 1000 characters.',
+            ]);
+        }
+
+        if (! Wallet::tableAvailable() || ! Wallet::hasTableColumn('debt_balance')) {
+            throw ValidationException::withMessages([
+                'debt' => 'Wallet debt cannot be updated on this database.',
+            ]);
+        }
+
+        $ledgerReady = false;
+        try {
+            $ledgerReady = Schema::hasTable('wallet_transactions');
+        } catch (\Throwable) {
+            $ledgerReady = false;
+        }
+        if (! $ledgerReady) {
+            throw ValidationException::withMessages([
+                'debt' => 'Debt cannot be cleared on this database because the wallet ledger is missing.',
             ]);
         }
 

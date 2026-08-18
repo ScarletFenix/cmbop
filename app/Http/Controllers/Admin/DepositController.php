@@ -57,31 +57,51 @@ class DepositController extends Controller
             });
         }
 
-        $userReportedPaid = 0;
-        if (DepositRequest::hasUserMarkedPaidAtColumn()) {
-            $userReportedPaid = DepositRequest::where('status', 'pending')->whereUserMarkedPaidAtIsRecorded()->count();
-            $query->orderByRaw(
-                'CASE WHEN status = ? AND user_marked_paid_at IS NOT NULL AND user_marked_paid_at >= ? AND user_marked_paid_at <= ? THEN 0 WHEN status = ? THEN 1 ELSE 2 END',
-                ['pending', DepositRequest::PLAUSIBLE_SQL_DATETIME_FLOOR, DepositRequest::PLAUSIBLE_SQL_DATETIME_CEIL, 'pending']
-            );
+        try {
+            $userReportedPaid = 0;
+            if (DepositRequest::hasUserMarkedPaidAtColumn()) {
+                $userReportedPaid = DepositRequest::where('status', 'pending')->whereUserMarkedPaidAtIsRecorded()->count();
+                $query->orderByRaw(
+                    'CASE WHEN status = ? AND user_marked_paid_at IS NOT NULL AND user_marked_paid_at >= ? AND user_marked_paid_at <= ? THEN 0 WHEN status = ? THEN 1 ELSE 2 END',
+                    ['pending', DepositRequest::PLAUSIBLE_SQL_DATETIME_FLOOR, DepositRequest::PLAUSIBLE_SQL_DATETIME_CEIL, 'pending']
+                );
+            }
+
+            $stats = [
+                'pending' => DepositRequest::where('status', 'pending')->count(),
+                'user_reported_paid' => $userReportedPaid,
+                'approved' => DepositRequest::where('status', 'approved')->count(),
+                'completed' => DepositRequest::where('status', 'completed')->count(),
+                'rejected' => DepositRequest::where('status', 'rejected')->count(),
+                'total_amount' => DepositRequest::where('status', 'completed')->sum('amount'),
+            ];
+
+            $deposits = $query
+                ->latest()
+                ->paginate(20);
+
+            $invoiceLinks = app(AdminInvoiceLinks::class)->forDeposits($deposits->getCollection());
+
+            return view('admin.deposits', compact('deposits', 'stats', 'invoiceLinks'));
+        } catch (\Throwable $e) {
+            Log::warning('Failed to load admin deposits index: '.$e->getMessage());
+            $deposits = new LengthAwarePaginator([], 0, 20);
+            $deposits->withPath($request->url())->appends($request->query());
+            $stats = [
+                'pending' => 0,
+                'user_reported_paid' => 0,
+                'approved' => 0,
+                'completed' => 0,
+                'rejected' => 0,
+                'total_amount' => 0,
+            ];
+
+            return view('admin.deposits', [
+                'deposits' => $deposits,
+                'stats' => $stats,
+                'invoiceLinks' => collect(),
+            ]);
         }
-
-        $stats = [
-            'pending' => DepositRequest::where('status', 'pending')->count(),
-            'user_reported_paid' => $userReportedPaid,
-            'approved' => DepositRequest::where('status', 'approved')->count(),
-            'completed' => DepositRequest::where('status', 'completed')->count(),
-            'rejected' => DepositRequest::where('status', 'rejected')->count(),
-            'total_amount' => DepositRequest::where('status', 'completed')->sum('amount'),
-        ];
-
-        $deposits = $query
-            ->latest()
-            ->paginate(20);
-
-        $invoiceLinks = app(AdminInvoiceLinks::class)->forDeposits($deposits->getCollection());
-
-        return view('admin.deposits', compact('deposits', 'stats', 'invoiceLinks'));
     }
 
     public function show($id)
@@ -93,22 +113,33 @@ class DepositController extends Controller
             ]);
         }
 
-        $deposit = DepositRequest::with('user')->find($id);
+        try {
+            $deposit = DepositRequest::with('user')->find($id);
 
-        if (! $deposit) {
+            if (! $deposit) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Deposit request not found',
+                ]);
+            }
+
+            $invoice = app(AdminInvoiceLinks::class)->forDeposits(collect([$deposit]))->get((int) $deposit->id);
+
+            return response()->json([
+                'success' => true,
+                'deposit' => $deposit,
+                'invoice' => $invoice,
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to load admin deposit detail: '.$e->getMessage(), [
+                'deposit_id' => $id,
+            ]);
+
             return response()->json([
                 'success' => false,
                 'message' => 'Deposit request not found',
             ]);
         }
-
-        $invoice = app(AdminInvoiceLinks::class)->forDeposits(collect([$deposit]))->get((int) $deposit->id);
-
-        return response()->json([
-            'success' => true,
-            'deposit' => $deposit,
-            'invoice' => $invoice,
-        ]);
     }
 
     public function approve(Request $request, $id, ManualDepositApprovalService $approvals)

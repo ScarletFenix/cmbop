@@ -684,7 +684,7 @@ $(document).ready(function() {
             if (order.invoice_url) {
                 html += '<li><a class="dropdown-item" href="' + escapeHtml(order.invoice_url) + '"><i class="fa fa-file-invoice-dollar me-2"></i>Open invoice</a></li>';
             }
-            if (order.payment_status !== 'paid') {
+            if (allowed.length > 0) {
                 html += '<li><button type="button" class="dropdown-item update-payment-btn" ';
                 html += 'data-id="' + escapeHtml(order.id) + '" ';
                 html += 'data-order="' + escapeHtml(order.order_number) + '" ';

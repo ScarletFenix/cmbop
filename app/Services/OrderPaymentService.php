@@ -2058,7 +2058,11 @@ class OrderPaymentService
                 continue;
             }
 
-            $submission = ContentSubmission::query()->whereKey($id)->lockForUpdate()->first();
+            try {
+                $submission = ContentSubmission::query()->whereKey($id)->lockForUpdate()->first();
+            } catch (\Throwable) {
+                return 'missing';
+            }
             if (! $submission) {
                 return 'missing';
             }
