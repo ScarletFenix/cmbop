@@ -593,4 +593,56 @@ class PaypalWebhookTest extends TestCase
         $this->assertSame('RF-PO-RF', $fresh->paypal_refund_id);
         $this->assertEqualsWithDelta(5.0, (float) $wallet->fresh()->balance, 0.01);
     }
+
+    public function test_refunded_deposit_webhook_does_not_reverse_wallet_credit(): void
+    {
+        $this->enablePaypal();
+        $this->fakePaypal('PO-DEP-RF');
+        Mail::fake();
+
+        $advertiser = $this->advertiser();
+        $wallet = Wallet::create([
+            'user_id' => $advertiser->id,
+            'role_id' => Wallet::advertiserRoleId(),
+            'balance' => 40,
+            'reserved_balance' => 0,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 0,
+            'currency' => 'EUR',
+        ]);
+
+        $deposit = DepositRequest::create([
+            'user_id' => $advertiser->id,
+            'reference_code' => '888001',
+            'amount' => 25,
+            'payment_method' => 'paypal',
+            'status' => 'completed',
+            'paypal_order_id' => 'PO-DEP-RF',
+            'paypal_capture_id' => 'CAP-DEP-RF',
+            'approved_at' => now(),
+            'paid_at' => now(),
+        ]);
+
+        $this->postWebhook([
+            'id' => 'WH-DEP-RF-1',
+            'event_type' => 'PAYMENT.CAPTURE.REFUNDED',
+            'resource' => [
+                'id' => 'RF-DEP-RF',
+                'custom_id' => PaypalCheckoutService::customId(
+                    PaypalCheckoutService::TYPE_WALLET_DEPOSIT,
+                    $advertiser->id,
+                    '888001'
+                ),
+                'supplementary_data' => [
+                    'related_ids' => [
+                        'capture_id' => 'CAP-DEP-RF',
+                        'order_id' => 'PO-DEP-RF',
+                    ],
+                ],
+            ],
+        ])->assertOk()->assertJsonPath('status', 'success');
+
+        $this->assertSame('completed', $deposit->fresh()->status);
+        $this->assertEqualsWithDelta(40.0, (float) $wallet->fresh()->balance, 0.01);
+    }
 }

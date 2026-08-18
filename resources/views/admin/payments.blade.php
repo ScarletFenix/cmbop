@@ -330,8 +330,11 @@ function moneyHint(status, method, current) {
         if (current === 'failed') {
             return 'Relabels this failed payment as refunded. Funds were already returned when it was marked failed — this does not credit the wallet again.';
         }
-        if (method === 'card' || method === 'paypal') {
-            return 'Refund credits the advertiser wallet. It does not refund the Stripe or PayPal charge. Completed placements must use a dispute clawback.';
+        if (method === 'paypal') {
+            return 'Refunds the PayPal capture back to the buyer. It does not credit the advertiser wallet again. Completed placements must use a dispute clawback.';
+        }
+        if (method === 'card') {
+            return 'Refund credits the advertiser wallet. It does not refund the Stripe charge. Completed placements must use a dispute clawback.';
         }
         return 'Refund returns funds to the advertiser wallet and cancels the order. Completed placements must use a dispute clawback.';
     }
@@ -339,7 +342,10 @@ function moneyHint(status, method, current) {
         if (method === 'wallet') {
             return 'Failed cancels an in-flight order and releases the wallet hold. Completed orders cannot be failed here.';
         }
-        return 'Failed cancels an in-flight order and credits the advertiser wallet for a settled card / PayPal / bank / Wise / crypto payment (same money move as Refunded). It does not refund the Stripe or PayPal charge. Completed orders cannot be failed here.';
+        if (method === 'paypal') {
+            return 'Failed cancels an in-flight order and refunds the PayPal capture back to the buyer (same money move as Refunded). It does not credit the advertiser wallet. Completed orders cannot be failed here.';
+        }
+        return 'Failed cancels an in-flight order and credits the advertiser wallet for a settled card / bank / Wise / crypto payment (same money move as Refunded). It does not refund the Stripe charge. Completed orders cannot be failed here.';
     }
     if (status === 'paid') {
         return 'Mark paid only after the transfer is on the statement. Publishers are notified even if customer mail is off.';

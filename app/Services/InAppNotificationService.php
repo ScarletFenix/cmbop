@@ -16,6 +16,7 @@ use App\Models\User;
 use App\Models\Withdrawal;
 use App\Services\Billing\WithdrawalPayoutStatementService;
 use App\Services\Orders\AdminOrderStatusOverride;
+use App\Services\Orders\OrderRefundService;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
@@ -270,7 +271,11 @@ class InAppNotificationService
         }
 
         $amountLabel = '€'.number_format($amount, 2);
-        $message = "{$amountLabel} was credited back to your wallet for order #{$order->order_number}.";
+        $paypalRefund = ($order->payment_method === 'paypal')
+            && app(OrderRefundService::class)->existingPaypalRefundId($order) !== '';
+        $message = $paypalRefund
+            ? "{$amountLabel} was refunded to your PayPal account for order #{$order->order_number}."
+            : "{$amountLabel} was credited back to your wallet for order #{$order->order_number}.";
         if ($reason) {
             $message .= ' Reason: '.$reason;
         }
@@ -278,7 +283,7 @@ class InAppNotificationService
         $this->notify(
             (int) $order->user_id,
             self::TYPE_PAYMENT_RECEIVED,
-            "{$amountLabel} back to your wallet",
+            $paypalRefund ? "{$amountLabel} refunded to PayPal" : "{$amountLabel} back to your wallet",
             $message,
             [
                 'category' => self::CATEGORY_PAYMENTS,

@@ -19,8 +19,9 @@ use Illuminate\Support\Facades\Schema;
  * Returns advertiser funds when an order is cancelled or rejected.
  *
  * Wallet checkouts hold money in reserved_balance, so they are released back to
- * the spendable balance (restoring any promotional portion). Every other payment
- * method was already captured, so the amount is credited to the wallet instead.
+ * the spendable balance (restoring any promotional portion). Card / bank / Wise /
+ * crypto were already captured, so the amount is credited to the wallet instead.
+ * PayPal checkout refunds the capture to the buyer and skips that wallet credit.
  */
 class OrderRefundService
 {
@@ -365,7 +366,10 @@ class OrderRefundService
         ];
     }
 
-    private function existingPaypalRefundId(Order $order): string
+    /**
+     * Refund id on this row or the capture-holder sibling (multi-line carts).
+     */
+    public function existingPaypalRefundId(Order $order): string
     {
         $own = trim((string) ($order->paypal_refund_id ?? ''));
         if ($own !== '') {

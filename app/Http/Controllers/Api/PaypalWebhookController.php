@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\DepositRequest;
 use App\Models\PaypalWebhookLog;
 use App\Services\OrderPaymentService;
 use App\Services\PaypalCheckoutService;
@@ -166,6 +167,46 @@ class PaypalWebhookController extends Controller
             'paypal_capture_id' => $refunded['capture_id'],
             'paypal_refund_id' => $refunded['refund_id'],
             'orders_updated' => $updated->count(),
+        ]);
+
+        if ($updated->isEmpty()) {
+            $this->warnIfDepositCaptureRefunded($refunded);
+        }
+    }
+
+    /**
+     * Add Funds captures are not reversed here (same as Stripe dashboard refunds).
+     * Surface the match so ops can debit the wallet manually if needed.
+     *
+     * @param  array{capture_id: string, refund_id: string, paypal_order_id: string}  $refunded
+     */
+    private function warnIfDepositCaptureRefunded(array $refunded): void
+    {
+        $captureId = trim((string) ($refunded['capture_id'] ?? ''));
+        $paypalOrderId = trim((string) ($refunded['paypal_order_id'] ?? ''));
+        if ($captureId === '' && $paypalOrderId === '') {
+            return;
+        }
+
+        $deposit = DepositRequest::query()
+            ->where(function ($query) use ($captureId, $paypalOrderId) {
+                if ($captureId !== '') {
+                    $query->orWhere('paypal_capture_id', $captureId);
+                }
+                if ($paypalOrderId !== '') {
+                    $query->orWhere('paypal_order_id', $paypalOrderId);
+                }
+            })
+            ->first();
+        if (! $deposit) {
+            return;
+        }
+
+        Log::warning('PayPal refunded an Add Funds capture; wallet credit was not reversed', [
+            'deposit_id' => $deposit->id,
+            'deposit_status' => $deposit->status,
+            'paypal_capture_id' => $captureId !== '' ? $captureId : $deposit->paypal_capture_id,
+            'paypal_refund_id' => $refunded['refund_id'] ?? null,
         ]);
     }
 }

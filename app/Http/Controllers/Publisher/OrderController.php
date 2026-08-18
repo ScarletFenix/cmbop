@@ -712,9 +712,11 @@ class OrderController extends Controller
 
             $refundMessage = '';
             if ($order->payment_method === 'wallet') {
-                $refundMessage = ' The funds have been returned from reserved balance to your wallet balance.';
+                $refundMessage = ' The funds have been returned from reserved balance to the advertiser wallet.';
+            } elseif ($order->payment_method === 'paypal') {
+                $refundMessage = ' The advertiser was refunded on PayPal.';
             } else {
-                $refundMessage = ' The full amount has been credited back to your wallet balance.';
+                $refundMessage = ' The full amount has been credited back to the advertiser wallet.';
             }
 
             Log::info('Order rejected by publisher and refund processed', [

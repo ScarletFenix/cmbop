@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Mail\DepositMarkedPaid;
 use App\Mail\DepositRequestSubmitted;
 use App\Models\DepositRequest;
+use App\Models\Order;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Services\InAppNotificationService;

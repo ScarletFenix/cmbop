@@ -394,7 +394,7 @@
                             @endif
                             @if(empty($paypalConfigured))
                                 <div class="alert alert-warning py-2 px-3 mb-3 small" id="paypalNotConfiguredAlert">
-                                    PayPal is not configured on this server. Set <code>PAYPAL_ENABLED=true</code> plus <code>PAYPAL_CLIENT_ID</code> and <code>PAYPAL_SECRET</code> in <code>.env</code>, then run <code>php artisan config:clear</code>, or pay with wallet or card.
+                                    PayPal is not configured on this server. Set <code>PAYPAL_CLIENT_ID</code> and <code>PAYPAL_SECRET</code> in <code>.env</code>, then run <code>php artisan config:clear</code>, or pay with wallet or card.
                                 </div>
                             @endif
 
@@ -1391,7 +1391,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 Swal.fire({
                     icon: 'warning',
                     title: 'PayPal unavailable',
-                    html: 'PayPal is not configured on this server. Set <code>PAYPAL_ENABLED=true</code> plus Client ID and Secret in <code>.env</code>, then run <code>php artisan config:clear</code> — or pay with wallet or card.'
+                    html: 'PayPal is not configured on this server. Set <code>PAYPAL_CLIENT_ID</code> and <code>PAYPAL_SECRET</code> in <code>.env</code>, then run <code>php artisan config:clear</code> — or pay with wallet or card.'
                 });
                 return;
             }

@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Mail\RefundReceiptMail;
+use App\Models\InAppNotification;
 use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -11,6 +12,7 @@ use App\Models\Site;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Services\Billing\BillingDocumentService;
+use App\Services\InAppNotificationService;
 use App\Services\Orders\OrderRefundService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -160,6 +162,14 @@ class PaypalRefundInvoiceTest extends TestCase
             ->first();
         $this->assertNotNull($wallet);
         $this->assertEqualsWithDelta(10.0, (float) $wallet->balance, 0.01);
+
+        app(InAppNotificationService::class)->notifyRefundCredited($fresh, 90.40, 'Publisher rejected');
+        $bell = InAppNotification::query()
+            ->where('user_id', $advertiser->id)
+            ->where('title', 'like', '%refunded to PayPal%')
+            ->first();
+        $this->assertNotNull($bell);
+        $this->assertStringContainsString('refunded to your PayPal account', (string) $bell->message);
 
         Http::assertSent(fn ($request) => str_contains($request->url(), '/v2/payments/captures/CAP-INV-1/refund'));
     }
