@@ -10,6 +10,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
@@ -23,6 +24,14 @@ class WelcomeBonusServiceTest extends TestCase
     {
         parent::setUp();
         $this->service = app(WelcomeBonusService::class);
+        foreach ([
+            '1.2.3', '5.5.5', '5.6.7', '7.7.7', '8.8.8', '9.9.9',
+            '10.0.0', '10.1.0', '10.2.0', '10.3.0', '10.4.0', '10.5.0',
+            '10.6.0', '10.7.0', '10.8.0', '10.9.0',
+            '104.16.0', '198.51.100', '198.51.101', '203.0.113',
+        ] as $prefix) {
+            RateLimiter::clear('welcome-prefix:'.$prefix);
+        }
     }
 
     public function test_enabled_advertiser_from_new_ip_gets_configured_amount(): void
@@ -56,6 +65,32 @@ class WelcomeBonusServiceTest extends TestCase
 
         $this->assertSame(0.0, $this->service->amountFor($this->request('1.2.3.4'), 'advertiser'));
         $this->assertSame(20.0, $this->service->amountFor($this->request('9.9.9.9'), 'advertiser'));
+    }
+
+    public function test_sixth_advertiser_in_same_ipv4_prefix_gets_zero(): void
+    {
+        config(['welcome_bonus.prefix_grants_per_day' => 5]);
+
+        for ($i = 1; $i <= 5; $i++) {
+            $ip = '198.51.100.'.$i;
+            $this->assertSame(20.0, $this->service->amountFor($this->request($ip), 'advertiser'), $ip);
+            $this->assertTrue($this->service->recordClaim(
+                User::factory()->create(),
+                $this->request($ip),
+                20.0,
+                'registration'
+            ), $ip);
+        }
+
+        $this->assertSame(0.0, $this->service->amountFor($this->request('198.51.100.6'), 'advertiser'));
+        $this->assertFalse($this->service->recordClaim(
+            User::factory()->create(),
+            $this->request('198.51.100.6'),
+            20.0,
+            'registration'
+        ));
+        $this->assertSame(5, WelcomeBonusClaim::query()->count());
+        $this->assertSame(20.0, $this->service->amountFor($this->request('198.51.101.1'), 'advertiser'));
     }
 
     public function test_claim_cookie_returns_zero(): void

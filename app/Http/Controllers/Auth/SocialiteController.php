@@ -223,20 +223,38 @@ class SocialiteController extends Controller
     }
 
     /**
-     * Resolve the Google user, falling back to stateless when the OAuth
-     * session "state" cookie/session was lost (common on localhost / SameSite).
+     * Resolve the Google user. Local/testing may retry without the OAuth
+     * "state" cookie (lost on localhost / SameSite). Production does not —
+     * that fallback lets a stolen callback URL finish login as anyone.
      */
     private function resolveGoogleUser(): SocialiteUser
     {
         try {
             return $this->googleDriver()->user();
         } catch (InvalidStateException $e) {
+            if (! $this->allowStatelessGoogle()) {
+                Log::warning('Google OAuth state mismatch; refusing stateless fallback', [
+                    'exception' => $e::class,
+                ]);
+
+                throw $e;
+            }
+
             Log::warning('Google OAuth state mismatch; retrying stateless user resolve', [
                 'exception' => $e::class,
             ]);
 
             return $this->googleDriver()->stateless()->user();
         }
+    }
+
+    private function allowStatelessGoogle(): bool
+    {
+        if (filter_var(config('services.google.oauth_allow_stateless', false), FILTER_VALIDATE_BOOL)) {
+            return true;
+        }
+
+        return ! app()->environment('production');
     }
 
     /**

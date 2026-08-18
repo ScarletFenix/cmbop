@@ -25,6 +25,12 @@ return [
     'cookie_minutes' => 525600,
 
     /*
+    | Successful advertiser grants per IPv4 /24 per day. Stops VPN/office
+    | farming without blocking a single household IP (already unique).
+    */
+    'prefix_grants_per_day' => 5,
+
+    /*
     | Cloudflare edge CIDRs. CF-Connecting-IP is only trusted when REMOTE_ADDR
     | is in this list — otherwise anyone hitting origin can spoof CF headers
     | and collect another €20 per fake IP.
