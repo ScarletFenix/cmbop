@@ -23,7 +23,7 @@ class DisputeClawbackPublisher extends PlatformMailable
     {
         $order = $this->dispute->order;
 
-        return $this->subject('Clawback on order #'.($order->order_number ?? $this->dispute->order_id))
+        return $this->subject('Clawback on order #'.($order?->order_number ?? $this->dispute->order_id))
             ->markdown('emails.publisher.dispute_clawback');
     }
 }

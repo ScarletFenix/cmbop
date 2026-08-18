@@ -203,4 +203,15 @@ class NotificationEmailCtaFixesTest extends TestCase
         $this->assertStringContainsString('updated by our team', $html);
         $this->assertStringNotContainsString('updated by an administrator', $html);
     }
+
+    public function test_site_status_email_renders_when_publisher_is_missing(): void
+    {
+        $site = $this->site->fresh();
+        $site->setRelation('publisher', null);
+
+        $html = (new SiteStatusNotification($site, 'activated'))->render();
+
+        $this->assertStringContainsString('Dear Publisher', $html);
+        $this->assertStringContainsString($this->site->site_name, $html);
+    }
 }

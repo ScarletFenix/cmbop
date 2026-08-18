@@ -3,7 +3,7 @@
 
 Dear {{ $publisher->name }},
 
-A link-removed dispute was **upheld** for order **#{{ $dispute->order->order_number ?? $dispute->order_id }}**.
+A link-removed dispute was **upheld** for order **#{{ $dispute->order?->order_number ?? $dispute->order_id }}**.
 
 @if($debited > 0)
 - **Debited from your wallet:** €{{ number_format($debited, 2) }}

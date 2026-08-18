@@ -22,7 +22,7 @@ class DisputeRefundAdvertiser extends PlatformMailable
     {
         $order = $this->dispute->order;
 
-        return $this->subject('Refund credited for order #'.($order->order_number ?? $this->dispute->order_id))
+        return $this->subject('Refund credited for order #'.($order?->order_number ?? $this->dispute->order_id))
             ->markdown('emails.advertiser.dispute_refund');
     }
 }

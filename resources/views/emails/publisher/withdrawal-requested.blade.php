@@ -1,7 +1,7 @@
 @component('mail::message')
 # Withdrawal request received
 
-Hi {{ $withdrawal->user->name }},
+Hi {{ $withdrawal->user?->name ?? 'Publisher' }},
 
 We received your withdrawal request **WD-{{ $withdrawal->id }}**.
 

@@ -1,7 +1,7 @@
 @component('mail::message')
 # Withdrawal Request {{ ucfirst($newStatus) }}
 
-Dear {{ $withdrawal->user->name }},
+Dear {{ $withdrawal->user?->name ?? 'Publisher' }},
 
 Your withdrawal request has been **{{ ucfirst($newStatus) }}**.
 
