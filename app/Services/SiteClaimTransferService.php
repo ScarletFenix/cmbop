@@ -185,8 +185,15 @@ class SiteClaimTransferService
             }
             $locked->save();
 
-            if (! $claimer->hasRole('publisher')) {
-                $claimer->assignRole('publisher');
+            try {
+                if ($this->rolePivotUsable() && ! $claimer->hasRole('publisher')) {
+                    $claimer->assignRole('publisher');
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Failed to grant publisher role during site claim approve: '.$e->getMessage(), [
+                    'claim_id' => $claim->id,
+                    'claimer_id' => $claimer->id,
+                ]);
             }
 
             $lockedClaim->forceFill(SiteClaim::attributesThatExist([
@@ -236,7 +243,13 @@ class SiteClaimTransferService
         $this->notifyApproved($claim, $previousPublisher);
 
         foreach ($closedSiblings as $sibling) {
-            $sibling->loadMissing(['site', 'claimer']);
+            try {
+                $sibling->loadMissing(['site', 'claimer']);
+            } catch (\Throwable $e) {
+                Log::warning('Failed to reload sibling site claim: '.$e->getMessage(), [
+                    'claim_id' => $sibling->id,
+                ]);
+            }
             $this->notifyRejected($sibling);
         }
 
@@ -264,10 +277,20 @@ class SiteClaimTransferService
                 'reviewed_by' => $admin->id,
             ]))->save();
 
+            $relatedSite = null;
+            try {
+                if (Schema::hasTable('sites')) {
+                    DB::table('sites')->limit(1)->exists();
+                    $relatedSite = $lockedClaim->site;
+                }
+            } catch (\Throwable) {
+                $relatedSite = null;
+            }
+
             ActivityLogger::tryLog(
                 'site.claim_rejected',
                 $admin->name.' rejected site claim #'.$lockedClaim->id,
-                $lockedClaim->site,
+                $relatedSite,
                 ['claim_id' => $lockedClaim->id],
                 $lockedClaim->website_name
             );
@@ -359,6 +382,20 @@ class SiteClaimTransferService
             } catch (\Throwable $e) {
                 Log::warning('Failed to email previous publisher about claim transfer: '.$e->getMessage());
             }
+        }
+    }
+
+    private function rolePivotUsable(): bool
+    {
+        try {
+            if (! Schema::hasTable('roles') || ! Schema::hasTable('role_user')) {
+                return false;
+            }
+            DB::table('role_user')->limit(1)->exists();
+
+            return true;
+        } catch (\Throwable) {
+            return false;
         }
     }
 

@@ -7,6 +7,7 @@ use App\Models\WebsiteSuggestion;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -329,6 +330,7 @@ class CommunityInbox
             if (! Schema::hasTable('sites')) {
                 return [];
             }
+            DB::table('sites')->limit(1)->exists();
         } catch (\Throwable) {
             return [];
         }
@@ -344,7 +346,11 @@ class CommunityInbox
 
                 continue;
             }
-            $site = Site::findOccupyingDomain($domain);
+            try {
+                $site = Site::findOccupyingDomain($domain);
+            } catch (\Throwable) {
+                $site = null;
+            }
             $seen[$domain] = $site;
             if ($site) {
                 $found[$suggestion->id] = $site;

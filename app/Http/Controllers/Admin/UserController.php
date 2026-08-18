@@ -52,20 +52,30 @@ class UserController extends Controller
         }
 
         try {
-            $users = $query->latest()->paginate(10)->withQueryString();
+            $users = $query->latest('id')->paginate(10)->withQueryString();
         } catch (\Throwable $e) {
             report($e);
             $fallback = User::query();
             if ($request->integer('user') > 0) {
                 $fallback->whereKey($request->integer('user'));
             }
-            $users = $fallback->latest()->paginate(10)->withQueryString();
+            $users = $fallback->latest('id')->paginate(10)->withQueryString();
         }
-        if (! $hasRolePivot) {
-            $users->getCollection()->each(function (User $user) {
+        $users->getCollection()->each(function (User $user) use ($hasRolePivot) {
+            if ($user->relationLoaded('roles')) {
+                return;
+            }
+            if (! $hasRolePivot) {
                 $user->setRelation('roles', collect());
-            });
-        }
+
+                return;
+            }
+            try {
+                $user->load('roles');
+            } catch (\Throwable) {
+                $user->setRelation('roles', collect());
+            }
+        });
         $adminCount = $this->adminCount();
         $marketingCount = $this->marketingCount();
         $maxMarketing = self::MAX_MARKETING;
@@ -171,7 +181,7 @@ class UserController extends Controller
                 'message' => $e->validator->errors()->first() ?: 'Payout details cannot be saved on this database.',
             ], 422);
         }
-        $after = $user->fresh()->payoutProfile();
+        $after = $user->fresh()?->payoutProfile() ?? $user->payoutProfile();
 
         if (! $this->payoutDestinationsChanged($before, $after)) {
             return response()->json([
@@ -189,7 +199,7 @@ class UserController extends Controller
 
         ActivityLogger::tryLog(
             'user.payout_profile_updated',
-            auth()->user()->name.' updated payout profile for user #'.$user->id.' ('.$method.')',
+            (auth()->user()?->name ?? 'Admin').' updated payout profile for user #'.$user->id.' ('.$method.')',
             $user,
             ['method' => $method],
             'User #'.$user->id
@@ -311,16 +321,34 @@ class UserController extends Controller
             ], 500);
         }
 
-        $user->load('roles');
-        $newRoles = $user->roles->pluck('name')->all();
+        try {
+            $user->load('roles');
+            $newRoles = $user->roles->pluck('name')->all();
+        } catch (\Throwable $e) {
+            report($e);
+            $newRoles = $previousRoles;
+            if ($grantMarketing && ! in_array('marketing', $newRoles, true)) {
+                $newRoles[] = 'marketing';
+            }
+            if (! $grantMarketing) {
+                $newRoles = array_values(array_filter($newRoles, fn ($name) => $name !== 'marketing'));
+            }
+        }
         $marketingCount = $this->marketingCount();
-        $storedActivate = $hasActivateColumn ? (bool) $user->fresh()->can_activate_sites : $canActivateSites;
+        $storedActivate = $canActivateSites;
+        if ($hasActivateColumn) {
+            try {
+                $storedActivate = (bool) ($user->fresh()?->can_activate_sites ?? $canActivateSites);
+            } catch (\Throwable) {
+                $storedActivate = $canActivateSites;
+            }
+        }
 
         if ($grantMarketing !== $alreadyHasMarketing) {
             try {
                 ActivityLogger::log(
                     $grantMarketing ? 'user.marketing_granted' : 'user.marketing_revoked',
-                    auth()->user()->name.($grantMarketing ? ' granted' : ' revoked').' Marketing for '.$user->name,
+                    (auth()->user()?->name ?? 'Admin').($grantMarketing ? ' granted' : ' revoked').' Marketing for '.$user->name,
                     $user,
                     [
                         'from' => $previousRoles,
@@ -357,12 +385,16 @@ class UserController extends Controller
             return 0;
         }
 
-        $adminRoleId = Role::where('name', 'admin')->value('id');
-        if (! $adminRoleId) {
+        try {
+            $adminRoleId = Role::where('name', 'admin')->value('id');
+            if (! $adminRoleId) {
+                return 0;
+            }
+
+            return (int) DB::table('role_user')->where('role_id', $adminRoleId)->distinct()->count('user_id');
+        } catch (\Throwable) {
             return 0;
         }
-
-        return (int) DB::table('role_user')->where('role_id', $adminRoleId)->distinct()->count('user_id');
     }
 
     private function marketingCount(): int
@@ -371,12 +403,16 @@ class UserController extends Controller
             return 0;
         }
 
-        $marketingRoleId = Role::where('name', 'marketing')->value('id');
-        if (! $marketingRoleId) {
+        try {
+            $marketingRoleId = Role::where('name', 'marketing')->value('id');
+            if (! $marketingRoleId) {
+                return 0;
+            }
+
+            return (int) DB::table('role_user')->where('role_id', $marketingRoleId)->distinct()->count('user_id');
+        } catch (\Throwable) {
             return 0;
         }
-
-        return (int) DB::table('role_user')->where('role_id', $marketingRoleId)->distinct()->count('user_id');
     }
 
     private function rolePivotAvailable(): bool
@@ -387,7 +423,13 @@ class UserController extends Controller
     private function tableExists(string $table): bool
     {
         try {
-            return Schema::hasTable($table);
+            if (! Schema::hasTable($table)) {
+                return false;
+            }
+            // Schema::hasTable can stay true after a leftover DROP TABLE.
+            DB::table($table)->limit(1)->exists();
+
+            return true;
         } catch (\Throwable) {
             return false;
         }

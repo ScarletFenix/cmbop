@@ -310,6 +310,7 @@ class User extends Authenticatable implements MustVerifyEmail
 
     public function activeRoleModel(): ?Role
     {
+        $active = null;
         try {
             if (! Schema::hasTable('roles')) {
                 return null;
@@ -328,9 +329,9 @@ class User extends Authenticatable implements MustVerifyEmail
                 return $active;
             }
 
-            return $this->roles()->first();
+            return $this->roles()->first() ?: $active;
         } catch (\Throwable) {
-            return null;
+            return $active;
         }
     }
 
