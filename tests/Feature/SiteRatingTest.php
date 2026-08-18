@@ -454,7 +454,8 @@ class SiteRatingTest extends TestCase
                 ->assertOk()
                 ->assertSee('Publisher Ratings', false)
                 ->assertSee('No ratings yet.', false)
-                ->assertDontSee('Add rating', false);
+                ->assertDontSee('id="addRatingBtn"', false)
+                ->assertDontSee('>Add rating</button>', false);
         } finally {
             // DROP TABLE commits outside RefreshDatabase's transaction — put the
             // table back so later tests in this process still have a schema.
