@@ -335,6 +335,24 @@ class PaypalCheckoutServiceTest extends TestCase
         });
     }
 
+    public function test_oauth_cache_does_not_reuse_token_after_secret_rotation(): void
+    {
+        Http::fake([
+            'https://api-m.sandbox.paypal.com/v1/oauth2/token' => Http::sequence()
+                ->push(['access_token' => 'tok_test', 'expires_in' => 300, 'token_type' => 'Bearer'], 200)
+                ->push(['access_token' => 'tok_rotated', 'expires_in' => 300, 'token_type' => 'Bearer'], 200),
+        ]);
+
+        $first = (new PaypalCheckoutService)->accessToken();
+        $this->assertSame('tok_test', $first);
+        $this->assertSame('tok_test', (new PaypalCheckoutService)->accessToken());
+        Http::assertSentCount(1);
+
+        $this->enablePaypal(['secret' => 'paypal-secret-rotated']);
+        $this->assertSame('tok_rotated', (new PaypalCheckoutService)->accessToken());
+        Http::assertSentCount(2);
+    }
+
     public function test_format_euros_and_custom_id_helpers(): void
     {
         $this->assertSame('19.99', PaypalCheckoutService::formatEuros(19.99));

@@ -108,6 +108,11 @@ class PaypalPaymentSchemaTest extends TestCase
         $this->assertTrue(Schema::hasColumn('orders', 'paypal_response'));
         $this->assertTrue(Schema::hasTable('paypal_webhook_logs'));
         $this->assertTrue(PaypalWebhookLog::tableAvailable());
+
+        $user = User::factory()->create();
+        $this->makeOrder($user, 'CAP-HEAL-1');
+        $this->expectException(QueryException::class);
+        $this->makeOrder($user, 'CAP-HEAL-1');
     }
 
     public function test_webhook_log_survives_missing_table(): void

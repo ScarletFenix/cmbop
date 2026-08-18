@@ -53,6 +53,9 @@ return new class extends Migration
                 if ($this->hasIndex('orders', 'orders_paypal_refund_id_unique')) {
                     $table->dropUnique(['paypal_refund_id']);
                 }
+                if ($this->hasIndex('orders', 'orders_paypal_order_id_index')) {
+                    $table->dropIndex(['paypal_order_id']);
+                }
             });
 
             $drop = array_values(array_filter([

@@ -299,7 +299,7 @@ class PaypalCheckoutService
     {
         $this->assertConfigured();
 
-        $cacheKey = 'paypal:oauth:'.$this->mode().':'.hash('sha256', $this->clientId());
+        $cacheKey = 'paypal:oauth:'.$this->mode().':'.hash('sha256', $this->clientId()."\0".$this->secret());
         $cached = Cache::get($cacheKey);
         if (is_string($cached) && $cached !== '') {
             return $cached;
