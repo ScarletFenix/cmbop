@@ -320,7 +320,8 @@ class CatalogExpandCorrectnessTest extends TestCase
         $this->assertStringContainsString('Placeholder listing — sample copy, not a live publisher brief.', $html);
         $this->assertStringContainsString('catalog-preview-caption', $html);
         $this->assertStringContainsString('Homepage capture', $html);
-        $this->assertStringContainsString('15 Mar 2026', $html);
+        $this->assertStringNotContainsString('15 Mar 2026', $html);
+        $this->assertStringNotContainsString('10:00', $html);
     }
 
     public function test_real_listing_has_no_placeholder_badge(): void
