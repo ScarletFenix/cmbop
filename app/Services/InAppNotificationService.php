@@ -400,6 +400,47 @@ class InAppNotificationService
         );
     }
 
+    public function notifyDepositRefunded(DepositRequest $deposit): void
+    {
+        if (! $deposit->user_id) {
+            return;
+        }
+
+        $amount = '€'.number_format((float) $deposit->amount, 2);
+        $debt = 0.0;
+        $response = is_array($deposit->paypal_response) ? $deposit->paypal_response : [];
+        if (isset($response['refund']['debt_created'])) {
+            $debt = round((float) $response['refund']['debt_created'], 2);
+        }
+
+        $message = "{$amount} from your PayPal Add Funds deposit was refunded and removed from your wallet.";
+        if ($debt > 0.009) {
+            $message .= ' €'.number_format($debt, 2).' remains as outstanding wallet debt.';
+        }
+
+        $this->notify(
+            (int) $deposit->user_id,
+            self::TYPE_PAYMENT_FAILED,
+            "PayPal deposit refunded — {$amount}",
+            $message,
+            [
+                'category' => self::CATEGORY_PAYMENTS,
+                'icon' => 'alert-triangle',
+                'priority' => InAppNotification::PRIORITY_HIGH,
+                'related' => $deposit,
+                'audience' => InAppNotification::AUDIENCE_ADVERTISER,
+                'action_label' => 'View balance',
+                'action_url' => route('advertiser.balance', [], false),
+                'meta' => [
+                    'amount' => (float) $deposit->amount,
+                    'reference_code' => $deposit->reference_code,
+                    'payment_method' => $deposit->payment_method,
+                    'debt_created' => $debt,
+                ],
+            ]
+        );
+    }
+
     public function notifyDepositRejected(DepositRequest $deposit): void
     {
         if (! $deposit->user_id) {

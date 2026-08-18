@@ -11,6 +11,7 @@ class DisputeRefundAdvertiser extends PlatformMailable
         public OrderItemDispute $dispute,
         public User $advertiser,
         public float $credited,
+        public bool $viaPaypal = false,
     ) {
         parent::__construct();
         $this->notificationType = 'dispute_refund_advertiser';

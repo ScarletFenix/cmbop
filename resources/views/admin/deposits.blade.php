@@ -100,6 +100,7 @@
                         <option value="approved" {{ request('status') == 'approved' ? 'selected' : '' }}>Approved</option>
                         <option value="completed" {{ request('status') == 'completed' ? 'selected' : '' }}>Completed</option>
                         <option value="rejected" {{ request('status') == 'rejected' ? 'selected' : '' }}>Rejected</option>
+                        <option value="refunded" {{ request('status') == 'refunded' ? 'selected' : '' }}>Refunded</option>
                     </select>
                 </div>
                 <div class="col-md-4">
@@ -178,6 +179,8 @@
                                     <span class="badge bg-success">Completed</span>
                                 @elseif($deposit->status == 'rejected')
                                     <span class="badge bg-danger">Rejected</span>
+                                @elseif($deposit->status == 'refunded')
+                                    <span class="badge bg-secondary">Refunded</span>
                                 @endif
                             </td>
                             <td>{{ optional($deposit->created_at)?->format('M d, Y') ?: '—' }}</td>
@@ -316,6 +319,8 @@ document.addEventListener('DOMContentLoaded', function() {
             statusBadge = '<span class="badge bg-success">Completed</span>';
         } else if (deposit.status === 'rejected') {
             statusBadge = '<span class="badge bg-danger">Rejected</span>';
+        } else if (deposit.status === 'refunded') {
+            statusBadge = '<span class="badge bg-secondary">Refunded</span>';
         }
         
         const user = deposit.user || {};

@@ -594,7 +594,7 @@ class PaypalWebhookTest extends TestCase
         $this->assertEqualsWithDelta(5.0, (float) $wallet->fresh()->balance, 0.01);
     }
 
-    public function test_refunded_deposit_webhook_does_not_reverse_wallet_credit(): void
+    public function test_refunded_deposit_webhook_reverses_wallet_credit(): void
     {
         $this->enablePaypal();
         $this->fakePaypal('PO-DEP-RF');
@@ -623,11 +623,12 @@ class PaypalWebhookTest extends TestCase
             'paid_at' => now(),
         ]);
 
-        $this->postWebhook([
+        $payload = [
             'id' => 'WH-DEP-RF-1',
             'event_type' => 'PAYMENT.CAPTURE.REFUNDED',
             'resource' => [
                 'id' => 'RF-DEP-RF',
+                'amount' => ['currency_code' => 'EUR', 'value' => '25.00'],
                 'custom_id' => PaypalCheckoutService::customId(
                     PaypalCheckoutService::TYPE_WALLET_DEPOSIT,
                     $advertiser->id,
@@ -640,9 +641,118 @@ class PaypalWebhookTest extends TestCase
                     ],
                 ],
             ],
+        ];
+
+        $this->postWebhook($payload)->assertOk()->assertJsonPath('status', 'success');
+
+        $this->assertSame('refunded', $deposit->fresh()->status);
+        $this->assertEqualsWithDelta(15.0, (float) $wallet->fresh()->balance, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->fresh()->debt_balance, 0.01);
+
+        $this->postWebhook($payload)->assertOk()->assertJsonPath('status', 'duplicate');
+        $this->assertEqualsWithDelta(15.0, (float) $wallet->fresh()->balance, 0.01);
+    }
+
+    public function test_refunded_deposit_webhook_records_debt_when_wallet_spent(): void
+    {
+        $this->enablePaypal();
+        $this->fakePaypal('PO-DEP-SHORT');
+        Mail::fake();
+
+        $advertiser = $this->advertiser();
+        $wallet = Wallet::create([
+            'user_id' => $advertiser->id,
+            'role_id' => Wallet::advertiserRoleId(),
+            'balance' => 8,
+            'reserved_balance' => 12,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 0,
+            'currency' => 'EUR',
+        ]);
+
+        DepositRequest::create([
+            'user_id' => $advertiser->id,
+            'reference_code' => '888002',
+            'amount' => 25,
+            'payment_method' => 'paypal',
+            'status' => 'completed',
+            'paypal_order_id' => 'PO-DEP-SHORT',
+            'paypal_capture_id' => 'CAP-DEP-SHORT',
+            'approved_at' => now(),
+            'paid_at' => now(),
+        ]);
+
+        $this->postWebhook([
+            'id' => 'WH-DEP-SHORT-1',
+            'event_type' => 'PAYMENT.CAPTURE.REFUNDED',
+            'resource' => [
+                'id' => 'RF-DEP-SHORT',
+                'amount' => ['currency_code' => 'EUR', 'value' => '25.00'],
+                'custom_id' => PaypalCheckoutService::customId(
+                    PaypalCheckoutService::TYPE_WALLET_DEPOSIT,
+                    $advertiser->id,
+                    '888002'
+                ),
+                'supplementary_data' => [
+                    'related_ids' => [
+                        'capture_id' => 'CAP-DEP-SHORT',
+                        'order_id' => 'PO-DEP-SHORT',
+                    ],
+                ],
+            ],
         ])->assertOk()->assertJsonPath('status', 'success');
 
-        $this->assertSame('completed', $deposit->fresh()->status);
-        $this->assertEqualsWithDelta(40.0, (float) $wallet->fresh()->balance, 0.01);
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(12.0, (float) $wallet->reserved_balance, 0.01);
+        $this->assertEqualsWithDelta(17.0, (float) $wallet->debt_balance, 0.01);
+    }
+
+    public function test_refunded_webhook_does_not_cancel_a_completed_order(): void
+    {
+        $this->enablePaypal();
+        $this->fakePaypal('PO-DONE');
+        Mail::fake();
+
+        $advertiser = $this->advertiser();
+        $order = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => '880002',
+            'reference_code' => 'PP-DONE',
+            'subtotal' => 50,
+            'tax' => 0,
+            'total_amount' => 50,
+            'payment_method' => 'paypal',
+            'payment_status' => 'paid',
+            'status' => 'completed',
+            'paypal_order_id' => 'PO-DONE',
+            'paypal_capture_id' => 'CAP-PO-DONE',
+            'paid_at' => now()->subDays(2),
+            'completed_at' => now()->subDay(),
+        ]);
+
+        $this->postWebhook([
+            'id' => 'WH-DONE-1',
+            'event_type' => 'PAYMENT.CAPTURE.REFUNDED',
+            'resource' => [
+                'id' => 'RF-PO-DONE',
+                'custom_id' => PaypalCheckoutService::customId(
+                    PaypalCheckoutService::TYPE_ORDER_CHECKOUT,
+                    $advertiser->id,
+                    'PP-DONE'
+                ),
+                'supplementary_data' => [
+                    'related_ids' => [
+                        'capture_id' => 'CAP-PO-DONE',
+                        'order_id' => 'PO-DONE',
+                    ],
+                ],
+            ],
+        ])->assertOk()->assertJsonPath('status', 'success');
+
+        $fresh = $order->fresh();
+        $this->assertSame('paid', $fresh->payment_status);
+        $this->assertSame('completed', $fresh->status);
+        $this->assertSame('RF-PO-DONE', $fresh->paypal_refund_id);
     }
 }

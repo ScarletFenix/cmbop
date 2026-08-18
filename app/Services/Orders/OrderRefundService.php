@@ -155,15 +155,19 @@ class OrderRefundService
      *
      * @return array{id: string, amount: float, status: string}|null
      */
-    public function refundPaypalCaptureIfPossible(Order $order, float $amount): ?array
-    {
+    public function refundPaypalCaptureIfPossible(
+        Order $order,
+        float $amount,
+        bool $allowAdditionalPartial = false,
+        ?string $idempotencySuffix = null
+    ): ?array {
         $amount = round($amount, 2);
         if (($order->payment_method ?? '') !== 'paypal' || $amount < 0.01) {
             return null;
         }
 
         $existingId = $this->existingPaypalRefundId($order);
-        if ($existingId !== '') {
+        if ($existingId !== '' && ! $allowAdditionalPartial) {
             return [
                 'id' => $existingId,
                 'amount' => $amount,
@@ -188,7 +192,13 @@ class OrderRefundService
             ]);
         }
 
-        $refunded = $paypal->refundCapture($captureId, $amount);
+        $requestId = 'refund-'.$captureId.'-'.number_format($amount, 2, '.', '');
+        $suffix = trim((string) $idempotencySuffix);
+        if ($suffix !== '') {
+            $requestId .= '-'.$suffix;
+        }
+
+        $refunded = $paypal->refundCapture($captureId, $amount, $requestId);
         $prepared = [
             'id' => (string) ($refunded['id'] ?? ''),
             'amount' => (float) ($refunded['amount'] ?? $amount),

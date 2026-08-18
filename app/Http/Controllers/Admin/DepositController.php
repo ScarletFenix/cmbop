@@ -42,7 +42,7 @@ class DepositController extends Controller
         $query = DepositRequest::with('user');
 
         $status = scalar_text($request->input('status'));
-        if (in_array($status, ['pending', 'approved', 'completed', 'rejected'], true)) {
+        if (in_array($status, ['pending', 'approved', 'completed', 'rejected', 'refunded'], true)) {
             $query->where('status', $status);
         }
 
@@ -73,6 +73,7 @@ class DepositController extends Controller
                 'approved' => DepositRequest::where('status', 'approved')->count(),
                 'completed' => DepositRequest::where('status', 'completed')->count(),
                 'rejected' => DepositRequest::where('status', 'rejected')->count(),
+                'refunded' => DepositRequest::where('status', 'refunded')->count(),
                 'total_amount' => DepositRequest::where('status', 'completed')->sum('amount'),
             ];
 

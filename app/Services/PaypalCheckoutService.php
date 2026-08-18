@@ -203,7 +203,7 @@ class PaypalCheckoutService
     /**
      * @return array{id: string, status: string, amount: float, currency: string, raw: array<string, mixed>}
      */
-    public function refundCapture(string $captureId, float $euros): array
+    public function refundCapture(string $captureId, float $euros, ?string $requestId = null): array
     {
         $this->assertConfigured();
 
@@ -216,6 +216,11 @@ class PaypalCheckoutService
             throw new RuntimeException('PayPal refund amount must be greater than €0.');
         }
 
+        $idempotency = trim((string) $requestId);
+        if ($idempotency === '') {
+            $idempotency = 'refund-'.$captureId.'-'.$amount;
+        }
+
         $response = $this->paypalRequest(
             'post',
             '/v2/payments/captures/'.rawurlencode($captureId).'/refund',
@@ -225,7 +230,7 @@ class PaypalCheckoutService
                     'value' => $amount,
                 ],
             ],
-            ['PayPal-Request-Id' => 'refund-'.$captureId.'-'.$amount],
+            ['PayPal-Request-Id' => $idempotency],
             false
         );
         $data = $response->json() ?? [];
@@ -360,7 +365,7 @@ class PaypalCheckoutService
 
     /**
      * @param  array<string, mixed>  $event
-     * @return array{refund_id: string, capture_id: string, paypal_order_id: string, custom: array{type: string, user_id: string, reference_code: string}}|null
+     * @return array{refund_id: string, capture_id: string, paypal_order_id: string, amount: float, custom: array{type: string, user_id: string, reference_code: string}}|null
      */
     public function refundFromWebhookEvent(array $event): ?array
     {
@@ -377,6 +382,8 @@ class PaypalCheckoutService
         $captureId = trim((string) ($related['capture_id'] ?? $resource['capture_id'] ?? ''));
         $paypalOrderId = trim((string) ($related['order_id'] ?? ''));
         $custom = self::parseCustomId(isset($resource['custom_id']) ? (string) $resource['custom_id'] : '');
+        $amountRaw = $resource['amount']['value'] ?? $resource['seller_payable_breakdown']['total_refunded_amount']['value'] ?? null;
+        $amount = $amountRaw !== null && $amountRaw !== '' ? round((float) $amountRaw, 2) : 0.0;
 
         if ($refundId === '' || ($captureId === '' && $paypalOrderId === '')) {
             return null;
@@ -386,6 +393,7 @@ class PaypalCheckoutService
             'refund_id' => $refundId,
             'capture_id' => $captureId,
             'paypal_order_id' => $paypalOrderId,
+            'amount' => $amount,
             'custom' => $custom,
         ];
     }

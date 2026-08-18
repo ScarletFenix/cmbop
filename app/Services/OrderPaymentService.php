@@ -2365,7 +2365,9 @@ class OrderPaymentService
                     $attrs['paypal_refund_id'] = $refundId;
                     $storedRefund = true;
                 }
-                if ($order->payment_status === 'paid' && $order->status !== 'cancelled') {
+                if ($order->payment_status === 'paid'
+                    && ! in_array((string) $order->status, ['cancelled', 'completed'], true)
+                ) {
                     $attrs['payment_status'] = 'refunded';
                     $attrs['status'] = 'cancelled';
                 }

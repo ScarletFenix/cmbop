@@ -155,6 +155,156 @@ class WalletPaypalDepositService
         return $credited;
     }
 
+    /**
+     * Reverse a completed PayPal Add Funds credit after the capture is refunded.
+     * Debits available cash; leftover becomes advertiser wallet debt.
+     *
+     * @return float Amount actually debited from the wallet
+     */
+    public function reverseFromRefund(string $captureId, string $refundId, string $paypalOrderId = '', float $amount = 0.0): float
+    {
+        $captureId = trim($captureId);
+        $refundId = trim($refundId);
+        $paypalOrderId = trim($paypalOrderId);
+        if ($captureId === '' && $paypalOrderId === '') {
+            return 0.0;
+        }
+
+        app(CheckoutSchemaService::class)->ensureCheckoutTables();
+
+        $lockKey = $captureId !== '' ? $captureId : $paypalOrderId;
+
+        return $this->withDepositLock('rf:'.$lockKey, fn () => $this->reverseFromRefundLocked(
+            $captureId,
+            $refundId,
+            $paypalOrderId,
+            round($amount, 2)
+        ));
+    }
+
+    private function reverseFromRefundLocked(
+        string $captureId,
+        string $refundId,
+        string $paypalOrderId,
+        float $amount
+    ): float {
+        $debited = 0.0;
+        $notifyDepositId = null;
+
+        DB::transaction(function () use ($captureId, $refundId, $paypalOrderId, $amount, &$debited, &$notifyDepositId) {
+            $deposit = DepositRequest::query()
+                ->where(function ($query) use ($captureId, $paypalOrderId) {
+                    if ($captureId !== '') {
+                        $query->orWhere('paypal_capture_id', $captureId);
+                    }
+                    if ($paypalOrderId !== '') {
+                        $query->orWhere('paypal_order_id', $paypalOrderId);
+                    }
+                })
+                ->lockForUpdate()
+                ->first();
+            if (! $deposit) {
+                return;
+            }
+
+            if ($deposit->status === 'refunded') {
+                return;
+            }
+
+            if (! in_array($deposit->status, ['completed', 'approved'], true)) {
+                Log::info('PayPal deposit refund ignored for non-credited row', [
+                    'deposit_id' => $deposit->id,
+                    'status' => $deposit->status,
+                ]);
+
+                return;
+            }
+
+            $target = $amount >= 0.01 ? min($amount, round((float) $deposit->amount, 2)) : round((float) $deposit->amount, 2);
+            if ($target < 0.01) {
+                return;
+            }
+
+            $wallet = $this->lockAdvertiserWallet((int) $deposit->user_id);
+            $available = round((float) $wallet->balance, 2);
+            $take = round(min($available, $target), 2);
+            $shortfall = round(max(0, $target - $take), 2);
+
+            if ($take > 0) {
+                $wallet->debit($take);
+                $this->ledger->recordAdjustment(
+                    $wallet,
+                    $take,
+                    'debit',
+                    $deposit,
+                    $deposit->reference_code,
+                    'PayPal deposit refunded'
+                );
+                $debited = $take;
+            }
+
+            if ($shortfall > 0) {
+                $wallet->increaseDebt($shortfall);
+            }
+
+            $response = is_array($deposit->paypal_response) ? $deposit->paypal_response : [];
+            $response['refund'] = [
+                'id' => $refundId,
+                'amount' => $target,
+                'debited' => $take,
+                'debt_created' => $shortfall,
+                'reversed_at' => now()->toIso8601String(),
+            ];
+
+            $deposit->update(DepositRequest::attributesThatExist([
+                'status' => 'refunded',
+                'paypal_response' => $response,
+                'admin_notes' => trim((string) ($deposit->admin_notes ?? '')) !== ''
+                    ? $deposit->admin_notes
+                    : 'PayPal capture refunded; wallet credit reversed.',
+                'rejected_at' => now(),
+            ]));
+
+            $notifyDepositId = $deposit->id;
+
+            Log::info('PayPal wallet deposit reversed after capture refund', [
+                'deposit_id' => $deposit->id,
+                'paypal_capture_id' => $captureId !== '' ? $captureId : $deposit->paypal_capture_id,
+                'paypal_refund_id' => $refundId,
+                'debited' => $take,
+                'debt_created' => $shortfall,
+            ]);
+        });
+
+        $this->notifyDepositRefunded($notifyDepositId);
+
+        return $debited;
+    }
+
+    private function lockAdvertiserWallet(int $userId): Wallet
+    {
+        $advertiserRoleId = Wallet::advertiserRoleId();
+        if (! $advertiserRoleId) {
+            throw new \RuntimeException('Advertiser role not configured');
+        }
+
+        return Wallet::lockOrCreateForRole($userId, $advertiserRoleId);
+    }
+
+    private function notifyDepositRefunded(?int $depositId): void
+    {
+        if (! $depositId) {
+            return;
+        }
+
+        $deposit = DepositRequest::with('user')->find($depositId);
+        if (! $deposit) {
+            return;
+        }
+
+        app(InAppNotificationService::class)->notifyDepositRefunded($deposit);
+    }
+
     private function notifyDepositCredited(?int $depositId): void
     {
         if (! $depositId) {
