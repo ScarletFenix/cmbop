@@ -4,6 +4,8 @@ namespace Tests\Feature;
 
 use App\Support\UserMessages;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
 class EverydayErrorCopyTest extends TestCase
@@ -74,5 +76,75 @@ class EverydayErrorCopyTest extends TestCase
             ->assertJsonPath('error', UserMessages::get('payment.webhook_failed'))
             ->assertJsonMissingPath('exception')
             ->assertDontSee('Invalid payload');
+    }
+
+    public function test_paypal_webhook_unreadable_event_uses_catalog(): void
+    {
+        $this->enablePaypalForCopyTests();
+
+        $this->postPaypalWebhook(['event_type' => 'PAYMENT.CAPTURE.COMPLETED'])
+            ->assertStatus(400)
+            ->assertJsonPath('error', UserMessages::get('payment.webhook_event'));
+    }
+
+    public function test_paypal_webhook_failure_uses_catalog_not_exception_text(): void
+    {
+        $this->enablePaypalForCopyTests();
+
+        $this->postPaypalWebhook([
+            'id' => 'WH-EMPTY',
+            'event_type' => 'PAYMENT.CAPTURE.COMPLETED',
+            'resource' => [],
+        ])
+            ->assertStatus(500)
+            ->assertJsonPath('error', UserMessages::get('payment.webhook_failed'))
+            ->assertJsonMissingPath('exception')
+            ->assertDontSee('PayPal webhook did not include');
+    }
+
+    private function enablePaypalForCopyTests(): void
+    {
+        config([
+            'services.paypal.enabled' => true,
+            'services.paypal.mode' => 'sandbox',
+            'services.paypal.client_id' => 'paypal-client-test',
+            'services.paypal.secret' => 'paypal-secret-test',
+            'services.paypal.webhook_id' => 'WH-TEST-COPY',
+            'services.paypal.base_url' => null,
+        ]);
+
+        Http::fake([
+            '*/v1/oauth2/token' => Http::response([
+                'access_token' => 'tok_test',
+                'expires_in' => 300,
+                'token_type' => 'Bearer',
+            ], 200),
+            '*/v1/notifications/verify-webhook-signature' => Http::response([
+                'verification_status' => 'SUCCESS',
+            ], 200),
+        ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $event
+     */
+    private function postPaypalWebhook(array $event): TestResponse
+    {
+        return $this->call(
+            'POST',
+            '/api/paypal/webhook',
+            [],
+            [],
+            [],
+            [
+                'CONTENT_TYPE' => 'application/json',
+                'HTTP_PAYPAL_AUTH_ALGO' => 'SHA256withRSA',
+                'HTTP_PAYPAL_CERT_URL' => 'https://api.paypal.com/v1/notifications/certs/CERT-1',
+                'HTTP_PAYPAL_TRANSMISSION_ID' => 'tx-copy',
+                'HTTP_PAYPAL_TRANSMISSION_SIG' => 'sig',
+                'HTTP_PAYPAL_TRANSMISSION_TIME' => '2026-08-18T12:00:00Z',
+            ],
+            json_encode($event, JSON_THROW_ON_ERROR)
+        );
     }
 }

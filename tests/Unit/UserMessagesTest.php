@@ -19,7 +19,9 @@ class UserMessagesTest extends TestCase
             'password.reset_sent',
             'session.expired',
             'generic.retry',
+            'oauth.unavailable',
             'payment.webhook_failed',
+            'payment.webhook_event',
             'payment.leftover_credit_failed',
             'cron.disabled',
         ];

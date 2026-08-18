@@ -31,9 +31,18 @@ return [
         'unavailable' => 'This action is temporarily unavailable. Please try again later.',
     ],
 
+    'oauth' => [
+        'unavailable' => 'Google sign-in is not available. Please use email and password.',
+        'temporary' => 'Google sign-in is temporarily unavailable. Please try again or use email and password.',
+        'cancelled' => 'Google sign-in was cancelled. You can try again or use email and password.',
+        'failed' => 'Google sign-in failed. Please try again or use email and password.',
+        'no_email' => 'Google did not share an email address. Please use another sign-in method.',
+    ],
+
     'payment' => [
         'webhook_unavailable' => 'Webhook not configured',
         'webhook_signature' => 'Invalid signature',
+        'webhook_event' => 'This payment update could not be read.',
         'webhook_failed' => 'Payment could not be recorded. Please try again later.',
         'leftover_credit_failed' => 'The leftover card credit could not be applied. Try again or contact support.',
         'leftover_credit_applied' => 'This leftover was paid using the card credit already in your wallet.',

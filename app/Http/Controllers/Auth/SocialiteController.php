@@ -29,13 +29,11 @@ class SocialiteController extends Controller
     public function redirectToGoogle(): RedirectResponse
     {
         if (! google_oauth_configured()) {
-            Log::warning('Google OAuth redirect blocked: credentials not configured');
+            Log::warning('Google OAuth redirect blocked: credentials not configured', [
+                'callback' => rtrim(request()->getSchemeAndHttpHost(), '/').'/auth/google/callback',
+            ]);
 
-            return $this->loginRedirect(
-                'Google sign-in is not configured. Set real GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env (from Google Cloud Console → APIs & Services → Credentials), add redirect URI '
-                .rtrim(request()->getSchemeAndHttpHost(), '/').'/auth/google/callback'
-                .', then run php artisan config:clear.'
-            );
+            return $this->loginRedirect(UserMessages::get('oauth.unavailable'));
         }
 
         try {
@@ -45,9 +43,7 @@ class SocialiteController extends Controller
                 'exception' => $e::class,
             ]);
 
-            return $this->loginRedirect(
-                'Google sign-in is temporarily unavailable. Please try again or use email and password.'
-            );
+            return $this->loginRedirect(UserMessages::get('oauth.temporary'));
         }
     }
 
@@ -62,15 +58,13 @@ class SocialiteController extends Controller
 
             return $this->loginRedirect(
                 $denied
-                    ? 'Google sign-in was cancelled. You can try again or use email and password.'
-                    : 'Google sign-in failed. Please try again or use email and password.'
+                    ? UserMessages::get('oauth.cancelled')
+                    : UserMessages::get('oauth.failed')
             );
         }
 
         if (! google_oauth_configured()) {
-            return $this->loginRedirect(
-                'Google sign-in is not configured. Set real GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env, then run php artisan config:clear.'
-            );
+            return $this->loginRedirect(UserMessages::get('oauth.unavailable'));
         }
 
         try {
@@ -103,9 +97,7 @@ class SocialiteController extends Controller
             }
 
             if (! $email) {
-                return $this->loginRedirect(
-                    'Google did not share an email address. Please use another sign-in method.'
-                );
+                return $this->loginRedirect(UserMessages::get('oauth.no_email'));
             }
 
             $request = request();
@@ -219,7 +211,7 @@ class SocialiteController extends Controller
             ]);
 
             return redirect()->to(route('login', absolute: false))
-                ->with('error', 'Google authentication failed. Please try again or use email and password.');
+                ->with('error', UserMessages::get('oauth.failed'));
         }
     }
 

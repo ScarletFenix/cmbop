@@ -36,7 +36,7 @@ class PaypalWebhookController extends Controller
             $eventId = trim((string) ($event['id'] ?? ''));
             $eventType = (string) ($event['event_type'] ?? '');
             if ($eventId === '') {
-                return response()->json(['error' => 'Missing event id'], 400);
+                return response()->json(['error' => UserMessages::get('payment.webhook_event')], 400);
             }
 
             Log::info('Processing PayPal webhook event', [
@@ -67,7 +67,7 @@ class PaypalWebhookController extends Controller
                 'exception' => $e::class,
             ]);
 
-            return response()->json(['error' => $e->getMessage()], 500);
+            return response()->json(['error' => UserMessages::get('payment.webhook_failed')], 500);
         }
     }
 
