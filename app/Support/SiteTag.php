@@ -163,18 +163,31 @@ class SiteTag
 
     public static function constrainQuery(Builder $query, ?string $filter): void
     {
+        // Same winner as tagValue() / chips: leftover multi-flag rows must not
+        // appear under Partner article or As you prefer just because that flag is on.
         match ($filter) {
             self::SPONSORED => $query->where('sponsored', 1),
-            self::PARTNER => $query->where('partner_material', 1),
-            self::AS_YOU_PREFER => $query->where('as_you_prefer', 1),
-            self::FILTER_NONE => $query
-                ->where(function ($q) {
+            self::PARTNER => $query
+                ->where('partner_material', 1)
+                ->where(function (Builder $q) {
+                    $q->where('sponsored', 0)->orWhereNull('sponsored');
+                }),
+            self::AS_YOU_PREFER => $query
+                ->where('as_you_prefer', 1)
+                ->where(function (Builder $q) {
                     $q->where('sponsored', 0)->orWhereNull('sponsored');
                 })
-                ->where(function ($q) {
+                ->where(function (Builder $q) {
+                    $q->where('partner_material', 0)->orWhereNull('partner_material');
+                }),
+            self::FILTER_NONE => $query
+                ->where(function (Builder $q) {
+                    $q->where('sponsored', 0)->orWhereNull('sponsored');
+                })
+                ->where(function (Builder $q) {
                     $q->where('partner_material', 0)->orWhereNull('partner_material');
                 })
-                ->where(function ($q) {
+                ->where(function (Builder $q) {
                     $q->where('as_you_prefer', 0)->orWhereNull('as_you_prefer');
                 }),
             default => null,

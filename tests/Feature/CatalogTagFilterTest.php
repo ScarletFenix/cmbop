@@ -171,6 +171,67 @@ class CatalogTagFilterTest extends TestCase
         $this->assertStringNotContainsString('Prefer Listing', $none);
     }
 
+    public function test_tag_filter_uses_exclusive_winner_for_leftover_flags(): void
+    {
+        $publisher = $this->publisher();
+        $this->site($publisher, [
+            'site_name' => 'All Flags Leftover',
+            'sponsored' => true,
+            'partner_material' => true,
+            'as_you_prefer' => true,
+        ]);
+        $this->site($publisher, [
+            'site_name' => 'Partner Plus Prefer Leftover',
+            'partner_material' => true,
+            'as_you_prefer' => true,
+        ]);
+        $this->site($publisher, [
+            'site_name' => 'Prefer Only',
+            'as_you_prefer' => true,
+        ]);
+        $this->site($publisher, [
+            'site_name' => 'Untagged Only',
+        ]);
+
+        $advertiser = $this->advertiser();
+
+        $sponsored = $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog', ['tag' => 'sponsored']))
+            ->assertOk()
+            ->getContent();
+        $this->assertStringContainsString('All Flags Leftover', $sponsored);
+        $this->assertStringNotContainsString('Partner Plus Prefer Leftover', $sponsored);
+        $this->assertStringNotContainsString('Prefer Only', $sponsored);
+        $this->assertStringNotContainsString('Untagged Only', $sponsored);
+
+        $partner = $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog', ['tag' => 'partner_material']))
+            ->assertOk()
+            ->getContent();
+        $this->assertStringContainsString('Partner Plus Prefer Leftover', $partner);
+        $this->assertStringNotContainsString('All Flags Leftover', $partner);
+        $this->assertStringNotContainsString('Prefer Only', $partner);
+        $this->assertStringNotContainsString('Untagged Only', $partner);
+
+        $prefer = $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog', ['tag' => 'as_you_prefer']))
+            ->assertOk()
+            ->getContent();
+        $this->assertStringContainsString('Prefer Only', $prefer);
+        $this->assertStringNotContainsString('All Flags Leftover', $prefer);
+        $this->assertStringNotContainsString('Partner Plus Prefer Leftover', $prefer);
+        $this->assertStringNotContainsString('Untagged Only', $prefer);
+
+        $none = $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog', ['tag' => 'none']))
+            ->assertOk()
+            ->getContent();
+        $this->assertStringContainsString('Untagged Only', $none);
+        $this->assertStringNotContainsString('All Flags Leftover', $none);
+        $this->assertStringNotContainsString('Partner Plus Prefer Leftover', $none);
+        $this->assertStringNotContainsString('Prefer Only', $none);
+    }
+
     public function test_sponsored_one_aliases_to_sponsored_tag(): void
     {
         $publisher = $this->publisher();
