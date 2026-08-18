@@ -250,9 +250,26 @@ class Invoice extends Model
         }
 
         try {
-            return Storage::disk($this->pdf_disk ?: 'local')->exists((string) $this->pdf_path);
+            return Storage::disk($this->pdfStorageDisk())->exists((string) $this->pdf_path);
         } catch (\Throwable) {
             return false;
+        }
+    }
+
+    /**
+     * Disk used to read a stored PDF. Blank leftover pdf_disk must not 500
+     * Storage::disk('') on view/download.
+     */
+    public function pdfStorageDisk(): string
+    {
+        $disk = is_string($this->pdf_disk) && $this->pdf_disk !== '' ? $this->pdf_disk : 'local';
+
+        try {
+            Storage::disk($disk);
+
+            return $disk;
+        } catch (\Throwable) {
+            return 'local';
         }
     }
 

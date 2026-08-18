@@ -44,7 +44,7 @@ class InvoicePdfGenerator
     public function stream(Invoice $invoice)
     {
         if ($invoice->pdfExists()) {
-            return Storage::disk($invoice->pdf_disk)->response(
+            return Storage::disk($invoice->pdfStorageDisk())->response(
                 $invoice->pdf_path,
                 $invoice->invoice_number.'.pdf',
                 ['Content-Type' => 'application/pdf']
@@ -66,7 +66,7 @@ class InvoicePdfGenerator
     public function download(Invoice $invoice)
     {
         if ($invoice->pdfExists()) {
-            return Storage::disk($invoice->pdf_disk)->download(
+            return Storage::disk($invoice->pdfStorageDisk())->download(
                 $invoice->pdf_path,
                 $invoice->invoice_number.'.pdf',
                 ['Content-Type' => 'application/pdf']
@@ -91,6 +91,6 @@ class InvoicePdfGenerator
             return null;
         }
 
-        return Storage::disk($invoice->pdf_disk)->path($invoice->pdf_path);
+        return Storage::disk($invoice->pdfStorageDisk())->path($invoice->pdf_path);
     }
 }

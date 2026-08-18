@@ -175,7 +175,13 @@ class FinanceOverviewService
             'url' => route('admin.finance').'#finance-debt',
         ];
 
-        if (! $this->walletsAvailable() || ! Schema::hasColumn('wallets', 'debt_balance')) {
+        $hasDebtColumn = false;
+        try {
+            $hasDebtColumn = $this->walletsAvailable() && Schema::hasColumn('wallets', 'debt_balance');
+        } catch (\Throwable) {
+            $hasDebtColumn = false;
+        }
+        if (! $hasDebtColumn) {
             return $empty;
         }
 
@@ -618,7 +624,11 @@ class FinanceOverviewService
      */
     public function userDossier(User $user): array
     {
-        $user->load('roles');
+        try {
+            $user->load('roles');
+        } catch (\Throwable) {
+            $user->setRelation('roles', collect());
+        }
         $advertiserRoleId = $this->walletsAvailable() ? Wallet::advertiserRoleId() : null;
         $publisherRoleId = $this->walletsAvailable() ? Wallet::publisherRoleId() : null;
 
@@ -632,7 +642,12 @@ class FinanceOverviewService
         $deposits = DepositRequest::tableAvailable()
             ? DepositRequest::where('user_id', $user->id)->latest()->limit(20)->get()
             : collect();
-        $orders = Order::where('user_id', $user->id)->latest()->limit(20)->get();
+        $orders = collect();
+        try {
+            $orders = Order::where('user_id', $user->id)->latest()->limit(20)->get();
+        } catch (\Throwable) {
+            $orders = collect();
+        }
         $withdrawals = Withdrawal::tableAvailable()
             ? Withdrawal::where('user_id', $user->id)->latest()->limit(20)->get()
             : collect();
@@ -640,26 +655,53 @@ class FinanceOverviewService
             ? WalletTransaction::where('user_id', $user->id)->latest()->limit(50)->get()
             : collect();
 
-        $siteIds = DB::table('sites')->where('publisher_id', $user->id)->pluck('id');
-        $earnings = $siteIds->isEmpty() ? 0.0 : (float) OrderItem::whereIn('site_id', $siteIds)
-            ->recognizedForFinance()
-            ->whereHas('order', fn ($q) => $q->where('status', 'completed')->where('payment_status', 'paid'))
-            ->sum(OrderItem::publisherPayoutSqlExpression());
-        $feesOnTheirSales = $siteIds->isEmpty() ? 0.0 : (float) OrderItem::whereIn('site_id', $siteIds)
-            ->recognizedForFinance()
-            ->whereHas('order', fn ($q) => $q->where('status', 'completed')->where('payment_status', 'paid'))
-            ->sum(OrderItem::platformFeeSqlExpression());
+        $siteIds = collect();
+        try {
+            if (Schema::hasTable('sites')) {
+                $siteIds = DB::table('sites')->where('publisher_id', $user->id)->pluck('id');
+            }
+        } catch (\Throwable) {
+            $siteIds = collect();
+        }
+        $earnings = 0.0;
+        $feesOnTheirSales = 0.0;
+        if ($siteIds->isNotEmpty()) {
+            try {
+                $earnings = (float) OrderItem::whereIn('site_id', $siteIds)
+                    ->recognizedForFinance()
+                    ->whereHas('order', fn ($q) => $q->where('status', 'completed')->where('payment_status', 'paid'))
+                    ->sum(OrderItem::publisherPayoutSqlExpression());
+                $feesOnTheirSales = (float) OrderItem::whereIn('site_id', $siteIds)
+                    ->recognizedForFinance()
+                    ->whereHas('order', fn ($q) => $q->where('status', 'completed')->where('payment_status', 'paid'))
+                    ->sum(OrderItem::platformFeeSqlExpression());
+            } catch (\Throwable) {
+                $earnings = 0.0;
+                $feesOnTheirSales = 0.0;
+            }
+        }
 
-        $currentPaidGmv = (float) Order::where('user_id', $user->id)
-            ->where('payment_status', 'paid')
-            ->sum('total_amount');
-        $gmvAsAdvertiser = (float) Order::where('user_id', $user->id)
-            ->whereIn('payment_status', ['paid', 'refunded'])
-            ->sum('total_amount');
-        $refundsAsAdvertiser = $this->userAdvertiserRefunds($user);
-        $paidOrdersCount = (int) Order::where('user_id', $user->id)
-            ->where('payment_status', 'paid')
-            ->count();
+        $currentPaidGmv = 0.0;
+        $gmvAsAdvertiser = 0.0;
+        $refundsAsAdvertiser = 0.0;
+        $paidOrdersCount = 0;
+        try {
+            $currentPaidGmv = (float) Order::where('user_id', $user->id)
+                ->where('payment_status', 'paid')
+                ->sum('total_amount');
+            $gmvAsAdvertiser = (float) Order::where('user_id', $user->id)
+                ->whereIn('payment_status', ['paid', 'refunded'])
+                ->sum('total_amount');
+            $refundsAsAdvertiser = $this->userAdvertiserRefunds($user);
+            $paidOrdersCount = (int) Order::where('user_id', $user->id)
+                ->where('payment_status', 'paid')
+                ->count();
+        } catch (\Throwable) {
+            $currentPaidGmv = 0.0;
+            $gmvAsAdvertiser = 0.0;
+            $refundsAsAdvertiser = 0.0;
+            $paidOrdersCount = 0;
+        }
 
         return [
             'user' => $user,

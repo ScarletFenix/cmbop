@@ -18,6 +18,7 @@ use App\Services\InAppNotificationService;
 use App\Support\BillingCustomerMailSuppressor;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Orchestrates invoice/receipt generation and billing emails.
@@ -333,12 +334,21 @@ class BillingDocumentService
             return $invoice;
         }
 
-        $invoice->update([
-            'status' => Invoice::STATUS_CANCELLED,
+        $payload = ['status' => Invoice::STATUS_CANCELLED];
+        foreach ([
             'cancelled_by' => $admin->id,
             'cancelled_at' => now(),
             'cancel_reason' => $reason ?: 'Cancelled by administrator.',
-        ]);
+        ] as $column => $value) {
+            try {
+                if (Schema::hasColumn('invoices', $column)) {
+                    $payload[$column] = $value;
+                }
+            } catch (\Throwable) {
+                // Leftover Hostinger: still cancel the invoice without stamp columns.
+            }
+        }
+        $invoice->update($payload);
 
         // PDFs are retained permanently; only status changes.
         $this->events->log('invoice_cancelled', $invoice, $invoice->order, $admin->id, [

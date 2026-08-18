@@ -40,7 +40,7 @@
 
                             @if($deposit->user_marked_paid_at)
                                 <dt class="col-sm-4 text-muted">Reported paid</dt>
-                                <dd class="col-sm-8">{{ $deposit->user_marked_paid_at->format('M d, Y H:i') }}</dd>
+                                <dd class="col-sm-8">{{ optional($deposit->user_marked_paid_at)->format('M d, Y H:i') }}</dd>
                             @endif
 
                             @if($deposit->user_payment_note)

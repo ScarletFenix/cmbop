@@ -560,9 +560,28 @@ class OrderItem extends Model
             // keep legacy constant
         }
 
-        return DB::raw(
-            'COALESCE(platform_fee_amount, (price - COALESCE(additional_price, 0) - COALESCE(homepage_price, 0)) - COALESCE(publisher_price, (price - COALESCE(additional_price, 0) - COALESCE(homepage_price, 0)) / '.$rate.'))'
-        );
+        $base = '(price - COALESCE(additional_price, 0) - COALESCE(homepage_price, 0))';
+        $legacyFee = "{$base} - ({$base} / {$rate})";
+        $hasFeeAmount = false;
+        $hasPublisherPrice = false;
+        try {
+            $hasFeeAmount = Schema::hasColumn('order_items', 'platform_fee_amount');
+            $hasPublisherPrice = Schema::hasColumn('order_items', 'publisher_price');
+        } catch (\Throwable) {
+            // Leftover Hostinger: keep a fee expression that only uses core columns.
+        }
+
+        if ($hasFeeAmount && $hasPublisherPrice) {
+            return DB::raw("COALESCE(platform_fee_amount, {$base} - COALESCE(publisher_price, {$base} / {$rate}))");
+        }
+        if ($hasFeeAmount) {
+            return DB::raw("COALESCE(platform_fee_amount, {$legacyFee})");
+        }
+        if ($hasPublisherPrice) {
+            return DB::raw("{$base} - COALESCE(publisher_price, {$base} / {$rate})");
+        }
+
+        return DB::raw($legacyFee);
     }
 
     /**
