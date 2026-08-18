@@ -500,7 +500,7 @@ return [
     'staff_handbook_section7_title' => 'Bestellzahlungen (Admin)',
     'staff_handbook_section7_list1' => 'Paid = Überweisung bestätigt. Für Wise, Bank und Krypto erst nach Eingang auf dem Konto. Publisher werden auch benachrichtigt, wenn Kundenmail aus ist.',
     'staff_handbook_section7_list2' => 'Failed = unbezahlt oder abgelehnt. Bricht einen laufenden Auftrag ab und gibt eine Wallet-Sperre frei. Nicht bei abgeschlossenen Platzierungen verwenden.',
-    'staff_handbook_section7_list3' => 'Refunded = Gutschrift auf das Advertiser-Wallet und Storno. Kartenrefunds kehren die Stripe-Belastung nicht um. Notiz und optionale Transferreferenz hinterlegen.',
+    'staff_handbook_section7_list3' => 'Refunded = Gutschrift auf das Advertiser-Wallet und Storno. Karten- und PayPal-Refunds kehren die Stripe- oder PayPal-Belastung nicht um. Notiz und optionale Transferreferenz hinterlegen.',
     'staff_handbook_section7_list4' => 'Abgeschlossene bezahlte Aufträge können hier nicht erstattet oder auf Failed gesetzt werden. Zuerst einen Link-Removed-Dispute öffnen, damit die Publisher-Auszahlung zurückgeholt wird.',
     'staff_handbook_section7_list5' => 'Statusänderungen bleiben in der Auftragskonsole. Der Zahlungsstatus bleibt unter Order Payments.',
     'staff_handbook_terms_link' => 'Publisher-Nutzungsbedingungen',

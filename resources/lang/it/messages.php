@@ -822,7 +822,7 @@ return [
     'staff_handbook_section7_title' => 'Pagamenti ordini (admin)',
     'staff_handbook_section7_list1' => 'Pagato = bonifico confermato. Usalo per Wise, banca e crypto dopo che il denaro è in estratto. I publisher vengono notificati anche se togli la spunta alla mail cliente.',
     'staff_handbook_section7_list2' => 'Fallito = non pagato o rifiutato. Annulla un ordine in corso e rilascia un hold del wallet. Non usare Fallito su una pubblicazione completata.',
-    'staff_handbook_section7_list3' => 'Rimborsato = restituisci i fondi al wallet inserzionista e annulla l\'ordine. I rimborsi carta non stornano l\'addebito Stripe. Scrivi una nota e, se serve, il riferimento del bonifico.',
+    'staff_handbook_section7_list3' => 'Rimborsato = restituisci i fondi al wallet inserzionista e annulla l\'ordine. I rimborsi carta e PayPal non stornano l\'addebito Stripe o PayPal. Scrivi una nota e, se serve, il riferimento del bonifico.',
     'staff_handbook_section7_list4' => 'Gli ordini pagati e completati non si possono rimborsare né segnare come falliti qui. Apri una contestazione per link rimosso così il pagamento del publisher viene recuperato prima.',
     'staff_handbook_section7_list5' => 'I cambi di fase restano sulla console Ordini. Lo stato del denaro resta su Pagamenti ordini.',
     'staff_handbook_terms_link' => 'Termini di servizio per i publisher',

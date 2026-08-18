@@ -195,7 +195,7 @@ class OrderRefundService
             }
             $cashShare = $ledgerAmount;
         } else {
-            // Card / Wise / bank / crypto may still hold leftover checkout bonus
+            // Card / PayPal / Wise / bank / crypto may still hold leftover checkout bonus
             // in reserved. Restore only this line's share so a sibling reject
             // cannot unlock the whole checkout promo while other paid rows remain.
             // An explicit cap (this reference's leftover) also stops a second

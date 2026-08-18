@@ -500,7 +500,7 @@ return [
     'staff_handbook_section7_title' => 'Bestelbetalingen (admin)',
     'staff_handbook_section7_list1' => 'Paid = overboeking bevestigd. Voor Wise, bank en crypto pas na bijschrijving. Publishers krijgen bericht ook als klanmail uit staat.',
     'staff_handbook_section7_list2' => 'Failed = onbetaald of geweigerd. Annuleert een lopende order en geeft een wallet-reservering vrij. Niet gebruiken bij een afgeronde plaatsing.',
-    'staff_handbook_section7_list3' => 'Refunded = tegoed op de adverteerder-wallet en annulering. Een kaartrefund draait de Stripe-charge niet terug. Zet een notitie en optionele transferreferentie.',
+    'staff_handbook_section7_list3' => 'Refunded = tegoed op de adverteerder-wallet en annulering. Een kaart- of PayPal-refund draait de Stripe- of PayPal-charge niet terug. Zet een notitie en optionele transferreferentie.',
     'staff_handbook_section7_list4' => 'Afgeronde betaalde orders kunnen hier niet worden terugbetaald of op Failed gezet. Open eerst een link-verwijderd-dispuut zodat de publisher-uitbetaling wordt teruggehaald.',
     'staff_handbook_section7_list5' => 'Fasewijzigingen blijven in de orderconsole. De betalingsstatus blijft bij Order Payments.',
     'staff_handbook_terms_link' => 'Algemene voorwaarden voor publishers',

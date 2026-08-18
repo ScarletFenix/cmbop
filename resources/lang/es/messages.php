@@ -822,7 +822,7 @@ return [
     'staff_handbook_section7_title' => 'Pagos de pedidos (admin)',
     'staff_handbook_section7_list1' => 'Pagado = transferencia confirmada. Úselo para Wise, banco y cripto cuando el dinero figure en el extracto. Se notifica a los editores aunque desmarque el correo al cliente.',
     'staff_handbook_section7_list2' => 'Fallido = impagado o rechazado. Cancela un pedido en curso y libera una retención del monedero. No use Fallido en una publicación completada.',
-    'staff_handbook_section7_list3' => 'Reembolsado = devolver fondos al monedero del anunciante y cancelar el pedido. Los reembolsos de tarjeta no revierten el cargo de Stripe. Escriba una nota y, si procede, la referencia de la transferencia.',
+    'staff_handbook_section7_list3' => 'Reembolsado = devolver fondos al monedero del anunciante y cancelar el pedido. Los reembolsos de tarjeta y PayPal no revierten el cargo de Stripe o PayPal. Escriba una nota y, si procede, la referencia de la transferencia.',
     'staff_handbook_section7_list4' => 'Los pedidos pagados y completados no se pueden reembolsar ni marcar como fallidos aquí. Abra una reclamación por enlace retirado para recuperar primero el pago del editor.',
     'staff_handbook_section7_list5' => 'Los cambios de etapa permanecen en la consola de Pedidos. El estado del dinero permanece en Pagos de pedidos.',
     'staff_handbook_terms_link' => 'Términos del servicio para editores',

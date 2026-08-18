@@ -500,7 +500,7 @@ return [
     'staff_handbook_section7_title' => 'Paiements de commande (admin)',
     'staff_handbook_section7_list1' => 'Paid = virement confirmé. Pour Wise, banque et crypto uniquement après crédit sur le relevé. Les éditeurs sont notifiés même si l’e-mail client est décoché.',
     'staff_handbook_section7_list2' => 'Failed = impayé ou refusé. Annule une commande en cours et libère une réserve wallet. Ne pas utiliser sur un placement terminé.',
-    'staff_handbook_section7_list3' => 'Refunded = crédit du wallet annonceur et annulation. Un remboursement carte ne reverse pas Stripe. Ajouter une note et une référence de virement optionnelle.',
+    'staff_handbook_section7_list3' => 'Refunded = crédit du wallet annonceur et annulation. Un remboursement carte ou PayPal ne reverse pas Stripe ni PayPal. Ajouter une note et une référence de virement optionnelle.',
     'staff_handbook_section7_list4' => 'Les commandes payées et terminées ne peuvent pas être remboursées ou passées en Failed ici. Ouvrir d’abord un litige lien retiré pour récupérer le paiement éditeur.',
     'staff_handbook_section7_list5' => 'Les changements d’étape restent dans la console commandes. Le statut de paiement reste dans Order Payments.',
     'staff_handbook_terms_link' => 'Conditions d’utilisation éditeur',
