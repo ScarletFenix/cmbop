@@ -41,6 +41,20 @@ return [
         'webhook_secret' => env('STRIPE_WEBHOOK_SECRET'),
     ],
 
+    /*
+    | PayPal Orders v2 (checkout + optional wallet deposits). Off until
+    | PAYPAL_ENABLED=true and both credentials are set. Base URL follows
+    | PAYPAL_MODE only — live keys must never hit the sandbox host.
+    */
+    'paypal' => [
+        'enabled' => (bool) env('PAYPAL_ENABLED', false),
+        'mode' => env('PAYPAL_MODE', 'sandbox'),
+        'client_id' => trim((string) env('PAYPAL_CLIENT_ID', '')),
+        'secret' => trim((string) env('PAYPAL_SECRET', '')),
+        'webhook_id' => trim((string) env('PAYPAL_WEBHOOK_ID', '')),
+        'base_url' => null,
+    ],
+
     'google' => [
         'client_id' => trim((string) env('GOOGLE_CLIENT_ID', '')),
         'client_secret' => trim((string) env('GOOGLE_CLIENT_SECRET', '')),
