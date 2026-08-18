@@ -58,8 +58,25 @@ class AuthAndMoneyHardeningTest extends TestCase
     {
         $user = new User;
 
-        $this->assertFalse($user->isFillable('email_verified_at'));
-        $this->assertFalse($user->isFillable('can_activate_sites'));
+        foreach ([
+            'email_verified_at',
+            'can_activate_sites',
+            'active_role_id',
+            'google_token',
+            'google_refresh_token',
+            'stripe_customer_id',
+            'stripe_default_payment_method_id',
+            'payout_paypal_email',
+            'payout_wise_email',
+            'payout_bank_account',
+            'payout_crypto_trx_wallet',
+            'payout_profile_locked_at',
+            'payout_preferred_method',
+            'catalog_reveal_exempt',
+            'catalog_reveal_exempt_until',
+        ] as $column) {
+            $this->assertFalse($user->isFillable($column), $column.' must not be mass-assignable');
+        }
 
         $created = User::create([
             'name' => 'Mass Assign',
@@ -67,9 +84,20 @@ class AuthAndMoneyHardeningTest extends TestCase
             'password' => 'password',
             'email_verified_at' => now(),
             'can_activate_sites' => true,
+            'active_role_id' => 99,
+            'google_token' => 'stolen-token',
+            'stripe_customer_id' => 'cus_stolen',
+            'payout_paypal_email' => 'attacker@example.com',
+            'catalog_reveal_exempt' => true,
         ]);
 
-        $this->assertNull($created->fresh()->email_verified_at);
-        $this->assertFalse((bool) $created->fresh()->can_activate_sites);
+        $fresh = $created->fresh();
+        $this->assertNull($fresh->email_verified_at);
+        $this->assertFalse((bool) $fresh->can_activate_sites);
+        $this->assertNull($fresh->active_role_id);
+        $this->assertNull($fresh->google_token);
+        $this->assertNull($fresh->stripe_customer_id);
+        $this->assertNull($fresh->payout_paypal_email);
+        $this->assertFalse((bool) $fresh->catalog_reveal_exempt);
     }
 }
