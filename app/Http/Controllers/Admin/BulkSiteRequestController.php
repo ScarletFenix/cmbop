@@ -92,7 +92,15 @@ class BulkSiteRequestController extends Controller
         // Same A–Z niche list as Catalog main search filter.
         $categories = Category::catalogPickerNames();
         $countryLanguageMap = app(CountryLanguagePairs::class)->mapWithNames();
-        $history = ActivityLog::forBulkSiteRequest($bulkRequest->id);
+        $history = collect();
+        try {
+            $history = ActivityLog::forBulkSiteRequest($bulkRequest->id);
+        } catch (\Throwable $e) {
+            Log::warning('Bulk request history failed', [
+                'bulk_site_request_id' => $bulkRequest->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
         $canDeleteDrafts = auth()->user()?->isAdmin() || auth()->user()?->isMarketing();
         $pendingItems = $bulkRequest->items->whereNull('site_id')->values();
 

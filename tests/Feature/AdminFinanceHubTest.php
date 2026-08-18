@@ -1557,6 +1557,10 @@ class AdminFinanceHubTest extends TestCase
                 ->get(route('admin.finance.user', $advertiser))
                 ->assertOk()
                 ->assertDontSee('Something went wrong');
+
+            $this->actingAs($admin)
+                ->get(route('admin.finance.ledger.export'))
+                ->assertOk();
         } finally {
             $this->artisan('migrate', [
                 '--path' => 'database/migrations/2026_07_17_140000_create_wallet_transactions_table.php',

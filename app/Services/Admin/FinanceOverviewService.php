@@ -579,8 +579,8 @@ class FinanceOverviewService
     public function userDossier(User $user): array
     {
         $user->load('roles');
-        $advertiserRoleId = Wallet::advertiserRoleId();
-        $publisherRoleId = Wallet::publisherRoleId();
+        $advertiserRoleId = $this->walletsAvailable() ? Wallet::advertiserRoleId() : null;
+        $publisherRoleId = $this->walletsAvailable() ? Wallet::publisherRoleId() : null;
 
         $advWallet = $advertiserRoleId
             ? Wallet::where('user_id', $user->id)->where('role_id', $advertiserRoleId)->first()
@@ -781,6 +781,13 @@ class FinanceOverviewService
 
     private function failedExternalOrdersWithWalletReturn(?Carbon $start, Carbon $end)
     {
+        // failedExternalOrdersBase() already returns `0 = 1` when the ledger
+        // table is gone, but SQLite still evaluates a trailing EXISTS against
+        // the missing table and 500s the finance hub.
+        if (! $this->walletTransactionsAvailable()) {
+            return Order::query()->whereRaw('0 = 1');
+        }
+
         $morph = (new Order)->getMorphClass();
 
         return $this->failedExternalOrdersBase()

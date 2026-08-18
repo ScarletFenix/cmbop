@@ -288,6 +288,32 @@ class AdminRoleRegressionTest extends TestCase
         $this->assertStringContainsString('WD-'.$withdrawal->id, $html);
     }
 
+    public function test_bulk_request_show_survives_missing_activity_logs(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $publisher = $this->userWithRole('publisher');
+        $bulk = BulkSiteRequest::create([
+            'publisher_id' => $publisher->id,
+            'status' => BulkSiteRequest::STATUS_REQUESTED,
+            'estimated_count' => 2,
+        ]);
+
+        Schema::dropIfExists('activity_logs');
+        $this->assertFalse(Schema::hasTable('activity_logs'));
+
+        try {
+            $this->actingAs($admin)
+                ->get(route('admin.bulk-site-requests.show', $bulk))
+                ->assertOk()
+                ->assertDontSee('Something went wrong');
+        } finally {
+            $this->artisan('migrate', [
+                '--path' => 'database/migrations/2026_07_15_150505_create_activity_logs_table.php',
+                '--force' => true,
+            ]);
+        }
+    }
+
     public function test_bulk_requests_index_survives_an_unhandled_request(): void
     {
         $admin = $this->userWithRole('admin');
