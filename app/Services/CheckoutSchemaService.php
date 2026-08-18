@@ -23,6 +23,7 @@ class CheckoutSchemaService
         $this->ensureSitesColumns();
         $this->ensureCheckoutIntentsTable();
         $this->ensurePaypalWebhookLogsTable();
+        $this->ensureDepositPaypalColumns();
     }
 
     /**
@@ -180,6 +181,19 @@ class CheckoutSchemaService
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    private function ensureDepositPaypalColumns(): void
+    {
+        if (! $this->tableExists('deposit_requests')) {
+            return;
+        }
+
+        $this->addColumn('deposit_requests', 'paypal_order_id', 'varchar(255) NULL');
+        $this->addColumn('deposit_requests', 'paypal_capture_id', 'varchar(255) NULL');
+        $this->addNullableJsonColumn('deposit_requests', 'paypal_response');
+        $this->addIndexIfMissing('deposit_requests', 'paypal_order_id');
+        $this->addUniqueIfMissing('deposit_requests', 'paypal_capture_id');
     }
 
     /**

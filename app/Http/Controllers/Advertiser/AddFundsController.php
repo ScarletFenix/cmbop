@@ -11,10 +11,12 @@ use App\Models\DepositRequest;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Services\InAppNotificationService;
+use App\Services\PaypalCheckoutService;
 use App\Services\StripeCustomerService;
 use App\Services\StripePaymentService;
 use App\Services\Wallet\PayoutProfileService;
 use App\Services\Wallet\WalletOverviewService;
+use App\Services\WalletPaypalDepositService;
 use App\Services\WalletStripeDepositService;
 use App\Support\DepositPaymentConfig;
 use App\Support\UserFacingError;
@@ -68,7 +70,7 @@ class AddFundsController extends Controller
         $analytics = $this->overview->analytics($user->id, 'month');
 
         $prefillAmount = max(0, (float) $request->query('amount', 0));
-        $prefillMethod = in_array($request->query('method'), ['wise', 'bank', 'crypto', 'card'], true)
+        $prefillMethod = in_array($request->query('method'), ['wise', 'bank', 'crypto', 'card', 'paypal'], true)
             ? $request->query('method')
             : null;
 
@@ -97,6 +99,7 @@ class AddFundsController extends Controller
             'prefillMethod' => $prefillMethod,
             'savedCards' => app(StripeCustomerService::class)->listCards($user),
             'stripeConfigured' => app(StripeCustomerService::class)->configured(),
+            'paypalConfigured' => app(PaypalCheckoutService::class)->configured(),
             'cardsTab' => $request->query('tab') === 'cards',
             'depositPayment' => DepositPaymentConfig::depositPayment(),
             'wisePayUrl' => DepositPaymentConfig::wisePayUrl(),
@@ -222,6 +225,125 @@ class AddFundsController extends Controller
                 'message' => UserFacingError::message($e, 'Failed to create checkout session. Please try again.'),
             ]);
         }
+    }
+
+    public function createPaypalOrder(Request $request)
+    {
+        try {
+            $request->validate([
+                'amount' => 'required|numeric|min:10|max:100000',
+                'reference_code' => 'required|string',
+            ]);
+
+            $paypal = app(PaypalCheckoutService::class);
+            if (! $paypal->configured()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'PayPal is not configured. Please contact support.',
+                ], 503);
+            }
+
+            $amountEuros = round((float) $request->amount, 2);
+            $referenceCode = trim((string) $request->reference_code);
+            $user = auth()->user();
+
+            $created = $paypal->createOrder($amountEuros, [
+                'type' => PaypalCheckoutService::TYPE_WALLET_DEPOSIT,
+                'user_id' => $user->id,
+                'reference_code' => $referenceCode,
+            ], route('advertiser.add-funds.paypal.return', ['ref' => $referenceCode]), route('advertiser.add-funds.paypal.cancel', ['ref' => $referenceCode]));
+
+            session()->put('pending_paypal_deposit_reference', $referenceCode);
+
+            return response()->json([
+                'success' => true,
+                'checkout_url' => $created['approve_url'],
+                'paypal_order_id' => $created['id'],
+                'reference_code' => $referenceCode,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('PayPal wallet deposit create error: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'Failed to start PayPal checkout. Please try again.'),
+            ]);
+        }
+    }
+
+    public function paypalDepositReturn(Request $request)
+    {
+        $ref = trim((string) $request->query('ref', ''));
+        $token = trim((string) $request->query('token', ''));
+        $userId = (int) auth()->id();
+
+        if ($ref === '' || $token === '') {
+            return redirect()->route('advertiser.add-funds')
+                ->with('error', 'Invalid PayPal return.');
+        }
+
+        $paypal = app(PaypalCheckoutService::class);
+        if (! $paypal->configured()) {
+            return redirect()->route('advertiser.add-funds')
+                ->with('error', 'PayPal is not configured.');
+        }
+
+        try {
+            $captured = $paypal->captureOrder($token);
+        } catch (\Throwable $e) {
+            Log::error('PayPal wallet deposit capture failed on return', [
+                'reference_code' => $ref,
+                'paypal_order_id' => $token,
+                'error' => $e->getMessage(),
+            ]);
+
+            return redirect()->route('advertiser.add-funds')
+                ->with('error', 'PayPal payment was not completed.');
+        }
+
+        $custom = is_array($captured['custom'] ?? null) ? $captured['custom'] : [];
+        if ((string) ($custom['user_id'] ?? '') !== (string) $userId) {
+            return redirect()->route('advertiser.add-funds')
+                ->with('error', 'Payment does not belong to this account.');
+        }
+        if (($custom['type'] ?? '') !== PaypalCheckoutService::TYPE_WALLET_DEPOSIT) {
+            return redirect()->route('advertiser.add-funds')
+                ->with('error', 'This payment is not a wallet top-up.');
+        }
+        if (($custom['reference_code'] ?? '') !== $ref) {
+            return redirect()->route('advertiser.add-funds')
+                ->with('error', 'Payment reference mismatch.');
+        }
+
+        try {
+            $credited = app(WalletPaypalDepositService::class)->creditFromCapture($captured);
+        } catch (\Throwable $e) {
+            Log::error('PayPal wallet deposit credit failed on return', [
+                'reference_code' => $ref,
+                'error' => $e->getMessage(),
+            ]);
+
+            return redirect()->route('advertiser.add-funds')
+                ->with('error', UserFacingError::message($e, 'Payment verification failed. Please contact support.'));
+        }
+
+        session()->forget('pending_paypal_deposit_reference');
+
+        if ($credited <= 0) {
+            return redirect()->route('advertiser.add-funds')
+                ->with('error', 'Payment verification failed. Please contact support.');
+        }
+
+        return redirect()->route('advertiser.add-funds')
+            ->with('success', 'Payment successful! €'.number_format($credited, 2).' added to your wallet.');
+    }
+
+    public function paypalDepositCancel(Request $request)
+    {
+        session()->forget('pending_paypal_deposit_reference');
+
+        return redirect()->route('advertiser.add-funds')
+            ->with('error', 'PayPal payment was cancelled.');
     }
 
     public function checkoutSuccess(Request $request)

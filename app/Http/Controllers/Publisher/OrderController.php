@@ -591,6 +591,32 @@ class OrderController extends Controller
                 ], 403);
             }
 
+            $previewOrder = $orderItem->order;
+            if ($previewOrder instanceof Order
+                && $previewOrder->payment_status === 'paid'
+                && $previewOrder->payment_method === 'paypal'
+            ) {
+                try {
+                    $paypalAmount = app(OrderRefundService::class)
+                        ->resolveOrderCancelRefundAmount($previewOrder);
+                    app(OrderRefundService::class)
+                        ->refundPaypalCaptureIfPossible($previewOrder, $paypalAmount);
+                } catch (\Throwable $e) {
+                    Log::error('Publisher PayPal refund API failed', [
+                        'order_id' => $previewOrder->id,
+                        'error' => $e->getMessage(),
+                    ]);
+
+                    return response()->json([
+                        'success' => false,
+                        'message' => UserFacingError::message(
+                            $e,
+                            'PayPal refund failed. The wallet was not credited.'
+                        ),
+                    ], 422);
+                }
+            }
+
             DB::beginTransaction();
 
             // Lock order to prevent double-reject / double-refund races

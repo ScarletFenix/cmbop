@@ -62,11 +62,17 @@ class PaypalCheckoutServiceTest extends TestCase
         $this->enablePaypal(['enabled' => false]);
         $this->assertFalse((new PaypalCheckoutService)->configured());
 
+        $this->enablePaypal(['enabled' => 'off']);
+        $this->assertFalse((new PaypalCheckoutService)->configured());
+
         $this->enablePaypal(['secret' => '']);
         $this->assertFalse((new PaypalCheckoutService)->configured());
 
         $this->enablePaypal(['client_id' => 'your-client-id']);
         $this->assertFalse((new PaypalCheckoutService)->configured());
+
+        $this->enablePaypal(['enabled' => null]);
+        $this->assertTrue((new PaypalCheckoutService)->configured());
 
         $this->enablePaypal();
         $this->assertTrue((new PaypalCheckoutService)->configured());
@@ -299,6 +305,21 @@ class PaypalCheckoutServiceTest extends TestCase
             return ($body['amount']['currency_code'] ?? null) === 'EUR'
                 && ($body['amount']['value'] ?? null) === '10.00';
         });
+    }
+
+    public function test_refund_capture_treats_already_refunded_as_success(): void
+    {
+        $this->fakePaypal([
+            '/v2/payments/captures/CAP-DONE/refund' => Http::response([
+                'name' => 'UNPROCESSABLE_ENTITY',
+                'details' => [['issue' => 'CAPTURE_FULLY_REFUNDED']],
+            ], 422),
+        ]);
+
+        $refund = $this->paypal->refundCapture('CAP-DONE', 10);
+
+        $this->assertSame('already-CAP-DONE', $refund['id']);
+        $this->assertSame(10.0, $refund['amount']);
     }
 
     public function test_verify_webhook_success(): void

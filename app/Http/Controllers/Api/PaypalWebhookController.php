@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\PaypalWebhookLog;
 use App\Services\OrderPaymentService;
 use App\Services\PaypalCheckoutService;
+use App\Services\WalletPaypalDepositService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -115,8 +116,10 @@ class PaypalWebhookController extends Controller
 
         $custom = is_array($captured['custom'] ?? null) ? $captured['custom'] : [];
         if (($custom['type'] ?? '') === PaypalCheckoutService::TYPE_WALLET_DEPOSIT) {
-            Log::info('Ignoring PayPal wallet-deposit webhook until Add Funds supports PayPal', [
+            $credited = app(WalletPaypalDepositService::class)->creditFromCapture($captured);
+            Log::info('PayPal wallet deposit settled via webhook', [
                 'paypal_capture_id' => $captured['capture_id'] ?? null,
+                'credited' => $credited,
             ]);
 
             return;

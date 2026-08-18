@@ -42,12 +42,13 @@ return [
     ],
 
     /*
-    | PayPal Orders v2 (checkout + optional wallet deposits). Off until
-    | PAYPAL_ENABLED=true and both credentials are set. Base URL follows
-    | PAYPAL_MODE only — live keys must never hit the sandbox host.
+    | PayPal Orders v2 (checkout + wallet deposits). Credentials turn the
+    | rail on (same pattern as Stripe). PAYPAL_ENABLED=false/0/off is an
+    | optional kill switch. Base URL follows PAYPAL_MODE only — live keys
+    | must never hit the sandbox host.
     */
     'paypal' => [
-        'enabled' => (bool) env('PAYPAL_ENABLED', false),
+        'enabled' => env('PAYPAL_ENABLED'),
         'mode' => env('PAYPAL_MODE', 'sandbox'),
         'client_id' => trim((string) env('PAYPAL_CLIENT_ID', '')),
         'secret' => trim((string) env('PAYPAL_SECRET', '')),

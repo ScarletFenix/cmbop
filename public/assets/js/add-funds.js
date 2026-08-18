@@ -4,6 +4,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const boot = window.AddFundsBoot || {};
 
     const stripeReady = !!(boot.stripeReady);
+    const paypalReady = !!(boot.paypalReady);
     const wisePayUrl = boot.wisePayUrl || '';
     const cryptoEnabled = !!boot.cryptoEnabled;
 
@@ -66,10 +67,12 @@ document.addEventListener('DOMContentLoaded', function() {
     const cryptoDetails = document.getElementById('cryptoPaymentDetails');
     const bankDetails = document.getElementById('bankPaymentDetails');
     const cardDetails = document.getElementById('cardPaymentDetails');
+    const paypalDetails = document.getElementById('paypalPaymentDetails');
     const proceedBtn = document.getElementById('proceedBtn');
     const depositFeeNote = document.getElementById('depositFeeNote');
     const depositFeeNotes = {
         card: 'No extra deposit fee — we cover card processing.',
+        paypal: 'No extra deposit fee — we cover PayPal processing.',
         bank: 'SEPA usually 0–2 business days after you send; wallet credits after we confirm.',
         wise: 'SEPA usually 0–2 business days after you send; wallet credits after we confirm.',
         crypto: 'Credits after network confirmation and our review.',
@@ -151,6 +154,9 @@ document.addEventListener('DOMContentLoaded', function() {
         const formatted = '€' + (amt || 0).toFixed(2);
         if (selectedMethod === 'card') {
             return '<i class="fa fa-credit-card me-2"></i> Pay ' + formatted + ' with card';
+        }
+        if (selectedMethod === 'paypal') {
+            return '<i class="fab fa-paypal me-2"></i> Pay ' + formatted + ' with PayPal';
         }
         return '<i class="fa fa-file-invoice me-2"></i> Get invoice & pay ' + formatted;
     };
@@ -284,6 +290,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (cryptoDetails) cryptoDetails.style.display = 'none';
             if (bankDetails) bankDetails.style.display = 'none';
             if (cardDetails) cardDetails.style.display = 'none';
+            if (paypalDetails) paypalDetails.style.display = 'none';
             
             // Show selected
             if (method === 'wise' && wiseDetails) {
@@ -296,6 +303,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (method === 'crypto' && cryptoDetails) cryptoDetails.style.display = 'block';
             if (method === 'bank' && bankDetails) bankDetails.style.display = 'block';
             if (method === 'card' && cardDetails) cardDetails.style.display = 'block';
+            if (method === 'paypal' && paypalDetails) paypalDetails.style.display = 'block';
             
             if (paymentDetailsSection) paymentDetailsSection.style.display = 'block';
             if (typeof syncProceedLabel === 'function') syncProceedLabel();
@@ -487,6 +495,52 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         
+        if (selectedMethod === 'paypal') {
+            if (!paypalReady) {
+                Swal.fire({
+                    title: 'PayPal unavailable',
+                    text: 'PayPal top-ups are offline. Use Card, Bank, Wise, or Crypto.',
+                    icon: 'info',
+                    confirmButtonText: 'OK'
+                });
+                return;
+            }
+
+            proceedBtn.disabled = true;
+            proceedBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Processing...';
+
+            try {
+                const response = await fetch(boot.routes.createPaypal, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': boot.csrfToken
+                    },
+                    body: JSON.stringify({
+                        amount: selectedAmount,
+                        reference_code: referenceCode
+                    })
+                });
+                const data = await response.json();
+                if (data.success && data.checkout_url) {
+                    window.location.href = data.checkout_url;
+                    return;
+                }
+                throw new Error(data.message || 'Failed to start PayPal checkout');
+            } catch (error) {
+                console.error('Error:', error);
+                Swal.fire({
+                    title: 'Error',
+                    text: error.message || 'Failed to start PayPal checkout. Please try again.',
+                    icon: 'error',
+                    confirmButtonText: 'OK'
+                });
+                proceedBtn.disabled = false;
+                proceedBtn.innerHTML = window.__afProceedLabel ? window.__afProceedLabel() : '<i class="fa fa-arrow-right me-2"></i> Get invoice &amp; pay';
+            }
+            return;
+        }
+
         // For card payments: saved card charge or Stripe Checkout
         if (selectedMethod === 'card') {
             if (!stripeReady) {

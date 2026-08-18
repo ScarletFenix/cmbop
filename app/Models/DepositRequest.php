@@ -18,6 +18,9 @@ class DepositRequest extends Model
         'stripe_session_id',
         'stripe_payment_intent_id',
         'stripe_response',
+        'paypal_order_id',
+        'paypal_capture_id',
+        'paypal_response',
         'amount',
         'payment_method',
         'status',
@@ -31,6 +34,7 @@ class DepositRequest extends Model
 
     protected $casts = [
         'stripe_response' => 'array',
+        'paypal_response' => 'array',
         'approved_at' => 'datetime',
         'rejected_at' => 'datetime',
         'paid_at' => 'datetime',

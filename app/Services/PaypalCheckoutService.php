@@ -26,7 +26,7 @@ class PaypalCheckoutService
 
     public function configured(): bool
     {
-        if (! (bool) config('services.paypal.enabled')) {
+        if ($this->isExplicitlyDisabled()) {
             return false;
         }
 
@@ -225,24 +225,45 @@ class PaypalCheckoutService
                     'value' => $amount,
                 ],
             ],
-            ['PayPal-Request-Id' => 'refund-'.$captureId.'-'.$amount]
+            ['PayPal-Request-Id' => 'refund-'.$captureId.'-'.$amount],
+            false
         );
         $data = $response->json() ?? [];
-        $refundId = trim((string) ($data['id'] ?? ''));
-        $status = strtoupper((string) ($data['status'] ?? ''));
-        $refundedRaw = $data['amount']['value'] ?? $amount;
+        if ($response->successful()) {
+            $refundId = trim((string) ($data['id'] ?? ''));
+            $status = strtoupper((string) ($data['status'] ?? ''));
+            $refundedRaw = $data['amount']['value'] ?? $amount;
 
-        if ($refundId === '') {
-            throw new RuntimeException('PayPal refund did not return an id.');
+            if ($refundId === '') {
+                throw new RuntimeException('PayPal refund did not return an id.');
+            }
+
+            return [
+                'id' => $refundId,
+                'status' => $status,
+                'amount' => round((float) $refundedRaw, 2),
+                'currency' => self::CURRENCY,
+                'raw' => $data,
+            ];
         }
 
-        return [
-            'id' => $refundId,
-            'status' => $status,
-            'amount' => round((float) $refundedRaw, 2),
-            'currency' => self::CURRENCY,
-            'raw' => $data,
-        ];
+        if ($this->isAlreadyRefunded($response)) {
+            $existingId = trim((string) ($data['id'] ?? ''));
+
+            return [
+                'id' => $existingId !== '' ? $existingId : 'already-'.$captureId,
+                'status' => 'COMPLETED',
+                'amount' => (float) $amount,
+                'currency' => self::CURRENCY,
+                'raw' => $data,
+            ];
+        }
+
+        Log::error('PayPal API error', [
+            'path' => '/v2/payments/captures/'.$captureId.'/refund',
+            'status' => $response->status(),
+        ]);
+        throw new RuntimeException('PayPal request failed.');
     }
 
     /**
@@ -499,6 +520,26 @@ class PaypalCheckoutService
         ];
     }
 
+    private function isAlreadyRefunded(Response $response): bool
+    {
+        $name = strtoupper((string) ($response->json('name') ?? ''));
+        if (in_array($name, ['CAPTURE_FULLY_REFUNDED', 'CAPTURE_ALREADY_REFUNDED'], true)) {
+            return true;
+        }
+
+        foreach ($response->json('details') ?? [] as $detail) {
+            if (! is_array($detail)) {
+                continue;
+            }
+            $issue = strtoupper((string) ($detail['issue'] ?? ''));
+            if (in_array($issue, ['CAPTURE_FULLY_REFUNDED', 'CAPTURE_ALREADY_REFUNDED'], true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private function isAlreadyCaptured(Response $response): bool
     {
         $name = strtoupper((string) ($response->json('name') ?? ''));
@@ -544,6 +585,25 @@ class PaypalCheckoutService
         }
 
         return $host === 'paypal.com' || str_ends_with($host, '.paypal.com');
+    }
+
+    /**
+     * Unset / true leave the rail on when credentials exist.
+     * false, 0, off, no are an explicit kill switch.
+     */
+    private function isExplicitlyDisabled(): bool
+    {
+        $enabled = config('services.paypal.enabled');
+        if ($enabled === null || $enabled === '') {
+            return false;
+        }
+        if (is_bool($enabled)) {
+            return $enabled === false;
+        }
+
+        $normalized = strtolower(trim((string) $enabled));
+
+        return in_array($normalized, ['false', '0', 'off', 'no'], true);
     }
 
     private function assertConfigured(): void

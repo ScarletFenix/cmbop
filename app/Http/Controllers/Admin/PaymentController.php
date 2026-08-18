@@ -232,6 +232,34 @@ class PaymentController extends Controller
         $this->ensurePaymentColumns();
 
         $requestedStatus = (string) $request->payment_status;
+        if (in_array($requestedStatus, ['refunded', 'failed'], true)) {
+            $paypalPreview = Order::query()->find($id);
+            if ($paypalPreview instanceof Order
+                && $paypalPreview->payment_status === 'paid'
+                && $paypalPreview->payment_method === 'paypal'
+                && ! in_array((string) $paypalPreview->status, ['cancelled', 'completed'], true)
+            ) {
+                try {
+                    $paypalAmount = app(OrderRefundService::class)
+                        ->resolveOrderCancelRefundAmount($paypalPreview);
+                    app(OrderRefundService::class)
+                        ->refundPaypalCaptureIfPossible($paypalPreview, $paypalAmount);
+                } catch (\Throwable $e) {
+                    Log::error('Admin PayPal refund API failed', [
+                        'order_id' => $id,
+                        'error' => $e->getMessage(),
+                    ]);
+
+                    return response()->json([
+                        'success' => false,
+                        'message' => UserFacingError::message(
+                            $e,
+                            'PayPal refund failed. The wallet was not credited.'
+                        ),
+                    ], 422);
+                }
+            }
+        }
         if ($requestedStatus === 'paid') {
             $preview = Order::query()->with('user')->find($id);
             if ($preview instanceof Order

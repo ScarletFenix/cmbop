@@ -1029,6 +1029,13 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
         Route::post('/add-funds/pay-saved-card', [AddFundsController::class, 'payWithSavedCard'])
             ->middleware('throttle:10,1')
             ->name('add-funds.pay-saved-card');
+        Route::post('/add-funds/paypal', [AddFundsController::class, 'createPaypalOrder'])
+            ->middleware('throttle:10,1')
+            ->name('add-funds.paypal.create');
+        Route::get('/add-funds/paypal/return', [AddFundsController::class, 'paypalDepositReturn'])
+            ->name('add-funds.paypal.return');
+        Route::get('/add-funds/paypal/cancel', [AddFundsController::class, 'paypalDepositCancel'])
+            ->name('add-funds.paypal.cancel');
 
         // Order payment with Stripe (legacy alias → same as checkout.process)
         Route::post('/create-order-payment', [CatalogController::class, 'processOrder'])

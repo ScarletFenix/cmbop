@@ -93,9 +93,10 @@
     @php
         $walletSavedCards = $savedCards ?? [];
         $stripeReady = $stripeConfigured ?? false;
+        $paypalReady = $paypalConfigured ?? false;
         $openCardsTab = !empty($cardsTab);
         $pendingInvoiceCount = ($pendingRequests ?? collect())->count();
-        $depositMethodLabels = ['card' => 'Card', 'bank' => 'Bank transfer', 'wise' => 'Wise', 'crypto' => 'Crypto'];
+        $depositMethodLabels = ['card' => 'Card', 'paypal' => 'PayPal', 'bank' => 'Bank transfer', 'wise' => 'Wise', 'crypto' => 'Crypto'];
         $depositPayment = $depositPayment ?? config('billing.deposit_payment', []);
     @endphp
 
@@ -151,16 +152,29 @@
                     <div class="alert alert-light border mb-3" id="depositWorkflowHint" style="background:var(--brand-primary-bg,#e6f5f5); border-color:var(--brand-primary-border,#b8e4e4) !important;">
                         <div class="fw-semibold mb-1" style="color:var(--brand-primary,var(--brand-primary, #1a585e));">How wallet top-ups work</div>
                         <p class="small text-muted mb-0">
-                            <strong>Card:</strong> Pay instantly — credited immediately after Stripe confirms.<br>
+                            <strong>Card or PayPal:</strong> Pay instantly — credited immediately after the payment confirms.<br>
                             <strong>Bank, Wise, or Crypto:</strong> We create an invoice with a REF. Transfer the exact amount, include the REF, then mark as paid — wallet credits after confirmation.
                         </p>
                     </div>
 
-                    @unless($stripeReady)
+                    @unless($stripeReady || $paypalReady)
                         <div class="alert alert-warning py-2 px-3 mb-3" role="alert">
                             <i class="fas fa-exclamation-triangle me-1"></i>
-                            Card top-ups are offline. Use Bank, Wise, or Crypto.
+                            Instant card and PayPal top-ups are offline. Use Bank, Wise, or Crypto.
                         </div>
+                    @else
+                        @unless($stripeReady)
+                            <div class="alert alert-warning py-2 px-3 mb-3" role="alert">
+                                <i class="fas fa-exclamation-triangle me-1"></i>
+                                Card top-ups are offline. Use PayPal, Bank, Wise, or Crypto.
+                            </div>
+                        @endunless
+                        @unless($paypalReady)
+                            <div class="alert alert-warning py-2 px-3 mb-3" role="alert">
+                                <i class="fas fa-exclamation-triangle me-1"></i>
+                                PayPal top-ups are offline. Use Card, Bank, Wise, or Crypto.
+                            </div>
+                        @endunless
                     @endunless
                     
                     <!-- Amount Selection -->
@@ -224,7 +238,23 @@
                                 </div>
                             </div>
 
-                            <!-- Card Payment with Stripe Checkout -->
+<div class="col-12 col-sm-6 col-xl-4">
+                                <div class="payment-option"
+                                     @if($paypalReady) data-method="paypal" style="cursor: pointer;" role="button" tabindex="0" @else aria-disabled="true" style="cursor: not-allowed; opacity: 0.6;" @endif
+                                     aria-label="Pay with PayPal">
+                                    <div class="payment-option-card" style="border: 2px solid #e5e7eb; border-radius: 12px; padding: 16px; text-align: center; background: white; transition: all 0.2s;">
+                                        <div style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: #f3f4f6; border-radius: 8px; margin: 0 auto 8px;">
+                                            <img src="{{ asset('assets/img/payments/paypal.svg') }}" alt="" width="40" height="11" style="width:40px;height:auto;" decoding="async">
+                                        </div>
+                                        <span style="font-weight: 600; font-size: 12px; color: #1f2937;">PayPal</span>
+                                        @if($paypalReady)
+                                            <span style="font-size: 10px; color: #6b7280; display: block; margin-top: 4px;">Instant — credited immediately</span>
+                                        @else
+                                            <span style="font-size: 10px; color: #dc2626; display: block; margin-top: 4px;">Temporarily unavailable</span>
+                                        @endif
+                                    </div>
+                                </div>
+                            </div>
 
 <div class="col-12 col-sm-6 col-xl-4">
                                 <div class="payment-option" data-method="wise" style="cursor: pointer;" role="button" tabindex="0" aria-label="Pay with Wise transfer">
@@ -253,8 +283,6 @@
                             @endif
 
                                                 </div>
-
-                        <p class="small text-muted mt-2 mb-0">PayPal coming soon.</p>
 
                         <div id="depositFeeNote" class="small text-muted mt-2" style="display: none;" aria-live="polite"></div>
 
@@ -427,6 +455,21 @@
                             </div>
                         </div>
 
+                        <div id="paypalPaymentDetails" class="card border-0 shadow-sm mb-4" style="display: none;">
+                            <div class="card-body">
+                                <div style="display: flex; align-items: center; margin-bottom: 16px;">
+                                    <div style="width: 40px; height: 40px; background: #f3f4f6; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-right: 12px;">
+                                        <img src="{{ asset('assets/img/payments/paypal.svg') }}" alt="" width="32" height="9" style="width:32px;height:auto;" decoding="async">
+                                    </div>
+                                    <div>
+                                        <h3 style="font-size: 18px; font-weight: 600; margin: 0;">PayPal</h3>
+                                        <p style="font-size: 12px; color: #6b7280; margin: 4px 0 0;">Instant wallet credit via PayPal</p>
+                                    </div>
+                                </div>
+                                <p class="small text-muted mb-0">You will approve the payment on PayPal. We credit your wallet as soon as PayPal confirms the capture.</p>
+                            </div>
+                        </div>
+
                         <!-- Card Payment Details - Stripe Checkout / saved card -->
                         <div id="cardPaymentDetails" class="card border-0 shadow-sm mb-4" style="display: none;">
                             <div class="card-body">
@@ -494,7 +537,7 @@
                     </div>
                     <div class="alert alert-warning py-2 px-3 mb-3">
                         <i class="fas fa-exclamation-triangle me-1"></i>
-                        <small>Include <strong id="refCodeDisplay" class="ref-code">XXXXXXXX</strong> in manual payment notes. Card payments record the reference automatically.</small>
+                        <small>Include <strong id="refCodeDisplay" class="ref-code">XXXXXXXX</strong> in manual payment notes. Card and PayPal payments record the reference automatically.</small>
                     </div>
                     <button type="button" id="proceedBtn" class="btn btn-primary w-100 mt-2 py-2">
                         <i class="fa fa-arrow-right me-2"></i> Get invoice &amp; pay
@@ -1474,6 +1517,7 @@
 window.AddFundsBoot = {
     csrfToken: @json(csrf_token()),
     stripeReady: @json((bool) ($stripeConfigured ?? false)),
+    paypalReady: @json((bool) ($paypalConfigured ?? false)),
     cryptoEnabled: @json((bool) ($cryptoEnabled ?? false)),
     wisePayUrl: @json($wisePayUrl ?? config('billing.deposit_payment.wise_pay_url')),
     prefillAmount: @json($prefillAmount ?? null),
@@ -1485,6 +1529,7 @@ window.AddFundsBoot = {
         saveBilling: @json(route('advertiser.save-billing-info')),
         paySavedCard: @json(route('advertiser.add-funds.pay-saved-card')),
         createCheckout: @json(route('advertiser.create-checkout-session')),
+        createPaypal: @json(route('advertiser.add-funds.paypal.create')),
         getBilling: @json(route('advertiser.get-billing-info')),
         paymentMethodsSetup: @json(route('advertiser.payment-methods.setup')),
         paymentMethodsBase: @json(url('/advertiser/payment-methods')),

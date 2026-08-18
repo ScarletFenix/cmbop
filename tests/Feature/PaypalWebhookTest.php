@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\DepositRequest;
 use App\Models\InAppNotification;
 use App\Models\Order;
 use App\Models\PaypalWebhookLog;
@@ -450,6 +451,7 @@ class PaypalWebhookTest extends TestCase
 
     public function test_failed_webhook_can_be_retried(): void
     {
+        Mail::fake();
         $this->enablePaypal();
         $this->fakePaypal('PO-RETRY');
 
@@ -469,13 +471,68 @@ class PaypalWebhookTest extends TestCase
         $this->assertNotNull($log);
         $this->assertFalse((bool) $log->processed);
 
+        $advertiser = $this->advertiser();
+        Wallet::create([
+            'user_id' => $advertiser->id,
+            'role_id' => Wallet::advertiserRoleId(),
+            'balance' => 0,
+            'reserved_balance' => 0,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 0,
+            'currency' => 'EUR',
+        ]);
         $event['resource']['custom_id'] = PaypalCheckoutService::customId(
             PaypalCheckoutService::TYPE_WALLET_DEPOSIT,
-            1,
-            'DEP-1'
+            $advertiser->id,
+            '654321'
         );
         $this->postWebhook($event)->assertOk()->assertJsonPath('status', 'success');
         $this->assertTrue((bool) PaypalWebhookLog::query()->where('event_id', 'WH-RETRY-1')->value('processed'));
+        $this->assertSame(0, Order::query()->count());
+        $this->assertSame(1, DepositRequest::query()->where('paypal_capture_id', 'CAP-PO-RETRY')->count());
+    }
+
+    public function test_wallet_deposit_webhook_credits_advertiser_wallet(): void
+    {
+        $this->enablePaypal();
+        $this->fakePaypal('PO-DEP');
+        Mail::fake();
+
+        $advertiser = $this->advertiser();
+        $wallet = Wallet::create([
+            'user_id' => $advertiser->id,
+            'role_id' => Wallet::advertiserRoleId(),
+            'balance' => 3,
+            'reserved_balance' => 0,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 0,
+            'currency' => 'EUR',
+        ]);
+
+        $this->postWebhook([
+            'id' => 'WH-DEP-1',
+            'event_type' => 'PAYMENT.CAPTURE.COMPLETED',
+            'resource' => [
+                'id' => 'CAP-DEP-1',
+                'status' => 'COMPLETED',
+                'amount' => ['currency_code' => 'EUR', 'value' => '25.00'],
+                'custom_id' => PaypalCheckoutService::customId(
+                    PaypalCheckoutService::TYPE_WALLET_DEPOSIT,
+                    $advertiser->id,
+                    '777777'
+                ),
+                'supplementary_data' => [
+                    'related_ids' => ['order_id' => 'PO-DEP'],
+                ],
+            ],
+        ])->assertOk()->assertJsonPath('status', 'success');
+
+        $deposit = DepositRequest::query()->where('paypal_capture_id', 'CAP-DEP-1')->first();
+        $this->assertNotNull($deposit);
+        $this->assertSame('paypal', $deposit->payment_method);
+        $this->assertSame('completed', $deposit->status);
+        $this->assertEqualsWithDelta(25.0, (float) $deposit->amount, 0.01);
+        $this->assertEqualsWithDelta(28.0, (float) $wallet->fresh()->balance, 0.01);
         $this->assertSame(0, Order::query()->count());
     }
 

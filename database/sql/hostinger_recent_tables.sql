@@ -493,6 +493,12 @@ CREATE TABLE IF NOT EXISTS `paypal_webhook_logs` (
   UNIQUE KEY `paypal_webhook_logs_event_id_unique` (`event_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+ALTER TABLE `deposit_requests` ADD COLUMN `paypal_order_id` varchar(255) NULL;
+ALTER TABLE `deposit_requests` ADD COLUMN `paypal_capture_id` varchar(255) NULL;
+ALTER TABLE `deposit_requests` ADD COLUMN `paypal_response` json NULL;
+ALTER TABLE `deposit_requests` ADD INDEX `deposit_requests_paypal_order_id_index` (`paypal_order_id`);
+ALTER TABLE `deposit_requests` ADD UNIQUE KEY `deposit_requests_paypal_capture_id_unique` (`paypal_capture_id`);
+
 -- ---------------------------------------------------------------------------
 -- Campaign mindset: attribute order packages to projects
 -- ---------------------------------------------------------------------------

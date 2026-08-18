@@ -24,6 +24,10 @@ class PaypalPaymentSchemaTest extends TestCase
         $this->assertTrue(Schema::hasTable('paypal_webhook_logs'));
         $this->assertTrue(Schema::hasColumn('paypal_webhook_logs', 'event_id'));
         $this->assertTrue(Schema::hasColumn('paypal_webhook_logs', 'processed'));
+
+        foreach (['paypal_order_id', 'paypal_capture_id', 'paypal_response'] as $column) {
+            $this->assertTrue(Schema::hasColumn('deposit_requests', $column), "deposit_requests.{$column} missing");
+        }
     }
 
     public function test_paypal_capture_id_is_unique(): void
