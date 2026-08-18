@@ -639,4 +639,170 @@ class AdminDepositsWithdrawalsCrashTest extends TestCase
 
         $this->assertSame('processing', $second->fresh()->status);
     }
+
+    public function test_confirm_posts_work_without_timestamp_columns(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $this->advertiserWallet($advertiser, 0);
+        $this->publisherWallet($publisher, 0);
+        $deposit = $this->pendingDeposit($advertiser, ['amount' => 22]);
+        $withdrawal = $this->pendingWithdrawal($publisher, ['amount' => 18, 'net_amount' => 18]);
+
+        $this->dropColumnOrSkip('deposit_requests', 'approved_at');
+        $this->dropColumnOrSkip('withdrawals', 'processed_at');
+
+        try {
+            $depositUrl = $this->relativeSignedUrl(ManualDepositApproveLink::url($deposit));
+            $this->actingAs($admin)
+                ->post($depositUrl)
+                ->assertRedirect(route('admin.deposits'));
+            $this->assertSame('completed', $deposit->fresh()->status);
+
+            $withdrawalUrl = $this->relativeSignedUrl(ManualWithdrawalMarkPaidLink::url($withdrawal));
+            $this->actingAs($admin)
+                ->post($withdrawalUrl)
+                ->assertRedirect(route('admin.withdrawals'));
+            $this->assertSame('completed', $withdrawal->fresh()->status);
+        } finally {
+            $this->restoreColumn('deposit_requests', 'approved_at');
+            $this->restoreColumn('withdrawals', 'processed_at');
+        }
+    }
+
+    public function test_approve_and_mark_paid_survive_missing_invoices_table(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $wallet = $this->advertiserWallet($advertiser, 0);
+        $this->publisherWallet($publisher, 0);
+        $deposit = $this->pendingDeposit($advertiser, ['amount' => 28]);
+        $withdrawal = $this->pendingWithdrawal($publisher, ['amount' => 16, 'net_amount' => 16]);
+
+        Schema::dropIfExists('billing_events');
+        Schema::dropIfExists('invoices');
+        Schema::dropIfExists('invoice_sequences');
+        $this->assertFalse(Schema::hasTable('invoices'));
+
+        try {
+            $this->actingAs($admin)
+                ->postJson(route('admin.deposits.approve', $deposit->id))
+                ->assertOk()
+                ->assertJsonPath('success', true);
+            $this->assertSame('completed', $deposit->fresh()->status);
+            $this->assertEqualsWithDelta(28.0, (float) $wallet->fresh()->balance, 0.01);
+
+            $this->actingAs($admin)
+                ->postJson(route('admin.withdrawals.paid', $withdrawal->id))
+                ->assertOk()
+                ->assertJsonPath('success', true);
+            $this->assertSame('completed', $withdrawal->fresh()->status);
+        } finally {
+            $this->artisan('migrate', [
+                '--path' => 'database/migrations/2026_07_17_100000_create_billing_invoices_tables.php',
+                '--force' => true,
+            ]);
+            $this->artisan('migrate', [
+                '--path' => 'database/migrations/2026_08_02_110000_add_series_to_invoice_sequences_table.php',
+                '--force' => true,
+            ]);
+        }
+    }
+
+    public function test_withdrawals_data_survives_leftover_payment_details(): void
+    {
+        $admin = $this->admin();
+        $publisher = $this->makeUser('publisher');
+        $withdrawal = $this->pendingWithdrawal($publisher);
+        DB::table('withdrawals')->where('id', $withdrawal->id)->update([
+            'payment_details' => 'not-json',
+        ]);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.withdrawals.data'))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.0.id', $withdrawal->id);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.withdrawals.show', $withdrawal->id))
+            ->assertOk()
+            ->assertJsonPath('success', true);
+    }
+
+    public function test_array_withdrawal_notes_do_not_mutate(): void
+    {
+        $admin = $this->admin();
+        $publisher = $this->makeUser('publisher');
+        $this->publisherWallet($publisher);
+        $withdrawal = $this->pendingWithdrawal($publisher);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.withdrawals.paid', $withdrawal->id), [
+                'notes' => ['injected'],
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('notes');
+
+        $this->assertSame('pending', $withdrawal->fresh()->status);
+    }
+
+    public function test_queue_badges_and_finance_survive_missing_money_tables(): void
+    {
+        $admin = $this->admin();
+
+        Schema::dropIfExists('deposit_requests');
+        Schema::dropIfExists('withdrawals');
+        $this->assertFalse(Schema::hasTable('deposit_requests'));
+        $this->assertFalse(Schema::hasTable('withdrawals'));
+
+        try {
+            $this->actingAs($admin)
+                ->getJson(route('admin.dashboard.queue-counts'))
+                ->assertOk()
+                ->assertJsonPath('success', true)
+                ->assertJsonPath('pending_deposits', 0)
+                ->assertJsonPath('pending_withdrawals', 0);
+
+            $this->actingAs($admin)
+                ->getJson(route('admin.dashboard.action-queue'))
+                ->assertOk()
+                ->assertJsonPath('success', true);
+
+            $this->actingAs($admin)
+                ->get(route('admin.finance'))
+                ->assertOk()
+                ->assertDontSee('Something went wrong');
+        } finally {
+            $this->restoreDepositRequestsTable();
+            $this->restoreWithdrawalsTable();
+        }
+    }
+
+    public function test_pages_use_named_action_routes(): void
+    {
+        $admin = $this->admin();
+
+        $deposits = $this->actingAs($admin)
+            ->get(route('admin.deposits'))
+            ->assertOk()
+            ->getContent();
+        $this->assertStringContainsString('formatDateTime', $deposits);
+
+        $html = $this->actingAs($admin)
+            ->get(route('admin.withdrawals'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('withdrawalsDataUrl', $html);
+        $this->assertStringContainsString('withdrawalsStatisticsUrl', $html);
+        $this->assertStringContainsString('withdrawalsExportUrl', $html);
+        $this->assertStringContainsString('withdrawalsBatchUrl', $html);
+        $this->assertStringContainsString('withdrawalActionUrl', $html);
+        $this->assertStringNotContainsString("url: '/admin/withdrawals/data'", $html);
+        $this->assertStringNotContainsString("$.getJSON('/admin/withdrawals/statistics'", $html);
+        $this->assertStringNotContainsString('`/admin/withdrawals/${id}/paid`', $html);
+    }
 }

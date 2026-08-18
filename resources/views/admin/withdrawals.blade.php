@@ -243,6 +243,19 @@ const duplicateLookbackDays = {{ max(1, (int) config('billing.withdrawal_mark_pa
 
 const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content
     || '{{ csrf_token() }}';
+const withdrawalsDataUrl = @json(route('admin.withdrawals.data'));
+const withdrawalsStatisticsUrl = @json(route('admin.withdrawals.statistics'));
+const withdrawalsExportUrl = @json(route('admin.withdrawals.export'));
+const withdrawalsBatchUrl = @json(route('admin.withdrawals.batch'));
+const withdrawalsShowUrlTemplate = @json(route('admin.withdrawals.show', ['id' => '__ID__']));
+const withdrawalsProcessingUrlTemplate = @json(route('admin.withdrawals.processing', ['id' => '__ID__']));
+const withdrawalsPaidUrlTemplate = @json(route('admin.withdrawals.paid', ['id' => '__ID__']));
+const withdrawalsRejectUrlTemplate = @json(route('admin.withdrawals.reject', ['id' => '__ID__']));
+const financeUserUrlTemplate = @json(route('admin.finance.user', ['user' => '__ID__']));
+
+function withdrawalActionUrl(template, id) {
+    return String(template).replace('__ID__', encodeURIComponent(id));
+}
 
 function toast(msg, icon = 'success') {
     showAppToast(msg, icon);
@@ -261,6 +274,11 @@ function escapeHtml(str) {
 function capitalize(str) {
     if (!str) return '';
     return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+function money(value) {
+    const amount = Number.parseFloat(value);
+    return Number.isFinite(amount) ? amount.toFixed(2) : '0.00';
 }
 
 function formatDate(dateString) {
@@ -335,7 +353,7 @@ function filterParams() {
 }
 
 function loadStatistics() {
-    $.getJSON('/admin/withdrawals/statistics', function(response) {
+    $.getJSON(withdrawalsStatisticsUrl, function(response) {
         if (!response.success) return;
         const s = response.data;
         $('#statPending').text(s.pending);
@@ -362,7 +380,7 @@ function loadWithdrawals(page = 1) {
     params.page = page;
 
     $.ajax({
-        url: '/admin/withdrawals/data',
+        url: withdrawalsDataUrl,
         method: 'GET',
         data: params,
         success: function(response) {
@@ -417,8 +435,8 @@ function renderWithdrawals(withdrawals) {
                 </td>
                 <td>${waitingLabel(w.waiting_days)}</td>
                 <td>
-                    <div class="fw-bold text-success">€${parseFloat(w.net_amount).toFixed(2)}</div>
-                    <small class="text-muted">gross €${parseFloat(w.amount).toFixed(2)}</small>
+                    <div class="fw-bold text-success">€${money(w.net_amount)}</div>
+                    <small class="text-muted">gross €${money(w.amount)}</small>
                 </td>
                 <td>${getPaymentMethodBadge(w.payment_method)}</td>
                 <td class="dest-cell">
@@ -438,19 +456,19 @@ function renderWithdrawals(withdrawals) {
                             ${w.status === 'pending' ? `
                             <li><button type="button" class="dropdown-item act-processing" data-id="${w.id}"
                                 data-name="${escapeHtml(w.user?.name || '')}"
-                                data-net="${parseFloat(w.net_amount).toFixed(2)}"
+                                data-net="${money(w.net_amount)}"
                                 data-method="${escapeHtml(w.payment_method)}"><i class="fa fa-play me-2"></i>Start</button></li>` : ''}
                             ${actionable ? `
                             <li><hr class="dropdown-divider"></li>
                             <li><button type="button" class="dropdown-item act-paid" data-id="${w.id}"
                                 data-name="${escapeHtml(w.user?.name || '')}"
-                                data-net="${parseFloat(w.net_amount).toFixed(2)}"
+                                data-net="${money(w.net_amount)}"
                                 data-method="${escapeHtml(w.payment_method)}"
                                 data-duplicate="${w.possible_duplicate ? '1' : '0'}"
                                 data-duplicate-ids="${escapeHtml(matchIds.map(function (id) { return 'WD-' + id; }).join(', '))}"><i class="fa fa-check me-2"></i>Mark paid</button></li>
                             <li><button type="button" class="dropdown-item text-danger act-reject" data-id="${w.id}"
                                 data-name="${escapeHtml(w.user?.name || '')}"
-                                data-amount="${parseFloat(w.amount).toFixed(2)}"><i class="fa fa-times me-2"></i>Reject</button></li>` : ''}
+                                data-amount="${money(w.amount)}"><i class="fa fa-times me-2"></i>Reject</button></li>` : ''}
                         </ul>
                     </div>
                 </td>
@@ -526,7 +544,7 @@ $(document).on('click', '.act-processing', async function() {
         ''
     );
     if (notes === null) return;
-    postAction(`/admin/withdrawals/${id}/processing`, { notes })
+    postAction(withdrawalActionUrl(withdrawalsProcessingUrlTemplate, id), { notes })
         .done(function(res) {
             toast(res.message || 'Updated');
             selectedIds.delete(id);
@@ -556,7 +574,7 @@ $(document).on('click', '.act-paid', async function() {
         ''
     );
     if (notes === null) return;
-    postAction(`/admin/withdrawals/${id}/paid`, { notes })
+    postAction(withdrawalActionUrl(withdrawalsPaidUrlTemplate, id), { notes })
         .done(function(res) {
             toast(res.message || 'Marked paid');
             selectedIds.delete(id);
@@ -578,7 +596,7 @@ $(document).on('click', '.act-reject', async function() {
         'slb-swal-danger'
     );
     if (notes === null) return;
-    postAction(`/admin/withdrawals/${id}/reject`, { notes })
+    postAction(withdrawalActionUrl(withdrawalsRejectUrlTemplate, id), { notes })
         .done(function(res) {
             toast(res.message || 'Rejected');
             selectedIds.delete(id);
@@ -660,7 +678,7 @@ async function runBatch(action, title, confirmText, confirmClass, options) {
         payload.confirm_duplicates = 1;
     }
 
-    postAction('/admin/withdrawals/batch', payload).done(function(res) {
+    postAction(withdrawalsBatchUrl, payload).done(function(res) {
         toast(res.message + (res.payout_run_id ? ' · ' + res.payout_run_id : ''));
         selectedIds.clear();
         refreshAll();
@@ -699,7 +717,8 @@ function buildExportUrl(extra = {}) {
             params.set(k, extra[k]);
         }
     });
-    return '/admin/withdrawals/export?' + params.toString();
+    const join = withdrawalsExportUrl.includes('?') ? '&' : '?';
+    return withdrawalsExportUrl + join + params.toString();
 }
 
 $('#exportCsvBtn').on('click', function() {
@@ -714,7 +733,7 @@ $('#batchExportBtn').on('click', function() {
 // Details modal
 $(document).on('click', '.view-details', function() {
     const id = $(this).data('id');
-    $.getJSON(`/admin/withdrawals/${id}`, function(response) {
+    $.getJSON(withdrawalActionUrl(withdrawalsShowUrlTemplate, id), function(response) {
         if (!response.success) {
             toast('Failed to load details', 'error');
             return;
@@ -763,7 +782,7 @@ function renderDetails(withdrawal) {
     if (userId) {
         $('#openPublisherLink')
             .removeClass('d-none')
-            .attr('href', `/admin/finance/users/${userId}`);
+            .attr('href', withdrawalActionUrl(financeUserUrlTemplate, userId));
     } else {
         $('#openPublisherLink').addClass('d-none');
     }
@@ -800,9 +819,9 @@ function renderDetails(withdrawal) {
             <div class="col-md-6">
                 <div class="bg-light p-3 rounded">
                     <h6 class="mb-3">Amounts</h6>
-                    <p class="mb-1"><strong>Gross:</strong> €${parseFloat(withdrawal.amount).toFixed(2)}</p>
-                    <p class="mb-1"><strong>Fee:</strong> €${parseFloat(withdrawal.fee).toFixed(2)}</p>
-                    <p class="mb-1"><strong>Net to pay:</strong> <span class="text-success fw-bold">€${parseFloat(withdrawal.net_amount).toFixed(2)}</span></p>
+                    <p class="mb-1"><strong>Gross:</strong> €${money(withdrawal.amount)}</p>
+                    <p class="mb-1"><strong>Fee:</strong> €${money(withdrawal.fee)}</p>
+                    <p class="mb-1"><strong>Net to pay:</strong> <span class="text-success fw-bold">€${money(withdrawal.net_amount)}</span></p>
                 </div>
             </div>
             <div class="col-md-6">

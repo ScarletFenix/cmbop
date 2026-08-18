@@ -179,8 +179,12 @@ class DashboardMetricsService
      */
     public function queueCounts(): array
     {
-        $pendingDeposits = DepositRequest::where('status', 'pending')->count();
-        $pendingWithdrawals = Withdrawal::whereIn('status', ['pending', 'processing'])->count();
+        $pendingDeposits = DepositRequest::tableAvailable()
+            ? DepositRequest::where('status', 'pending')->count()
+            : 0;
+        $pendingWithdrawals = Withdrawal::tableAvailable()
+            ? Withdrawal::whereIn('status', ['pending', 'processing'])->count()
+            : 0;
         // Ready-for-admin queue only (exclude unfinished awaiting_details drafts)
         $unverifiedSites = Site::query()->needsAdminReview()->count();
         $pendingPayments = $this->unpaidOrdersCount();
@@ -241,38 +245,42 @@ class DashboardMetricsService
      */
     public function actionQueue(): array
     {
-        $deposits = DepositRequest::with('user:id,name,email')
-            ->where('status', 'pending')
-            ->latest()
-            ->take(5)
-            ->get()
-            ->map(fn ($d) => [
-                'id' => $d->id,
-                'user' => $d->user?->name ?? 'Unknown',
-                'email' => $d->user?->email,
-                'amount' => (float) $d->amount,
-                'method' => $d->payment_method,
-                'date' => optional($d->created_at)->format('d M Y H:i'),
-                // deposits.show is JSON for the list-page modal; the HTML queue is the working page.
-                'url' => route('admin.deposits', ['status' => 'pending']),
-            ]);
+        $deposits = DepositRequest::tableAvailable()
+            ? DepositRequest::with('user:id,name,email')
+                ->where('status', 'pending')
+                ->latest()
+                ->take(5)
+                ->get()
+                ->map(fn ($d) => [
+                    'id' => $d->id,
+                    'user' => $d->user?->name ?? 'Unknown',
+                    'email' => $d->user?->email,
+                    'amount' => (float) $d->amount,
+                    'method' => $d->payment_method,
+                    'date' => optional($d->created_at)->format('d M Y H:i'),
+                    // deposits.show is JSON for the list-page modal; the HTML queue is the working page.
+                    'url' => route('admin.deposits', ['status' => 'pending']),
+                ])
+            : collect();
 
-        $withdrawals = Withdrawal::with('user:id,name,email')
-            ->whereIn('status', ['pending', 'processing'])
-            ->latest()
-            ->take(5)
-            ->get()
-            ->map(fn ($w) => [
-                'id' => $w->id,
-                'user' => $w->user?->name ?? 'Unknown',
-                'email' => $w->user?->email,
-                'amount' => (float) $w->net_amount,
-                'method' => $w->payment_method,
-                'status' => $w->status,
-                'date' => optional($w->created_at)->format('d M Y H:i'),
-                // withdrawals.show is JSON for the list-page modal; the HTML queue is the working page.
-                'url' => route('admin.withdrawals', ['queue' => 'open']),
-            ]);
+        $withdrawals = Withdrawal::tableAvailable()
+            ? Withdrawal::with('user:id,name,email')
+                ->whereIn('status', ['pending', 'processing'])
+                ->latest()
+                ->take(5)
+                ->get()
+                ->map(fn ($w) => [
+                    'id' => $w->id,
+                    'user' => $w->user?->name ?? 'Unknown',
+                    'email' => $w->user?->email,
+                    'amount' => (float) $w->net_amount,
+                    'method' => $w->payment_method,
+                    'status' => $w->status,
+                    'date' => optional($w->created_at)->format('d M Y H:i'),
+                    // withdrawals.show is JSON for the list-page modal; the HTML queue is the working page.
+                    'url' => route('admin.withdrawals', ['queue' => 'open']),
+                ])
+            : collect();
 
         $sites = Site::with('publisher:id,name,email')
             ->needsAdminReview()

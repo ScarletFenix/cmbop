@@ -144,7 +144,7 @@
                             <td>
                                 @php
                                     $depositUser = $deposit->user;
-                                    $depositUserName = $depositUser->name ?? 'Unknown';
+                                    $depositUserName = $depositUser?->name ?? 'Unknown';
                                     $depositUserInitial = strtoupper(substr($depositUserName, 0, 1) ?: '?');
                                 @endphp
                                 <div class="d-flex align-items-center">
@@ -362,7 +362,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         <div class="col-6 mb-2">
                             <small class="text-muted">User reported paid</small>
                             <div>${deposit.user_marked_paid_at
-                                ? `<span class="badge bg-success">Yes</span> <small class="text-muted">${new Date(deposit.user_marked_paid_at).toLocaleString()}</small>`
+                                ? `<span class="badge bg-success">Yes</span> <small class="text-muted">${formatDateTime(deposit.user_marked_paid_at)}</small>`
                                 : '<span class="text-muted">Not yet</span>'}</div>
                         </div>
                         ${deposit.user_payment_note ? `
@@ -372,7 +372,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         </div>` : ''}
                         <div class="col-12">
                             <small class="text-muted">Submitted Date</small>
-                            <div>${new Date(deposit.created_at).toLocaleString()}</div>
+                            <div>${formatDateTime(deposit.created_at)}</div>
                         </div>
                     </div>
                 </div>
@@ -539,6 +539,17 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
+    function formatDateTime(value) {
+        if (!value) {
+            return '—';
+        }
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) {
+            return '—';
+        }
+        return date.toLocaleString();
+    }
+
     function escapeHtml(str) {
         if (str == null || str === '') return '';
         return String(str)
