@@ -14,6 +14,7 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class InvoiceController extends Controller
 {
@@ -227,6 +228,14 @@ class InvoiceController extends Controller
     {
         if ($denied = $this->invoicesUnavailableResponse()) {
             return $denied;
+        }
+
+        try {
+            if (! Schema::hasTable('orders')) {
+                return back()->with('error', 'Cannot generate an invoice because orders are unavailable on this database.');
+            }
+        } catch (\Throwable) {
+            return back()->with('error', 'Cannot generate an invoice because orders are unavailable on this database.');
         }
 
         $data = $request->validate([

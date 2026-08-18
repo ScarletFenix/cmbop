@@ -2,6 +2,7 @@
 
 namespace App\Models\Concerns;
 
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -13,7 +14,14 @@ trait ToleratesMissingSchema
     public static function tableAvailable(): bool
     {
         try {
-            return Schema::hasTable((new static)->getTable());
+            $table = (new static)->getTable();
+            if (! Schema::hasTable($table)) {
+                return false;
+            }
+            // Schema::hasTable() can stay true after DROP TABLE on SQLite.
+            DB::table($table)->limit(1)->exists();
+
+            return true;
         } catch (\Throwable) {
             return false;
         }

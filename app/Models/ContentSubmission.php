@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -1894,40 +1895,44 @@ class ContentSubmission extends Model
      */
     public static function releaseAllForOrder(int $orderId): void
     {
-        if ($orderId <= 0) {
+        if ($orderId <= 0 || ! static::submissionsTableAvailable()) {
             return;
         }
 
-        static::query()
-            ->where('order_id', $orderId)
-            ->get()
-            ->each(fn (self $submission) => $submission->releaseFromOrder());
+        try {
+            static::query()
+                ->where('order_id', $orderId)
+                ->get()
+                ->each(fn (self $submission) => $submission->releaseFromOrder());
 
-        if (! Schema::hasColumn('order_items', 'content_submission_id')) {
-            return;
+            if (! Schema::hasColumn('order_items', 'content_submission_id')) {
+                return;
+            }
+
+            $linkedIds = OrderItem::query()
+                ->where('order_id', $orderId)
+                ->whereNotNull('content_submission_id')
+                ->pluck('content_submission_id')
+                ->all();
+
+            if ($linkedIds === []) {
+                return;
+            }
+
+            // Only free rows still owned by this leftover. A cancelled leftover
+            // item can keep content_submission_id after the article was reused
+            // on a newer paid order — do not steal that ownership.
+            static::query()
+                ->whereIn('id', $linkedIds)
+                ->where(function ($q) use ($orderId) {
+                    $q->whereNull('order_id')
+                        ->orWhere('order_id', $orderId);
+                })
+                ->get()
+                ->each(fn (self $submission) => $submission->releaseFromOrder());
+        } catch (\Throwable) {
+            // Leftover Hostinger: still complete the money move without library rows.
         }
-
-        $linkedIds = OrderItem::query()
-            ->where('order_id', $orderId)
-            ->whereNotNull('content_submission_id')
-            ->pluck('content_submission_id')
-            ->all();
-
-        if ($linkedIds === []) {
-            return;
-        }
-
-        // Only free rows still owned by this leftover. A cancelled leftover
-        // item can keep content_submission_id after the article was reused
-        // on a newer paid order — do not steal that ownership.
-        static::query()
-            ->whereIn('id', $linkedIds)
-            ->where(function ($q) use ($orderId) {
-                $q->whereNull('order_id')
-                    ->orWhere('order_id', $orderId);
-            })
-            ->get()
-            ->each(fn (self $submission) => $submission->releaseFromOrder());
     }
 
     /**
@@ -1936,37 +1941,56 @@ class ContentSubmission extends Model
      */
     public static function releaseAllForOrderItem(int $orderItemId): void
     {
-        if ($orderItemId <= 0) {
+        if ($orderItemId <= 0 || ! static::submissionsTableAvailable()) {
             return;
         }
 
-        static::query()
-            ->where('order_item_id', $orderItemId)
-            ->get()
-            ->each(fn (self $submission) => $submission->releaseFromOrder());
+        try {
+            static::query()
+                ->where('order_item_id', $orderItemId)
+                ->get()
+                ->each(fn (self $submission) => $submission->releaseFromOrder());
 
-        if (! Schema::hasColumn('order_items', 'content_submission_id')) {
-            return;
+            if (! Schema::hasColumn('order_items', 'content_submission_id')) {
+                return;
+            }
+
+            $item = OrderItem::query()->whereKey($orderItemId)->first();
+            $linkedId = (int) ($item?->content_submission_id ?? 0);
+            $ownerOrderId = (int) ($item?->order_id ?? 0);
+
+            if ($linkedId <= 0) {
+                return;
+            }
+
+            static::query()
+                ->whereKey($linkedId)
+                ->where(function ($q) use ($ownerOrderId) {
+                    $q->whereNull('order_id');
+                    if ($ownerOrderId > 0) {
+                        $q->orWhere('order_id', $ownerOrderId);
+                    }
+                })
+                ->get()
+                ->each(fn (self $submission) => $submission->releaseFromOrder());
+        } catch (\Throwable) {
+            // Leftover Hostinger: still complete the money move without library rows.
         }
+    }
 
-        $item = OrderItem::query()->whereKey($orderItemId)->first();
-        $linkedId = (int) ($item?->content_submission_id ?? 0);
-        $ownerOrderId = (int) ($item?->order_id ?? 0);
+    private static function submissionsTableAvailable(): bool
+    {
+        try {
+            $table = (new static)->getTable();
+            if (! Schema::hasTable($table)) {
+                return false;
+            }
+            DB::table($table)->limit(1)->exists();
 
-        if ($linkedId <= 0) {
-            return;
+            return true;
+        } catch (\Throwable) {
+            return false;
         }
-
-        static::query()
-            ->whereKey($linkedId)
-            ->where(function ($q) use ($ownerOrderId) {
-                $q->whereNull('order_id');
-                if ($ownerOrderId > 0) {
-                    $q->orWhere('order_id', $ownerOrderId);
-                }
-            })
-            ->get()
-            ->each(fn (self $submission) => $submission->releaseFromOrder());
     }
 
     public function hasLink(): bool

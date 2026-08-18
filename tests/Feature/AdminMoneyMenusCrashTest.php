@@ -329,4 +329,274 @@ class AdminMoneyMenusCrashTest extends TestCase
             ->assertOk()
             ->assertSee('DEP-MONEY-1', false);
     }
+
+    public function test_finance_hub_survives_missing_site_feature_purchases(): void
+    {
+        $admin = $this->admin();
+
+        Schema::disableForeignKeyConstraints();
+        Schema::dropIfExists('site_feature_purchases');
+        Schema::enableForeignKeyConstraints();
+
+        try {
+            $this->actingAs($admin)
+                ->get(route('admin.finance', ['period' => 'all']))
+                ->assertOk()
+                ->assertSee('Finance overview', false);
+        } finally {
+            $this->artisan('migrate', [
+                '--path' => 'database/migrations/2026_07_16_260000_add_site_promotions_system.php',
+                '--force' => true,
+            ]);
+            $this->artisan('migrate', [
+                '--path' => 'database/migrations/2026_07_16_280000_add_stripe_session_to_site_feature_purchases.php',
+                '--force' => true,
+            ]);
+        }
+    }
+
+    public function test_payments_show_survives_missing_sites_table(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->makeUser('advertiser');
+        $order = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => 'ORD-NO-SITES',
+            'reference_code' => 'REF-NO-SITES',
+            'subtotal' => 40,
+            'tax' => 0,
+            'total_amount' => 40,
+            'payment_method' => 'wise',
+            'payment_status' => 'pending',
+            'status' => 'pending',
+        ]);
+
+        Schema::disableForeignKeyConstraints();
+        Schema::dropIfExists('sites');
+        Schema::enableForeignKeyConstraints();
+
+        try {
+            $this->actingAs($admin)
+                ->getJson(route('admin.payments.show', $order->id))
+                ->assertOk()
+                ->assertJsonPath('success', true)
+                ->assertJsonPath('data.order_number', 'ORD-NO-SITES');
+        } finally {
+            $this->artisan('migrate', [
+                '--path' => 'database/migrations/2026_04_06_094704_create_sites_table.php',
+                '--force' => true,
+            ]);
+        }
+    }
+
+    public function test_payments_scheduled_filter_survives_missing_publication_mode(): void
+    {
+        $admin = $this->admin();
+
+        if (! Schema::hasColumn('orders', 'publication_mode')) {
+            $this->markTestSkipped('orders.publication_mode is already absent');
+        }
+
+        try {
+            Schema::disableForeignKeyConstraints();
+            Schema::table('orders', function (Blueprint $blueprint) {
+                $blueprint->dropColumn('publication_mode');
+            });
+            Schema::enableForeignKeyConstraints();
+        } catch (\Throwable) {
+            Schema::enableForeignKeyConstraints();
+            $this->markTestSkipped('Could not drop orders.publication_mode on this driver');
+        }
+
+        if (Schema::hasColumn('orders', 'publication_mode')) {
+            $this->markTestSkipped('orders.publication_mode is still present after drop');
+        }
+
+        try {
+            $this->actingAs($admin)
+                ->getJson(route('admin.payments.data', ['status' => 'scheduled']))
+                ->assertOk()
+                ->assertJsonPath('success', true);
+        } finally {
+            if (! Schema::hasColumn('orders', 'publication_mode')) {
+                Schema::table('orders', function (Blueprint $blueprint) {
+                    $blueprint->string('publication_mode', 20)->default('immediate');
+                });
+            }
+        }
+    }
+
+    public function test_payments_refund_is_422_when_wallets_table_is_gone(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->makeUser('advertiser');
+        $order = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => 'ORD-NO-WALLET-REFUND',
+            'reference_code' => 'REF-NO-WALLET-REFUND',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'paid',
+            'status' => 'processing',
+            'paid_at' => now(),
+        ]);
+
+        Schema::disableForeignKeyConstraints();
+        Schema::dropIfExists('wallets');
+        Schema::enableForeignKeyConstraints();
+
+        try {
+            $this->actingAs($admin)
+                ->postJson(route('admin.payments.updateStatus', $order->id), [
+                    'payment_status' => 'refunded',
+                    'notes' => 'Leftover wallets table is gone.',
+                ])
+                ->assertStatus(422)
+                ->assertJsonPath('success', false);
+
+            $this->assertSame('paid', $order->fresh()->payment_status);
+        } finally {
+            $this->restoreWalletsTable();
+        }
+    }
+
+    public function test_payments_refund_survives_missing_content_submissions(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->makeUser('advertiser');
+        $wallet = Wallet::create([
+            'user_id' => $advertiser->id,
+            'role_id' => Wallet::advertiserRoleId(),
+            'balance' => 0,
+            'reserved_balance' => 0,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 0,
+            'currency' => 'EUR',
+        ]);
+        $order = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => 'ORD-NO-LIBRARY-REFUND',
+            'reference_code' => 'REF-NO-LIBRARY-REFUND',
+            'subtotal' => 50,
+            'tax' => 0,
+            'total_amount' => 50,
+            'payment_method' => 'card',
+            'payment_status' => 'paid',
+            'status' => 'processing',
+            'paid_at' => now(),
+        ]);
+
+        Schema::disableForeignKeyConstraints();
+        Schema::dropIfExists('content_submissions');
+        Schema::enableForeignKeyConstraints();
+
+        try {
+            $this->actingAs($admin)
+                ->postJson(route('admin.payments.updateStatus', $order->id), [
+                    'payment_status' => 'refunded',
+                    'notes' => 'Library table leftover.',
+                ])
+                ->assertOk()
+                ->assertJsonPath('success', true);
+
+            $this->assertSame('refunded', $order->fresh()->payment_status);
+            $this->assertEqualsWithDelta(50.0, (float) $wallet->fresh()->balance, 0.01);
+        } finally {
+            $this->artisan('migrate', [
+                '--path' => 'database/migrations/2026_07_16_200000_create_content_upload_system.php',
+                '--force' => true,
+            ]);
+        }
+    }
+
+    public function test_finance_ledger_survives_missing_created_at(): void
+    {
+        $admin = $this->admin();
+
+        if (! Schema::hasColumn('wallet_transactions', 'created_at')) {
+            $this->markTestSkipped('wallet_transactions.created_at is already absent');
+        }
+
+        try {
+            Schema::disableForeignKeyConstraints();
+            Schema::table('wallet_transactions', function (Blueprint $blueprint) {
+                $blueprint->dropColumn('created_at');
+            });
+            Schema::enableForeignKeyConstraints();
+        } catch (\Throwable) {
+            Schema::enableForeignKeyConstraints();
+            $this->markTestSkipped('Could not drop wallet_transactions.created_at on this driver');
+        }
+
+        if (Schema::hasColumn('wallet_transactions', 'created_at')) {
+            $this->markTestSkipped('wallet_transactions.created_at is still present after drop');
+        }
+
+        try {
+            $this->actingAs($admin)
+                ->get(route('admin.finance.ledger'))
+                ->assertOk()
+                ->assertSee('Wallet ledger', false);
+        } finally {
+            if (! Schema::hasColumn('wallet_transactions', 'created_at')) {
+                Schema::table('wallet_transactions', function (Blueprint $blueprint) {
+                    $blueprint->timestamp('created_at')->nullable();
+                });
+            }
+        }
+    }
+
+    public function test_withdrawal_export_survives_missing_payment_details(): void
+    {
+        $admin = $this->admin();
+
+        if (! Schema::hasColumn('withdrawals', 'payment_details')) {
+            $this->markTestSkipped('withdrawals.payment_details is already absent');
+        }
+
+        try {
+            Schema::disableForeignKeyConstraints();
+            Schema::table('withdrawals', function (Blueprint $blueprint) {
+                $blueprint->dropColumn('payment_details');
+            });
+            Schema::enableForeignKeyConstraints();
+        } catch (\Throwable) {
+            Schema::enableForeignKeyConstraints();
+            $this->markTestSkipped('Could not drop withdrawals.payment_details on this driver');
+        }
+
+        if (Schema::hasColumn('withdrawals', 'payment_details')) {
+            $this->markTestSkipped('withdrawals.payment_details is still present after drop');
+        }
+
+        try {
+            $this->actingAs($admin)
+                ->get(route('admin.withdrawals.export'))
+                ->assertOk();
+        } finally {
+            if (! Schema::hasColumn('withdrawals', 'payment_details')) {
+                Schema::table('withdrawals', function (Blueprint $blueprint) {
+                    $blueprint->json('payment_details')->nullable();
+                });
+            }
+        }
+    }
+
+    private function restoreWalletsTable(): void
+    {
+        $this->artisan('migrate', [
+            '--path' => 'database/migrations/2026_03_27_170746_create_wallets_table.php',
+            '--force' => true,
+        ]);
+        $this->artisan('migrate', [
+            '--path' => 'database/migrations/2026_07_15_120000_add_bonus_balances_to_wallets_table.php',
+            '--force' => true,
+        ]);
+        $this->artisan('migrate', [
+            '--path' => 'database/migrations/2026_07_31_150100_add_debt_balance_to_wallets_table.php',
+            '--force' => true,
+        ]);
+    }
 }

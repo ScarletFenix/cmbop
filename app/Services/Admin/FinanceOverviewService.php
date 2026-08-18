@@ -68,36 +68,176 @@ class FinanceOverviewService
      */
     public function overview(array $period): array
     {
-        $start = $period['start'];
-        $end = $period['end'];
+        try {
+            $start = $period['start'];
+            $end = $period['end'];
 
-        $ops = $this->opsQueues();
-        $liability = $this->walletLiability();
-        $moneyIn = $this->moneyIn($start, $end);
-        $moneyOut = $this->moneyOut($start, $end);
-        $platform = $this->platform($start, $end);
-        $cashSplit = $this->cashVsInternal($start, $end);
+            $ops = $this->opsQueues();
+            $liability = $this->walletLiability();
+            $moneyIn = $this->moneyIn($start, $end);
+            $moneyOut = $this->moneyOut($start, $end);
+            $platform = $this->platform($start, $end);
+            $cashSplit = $this->cashVsInternal($start, $end);
 
-        $platform['margin'] = round(
-            $platform['order_fees']
-            + $platform['withdrawal_fees']
-            - $platform['refunded_order_fees']
-            - $platform['bonuses_issued'],
-            2
-        );
+            $platform['margin'] = round(
+                $platform['order_fees']
+                + $platform['withdrawal_fees']
+                - $platform['refunded_order_fees']
+                - $platform['bonuses_issued'],
+                2
+            );
 
+            return [
+                'period' => $period,
+                'ops' => $ops,
+                'liability' => $liability,
+                'money_in' => $moneyIn,
+                'money_out' => $moneyOut,
+                'platform' => $platform,
+                'cash_split' => $cashSplit,
+                'payable_now' => $liability['total_publisher_liability'],
+                'due_to_pay_now' => $liability['due_to_pay_now'],
+                'in_publisher_wallets' => $liability['in_publisher_wallets'],
+                'total_publisher_liability' => $liability['total_publisher_liability'],
+                'clocks' => [
+                    'deposits' => 'approved_at',
+                    'orders_paid' => 'paid_at',
+                    'completed' => 'completed_at',
+                    'failed_cash_in' => 'order_created_at',
+                    'refunds' => 'refund_ledger_or_updated_at',
+                    'withdrawals_paid' => 'processed_at',
+                    'ledger' => 'created_at',
+                ],
+            ];
+        } catch (\Throwable $e) {
+            report($e);
+
+            return $this->emptyOverview($period);
+        }
+    }
+
+    /**
+     * Zeroed hub payload when leftover schema makes a section unreadable.
+     *
+     * @return array<string, mixed>
+     */
+    public function emptyOverview(array $period): array
+    {
         return [
             'period' => $period,
-            'ops' => $ops,
-            'liability' => $liability,
-            'money_in' => $moneyIn,
-            'money_out' => $moneyOut,
-            'platform' => $platform,
-            'cash_split' => $cashSplit,
-            'payable_now' => $liability['total_publisher_liability'],
-            'due_to_pay_now' => $liability['due_to_pay_now'],
-            'in_publisher_wallets' => $liability['in_publisher_wallets'],
-            'total_publisher_liability' => $liability['total_publisher_liability'],
+            'ops' => [
+                'pending_deposits' => [
+                    'count' => 0,
+                    'amount' => 0.0,
+                    'user_marked_paid_count' => 0,
+                    'user_marked_paid_amount' => 0.0,
+                    'url' => route('admin.deposits', ['status' => 'pending']),
+                ],
+                'open_withdrawals' => [
+                    'count' => 0,
+                    'amount' => 0.0,
+                    'url' => route('admin.withdrawals', ['queue' => 'open']),
+                ],
+                'unpaid_orders' => [
+                    'count' => 0,
+                    'amount' => 0.0,
+                    'url' => route('admin.payments', ['payment_status' => 'unpaid']),
+                ],
+                'publisher_debt' => [
+                    'count' => 0,
+                    'amount' => 0.0,
+                    'rows' => [],
+                    'url' => route('admin.finance').'#finance-debt',
+                ],
+            ],
+            'liability' => [
+                'advertiser' => [
+                    'balance' => 0.0,
+                    'bonus' => 0.0,
+                    'reserved' => 0.0,
+                    'cash' => 0.0,
+                ],
+                'publisher' => [
+                    'balance' => 0.0,
+                    'bonus' => 0.0,
+                    'reserved' => 0.0,
+                    'withdrawable' => 0.0,
+                ],
+                'open_withdrawal_nets' => 0.0,
+                'due_to_pay_now' => 0.0,
+                'in_publisher_wallets' => 0.0,
+                'total_publisher_liability' => 0.0,
+                'payable_now' => 0.0,
+                'open_reserved_total' => 0.0,
+                'top_publisher_wallets' => [],
+                'open_withdrawal_rows' => [],
+            ],
+            'money_in' => [
+                'deposits_completed' => [
+                    'count' => 0,
+                    'amount' => 0.0,
+                    'by_method' => [],
+                    'stripe' => 0.0,
+                    'manual' => 0.0,
+                ],
+                'orders_paid' => [
+                    'count' => 0,
+                    'gmv' => 0.0,
+                    'by_method' => [],
+                    'stripe_card' => 0.0,
+                    'wallet' => 0.0,
+                    'manual' => 0.0,
+                ],
+                'bonuses_issued' => [
+                    'count' => 0,
+                    'amount' => 0.0,
+                ],
+                'unfulfilled_card_credits' => 0.0,
+                'stripe_card_collected' => 0.0,
+                'manual_collected' => 0.0,
+                'failed_external_collected' => 0.0,
+                'site_feature_stripe' => 0.0,
+            ],
+            'money_out' => [
+                'earnings_credited' => [
+                    'count' => 0,
+                    'amount' => 0.0,
+                    'ledger_transfer_in' => 0.0,
+                ],
+                'withdrawals_paid' => [
+                    'count' => 0,
+                    'gross' => 0.0,
+                    'net' => 0.0,
+                    'fees' => 0.0,
+                ],
+                'withdrawals_open' => [
+                    'count' => 0,
+                    'net' => 0.0,
+                ],
+            ],
+            'platform' => [
+                'gmv_completed' => 0.0,
+                'order_fees' => 0.0,
+                'withdrawal_fees' => 0.0,
+                'withdrawal_fee_percent' => (float) config('billing.withdrawal_fee_percent', 0),
+                'refunds' => 0.0,
+                'refunded_order_fees' => 0.0,
+                'refund_orders_count' => 0,
+                'wallet_refunds' => 0.0,
+                'bonuses_issued' => 0.0,
+                'payment_processor_costs_tracked' => false,
+                'margin' => 0.0,
+            ],
+            'cash_split' => [
+                'cash_in_bank' => 0.0,
+                'internal_only' => 0.0,
+                'cash_out_payouts' => 0.0,
+                'note' => 'Cash in = Stripe/card + approved bank/Wise/crypto deposits & manual order payments + leftover card credits + featured-site Stripe + paid→failed captures returned to wallet. Wallet refunds do not remove collected card/manual cash (no Stripe refund). Internal = wallet checkouts + welcome bonuses.',
+            ],
+            'payable_now' => 0.0,
+            'due_to_pay_now' => 0.0,
+            'in_publisher_wallets' => 0.0,
+            'total_publisher_liability' => 0.0,
             'clocks' => [
                 'deposits' => 'approved_at',
                 'orders_paid' => 'paid_at',
@@ -137,7 +277,16 @@ class FinanceOverviewService
             $openCount = (clone $openWithdrawals)->count();
             $openAmount = (float) (clone $openWithdrawals)->sum('net_amount');
         }
-        $pendingPayments = Order::query()->unpaidOps();
+        $unpaidCount = 0;
+        $unpaidAmount = 0.0;
+        try {
+            $pendingPayments = Order::query()->unpaidOps();
+            $unpaidCount = (clone $pendingPayments)->count();
+            $unpaidAmount = (float) (clone $pendingPayments)->sum('total_amount');
+        } catch (\Throwable) {
+            $unpaidCount = 0;
+            $unpaidAmount = 0.0;
+        }
 
         return [
             'pending_deposits' => [
@@ -153,8 +302,8 @@ class FinanceOverviewService
                 'url' => route('admin.withdrawals', ['queue' => 'open']),
             ],
             'unpaid_orders' => [
-                'count' => (clone $pendingPayments)->count(),
-                'amount' => (float) (clone $pendingPayments)->sum('total_amount'),
+                'count' => $unpaidCount,
+                'amount' => $unpaidAmount,
                 'url' => route('admin.payments', ['payment_status' => 'unpaid']),
             ],
             'publisher_debt' => $this->publisherDebt(),
@@ -1100,15 +1249,19 @@ class FinanceOverviewService
      */
     private function siteFeatureStripeCash(?Carbon $start, Carbon $end): float
     {
-        if (! Schema::hasTable('site_feature_purchases')) {
+        try {
+            if (! Schema::hasTable('site_feature_purchases')) {
+                return 0.0;
+            }
+
+            $query = SiteFeaturePurchase::query()
+                ->whereIn('payment_method', ['stripe', 'stripe_credit']);
+            $this->applyCreatedWindow($query, $start, $end);
+
+            return round((float) $query->sum('amount'), 2);
+        } catch (\Throwable) {
             return 0.0;
         }
-
-        $query = SiteFeaturePurchase::query()
-            ->whereIn('payment_method', ['stripe', 'stripe_credit']);
-        $this->applyCreatedWindow($query, $start, $end);
-
-        return round((float) $query->sum('amount'), 2);
     }
 
     /**
@@ -1303,17 +1456,23 @@ class FinanceOverviewService
 
     private function walletsAvailable(): bool
     {
-        try {
-            return Schema::hasTable('wallets');
-        } catch (\Throwable) {
-            return false;
-        }
+        return $this->schemaTableAvailable('wallets');
     }
 
     private function walletTransactionsAvailable(): bool
     {
+        return $this->schemaTableAvailable('wallet_transactions');
+    }
+
+    private function schemaTableAvailable(string $table): bool
+    {
         try {
-            return Schema::hasTable('wallet_transactions');
+            if (! Schema::hasTable($table)) {
+                return false;
+            }
+            DB::table($table)->limit(1)->exists();
+
+            return true;
         } catch (\Throwable) {
             return false;
         }
