@@ -73,10 +73,9 @@
     <!-- Filters Section -->
     <div class="card border-0 shadow-sm mb-4">
         <div class="card-body">
-            <form method="GET" action="{{ route('advertiser.orders') }}" id="filterForm">
-                <div class="row g-2 g-md-3 align-items-end">
-                    <!-- Search -->
-                    <div class="col-12 col-sm-6 col-xl-3">
+            <form method="GET" action="{{ route('advertiser.orders') }}" id="filterForm" class="orders-filter-bar">
+                <div class="orders-filter-bar__row">
+                    <div class="orders-filter-bar__search">
                         <label class="form-label fw-semibold small text-muted mb-1" for="searchInput">Search</label>
                         <div class="position-relative orders-search-wrap slb-search-wrap">
                             <input type="search"
@@ -97,13 +96,10 @@
                                 <i class="fa-solid fa-xmark" aria-hidden="true"></i>
                             </button>
                         </div>
-                        <div id="ordersSearchHint" class="form-text orders-search-hint">Results update as you type.</div>
-                        <div id="ordersSearchStatus" class="form-text orders-search-status" role="status" aria-live="polite"></div>
                     </div>
 
-                    <!-- Status Filter -->
-                    <div class="col-6 col-sm-6 col-xl-2">
-                        <label class="form-label fw-semibold small text-muted mb-1">Order Status</label>
+                    <div class="orders-filter-bar__select">
+                        <label class="form-label fw-semibold small text-muted mb-1" for="statusFilter">Order Status</label>
                         <select name="status" id="statusFilter" class="form-select form-select-sm">
                             <option value="">All Status</option>
                             <option value="awaiting_payment" {{ request('status') == 'awaiting_payment' ? 'selected' : '' }}>Awaiting payment</option>
@@ -117,9 +113,8 @@
                         </select>
                     </div>
 
-                    <!-- Payment Method & Status Filter (Combined) -->
-                    <div class="col-6 col-sm-6 col-xl-2">
-                        <label class="form-label fw-semibold small text-muted mb-1">Payment Method</label>
+                    <div class="orders-filter-bar__select">
+                        <label class="form-label fw-semibold small text-muted mb-1" for="paymentMethodFilter">Payment Method</label>
                         <select name="payment_method" id="paymentMethodFilter" class="form-select form-select-sm">
                             <option value="">All Methods</option>
                             <option value="wallet" {{ request('payment_method') == 'wallet' ? 'selected' : '' }}>Wallet Balance</option>
@@ -130,8 +125,8 @@
                         </select>
                     </div>
 
-                    <div class="col-6 col-sm-6 col-xl-2">
-                        <label class="form-label fw-semibold small text-muted mb-1">Payment Status</label>
+                    <div class="orders-filter-bar__select">
+                        <label class="form-label fw-semibold small text-muted mb-1" for="paymentStatusFilter">Payment Status</label>
                         <select name="payment_status" id="paymentStatusFilter" class="form-select form-select-sm">
                             <option value="">All Status</option>
                             <option value="paid" {{ request('payment_status') == 'paid' ? 'selected' : '' }}>Paid</option>
@@ -141,37 +136,37 @@
                         </select>
                     </div>
 
-                    <!-- Date Range -->
-                    <div class="col-12 col-sm-8 col-xl-3">
-                        <label class="form-label fw-semibold small text-muted mb-1">Date Range</label>
+                    <div class="orders-filter-bar__dates">
+                        <span class="form-label fw-semibold small text-muted mb-1">Date Range</span>
                         <div class="d-flex gap-2 orders-date-range">
-                            <input type="date" 
-                                   name="date_from" 
+                            <label class="visually-hidden" for="dateFrom">From</label>
+                            <input type="date"
+                                   name="date_from"
                                    id="dateFrom"
-                                   class="form-control form-control-sm" 
-                                   placeholder="From"
+                                   class="form-control form-control-sm"
+                                   autocomplete="off"
                                    value="{{ search_text(request('date_from')) }}">
-                            <input type="date" 
-                                   name="date_to" 
+                            <label class="visually-hidden" for="dateTo">To</label>
+                            <input type="date"
+                                   name="date_to"
                                    id="dateTo"
-                                   class="form-control form-control-sm" 
-                                   placeholder="To"
+                                   class="form-control form-control-sm"
+                                   autocomplete="off"
                                    value="{{ search_text(request('date_to')) }}">
                         </div>
                     </div>
 
-                    <!-- Action Buttons -->
-                    <div class="col-12 col-sm-4 col-xl-2">
-                        <div class="d-flex flex-wrap gap-2">
-                            <button type="submit" class="btn btn-sm btn-primary px-3">
-                                <i class="fa-solid fa-filter me-1"></i> Filter
-                            </button>
-                            <button type="button" id="resetFilters" class="btn btn-sm btn-cta-secondary px-3">
-                                <i class="fa-solid fa-rotate-right me-1"></i> Reset
-                            </button>
-                        </div>
+                    <div class="orders-filter-bar__actions">
+                        <button type="submit" class="btn btn-sm btn-primary px-3">
+                            <i class="fa-solid fa-filter me-1"></i> Filter
+                        </button>
+                        <button type="button" id="resetFilters" class="btn btn-sm btn-cta-secondary px-3">
+                            <i class="fa-solid fa-rotate-right me-1"></i> Reset
+                        </button>
                     </div>
                 </div>
+                <div id="ordersSearchHint" class="form-text orders-search-hint">Results update as you type.</div>
+                <div id="ordersSearchStatus" class="form-text orders-search-status" role="status" aria-live="polite"></div>
             </form>
         </div>
     </div>

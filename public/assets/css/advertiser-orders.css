@@ -33,6 +33,76 @@ button.wallet-kpi { cursor: pointer; appearance: none; }
     .wallet-kpi .kpi-value { font-size: 1.25rem; }
 }
 
+.orders-filter-bar {
+    display: block;
+}
+.orders-filter-bar__row {
+    display: grid;
+    grid-template-columns: minmax(11rem, 1.5fr) repeat(3, minmax(8rem, 1fr)) minmax(12rem, 1.2fr) auto;
+    align-items: end;
+    gap: .65rem .75rem;
+}
+.orders-filter-bar__search,
+.orders-filter-bar__select,
+.orders-filter-bar__dates {
+    min-width: 0;
+}
+.orders-filter-bar__actions {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: .5rem;
+    min-height: 31px;
+}
+.orders-filter-bar__actions .btn {
+    white-space: nowrap;
+    height: 31px;
+}
+.orders-filter-bar .form-select,
+.orders-filter-bar .form-control {
+    min-width: 0;
+    width: 100%;
+    height: 31px;
+    min-height: 31px;
+}
+.orders-filter-bar__dates .form-label,
+.orders-filter-bar__dates span.form-label {
+    display: block;
+}
+@media (max-width: 1199.98px) {
+    .orders-filter-bar__row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+    }
+    .orders-filter-bar__search {
+        flex: 1 1 16rem;
+        min-width: 12rem;
+    }
+    .orders-filter-bar__select {
+        flex: 1 1 9.5rem;
+        min-width: 8.5rem;
+    }
+    .orders-filter-bar__dates {
+        flex: 1 1 14rem;
+        min-width: 12rem;
+    }
+    .orders-filter-bar__actions {
+        flex: 0 0 auto;
+        margin-left: auto;
+    }
+}
+@media (max-width: 575.98px) {
+    .orders-filter-bar__search,
+    .orders-filter-bar__select,
+    .orders-filter-bar__dates,
+    .orders-filter-bar__actions {
+        flex: 1 1 100%;
+        min-width: 0;
+        margin-left: 0;
+    }
+}
+
 .orders-search-wrap .orders-search-clear {
     position: absolute;
     right: 2px;
