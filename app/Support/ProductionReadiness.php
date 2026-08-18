@@ -391,7 +391,7 @@ class ProductionReadiness
                 'scheduler',
                 self::SEVERITY_OK,
                 'Scheduler',
-                'HTTP cron is enabled (CRON_SECRET ≥ 32). Hit /cron/run/{key} every minute.',
+                'HTTP cron is enabled (CRON_SECRET ≥ 32). Prefer POST /cron/run with X-Cron-Key every minute.',
                 ''
             );
         }
@@ -421,7 +421,7 @@ class ProductionReadiness
             self::SEVERITY_WARN,
             'Confirm the scheduler is running',
             'CRON_SECRET is empty and HOSTINGER_WEB_HEAL is off. Auto-approve, nudges, and mail:drain-queue need `* * * * * php artisan schedule:run`.',
-            'Set HOSTINGER_WEB_HEAL=true, add a system cron for schedule:run, or set CRON_SECRET (≥ 32 chars) and hit /cron/run/{key} every minute. See docs/ops-mail-reminders.md.'
+            'Set HOSTINGER_WEB_HEAL=true, add a system cron for schedule:run, or set CRON_SECRET (≥ 32 chars) and POST /cron/run with X-Cron-Key. See docs/ops-mail-reminders.md.'
         );
     }
 

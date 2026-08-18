@@ -26,6 +26,17 @@ class AuthAndMoneyHardeningTest extends TestCase
         $this->get('/cron/orders-auto-approve/'.str_repeat('b', 40))->assertForbidden();
     }
 
+    public function test_cron_accepts_header_secret_without_path_key(): void
+    {
+        $secret = str_repeat('c', 40);
+        config(['app.cron_secret' => $secret]);
+
+        $this->withHeaders(['X-Cron-Key' => $secret])
+            ->post('/cron/run')
+            ->assertOk()
+            ->assertJsonPath('status', 'success');
+    }
+
     /**
      * @return array<int, array<int, string>>
      */
