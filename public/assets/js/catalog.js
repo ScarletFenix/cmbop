@@ -393,7 +393,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // Pagination and the sort/recovery links all navigate away.
     document.addEventListener('click', function (e) {
         const link = e.target.closest(
-            '.pagination a.page-link, .catalog-clear-all, .filter-chip__remove, .catalog-clear-country, .catalog-try-language, .catalog-neighbor-market'
+            '.pagination a.page-link, .catalog-clear-all, .filter-chip__remove, .catalog-clear-country, .catalog-clear-tag, .catalog-try-language, .catalog-neighbor-market'
         );
         if (!link || link.getAttribute('href') === null) return;
         markCatalogResultsBusy();

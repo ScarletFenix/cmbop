@@ -38,35 +38,42 @@ class CatalogFilterStatus
         $countryLabel = $this->countryLabels($countries);
         $niches = $this->selectedNiches($request);
         $nicheLabel = $this->nicheLabels($niches);
+        $tagFilter = SiteTag::catalogFilterFromRequest($request);
+        $tagSuffix = $this->tagEmptySuffix($tagFilter);
 
         if ($total < 1) {
             if ($search !== '' && $countries !== []) {
-                $text = 'No sites matching “'.$search.'” in '.$countryLabel;
+                $text = 'No sites matching “'.$search.'” in '.$countryLabel.$tagSuffix;
 
                 return ['text' => $text, 'announce' => $text];
             }
             if ($search !== '' && $niches !== []) {
-                $text = 'No sites matching “'.$search.'” in '.$nicheLabel;
+                $text = 'No sites matching “'.$search.'” in '.$nicheLabel.$tagSuffix;
 
                 return ['text' => $text, 'announce' => $text];
             }
             if ($countries !== [] && $niches !== []) {
-                $text = 'No sites in '.$nicheLabel.' for '.$countryLabel;
+                $text = 'No sites in '.$nicheLabel.' for '.$countryLabel.$tagSuffix;
 
                 return ['text' => $text, 'announce' => $text];
             }
             if ($countries !== []) {
-                $text = 'No sites in '.$countryLabel;
+                $text = 'No sites in '.$countryLabel.$tagSuffix;
 
                 return ['text' => $text, 'announce' => $text];
             }
             if ($niches !== []) {
-                $text = 'No sites in '.$nicheLabel;
+                $text = 'No sites in '.$nicheLabel.$tagSuffix;
 
                 return ['text' => $text, 'announce' => $text];
             }
             if ($search !== '') {
-                $text = 'No sites matching “'.$search.'”';
+                $text = 'No sites matching “'.$search.'”'.$tagSuffix;
+
+                return ['text' => $text, 'announce' => $text];
+            }
+            if ($tagFilter !== null) {
+                $text = $this->tagOnlyEmptyHeadline($tagFilter);
 
                 return ['text' => $text, 'announce' => $text];
             }
@@ -125,6 +132,7 @@ class CatalogFilterStatus
      * @return array{
      *     clear_country_url: ?string,
      *     clear_category_url: ?string,
+     *     clear_tag_url: ?string,
      *     clear_all_url: string,
      *     try_language: ?array{code: string, name: string, url: string},
      *     neighbors: list<array{code: string, name: string, count: int, url: string}>,
@@ -140,6 +148,9 @@ class CatalogFilterStatus
         $niches = $this->selectedNiches($request);
         $hasCategory = $niches !== [];
         $nicheLabel = $this->nicheLabels($niches);
+        $tagFilter = SiteTag::catalogFilterFromRequest($request);
+        $hasTag = $tagFilter !== null;
+        $tagLabel = $hasTag ? SiteTag::catalogFilterLabel($tagFilter) : null;
 
         $clearCountryUrl = $hasCountry
             ? route('advertiser.catalog', $this->catalogQuery($request, except: ['country', 'page']))
@@ -147,6 +158,10 @@ class CatalogFilterStatus
 
         $clearCategoryUrl = $hasCategory
             ? route('advertiser.catalog', $this->catalogQuery($request, except: ['category', 'page']))
+            : null;
+
+        $clearTagUrl = $hasTag
+            ? route('advertiser.catalog', $this->catalogQuery($request, except: ['tag', 'sponsored', 'page']))
             : null;
 
         $tryLanguage = null;
@@ -186,19 +201,49 @@ class CatalogFilterStatus
             $body = 'No listings in '.$nicheLabel.' right now. Clear this category or try a related niche.';
         } elseif ($search !== '') {
             $body = 'No listings match “'.$search.'”. Try broader filters or suggest a website.';
+        } elseif ($hasTag) {
+            $body = $tagFilter === SiteTag::FILTER_NONE
+                ? 'No listings with No tags right now. Clear the tag filter.'
+                : 'No listings tagged '.$tagLabel.' right now. Clear the tag filter or try a different tag.';
         } else {
             $body = 'Try broader filters — clear a category, widen price, or remove DA/DR limits.';
+        }
+
+        if ($hasTag && ! str_contains(strtolower($body), 'tag filter')) {
+            $body = rtrim($body, '.').'. Clear the tag filter to see more listings.';
         }
 
         return [
             'clear_country_url' => $clearCountryUrl,
             'clear_category_url' => $clearCategoryUrl,
+            'clear_tag_url' => $clearTagUrl,
             'clear_all_url' => route('advertiser.catalog'),
             'try_language' => $tryLanguage,
             'neighbors' => $neighbors,
             'related_niches' => $relatedNiches,
             'body' => $body,
         ];
+    }
+
+    /**
+     * Compact empty-state qualifier when a Tag filter is active, e.g. " · Sponsored".
+     */
+    private function tagEmptySuffix(?string $filter): string
+    {
+        $label = SiteTag::catalogFilterLabel($filter);
+
+        return $label === null ? '' : ' · '.$label;
+    }
+
+    private function tagOnlyEmptyHeadline(?string $filter): string
+    {
+        if ($filter === SiteTag::FILTER_NONE) {
+            return 'No sites with No tags';
+        }
+
+        $label = SiteTag::catalogFilterLabel($filter);
+
+        return $label === null ? 'No sites match your filters' : 'No sites tagged '.$label;
     }
 
     /**

@@ -161,6 +161,72 @@ class CatalogFilterStatusEmptyUxTest extends TestCase
         $this->assertSame($summary['text'], $summary['announce']);
     }
 
+    public function test_empty_tag_state_shows_clear_tag_and_named_copy(): void
+    {
+        $publisher = $this->publisher();
+        $this->site($publisher, 'de', 'untagged-de.test', 'Untagged Garden');
+
+        $html = $this->actingAs($this->advertiser())
+            ->get(route('advertiser.catalog', [
+                'search' => 'garden',
+                'tag' => 'sponsored',
+            ]))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('No sites matching “garden” · Sponsored', $html);
+        $this->assertStringContainsString('catalog-clear-tag', $html);
+        $this->assertStringContainsString('Clear tag', $html);
+        $this->assertStringContainsString('Clear the tag filter to see more listings', $html);
+
+        $this->assertTrue(
+            (bool) preg_match('/<a\b[^>]*catalog-clear-tag[^>]*>/i', $html, $m),
+            'Expected a Clear tag anchor'
+        );
+        $clearTagAnchor = $m[0];
+        $this->assertStringContainsString('search=garden', html_entity_decode($clearTagAnchor));
+        $this->assertStringNotContainsString('tag=', html_entity_decode($clearTagAnchor));
+        $this->assertStringNotContainsString('sponsored=', html_entity_decode($clearTagAnchor));
+    }
+
+    public function test_filter_status_service_clear_tag_query_preserves_search(): void
+    {
+        $status = app(CatalogFilterStatus::class);
+        $request = Request::create('/advertiser/catalog', 'GET', [
+            'search' => 'kids',
+            'tag' => 'partner_material',
+            'sponsored' => '1',
+            'sort' => 'price_asc',
+            'page' => 2,
+        ]);
+
+        $recovery = $status->emptyRecovery($request);
+        $this->assertNotNull($recovery['clear_tag_url']);
+        $this->assertStringContainsString('search=kids', $recovery['clear_tag_url']);
+        $this->assertStringContainsString('sort=price_asc', $recovery['clear_tag_url']);
+        $this->assertStringNotContainsString('tag=', $recovery['clear_tag_url']);
+        $this->assertStringNotContainsString('sponsored=', $recovery['clear_tag_url']);
+        $this->assertStringNotContainsString('page=', $recovery['clear_tag_url']);
+        $this->assertStringContainsString('Partner article', $recovery['body']);
+        $this->assertStringContainsString('tag filter', $recovery['body']);
+
+        $summary = $status->summarize($request, 0);
+        $this->assertStringContainsString('No sites matching “kids” · Partner article', $summary['text']);
+
+        $tagOnly = $status->summarize(
+            Request::create('/advertiser/catalog', 'GET', ['tag' => 'none']),
+            0
+        );
+        $this->assertSame('No sites with No tags', $tagOnly['text']);
+
+        $tagOnlyRecovery = $status->emptyRecovery(
+            Request::create('/advertiser/catalog', 'GET', ['tag' => 'as_you_prefer'])
+        );
+        $this->assertNotNull($tagOnlyRecovery['clear_tag_url']);
+        $this->assertStringContainsString('Clear the tag filter', $tagOnlyRecovery['body']);
+        $this->assertStringContainsString('As you prefer', $tagOnlyRecovery['body']);
+    }
+
     public function test_germany_has_primary_german_for_try_language(): void
     {
         $country = Country::where('code', 'de')->firstOrFail();
