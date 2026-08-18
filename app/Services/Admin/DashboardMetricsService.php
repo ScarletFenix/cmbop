@@ -485,7 +485,15 @@ class DashboardMetricsService
 
     private function paidAtSql(): string
     {
-        return 'COALESCE(paid_at, created_at)';
+        try {
+            if (Schema::hasColumn('orders', 'paid_at')) {
+                return 'COALESCE(paid_at, created_at)';
+            }
+        } catch (\Throwable) {
+            // Hostinger leftover: fall back to created_at only.
+        }
+
+        return 'created_at';
     }
 
     /**
@@ -498,7 +506,11 @@ class DashboardMetricsService
     {
         $indexed = [];
         foreach ($rows as $day => $total) {
-            $indexed[Carbon::parse((string) $day)->toDateString()] = $total;
+            try {
+                $indexed[Carbon::parse((string) $day)->toDateString()] = $total;
+            } catch (\Throwable) {
+                continue;
+            }
         }
 
         return $indexed;

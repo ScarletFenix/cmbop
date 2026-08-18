@@ -7,6 +7,7 @@ use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\Withdrawal;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Slim invoice payloads for admin Payments / Deposits / Withdrawals / Orders.
@@ -47,7 +48,7 @@ class AdminInvoiceLinks
     public function forOrders(Collection $orders): Collection
     {
         $ids = $orders->pluck('id')->filter()->map(fn ($id) => (int) $id)->unique()->values();
-        if ($ids->isEmpty()) {
+        if ($ids->isEmpty() || ! $this->invoicesTableReady()) {
             return collect();
         }
 
@@ -67,7 +68,7 @@ class AdminInvoiceLinks
     {
         $userIds = $deposits->pluck('user_id')->filter()->unique()->values();
         $refs = $deposits->pluck('reference_code')->filter()->unique()->values();
-        if ($userIds->isEmpty() || $refs->isEmpty()) {
+        if ($userIds->isEmpty() || $refs->isEmpty() || ! $this->invoicesTableReady()) {
             return $deposits->mapWithKeys(fn (DepositRequest $deposit) => [(int) $deposit->id => null]);
         }
 
@@ -95,7 +96,7 @@ class AdminInvoiceLinks
     {
         $userIds = $withdrawals->pluck('user_id')->filter()->unique()->values();
         $refs = $withdrawals->map(fn (Withdrawal $withdrawal) => 'WD-'.$withdrawal->id)->unique()->values();
-        if ($userIds->isEmpty() || $refs->isEmpty()) {
+        if ($userIds->isEmpty() || $refs->isEmpty() || ! $this->invoicesTableReady()) {
             return $withdrawals->mapWithKeys(fn (Withdrawal $withdrawal) => [(int) $withdrawal->id => null]);
         }
 
@@ -135,5 +136,14 @@ class AdminInvoiceLinks
         }
 
         return $documents[0] ?? null;
+    }
+
+    private function invoicesTableReady(): bool
+    {
+        try {
+            return Schema::hasTable('invoices');
+        } catch (\Throwable) {
+            return false;
+        }
     }
 }

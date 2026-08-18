@@ -34,7 +34,7 @@ class DashboardController extends Controller
             }
 
             return response()->json(['success' => true, 'data' => $data]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Admin dashboard statistics error: '.$e->getMessage());
 
             return response()->json(['success' => false, 'message' => 'Failed to load statistics'], 500);
@@ -53,7 +53,7 @@ class DashboardController extends Controller
                 'success' => true,
                 ...$this->remember('trends.'.$days, fn () => $this->metrics->trends($days)),
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Admin dashboard trends error: '.$e->getMessage());
 
             return response()->json(['success' => false, 'message' => 'Failed to load trends'], 500);
@@ -70,7 +70,7 @@ class DashboardController extends Controller
                 'success' => true,
                 ...$this->remember('distributions', fn () => $this->metrics->distributions()),
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Admin dashboard distributions error: '.$e->getMessage());
 
             return response()->json(['success' => false, 'message' => 'Failed to load distributions'], 500);
@@ -88,7 +88,7 @@ class DashboardController extends Controller
                 'success' => true,
                 ...$this->metrics->queueCounts(),
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Admin dashboard queue counts error: '.$e->getMessage());
 
             return response()->json(['success' => false, 'message' => 'Failed to load queue counts'], 500);
@@ -103,7 +103,7 @@ class DashboardController extends Controller
         try {
             // Due to pay now sits next to the live withdrawal queue — do not cache it.
             return response()->json(['success' => true, 'data' => $this->metrics->financeStrip()]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Admin dashboard finance strip error: '.$e->getMessage());
 
             return response()->json(['success' => false, 'message' => 'Failed to load finance'], 500);
@@ -121,7 +121,7 @@ class DashboardController extends Controller
                 'success' => true,
                 ...$this->metrics->actionQueue(),
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Admin dashboard action queue error: '.$e->getMessage());
 
             return response()->json(['success' => false, 'message' => 'Failed to load action queue'], 500);

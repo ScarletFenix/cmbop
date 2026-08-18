@@ -1080,4 +1080,33 @@ class OrderDisputeClawbackTest extends TestCase
         $this->assertStringNotContainsString('View Content', $retried);
         $this->assertStringContainsString('https://clawback-blog.example/live-post', $retried);
     }
+
+    public function test_uphold_is_422_when_advertiser_role_is_missing(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher);
+        $order = $this->makeCompletedOrder($advertiser, $site);
+        $this->publisherWallet($publisher, 100);
+        $this->advertiserWallet($advertiser, 0);
+
+        $dispute = OrderItemDispute::create([
+            'order_id' => $order->id,
+            'order_item_id' => $order->items->first()->id,
+            'opened_by' => $advertiser->id,
+            'status' => OrderItemDispute::STATUS_OPEN,
+            'reason' => 'The live article was deleted two days after completion.',
+        ]);
+
+        Role::where('name', 'advertiser')->delete();
+
+        $this->actingAs($admin)->postJson(
+            route('admin.orders.disputes.uphold', $dispute->id),
+            ['admin_notes' => 'Confirmed 404 after the live URL vanished.']
+        )->assertStatus(422)->assertJsonPath('success', false);
+
+        $this->assertSame(OrderItemDispute::STATUS_OPEN, $dispute->fresh()->status);
+        $this->assertSame('paid', $order->fresh()->payment_status);
+    }
 }

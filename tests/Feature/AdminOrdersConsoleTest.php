@@ -14,6 +14,7 @@ use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -1135,5 +1136,42 @@ class AdminOrdersConsoleTest extends TestCase
             ->assertSee($advertiserUrl, false)
             ->assertSee($publisherUrl, false)
             ->assertSee($siteUrl, false);
+    }
+
+    public function test_orders_console_survives_missing_activity_and_invoice_tables(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $site = $this->siteFor($publisher);
+        $order = $this->orderFor($advertiser, $site);
+
+        Schema::dropIfExists('order_activities');
+        Schema::dropIfExists('billing_events');
+        Schema::dropIfExists('invoices');
+        Schema::dropIfExists('invoice_sequences');
+
+        try {
+            $this->actingAs($admin)
+                ->get(route('admin.orders.show', $order->id))
+                ->assertOk()
+                ->assertSee($order->order_number, false)
+                ->assertDontSee('Something went wrong');
+
+            $this->actingAs($admin)
+                ->getJson(route('admin.orders.data'))
+                ->assertOk()
+                ->assertJsonPath('success', true)
+                ->assertJsonFragment(['order_number' => $order->order_number]);
+        } finally {
+            $this->artisan('migrate', [
+                '--path' => 'database/migrations/2026_07_16_071629_create_order_activities_table.php',
+                '--force' => true,
+            ]);
+            $this->artisan('migrate', [
+                '--path' => 'database/migrations/2026_07_17_100000_create_billing_invoices_tables.php',
+                '--force' => true,
+            ]);
+        }
     }
 }
