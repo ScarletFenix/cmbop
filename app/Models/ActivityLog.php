@@ -6,6 +6,7 @@ use App\Models\Concerns\ToleratesUnparseableDates;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\Schema;
 
 class ActivityLog extends Model
 {
@@ -55,15 +56,23 @@ class ActivityLog extends Model
      */
     public static function forBulkSiteRequest(int $bulkSiteRequestId, int $limit = 100)
     {
-        return static::query()
-            ->where(function ($q) use ($bulkSiteRequestId) {
-                $q->where(function ($inner) use ($bulkSiteRequestId) {
-                    $inner->where('subject_type', BulkSiteRequest::class)
-                        ->where('subject_id', $bulkSiteRequestId);
-                })->orWhere('properties->bulk_site_request_id', $bulkSiteRequestId);
-            })
-            ->latest('id')
-            ->limit($limit)
-            ->get();
+        try {
+            if (! Schema::hasTable((new static)->getTable())) {
+                return new Collection;
+            }
+
+            return static::query()
+                ->where(function ($q) use ($bulkSiteRequestId) {
+                    $q->where(function ($inner) use ($bulkSiteRequestId) {
+                        $inner->where('subject_type', BulkSiteRequest::class)
+                            ->where('subject_id', $bulkSiteRequestId);
+                    })->orWhere('properties->bulk_site_request_id', $bulkSiteRequestId);
+                })
+                ->latest('id')
+                ->limit($limit)
+                ->get();
+        } catch (\Throwable) {
+            return new Collection;
+        }
     }
 }

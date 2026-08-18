@@ -20,6 +20,7 @@ use App\Services\Wallet\WalletLedgerService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use ReflectionMethod;
 use Tests\TestCase;
 
@@ -1531,5 +1532,40 @@ class AdminFinanceHubTest extends TestCase
         $this->assertEquals(5.0, $august['platform']['withdrawal_fees']);
         $this->assertEquals(75.0, $august['cash_split']['cash_out_payouts']);
         $this->assertEquals(75.0, $all['cash_split']['cash_out_payouts']);
+    }
+
+    public function test_finance_pages_survive_missing_wallet_transactions_table(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+
+        Schema::dropIfExists('wallet_transactions');
+        $this->assertFalse(Schema::hasTable('wallet_transactions'));
+
+        try {
+            $this->actingAs($admin)
+                ->get(route('admin.finance'))
+                ->assertOk()
+                ->assertDontSee('Something went wrong');
+
+            $this->actingAs($admin)
+                ->get(route('admin.finance.ledger'))
+                ->assertOk()
+                ->assertDontSee('Something went wrong');
+
+            $this->actingAs($admin)
+                ->get(route('admin.finance.user', $advertiser))
+                ->assertOk()
+                ->assertDontSee('Something went wrong');
+
+            $this->actingAs($admin)
+                ->get(route('admin.finance.ledger.export'))
+                ->assertOk();
+        } finally {
+            $this->artisan('migrate', [
+                '--path' => 'database/migrations/2026_07_17_140000_create_wallet_transactions_table.php',
+                '--force' => true,
+            ]);
+        }
     }
 }

@@ -110,6 +110,36 @@ class AdminEnrichmentsSchemaDriftResilienceTest extends TestCase
         Queue::assertPushed(EnrichSiteJob::class);
     }
 
+    public function test_sync_metrics_and_manual_save_when_runs_table_missing(): void
+    {
+        Schema::dropIfExists('site_enrichment_runs');
+        $this->assertFalse(Schema::hasTable('site_enrichment_runs'));
+
+        $site = Site::query()->firstOrFail();
+
+        try {
+            $metrics = $this->actingAs($this->admin)
+                ->postJson(route('admin.sites.refresh-metrics', $site->id), ['sync' => 1]);
+            $this->assertContains($metrics->status(), [200, 422]);
+
+            $this->actingAs($this->admin)
+                ->postJson(route('admin.sites.manual-metrics', $site->id), [
+                    'dr' => 40,
+                    'da' => 35,
+                    'traffic' => 2000,
+                ])
+                ->assertOk()
+                ->assertJsonPath('success', true);
+
+            $this->assertSame(40, (int) $site->fresh()->dr);
+        } finally {
+            $this->artisan('migrate', [
+                '--path' => 'database/migrations/2026_07_16_230000_add_site_enrichment_system.php',
+                '--force' => true,
+            ]);
+        }
+    }
+
     public function test_enrichment_index_ok_with_full_schema(): void
     {
         $this->actingAs($this->admin)

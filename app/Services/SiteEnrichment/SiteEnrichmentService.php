@@ -6,6 +6,7 @@ use App\Models\Site;
 use App\Models\SiteEnrichmentRun;
 use App\Support\SiteImageUpload;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class SiteEnrichmentService
 {
@@ -25,7 +26,7 @@ class SiteEnrichmentService
         $this->countries->detectAndApply($site);
         $site->refresh();
 
-        $run = SiteEnrichmentRun::create([
+        $run = $this->startRun([
             'site_id' => $site->id,
             'type' => 'metrics',
             'provider' => $provider ?: (string) config('site_enrichment.default_provider', 'manual'),
@@ -60,9 +61,9 @@ class SiteEnrichmentService
                 $updates['traffic'] = $snapshot->monthlyOrganicTraffic;
             }
 
-            $site->forceFill($updates)->save();
+            $this->persistSiteColumns($site, $updates);
 
-            $run->update([
+            $this->finishRun($run, [
                 'status' => $runStatus,
                 'provider' => $snapshot->provider ?: $run->provider,
                 'payload' => [
@@ -81,19 +82,19 @@ class SiteEnrichmentService
                 'error' => $e->getMessage(),
             ]);
 
-            $site->forceFill([
+            $this->persistSiteColumns($site, [
                 'enrichment_status' => 'failed',
                 'enrichment_error' => $e->getMessage(),
-            ])->save();
+            ]);
 
-            $run->update([
+            $this->finishRun($run, [
                 'status' => 'failed',
                 'error' => $e->getMessage(),
                 'finished_at' => now(),
             ]);
         }
 
-        return $run->fresh() ?? $run;
+        return $run->exists ? ($run->fresh() ?? $run) : $run;
     }
 
     public function refreshScreenshot(Site $site, string $triggeredBy = 'system'): SiteEnrichmentRun
@@ -114,7 +115,7 @@ class SiteEnrichmentService
             ]);
         }
 
-        $run = SiteEnrichmentRun::create([
+        $run = $this->startRun([
             'site_id' => $siteId,
             'type' => 'screenshot',
             'provider' => $provider,
@@ -131,10 +132,10 @@ class SiteEnrichmentService
                 $this->discardCapturedScreenshotFiles($result, $siteId);
                 $this->markScreenshotRunFailed($run, 'Site was removed during screenshot capture.');
 
-                return $run->fresh() ?? $run;
+                return $run->exists ? ($run->fresh() ?? $run) : $run;
             }
 
-            $persisted->forceFill([
+            $this->persistSiteColumns($persisted, [
                 'screenshot_path' => $result['path'],
                 'screenshot_thumb_path' => $result['thumb_path'],
                 'screenshot_fetched_at' => now(),
@@ -142,9 +143,9 @@ class SiteEnrichmentService
                     ? ($persisted->enrichment_status === 'failed' ? 'partial' : ($persisted->enrichment_status ?: 'ready'))
                     : ($result['path'] ? 'partial' : 'failed'),
                 'enrichment_error' => $result['error'],
-            ])->save();
+            ]);
 
-            $run->update([
+            $this->finishRun($run, [
                 'status' => $result['success'] ? 'success' : ($result['path'] ? 'partial' : 'failed'),
                 'payload' => [
                     'path' => $result['path'],
@@ -163,7 +164,7 @@ class SiteEnrichmentService
             $this->markScreenshotRunFailed($run, $e->getMessage());
         }
 
-        return $run->fresh() ?? $run;
+        return $run->exists ? ($run->fresh() ?? $run) : $run;
     }
 
     /**
@@ -208,7 +209,7 @@ class SiteEnrichmentService
 
     public function applyManualMetrics(Site $site, ?int $dr, ?int $da, ?int $traffic, string $triggeredBy = 'admin'): SiteEnrichmentRun
     {
-        $site->forceFill([
+        $this->persistSiteColumns($site, [
             'dr' => $dr,
             'da' => $da,
             'traffic' => $traffic,
@@ -217,9 +218,9 @@ class SiteEnrichmentService
             'metrics_fetched_at' => now(),
             'enrichment_status' => 'ready',
             'enrichment_error' => null,
-        ])->save();
+        ]);
 
-        return SiteEnrichmentRun::create([
+        return $this->startRun([
             'site_id' => $site->id,
             'type' => 'metrics',
             'provider' => 'manual',
@@ -229,5 +230,64 @@ class SiteEnrichmentService
             'started_at' => now(),
             'finished_at' => now(),
         ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $updates
+     */
+    private function persistSiteColumns(Site $site, array $updates): void
+    {
+        $safe = [];
+        foreach ($updates as $column => $value) {
+            if (Site::hasSitesColumn((string) $column)) {
+                $safe[$column] = $value;
+            }
+        }
+        if ($safe === []) {
+            return;
+        }
+
+        $site->forceFill($safe)->save();
+    }
+
+    /**
+     * @param  array<string, mixed>  $attributes
+     */
+    private function startRun(array $attributes): SiteEnrichmentRun
+    {
+        if (! $this->runsTableReady()) {
+            return SiteEnrichmentRun::make($attributes);
+        }
+
+        return SiteEnrichmentRun::create($attributes);
+    }
+
+    /**
+     * @param  array<string, mixed>  $attributes
+     */
+    private function finishRun(SiteEnrichmentRun $run, array $attributes): void
+    {
+        $run->fill($attributes);
+        if (! $run->exists) {
+            return;
+        }
+
+        try {
+            $run->update($attributes);
+        } catch (\Throwable $e) {
+            Log::warning('Could not update enrichment run', [
+                'run_id' => $run->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    private function runsTableReady(): bool
+    {
+        try {
+            return Schema::hasTable('site_enrichment_runs');
+        } catch (\Throwable) {
+            return false;
+        }
     }
 }
