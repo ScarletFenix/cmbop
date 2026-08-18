@@ -4127,6 +4127,26 @@ class CatalogController extends Controller
     }
 
     /**
+     * Publisher-supplied item URLs reach the Orders JSON as hrefs.
+     * Strip leftover javascript:/data: values before action flags so Approve
+     * is not offered for a URL the page will refuse to link.
+     */
+    private function sanitizeAdvertiserOrderItemUrls(Order $order): void
+    {
+        foreach ($order->items as $line) {
+            if (! $line instanceof OrderItem) {
+                continue;
+            }
+            foreach (['live_url', 'target_url', 'feature_image_url', 'content_link'] as $key) {
+                if (! isset($line->{$key})) {
+                    continue;
+                }
+                $line->{$key} = safe_href_url($line->{$key});
+            }
+        }
+    }
+
+    /**
      * @return 'attention'|'date_desc'|'date_asc'|'total_desc'
      */
     private function advertiserOrdersListSort(Request $request): string
@@ -4402,6 +4422,7 @@ class CatalogController extends Controller
                 $order->next_action = $meta['next'];
                 $order->status_cls = $meta['cls'];
                 $order->auto_approve_hint = $meta['auto_approve_hint'];
+                $this->sanitizeAdvertiserOrderItemUrls($order);
                 $this->attachAdvertiserOrderActionFlags($order);
                 $item = $order->items->first();
                 if ($item) {
@@ -4444,6 +4465,7 @@ class CatalogController extends Controller
     public function getOrder($id)
     {
         try {
+            app(CheckoutSchemaService::class)->ensureCheckoutTables();
             $userId = auth()->id();
 
             $order = Order::where('user_id', $userId)
@@ -4463,6 +4485,7 @@ class CatalogController extends Controller
             $order->next_action = $meta['next'];
             $order->status_cls = $meta['cls'];
             $order->auto_approve_hint = $meta['auto_approve_hint'];
+            $this->sanitizeAdvertiserOrderItemUrls($order);
             $this->attachAdvertiserOrderActionFlags($order);
             $item = $order->items->first();
             if ($item) {

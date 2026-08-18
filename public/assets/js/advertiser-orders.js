@@ -90,8 +90,14 @@ function updateOrdersAttentionChip() {
     }
 }
 
-function formatEuro(amount) {
+function euroNumber(amount) {
     const n = parseFloat(amount);
+
+    return Number.isFinite(n) ? n : NaN;
+}
+
+function formatEuro(amount) {
+    const n = euroNumber(amount);
 
     return Number.isFinite(n) ? ('€' + n.toFixed(2)) : '—';
 }
@@ -1624,21 +1630,23 @@ function bootAdvertiserOrdersPage() {
         const hasAnyLiveUrl = items.some((it) => it.live_url && it.live_url !== '');
         const statusMeta = getAdvertiserStatusMeta(order);
         const timelineHtml = buildAdvertiserTimeline(order);
-        const itemsCount = order.items_count || items.length || 0;
+        const itemsCount = Number(order.items_count) || items.length || 0;
 
         const pricingRows = items.map((it, idx) => {
-            const additionalPrice = parseFloat(it.additional_price || 0);
-            const homepagePrice = parseFloat(it.homepage_price || 0) || 0;
-            const linePrice = parseFloat(it.price || 0);
-            const basePrice = Math.max(0, linePrice - additionalPrice - homepagePrice);
+            const additionalPrice = euroNumber(it.additional_price);
+            const homepagePrice = euroNumber(it.homepage_price);
+            const linePrice = euroNumber(it.price);
+            const extras = (Number.isFinite(additionalPrice) ? additionalPrice : 0)
+                + (Number.isFinite(homepagePrice) ? homepagePrice : 0);
+            const basePrice = Number.isFinite(linePrice) ? Math.max(0, linePrice - extras) : NaN;
             const label = itemsCount > 1 ? `Item ${idx + 1} · ${escapeHtml(it.site_name || 'Site')}` : 'Base';
-            let rows = `<div class="ov-row"><strong>${label}</strong><span>€${basePrice.toFixed(2)}</span></div>`;
-            if (additionalPrice > 0) {
-                rows += `<div class="ov-row"><strong>Sensitive</strong><span class="text-warning">+ €${additionalPrice.toFixed(2)} (${escapeHtml(it.sensitive_type || 'Extra')})</span></div>`;
+            let rows = `<div class="ov-row"><strong>${label}</strong><span>${formatEuro(basePrice)}</span></div>`;
+            if (Number.isFinite(additionalPrice) && additionalPrice > 0) {
+                rows += `<div class="ov-row"><strong>Sensitive</strong><span class="text-warning">+ ${formatEuro(additionalPrice)} (${escapeHtml(it.sensitive_type || 'Extra')})</span></div>`;
             }
-            if (it.homepage_days || homepagePrice > 0) {
+            if (it.homepage_days || (Number.isFinite(homepagePrice) && homepagePrice > 0)) {
                 const days = parseInt(it.homepage_days, 10) || 0;
-                rows += `<div class="ov-row"><strong>Homepage${days ? ` · ${days} day${days === 1 ? '' : 's'}` : ''}</strong><span>${homepagePrice > 0 ? `+ €${homepagePrice.toFixed(2)}` : 'Free'}</span></div>`;
+                rows += `<div class="ov-row"><strong>Homepage${days ? ` · ${days} day${days === 1 ? '' : 's'}` : ''}</strong><span>${Number.isFinite(homepagePrice) && homepagePrice > 0 ? `+ ${formatEuro(homepagePrice)}` : 'Free'}</span></div>`;
             }
             return rows;
         }).join('');
@@ -1669,11 +1677,11 @@ function bootAdvertiserOrdersPage() {
                    </div>`
                 : `<div class="ov-block"><strong>Live URL</strong><div class="text-muted">Not submitted yet</div></div>`;
             const homepageDays = it.homepage_days != null ? parseInt(it.homepage_days, 10) : 0;
-            const homepageFee = parseFloat(it.homepage_price || 0) || 0;
+            const homepageFee = euroNumber(it.homepage_price);
             const homepageHtml = homepageDays
                 ? `<div class="ov-block">
                         <strong>Homepage placement</strong>
-                        <div>${homepageDays} day${homepageDays === 1 ? '' : 's'}${homepageFee > 0 ? ` (+€${homepageFee.toFixed(2)})` : ' · Free'}</div>
+                        <div>${homepageDays} day${homepageDays === 1 ? '' : 's'}${Number.isFinite(homepageFee) && homepageFee > 0 ? ` (+${formatEuro(homepageFee)})` : ' · Free'}</div>
                    </div>`
                 : '';
             const socialChannels = Array.isArray(it.social_channels) ? it.social_channels : [];

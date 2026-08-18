@@ -442,9 +442,11 @@ class ChatController extends Controller
 
         $meta = AdvertiserOrderStatus::meta($order, $item);
         $openContentRevision = OrderItem::orderHasOpenContentRevision((int) $order->id);
+        $liveUrl = safe_href_url($item?->live_url);
+        $contentLink = safe_href_url($item?->publisherContentLink());
         $canReview = $isAdvertiser
             && $order->status === 'review'
-            && filled($item?->live_url)
+            && filled($liveUrl)
             && ! $openContentRevision;
         $canSend = $order->status !== 'cancelled' && $order->payment_status === 'paid';
         $composerNote = null;
@@ -487,9 +489,12 @@ class ChatController extends Controller
             'homepage_days' => $item?->homepage_days !== null ? (int) $item->homepage_days : null,
             'homepage_price' => (float) ($item?->homepage_price ?? 0),
             'social_channels' => $item ? $item->enabledSocialChannels() : [],
-            'social_post_urls' => $item ? $item->socialPostUrls() : [],
-            'content_link' => $item?->publisherContentLink(),
-            'live_url' => $item?->live_url,
+            'social_post_urls' => collect($item ? $item->socialPostUrls() : [])
+                ->map(fn ($url) => safe_href_url($url))
+                ->filter()
+                ->all(),
+            'content_link' => $contentLink,
+            'live_url' => $liveUrl,
             'live_url_check_ok' => $item?->live_url_check_ok,
             'live_url_http_status' => $item?->live_url_http_status,
             'completion_notes' => $item?->completion_notes,

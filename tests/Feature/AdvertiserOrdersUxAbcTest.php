@@ -174,8 +174,17 @@ class AdvertiserOrdersUxAbcTest extends TestCase
         $this->assertStringContainsString('onclick="viewOrder(${order.id})"', $js);
         $this->assertStringContainsString('ordersListSort', $js);
         $this->assertStringContainsString('sort: ordersListSort()', $js);
+        $this->assertStringContainsString('function euroNumber(amount)', $js);
         $this->assertStringContainsString('function formatEuro(amount)', $js);
         $this->assertStringContainsString('Number.isFinite(n)', $js);
+        $this->assertStringContainsString('formatEuro(basePrice)', $js);
+        $this->assertStringContainsString('formatEuro(additionalPrice)', $js);
+        $this->assertStringContainsString('formatEuro(homepagePrice)', $js);
+        $this->assertStringContainsString('Number(order.items_count) || items.length || 0', $js);
+        $this->assertStringNotContainsString('€${basePrice.toFixed(2)}', $js);
+        $this->assertStringNotContainsString('€${additionalPrice.toFixed(2)}', $js);
+        $this->assertStringNotContainsString('€${homepagePrice.toFixed(2)}', $js);
+        $this->assertStringNotContainsString('€${homepageFee.toFixed(2)}', $js);
         $this->assertStringContainsString('sortEl.value = ordersListSort()', $js);
         $this->assertStringContainsString('ORDERS_SEARCH_LIVE_MS', $js);
         $this->assertStringContainsString('ORDERS_SEARCH_MIN_CHARS', $js);

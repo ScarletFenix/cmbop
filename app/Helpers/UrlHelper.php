@@ -37,3 +37,18 @@ if (! function_exists('safe_external_url')) {
         return $candidate;
     }
 }
+
+if (! function_exists('safe_href_url')) {
+    /**
+     * Same scheme check as safe_external_url, but leftover / unsafe values
+     * become null so JSON APIs fail closed instead of emitting "#".
+     *
+     * @param  string|null  $url
+     */
+    function safe_href_url($url): ?string
+    {
+        $safe = safe_external_url($url, '');
+
+        return $safe !== '' ? $safe : null;
+    }
+}

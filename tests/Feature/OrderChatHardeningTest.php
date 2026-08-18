@@ -311,6 +311,29 @@ class OrderChatHardeningTest extends TestCase
             ->assertJsonPath('order_details.content_link', 'https://example.com/article.docx');
     }
 
+    public function test_order_chat_details_strip_javascript_live_url_and_block_approve(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher);
+        $order = $this->orderFor($advertiser, $site, 'review');
+
+        OrderItem::where('order_id', $order->id)->update([
+            'live_url' => 'javascript:alert(1)',
+            'live_url_submitted_at' => now(),
+            'content_link' => 'javascript:alert(2)',
+        ]);
+
+        $this->actingAs($advertiser)
+            ->getJson(route('chat.messages', $order->id))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('order_details.live_url', null)
+            ->assertJsonPath('order_details.content_link', null)
+            ->assertJsonPath('order_details.can_approve', false)
+            ->assertJsonPath('order_details.can_request_changes', false);
+    }
+
     public function test_since_id_returns_only_newer_messages(): void
     {
         $advertiser = $this->advertiser();
