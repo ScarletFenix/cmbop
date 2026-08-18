@@ -606,6 +606,7 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
         Route::get('/deposits/{id}', [AdminDepositController::class, 'show'])->name('deposits.show');
         Route::post('/deposits/{id}/approve', [AdminDepositController::class, 'approve'])->name('deposits.approve');
         Route::post('/deposits/{id}/reject', [AdminDepositController::class, 'reject'])->name('deposits.reject');
+        Route::post('/deposits/{id}/paypal-refund', [AdminDepositController::class, 'refundPaypal'])->name('deposits.paypal-refund');
         Route::get('/deposits/{deposit}/approve-confirm', [AdminDepositApproveConfirmController::class, 'show'])
             ->middleware('throttle:30,1')
             ->name('deposits.approve-confirm.show')

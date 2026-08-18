@@ -89,6 +89,8 @@ class AddFundsController extends Controller
             'advertiserBalance' => (float) $wallet->balance,
             'advertiserBonusBalance' => $wallet->lockedBonusBalance(),
             'advertiserWithdrawableBalance' => $wallet->withdrawableBalance(),
+            'advertiserDebtBalance' => $wallet->debtBalance(),
+            'advertiserDebtReason' => $wallet->advertiserSpendBlockedReason(),
             'publisher' => $publisher,
             'publisherBalance' => $publisher['withdrawable'],
             'showPublisherWallet' => $publisherWallet !== null,

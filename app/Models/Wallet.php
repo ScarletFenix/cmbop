@@ -201,7 +201,27 @@ class Wallet extends Model
             throw new \InvalidArgumentException('Credit amount must be non-negative');
         }
 
-        $this->balance = round((float) $this->balance + $amount, 2);
+        $amount = round($amount, 2);
+        if ($amount <= 0) {
+            return $this;
+        }
+
+        // Advertiser Add Funds (and other cash credits) pay deposit-refund
+        // debt first so checkout can unlock. Publisher clawback debt stays
+        // until admin clears it or the publisher withdraws after it is gone.
+        if (static::hasTableColumn('debt_balance') && $this->isAdvertiserWallet()) {
+            $debt = $this->debtBalance();
+            if ($debt > 0) {
+                $applied = min($amount, $debt);
+                $this->debt_balance = round($debt - $applied, 2);
+                $amount = round($amount - $applied, 2);
+            }
+        }
+
+        if ($amount > 0) {
+            $this->balance = round((float) $this->balance + $amount, 2);
+        }
+
         $this->save();
 
         return $this;
@@ -632,7 +652,8 @@ class Wallet extends Model
     }
 
     /**
-     * Outstanding clawback / platform debt (blocks withdrawals while &gt; 0).
+     * Outstanding clawback / platform debt. Blocks publisher withdrawals
+     * and advertiser checkout / withdrawals while &gt; 0.
      */
     public function debtBalance(): float
     {
@@ -642,6 +663,38 @@ class Wallet extends Model
     public function hasDebt(): bool
     {
         return $this->debtBalance() > 0;
+    }
+
+    public function isAdvertiserWallet(): bool
+    {
+        $roleId = static::advertiserRoleId();
+
+        return $roleId !== null && (int) $this->role_id === (int) $roleId;
+    }
+
+    public function advertiserSpendBlockedReason(): ?string
+    {
+        if (! $this->hasDebt()) {
+            return null;
+        }
+
+        return 'Your wallet has €'.number_format($this->debtBalance(), 2)
+            .' outstanding debt from a refunded deposit. Add funds to clear it before placing new orders or withdrawing.';
+    }
+
+    public static function advertiserSpendBlockForUser(int $userId): ?string
+    {
+        $roleId = static::advertiserRoleId();
+        if (! $roleId || ! static::hasTableColumn('debt_balance')) {
+            return null;
+        }
+
+        $wallet = static::query()
+            ->where('user_id', $userId)
+            ->where('role_id', $roleId)
+            ->first();
+
+        return $wallet?->advertiserSpendBlockedReason();
     }
 
     /**

@@ -149,6 +149,12 @@
                     <i class="fa fa-plus-circle me-2"></i> Add Funds
                 </div>
                 <div class="card-body">
+                    @if(($advertiserDebtBalance ?? 0) > 0.009)
+                        <div class="alert alert-warning py-2 px-3 mb-3" role="alert">
+                            {{ $advertiserDebtReason }}
+                            New deposits pay that debt first, then the rest is added to your spendable balance.
+                        </div>
+                    @endif
                     <div class="alert alert-light border mb-3" id="depositWorkflowHint" style="background:var(--brand-primary-bg,#e6f5f5); border-color:var(--brand-primary-border,#b8e4e4) !important;">
                         <div class="fw-semibold mb-1" style="color:var(--brand-primary,var(--brand-primary, #1a585e));">How wallet top-ups work</div>
                         <p class="small text-muted mb-0">

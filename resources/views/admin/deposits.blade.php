@@ -246,6 +246,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const csrfToken = @json(csrf_token());
     const approveUrlTemplate = @json(route('admin.deposits.approve', ['id' => '__ID__']));
     const rejectUrlTemplate = @json(route('admin.deposits.reject', ['id' => '__ID__']));
+    const paypalRefundUrlTemplate = @json(route('admin.deposits.paypal-refund', ['id' => '__ID__']));
 
     function paypalDepositFields(deposit) {
         const response = (deposit && typeof deposit.paypal_response === 'object' && deposit.paypal_response)
@@ -341,7 +342,7 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(readJsonResponse)
             .then(data => {
                 if (data.success) {
-                    renderDepositModal(data.deposit, data.invoice);
+                    renderDepositModal(data.deposit, data.invoice, data.can_refund_paypal);
                     const modal = new bootstrap.Modal(document.getElementById('depositModal'));
                     modal.show();
                 } else {
@@ -355,7 +356,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     
-    function renderDepositModal(deposit, invoice) {
+    function renderDepositModal(deposit, invoice, canRefundPaypal) {
         let statusBadge = '';
         if (deposit.status === 'pending') {
             statusBadge = '<span class="badge bg-warning">Pending</span>';
@@ -461,20 +462,25 @@ document.addEventListener('DOMContentLoaded', function() {
             `;
         }
         
-        if (deposit.status === 'pending') {
+        if (deposit.status === 'pending' || canRefundPaypal) {
             html += `
                 <hr>
                 <div class="mb-3">
                     <label class="fw-semibold text-muted small">Admin Notes (Optional)</label>
                     <textarea id="adminNotes" class="form-control" rows="3" placeholder="Add notes about this deposit..."></textarea>
                 </div>
-                <div class="d-flex gap-2">
+                <div class="d-flex gap-2 flex-wrap">
+                    ${deposit.status === 'pending' ? `
                     <button class="btn btn-success approve-deposit" data-id="${deposit.id}">
                         <i class="fa fa-check"></i> Approve & Add Funds
                     </button>
                     <button class="btn btn-danger reject-deposit" data-id="${deposit.id}">
                         <i class="fa fa-times"></i> Reject
-                    </button>
+                    </button>` : ''}
+                    ${canRefundPaypal ? `
+                    <button class="btn btn-outline-danger refund-paypal-deposit" data-id="${deposit.id}">
+                        <i class="fab fa-paypal"></i> Refund PayPal capture
+                    </button>` : ''}
                 </div>
             `;
         }
@@ -491,6 +497,12 @@ document.addEventListener('DOMContentLoaded', function() {
         document.querySelectorAll('.reject-deposit').forEach(btn => {
             btn.addEventListener('click', function() {
                 rejectDeposit(this.dataset.id);
+            });
+        });
+
+        document.querySelectorAll('.refund-paypal-deposit').forEach(btn => {
+            btn.addEventListener('click', function() {
+                refundPaypalDeposit(this.dataset.id);
             });
         });
     }
@@ -546,6 +558,53 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
+    function refundPaypalDeposit(id) {
+        const notes = document.getElementById('adminNotes')?.value || '';
+
+        Swal.fire({
+            title: 'Refund this PayPal deposit?',
+            text: 'This refunds the PayPal capture to the buyer and removes the credit from their wallet. If they already spent part of it, the leftover becomes wallet debt.',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, refund on PayPal',
+            cancelButtonText: 'Cancel',
+            customClass: { confirmButton: 'slb-swal-danger' }
+        }).then((result) => {
+            if (! result.isConfirmed) {
+                return;
+            }
+
+            Swal.fire({
+                title: 'Refunding PayPal…',
+                text: 'Please wait',
+                allowOutsideClick: false,
+                didOpen: () => {
+                    Swal.showLoading();
+                }
+            });
+
+            fetch(depositActionUrl(paypalRefundUrlTemplate, id), {
+                method: 'POST',
+                headers: jsonHeaders({ 'Content-Type': 'application/json' }),
+                body: JSON.stringify({ admin_notes: notes })
+            })
+            .then(readJsonResponse)
+            .then(data => {
+                if (data.success) {
+                    Swal.fire('Refunded', data.message || 'PayPal capture refunded.', 'success').then(() => {
+                        location.reload();
+                    });
+                } else {
+                    Swal.fire('Error', data.message || 'PayPal refund failed. The wallet was not changed.', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                Swal.fire('Error', error.message || 'PayPal refund failed. The wallet was not changed.', 'error');
+            });
+        });
+    }
+
     function rejectDeposit(id) {
         const notes = document.getElementById('adminNotes')?.value || '';
         

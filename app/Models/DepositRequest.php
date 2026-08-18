@@ -121,4 +121,11 @@ class DepositRequest extends Model
     {
         return Invoice::paymentMethodLabel($this->payment_method);
     }
+
+    public function isPaypalRefundable(): bool
+    {
+        return strtolower((string) $this->payment_method) === 'paypal'
+            && in_array((string) $this->status, ['completed', 'approved'], true)
+            && filled($this->paypal_capture_id);
+    }
 }

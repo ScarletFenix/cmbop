@@ -245,7 +245,31 @@ class PaypalCopyFiltersModalTest extends TestCase
             ->assertJsonPath('deposit.paypal_order_id', 'PO-MODAL-1')
             ->assertJsonPath('deposit.paypal_capture_id', 'CAP-MODAL-1')
             ->assertJsonPath('deposit.paypal_response.refund.id', 'RF-MODAL-1')
-            ->assertJsonPath('deposit.paypal_response.refund.debt_created', 17);
+            ->assertJsonPath('deposit.paypal_response.refund.debt_created', 17)
+            ->assertJsonPath('can_refund_paypal', false);
+
+        $refundable = DepositRequest::create([
+            'user_id' => $advertiser->id,
+            'reference_code' => '888778',
+            'amount' => 40,
+            'payment_method' => 'paypal',
+            'status' => 'completed',
+            'paypal_order_id' => 'PO-MODAL-2',
+            'paypal_capture_id' => 'CAP-MODAL-2',
+            'approved_at' => now(),
+            'paid_at' => now(),
+        ]);
+
+        config([
+            'services.paypal.enabled' => true,
+            'services.paypal.client_id' => 'paypal-client-test',
+            'services.paypal.secret' => 'paypal-secret-test',
+        ]);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.deposits.show', $refundable->id))
+            ->assertOk()
+            ->assertJsonPath('can_refund_paypal', true);
 
         $page = $this->actingAs($admin)
             ->get(route('admin.deposits'))
@@ -254,5 +278,7 @@ class PaypalCopyFiltersModalTest extends TestCase
         $this->assertStringContainsString('id="depositModalTitle"', $page);
         $this->assertStringContainsString('paypalDepositFields', $page);
         $this->assertStringContainsString('Deposit details', $page);
+        $this->assertStringContainsString('refundPaypalDeposit', $page);
+        $this->assertStringContainsString('Refund PayPal capture', $page);
     }
 }

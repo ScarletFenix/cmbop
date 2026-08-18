@@ -10,8 +10,10 @@ use App\Models\DepositRequest;
 use App\Services\ActivityLogger;
 use App\Services\Billing\AdminInvoiceLinks;
 use App\Services\InAppNotificationService;
+use App\Services\PaypalCheckoutService;
 use App\Services\Wallet\ManualDepositAlreadyProcessedException;
 use App\Services\Wallet\ManualDepositApprovalService;
+use App\Services\WalletPaypalDepositService;
 use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -130,6 +132,8 @@ class DepositController extends Controller
                 'success' => true,
                 'deposit' => $deposit,
                 'invoice' => $invoice,
+                'can_refund_paypal' => $deposit->isPaypalRefundable()
+                    && app(PaypalCheckoutService::class)->configured(),
             ]);
         } catch (\Throwable $e) {
             Log::warning('Failed to load admin deposit detail: '.$e->getMessage(), [
@@ -187,6 +191,65 @@ class DepositController extends Controller
                 'success' => false,
                 'message' => UserFacingError::message($e, 'Failed to approve deposit. Please try again.'),
             ]);
+        }
+    }
+
+    public function refundPaypal(Request $request, $id, WalletPaypalDepositService $paypalDeposits)
+    {
+        $notes = $this->validatedAdminNotes($request);
+
+        if (! DepositRequest::tableAvailable()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Deposit request not found',
+            ]);
+        }
+
+        $deposit = DepositRequest::find($id);
+        if (! $deposit) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Deposit request not found',
+            ]);
+        }
+
+        try {
+            $result = $paypalDeposits->refundCapture($deposit);
+            $fresh = $result['deposit'];
+            if (filled($notes) && $fresh) {
+                $existing = trim((string) ($fresh->admin_notes ?? ''));
+                $fresh->update(DepositRequest::attributesThatExist([
+                    'admin_notes' => $existing !== '' ? $existing."\n".$notes : $notes,
+                ]));
+            }
+
+            ActivityLogger::tryLog(
+                $result['already_refunded'] ? 'deposit.paypal_refund_replayed' : 'deposit.paypal_refunded',
+                ($result['already_refunded'] ? 'Replayed ' : 'Refunded ').'PayPal Add Funds deposit REF '.($fresh->reference_code ?: $fresh->id),
+                $fresh,
+                [
+                    'deposit_id' => $fresh->id,
+                    'reference_code' => $fresh->reference_code,
+                    'amount' => (float) $fresh->amount,
+                ]
+            );
+
+            return response()->json([
+                'success' => true,
+                'already_refunded' => $result['already_refunded'],
+                'message' => $result['already_refunded']
+                    ? 'This PayPal deposit was already refunded. The wallet was not changed again.'
+                    : 'PayPal capture refunded and the wallet credit was reversed.',
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Failed to refund PayPal deposit: '.$e->getMessage(), [
+                'deposit_id' => $deposit->id,
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'PayPal refund failed. The wallet was not changed.'),
+            ], 422);
         }
     }
 

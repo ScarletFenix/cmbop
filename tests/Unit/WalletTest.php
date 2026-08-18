@@ -122,4 +122,51 @@ class WalletTest extends TestCase
             'debt' => 0.0,
         ], Wallet::emptyRoleSnapshot());
     }
+
+    public function test_advertiser_credit_pays_debt_then_leftover_balance(): void
+    {
+        $wallet = $this->makeWallet(10);
+        $wallet->forceFill(['debt_balance' => 17])->save();
+
+        $wallet->credit(25);
+        $wallet->refresh();
+
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->debt_balance, 0.01);
+        $this->assertEqualsWithDelta(18.0, (float) $wallet->balance, 0.01);
+        $this->assertNull($wallet->advertiserSpendBlockedReason());
+    }
+
+    public function test_advertiser_credit_smaller_than_debt_leaves_remainder(): void
+    {
+        $wallet = $this->makeWallet(4);
+        $wallet->forceFill(['debt_balance' => 17])->save();
+
+        $wallet->credit(10);
+        $wallet->refresh();
+
+        $this->assertEqualsWithDelta(7.0, (float) $wallet->debt_balance, 0.01);
+        $this->assertEqualsWithDelta(4.0, (float) $wallet->balance, 0.01);
+        $this->assertStringContainsString('€7.00', (string) $wallet->advertiserSpendBlockedReason());
+    }
+
+    public function test_publisher_credit_does_not_clear_clawback_debt(): void
+    {
+        $publisherRole = Role::create(['name' => 'publisher']);
+        $user = User::factory()->create();
+        $wallet = Wallet::create([
+            'user_id' => $user->id,
+            'role_id' => $publisherRole->id,
+            'balance' => 0,
+            'reserved_balance' => 0,
+            'currency' => 'EUR',
+        ]);
+        $wallet->forceFill(['debt_balance' => 60])->save();
+
+        $wallet->credit(80);
+        $wallet->refresh();
+
+        $this->assertEqualsWithDelta(60.0, (float) $wallet->debt_balance, 0.01);
+        $this->assertEqualsWithDelta(80.0, (float) $wallet->balance, 0.01);
+        $this->assertFalse($wallet->canWithdraw(10));
+    }
 }

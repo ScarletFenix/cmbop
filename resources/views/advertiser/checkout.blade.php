@@ -307,6 +307,12 @@
                         </div>
                         <div class="card-body">
                             <p class="text-muted small mb-3">Pay from your wallet, by card, or PayPal. Bank, Wise, and crypto fund your wallet via invoice first.</p>
+                            @if(($checkoutDebtBalance ?? 0) > 0.009)
+                                <div class="alert alert-warning py-2 px-3 mb-3 small" role="alert">
+                                    {{ $checkoutDebtReason }}
+                                    <a href="{{ route('advertiser.add-funds') }}" class="alert-link">Add funds</a> to clear the debt first.
+                                </div>
+                            @endif
 
                             <!-- Recommended: Wallet -->
                             <div class="payment-option payment-option-recommended mb-3" data-method="wallet" style="cursor: pointer;" role="button" tabindex="0" aria-label="Pay with wallet balance">

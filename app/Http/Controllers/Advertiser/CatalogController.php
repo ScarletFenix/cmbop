@@ -2012,6 +2012,14 @@ class CatalogController extends Controller
         $checkoutBonusBalance = $checkoutWallet ? $checkoutWallet->lockedBonusBalance() : 0.0;
         $checkoutCashBalance = $checkoutWallet ? $checkoutWallet->withdrawableBalance() : 0.0;
         $checkoutSpendableBalance = (float) ($checkoutWallet?->balance ?? 0);
+        $advertiserDebtWallet = Wallet::advertiserRoleId()
+            ? Wallet::query()
+                ->where('user_id', auth()->id())
+                ->where('role_id', Wallet::advertiserRoleId())
+                ->first()
+            : null;
+        $checkoutDebtBalance = $advertiserDebtWallet?->debtBalance() ?? 0.0;
+        $checkoutDebtReason = $advertiserDebtWallet?->advertiserSpendBlockedReason();
 
         // Article assignment lives in the cart drawer (cart.get → orderable list),
         // not on this page — only load articles already attached to the order summary.
@@ -2068,6 +2076,8 @@ class CatalogController extends Controller
             'checkoutBonusBalance',
             'checkoutCashBalance',
             'checkoutSpendableBalance',
+            'checkoutDebtBalance',
+            'checkoutDebtReason',
             'checkoutArticles',
             'savedCards',
             'stripeConfigured',
@@ -2149,6 +2159,15 @@ class CatalogController extends Controller
                     'success' => false,
                     'message' => 'PayPal is not configured. Please pay with wallet or card.',
                 ], 503);
+            }
+
+            if ($debtBlock = Wallet::advertiserSpendBlockForUser((int) $userId)) {
+                return response()->json([
+                    'success' => false,
+                    'code' => 'wallet_debt',
+                    'message' => $debtBlock,
+                    'redirect_url' => route('advertiser.add-funds'),
+                ], 422);
             }
 
             // Treat replaceable leftovers as ready so we can see what would
@@ -3328,6 +3347,16 @@ class CatalogController extends Controller
                 return $this->leftoverReplaceBlockedResponse(['lines' => $fulfillableLines]);
             }
             $advertiserWallet->refresh();
+            if ($debtBlock = $advertiserWallet->advertiserSpendBlockedReason()) {
+                DB::rollBack();
+
+                return response()->json([
+                    'success' => false,
+                    'code' => 'wallet_debt',
+                    'message' => $debtBlock,
+                    'redirect_url' => route('advertiser.add-funds'),
+                ], 422);
+            }
 
             $expandedOrders = array_column($fulfillableLines, 'orderItem');
             $totalAmount = round(array_sum(array_column($expandedOrders, 'price')), 2);

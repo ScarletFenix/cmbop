@@ -156,6 +156,66 @@ class WalletPaypalDepositService
     }
 
     /**
+     * Refund a credited PayPal Add Funds capture from the admin panel, then
+     * reverse the wallet credit. HTTP stays outside the wallet transaction.
+     *
+     * @return array{already_refunded: bool, deposit: DepositRequest}
+     */
+    public function refundCapture(DepositRequest $deposit): array
+    {
+        $deposit->refresh();
+
+        if (strtolower((string) $deposit->payment_method) !== 'paypal') {
+            throw new \RuntimeException('Only PayPal deposits can be refunded here.');
+        }
+
+        if ($deposit->status === 'refunded') {
+            return [
+                'already_refunded' => true,
+                'deposit' => $deposit,
+            ];
+        }
+
+        if (! $deposit->isPaypalRefundable()) {
+            throw new \RuntimeException(
+                filled($deposit->paypal_capture_id)
+                    ? 'This PayPal deposit has not been credited yet.'
+                    : 'This PayPal deposit has no capture id, so it cannot be refunded here.'
+            );
+        }
+
+        $paypal = app(PaypalCheckoutService::class);
+        if (! $paypal->configured()) {
+            throw new \RuntimeException('PayPal is not configured. Refund the capture in the PayPal dashboard.');
+        }
+
+        $captureId = trim((string) $deposit->paypal_capture_id);
+        $amount = round((float) $deposit->amount, 2);
+        $refunded = $paypal->refundCapture($captureId, $amount, 'deposit-refund-'.$captureId);
+        $refundId = trim((string) ($refunded['id'] ?? ''));
+        if ($refundId === '') {
+            throw new \RuntimeException('PayPal refund did not return an id. The wallet was not changed.');
+        }
+
+        $this->reverseFromRefund(
+            $captureId,
+            $refundId,
+            trim((string) $deposit->paypal_order_id),
+            $amount
+        );
+
+        $fresh = $deposit->fresh(['user']);
+        if (! $fresh) {
+            throw new \RuntimeException('PayPal refund succeeded but the deposit row could not be reloaded.');
+        }
+
+        return [
+            'already_refunded' => false,
+            'deposit' => $fresh,
+        ];
+    }
+
+    /**
      * Reverse a completed PayPal Add Funds credit after the capture is refunded.
      * Debits available cash; leftover becomes advertiser wallet debt.
      *
