@@ -118,7 +118,7 @@ class ContentLibraryImprovementsTest extends TestCase
             ->assertOk()
             ->assertSee('Title')
             ->assertSee('Market')
-            ->assertSee('Scores')
+            ->assertSee('Uniqueness · Quality')
             ->assertSee('Growth Playbook')
             ->assertSee('Approved');
 

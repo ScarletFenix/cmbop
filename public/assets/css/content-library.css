@@ -130,6 +130,12 @@
         align-items: center;
         gap: .25rem;
     }
+    .library-table-note {
+        font-size: .78rem;
+        color: var(--brand-ink-muted, #75787B);
+        margin: 0 0 .65rem;
+        line-height: 1.35;
+    }
     .library-scores-note {
         display: block;
         font-size: .68rem;
@@ -137,7 +143,7 @@
         color: var(--brand-ink-muted, #75787B);
         margin-top: .15rem;
         white-space: normal;
-        max-width: 9rem;
+        max-width: 11rem;
     }
     .library-reason-list {
         margin: .35rem 0 0;
@@ -388,7 +394,8 @@
         }
     }
 
-    .library-scores { font-variant-numeric: tabular-nums; white-space: nowrap; color: #475569; }
+    .library-scores { font-variant-numeric: tabular-nums; white-space: normal; color: #475569; }
+    .library-scores-pair { display: block; white-space: nowrap; }
     .library-preview {
         border: 1px solid var(--brand-primary-border, #b8e4e4);
         background: #fff;
