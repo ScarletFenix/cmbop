@@ -7,6 +7,7 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\OrderItemDispute;
 use App\Services\Orders\OrderClawbackService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 
@@ -68,6 +69,10 @@ class OrderDisputeController extends Controller
             'admin_notes' => 'required|string|min:10|max:1000',
         ]);
 
+        if ($unavailable = $this->disputesUnavailableResponse()) {
+            return $unavailable;
+        }
+
         $dispute = OrderItemDispute::findOrFail($disputeId);
 
         try {
@@ -93,6 +98,10 @@ class OrderDisputeController extends Controller
             'admin_notes' => 'required|string|min:10|max:1000',
         ]);
 
+        if ($unavailable = $this->disputesUnavailableResponse()) {
+            return $unavailable;
+        }
+
         $dispute = OrderItemDispute::findOrFail($disputeId);
 
         try {
@@ -110,6 +119,19 @@ class OrderDisputeController extends Controller
                 'errors' => $e->errors(),
             ], 422);
         }
+    }
+
+    private function disputesUnavailableResponse(): ?JsonResponse
+    {
+        OrderItemDispute::ensureTable();
+        if (OrderItemDispute::tableAvailable()) {
+            return null;
+        }
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Disputes are unavailable until the database migration has been run.',
+        ], 503);
     }
 
     private function disputePayload(OrderItemDispute $dispute): array

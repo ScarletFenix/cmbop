@@ -38,7 +38,7 @@ class BulkSitesSeededNotification extends PlatformMailable
             ->with([
                 'bulkRequest' => $this->bulkRequest,
                 'createdCount' => $this->createdCount,
-                'publisherName' => $this->bulkRequest->publisher->name ?? 'Publisher',
+                'publisherName' => $this->bulkRequest->publisher?->name ?? 'Publisher',
                 'completeUrl' => route('publisher.websites'),
             ]);
     }

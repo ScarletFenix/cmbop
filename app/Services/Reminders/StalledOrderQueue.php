@@ -46,18 +46,21 @@ class StalledOrderQueue
 
         // Unaccepted orders are the worse case — nothing has happened at all —
         // so they are surfaced in the same list once the cadence is exhausted.
-        $unaccepted = OrderItem::query()
-            ->whereAcceptedAtIsMissing()
-            ->where('accept_nudge_stage', '>=', $acceptStages)
-            ->whereHas('order', function ($q) {
-                $q->where('payment_status', 'paid')
-                    ->where('status', 'pending')
-                    ->notAwaitingScheduledRelease();
-            })
-            ->with(['order.user', 'site.publisher'])
-            ->limit($limit)
-            ->get()
-            ->map(fn (OrderItem $item) => $this->row($item, 'accept'));
+        $unaccepted = collect();
+        if (Schema::hasColumn('order_items', 'accept_nudge_stage')) {
+            $unaccepted = OrderItem::query()
+                ->whereAcceptedAtIsMissing()
+                ->where('accept_nudge_stage', '>=', $acceptStages)
+                ->whereHas('order', function ($q) {
+                    $q->where('payment_status', 'paid')
+                        ->where('status', 'pending')
+                        ->notAwaitingScheduledRelease();
+                })
+                ->with(['order.user', 'site.publisher'])
+                ->limit($limit)
+                ->get()
+                ->map(fn (OrderItem $item) => $this->row($item, 'accept'));
+        }
 
         return $unaccepted->concat($unpublished)
             ->sortByDesc('hours_overdue')
@@ -85,15 +88,18 @@ class StalledOrderQueue
             })
             ->count();
 
-        $unaccepted = OrderItem::query()
-            ->whereAcceptedAtIsMissing()
-            ->where('accept_nudge_stage', '>=', $acceptStages)
-            ->whereHas('order', function ($q) {
-                $q->where('payment_status', 'paid')
-                    ->where('status', 'pending')
-                    ->notAwaitingScheduledRelease();
-            })
-            ->count();
+        $unaccepted = 0;
+        if (Schema::hasColumn('order_items', 'accept_nudge_stage')) {
+            $unaccepted = OrderItem::query()
+                ->whereAcceptedAtIsMissing()
+                ->where('accept_nudge_stage', '>=', $acceptStages)
+                ->whereHas('order', function ($q) {
+                    $q->where('payment_status', 'paid')
+                        ->where('status', 'pending')
+                        ->notAwaitingScheduledRelease();
+                })
+                ->count();
+        }
 
         return $unpublished + $unaccepted;
     }

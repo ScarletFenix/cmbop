@@ -7,6 +7,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Services\InAppNotificationService;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Mail;
@@ -227,5 +228,41 @@ class AdminDepositsCrashHardeningTest extends TestCase
             ->assertJsonPath('success', true);
 
         $this->assertSame('rejected', $deposit->fresh()->status);
+    }
+
+    public function test_index_survives_missing_user_marked_paid_at_column(): void
+    {
+        if (! Schema::hasColumn('deposit_requests', 'user_marked_paid_at')) {
+            $this->markTestSkipped('deposit_requests.user_marked_paid_at is already absent');
+        }
+
+        try {
+            Schema::table('deposit_requests', function (Blueprint $table) {
+                $table->dropColumn('user_marked_paid_at');
+            });
+        } catch (\Throwable) {
+            $this->markTestSkipped('Could not drop user_marked_paid_at on this driver');
+        }
+
+        if (Schema::hasColumn('deposit_requests', 'user_marked_paid_at')) {
+            $this->markTestSkipped('user_marked_paid_at is still present after drop');
+        }
+
+        try {
+            $admin = $this->makeUser('admin');
+            $advertiser = $this->makeUser('advertiser');
+            $this->depositFor($advertiser);
+
+            $this->actingAs($admin)
+                ->get(route('admin.deposits'))
+                ->assertOk()
+                ->assertDontSee('Something went wrong');
+        } finally {
+            if (! Schema::hasColumn('deposit_requests', 'user_marked_paid_at')) {
+                Schema::table('deposit_requests', function (Blueprint $table) {
+                    $table->timestamp('user_marked_paid_at')->nullable();
+                });
+            }
+        }
     }
 }

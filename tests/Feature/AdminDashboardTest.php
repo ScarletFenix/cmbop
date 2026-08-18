@@ -16,8 +16,10 @@ use App\Models\Wallet;
 use App\Models\WebsiteSuggestion;
 use App\Models\Withdrawal;
 use App\Services\Admin\FinanceOverviewService;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 class AdminDashboardTest extends TestCase
@@ -744,5 +746,44 @@ class AdminDashboardTest extends TestCase
             ->getJson(route('admin.dashboard.finance'))
             ->assertOk()
             ->assertJsonPath('data.due_to_pay_now', 15);
+    }
+
+    public function test_statistics_and_trends_survive_missing_paid_at_column(): void
+    {
+        if (! Schema::hasColumn('orders', 'paid_at')) {
+            $this->markTestSkipped('orders.paid_at is already absent');
+        }
+
+        try {
+            Schema::table('orders', function (Blueprint $table) {
+                $table->dropColumn('paid_at');
+            });
+        } catch (\Throwable) {
+            $this->markTestSkipped('Could not drop orders.paid_at on this driver');
+        }
+
+        if (Schema::hasColumn('orders', 'paid_at')) {
+            $this->markTestSkipped('orders.paid_at is still present after drop');
+        }
+
+        try {
+            $admin = $this->makeAdmin();
+
+            $this->actingAs($admin)
+                ->getJson(route('admin.dashboard.statistics'))
+                ->assertOk()
+                ->assertJsonPath('success', true);
+
+            $this->actingAs($admin)
+                ->getJson(route('admin.dashboard.trends'))
+                ->assertOk()
+                ->assertJsonPath('success', true);
+        } finally {
+            if (! Schema::hasColumn('orders', 'paid_at')) {
+                Schema::table('orders', function (Blueprint $table) {
+                    $table->timestamp('paid_at')->nullable();
+                });
+            }
+        }
     }
 }

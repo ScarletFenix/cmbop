@@ -116,7 +116,13 @@ class FinanceOverviewService
     public function opsQueues(): array
     {
         $pendingDeposits = DepositRequest::where('status', 'pending');
-        $userMarked = (clone $pendingDeposits)->whereUserMarkedPaidAtIsRecorded();
+        $userMarkedPaidCount = 0;
+        $userMarkedPaidAmount = 0.0;
+        if ($this->depositsHaveColumn('user_marked_paid_at')) {
+            $userMarked = (clone $pendingDeposits)->whereUserMarkedPaidAtIsRecorded();
+            $userMarkedPaidCount = (clone $userMarked)->count();
+            $userMarkedPaidAmount = (float) (clone $userMarked)->sum('amount');
+        }
         $openWithdrawals = Withdrawal::whereIn('status', ['pending', 'processing']);
         $pendingPayments = Order::query()->unpaidOps();
 
@@ -124,8 +130,8 @@ class FinanceOverviewService
             'pending_deposits' => [
                 'count' => (clone $pendingDeposits)->count(),
                 'amount' => (float) (clone $pendingDeposits)->sum('amount'),
-                'user_marked_paid_count' => (clone $userMarked)->count(),
-                'user_marked_paid_amount' => (float) (clone $userMarked)->sum('amount'),
+                'user_marked_paid_count' => $userMarkedPaidCount,
+                'user_marked_paid_amount' => $userMarkedPaidAmount,
                 'url' => route('admin.deposits', ['status' => 'pending']),
             ],
             'open_withdrawals' => [
@@ -156,7 +162,7 @@ class FinanceOverviewService
             'url' => route('admin.finance').'#finance-debt',
         ];
 
-        if (! Schema::hasColumn('wallets', 'debt_balance')) {
+        if (! $this->walletsAvailable() || ! Schema::hasColumn('wallets', 'debt_balance')) {
             return $empty;
         }
 
@@ -193,9 +199,9 @@ class FinanceOverviewService
      */
     public function walletLiability(): array
     {
-        $advertiserRoleId = Wallet::advertiserRoleId();
-        $publisherRoleId = Wallet::publisherRoleId();
-        $hasBonus = $this->hasBonusColumns();
+        $advertiserRoleId = $this->walletsAvailable() ? Wallet::advertiserRoleId() : null;
+        $publisherRoleId = $this->walletsAvailable() ? Wallet::publisherRoleId() : null;
+        $hasBonus = $this->walletsAvailable() && $this->hasBonusColumns();
 
         $adv = [
             'balance' => 0.0,
@@ -371,9 +377,6 @@ class FinanceOverviewService
             })
             ->sum('amount');
 
-        $bonuses = WalletTransaction::where('type', WalletTransaction::TYPE_BONUS_CREDIT);
-        $this->applyCreatedWindow($bonuses, $start, $end);
-
         return [
             'deposits_completed' => [
                 'count' => (clone $depositsCompleted)->count(),
@@ -391,8 +394,8 @@ class FinanceOverviewService
                 'manual' => $manualOrders,
             ],
             'bonuses_issued' => [
-                'count' => (clone $bonuses)->count(),
-                'amount' => (float) (clone $bonuses)->sum('amount'),
+                'count' => $this->ledgerTypeCount(WalletTransaction::TYPE_BONUS_CREDIT, $start, $end),
+                'amount' => $this->ledgerTypeAmount(WalletTransaction::TYPE_BONUS_CREDIT, $start, $end),
             ],
             'unfulfilled_card_credits' => $this->unfulfilledCardCredits($start, $end),
             // Bank still has this cash after a wallet refund (no Stripe refund).
@@ -428,11 +431,6 @@ class FinanceOverviewService
             $earningsCount = $this->reversedPublisherPayoutCount($start, $end);
         }
 
-        $ledgerEarnings = WalletTransaction::where('type', WalletTransaction::TYPE_TRANSFER_IN);
-        $this->applyCreatedWindow($ledgerEarnings, $start, $end);
-        $ledgerClawbacks = WalletTransaction::where('type', WalletTransaction::TYPE_TRANSFER_OUT);
-        $this->applyCreatedWindow($ledgerClawbacks, $start, $end);
-
         $paidWithdrawals = Withdrawal::where('status', 'completed');
         $this->applyWithdrawalProcessedWindow($paidWithdrawals, $start, $end);
 
@@ -443,8 +441,8 @@ class FinanceOverviewService
                 'count' => $earningsCount,
                 'amount' => round($earnings, 2),
                 'ledger_transfer_in' => round(
-                    (float) (clone $ledgerEarnings)->sum('amount')
-                    - (float) (clone $ledgerClawbacks)->sum('amount'),
+                    $this->ledgerTypeAmount(WalletTransaction::TYPE_TRANSFER_IN, $start, $end)
+                    - $this->ledgerTypeAmount(WalletTransaction::TYPE_TRANSFER_OUT, $start, $end),
                     2
                 ),
             ],
@@ -517,13 +515,6 @@ class FinanceOverviewService
 
         // Featured-site leftovers also write TYPE_REFUND (related Site).
         // This subtitle sits next to "Refunds (order totals)" — order only.
-        $walletRefunds = WalletTransaction::where('type', WalletTransaction::TYPE_REFUND)
-            ->where('related_type', (new Order)->getMorphClass());
-        $this->applyCreatedWindow($walletRefunds, $start, $end);
-
-        $bonuses = WalletTransaction::where('type', WalletTransaction::TYPE_BONUS_CREDIT);
-        $this->applyCreatedWindow($bonuses, $start, $end);
-
         return [
             'gmv_completed' => round($gmvCompleted, 2),
             'order_fees' => round($orderFees, 2),
@@ -532,8 +523,13 @@ class FinanceOverviewService
             'refunds' => round($refundOrderSum, 2),
             'refunded_order_fees' => round($refundedOrderFees, 2),
             'refund_orders_count' => $this->refundOrdersCount($refundOrders, $failedRefundOrders, $start, $end),
-            'wallet_refunds' => (float) (clone $walletRefunds)->sum('amount'),
-            'bonuses_issued' => (float) (clone $bonuses)->sum('amount'),
+            'wallet_refunds' => $this->ledgerTypeAmount(
+                WalletTransaction::TYPE_REFUND,
+                $start,
+                $end,
+                (new Order)->getMorphClass()
+            ),
+            'bonuses_issued' => $this->ledgerTypeAmount(WalletTransaction::TYPE_BONUS_CREDIT, $start, $end),
             'payment_processor_costs_tracked' => false,
             'margin' => 0.0, // filled by overview()
         ];
@@ -583,8 +579,8 @@ class FinanceOverviewService
     public function userDossier(User $user): array
     {
         $user->load('roles');
-        $advertiserRoleId = Wallet::advertiserRoleId();
-        $publisherRoleId = Wallet::publisherRoleId();
+        $advertiserRoleId = $this->walletsAvailable() ? Wallet::advertiserRoleId() : null;
+        $publisherRoleId = $this->walletsAvailable() ? Wallet::publisherRoleId() : null;
 
         $advWallet = $advertiserRoleId
             ? Wallet::where('user_id', $user->id)->where('role_id', $advertiserRoleId)->first()
@@ -596,7 +592,9 @@ class FinanceOverviewService
         $deposits = DepositRequest::where('user_id', $user->id)->latest()->limit(20)->get();
         $orders = Order::where('user_id', $user->id)->latest()->limit(20)->get();
         $withdrawals = Withdrawal::where('user_id', $user->id)->latest()->limit(20)->get();
-        $ledger = WalletTransaction::where('user_id', $user->id)->latest()->limit(50)->get();
+        $ledger = $this->walletTransactionsAvailable()
+            ? WalletTransaction::where('user_id', $user->id)->latest()->limit(50)->get()
+            : collect();
 
         $siteIds = DB::table('sites')->where('publisher_id', $user->id)->pluck('id');
         $earnings = $siteIds->isEmpty() ? 0.0 : (float) OrderItem::whereIn('site_id', $siteIds)
@@ -761,6 +759,10 @@ class FinanceOverviewService
 
     private function failedExternalOrdersBase()
     {
+        if (! $this->walletTransactionsAvailable()) {
+            return Order::query()->whereRaw('0 = 1');
+        }
+
         $methods = array_merge($this->cardOrderMethods(), $this->manualOrderMethods());
         $morph = (new Order)->getMorphClass();
 
@@ -779,6 +781,13 @@ class FinanceOverviewService
 
     private function failedExternalOrdersWithWalletReturn(?Carbon $start, Carbon $end)
     {
+        // failedExternalOrdersBase() already returns `0 = 1` when the ledger
+        // table is gone, but SQLite still evaluates a trailing EXISTS against
+        // the missing table and 500s the finance hub.
+        if (! $this->walletTransactionsAvailable()) {
+            return Order::query()->whereRaw('0 = 1');
+        }
+
         $morph = (new Order)->getMorphClass();
 
         return $this->failedExternalOrdersBase()
@@ -1016,6 +1025,10 @@ class FinanceOverviewService
      */
     private function unfulfilledCardCredits(?Carbon $start, Carbon $end): float
     {
+        if (! $this->walletTransactionsAvailable()) {
+            return 0.0;
+        }
+
         $prefix = OrderPaymentService::unfulfilledCardCreditReference('');
         $query = WalletTransaction::query()
             ->where('direction', 'credit')
@@ -1173,5 +1186,61 @@ class FinanceOverviewService
         } catch (\Throwable) {
             return false;
         }
+    }
+
+    private function depositsHaveColumn(string $column): bool
+    {
+        try {
+            return Schema::hasColumn('deposit_requests', $column);
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    private function walletsAvailable(): bool
+    {
+        try {
+            return Schema::hasTable('wallets');
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    private function walletTransactionsAvailable(): bool
+    {
+        try {
+            return Schema::hasTable('wallet_transactions');
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    private function ledgerTypeAmount(string $type, ?Carbon $start, Carbon $end, ?string $relatedType = null): float
+    {
+        $query = $this->ledgerTypeQuery($type, $start, $end, $relatedType);
+
+        return $query ? (float) $query->sum('amount') : 0.0;
+    }
+
+    private function ledgerTypeCount(string $type, ?Carbon $start, Carbon $end, ?string $relatedType = null): int
+    {
+        $query = $this->ledgerTypeQuery($type, $start, $end, $relatedType);
+
+        return $query ? (int) $query->count() : 0;
+    }
+
+    private function ledgerTypeQuery(string $type, ?Carbon $start, Carbon $end, ?string $relatedType = null)
+    {
+        if (! $this->walletTransactionsAvailable()) {
+            return null;
+        }
+
+        $query = WalletTransaction::where('type', $type);
+        if ($relatedType !== null) {
+            $query->where('related_type', $relatedType);
+        }
+        $this->applyCreatedWindow($query, $start, $end);
+
+        return $query;
     }
 }

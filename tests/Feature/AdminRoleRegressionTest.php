@@ -3,13 +3,18 @@
 namespace Tests\Feature;
 
 use App\Models\Blog;
+use App\Models\BulkSiteRequest;
 use App\Models\DepositRequest;
+use App\Models\Order;
+use App\Models\OrderChatMessage;
+use App\Models\OrderItem;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\SiteClaim;
 use App\Models\User;
 use App\Models\Withdrawal;
 use Database\Seeders\RolesTableSeeder;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\DB;
@@ -281,5 +286,168 @@ class AdminRoleRegressionTest extends TestCase
 
         $this->assertStringContainsString('Unknown', $html);
         $this->assertStringContainsString('WD-'.$withdrawal->id, $html);
+    }
+
+    public function test_bulk_request_show_survives_missing_activity_logs(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $publisher = $this->userWithRole('publisher');
+        $bulk = BulkSiteRequest::create([
+            'publisher_id' => $publisher->id,
+            'status' => BulkSiteRequest::STATUS_REQUESTED,
+            'estimated_count' => 2,
+        ]);
+
+        Schema::dropIfExists('activity_logs');
+        $this->assertFalse(Schema::hasTable('activity_logs'));
+
+        try {
+            $this->actingAs($admin)
+                ->get(route('admin.bulk-site-requests.show', $bulk))
+                ->assertOk()
+                ->assertDontSee('Something went wrong');
+        } finally {
+            $this->artisan('migrate', [
+                '--path' => 'database/migrations/2026_07_15_150505_create_activity_logs_table.php',
+                '--force' => true,
+            ]);
+        }
+    }
+
+    public function test_bulk_requests_index_survives_an_unhandled_request(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $publisher = $this->userWithRole('publisher');
+        BulkSiteRequest::create([
+            'publisher_id' => $publisher->id,
+            'status' => BulkSiteRequest::STATUS_REQUESTED,
+            'estimated_count' => 3,
+            'publisher_note' => 'Please add these',
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.bulk-site-requests.index'))
+            ->assertOk()
+            ->assertSee((string) $publisher->name)
+            ->assertSee('—');
+    }
+
+    public function test_bulk_requests_index_survives_missing_onboarding_status(): void
+    {
+        if (! Schema::hasColumn('sites', 'onboarding_status')) {
+            $this->markTestSkipped('sites.onboarding_status is already absent');
+        }
+
+        try {
+            Schema::table('sites', function (Blueprint $table) {
+                $table->dropColumn('onboarding_status');
+            });
+        } catch (\Throwable) {
+            $this->markTestSkipped('Could not drop sites.onboarding_status on this driver');
+        }
+
+        if (Schema::hasColumn('sites', 'onboarding_status')) {
+            $this->markTestSkipped('sites.onboarding_status is still present after drop');
+        }
+
+        try {
+            $admin = $this->userWithRole('admin');
+            $publisher = $this->userWithRole('publisher');
+            BulkSiteRequest::create([
+                'publisher_id' => $publisher->id,
+                'status' => BulkSiteRequest::STATUS_REQUESTED,
+                'estimated_count' => 2,
+            ]);
+
+            $this->actingAs($admin)
+                ->get(route('admin.bulk-site-requests.index'))
+                ->assertOk()
+                ->assertDontSee('Something went wrong');
+        } finally {
+            if (! Schema::hasColumn('sites', 'onboarding_status')) {
+                Schema::table('sites', function (Blueprint $table) {
+                    $table->string('onboarding_status', 32)->nullable();
+                });
+            }
+        }
+    }
+
+    public function test_order_show_survives_a_missing_publisher_and_chat_user(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $site = Site::create([
+            'publisher_id' => $publisher->id,
+            'site_name' => 'Orphan Publisher Order',
+            'site_url' => 'https://orphan-pub.example',
+            'domain' => 'orphan-pub.example',
+            'da' => 20,
+            'dr' => 20,
+            'traffic' => 500,
+            'country' => 'us',
+            'language' => 'en',
+            'countries' => ['us'],
+            'languages' => ['en'],
+            'category' => 'marketing',
+            'price' => 40,
+            'publication_time' => '7 days',
+            'link_type' => 'dofollow',
+            'description' => 'Order show missing publisher fixture',
+            'verified' => true,
+            'active' => true,
+        ]);
+        $order = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => 'ORD-ORPHAN-PUB',
+            'reference_code' => 'REF-ORPHAN-PUB',
+            'subtotal' => 40,
+            'tax' => 0,
+            'total_amount' => 40,
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'status' => 'processing',
+            'paid_at' => now(),
+        ]);
+        $item = OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'price' => 40,
+            'publisher_price' => 35,
+            'content_link' => 'https://example.com/article.docx',
+        ]);
+        $site->setRelation('publisher', null);
+        $item->setRelation('site', $site);
+        $order->setRelation('user', $advertiser);
+        $order->setRelation('items', collect([$item]));
+        $order->setRelation('invoices', collect());
+
+        $message = new OrderChatMessage([
+            'order_id' => $order->id,
+            'sender_type' => 'advertiser',
+            'message' => 'Still waiting on the live URL.',
+        ]);
+        $message->setRelation('user', null);
+        $message->created_at = now();
+
+        $this->actingAs($admin)->withViewErrors([]);
+
+        $html = view('admin.orders.show', [
+            'order' => $order,
+            'activities' => collect(),
+            'messages' => collect([$message]),
+            'disputes' => collect(),
+            'openDispute' => null,
+            'disputableItems' => collect(),
+            'canOpenDispute' => false,
+            'statusTargets' => [],
+            'canOverrideStatus' => false,
+        ])->render();
+
+        $this->assertStringContainsString('ORD-ORPHAN-PUB', $html);
+        $this->assertStringContainsString('Advertiser', $html);
+        $this->assertStringContainsString('Still waiting on the live URL.', $html);
     }
 }

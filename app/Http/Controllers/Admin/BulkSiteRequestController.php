@@ -29,16 +29,20 @@ class BulkSiteRequestController extends Controller
     {
         $status = search_text($request->input('status'));
 
+        $withCount = [
+            'sites' => fn ($q) => $q->notArchived(),
+            'items as pending_items_count' => fn ($q) => $q->whereNull('site_id'),
+        ];
+        if (Site::hasSitesColumn('onboarding_status')) {
+            $withCount['sites as awaiting_details_count'] = fn ($q) => $q->notArchived()
+                ->where('onboarding_status', Site::ONBOARDING_AWAITING_DETAILS);
+            $withCount['sites as ready_count'] = fn ($q) => $q->notArchived()
+                ->where('onboarding_status', Site::ONBOARDING_READY_FOR_REVIEW);
+        }
+
         $query = BulkSiteRequest::query()
             ->with(['publisher', 'handler'])
-            ->withCount([
-                'sites' => fn ($q) => $q->notArchived(),
-                'sites as awaiting_details_count' => fn ($q) => $q->notArchived()
-                    ->where('onboarding_status', Site::ONBOARDING_AWAITING_DETAILS),
-                'sites as ready_count' => fn ($q) => $q->notArchived()
-                    ->where('onboarding_status', Site::ONBOARDING_READY_FOR_REVIEW),
-                'items as pending_items_count' => fn ($q) => $q->whereNull('site_id'),
-            ])
+            ->withCount($withCount)
             ->latest();
 
         MarketingOpsQueues::applyBulkIndexStatus($query, $status);
@@ -68,12 +72,19 @@ class BulkSiteRequestController extends Controller
         // while status still says waiting on publisher (blocks a new bulk),
         // or unverify restored publisher work while status still says completed.
         if ($bulkRequest->needsProgressHeal()) {
-            $bulkRequest->refreshProgressStatus();
-            $bulkRequest->refresh();
-            $bulkRequest->load([
-                'items' => fn ($q) => $q->orderBy('id'),
-                'sites' => fn ($q) => $q->notArchived()->orderBy('id'),
-            ]);
+            try {
+                $bulkRequest->refreshProgressStatus();
+                $bulkRequest->refresh();
+                $bulkRequest->load([
+                    'items' => fn ($q) => $q->orderBy('id'),
+                    'sites' => fn ($q) => $q->notArchived()->orderBy('id'),
+                ]);
+            } catch (\Throwable $e) {
+                Log::warning('Bulk request progress heal failed', [
+                    'bulk_site_request_id' => $bulkRequest->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
 
         $countries = Country::marketplace()->orderBy('name')->get();
@@ -81,7 +92,15 @@ class BulkSiteRequestController extends Controller
         // Same A–Z niche list as Catalog main search filter.
         $categories = Category::catalogPickerNames();
         $countryLanguageMap = app(CountryLanguagePairs::class)->mapWithNames();
-        $history = ActivityLog::forBulkSiteRequest($bulkRequest->id);
+        $history = collect();
+        try {
+            $history = ActivityLog::forBulkSiteRequest($bulkRequest->id);
+        } catch (\Throwable $e) {
+            Log::warning('Bulk request history failed', [
+                'bulk_site_request_id' => $bulkRequest->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
         $canDeleteDrafts = auth()->user()?->isAdmin() || auth()->user()?->isMarketing();
         $pendingItems = $bulkRequest->items->whereNull('site_id')->values();
 
@@ -896,8 +915,15 @@ class BulkSiteRequestController extends Controller
 
         $didWork = $created > 0 || $deletedCount > 0;
         if ($didWork) {
-            $bulkRequest->refreshProgressStatus();
-            $bulkRequest->refresh();
+            try {
+                $bulkRequest->refreshProgressStatus();
+                $bulkRequest->refresh();
+            } catch (\Throwable $e) {
+                Log::warning('Bulk request post-Done status refresh failed', [
+                    'bulk_site_request_id' => $bulkRequest->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
             // Reject-all with no drafts must not stay "requested" — that blocks
             // the publisher from submitting a new bulk and still enables seed.
             if ($bulkRequest->pendingItemsCount() === 0

@@ -309,11 +309,14 @@ class Site extends Model
             })
             ->where(function ($q) {
                 $q->where('active', 0)->orWhereNull('active');
-            })
-            ->where(function ($q) {
+            });
+
+        if (static::hasSitesColumn('onboarding_status')) {
+            $query->where(function ($q) {
                 $q->whereNull('onboarding_status')
                     ->orWhere('onboarding_status', self::ONBOARDING_READY_FOR_REVIEW);
             });
+        }
 
         // Staff-assigned listings wait on publisher accept before the review queue.
         // Leftover accepted_at is not acceptance — reuse acceptedByPublisher().
@@ -1030,6 +1033,10 @@ class Site extends Model
      */
     public function scopeNotFromCancelledBulk(Builder $query): Builder
     {
+        if (! static::hasSitesColumn('bulk_site_request_id')) {
+            return $query;
+        }
+
         return $query->where(function ($q) {
             $q->whereNull('bulk_site_request_id')
                 ->orWhereHas('bulkSiteRequest', function ($bulk) {
@@ -2512,16 +2519,20 @@ class Site extends Model
      */
     public function scopeMissingMarketplaceCountry($query)
     {
-        return $query
-            ->where(function ($q) {
-                $q->whereNull('country')->orWhere('country', '');
-            })
-            ->where(function ($q) {
+        $query->where(function ($q) {
+            $q->whereNull('country')->orWhere('country', '');
+        });
+
+        if (static::hasSitesColumn('countries')) {
+            $query->where(function ($q) {
                 $q->whereNull('countries')
                     ->orWhere('countries', '')
                     ->orWhere('countries', '[]')
                     ->orWhere('countries', 'null');
             });
+        }
+
+        return $query;
     }
 
     /**

@@ -7,7 +7,9 @@
             <h4 class="mb-1 fw-bold">Publisher Ratings</h4>
             <p class="text-muted mb-0">Review, edit, hide, or delete advertiser ratings for catalog sites.</p>
         </div>
-        <button type="button" class="btn btn-sm btn-primary" id="addRatingBtn">Add rating</button>
+        @if($ratingsTableReady ?? false)
+            <button type="button" class="btn btn-sm btn-primary" id="addRatingBtn">Add rating</button>
+        @endif
     </div>
 
     <form method="get" class="card border-0 shadow-sm mb-3">

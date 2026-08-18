@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Models\Concerns\ToleratesUnparseableDates;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Schema;
 
 class DepositRequest extends Model
 {
@@ -68,6 +69,15 @@ class DepositRequest extends Model
      * @param  Builder<static>  $query
      * @return Builder<static>
      */
+    public static function hasUserMarkedPaidAtColumn(): bool
+    {
+        try {
+            return Schema::hasColumn((new static)->getTable(), 'user_marked_paid_at');
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
     public function scopeWhereUserMarkedPaidAtIsRecorded($query)
     {
         return $query->whereNotNull('user_marked_paid_at')

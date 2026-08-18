@@ -12,7 +12,9 @@ use App\Services\Orders\OrderClawbackService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -88,6 +90,19 @@ class FinanceController extends Controller
             ? User::query()->whereKey($userId)->first(['id', 'name', 'email'])
             : null;
 
+        if (! $this->walletTransactionsAvailable()) {
+            $transactions = new LengthAwarePaginator([], 0, 40);
+            $transactions->withPath($request->url())->appends($request->query());
+            $types = $this->ledgerTypes();
+
+            return view('admin.finance-ledger', compact(
+                'transactions',
+                'types',
+                'search',
+                'ledgerUser'
+            ));
+        }
+
         $transactions = $this->ledgerQuery($request)
             ->with(['user:id,name,email', 'wallet:id,role_id'])
             ->latest()
@@ -109,6 +124,31 @@ class FinanceController extends Controller
      */
     public function ledgerExport(Request $request): StreamedResponse
     {
+        if (! $this->walletTransactionsAvailable()) {
+            $filename = 'wallet-ledger-'.now()->format('Y-m-d-His').'.csv';
+
+            return response()->streamDownload(function () {
+                $out = fopen('php://output', 'w');
+                fputcsv($out, [
+                    'id',
+                    'created_at',
+                    'user_id',
+                    'user_name',
+                    'user_email',
+                    'type',
+                    'direction',
+                    'amount',
+                    'bonus_amount',
+                    'balance_after',
+                    'reference',
+                    'description',
+                ]);
+                fclose($out);
+            }, $filename, [
+                'Content-Type' => 'text/csv; charset=UTF-8',
+            ]);
+        }
+
         $query = $this->ledgerQuery($request)->with(['user:id,name,email']);
         $matchCount = (clone $query)->count();
         $filename = 'wallet-ledger-'.now()->format('Y-m-d-His').'.csv';
@@ -300,6 +340,10 @@ class FinanceController extends Controller
 
     private function ledgerQuery(Request $request): Builder
     {
+        if (! $this->walletTransactionsAvailable()) {
+            return WalletTransaction::query()->whereRaw('0 = 1');
+        }
+
         $query = WalletTransaction::query();
 
         $type = is_string($request->input('type')) ? $request->input('type') : '';
@@ -418,5 +462,14 @@ class FinanceController extends Controller
                 'date_to' => 'nullable|date|after_or_equal:date_from',
             ]
         )->validate();
+    }
+
+    private function walletTransactionsAvailable(): bool
+    {
+        try {
+            return Schema::hasTable('wallet_transactions');
+        } catch (\Throwable) {
+            return false;
+        }
     }
 }

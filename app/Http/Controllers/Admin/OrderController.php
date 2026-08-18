@@ -13,6 +13,7 @@ use App\Services\Orders\AdminOrderStatusOverride;
 use App\Services\Orders\OrderClawbackService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -156,23 +157,18 @@ class OrderController extends Controller
         // than staying invisible on the screen built to manage them.
         OrderItemDispute::ensureTable();
 
-        $order = Order::with(array_merge([
-            'user',
-            'items.site.publisher',
-            'items.contentSubmission',
-            'chatMessages.user',
-            'invoices' => fn ($q) => $q->latest('id'),
-        ], OrderItemDispute::eagerPaths([
-            'items.disputes.opener',
-            'items.disputes.resolver',
-        ])))->findOrFail($id);
+        $order = Order::with($this->showRelations())->findOrFail($id);
+        $this->hydrateMissingShowRelations($order);
 
-        $activities = OrderActivity::where('order_id', $order->id)
-            ->orderBy('created_at')
-            ->orderBy('id')
-            ->get()
-            ->map(fn (OrderActivity $a) => $a->toApiArray())
-            ->values();
+        $activities = collect();
+        if ($this->tableReady('order_activities')) {
+            $activities = OrderActivity::where('order_id', $order->id)
+                ->orderBy('created_at')
+                ->orderBy('id')
+                ->get()
+                ->map(fn (OrderActivity $a) => $a->toApiArray())
+                ->values();
+        }
 
         $clawbacks = app(OrderClawbackService::class);
         $disputes = OrderItemDispute::tableAvailable()
@@ -306,5 +302,55 @@ class OrderController extends Controller
         }
 
         return route('admin.users.index', ['user' => $user->id]).'#user-'.$user->id;
+    }
+
+    /**
+     * @return list<string|\Closure>
+     */
+    private function showRelations(): array
+    {
+        $relations = [
+            'user',
+            'items.site.publisher',
+        ];
+
+        if ($this->tableReady('content_submissions')) {
+            $relations[] = 'items.contentSubmission';
+        }
+        if ($this->tableReady('order_chat_messages')) {
+            $relations[] = 'chatMessages.user';
+        }
+        if ($this->tableReady('invoices')) {
+            $relations['invoices'] = fn ($q) => $q->latest('id');
+        }
+
+        return array_merge($relations, OrderItemDispute::eagerPaths([
+            'items.disputes.opener',
+            'items.disputes.resolver',
+        ]));
+    }
+
+    private function hydrateMissingShowRelations(Order $order): void
+    {
+        if (! $this->tableReady('invoices')) {
+            $order->setRelation('invoices', collect());
+        }
+        if (! $this->tableReady('order_chat_messages')) {
+            $order->setRelation('chatMessages', collect());
+        }
+        if (! $this->tableReady('content_submissions')) {
+            foreach ($order->items as $item) {
+                $item->setRelation('contentSubmission', null);
+            }
+        }
+    }
+
+    private function tableReady(string $table): bool
+    {
+        try {
+            return Schema::hasTable($table);
+        } catch (\Throwable) {
+            return false;
+        }
     }
 }

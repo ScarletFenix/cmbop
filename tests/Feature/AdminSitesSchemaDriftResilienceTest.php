@@ -118,7 +118,11 @@ class AdminSitesSchemaDriftResilienceTest extends TestCase
                 $table->dropColumn($column);
             });
         } catch (\Throwable) {
-            // SQLite may refuse some drops; leave column in place for that case.
+            $this->markTestSkipped('Could not drop sites.'.$column.' on this driver');
+        }
+
+        if (Schema::hasColumn('sites', $column)) {
+            $this->markTestSkipped('sites.'.$column.' is still present after drop');
         }
     }
 }

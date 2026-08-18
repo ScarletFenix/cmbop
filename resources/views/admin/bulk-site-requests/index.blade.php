@@ -47,16 +47,16 @@
                         <tr>
                             <td>{{ $req->id }}</td>
                             <td>
-                                <div class="fw-semibold">{{ $req->publisher->name ?? '—' }}</div>
-                                <div class="small text-muted">{{ $req->publisher->email ?? '' }}</div>
+                                <div class="fw-semibold">{{ $req->publisher?->name ?? '—' }}</div>
+                                <div class="small text-muted">{{ $req->publisher?->email ?? '' }}</div>
                             </td>
                             <td>{{ $req->estimated_count ?? '—' }}</td>
                             <td><span class="badge text-bg-light border">{{ $req->statusLabel() }}</span></td>
                             <td>{{ $req->sites_count }}</td>
                             <td>{{ $req->pending_items_count }}</td>
-                            <td>{{ $req->awaiting_details_count }}</td>
-                            <td>{{ $req->ready_count }}</td>
-                            <td class="small">{{ $req->handler->name ?? '—' }}</td>
+                            <td>{{ (int) ($req->awaiting_details_count ?? 0) }}</td>
+                            <td>{{ (int) ($req->ready_count ?? 0) }}</td>
+                            <td class="small">{{ $req->handler?->name ?? '—' }}</td>
                             <td class="text-end">
                                 <a href="{{ staff_route('bulk-site-requests.show', $req) }}" class="btn btn-sm btn-outline-primary">Open</a>
                             </td>

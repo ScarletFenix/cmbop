@@ -230,6 +230,14 @@ class Withdrawal extends Model
         }
 
         // Pre-migration fallback: publisher cancel writes WD-{id}-cancel ledger credit.
+        try {
+            if (! Schema::hasTable('wallet_transactions')) {
+                return false;
+            }
+        } catch (\Throwable) {
+            return false;
+        }
+
         return WalletTransaction::query()
             ->where('reference', 'WD-'.$this->id.'-cancel')
             ->exists();
