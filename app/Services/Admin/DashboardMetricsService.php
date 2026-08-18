@@ -482,9 +482,6 @@ class DashboardMetricsService
         }
     }
 
-    /**
-     * @param  class-string  $model
-     */
     private function unverifiedSitesCount(): int
     {
         try {
@@ -499,6 +496,9 @@ class DashboardMetricsService
         }
     }
 
+    /**
+     * @param  class-string  $model
+     */
     private function pendingCount(string $model, string $table): int
     {
         try {
