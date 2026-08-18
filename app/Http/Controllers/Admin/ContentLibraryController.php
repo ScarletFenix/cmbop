@@ -10,6 +10,7 @@ use App\Services\Advertiser\ContentLibrarySearchQuery;
 use App\Services\ContentUpload\AdminLibraryStaffActions;
 use App\Services\ContentUpload\ArticleHtmlSanitizer;
 use App\Services\ContentUpload\ArticlePreviewHtml;
+use App\Support\ArticleDownload;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -127,7 +128,10 @@ class ContentLibraryController extends Controller
         return $disk->download(
             $path,
             $filename !== '' ? $filename : 'article.docx',
-            ['Content-Type' => $submission->mime ?: 'application/octet-stream']
+            ArticleDownload::headers(
+                $filename !== '' ? $filename : 'article.docx',
+                (string) ($submission->mime ?: 'application/octet-stream')
+            )
         );
     }
 

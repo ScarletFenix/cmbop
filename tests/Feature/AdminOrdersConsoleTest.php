@@ -521,7 +521,8 @@ class AdminOrdersConsoleTest extends TestCase
         $this->actingAs($admin)
             ->get(route('admin.orders.content.download', $item))
             ->assertOk()
-            ->assertHeader('content-disposition');
+            ->assertHeader('content-disposition')
+            ->assertHeader('content-disposition', 'attachment; filename="download-me.docx"');
 
         $this->actingAs($advertiser)
             ->get(route('admin.orders.content.download', $item))

@@ -11,6 +11,7 @@ use App\Services\ContentUpload\ArticlePreviewHtml;
 use App\Services\ContentUpload\ContentUploadService;
 use App\Services\ContentUpload\ScheduledOrderService;
 use App\Services\Orders\OrderRefundService;
+use App\Support\ArticleDownload;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Log;
@@ -703,7 +704,10 @@ class ContentSubmissionController extends Controller
         return $disk->download(
             $submission->path,
             $submission->original_filename,
-            ['Content-Type' => $submission->mime ?: 'application/octet-stream']
+            ArticleDownload::headers(
+                (string) $submission->original_filename,
+                (string) ($submission->mime ?: 'application/octet-stream')
+            )
         );
     }
 
