@@ -223,7 +223,7 @@
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Deposit Request Details</h5>
+                <h5 class="modal-title" id="depositModalTitle">Deposit request details</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body" id="depositModalBody">
@@ -246,6 +246,38 @@ document.addEventListener('DOMContentLoaded', function() {
     const csrfToken = @json(csrf_token());
     const approveUrlTemplate = @json(route('admin.deposits.approve', ['id' => '__ID__']));
     const rejectUrlTemplate = @json(route('admin.deposits.reject', ['id' => '__ID__']));
+
+    function paypalDepositFields(deposit) {
+        const response = (deposit && typeof deposit.paypal_response === 'object' && deposit.paypal_response)
+            ? deposit.paypal_response
+            : {};
+        const refund = (response.refund && typeof response.refund === 'object') ? response.refund : {};
+        const orderId = deposit.paypal_order_id || '';
+        const captureId = deposit.paypal_capture_id || '';
+        const refundId = refund.id || '';
+        if (!orderId && !captureId && !refundId) {
+            return '';
+        }
+
+        let html = '';
+        if (orderId) {
+            html += `<div class="col-6 mb-2"><small class="text-muted">PayPal order ID</small><div><code class="font-monospace">${escapeHtml(orderId)}</code></div></div>`;
+        }
+        if (captureId) {
+            html += `<div class="col-6 mb-2"><small class="text-muted">PayPal capture ID</small><div><code class="font-monospace">${escapeHtml(captureId)}</code></div></div>`;
+        }
+        if (refundId) {
+            html += `<div class="col-6 mb-2"><small class="text-muted">PayPal refund ID</small><div><code class="font-monospace">${escapeHtml(refundId)}</code></div></div>`;
+        }
+        if (refund.debited != null && refund.debited !== '') {
+            html += `<div class="col-6 mb-2"><small class="text-muted">Wallet debit</small><div>€${parseFloat(refund.debited).toFixed(2)}</div></div>`;
+        }
+        if (refund.debt_created != null && parseFloat(refund.debt_created) > 0.009) {
+            html += `<div class="col-6 mb-2"><small class="text-muted">Wallet debt created</small><div>€${parseFloat(refund.debt_created).toFixed(2)}</div></div>`;
+        }
+
+        return html;
+    }
 
     function paymentMethodLabel(method) {
         const labels = {
@@ -336,6 +368,13 @@ document.addEventListener('DOMContentLoaded', function() {
         } else if (deposit.status === 'refunded') {
             statusBadge = '<span class="badge bg-secondary">Refunded</span>';
         }
+
+        const method = String(deposit.payment_method || '').toLowerCase();
+        const isInstant = method === 'card' || method === 'paypal';
+        const titleEl = document.getElementById('depositModalTitle');
+        if (titleEl) {
+            titleEl.textContent = isInstant ? 'Deposit details' : 'Deposit request details';
+        }
         
         const user = deposit.user || {};
         const userName = user.name || 'Unknown';
@@ -389,6 +428,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             <small class="text-muted">User payment note</small>
                             <div>${escapeHtml(deposit.user_payment_note)}</div>
                         </div>` : ''}
+                        ${paypalDepositFields(deposit)}
                         <div class="col-12">
                             <small class="text-muted">Submitted Date</small>
                             <div>${formatDateTime(deposit.created_at)}</div>

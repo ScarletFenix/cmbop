@@ -66,6 +66,7 @@
                     <select id="paymentMethodFilter" class="form-select form-select-sm">
                         <option value="">All</option>
                         <option value="card">Credit/Debit Card</option>
+                        <option value="paypal">PayPal</option>
                         <option value="wallet">Wallet Balance</option>
                         <option value="wise">Wise Transfer</option>
                         <option value="crypto">Cryptocurrency</option>
@@ -630,6 +631,9 @@ $(document).ready(function() {
             switch(order.payment_method) {
                 case 'card':
                     paymentMethodBadge = '<span class="badge bg-primary bg-opacity-10 text-primary px-3 py-2"><i class="fab fa-cc-visa me-1"></i> Card</span>';
+                    break;
+                case 'paypal':
+                    paymentMethodBadge = '<span class="badge bg-primary bg-opacity-10 text-primary px-3 py-2"><i class="fab fa-paypal me-1"></i> PayPal</span>';
                     break;
                 case 'wallet':
                     paymentMethodBadge = '<span class="badge bg-success bg-opacity-10 text-success px-3 py-2"><i class="fa fa-wallet me-1"></i> Wallet</span>';

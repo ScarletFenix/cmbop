@@ -99,7 +99,7 @@ return [
     'how_page_adv_step_5_title' => 'Goedkeuren, beoordelen of auto-approve',
     'how_page_adv_step_5_body' => 'Controleer de live-URL en keur goed als het klopt — daarna kunt u beoordelen. Blijft u stil, dan keurt de order na 72 uur automatisch goed en wordt de publisher betaald. Wordt een voltooide link later verwijderd, dan kunt u binnen het geschilvenster melden.',
     'how_page_money_title' => 'Zo werken betalingen',
-    'how_page_money_1' => 'Saldi zijn in EUR. U waardeert eerst op en checkt per placement uit vanuit uw wallet.',
+    'how_page_money_1' => 'Saldi zijn in EUR. U betaalt bij checkout met wallet, kaart of PayPal, of waardeert eerst op.',
     'how_page_money_2' => 'Orderbedragen blijven gereserveerd tot de placement is goedgekeurd (door u of automatisch na 72 uur).',
     'how_page_money_3' => 'Annuleringen en toegewezen geschillen zetten wallet- of kaarttegoed terug voor een andere placement. PayPal-checkoutterugbetalingen gaan naar het PayPal-account dat betaalde.',
     'how_page_trust_title' => 'Trustsignalen in de catalogus',

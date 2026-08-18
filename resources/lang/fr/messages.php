@@ -99,7 +99,7 @@ return [
     'how_page_adv_step_5_title' => 'Approuver, noter ou auto-approuver',
     'how_page_adv_step_5_body' => 'Vérifiez l’URL live et approuvez si tout est correct — puis vous pouvez noter l’éditeur. Sans réponse, la commande s’auto-approuve après 72 heures et l’éditeur est payé. Si un lien terminé est retiré plus tard, vous pouvez le signaler dans la fenêtre de litige.',
     'how_page_money_title' => 'Comment fonctionnent les paiements',
-    'how_page_money_1' => 'Les soldes sont en EUR. Vous rechargez d’abord, puis payez chaque placement depuis le wallet.',
+    'how_page_money_1' => 'Les soldes sont en EUR. Vous payez au checkout avec wallet, carte ou PayPal, ou vous rechargez d’abord.',
     'how_page_money_2' => 'Les montants restent réservés jusqu’à l’approbation du placement (par vous ou automatiquement après 72 heures).',
     'how_page_money_3' => 'Annulations et litiges confirmés renvoient le crédit wallet ou carte pour un autre placement. Les remboursements PayPal au checkout reviennent sur le compte PayPal qui a payé.',
     'how_page_trust_title' => 'Signaux de confiance dans le catalogue',

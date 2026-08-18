@@ -417,7 +417,7 @@ return [
     'how_page_adv_step_5_title' => 'Approva, valuta o auto-approvazione',
     'how_page_adv_step_5_body' => 'Rivedi l\'URL live e approva quando è corretto: poi puoi valutare il publisher. Se resti in silenzio, l\'ordine si auto-approva dopo 72 ore e il publisher viene pagato. Se un link completato viene rimosso in seguito, puoi segnalarlo entro la finestra di contestazione.',
     'how_page_money_title' => 'Come funzionano i pagamenti',
-    'how_page_money_1' => 'I saldi sono in EUR. Prima ricarichi, poi paghi ogni pubblicazione dal wallet.',
+    'how_page_money_1' => 'I saldi sono in EUR. Paga al checkout con wallet, carta o PayPal, oppure ricarica prima.',
     'how_page_money_2' => 'Gli importi dell\'ordine restano riservati finché la pubblicazione non è approvata (da te o automaticamente dopo 72 ore).',
     'how_page_money_3' => 'Annullamenti e contestazioni accolte riportano credito wallet o carta per un\'altra pubblicazione. I rimborsi PayPal al checkout tornano sul conto PayPal che ha pagato.',
     'how_page_trust_title' => 'Segnali di fiducia nel catalogo',

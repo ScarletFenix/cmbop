@@ -417,7 +417,7 @@ return [
     'how_page_adv_step_5_title' => 'Apruebe, valore o autoaprobación',
     'how_page_adv_step_5_body' => 'Revise la URL en vivo y apruebe cuando sea correcta; después puede valorar al editor. Si no responde, el pedido se autoaprueba a las 72 horas y el editor cobra. Si más adelante se retira un enlace completado, puede denunciarlo dentro del plazo de reclamación.',
     'how_page_money_title' => 'Cómo funcionan los pagos',
-    'how_page_money_1' => 'Los saldos están en EUR. Primero recarga y luego paga cada publicación desde su monedero.',
+    'how_page_money_1' => 'Los saldos están en EUR. Pague al checkout con monedero, tarjeta o PayPal, o recargue primero.',
     'how_page_money_2' => 'Los importes del pedido quedan reservados hasta que se aprueba la publicación (por usted o automáticamente a las 72 horas).',
     'how_page_money_3' => 'Las cancelaciones y las reclamaciones estimadas devuelven crédito de monedero o tarjeta para otra publicación. Los reembolsos de checkout PayPal vuelven a la cuenta PayPal que pagó.',
     'how_page_trust_title' => 'Señales de confianza en el catálogo',

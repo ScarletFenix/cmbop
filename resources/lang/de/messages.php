@@ -99,7 +99,7 @@ return [
     'how_page_adv_step_5_title' => 'Freigeben, bewerten oder Auto-Approve',
     'how_page_adv_step_5_body' => 'Prüfen Sie die Live-URL und geben Sie frei, wenn alles passt — danach können Sie bewerten. Bleiben Sie still, genehmigt sich der Auftrag nach 72 Stunden automatisch und der Publisher wird bezahlt. Wird ein abgeschlossener Link später entfernt, können Sie innerhalb des Streitfensters melden.',
     'how_page_money_title' => 'So funktionieren Zahlungen',
-    'how_page_money_1' => 'Salden sind in EUR. Sie laden zuerst auf und bezahlen dann pro Placement aus dem Wallet.',
+    'how_page_money_1' => 'Salden sind in EUR. Sie zahlen beim Checkout mit Wallet, Karte oder PayPal, oder laden zuerst auf.',
     'how_page_money_2' => 'Auftragsbeträge bleiben reserviert, bis das Placement freigegeben ist (von Ihnen oder automatisch nach 72 Stunden).',
     'how_page_money_3' => 'Stornierungen und bestätigte Streitfälle schreiben Wallet- oder Kartenguthaben für ein weiteres Placement zurück. PayPal-Checkout-Erstattungen gehen an das PayPal-Konto, das bezahlt hat.',
     'how_page_trust_title' => 'Trust-Signale im Katalog',

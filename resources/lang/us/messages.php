@@ -417,7 +417,7 @@ return [
     'how_page_adv_step_5_title' => 'Approve, rate, or auto-approve',
     'how_page_adv_step_5_body' => 'Review the live URL and approve when it looks right — then you can rate the publisher. If you stay silent, the order auto-approves after 72 hours and the publisher is paid. If a completed link is removed later, you can report it within the dispute window.',
     'how_page_money_title' => 'How payments work',
-    'how_page_money_1' => 'Balances are in EUR. You top up first, then checkout per placement from your wallet.',
+    'how_page_money_1' => 'Balances are in EUR. Pay at checkout with wallet, card, or PayPal, or top up first.',
     'how_page_money_2' => 'Order amounts are reserved until the placement is approved (by you or automatically after 72 hours).',
     'how_page_money_3' => 'Cancellations and upheld disputes return wallet or card credit you can spend on another placement. PayPal checkout refunds return to the PayPal account that paid.',
     'how_page_trust_title' => 'Trust signals in the catalog',

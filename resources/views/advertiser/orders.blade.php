@@ -122,6 +122,7 @@
                             <option value="crypto" {{ request('payment_method') == 'crypto' ? 'selected' : '' }}>Cryptocurrency</option>
                             <option value="bank" {{ request('payment_method') == 'bank' ? 'selected' : '' }}>Bank Transfer</option>
                             <option value="card" {{ request('payment_method') == 'card' ? 'selected' : '' }}>Card Payment</option>
+                            <option value="paypal" {{ request('payment_method') == 'paypal' ? 'selected' : '' }}>PayPal</option>
                         </select>
                     </div>
 
