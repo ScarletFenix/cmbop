@@ -87,6 +87,34 @@ class EverydayErrorCopyTest extends TestCase
             ->assertJsonPath('error', UserMessages::get('payment.webhook_event'));
     }
 
+    public function test_http_cron_disabled_uses_catalog(): void
+    {
+        config(['app.cron_secret' => 'short']);
+
+        foreach (['/cron/run/short', '/cron/orders-auto-approve/short'] as $url) {
+            $this->getJson($url)
+                ->assertNotFound()
+                ->assertJsonPath('message', UserMessages::get('cron.disabled'))
+                ->assertDontSee('CRON_SECRET')
+                ->assertDontSee('short');
+        }
+    }
+
+    public function test_http_cron_wrong_key_uses_catalog(): void
+    {
+        $secret = str_repeat('s', 40);
+        $wrong = str_repeat('x', 40);
+        config(['app.cron_secret' => $secret]);
+
+        foreach (['/cron/run/'.$wrong, '/cron/orders-auto-approve/'.$wrong] as $url) {
+            $this->getJson($url)
+                ->assertForbidden()
+                ->assertJsonPath('message', UserMessages::get('cron.forbidden'))
+                ->assertDontSee('CRON_SECRET')
+                ->assertDontSee($secret);
+        }
+    }
+
     public function test_paypal_webhook_failure_uses_catalog_not_exception_text(): void
     {
         $this->enablePaypalForCopyTests();

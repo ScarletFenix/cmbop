@@ -24,6 +24,7 @@ class UserMessagesTest extends TestCase
             'payment.webhook_event',
             'payment.leftover_credit_failed',
             'cron.disabled',
+            'cron.forbidden',
         ];
 
         foreach ($keys as $key) {

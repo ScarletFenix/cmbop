@@ -90,6 +90,7 @@ use App\Models\User;
 use App\Services\Marketing\CatalogTeaserService;
 use App\Support\PublicI18n;
 use App\Support\RobotsTxt;
+use App\Support\UserMessages;
 use Illuminate\Auth\Events\Verified;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
@@ -249,11 +250,11 @@ Route::get('/cron/orders-auto-approve/{key}', function ($key) {
     $secret = (string) config('app.cron_secret', '');
 
     if (strlen($secret) < 32) {
-        abort(404);
+        abort(404, UserMessages::get('cron.disabled'));
     }
 
     if (! hash_equals($secret, (string) $key)) {
-        abort(403);
+        abort(403, UserMessages::get('cron.forbidden'));
     }
 
     Artisan::call('orders:auto-approve');
@@ -272,11 +273,11 @@ Route::get('/cron/run/{key}', function ($key) {
     $secret = (string) config('app.cron_secret', '');
 
     if (strlen($secret) < 32) {
-        abort(404);
+        abort(404, UserMessages::get('cron.disabled'));
     }
 
     if (! hash_equals($secret, (string) $key)) {
-        abort(403);
+        abort(403, UserMessages::get('cron.forbidden'));
     }
 
     Artisan::call('schedule:run');
