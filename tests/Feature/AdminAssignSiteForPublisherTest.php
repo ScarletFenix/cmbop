@@ -142,6 +142,50 @@ class AdminAssignSiteForPublisherTest extends TestCase
             ->assertSee('Accept', false);
     }
 
+    public function test_admin_sponsored_tag_is_exclusive_and_create_form_uses_glossary(): void
+    {
+        Mail::fake();
+
+        $html = $this->actingAs($this->admin)
+            ->get(route('admin.sites.create'))
+            ->assertOk()
+            ->getContent();
+        $this->assertStringContainsString('Partner article', $html);
+        $this->assertStringNotContainsString('Partner material', $html);
+
+        $country = Country::marketplace()->where('code', 'de')->first()
+            ?? Country::marketplace()->firstOrFail();
+        $language = Language::marketplace()->where('code', 'de')->first()
+            ?? Language::marketplace()->firstOrFail();
+        $niche = Category::query()->orderBy('name')->value('name');
+
+        $this->actingAs($this->admin)->post(route('admin.sites.store'), [
+            'publisher_id' => $this->publisher->id,
+            'site_name' => 'Staff Sponsored News',
+            'site_url' => 'https://staff-sponsored.example',
+            'example_url' => 'https://staff-sponsored.example/sample',
+            'da' => 40,
+            'dr' => 45,
+            'traffic' => 12000,
+            'country' => strtolower($country->code),
+            'language' => strtolower($language->code),
+            'categories' => $niche,
+            'price' => 99,
+            'turnaround_time' => '3days',
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Quality editorial site for guest posts. ', 4),
+            'site_tag' => 'sponsored',
+            'written_request' => 1,
+        ])->assertRedirect()->assertSessionHas('success');
+
+        $site = Site::where('domain', 'staff-sponsored.example')->firstOrFail();
+        $this->assertTrue((bool) $site->sponsored);
+        $this->assertFalse((bool) $site->partner_material);
+        $this->assertFalse((bool) $site->as_you_prefer);
+        $this->assertSame('sponsored', $site->tagValue());
+    }
+
     public function test_publisher_accept_moves_site_into_my_sites_pending(): void
     {
         $site = Site::create([

@@ -653,4 +653,94 @@ class PublisherSiteStoreTest extends TestCase
             $blade
         );
     }
+
+    public function test_publisher_form_uses_glossary_tag_labels(): void
+    {
+        $html = $this->actingAs($this->publisher)
+            ->get(route('publisher.websites'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Partner article', $html);
+        $this->assertStringContainsString('No tags', $html);
+        $this->assertStringNotContainsString('Partner Materials', $html);
+    }
+
+    public function test_sponsored_tag_clears_other_flags(): void
+    {
+        Queue::fake();
+
+        $country = Country::marketplace()->where('code', 'de')->first()
+            ?? Country::marketplace()->firstOrFail();
+        $language = Language::marketplace()->where('code', 'de')->first()
+            ?? Language::marketplace()->firstOrFail();
+        $category = Category::query()->firstOrFail();
+
+        $this->actingAs($this->publisher)
+            ->post(route('publisher.sites.store'), [
+                'siteName' => 'Sponsored Only News',
+                'siteUrl' => 'https://sponsored-only.example',
+                'exampleUrl' => 'https://sponsored-only.example/sample',
+                'da' => 40,
+                'dr' => 42,
+                'traffic' => 5000,
+                'country' => strtolower($country->code),
+                'language' => strtolower($language->code),
+                'categories' => [$category->name],
+                'price' => 90,
+                'turnaround_time' => '3days',
+                'publicationTime' => '1year',
+                'link_type' => 'dofollow',
+                'siteDescription' => str_repeat('Quality editorial site for guest posts. ', 4),
+                'site_tag' => 'sponsored',
+                'partner_material' => '1',
+                'as_you_prefer' => '1',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $site = Site::where('domain', 'sponsored-only.example')->firstOrFail();
+        $this->assertTrue((bool) $site->sponsored);
+        $this->assertFalse((bool) $site->partner_material);
+        $this->assertFalse((bool) $site->as_you_prefer);
+        $this->assertSame('sponsored', $site->tagValue());
+    }
+
+    public function test_empty_site_tag_stores_no_tags(): void
+    {
+        Queue::fake();
+
+        $country = Country::marketplace()->where('code', 'de')->first()
+            ?? Country::marketplace()->firstOrFail();
+        $language = Language::marketplace()->where('code', 'de')->first()
+            ?? Language::marketplace()->firstOrFail();
+        $category = Category::query()->firstOrFail();
+
+        $this->actingAs($this->publisher)
+            ->post(route('publisher.sites.store'), [
+                'siteName' => 'Untagged News',
+                'siteUrl' => 'https://untagged-news.example',
+                'exampleUrl' => 'https://untagged-news.example/sample',
+                'da' => 40,
+                'dr' => 42,
+                'traffic' => 5000,
+                'country' => strtolower($country->code),
+                'language' => strtolower($language->code),
+                'categories' => [$category->name],
+                'price' => 90,
+                'turnaround_time' => '3days',
+                'publicationTime' => '1year',
+                'link_type' => 'dofollow',
+                'siteDescription' => str_repeat('Quality editorial site for guest posts. ', 4),
+                'site_tag' => '',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $site = Site::where('domain', 'untagged-news.example')->firstOrFail();
+        $this->assertFalse((bool) $site->sponsored);
+        $this->assertFalse((bool) $site->partner_material);
+        $this->assertFalse((bool) $site->as_you_prefer);
+        $this->assertNull($site->tagValue());
+    }
 }
