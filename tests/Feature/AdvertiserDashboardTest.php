@@ -11,8 +11,10 @@ use App\Models\User;
 use App\Models\Wallet;
 use App\Services\Advertiser\AdvertiserDashboardService;
 use App\Support\AdvertiserOrderStatus;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 class AdvertiserDashboardTest extends TestCase
@@ -176,6 +178,8 @@ class AdvertiserDashboardTest extends TestCase
             ->assertSee('your attention', false)
             ->assertSee('Orders need attention', false)
             ->assertSee(route('advertiser.catalog', ['site' => $site->id]), false)
+            ->assertSee('/advertiser/go/'.$site->id, false)
+            ->assertDontSee('href="https://dash-site.example"', false)
             ->assertDontSee('sort=dr_desc', false);
     }
 
@@ -203,7 +207,9 @@ class AdvertiserDashboardTest extends TestCase
             ->assertSee('Spent (completed)', false)
             ->assertSee('dash-recent-col', false)
             ->assertSee('dash-page-end', false)
-            ->assertSee('Recent orders', false);
+            ->assertSee('Recent orders', false)
+            ->assertSee('/advertiser/go/', false)
+            ->assertDontSee('href="https://dash-site.example"', false);
     }
 
     public function test_low_balance_warning_and_telegram_config(): void
@@ -236,5 +242,43 @@ class AdvertiserDashboardTest extends TestCase
             ->assertOk()
             ->assertSee('Top up — low balance', false)
             ->assertSee('https://t.me/test-support-bot', false);
+    }
+
+    public function test_new_advertiser_recommended_site_uses_catalog_visit(): void
+    {
+        $user = $this->advertiser();
+        $publisher = User::factory()->create();
+        $site = $this->siteFor($publisher, ['dr' => 88, 'traffic' => 88000]);
+
+        $this->actingAs($user)
+            ->get(route('advertiser.dashboard'))
+            ->assertOk()
+            ->assertSee('Recommended for you', false)
+            ->assertSee('/advertiser/go/'.$site->id, false)
+            ->assertDontSee('href="https://dash-site.example"', false);
+    }
+
+    public function test_dashboard_survives_missing_schedule_columns(): void
+    {
+        $user = $this->advertiser();
+        $this->makeOrder($user, ['status' => 'processing', 'payment_status' => 'paid']);
+
+        foreach (['publication_mode', 'scheduled_publish_at', 'schedule_released_at'] as $column) {
+            if (Schema::hasColumn('orders', $column)) {
+                try {
+                    Schema::table('orders', function (Blueprint $table) use ($column) {
+                        $table->dropColumn($column);
+                    });
+                } catch (\Throwable) {
+                    // SQLite may refuse some drops; skip that column.
+                }
+            }
+        }
+
+        $this->actingAs($user)
+            ->get(route('advertiser.dashboard'))
+            ->assertOk()
+            ->assertSee('Welcome back', false)
+            ->assertDontSee('Something went wrong');
     }
 }

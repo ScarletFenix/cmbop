@@ -7,11 +7,14 @@ use App\Models\Order;
 use App\Models\Site;
 use App\Models\User;
 use App\Models\Wallet;
+use App\Services\Catalog\SiteUrlVisibility;
 use App\Services\ContentUpload\ScheduledOrderService;
 use App\Services\PlatformFeeService;
 use App\Services\Wallet\WalletOverviewService;
 use App\Support\AdvertiserOrderStatus;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Single payload builder for the advertiser home dashboard.
@@ -43,29 +46,93 @@ class AdvertiserDashboardService
      */
     public function build(User $user): array
     {
-        $stats = $this->orderStats((int) $user->id);
-        $isNewAdvertiser = ! Order::query()->where('user_id', $user->id)->exists();
-        $upcomingScheduledCount = $this->scheduler->upcomingCount((int) $user->id);
+        $visibility = app(SiteUrlVisibility::class);
+        $this->safe($user, 'url visibility schema', function () use ($visibility) {
+            $visibility->ensureSchema();
+        });
+
+        $emptyStats = [
+            'total' => 0,
+            'completed' => 0,
+            'in_progress' => 0,
+            'cancelled' => 0,
+            'needs_review' => 0,
+            'needs_action' => 0,
+            'awaiting_payment' => 0,
+        ];
+
+        $stats = $this->safe($user, 'order stats', fn () => $this->orderStats((int) $user->id), $emptyStats);
+        $isNewAdvertiser = (bool) $this->safe(
+            $user,
+            'new-advertiser check',
+            fn () => ! Order::query()->where('user_id', $user->id)->exists(),
+            true
+        );
+        $upcomingScheduledCount = (int) $this->safe(
+            $user,
+            'upcoming scheduled',
+            fn () => $this->scheduler->upcomingCount((int) $user->id),
+            0
+        );
+        $recentOrders = $this->safe($user, 'recent orders', fn () => $this->recentOrders((int) $user->id), collect());
+        $recommendedSites = $this->safe($user, 'recommended sites', fn () => $this->recommendedSites($user), collect());
+        $this->safe($user, 'url visibility warm', function () use ($visibility, $user, $recommendedSites) {
+            $visibility->warmFor($user, $recommendedSites);
+        });
 
         return [
-            'stats' => $stats,
-            'recentOrders' => $this->recentOrders((int) $user->id),
-            'recommendedSites' => $this->recommendedSites($user),
-            'hasOrderableArticle' => ContentSubmission::query()
-                ->where('user_id', $user->id)
-                ->checkoutReady()
-                ->exists(),
+            'stats' => is_array($stats) ? $stats : $emptyStats,
+            'recentOrders' => $recentOrders instanceof Collection ? $recentOrders : collect(),
+            'recommendedSites' => $recommendedSites instanceof Collection ? $recommendedSites : collect(),
+            'hasOrderableArticle' => (bool) $this->safe(
+                $user,
+                'orderable article',
+                fn () => ContentSubmission::query()
+                    ->where('user_id', $user->id)
+                    ->checkoutReady()
+                    ->exists(),
+                false
+            ),
             'isNewAdvertiser' => $isNewAdvertiser,
             'upcomingScheduledCount' => $upcomingScheduledCount,
-            'wallet' => $this->walletStrip($user),
-            'budgetStatus' => $this->budgets->status($user),
-            'spendSummary' => $this->spend->summary((int) $user->id),
-            'spendCandles' => $this->spend->candles((int) $user->id, 'day', [
+            'wallet' => $this->safe($user, 'wallet strip', fn () => $this->walletStrip($user), [
+                'spendable' => 0.0,
+                'available' => 0.0,
+                'bonus' => 0.0,
+                'currency' => 'EUR',
+            ]),
+            'budgetStatus' => $this->safe($user, 'budget status', fn () => $this->budgets->status($user), [
+                'has_budget' => false,
+                'low_balance' => false,
+            ]),
+            'spendSummary' => $this->safe($user, 'spend summary', fn () => $this->spend->summary((int) $user->id), [
+                'net' => 0,
+                'spent' => 0,
+                'in_progress' => 0,
+            ]),
+            'spendCandles' => $this->safe($user, 'spend candles', fn () => $this->spend->candles((int) $user->id, 'day', [
                 'from' => now()->subDays(13)->startOfDay(),
                 'to' => now()->endOfDay(),
                 'fill_gaps' => true,
-            ]),
+            ]), ['has_spend' => false, 'series' => []]),
         ];
+    }
+
+    /**
+     * Optional dashboard strips must not 500 the home page on leftover schema.
+     */
+    private function safe(User $user, string $context, callable $fn, mixed $fallback = null): mixed
+    {
+        try {
+            return $fn();
+        } catch (\Throwable $e) {
+            Log::warning('Advertiser dashboard '.$context.' failed', [
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return $fallback;
+        }
     }
 
     /**
@@ -138,10 +205,17 @@ class AdvertiserDashboardService
         $query = Site::query()->catalogVisible();
 
         if ($user) {
-            $query->where(function ($q) use ($user) {
+            $uid = (int) $user->id;
+            $query->where(function ($q) use ($uid) {
                 $q->whereNull('publisher_id')
-                    ->orWhere('publisher_id', '!=', $user->id);
+                    ->orWhere('publisher_id', '!=', $uid);
             });
+            if (Schema::hasColumn('sites', 'owner_id')) {
+                $query->where(function ($q) use ($uid) {
+                    $q->whereNull('owner_id')
+                        ->orWhere('owner_id', '!=', $uid);
+                });
+            }
         }
 
         return $query
