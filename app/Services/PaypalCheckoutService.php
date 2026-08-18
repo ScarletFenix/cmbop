@@ -297,6 +297,78 @@ class PaypalCheckoutService
         ];
     }
 
+    /**
+     * Turn a verified PayPal webhook into the same capture payload finalize uses.
+     * CHECKOUT.ORDER.APPROVED captures (or loads an already-captured order).
+     *
+     * @param  array<string, mixed>  $event
+     * @return array{id: string, capture_id: string, status: string, amount: float, currency: string, custom: array{type: string, user_id: string, reference_code: string}, raw: array<string, mixed>}|null
+     */
+    public function captureFromWebhookEvent(array $event): ?array
+    {
+        $type = strtoupper((string) ($event['event_type'] ?? ''));
+        $resource = is_array($event['resource'] ?? null) ? $event['resource'] : [];
+        if ($resource === []) {
+            return null;
+        }
+
+        if ($type === 'CHECKOUT.ORDER.APPROVED') {
+            $orderId = trim((string) ($resource['id'] ?? ''));
+
+            return $orderId !== '' ? $this->captureOrder($orderId) : null;
+        }
+
+        if ($type === 'CHECKOUT.ORDER.COMPLETED') {
+            $orderId = trim((string) ($resource['id'] ?? ''));
+            if ($orderId === '') {
+                return null;
+            }
+            try {
+                return $this->completedCaptureFromPayload($resource, $orderId);
+            } catch (RuntimeException) {
+                return $this->getCompletedCapture($orderId);
+            }
+        }
+
+        if ($type === 'PAYMENT.CAPTURE.COMPLETED') {
+            return $this->completedCaptureFromCaptureResource($resource, $event);
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $event
+     * @return array{refund_id: string, capture_id: string, paypal_order_id: string, custom: array{type: string, user_id: string, reference_code: string}}|null
+     */
+    public function refundFromWebhookEvent(array $event): ?array
+    {
+        $type = strtoupper((string) ($event['event_type'] ?? ''));
+        if ($type !== 'PAYMENT.CAPTURE.REFUNDED') {
+            return null;
+        }
+
+        $resource = is_array($event['resource'] ?? null) ? $event['resource'] : [];
+        $related = is_array($resource['supplementary_data']['related_ids'] ?? null)
+            ? $resource['supplementary_data']['related_ids']
+            : [];
+        $refundId = trim((string) ($resource['id'] ?? ''));
+        $captureId = trim((string) ($related['capture_id'] ?? $resource['capture_id'] ?? ''));
+        $paypalOrderId = trim((string) ($related['order_id'] ?? ''));
+        $custom = self::parseCustomId(isset($resource['custom_id']) ? (string) $resource['custom_id'] : '');
+
+        if ($refundId === '' || ($captureId === '' && $paypalOrderId === '')) {
+            return null;
+        }
+
+        return [
+            'refund_id' => $refundId,
+            'capture_id' => $captureId,
+            'paypal_order_id' => $paypalOrderId,
+            'custom' => $custom,
+        ];
+    }
+
     public function accessToken(): string
     {
         $this->assertConfigured();
@@ -355,6 +427,38 @@ class PaypalCheckoutService
         }
 
         return $response;
+    }
+
+    /**
+     * @param  array<string, mixed>  $resource
+     * @param  array<string, mixed>  $event
+     * @return array{id: string, capture_id: string, status: string, amount: float, currency: string, custom: array{type: string, user_id: string, reference_code: string}, raw: array<string, mixed>}
+     */
+    private function completedCaptureFromCaptureResource(array $resource, array $event): array
+    {
+        $related = is_array($resource['supplementary_data']['related_ids'] ?? null)
+            ? $resource['supplementary_data']['related_ids']
+            : [];
+        $paypalOrderId = trim((string) ($related['order_id'] ?? ''));
+        $custom = self::parseCustomId(isset($resource['custom_id']) ? (string) $resource['custom_id'] : '');
+
+        return $this->completedCaptureFromPayload([
+            'id' => $paypalOrderId,
+            'status' => $resource['status'] ?? 'COMPLETED',
+            'purchase_units' => [[
+                'custom_id' => $resource['custom_id'] ?? '',
+                'amount' => $resource['amount'] ?? [],
+                'payments' => [
+                    'captures' => [[
+                        'id' => $resource['id'] ?? '',
+                        'status' => $resource['status'] ?? '',
+                        'amount' => $resource['amount'] ?? [],
+                    ]],
+                ],
+            ]],
+            'custom' => $custom,
+            'event' => $event,
+        ], $paypalOrderId);
     }
 
     /**

@@ -1,0 +1,465 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\Order;
+use App\Models\PaypalWebhookLog;
+use App\Models\Role;
+use App\Models\Site;
+use App\Models\User;
+use App\Models\Wallet;
+use App\Services\OrderPaymentService;
+use App\Services\PaypalCheckoutService;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Testing\TestResponse;
+use Tests\Support\CreatesContentSubmissions;
+use Tests\TestCase;
+
+class PaypalWebhookTest extends TestCase
+{
+    use CreatesContentSubmissions;
+    use RefreshDatabase;
+
+    /** @var array<string, mixed> */
+    private array $paypalHttp = [];
+
+    private function advertiser(): User
+    {
+        $role = Role::firstOrCreate(['name' => 'advertiser']);
+        $user = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $role->id,
+        ]);
+        $user->roles()->attach($role->id);
+
+        return $user->fresh();
+    }
+
+    private function publisher(): User
+    {
+        $role = Role::firstOrCreate(['name' => 'publisher']);
+        $user = User::factory()->create(['email_verified_at' => now()]);
+        $user->roles()->attach($role->id);
+
+        return $user->fresh();
+    }
+
+    private function activeSite(User $publisher): Site
+    {
+        return Site::create([
+            'publisher_id' => $publisher->id,
+            'site_name' => 'PayPal Webhook Site',
+            'site_url' => 'https://paypal-hook.example',
+            'domain' => 'paypal-hook.example',
+            'da' => 40,
+            'dr' => 40,
+            'traffic' => 1000,
+            'country' => 'us',
+            'language' => 'en',
+            'countries' => ['us'],
+            'languages' => ['en'],
+            'category' => 'marketing',
+            'price' => 100.00,
+            'publication_time' => '7 days',
+            'link_type' => 'dofollow',
+            'description' => 'Webhook test site',
+            'verified' => true,
+            'active' => true,
+        ]);
+    }
+
+    private function enablePaypal(): void
+    {
+        config([
+            'services.paypal.enabled' => true,
+            'services.paypal.mode' => 'sandbox',
+            'services.paypal.client_id' => 'paypal-client-test',
+            'services.paypal.secret' => 'paypal-secret-test',
+            'services.paypal.webhook_id' => 'WH-TEST-1',
+            'services.paypal.base_url' => null,
+        ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $capture
+     */
+    private function fakePaypal(string $orderId, array $capture = []): void
+    {
+        $this->paypalHttp['order_id'] = $orderId;
+        $this->paypalHttp['capture'] = array_replace($this->paypalHttp['capture'] ?? [], $capture);
+        $this->paypalHttp['verify'] = $this->paypalHttp['verify'] ?? 'SUCCESS';
+        if (($this->paypalHttp['registered'] ?? false) === true) {
+            return;
+        }
+
+        $this->paypalHttp['registered'] = true;
+        Http::fake(function ($request) {
+            $url = $request->url();
+            $orderId = (string) ($this->paypalHttp['order_id'] ?? '');
+            $capture = is_array($this->paypalHttp['capture'] ?? null) ? $this->paypalHttp['capture'] : [];
+            $userId = (string) ($capture['user_id'] ?? '0');
+            $ref = (string) ($capture['reference_code'] ?? 'PP-HOOK');
+            $amount = (string) ($capture['amount'] ?? '');
+            if ($amount === '') {
+                $package = $ref !== '' ? app(OrderPaymentService::class)->getPendingCheckout($ref) : null;
+                $amount = is_array($package)
+                    ? number_format((float) ($package['amount_due'] ?? 0), 2, '.', '')
+                    : '113.00';
+            }
+
+            if (str_contains($url, '/v1/oauth2/token')) {
+                return Http::response([
+                    'access_token' => 'tok_test',
+                    'expires_in' => 300,
+                    'token_type' => 'Bearer',
+                ], 200);
+            }
+
+            if (str_contains($url, '/v1/notifications/verify-webhook-signature')) {
+                return Http::response([
+                    'verification_status' => $this->paypalHttp['verify'] ?? 'SUCCESS',
+                ], 200);
+            }
+
+            if (str_ends_with(parse_url($url, PHP_URL_PATH) ?: '', '/v2/checkout/orders')) {
+                return Http::response([
+                    'id' => $orderId,
+                    'status' => 'CREATED',
+                    'links' => [
+                        ['rel' => 'approve', 'href' => 'https://www.sandbox.paypal.com/checkoutnow?token='.$orderId],
+                    ],
+                ], 201);
+            }
+
+            $completed = [
+                'id' => $orderId,
+                'status' => 'COMPLETED',
+                'purchase_units' => [[
+                    'custom_id' => PaypalCheckoutService::customId(
+                        PaypalCheckoutService::TYPE_ORDER_CHECKOUT,
+                        $userId,
+                        $ref
+                    ),
+                    'payments' => [
+                        'captures' => [[
+                            'id' => (string) ($capture['id'] ?? 'CAP-'.$orderId),
+                            'status' => 'COMPLETED',
+                            'amount' => ['currency_code' => 'EUR', 'value' => $amount],
+                        ]],
+                    ],
+                ]],
+            ];
+
+            if (str_contains($url, '/v2/checkout/orders/'.$orderId.'/capture')
+                || str_contains($url, '/v2/checkout/orders/'.$orderId)) {
+                return Http::response($completed, 201);
+            }
+
+            return Http::response(['name' => 'RESOURCE_NOT_FOUND'], 404);
+        });
+    }
+
+    /**
+     * @param  array<string, mixed>  $event
+     */
+    private function postWebhook(array $event): TestResponse
+    {
+        return $this->call(
+            'POST',
+            '/api/paypal/webhook',
+            [],
+            [],
+            [],
+            [
+                'CONTENT_TYPE' => 'application/json',
+                'HTTP_PAYPAL_AUTH_ALGO' => 'SHA256withRSA',
+                'HTTP_PAYPAL_CERT_URL' => 'https://api.paypal.com/v1/notifications/certs/CERT-1',
+                'HTTP_PAYPAL_TRANSMISSION_ID' => 'tx-1',
+                'HTTP_PAYPAL_TRANSMISSION_SIG' => 'sig',
+                'HTTP_PAYPAL_TRANSMISSION_TIME' => '2026-08-18T12:00:00Z',
+            ],
+            json_encode($event, JSON_THROW_ON_ERROR)
+        );
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function captureCompletedEvent(User $advertiser, string $ref, string $orderId, string $eventId, string $amount): array
+    {
+        return [
+            'id' => $eventId,
+            'event_type' => 'PAYMENT.CAPTURE.COMPLETED',
+            'resource' => [
+                'id' => 'CAP-'.$orderId,
+                'status' => 'COMPLETED',
+                'amount' => ['currency_code' => 'EUR', 'value' => $amount],
+                'custom_id' => PaypalCheckoutService::customId(
+                    PaypalCheckoutService::TYPE_ORDER_CHECKOUT,
+                    $advertiser->id,
+                    $ref
+                ),
+                'supplementary_data' => [
+                    'related_ids' => ['order_id' => $orderId],
+                ],
+            ],
+        ];
+    }
+
+    public function test_webhook_rejects_when_not_configured(): void
+    {
+        $this->postWebhook(['id' => 'WH-OFF', 'event_type' => 'PAYMENT.CAPTURE.COMPLETED'])
+            ->assertStatus(500)
+            ->assertJsonPath('error', 'Webhook not configured');
+    }
+
+    public function test_webhook_rejects_invalid_signature(): void
+    {
+        $this->enablePaypal();
+        $this->fakePaypal('PO-BAD');
+        $this->paypalHttp['verify'] = 'FAILURE';
+
+        $this->postWebhook([
+            'id' => 'WH-BAD',
+            'event_type' => 'PAYMENT.CAPTURE.COMPLETED',
+        ])->assertStatus(400)->assertJsonPath('error', 'Invalid signature');
+    }
+
+    public function test_capture_completed_settles_paid_orders_without_return_url(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        $this->enablePaypal();
+        Mail::fake();
+
+        $advertiser = $this->advertiser();
+        $site = $this->activeSite($this->publisher());
+        $sub = $this->createApprovedSubmission($advertiser, $site->id);
+        $this->fakePaypal('PO-HOOK', [
+            'user_id' => (string) $advertiser->id,
+            'reference_code' => 'PP-HOOK',
+        ]);
+
+        $this->actingAs($advertiser)
+            ->withSession([
+                'cart' => [[
+                    'id' => $site->id,
+                    'name' => $site->site_name,
+                    'quantity' => 1,
+                    'content_submission_id' => $sub->id,
+                ]],
+            ])
+            ->postJson(route('advertiser.checkout.process'), [
+                'payment_method' => 'paypal',
+                'reference_code' => 'PP-HOOK',
+                'publication_mode' => 'immediate',
+                'content_submissions' => [
+                    $site->id => [$sub->id],
+                ],
+            ])
+            ->assertOk();
+
+        $package = app(OrderPaymentService::class)->getPendingCheckout('PP-HOOK');
+        $this->assertIsArray($package);
+        $amount = number_format((float) $package['amount_due'], 2, '.', '');
+
+        $this->postWebhook($this->captureCompletedEvent(
+            $advertiser,
+            'PP-HOOK',
+            'PO-HOOK',
+            'WH-SETTLE-1',
+            $amount
+        ))->assertOk()->assertJsonPath('status', 'success');
+
+        $order = Order::query()->where('reference_code', 'PP-HOOK')->first();
+        $this->assertNotNull($order);
+        $this->assertSame('paid', $order->payment_status);
+        $this->assertSame('paypal', $order->payment_method);
+        $this->assertSame('CAP-PO-HOOK', $order->paypal_capture_id);
+        $this->assertTrue((bool) PaypalWebhookLog::query()->where('event_id', 'WH-SETTLE-1')->value('processed'));
+    }
+
+    public function test_approved_order_webhook_captures_then_settles(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        $this->enablePaypal();
+        Mail::fake();
+
+        $advertiser = $this->advertiser();
+        $site = $this->activeSite($this->publisher());
+        $sub = $this->createApprovedSubmission($advertiser, $site->id);
+        $this->fakePaypal('PO-APPR', [
+            'user_id' => (string) $advertiser->id,
+            'reference_code' => 'PP-APPR',
+        ]);
+
+        $this->actingAs($advertiser)
+            ->withSession([
+                'cart' => [[
+                    'id' => $site->id,
+                    'name' => $site->site_name,
+                    'quantity' => 1,
+                    'content_submission_id' => $sub->id,
+                ]],
+            ])
+            ->postJson(route('advertiser.checkout.process'), [
+                'payment_method' => 'paypal',
+                'reference_code' => 'PP-APPR',
+                'publication_mode' => 'immediate',
+                'content_submissions' => [
+                    $site->id => [$sub->id],
+                ],
+            ])
+            ->assertOk();
+
+        $this->postWebhook([
+            'id' => 'WH-APPR-1',
+            'event_type' => 'CHECKOUT.ORDER.APPROVED',
+            'resource' => [
+                'id' => 'PO-APPR',
+                'status' => 'APPROVED',
+                'purchase_units' => [[
+                    'custom_id' => PaypalCheckoutService::customId(
+                        PaypalCheckoutService::TYPE_ORDER_CHECKOUT,
+                        $advertiser->id,
+                        'PP-APPR'
+                    ),
+                ]],
+            ],
+        ])->assertOk()->assertJsonPath('status', 'success');
+
+        $this->assertSame(1, Order::query()->where('reference_code', 'PP-APPR')->where('payment_status', 'paid')->count());
+    }
+
+    public function test_duplicate_event_is_idempotent(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        $this->enablePaypal();
+        Mail::fake();
+
+        $advertiser = $this->advertiser();
+        $site = $this->activeSite($this->publisher());
+        $sub = $this->createApprovedSubmission($advertiser, $site->id);
+        $this->fakePaypal('PO-DUP', [
+            'user_id' => (string) $advertiser->id,
+            'reference_code' => 'PP-WDUP',
+        ]);
+
+        $this->actingAs($advertiser)
+            ->withSession([
+                'cart' => [[
+                    'id' => $site->id,
+                    'name' => $site->site_name,
+                    'quantity' => 1,
+                    'content_submission_id' => $sub->id,
+                ]],
+            ])
+            ->postJson(route('advertiser.checkout.process'), [
+                'payment_method' => 'paypal',
+                'reference_code' => 'PP-WDUP',
+                'publication_mode' => 'immediate',
+                'content_submissions' => [
+                    $site->id => [$sub->id],
+                ],
+            ])
+            ->assertOk();
+
+        $package = app(OrderPaymentService::class)->getPendingCheckout('PP-WDUP');
+        $amount = number_format((float) $package['amount_due'], 2, '.', '');
+        $event = $this->captureCompletedEvent($advertiser, 'PP-WDUP', 'PO-DUP', 'WH-DUP-1', $amount);
+
+        $this->postWebhook($event)->assertOk()->assertJsonPath('status', 'success');
+        $this->postWebhook($event)->assertOk()->assertJsonPath('status', 'duplicate');
+        $this->assertSame(1, Order::query()->where('reference_code', 'PP-WDUP')->count());
+    }
+
+    public function test_failed_webhook_can_be_retried(): void
+    {
+        $this->enablePaypal();
+        $this->fakePaypal('PO-RETRY');
+
+        $event = [
+            'id' => 'WH-RETRY-1',
+            'event_type' => 'PAYMENT.CAPTURE.COMPLETED',
+            'resource' => [
+                'id' => 'CAP-PO-RETRY',
+                'status' => 'COMPLETED',
+                'amount' => ['currency_code' => 'EUR', 'value' => '10.00'],
+                'custom_id' => 'not_an_order',
+            ],
+        ];
+
+        $this->postWebhook($event)->assertStatus(500);
+        $log = PaypalWebhookLog::query()->where('event_id', 'WH-RETRY-1')->first();
+        $this->assertNotNull($log);
+        $this->assertFalse((bool) $log->processed);
+
+        $event['resource']['custom_id'] = PaypalCheckoutService::customId(
+            PaypalCheckoutService::TYPE_WALLET_DEPOSIT,
+            1,
+            'DEP-1'
+        );
+        $this->postWebhook($event)->assertOk()->assertJsonPath('status', 'success');
+        $this->assertTrue((bool) PaypalWebhookLog::query()->where('event_id', 'WH-RETRY-1')->value('processed'));
+        $this->assertSame(0, Order::query()->count());
+    }
+
+    public function test_refunded_webhook_marks_order_refunded_without_wallet_credit(): void
+    {
+        $this->enablePaypal();
+        $this->fakePaypal('PO-RF');
+        Mail::fake();
+
+        $advertiser = $this->advertiser();
+        $wallet = Wallet::create([
+            'user_id' => $advertiser->id,
+            'role_id' => Wallet::advertiserRoleId(),
+            'balance' => 5,
+            'reserved_balance' => 0,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 0,
+            'currency' => 'EUR',
+        ]);
+
+        $order = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => '880001',
+            'reference_code' => 'PP-RF',
+            'subtotal' => 50,
+            'tax' => 0,
+            'total_amount' => 50,
+            'payment_method' => 'paypal',
+            'payment_status' => 'paid',
+            'status' => 'pending',
+            'paypal_order_id' => 'PO-RF',
+            'paypal_capture_id' => 'CAP-PO-RF',
+            'paid_at' => now(),
+        ]);
+
+        $this->postWebhook([
+            'id' => 'WH-RF-1',
+            'event_type' => 'PAYMENT.CAPTURE.REFUNDED',
+            'resource' => [
+                'id' => 'RF-PO-RF',
+                'custom_id' => PaypalCheckoutService::customId(
+                    PaypalCheckoutService::TYPE_ORDER_CHECKOUT,
+                    $advertiser->id,
+                    'PP-RF'
+                ),
+                'supplementary_data' => [
+                    'related_ids' => [
+                        'capture_id' => 'CAP-PO-RF',
+                        'order_id' => 'PO-RF',
+                    ],
+                ],
+            ],
+        ])->assertOk()->assertJsonPath('status', 'success');
+
+        $fresh = $order->fresh();
+        $this->assertSame('refunded', $fresh->payment_status);
+        $this->assertSame('cancelled', $fresh->status);
+        $this->assertSame('RF-PO-RF', $fresh->paypal_refund_id);
+        $this->assertEqualsWithDelta(5.0, (float) $wallet->fresh()->balance, 0.01);
+    }
+}

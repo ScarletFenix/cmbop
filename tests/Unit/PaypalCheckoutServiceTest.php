@@ -412,4 +412,48 @@ class PaypalCheckoutServiceTest extends TestCase
             PaypalCheckoutService::parseCustomId('wallet_deposit:3:DEP-1')
         );
     }
+
+    public function test_capture_from_webhook_event_reads_capture_resource(): void
+    {
+        $captured = $this->paypal->captureFromWebhookEvent([
+            'id' => 'WH-CAP-1',
+            'event_type' => 'PAYMENT.CAPTURE.COMPLETED',
+            'resource' => [
+                'id' => 'CAP-WH-1',
+                'status' => 'COMPLETED',
+                'amount' => ['currency_code' => 'EUR', 'value' => '42.50'],
+                'custom_id' => 'order_checkout:4:PP-WH',
+                'supplementary_data' => [
+                    'related_ids' => ['order_id' => 'PO-WH-1'],
+                ],
+            ],
+        ]);
+
+        $this->assertSame('PO-WH-1', $captured['id']);
+        $this->assertSame('CAP-WH-1', $captured['capture_id']);
+        $this->assertSame(42.5, $captured['amount']);
+        $this->assertSame('4', $captured['custom']['user_id']);
+        $this->assertSame('PP-WH', $captured['custom']['reference_code']);
+    }
+
+    public function test_refund_from_webhook_event_reads_related_ids(): void
+    {
+        $refunded = $this->paypal->refundFromWebhookEvent([
+            'event_type' => 'PAYMENT.CAPTURE.REFUNDED',
+            'resource' => [
+                'id' => 'RF-WH-1',
+                'custom_id' => 'order_checkout:4:PP-WH',
+                'supplementary_data' => [
+                    'related_ids' => [
+                        'capture_id' => 'CAP-WH-1',
+                        'order_id' => 'PO-WH-1',
+                    ],
+                ],
+            ],
+        ]);
+
+        $this->assertSame('RF-WH-1', $refunded['refund_id']);
+        $this->assertSame('CAP-WH-1', $refunded['capture_id']);
+        $this->assertSame('PO-WH-1', $refunded['paypal_order_id']);
+    }
 }

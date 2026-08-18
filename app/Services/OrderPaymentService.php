@@ -2330,6 +2330,59 @@ class OrderPaymentService
     }
 
     /**
+     * PayPal already returned the money. Stamp refund id and cancel paid rows
+     * without a second wallet credit.
+     *
+     * @return Collection<int, Order>
+     */
+    public function markPaypalCaptureRefunded(string $captureId, string $refundId, string $paypalOrderId = ''): Collection
+    {
+        $captureId = trim($captureId);
+        $refundId = trim($refundId);
+        $paypalOrderId = trim($paypalOrderId);
+        if ($captureId === '' && $paypalOrderId === '') {
+            return collect();
+        }
+
+        return DB::transaction(function () use ($captureId, $refundId, $paypalOrderId) {
+            $orders = Order::query()
+                ->where('payment_method', 'paypal')
+                ->where(function ($inner) use ($captureId, $paypalOrderId) {
+                    if ($captureId !== '') {
+                        $inner->orWhere('paypal_capture_id', $captureId);
+                    }
+                    if ($paypalOrderId !== '') {
+                        $inner->orWhere('paypal_order_id', $paypalOrderId);
+                    }
+                })
+                ->lockForUpdate()
+                ->get();
+
+            $storedRefund = $orders->contains(fn (Order $order) => filled($order->paypal_refund_id));
+            foreach ($orders as $order) {
+                $attrs = [];
+                if ($refundId !== '' && ! $storedRefund && blank($order->paypal_refund_id)) {
+                    $attrs['paypal_refund_id'] = $refundId;
+                    $storedRefund = true;
+                }
+                if ($order->payment_status === 'paid' && $order->status !== 'cancelled') {
+                    $attrs['payment_status'] = 'refunded';
+                    $attrs['status'] = 'cancelled';
+                }
+                if ($attrs === []) {
+                    continue;
+                }
+                $order->update($attrs);
+                if (($attrs['status'] ?? null) === 'cancelled') {
+                    ContentSubmission::releaseAllForOrder((int) $order->id);
+                }
+            }
+
+            return $orders->map(fn (Order $order) => $order->fresh('items'))->filter();
+        });
+    }
+
+    /**
      * @param  array<string, mixed>  $paidAttributes
      */
     private function settleExistingCardOrder(Order $order, array $paidAttributes): ?Order
