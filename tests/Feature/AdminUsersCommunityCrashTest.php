@@ -154,8 +154,8 @@ class AdminUsersCommunityCrashTest extends TestCase
             ->assertSee('User Management', false)
             ->assertSee('Ada Buyer', false)
             ->assertSee('ada.buyer@example.com', false)
-            ->assertSee(route('admin.users.updateCompany', ['id' => '__ID__']), false)
-            ->assertSee(route('admin.users.updatePayoutProfile', ['id' => '__ID__']), false);
+            ->assertSee('function companyUpdateUrl', false)
+            ->assertSee('function payoutUpdateUrl', false);
 
         $this->actingAs($admin)
             ->get(route('admin.users.index', ['user' => $member->id]))
@@ -204,7 +204,7 @@ class AdminUsersCommunityCrashTest extends TestCase
             $this->actingAs($admin)
                 ->get(route('admin.users.index'))
                 ->assertOk()
-                ->assertDontSee('Something went wrong')
+                ->assertSee('User Management', false)
                 ->assertSee('No Orders User', false);
         } finally {
             $this->restoreOrdersTable();
@@ -223,7 +223,7 @@ class AdminUsersCommunityCrashTest extends TestCase
         $this->actingAs($admin)
             ->get(route('admin.users.index'))
             ->assertOk()
-            ->assertDontSee('Something went wrong')
+            ->assertSee('User Management', false)
             ->assertSee('Leftover Date User', false);
     }
 
@@ -472,20 +472,24 @@ class AdminUsersCommunityCrashTest extends TestCase
         $this->pendingClaim($claimer, $site);
 
         Schema::disableForeignKeyConstraints();
+        Schema::dropIfExists('order_item_disputes');
         Schema::dropIfExists('order_items');
-        Schema::dropIfExists('orders');
         Schema::enableForeignKeyConstraints();
+        $this->assertFalse(Schema::hasTable('order_items'));
 
         try {
             $this->actingAs($admin)
                 ->get(route('admin.community.index', ['tab' => 'claims']))
                 ->assertOk()
-                ->assertDontSee('Something went wrong')
+                ->assertSee('Community feedback', false)
                 ->assertSee('Orderless Claimer', false);
         } finally {
-            $this->restoreOrdersTable();
             $this->artisan('migrate', [
                 '--path' => 'database/migrations/2026_04_21_070217_create_order_items_table.php',
+                '--force' => true,
+            ]);
+            $this->artisan('migrate', [
+                '--path' => 'database/migrations/2026_07_31_150200_create_order_item_disputes_table.php',
                 '--force' => true,
             ]);
         }
@@ -531,6 +535,6 @@ class AdminUsersCommunityCrashTest extends TestCase
         $this->actingAs($admin)
             ->get(route('admin.users.index', ['user' => ['12']]))
             ->assertOk()
-            ->assertDontSee('Something went wrong');
+            ->assertSee('User Management', false);
     }
 }

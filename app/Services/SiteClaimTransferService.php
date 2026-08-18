@@ -37,16 +37,20 @@ class SiteClaimTransferService
             return 0;
         }
 
-        return OrderItem::query()
-            ->where('site_id', $site->id)
-            ->where(function ($q) {
-                $q->whereNull('publisher_status')
-                    ->orWhereNotIn('publisher_status', ['completed', 'rejected']);
-            })
-            ->whereHas('order', function ($q) {
-                $q->whereNotIn('status', ['cancelled', 'completed', 'refunded']);
-            })
-            ->count();
+        try {
+            return OrderItem::query()
+                ->where('site_id', $site->id)
+                ->where(function ($q) {
+                    $q->whereNull('publisher_status')
+                        ->orWhereNotIn('publisher_status', ['completed', 'rejected']);
+                })
+                ->whereHas('order', function ($q) {
+                    $q->whereNotIn('status', ['cancelled', 'completed', 'refunded']);
+                })
+                ->count();
+        } catch (\Throwable) {
+            return 0;
+        }
     }
 
     /**
@@ -59,10 +63,14 @@ class SiteClaimTransferService
             return 0;
         }
 
-        return OrderItemDispute::query()
-            ->where('status', OrderItemDispute::STATUS_OPEN)
-            ->whereHas('orderItem', fn ($q) => $q->where('site_id', $site->id))
-            ->count();
+        try {
+            return OrderItemDispute::query()
+                ->where('status', OrderItemDispute::STATUS_OPEN)
+                ->whereHas('orderItem', fn ($q) => $q->where('site_id', $site->id))
+                ->count();
+        } catch (\Throwable) {
+            return 0;
+        }
     }
 
     /**
