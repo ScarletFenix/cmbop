@@ -182,6 +182,22 @@ class SiteTag
     }
 
     /**
+     * Rows with more than one listing-tag flag (legacy / import leftovers).
+     */
+    public static function constrainConflicting(Builder $query): void
+    {
+        $query->where(function (Builder $outer) {
+            $outer->where(function (Builder $q) {
+                $q->where('sponsored', 1)->where('partner_material', 1);
+            })->orWhere(function (Builder $q) {
+                $q->where('sponsored', 1)->where('as_you_prefer', 1);
+            })->orWhere(function (Builder $q) {
+                $q->where('partner_material', 1)->where('as_you_prefer', 1);
+            });
+        });
+    }
+
+    /**
      * @return array{sponsored: bool, partner_material: bool, as_you_prefer: bool}
      */
     public static function flags(?string $tag): array

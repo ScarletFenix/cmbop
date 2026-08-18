@@ -15,6 +15,11 @@
                class="btn {{ empty($recovery['clear_category_url']) ? 'btn-primary' : 'btn-outline-secondary' }} btn-sm catalog-clear-country"
                data-catalog-filter-action="clear-country">Clear country</a>
         @endif
+        @if(!empty($recovery['clear_tag_url']))
+            <a href="{{ $recovery['clear_tag_url'] }}"
+               class="btn {{ empty($recovery['clear_category_url']) && empty($recovery['clear_country_url']) ? 'btn-primary' : 'btn-outline-secondary' }} btn-sm catalog-clear-tag"
+               data-catalog-filter-action="clear-tag">Clear tag</a>
+        @endif
         <a href="{{ $recovery['clear_all_url'] }}"
            class="btn btn-outline-secondary btn-sm catalog-clear-all">Clear all filters</a>
         @if(!empty($recovery['try_language']))
