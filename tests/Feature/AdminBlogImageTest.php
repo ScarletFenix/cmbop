@@ -460,12 +460,8 @@ class AdminBlogImageTest extends TestCase
         );
     }
 
-    public function test_store_converts_featured_jpeg_to_webp(): void
+    public function test_store_persists_featured_jpeg_and_converts_to_webp_when_gd_can(): void
     {
-        if (! function_exists('imagewebp')) {
-            $this->markTestSkipped('GD WebP not available');
-        }
-
         Storage::fake('public');
         $admin = $this->adminUser();
 
@@ -487,10 +483,15 @@ class AdminBlogImageTest extends TestCase
         $this->assertNotNull($blog);
         $this->assertNotNull($blog->featured_image);
         $this->assertStringStartsWith('blogs/featured/', $blog->featured_image);
-        $this->assertStringEndsWith('.webp', $blog->featured_image);
         Storage::disk('public')->assertExists($blog->featured_image);
-        $this->assertStringStartsWith('RIFF', Storage::disk('public')->get($blog->featured_image));
         $this->assertSame('/media/'.$blog->featured_image, $blog->featuredImageUrl());
+
+        if (function_exists('imagewebp')) {
+            $this->assertStringEndsWith('.webp', $blog->featured_image);
+            $this->assertStringStartsWith('RIFF', Storage::disk('public')->get($blog->featured_image));
+        } else {
+            $this->assertStringEndsWith('.jpg', $blog->featured_image);
+        }
     }
 
     private function blogDiskPathFromUrl(string $url): string
