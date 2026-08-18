@@ -186,6 +186,14 @@ class AdvertiserOrdersUxAbcTest extends TestCase
         $this->assertStringContainsString('window.reportLinkRemoved = function(orderId, itemId)', $js);
         $this->assertStringContainsString('payload.order_item_id', $js);
         $this->assertStringContainsString('window.recheckLiveUrl = function(orderId, itemId)', $js);
+        $this->assertStringContainsString('firstItem.visit_url', $js);
+        $this->assertStringContainsString('it.visit_url || it.site_url', $js);
+        $this->assertStringContainsString('details.visit_url || details.website_url', $js);
+        $this->assertStringNotContainsString('href="${safeUrl(siteUrl)}"', $js);
+        $this->assertStringNotContainsString('href="${safeUrl(it.site_url)}"', $js);
+        $this->assertStringNotContainsString('href="${safeUrl(details.website_url)}"', $js);
+        $this->assertStringContainsString('if (dateString == null || dateString === \'\') return \'—\';', $js);
+        $this->assertStringContainsString('if (Number.isNaN(date.getTime())) return \'—\';', $js);
     }
 
     public function test_awaiting_payment_and_awaiting_publisher_filters_split_pending(): void

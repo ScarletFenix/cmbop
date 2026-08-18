@@ -557,6 +557,10 @@ class ContentSubmission extends Model
      */
     public function scopeNearExpiryInLibrary($query, int $withinDays = 7)
     {
+        if (! Schema::hasColumn($query->getModel()->getTable(), 'expires_at')) {
+            return $query->whereRaw('0 = 1');
+        }
+
         return $query->where('moderation_status', self::STATUS_APPROVED)
             ->withoutOpenOwnerOrder()
             ->withoutOpenOrderItemLink()
@@ -986,6 +990,10 @@ class ContentSubmission extends Model
      */
     public function scopeWhereExpiryIsRecorded($query)
     {
+        if (! Schema::hasColumn($query->getModel()->getTable(), 'expires_at')) {
+            return $query->whereRaw('0 = 1');
+        }
+
         return $query->whereNotNull('expires_at')
             ->where('expires_at', '>=', static::PLAUSIBLE_SQL_DATETIME_FLOOR)
             ->where('expires_at', '<=', static::PLAUSIBLE_SQL_DATETIME_CEIL);
@@ -999,6 +1007,10 @@ class ContentSubmission extends Model
      */
     public function scopeWhereExpiryIsMissing($query)
     {
+        if (! Schema::hasColumn($query->getModel()->getTable(), 'expires_at')) {
+            return $query;
+        }
+
         return $query->where(function ($inner) {
             $inner->whereNull('expires_at')
                 ->orWhere('expires_at', '>', static::PLAUSIBLE_SQL_DATETIME_CEIL)
@@ -1014,6 +1026,10 @@ class ContentSubmission extends Model
      */
     public function scopeWhereNotExpired($query)
     {
+        if (! Schema::hasColumn($query->getModel()->getTable(), 'expires_at')) {
+            return $query;
+        }
+
         return $query->where(function ($q) {
             $q->whereExpiryIsMissing()
                 ->orWhere(function ($live) {
@@ -1031,6 +1047,10 @@ class ContentSubmission extends Model
      */
     public function scopeWhereExpired($query)
     {
+        if (! Schema::hasColumn($query->getModel()->getTable(), 'expires_at')) {
+            return $query->whereRaw('0 = 1');
+        }
+
         return $query->whereExpiryIsRecorded()
             ->where('expires_at', '<=', now());
     }
@@ -1043,6 +1063,10 @@ class ContentSubmission extends Model
      */
     public function scopeNotArchived($query)
     {
+        if (! Schema::hasColumn($query->getModel()->getTable(), 'archived_at')) {
+            return $query;
+        }
+
         return $query->where(function ($q) {
             $q->whereNull('archived_at')
                 ->orWhere('archived_at', '>', static::PLAUSIBLE_SQL_DATETIME_CEIL)
@@ -1056,6 +1080,10 @@ class ContentSubmission extends Model
      */
     public function scopeArchived($query)
     {
+        if (! Schema::hasColumn($query->getModel()->getTable(), 'archived_at')) {
+            return $query->whereRaw('0 = 1');
+        }
+
         return $query->whereNotNull('archived_at')
             ->where('archived_at', '>=', static::PLAUSIBLE_SQL_DATETIME_FLOOR)
             ->where('archived_at', '<=', static::PLAUSIBLE_SQL_DATETIME_CEIL);

@@ -49,6 +49,7 @@ use App\Services\StripeCustomerService;
 use App\Services\StripePaymentService;
 use App\Services\Wallet\WalletLedgerService;
 use App\Support\AdvertiserOrderStatus;
+use App\Support\CatalogVisitUrl;
 use App\Support\SiteTag;
 use App\Support\UserFacingError;
 use Carbon\CarbonInterface;
@@ -4208,6 +4209,7 @@ class CatalogController extends Controller
     public function getOrderStatistics()
     {
         try {
+            app(CheckoutSchemaService::class)->ensureCheckoutTables();
             $userId = auth()->id();
             $base = Order::where('user_id', $userId);
 
@@ -4257,6 +4259,7 @@ class CatalogController extends Controller
     public function getOrders(Request $request)
     {
         try {
+            app(CheckoutSchemaService::class)->ensureCheckoutTables();
             $userId = auth()->id();
 
             $query = Order::where('user_id', $userId)
@@ -4357,6 +4360,7 @@ class CatalogController extends Controller
                     $item->auto_approve_hours_remaining = (int) $item->getAutoApproveHoursRemaining();
                 }
                 $this->attachDisputeMeta($order, $item, $clawbacks);
+                $this->attachListingVisitUrls($order);
 
                 return $order;
             });
@@ -4422,6 +4426,7 @@ class CatalogController extends Controller
                 }
             }
             $this->attachDisputeMeta($order, $item, app(OrderClawbackService::class));
+            $this->attachListingVisitUrls($order);
 
             return response()->json([
                 'success' => true,
@@ -4859,6 +4864,20 @@ class CatalogController extends Controller
         $order->dispute_status = $shown?->status;
         $order->dispute_id = $shown?->id;
         $order->dispute_reason = $shown?->reason;
+    }
+
+    /**
+     * Listing hosts go through /advertiser/go/{id} so copy-link-address
+     * cannot harvest the publisher URL from the Orders table or details.
+     */
+    private function attachListingVisitUrls(Order $order): void
+    {
+        foreach ($order->items as $line) {
+            if (! $line instanceof OrderItem) {
+                continue;
+            }
+            $line->setAttribute('visit_url', CatalogVisitUrl::forSiteId($line->site_id));
+        }
     }
 
     private function resolveDisputableItem(Order $order, ?int $orderItemId): ?OrderItem

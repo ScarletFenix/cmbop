@@ -400,8 +400,9 @@ function bootAdvertiserOrdersPage() {
 
         window._chatOrderId = details.order_id || window._chatOrderId || null;
         const websiteName = escapeHtml(details.website_name || '—');
+        const websiteHref = details.visit_url || details.website_url;
         const websiteUrl = details.website_url
-            ? `<a class="chat-od__url" href="${safeUrl(details.website_url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(details.website_url)}</a>`
+            ? `<a class="chat-od__url" href="${safeUrl(websiteHref)}" target="_blank" rel="noopener noreferrer">${escapeHtml(details.website_url)}</a>`
             : '';
         const statusLabel = escapeHtml(details.status_label || details.status || '—');
         const nextAction = escapeHtml(details.next_action || '');
@@ -1097,6 +1098,7 @@ function bootAdvertiserOrdersPage() {
             const firstItem = items[0] || null;
             const siteName = firstItem ? firstItem.site_name : 'N/A';
             const siteUrl = firstItem ? firstItem.site_url : '';
+            const siteHref = (firstItem && firstItem.visit_url) ? firstItem.visit_url : siteUrl;
             const itemsCount = order.items_count || items.length || 0;
             const moreCount = Math.max(0, itemsCount - 1);
             const totalAmount = parseFloat(order.total_amount || 0);
@@ -1107,7 +1109,7 @@ function bootAdvertiserOrdersPage() {
                 ? `<span class="chat-unread-dot">${order.unread_chat}</span>`
                 : '';
             const siteUrlHtml = siteUrl
-                ? `<div class="text-muted small"><a href="${safeUrl(siteUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(siteUrl)}</a></div>`
+                ? `<div class="text-muted small"><a href="${safeUrl(siteHref)}" target="_blank" rel="noopener noreferrer">${escapeHtml(siteUrl)}</a></div>`
                 : '';
             const moreHtml = moreCount > 0
                 ? `<div class="small text-muted mt-1">+${moreCount} more</div>`
@@ -1574,7 +1576,7 @@ function bootAdvertiserOrdersPage() {
                 </div>
                 <div class="ov-block">
                     <strong>Site URL</strong>
-                    <div>${it.site_url ? `<a href="${safeUrl(it.site_url)}" target="_blank" rel="noopener noreferrer" class="text-primary">${escapeHtml(it.site_url)} <i class="fa fa-external-link fa-xs"></i></a>` : '—'}</div>
+                    <div>${it.site_url ? `<a href="${safeUrl(it.visit_url || it.site_url)}" target="_blank" rel="noopener noreferrer" class="text-primary">${escapeHtml(it.site_url)} <i class="fa fa-external-link fa-xs"></i></a>` : '—'}</div>
                 </div>
                 <div class="ov-block">
                     <strong>Document</strong>
@@ -1887,7 +1889,9 @@ function bootAdvertiserOrdersPage() {
     }
 
     function formatDate(dateString) {
+        if (dateString == null || dateString === '') return '—';
         const date = new Date(dateString);
+        if (Number.isNaN(date.getTime())) return '—';
         return date.toLocaleDateString('en-US', {
             year: 'numeric',
             month: 'short',

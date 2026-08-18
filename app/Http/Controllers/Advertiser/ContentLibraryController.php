@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ContentSubmission;
 use App\Models\Country;
 use App\Models\Language;
+use App\Models\OrderItemDispute;
 use App\Models\User;
 use App\Services\Advertiser\ContentLibrarySearchQuery;
 use App\Services\ContentUpload\ContentUploadService;
@@ -14,6 +15,7 @@ use App\Services\Marketplace\LanguageCountryMap;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 
@@ -90,9 +92,14 @@ class ContentLibraryController extends Controller
             $availability = 'available';
         }
 
+        $with = ['order', 'orderItem.site', 'orderItems.site', 'orderItems.order'];
+        if (OrderItemDispute::tableAvailable()) {
+            $with[] = 'orderItems.disputes';
+        }
+
         $query = ContentSubmission::query()
             ->forLibraryList()
-            ->with(['order', 'orderItem.site', 'orderItems.site', 'orderItems.order', 'orderItems.disputes'])
+            ->with($with)
             ->where('user_id', auth()->id())
             ->latest('id');
 
@@ -144,24 +151,40 @@ class ContentLibraryController extends Controller
         if ($page < 1) {
             $page = 1;
         }
-        $submissions = $query->paginate(20, ['*'], 'page', $page)->withQueryString();
-        $submissions->setPath(route('advertiser.content-library', absolute: false));
+        $libraryPath = route('advertiser.content-library', absolute: false);
+        try {
+            $submissions = $query->paginate(20, ['*'], 'page', $page)->withQueryString();
+            $submissions->setPath($libraryPath);
+        } catch (\Throwable $e) {
+            Log::warning('Content library list leftover query failed', [
+                'user_id' => auth()->id(),
+                'error' => $e->getMessage(),
+            ]);
+            $submissions = new LengthAwarePaginator([], 0, 20, $page);
+            $submissions->setPath($libraryPath);
+        }
 
         $baseScope = ContentSubmission::query()->where('user_id', auth()->id());
 
-        $groupedByLanguage = (clone $baseScope)
-            ->notArchived()
-            ->whereNotNull('language')
-            ->selectRaw('language, COUNT(*) as total')
-            ->groupBy('language')
-            ->pluck('total', 'language');
+        $groupedByLanguage = $this->safeLibraryQuery(
+            fn () => (clone $baseScope)
+                ->notArchived()
+                ->whereNotNull('language')
+                ->selectRaw('language, COUNT(*) as total')
+                ->groupBy('language')
+                ->pluck('total', 'language'),
+            collect(),
+        );
 
-        $groupedByCountry = (clone $baseScope)
-            ->notArchived()
-            ->whereNotNull('country')
-            ->selectRaw('country, COUNT(*) as total')
-            ->groupBy('country')
-            ->pluck('total', 'country');
+        $groupedByCountry = $this->safeLibraryQuery(
+            fn () => (clone $baseScope)
+                ->notArchived()
+                ->whereNotNull('country')
+                ->selectRaw('country, COUNT(*) as total')
+                ->groupBy('country')
+                ->pluck('total', 'country'),
+            collect(),
+        );
 
         // Counts for moderation boxes: respect search / country / language, ignore status.
         $countScope = ContentSubmission::query()
@@ -180,10 +203,13 @@ class ContentLibraryController extends Controller
             $this->librarySearch->apply($countScope, $search);
         }
 
-        $statusTotals = (clone $countScope)
-            ->selectRaw('moderation_status, COUNT(*) as total')
-            ->groupBy('moderation_status')
-            ->pluck('total', 'moderation_status');
+        $statusTotals = $this->safeLibraryQuery(
+            fn () => (clone $countScope)
+                ->selectRaw('moderation_status, COUNT(*) as total')
+                ->groupBy('moderation_status')
+                ->pluck('total', 'moderation_status'),
+            collect(),
+        );
 
         $moderationCounts = [
             'all' => (int) $statusTotals->sum(),
@@ -196,21 +222,13 @@ class ContentLibraryController extends Controller
         ];
 
         $availabilityCounts = [
-            'all' => (int) (clone $countScope)->count(),
-            'available' => (int) (clone $countScope)->checkoutReady()->count(),
-            'evaluating' => (int) (clone $countScope)
-                ->evaluatingInLibrary()
-                ->count(),
-            'in_progress' => (int) (clone $countScope)
-                ->inProgressInLibrary()
-                ->count(),
-            'completed' => (int) (clone $countScope)
-                ->withCurrentLivePlacement()
-                ->count(),
-            'expired' => (int) (clone $countScope)
-                ->expiredUnused()
-                ->count(),
-            'needs_fix' => (int) (clone $countScope)->needsLibraryFix()->count(),
+            'all' => (int) $this->safeLibraryQuery(fn () => (clone $countScope)->count(), 0),
+            'available' => (int) $this->safeLibraryQuery(fn () => (clone $countScope)->checkoutReady()->count(), 0),
+            'evaluating' => (int) $this->safeLibraryQuery(fn () => (clone $countScope)->evaluatingInLibrary()->count(), 0),
+            'in_progress' => (int) $this->safeLibraryQuery(fn () => (clone $countScope)->inProgressInLibrary()->count(), 0),
+            'completed' => (int) $this->safeLibraryQuery(fn () => (clone $countScope)->withCurrentLivePlacement()->count(), 0),
+            'expired' => (int) $this->safeLibraryQuery(fn () => (clone $countScope)->expiredUnused()->count(), 0),
+            'needs_fix' => (int) $this->safeLibraryQuery(fn () => (clone $countScope)->needsLibraryFix()->count(), 0),
         ];
 
         $archivedCountScope = ContentSubmission::query()
@@ -225,20 +243,27 @@ class ContentLibraryController extends Controller
         if ($search !== '') {
             $this->librarySearch->apply($archivedCountScope, $search);
         }
-        $availabilityCounts['archived'] = (int) $archivedCountScope->count();
+        $availabilityCounts['archived'] = (int) $this->safeLibraryQuery(fn () => $archivedCountScope->count(), 0);
 
         // UI filter key: "completed" covers internal "published".
         $availabilityUi = $availability === 'published' ? 'completed' : $availability;
 
         $nearExpiryDays = 7;
-        $nearExpiryCount = (int) (clone $countScope)
-            ->nearExpiryInLibrary($nearExpiryDays)
-            ->count();
+        $nearExpiryCount = (int) $this->safeLibraryQuery(
+            fn () => (clone $countScope)->nearExpiryInLibrary($nearExpiryDays)->count(),
+            0,
+        );
 
-        $countries = Country::marketplace()->orderBy('name')->get(['code', 'name']);
-        $languages = Language::marketplace()->orderBy('name')->get(['code', 'name']);
-        $languageCountryMap = $this->languageCountryMap->map();
-        $countryLanguageMap = $this->countryLanguagePairs->mapWithNames();
+        $countries = $this->safeLibraryQuery(
+            fn () => Country::marketplace()->orderBy('name')->get(['code', 'name']),
+            collect(),
+        );
+        $languages = $this->safeLibraryQuery(
+            fn () => Language::marketplace()->orderBy('name')->get(['code', 'name']),
+            collect(),
+        );
+        $languageCountryMap = $this->safeLibraryQuery(fn () => $this->languageCountryMap->map(), []);
+        $countryLanguageMap = $this->safeLibraryQuery(fn () => $this->countryLanguagePairs->mapWithNames(), []);
         $editSubmission = $this->resolveEditableSubmission(scalar_text($request->query('edit')));
 
         return [
@@ -643,12 +668,37 @@ class ContentLibraryController extends Controller
             'editor_notice_ok' => false,
             'archived' => $s->isArchived(),
             'availability' => $s->libraryAvailability(),
-            'live_url' => $s->liveUrl(),
+            'live_url' => self::safeLiveUrl($s->liveUrl()),
             'download_url' => $s->canDownloadOriginal()
                 ? route('advertiser.content-submissions.download', $s)
                 : null,
             'created_at' => optional($s->created_at)?->toDateTimeString(),
         ];
+    }
+
+    protected static function safeLiveUrl(?string $url): ?string
+    {
+        $safe = safe_external_url($url, '');
+
+        return $safe !== '' ? $safe : null;
+    }
+
+    /**
+     * Optional library strips (counts, market pickers) must not 500 the page
+     * when Hostinger leftovers omit a column or marketplace table.
+     */
+    protected function safeLibraryQuery(callable $fn, mixed $fallback): mixed
+    {
+        try {
+            return $fn();
+        } catch (\Throwable $e) {
+            Log::warning('Content library leftover query failed', [
+                'user_id' => auth()->id(),
+                'error' => $e->getMessage(),
+            ]);
+
+            return $fallback;
+        }
     }
 
     /**

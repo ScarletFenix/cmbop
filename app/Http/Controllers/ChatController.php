@@ -11,6 +11,7 @@ use App\Services\CheckoutSchemaService;
 use App\Services\InAppNotificationService;
 use App\Services\OrderChatContactGuard;
 use App\Support\AdvertiserOrderStatus;
+use App\Support\CatalogVisitUrl;
 use App\Support\UserFacingError;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -477,6 +478,7 @@ class ChatController extends Controller
             'composer_note' => $composerNote,
             'website_name' => $item?->site_name ?: ($site?->site_name ?: '—'),
             'website_url' => $item?->site_url ?: ($site?->site_url ?: null),
+            'visit_url' => CatalogVisitUrl::forSiteId($item?->site_id ?: $site?->id),
             'order_date' => optional($order->created_at)?->toIso8601String(),
             'started_at' => optional($startedAt)?->toIso8601String(),
             'link_type' => $linkType,
