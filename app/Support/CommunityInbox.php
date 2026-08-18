@@ -7,6 +7,7 @@ use App\Models\WebsiteSuggestion;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Per-tab status vocabulary for the admin Community inbox.
@@ -311,6 +312,14 @@ class CommunityInbox
      */
     public static function occupyingSitesFor(iterable $suggestions): array
     {
+        try {
+            if (! Schema::hasTable('sites')) {
+                return [];
+            }
+        } catch (\Throwable) {
+            return [];
+        }
+
         $found = [];
         $seen = [];
         foreach ($suggestions as $suggestion) {

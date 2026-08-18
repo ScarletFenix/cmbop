@@ -45,6 +45,22 @@ trait ToleratesMissingSchema
     }
 
     /**
+     * Explicit /{id} lookups must 404, not 500, when the table is gone.
+     */
+    public static function findAvailable(int|string $id): ?static
+    {
+        if (! static::tableAvailable()) {
+            return null;
+        }
+
+        try {
+            return static::query()->find($id);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
      * Implicit /{model} must 404, not 500, when the table is gone.
      */
     public function resolveRouteBinding($value, $field = null)

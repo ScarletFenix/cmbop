@@ -194,6 +194,13 @@ class PayoutProfileService
             $updates['payout_crypto_trx_verified_at'] = now();
         }
 
+        $updates = User::existingAttributes($updates);
+        if ($updates === []) {
+            throw ValidationException::withMessages([
+                'payment_method' => 'Payout details cannot be saved on this database.',
+            ]);
+        }
+
         $user->forceFill($updates)->save();
 
         return [

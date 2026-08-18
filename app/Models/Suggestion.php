@@ -2,11 +2,15 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\ToleratesMissingSchema;
+use App\Models\Concerns\ToleratesUnparseableDates;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Suggestion extends Model
 {
+    use ToleratesMissingSchema, ToleratesUnparseableDates;
+
     protected $fillable = [
         'user_id',
         'name',
