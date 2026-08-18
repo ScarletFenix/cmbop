@@ -78,9 +78,13 @@ class SiteClaimTransferService
      */
     public function approveContext(SiteClaim $claim): array
     {
-        $claim->loadMissing(['site', 'claimer']);
-        $site = $claim->site;
-        $claimer = $claim->claimer;
+        try {
+            $claim->loadMissing(['site', 'claimer']);
+        } catch (\Throwable) {
+            // Leftover Hostinger: missing sites/users must not 500 the claims tab.
+        }
+        $site = $claim->relationLoaded('site') ? $claim->site : null;
+        $claimer = $claim->relationLoaded('claimer') ? $claim->claimer : null;
 
         return [
             'open_orders' => $site ? $this->openOrderItemsCount($site) : 0,
@@ -100,7 +104,19 @@ class SiteClaimTransferService
      */
     public function approve(SiteClaim $claim, User $admin, ?string $adminNotes = null): SiteClaim
     {
-        $claim->loadMissing(['site', 'claimer']);
+        try {
+            $claim->loadMissing(['site', 'claimer']);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to load site claim relations for approve: '.$e->getMessage(), [
+                'claim_id' => $claim->id,
+            ]);
+            if (! $claim->relationLoaded('site')) {
+                $claim->setRelation('site', null);
+            }
+            if (! $claim->relationLoaded('claimer')) {
+                $claim->setRelation('claimer', null);
+            }
+        }
         $site = $claim->site;
         $claimer = $claim->claimer;
 

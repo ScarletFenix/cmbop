@@ -34,12 +34,15 @@ class UserController extends Controller
         if ($hasRolePivot) {
             $query->with('roles');
         }
-        if (Schema::hasTable('orders')) {
+        if ($this->tableExists('orders') && $this->hasColumn('orders', 'payment_status')) {
             $query->withCount([
                 'orders as paid_orders_count' => fn ($q) => $q->where('payment_status', 'paid'),
-            ])->withSum([
-                'orders as paid_orders_total' => fn ($q) => $q->where('payment_status', 'paid'),
-            ], 'total_amount');
+            ]);
+            if ($this->hasColumn('orders', 'total_amount')) {
+                $query->withSum([
+                    'orders as paid_orders_total' => fn ($q) => $q->where('payment_status', 'paid'),
+                ], 'total_amount');
+            }
         }
 
         // Orders / finance deep-links: /admin/users?user=123#user-123
@@ -48,7 +51,16 @@ class UserController extends Controller
             $query->whereKey($request->integer('user'));
         }
 
-        $users = $query->latest()->paginate(10)->withQueryString();
+        try {
+            $users = $query->latest()->paginate(10)->withQueryString();
+        } catch (\Throwable $e) {
+            report($e);
+            $fallback = User::query();
+            if ($request->integer('user') > 0) {
+                $fallback->whereKey($request->integer('user'));
+            }
+            $users = $fallback->latest()->paginate(10)->withQueryString();
+        }
         if (! $hasRolePivot) {
             $users->getCollection()->each(function (User $user) {
                 $user->setRelation('roles', collect());
@@ -369,8 +381,22 @@ class UserController extends Controller
 
     private function rolePivotAvailable(): bool
     {
+        return $this->tableExists('roles') && $this->tableExists('role_user');
+    }
+
+    private function tableExists(string $table): bool
+    {
         try {
-            return Schema::hasTable('roles') && Schema::hasTable('role_user');
+            return Schema::hasTable($table);
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    private function hasColumn(string $table, string $column): bool
+    {
+        try {
+            return $this->tableExists($table) && Schema::hasColumn($table, $column);
         } catch (\Throwable) {
             return false;
         }

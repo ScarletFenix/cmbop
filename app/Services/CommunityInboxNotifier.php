@@ -157,16 +157,21 @@ class CommunityInboxNotifier
         $note = 'Listing created: '.$actual;
         $existing = trim((string) ($suggestion->admin_notes ?? ''));
 
+        $payload = WebsiteSuggestion::attributesThatExist([
+            'status' => 'accepted',
+            'admin_notes' => $existing !== '' ? $existing."\n".$note : $note,
+            'reviewed_at' => now(),
+            'reviewed_by' => $admin->id,
+            'updated_at' => now(),
+        ]);
+        if (! array_key_exists('status', $payload)) {
+            return;
+        }
+
         $affected = WebsiteSuggestion::query()
             ->whereKey($suggestion->id)
             ->where('status', '!=', 'accepted')
-            ->update([
-                'status' => 'accepted',
-                'admin_notes' => $existing !== '' ? $existing."\n".$note : $note,
-                'reviewed_at' => now(),
-                'reviewed_by' => $admin->id,
-                'updated_at' => now(),
-            ]);
+            ->update($payload);
 
         if ($affected !== 1) {
             return;

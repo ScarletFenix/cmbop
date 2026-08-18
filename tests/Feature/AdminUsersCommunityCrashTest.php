@@ -89,10 +89,13 @@ class AdminUsersCommunityCrashTest extends TestCase
         }
 
         try {
+            Schema::disableForeignKeyConstraints();
             Schema::table($table, function (Blueprint $blueprint) use ($column) {
                 $blueprint->dropColumn($column);
             });
+            Schema::enableForeignKeyConstraints();
         } catch (\Throwable) {
+            Schema::enableForeignKeyConstraints();
             $this->markTestSkipped('Could not drop '.$table.'.'.$column.' on this driver');
         }
 
@@ -115,6 +118,11 @@ class AdminUsersCommunityCrashTest extends TestCase
             }
             if ($type === 'text') {
                 $blueprint->text($column)->nullable();
+
+                return;
+            }
+            if ($type === 'id') {
+                $blueprint->unsignedBigInteger($column)->nullable();
 
                 return;
             }
@@ -517,6 +525,235 @@ class AdminUsersCommunityCrashTest extends TestCase
         } finally {
             $this->restoreColumn('site_claims', 'reviewed_at');
         }
+    }
+
+    public function test_users_index_survives_missing_order_spend_columns(): void
+    {
+        $admin = $this->admin();
+        $this->makeUser('advertiser', ['name' => 'Spend Column User']);
+
+        $this->dropColumnOrSkip('orders', 'payment_status');
+
+        try {
+            $this->actingAs($admin)
+                ->get(route('admin.users.index'))
+                ->assertOk()
+                ->assertSee('User Management', false)
+                ->assertSee('Spend Column User', false);
+        } finally {
+            $this->restoreColumn('orders', 'payment_status', 'string');
+        }
+    }
+
+    public function test_community_index_survives_missing_reviewed_by(): void
+    {
+        $admin = $this->admin();
+        ProblemReport::create([
+            'name' => 'Guest',
+            'email' => 'guest@example.com',
+            'subject' => 'No reviewer column',
+            'message' => 'Index must still load.',
+            'status' => 'pending',
+        ]);
+
+        $this->dropColumnOrSkip('problem_reports', 'reviewed_by');
+
+        try {
+            $this->actingAs($admin)
+                ->get(route('admin.community.index', ['tab' => 'problems']))
+                ->assertOk()
+                ->assertSee('No reviewer column', false);
+        } finally {
+            $this->restoreColumn('problem_reports', 'reviewed_by', 'id');
+        }
+    }
+
+    public function test_community_search_survives_missing_page_url(): void
+    {
+        $admin = $this->admin();
+        ProblemReport::create([
+            'name' => 'Guest',
+            'email' => 'search.guest@example.com',
+            'subject' => 'Missing page url column',
+            'message' => 'Search should skip gone columns.',
+            'status' => 'pending',
+        ]);
+
+        $this->dropColumnOrSkip('problem_reports', 'page_url');
+
+        try {
+            $this->actingAs($admin)
+                ->get(route('admin.community.index', [
+                    'tab' => 'problems',
+                    'q' => 'search.guest@example.com',
+                ]))
+                ->assertOk()
+                ->assertSee('Missing page url column', false);
+        } finally {
+            $this->restoreColumn('problem_reports', 'page_url', 'string');
+        }
+    }
+
+    public function test_suggestion_and_claim_tabs_survive_leftover_dates(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->siteFor($publisher);
+        $suggestion = Suggestion::create([
+            'user_id' => $advertiser->id,
+            'name' => $advertiser->name,
+            'email' => $advertiser->email,
+            'category' => 'feature',
+            'message' => 'Leftover suggestion date',
+            'status' => 'pending',
+        ]);
+        $website = WebsiteSuggestion::create([
+            'user_id' => $advertiser->id,
+            'website_name' => 'Leftover Website Date',
+            'website_url' => 'https://leftover-web.example',
+            'domain' => 'leftover-web.example',
+            'status' => 'pending',
+        ]);
+        $claim = $this->pendingClaim($advertiser, $site);
+
+        DB::table('suggestions')->where('id', $suggestion->id)->update([
+            'created_at' => 'not-a-date',
+            'reviewed_at' => 'also-not-a-date',
+        ]);
+        DB::table('website_suggestions')->where('id', $website->id)->update([
+            'created_at' => 'not-a-date',
+            'reviewed_at' => 'also-not-a-date',
+        ]);
+        DB::table('site_claims')->where('id', $claim->id)->update([
+            'created_at' => 'not-a-date',
+            'reviewed_at' => 'also-not-a-date',
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.community.index', ['tab' => 'suggestions']))
+            ->assertOk()
+            ->assertSee('Leftover suggestion date', false);
+
+        $this->actingAs($admin)
+            ->get(route('admin.community.index', ['tab' => 'websites']))
+            ->assertOk()
+            ->assertSee('Leftover Website Date', false);
+
+        $this->actingAs($admin)
+            ->get(route('admin.community.index', ['tab' => 'claims']))
+            ->assertOk()
+            ->assertSee($advertiser->name, false);
+    }
+
+    public function test_status_update_still_works_without_admin_notes(): void
+    {
+        $admin = $this->admin();
+        $suggestion = Suggestion::create([
+            'name' => 'Guest',
+            'email' => 'guest@example.com',
+            'category' => 'feature',
+            'message' => 'No notes column',
+            'status' => 'pending',
+        ]);
+
+        $this->dropColumnOrSkip('suggestions', 'admin_notes');
+
+        try {
+            $this->actingAs($admin)
+                ->patchJson(route('admin.community.suggestions.update', $suggestion->id), [
+                    'status' => 'reviewed',
+                    'admin_notes' => 'Ignored leftover.',
+                ])
+                ->assertOk()
+                ->assertJsonPath('success', true);
+
+            $this->assertSame('reviewed', $suggestion->fresh()->status);
+        } finally {
+            $this->restoreColumn('suggestions', 'admin_notes', 'text');
+        }
+    }
+
+    public function test_claim_reject_still_works_without_reviewed_by(): void
+    {
+        $admin = $this->admin();
+        $publisher = $this->makeUser('publisher');
+        $claimer = $this->makeUser('advertiser');
+        $site = $this->siteFor($publisher);
+        $claim = $this->pendingClaim($claimer, $site);
+
+        $this->dropColumnOrSkip('site_claims', 'reviewed_by');
+
+        try {
+            $this->actingAs($admin)
+                ->postJson(route('admin.community.claims.reject', $claim->id), [
+                    'admin_notes' => 'Not enough proof.',
+                ])
+                ->assertOk()
+                ->assertJsonPath('success', true);
+
+            $this->assertSame('rejected', $claim->fresh()->status);
+        } finally {
+            $this->restoreColumn('site_claims', 'reviewed_by', 'id');
+        }
+    }
+
+    public function test_claim_approve_does_not_500_when_sites_table_is_gone(): void
+    {
+        $admin = $this->admin();
+        $publisher = $this->makeUser('publisher');
+        $claimer = $this->makeUser('advertiser');
+        $claimer->assignRole('publisher');
+        $site = $this->siteFor($publisher);
+        $claim = $this->pendingClaim($claimer, $site);
+
+        Schema::disableForeignKeyConstraints();
+        Schema::dropIfExists('sites');
+        Schema::enableForeignKeyConstraints();
+        $this->assertFalse(Schema::hasTable('sites'));
+
+        try {
+            $response = $this->actingAs($admin)
+                ->postJson(route('admin.community.claims.approve', $claim->id));
+
+            $this->assertContains($response->status(), [404, 422]);
+            if ($response->status() === 422) {
+                $response->assertJsonPath('success', false);
+            }
+            if (Schema::hasTable('site_claims') && $claim->fresh()) {
+                $this->assertSame('pending', $claim->fresh()->status);
+            }
+        } finally {
+            $this->artisan('migrate', [
+                '--path' => 'database/migrations/2026_04_06_094704_create_sites_table.php',
+                '--force' => true,
+            ]);
+        }
+    }
+
+    public function test_users_and_community_layout_feeds_survive_leftover_community_dates(): void
+    {
+        $admin = $this->admin();
+        $report = ProblemReport::create([
+            'name' => 'Guest',
+            'email' => 'guest@example.com',
+            'subject' => 'Queue leftover date',
+            'message' => 'Nav badges must not 500.',
+            'status' => 'pending',
+        ]);
+        DB::table('problem_reports')->where('id', $report->id)->update([
+            'created_at' => 'not-a-date',
+        ]);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.dashboard.queue-counts'))
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.dashboard.action-queue'))
+            ->assertOk()
+            ->assertJsonPath('success', true);
     }
 
     public function test_community_search_array_filter_does_not_500(): void
