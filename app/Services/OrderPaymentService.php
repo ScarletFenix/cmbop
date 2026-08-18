@@ -2012,6 +2012,324 @@ class OrderPaymentService
     }
 
     /**
+     * Capture-then-fulfill for PayPal. Idempotent on paypal_capture_id /
+     * paypal_order_id so return + webhook cannot mint a second checkout.
+     *
+     * @param  array{id: string, capture_id: string, status: string, amount: float, currency: string, custom: array{type: string, user_id: string, reference_code: string}, raw?: array<string, mixed>}  $captured
+     * @return Collection<int, Order>
+     */
+    public function finalizePaypalCheckout(string $referenceCode, array $captured): Collection
+    {
+        $captureId = trim((string) ($captured['capture_id'] ?? ''));
+        if ($captureId === '') {
+            throw new \RuntimeException('PayPal finalize is missing capture_id.');
+        }
+
+        try {
+            return Cache::lock('paypal_finalize:'.$captureId, 20)
+                ->block(15, fn () => $this->finalizePaypalCheckoutLocked($referenceCode, $captured));
+        } catch (\BadMethodCallException) {
+            return $this->finalizePaypalCheckoutLocked($referenceCode, $captured);
+        }
+    }
+
+    /**
+     * @param  array{id: string, capture_id: string, status: string, amount: float, currency: string, custom: array{type: string, user_id: string, reference_code: string}, raw?: array<string, mixed>}  $captured
+     * @return Collection<int, Order>
+     */
+    private function finalizePaypalCheckoutLocked(string $referenceCode, array $captured): Collection
+    {
+        $paypalOrderId = trim((string) ($captured['id'] ?? ''));
+        $captureId = trim((string) ($captured['capture_id'] ?? ''));
+        $already = $this->paidPaypalOrdersForCapture($captureId, $paypalOrderId, $referenceCode);
+        if ($already->isNotEmpty()) {
+            return $already;
+        }
+
+        $package = $this->getPendingCheckout($referenceCode);
+        $custom = is_array($captured['custom'] ?? null) ? $captured['custom'] : [];
+        $metaUserId = isset($custom['user_id']) ? (int) $custom['user_id'] : 0;
+        $metaType = (string) ($custom['type'] ?? '');
+        $capturedAmount = round((float) ($captured['amount'] ?? 0), 2);
+
+        if ($metaType !== '' && $metaType !== PaypalCheckoutService::TYPE_ORDER_CHECKOUT) {
+            throw new \RuntimeException('PayPal capture is not an order checkout.');
+        }
+
+        if ($package === null) {
+            if ($already->isNotEmpty()) {
+                return $already;
+            }
+            if ($metaUserId > 0 && $capturedAmount > 0.009) {
+                $this->creditUnfulfilledCardCapture($metaUserId, $referenceCode, $capturedAmount, $captureId, [$captureId, $paypalOrderId]);
+            }
+            Log::warning('No pending PayPal checkout package to materialize', [
+                'reference_code' => $referenceCode,
+                'paypal_order_id' => $paypalOrderId,
+                'paypal_capture_id' => $captureId,
+            ]);
+
+            return collect();
+        }
+
+        $packageUserId = (int) ($package['user_id'] ?? 0);
+        if ($packageUserId > 0 && $metaUserId > 0 && $packageUserId !== $metaUserId) {
+            throw new \RuntimeException('PayPal checkout package does not belong to the paying user for ref '.$referenceCode);
+        }
+
+        $packagePaypalOrderId = search_text((string) ($package['paypal_order_id'] ?? ''));
+        if ($packagePaypalOrderId !== '' && $paypalOrderId !== '' && $packagePaypalOrderId !== $paypalOrderId) {
+            Log::warning('PayPal order id does not match current checkout package', [
+                'reference_code' => $referenceCode,
+                'package_paypal_order_id' => $packagePaypalOrderId,
+                'paypal_order_id' => $paypalOrderId,
+            ]);
+            $this->creditUnfulfilledCardCapture(
+                $packageUserId > 0 ? $packageUserId : $metaUserId,
+                $referenceCode,
+                $capturedAmount,
+                $captureId,
+                [$captureId, $paypalOrderId]
+            );
+
+            return collect();
+        }
+
+        $expected = round((float) ($package['amount_due'] ?? $package['order_total'] ?? 0), 2);
+        $userId = $packageUserId > 0 ? $packageUserId : $metaUserId;
+        if ($capturedAmount > 0 && abs($capturedAmount - $expected) > 0.01) {
+            if ($userId > 0) {
+                $this->creditUnfulfilledCardCapture($userId, $referenceCode, $capturedAmount, $captureId, [$captureId, $paypalOrderId]);
+            }
+            Log::warning('PayPal capture amount does not match current checkout package', [
+                'reference_code' => $referenceCode,
+                'package_amount_due' => $expected,
+                'paypal_euros' => $capturedAmount,
+                'user_id' => $userId,
+            ]);
+
+            return collect();
+        }
+
+        $schema = app(CheckoutSchemaService::class);
+        $schema->ensureCheckoutTables();
+
+        $created = DB::transaction(function () use ($package, $referenceCode, $captured, $schema, $paypalOrderId, $captureId, $userId) {
+            $existingPaid = $this->paidPaypalOrdersForCapture($captureId, $paypalOrderId, $referenceCode);
+            if ($existingPaid->isNotEmpty()) {
+                return $existingPaid;
+            }
+
+            $buyer = $userId > 0 ? User::query()->find($userId) : null;
+            $schedule = is_array($package['schedule'] ?? null) ? $package['schedule'] : ['mode' => 'immediate', 'timezone' => 'UTC'];
+            $lines = is_array($package['lines'] ?? null) ? $package['lines'] : [];
+            $orders = collect();
+            $storedCaptureOnFirst = false;
+
+            foreach ($lines as $index => $line) {
+                if (! is_array($line)) {
+                    continue;
+                }
+
+                $siteId = isset($line['site_id']) ? (int) $line['site_id'] : 0;
+                $site = $siteId > 0
+                    ? Site::query()->whereKey($siteId)->lockForUpdate()->first()
+                    : null;
+                if ($siteId > 0 && (! $site || ! $site->isCatalogVisible() || $site->isOwnedBy($buyer))) {
+                    Log::warning('Skipping PayPal line; listing left the catalog', [
+                        'reference_code' => $referenceCode,
+                        'site_id' => $siteId,
+                        'paypal_capture_id' => $captureId,
+                    ]);
+
+                    continue;
+                }
+
+                $lineKey = $this->checkoutLineKey($referenceCode, $siteId, (int) $index);
+                $submissionId = (int) ($line['content_submission_id'] ?? 0);
+                $expectLibrary = $submissionId > 0;
+                $submission = $expectLibrary
+                    ? ContentSubmission::query()->whereKey($submissionId)->lockForUpdate()->first()
+                    : null;
+                $articleMissing = $expectLibrary && ! $submission;
+                $articleTaken = $submission && $submission->isClaimedByAnotherOrder();
+                $articleUnready = $articleMissing
+                    || ($submission && ! $articleTaken && ! $submission->isReadyForCheckout());
+                if ($submission && ! $articleTaken && ! $articleUnready
+                    && ! $this->submissionPassesLivePolicy($submission, $buyer)) {
+                    $articleUnready = true;
+                }
+                $attachSubmission = $submission && ! $articleTaken && ! $articleUnready;
+
+                $order = $this->createPaidCardOrderRow($schema, [
+                    'user_id' => $userId,
+                    'reference_code' => $referenceCode,
+                    'checkout_line_key' => $lineKey,
+                    'subtotal' => $line['price'] ?? 0,
+                    'tax' => 0,
+                    'total_amount' => $line['price'] ?? 0,
+                    'payment_method' => 'paypal',
+                    'payment_status' => 'paid',
+                    'status' => 'pending',
+                    'sensitive_type' => $line['sensitive_type'] ?? null,
+                    'additional_price' => $line['additional_price'] ?? 0,
+                    'publication_mode' => $schedule['mode'] ?? 'immediate',
+                    'scheduled_publish_at' => $schedule['at'] ?? null,
+                    'schedule_timezone' => $schedule['timezone'] ?? 'UTC',
+                    'paypal_order_id' => $paypalOrderId !== '' ? $paypalOrderId : null,
+                    'paypal_capture_id' => $storedCaptureOnFirst ? null : $captureId,
+                    'paypal_response' => $captured['raw'] ?? $captured,
+                    'paid_at' => now(),
+                ]);
+                if ($order === null) {
+                    continue;
+                }
+                if (! $storedCaptureOnFirst && filled($order->paypal_capture_id)) {
+                    $storedCaptureOnFirst = true;
+                }
+
+                $itemPayload = [
+                    'order_id' => $order->id,
+                    'site_id' => $siteId ?: null,
+                    'site_name' => $line['site_name'] ?? $site?->site_name,
+                    'site_url' => $line['site_url'] ?? $site?->site_url,
+                    'price' => $line['price'] ?? 0,
+                    'content_link' => $line['content_link'] ?? null,
+                    'content_submission_id' => $attachSubmission ? $submission->id : null,
+                    'content_disk' => $attachSubmission ? $submission->disk : ($expectLibrary ? null : ($line['content_disk'] ?? null)),
+                    'content_path' => $attachSubmission ? $submission->path : ($expectLibrary ? null : ($line['content_path'] ?? null)),
+                    'content_original_name' => $attachSubmission ? $submission->original_filename : ($expectLibrary ? null : ($line['content_original_name'] ?? null)),
+                    'content_mime' => $attachSubmission ? $submission->mime : ($expectLibrary ? null : ($line['content_mime'] ?? null)),
+                    'anchor_text' => $attachSubmission ? $submission->anchor_text : ($expectLibrary ? null : ($line['anchor_text'] ?? null)),
+                    'target_url' => $attachSubmission ? $submission->target_url : ($expectLibrary ? null : ($line['target_url'] ?? null)),
+                    'feature_image_url' => $attachSubmission ? $submission->feature_image_url : ($expectLibrary ? null : ($line['feature_image_url'] ?? null)),
+                    'moderation_status' => $attachSubmission ? $submission->moderation_status : ($expectLibrary ? null : ($line['moderation_status'] ?? null)),
+                    'sensitive_type' => $line['sensitive_type'] ?? null,
+                    'additional_price' => $line['additional_price'] ?? 0,
+                    'homepage_days' => $line['homepage_days'] ?? null,
+                    'homepage_price' => $line['homepage_price'] ?? 0,
+                    'social_channels' => $line['social_channels']
+                        ?? ($site?->enabledSocialChannels() ?: []),
+                    'publisher_price' => $line['publisher_price'] ?? null,
+                    'platform_fee_percent' => $line['platform_fee_percent'] ?? null,
+                    'platform_fee_amount' => $line['platform_fee_amount'] ?? null,
+                ];
+                $item = OrderItem::create($schema->filterExistingColumns('order_items', $itemPayload));
+
+                if ($articleTaken || $articleUnready) {
+                    $reason = $articleTaken
+                        ? 'Content Library article was already purchased on another checkout'
+                        : 'Content Library article is no longer available for checkout';
+                    app(OrderRefundService::class)->cancelAndRefundBreakdown($order, $reason);
+
+                    continue;
+                }
+
+                if ($submission) {
+                    $subPayload = [
+                        'publication_mode' => $order->publication_mode,
+                        'scheduled_publish_at' => $order->scheduled_publish_at,
+                        'timezone' => $order->schedule_timezone ?: $submission->timezone,
+                    ];
+                    if ($submission->shouldAdoptOwnerOrder((int) $order->id)) {
+                        $subPayload['order_id'] = $order->id;
+                        $subPayload['order_item_id'] = $item->id;
+                    }
+                    $filteredSub = $schema->filterExistingColumns($submission->getTable(), $subPayload);
+                    if ($filteredSub !== []) {
+                        $submission->update($filteredSub);
+                    }
+                }
+
+                $orders->push($order->fresh('items'));
+            }
+
+            return $orders;
+        });
+
+        if ($created->isEmpty()) {
+            $replay = $this->paidPaypalOrdersForCapture($captureId, $paypalOrderId, $referenceCode);
+            if ($replay->isNotEmpty()) {
+                return $replay;
+            }
+            if ($userId > 0 && $capturedAmount > 0.009) {
+                $this->creditUnfulfilledCardCapture($userId, $referenceCode, $capturedAmount, $captureId, [$captureId, $paypalOrderId]);
+            }
+            $this->forgetPendingCheckout($referenceCode);
+            Log::warning('PayPal checkout paid but no catalog-visible lines to materialize', [
+                'reference_code' => $referenceCode,
+                'paypal_capture_id' => $captureId,
+                'user_id' => $userId,
+                'line_count' => is_array($package['lines'] ?? null) ? count($package['lines']) : -1,
+            ]);
+
+            return collect();
+        }
+
+        $fulfilled = round((float) $created->sum(fn (Order $order) => (float) $order->total_amount), 2);
+        $unfulfilled = round(max(0, $expected - $fulfilled), 2);
+        if ($userId > 0 && $unfulfilled > 0.009) {
+            $this->creditUnfulfilledCardCapture($userId, $referenceCode, $unfulfilled, $captureId, [$captureId, $paypalOrderId]);
+        }
+
+        $packageBonus = round((float) ($package['bonus_applied'] ?? 0), 2);
+        $packageTotal = round((float) ($package['order_total'] ?? 0), 2);
+        $bonusKeep = $userId > 0
+            ? $this->keepCheckoutBonusForFulfilled(
+                $userId,
+                $referenceCode,
+                $packageBonus,
+                $packageTotal,
+                $fulfilled
+            )
+            : 0.0;
+        if ($userId > 0) {
+            $this->rereserveReleasedCheckoutBonus($userId, $referenceCode, $bonusKeep);
+        }
+
+        $this->forgetPendingCheckoutKeepLeftoverHold($referenceCode, $userId);
+        $this->recordAdvertiserPurchaseForPaidCheckout($referenceCode, $created, $bonusKeep, $fulfilled);
+        $this->evaluateSpendBudgetAfterPaidOrders($created);
+
+        Log::info('Materialized PayPal checkout orders after capture', [
+            'reference_code' => $referenceCode,
+            'order_count' => $created->count(),
+            'paypal_capture_id' => $captureId,
+        ]);
+
+        return $created;
+    }
+
+    /**
+     * @return Collection<int, Order>
+     */
+    private function paidPaypalOrdersForCapture(string $captureId, string $paypalOrderId, string $referenceCode): Collection
+    {
+        $query = Order::query()
+            ->with('items')
+            ->where('payment_method', 'paypal')
+            ->where('payment_status', 'paid')
+            ->where('status', '!=', 'cancelled');
+
+        if ($captureId === '' && $paypalOrderId === '') {
+            if ($referenceCode === '') {
+                return collect();
+            }
+
+            return $query->where('reference_code', $referenceCode)->get();
+        }
+
+        return $query->where(function ($inner) use ($captureId, $paypalOrderId) {
+            if ($captureId !== '') {
+                $inner->orWhere('paypal_capture_id', $captureId);
+            }
+            if ($paypalOrderId !== '') {
+                $inner->orWhere('paypal_order_id', $paypalOrderId);
+            }
+        })->get();
+    }
+
+    /**
      * @param  array<string, mixed>  $paidAttributes
      */
     private function settleExistingCardOrder(Order $order, array $paidAttributes): ?Order

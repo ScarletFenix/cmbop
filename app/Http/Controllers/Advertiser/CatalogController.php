@@ -2442,30 +2442,160 @@ class CatalogController extends Controller
     }
 
     /**
-     * Buyer returned from PayPal. Capture + paid rows land in the next slice.
+     * Buyer returned from PayPal. Capture first, then create paid orders.
+     * A replay (return + webhook, or ORDER_ALREADY_CAPTURED) is idempotent.
      */
     public function paypalCheckoutReturn(Request $request)
     {
         $ref = trim((string) $request->query('ref', ''));
+        $token = trim((string) $request->query('token', ''));
+        $userId = (int) auth()->id();
 
-        return redirect()->route('advertiser.checkout', array_filter([
-            'paypal_return' => 1,
-            'token' => $request->query('token'),
-            'ref' => $ref !== '' ? $ref : null,
-        ]));
+        if ($ref === '' || $token === '') {
+            return redirect()->route('advertiser.checkout')
+                ->with('error', 'Invalid PayPal return.');
+        }
+
+        $paypal = app(PaypalCheckoutService::class);
+        if (! $paypal->configured()) {
+            return redirect()->route('advertiser.checkout')
+                ->with('error', 'PayPal is not configured.');
+        }
+
+        $paymentService = app(OrderPaymentService::class);
+        $existingPaid = $this->paidOrdersForCheckout($ref, $userId, 'paypal');
+        if ($existingPaid->isNotEmpty()) {
+            return $this->redirectAfterPaidPaypalCheckout($existingPaid, collect());
+        }
+
+        $package = $paymentService->getPendingCheckout($ref);
+        if (is_array($package)) {
+            $packageUser = (int) ($package['user_id'] ?? 0);
+            if ($packageUser > 0 && $packageUser !== $userId) {
+                return redirect()->route('advertiser.checkout')
+                    ->with('error', 'Payment does not belong to this account.');
+            }
+            $packageOrderId = search_text((string) ($package['paypal_order_id'] ?? ''));
+            if ($packageOrderId !== '' && $packageOrderId !== $token) {
+                return redirect()->route('advertiser.checkout')
+                    ->with('error', 'PayPal order does not match this checkout.');
+            }
+        }
+
+        try {
+            $captured = $paypal->captureOrder($token);
+        } catch (\Throwable $e) {
+            Log::error('PayPal capture failed on return', [
+                'reference_code' => $ref,
+                'paypal_order_id' => $token,
+                'error' => $e->getMessage(),
+            ]);
+
+            return redirect()->route('advertiser.checkout')
+                ->with('error', 'PayPal payment was not completed.');
+        }
+
+        $custom = is_array($captured['custom'] ?? null) ? $captured['custom'] : [];
+        if ((string) ($custom['user_id'] ?? '') !== (string) $userId) {
+            return redirect()->route('advertiser.checkout')
+                ->with('error', 'Payment does not belong to this account.');
+        }
+        if (($custom['type'] ?? '') !== PaypalCheckoutService::TYPE_ORDER_CHECKOUT) {
+            return redirect()->route('advertiser.checkout')
+                ->with('error', 'This payment is not an order checkout.');
+        }
+        if (($custom['reference_code'] ?? '') !== $ref) {
+            return redirect()->route('advertiser.checkout')
+                ->with('error', 'Payment reference mismatch.');
+        }
+
+        try {
+            $newlyPaid = $paymentService->finalizePaypalCheckout($ref, $captured);
+        } catch (\Throwable $e) {
+            Log::error('PayPal finalize failed on return', [
+                'reference_code' => $ref,
+                'error' => $e->getMessage(),
+            ]);
+
+            return redirect()->route('advertiser.checkout')
+                ->with('error', UserFacingError::message($e, 'Payment verification failed. Please try again.'));
+        }
+
+        $paidOrders = $this->paidOrdersForCheckout($ref, $userId, 'paypal');
+        if ($paidOrders->isEmpty()) {
+            return redirect()->route('advertiser.checkout')
+                ->with('error', 'Payment was received but the listing(s) are no longer available. Contact support with your payment reference.');
+        }
+
+        return $this->redirectAfterPaidPaypalCheckout($paidOrders, $newlyPaid);
     }
 
     /**
-     * Buyer cancelled on PayPal — same leftover restore as Stripe cancel.
+     * Buyer cancelled on PayPal. If capture already settled, show the orders.
      */
     public function paypalCheckoutCancel(Request $request)
     {
         $ref = trim((string) $request->query('ref', ''));
+        $userId = (int) auth()->id();
+        if ($ref !== '' && $userId > 0) {
+            $paid = $this->paidOrdersForCheckout($ref, $userId, 'paypal');
+            if ($paid->isNotEmpty()) {
+                return $this->redirectAfterPaidPaypalCheckout($paid, collect());
+            }
+        }
 
         return redirect()->route('advertiser.checkout', array_filter([
             'canceled' => 1,
             'ref' => $ref !== '' ? $ref : null,
         ]));
+    }
+
+    /**
+     * @param  Collection<int, Order>  $paidOrders
+     * @param  Collection<int, Order>  $newlyPaid
+     */
+    private function redirectAfterPaidPaypalCheckout($paidOrders, $newlyPaid)
+    {
+        $paymentService = app(OrderPaymentService::class);
+        if ($newlyPaid->isNotEmpty()) {
+            $paymentService->notifyPublishersOfPaidOrders($newlyPaid);
+        }
+
+        $this->removePaidOrdersFromCart($paidOrders);
+        session()->forget([
+            'pending_paypal_reference',
+            'pending_card_reference',
+            'checkout_content_submission_id',
+            'checkout_schedule',
+            'checkout_deferred_cart',
+            'checkout_reference_code',
+        ]);
+
+        $orderNumbers = $paidOrders->pluck('order_number')->implode(', ');
+        $paidCount = $paidOrders->count();
+        $remaining = count(session('cart', []));
+        $scheduledOrders = $paidOrders->filter(fn (Order $order) => ($order->publication_mode ?? '') === 'scheduled');
+        $successMsg = $paidCount.' order(s) paid successfully! Order numbers: '.$orderNumbers;
+        if ($scheduledOrders->isNotEmpty()) {
+            $first = $scheduledOrders->first();
+            $label = $this->scheduleSuccessLabel([
+                'mode' => 'scheduled',
+                'at' => $first->scheduled_publish_at,
+                'timezone' => $first->schedule_timezone ?: 'UTC',
+            ]);
+            if ($label) {
+                $successMsg .= ' Publisher notified — they must publish on '.$label.'.';
+            }
+        }
+        if ($remaining > 0) {
+            $successMsg .= ' '.$remaining.' website(s) remain in your cart until they are ready for checkout.';
+        }
+
+        $redirect = $scheduledOrders->isNotEmpty()
+            ? redirect()->route('advertiser.scheduled-orders', ['tab' => 'upcoming'])
+            : redirect()->route('advertiser.orders');
+
+        return $redirect->with('success', $successMsg);
     }
 
     /**
@@ -5974,7 +6104,7 @@ class CatalogController extends Controller
             $alreadyPaid = Order::query()
                 ->where('user_id', $userId)
                 ->where('reference_code', $referenceCode)
-                ->where('payment_method', 'card')
+                ->whereIn('payment_method', ['card', 'paypal'])
                 ->where('payment_status', 'paid')
                 ->exists();
             if ($alreadyPaid) {
@@ -5996,7 +6126,7 @@ class CatalogController extends Controller
             }
 
             $this->refundCheckoutBonus($userId, $referenceCode);
-            session()->forget(['pending_card_reference', 'checkout_deferred_cart']);
+            session()->forget(['pending_card_reference', 'pending_paypal_reference', 'checkout_deferred_cart']);
 
             Log::info('Cancelled Stripe-first card checkout (no order rows yet)', [
                 'reference_code' => $referenceCode,

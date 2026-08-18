@@ -253,7 +253,7 @@ class Order extends Model
     public function paidViaPaypal(): bool
     {
         return $this->payment_method === 'paypal'
-            && filled($this->paypal_capture_id);
+            && (filled($this->paypal_capture_id) || filled($this->paypal_order_id));
     }
 
     public function user()

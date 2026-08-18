@@ -228,6 +228,52 @@ class PaypalCheckoutServiceTest extends TestCase
         $this->paypal->captureOrder('PO-NOUSER');
     }
 
+    public function test_capture_order_reuses_existing_capture_when_already_captured(): void
+    {
+        Http::fake(function ($request) {
+            $url = $request->url();
+
+            if (str_contains($url, '/v1/oauth2/token')) {
+                return Http::response([
+                    'access_token' => 'tok_test',
+                    'expires_in' => 300,
+                    'token_type' => 'Bearer',
+                ], 200);
+            }
+
+            if (str_contains($url, '/v2/checkout/orders/PO-DUP/capture')) {
+                return Http::response([
+                    'name' => 'UNPROCESSABLE_ENTITY',
+                    'details' => [['issue' => 'ORDER_ALREADY_CAPTURED']],
+                ], 422);
+            }
+
+            if (str_contains($url, '/v2/checkout/orders/PO-DUP')) {
+                return Http::response([
+                    'id' => 'PO-DUP',
+                    'status' => 'COMPLETED',
+                    'purchase_units' => [[
+                        'custom_id' => 'order_checkout:8:REF-DUP',
+                        'payments' => [
+                            'captures' => [[
+                                'id' => 'CAP-DUP',
+                                'status' => 'COMPLETED',
+                                'amount' => ['currency_code' => 'EUR', 'value' => '25.00'],
+                            ]],
+                        ],
+                    ]],
+                ], 200);
+            }
+
+            return Http::response(['name' => 'RESOURCE_NOT_FOUND'], 404);
+        });
+
+        $captured = $this->paypal->captureOrder('PO-DUP');
+        $this->assertSame('CAP-DUP', $captured['capture_id']);
+        $this->assertSame(25.0, $captured['amount']);
+        $this->assertSame('8', $captured['custom']['user_id']);
+    }
+
     public function test_refund_capture_posts_euro_amount(): void
     {
         $this->fakePaypal([

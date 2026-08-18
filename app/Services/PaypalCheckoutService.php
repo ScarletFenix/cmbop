@@ -163,39 +163,41 @@ class PaypalCheckoutService
             'post',
             '/v2/checkout/orders/'.rawurlencode($paypalOrderId).'/capture',
             new \stdClass,
-            ['PayPal-Request-Id' => 'capture-'.$paypalOrderId]
+            ['PayPal-Request-Id' => 'capture-'.$paypalOrderId],
+            false
         );
-        $data = $response->json() ?? [];
-        $unit = is_array($data['purchase_units'][0] ?? null) ? $data['purchase_units'][0] : [];
-        $capture = is_array($unit['payments']['captures'][0] ?? null) ? $unit['payments']['captures'][0] : [];
-        $captureId = trim((string) ($capture['id'] ?? ''));
-        $status = strtoupper((string) ($capture['status'] ?? $data['status'] ?? ''));
-        $amountRaw = $capture['amount']['value'] ?? $unit['amount']['value'] ?? null;
-        $currency = (string) ($capture['amount']['currency_code'] ?? $unit['amount']['currency_code'] ?? self::CURRENCY);
-        $custom = self::parseCustomId(isset($unit['custom_id']) ? (string) $unit['custom_id'] : '');
-
-        if ($captureId === '' || $amountRaw === null || $amountRaw === '') {
-            throw new RuntimeException('PayPal capture did not return an amount.');
+        if ($response->successful()) {
+            return $this->completedCaptureFromPayload($response->json() ?? [], $paypalOrderId);
         }
-        if ($status !== 'COMPLETED') {
-            throw new RuntimeException('PayPal capture was not completed.');
-        }
-        if (strtoupper($currency) !== self::CURRENCY) {
-            throw new RuntimeException('PayPal capture currency is not EUR.');
-        }
-        if (($custom['user_id'] ?? '') === '') {
-            throw new RuntimeException('PayPal capture is missing user_id.');
+        if ($this->isAlreadyCaptured($response)) {
+            return $this->getCompletedCapture($paypalOrderId);
         }
 
-        return [
-            'id' => (string) ($data['id'] ?? $paypalOrderId),
-            'capture_id' => $captureId,
-            'status' => $status,
-            'amount' => round((float) $amountRaw, 2),
-            'currency' => self::CURRENCY,
-            'custom' => $custom,
-            'raw' => $data,
-        ];
+        Log::error('PayPal API error', [
+            'path' => '/v2/checkout/orders/'.$paypalOrderId.'/capture',
+            'status' => $response->status(),
+        ]);
+        throw new RuntimeException('PayPal request failed.');
+    }
+
+    /**
+     * @return array{id: string, capture_id: string, status: string, amount: float, currency: string, custom: array{type: string, user_id: string, reference_code: string}, raw: array<string, mixed>}
+     */
+    public function getCompletedCapture(string $paypalOrderId): array
+    {
+        $this->assertConfigured();
+
+        $paypalOrderId = trim($paypalOrderId);
+        if ($paypalOrderId === '') {
+            throw new RuntimeException('Missing PayPal order id.');
+        }
+
+        $response = $this->paypalRequest(
+            'get',
+            '/v2/checkout/orders/'.rawurlencode($paypalOrderId)
+        );
+
+        return $this->completedCaptureFromPayload($response->json() ?? [], $paypalOrderId);
     }
 
     /**
@@ -329,7 +331,7 @@ class PaypalCheckoutService
         return $token;
     }
 
-    private function paypalRequest(string $method, string $path, mixed $body = null, array $headers = []): Response
+    private function paypalRequest(string $method, string $path, mixed $body = null, array $headers = [], bool $throw = true): Response
     {
         $pending = Http::withToken($this->accessToken())
             ->acceptJson()
@@ -344,7 +346,7 @@ class PaypalCheckoutService
             default => throw new RuntimeException('Unsupported PayPal method.'),
         };
 
-        if (! $response->successful()) {
+        if ($throw && ! $response->successful()) {
             Log::error('PayPal API error', [
                 'path' => $path,
                 'status' => $response->status(),
@@ -353,6 +355,64 @@ class PaypalCheckoutService
         }
 
         return $response;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array{id: string, capture_id: string, status: string, amount: float, currency: string, custom: array{type: string, user_id: string, reference_code: string}, raw: array<string, mixed>}
+     */
+    private function completedCaptureFromPayload(array $data, string $paypalOrderId): array
+    {
+        $unit = is_array($data['purchase_units'][0] ?? null) ? $data['purchase_units'][0] : [];
+        $capture = is_array($unit['payments']['captures'][0] ?? null) ? $unit['payments']['captures'][0] : [];
+        $captureId = trim((string) ($capture['id'] ?? ''));
+        $status = strtoupper((string) ($capture['status'] ?? $data['status'] ?? ''));
+        $amountRaw = $capture['amount']['value'] ?? $unit['amount']['value'] ?? null;
+        $currency = (string) ($capture['amount']['currency_code'] ?? $unit['amount']['currency_code'] ?? self::CURRENCY);
+        $custom = self::parseCustomId(isset($unit['custom_id']) ? (string) $unit['custom_id'] : '');
+
+        if ($captureId === '' || $amountRaw === null || $amountRaw === '') {
+            throw new RuntimeException('PayPal capture did not return an amount.');
+        }
+        if ($status !== 'COMPLETED') {
+            throw new RuntimeException('PayPal capture was not completed.');
+        }
+        if (strtoupper($currency) !== self::CURRENCY) {
+            throw new RuntimeException('PayPal capture currency is not EUR.');
+        }
+        if (($custom['user_id'] ?? '') === '') {
+            throw new RuntimeException('PayPal capture is missing user_id.');
+        }
+
+        return [
+            'id' => (string) ($data['id'] ?? $paypalOrderId),
+            'capture_id' => $captureId,
+            'status' => $status,
+            'amount' => round((float) $amountRaw, 2),
+            'currency' => self::CURRENCY,
+            'custom' => $custom,
+            'raw' => $data,
+        ];
+    }
+
+    private function isAlreadyCaptured(Response $response): bool
+    {
+        $name = strtoupper((string) ($response->json('name') ?? ''));
+        if ($name === 'ORDER_ALREADY_CAPTURED') {
+            return true;
+        }
+
+        foreach ($response->json('details') ?? [] as $detail) {
+            if (! is_array($detail)) {
+                continue;
+            }
+            $issue = strtoupper((string) ($detail['issue'] ?? ''));
+            if ($issue === 'ORDER_ALREADY_CAPTURED') {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

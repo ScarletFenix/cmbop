@@ -6,11 +6,13 @@ use App\Models\Order;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
+use App\Models\Wallet;
 use App\Services\OrderPaymentService;
 use App\Services\PaypalCheckoutService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Mail;
 use Tests\Support\CreatesContentSubmissions;
 use Tests\TestCase;
 
@@ -40,13 +42,13 @@ class CheckoutPaypalProcessTest extends TestCase
         return $user->fresh();
     }
 
-    private function activeSite(User $publisher): Site
+    private function activeSite(User $publisher, string $domain = 'paypal-test.example'): Site
     {
         return Site::create([
             'publisher_id' => $publisher->id,
             'site_name' => 'PayPal Test Site',
-            'site_url' => 'https://paypal-test.example',
-            'domain' => 'paypal-test.example',
+            'site_url' => 'https://'.$domain,
+            'domain' => $domain,
             'da' => 40,
             'dr' => 40,
             'traffic' => 1000,
@@ -76,9 +78,47 @@ class CheckoutPaypalProcessTest extends TestCase
         ]);
     }
 
-    private function fakePaypalCreateOrder(string $orderId = 'PO-CHECKOUT-1'): void
+    /**
+     * Http::fake() merges callbacks and keeps the first match. Later calls
+     * only update this state so capture can use the real package amount.
+     *
+     * @var array<string, mixed>
+     */
+    private array $paypalHttp = [];
+
+    /**
+     * @param  array<string, mixed>  $capture
+     */
+    private function fakePaypalCheckout(string $orderId, array $capture = []): void
     {
-        Http::fake(function ($request) use ($orderId) {
+        $this->paypalHttp['order_id'] = $orderId;
+        $this->paypalHttp['capture'] = array_replace($this->paypalHttp['capture'] ?? [], $capture);
+        if (($this->paypalHttp['registered'] ?? false) === true) {
+            return;
+        }
+
+        $this->paypalHttp['registered'] = true;
+        $this->paypalHttp['capture_calls'] = 0;
+
+        Http::fake(function ($request) {
+            $orderId = (string) ($this->paypalHttp['order_id'] ?? '');
+            $capture = is_array($this->paypalHttp['capture'] ?? null) ? $this->paypalHttp['capture'] : [];
+            $captureId = (string) ($capture['id'] ?? 'CAP-'.$orderId);
+            $status = (string) ($capture['status'] ?? 'COMPLETED');
+            $userId = (string) ($capture['user_id'] ?? '0');
+            $ref = (string) ($capture['reference_code'] ?? 'PP42');
+            $alreadyCaptured = (bool) ($capture['already_captured'] ?? false);
+            $amount = (string) ($capture['amount'] ?? '');
+            if ($amount === '') {
+                $package = $ref !== '' ? app(OrderPaymentService::class)->getPendingCheckout($ref) : null;
+                $amount = is_array($package)
+                    ? number_format((float) ($package['amount_due'] ?? 0), 2, '.', '')
+                    : '100.00';
+                if ((float) $amount < 0.01) {
+                    $amount = '100.00';
+                }
+            }
+
             $url = $request->url();
 
             if (str_contains($url, '/v1/oauth2/token')) {
@@ -99,8 +139,48 @@ class CheckoutPaypalProcessTest extends TestCase
                 ], 201);
             }
 
+            $completed = [
+                'id' => $orderId,
+                'status' => 'COMPLETED',
+                'purchase_units' => [[
+                    'custom_id' => PaypalCheckoutService::customId(
+                        PaypalCheckoutService::TYPE_ORDER_CHECKOUT,
+                        $userId,
+                        $ref
+                    ),
+                    'payments' => [
+                        'captures' => [[
+                            'id' => $captureId,
+                            'status' => $status,
+                            'amount' => ['currency_code' => 'EUR', 'value' => $amount],
+                        ]],
+                    ],
+                ]],
+            ];
+
+            if (str_contains($url, '/v2/checkout/orders/'.$orderId.'/capture')) {
+                $this->paypalHttp['capture_calls'] = (int) ($this->paypalHttp['capture_calls'] ?? 0) + 1;
+                if ($alreadyCaptured && $this->paypalHttp['capture_calls'] > 1) {
+                    return Http::response([
+                        'name' => 'UNPROCESSABLE_ENTITY',
+                        'details' => [['issue' => 'ORDER_ALREADY_CAPTURED']],
+                    ], 422);
+                }
+
+                return Http::response($completed, 201);
+            }
+
+            if (str_contains($url, '/v2/checkout/orders/'.$orderId)) {
+                return Http::response($completed, 200);
+            }
+
             return Http::response(['name' => 'RESOURCE_NOT_FOUND'], 404);
         });
+    }
+
+    private function fakePaypalCreateOrder(string $orderId = 'PO-CHECKOUT-1'): void
+    {
+        $this->fakePaypalCheckout($orderId);
     }
 
     public function test_checkout_page_shows_paypal_tile_disabled_when_not_configured(): void
@@ -299,5 +379,372 @@ class CheckoutPaypalProcessTest extends TestCase
             ])
             ->get(route('advertiser.checkout.paypal.cancel', ['ref' => 'PP-CAN']))
             ->assertRedirect(route('advertiser.checkout', ['canceled' => 1, 'ref' => 'PP-CAN']));
+    }
+
+    public function test_paypal_return_settles_paid_orders(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        $this->enablePaypal();
+        Mail::fake();
+
+        $advertiser = $this->advertiser();
+        $site = $this->activeSite($this->publisher());
+        $sub = $this->createApprovedSubmission($advertiser, $site->id);
+        $this->fakePaypalCheckout('PO-OK', [
+            'user_id' => (string) $advertiser->id,
+            'reference_code' => 'PP-OK',
+        ]);
+
+        $this->actingAs($advertiser)
+            ->withSession([
+                'cart' => [[
+                    'id' => $site->id,
+                    'name' => $site->site_name,
+                    'quantity' => 1,
+                    'content_submission_id' => $sub->id,
+                ]],
+            ])
+            ->postJson(route('advertiser.checkout.process'), [
+                'payment_method' => 'paypal',
+                'reference_code' => 'PP-OK',
+                'publication_mode' => 'immediate',
+                'content_submissions' => [
+                    $site->id => [$sub->id],
+                ],
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.checkout.paypal.return', [
+                'ref' => 'PP-OK',
+                'token' => 'PO-OK',
+            ]))
+            ->assertRedirect(route('advertiser.orders'))
+            ->assertSessionHas('success');
+
+        $orders = Order::where('reference_code', 'PP-OK')->where('payment_method', 'paypal')->get();
+        $this->assertCount(1, $orders);
+        $this->assertSame('paid', $orders[0]->payment_status);
+        $this->assertSame('CAP-PO-OK', $orders[0]->paypal_capture_id);
+        $this->assertTrue($orders[0]->paidViaPaypal());
+        $this->assertNull(app(OrderPaymentService::class)->getPendingCheckout('PP-OK'));
+    }
+
+    public function test_paypal_return_is_idempotent_on_duplicate(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        $this->enablePaypal();
+        Mail::fake();
+
+        $advertiser = $this->advertiser();
+        $site = $this->activeSite($this->publisher());
+        $sub = $this->createApprovedSubmission($advertiser, $site->id);
+
+        $this->actingAs($advertiser)
+            ->withSession([
+                'cart' => [[
+                    'id' => $site->id,
+                    'name' => $site->site_name,
+                    'quantity' => 1,
+                    'content_submission_id' => $sub->id,
+                ]],
+            ]);
+
+        $this->fakePaypalCheckout('PO-DUP', [
+            'user_id' => (string) $advertiser->id,
+            'reference_code' => 'PP-DUP',
+        ]);
+        $this->postJson(route('advertiser.checkout.process'), [
+            'payment_method' => 'paypal',
+            'reference_code' => 'PP-DUP',
+            'publication_mode' => 'immediate',
+            'content_submissions' => [
+                $site->id => [$sub->id],
+            ],
+        ])->assertOk();
+
+        $this->fakePaypalCheckout('PO-DUP', [
+            'user_id' => (string) $advertiser->id,
+            'reference_code' => 'PP-DUP',
+            'already_captured' => true,
+        ]);
+
+        $first = $this->actingAs($advertiser)
+            ->get(route('advertiser.checkout.paypal.return', ['ref' => 'PP-DUP', 'token' => 'PO-DUP']));
+        $first->assertRedirect(route('advertiser.orders'));
+
+        $second = $this->actingAs($advertiser)
+            ->get(route('advertiser.checkout.paypal.return', ['ref' => 'PP-DUP', 'token' => 'PO-DUP']));
+        $second->assertRedirect(route('advertiser.orders'));
+
+        $this->assertSame(1, Order::where('reference_code', 'PP-DUP')->where('payment_method', 'paypal')->count());
+    }
+
+    public function test_paypal_return_fails_when_capture_is_declined(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        $this->enablePaypal();
+
+        $advertiser = $this->advertiser();
+        $site = $this->activeSite($this->publisher());
+        $sub = $this->createApprovedSubmission($advertiser, $site->id);
+
+        $this->fakePaypalCheckout('PO-FAIL', [
+            'user_id' => (string) $advertiser->id,
+            'reference_code' => 'PP-FAIL',
+        ]);
+        $this->actingAs($advertiser)
+            ->withSession([
+                'cart' => [[
+                    'id' => $site->id,
+                    'name' => $site->site_name,
+                    'quantity' => 1,
+                    'content_submission_id' => $sub->id,
+                ]],
+            ])
+            ->postJson(route('advertiser.checkout.process'), [
+                'payment_method' => 'paypal',
+                'reference_code' => 'PP-FAIL',
+                'publication_mode' => 'immediate',
+                'content_submissions' => [
+                    $site->id => [$sub->id],
+                ],
+            ])
+            ->assertOk();
+
+        $this->fakePaypalCheckout('PO-FAIL', [
+            'user_id' => (string) $advertiser->id,
+            'reference_code' => 'PP-FAIL',
+            'status' => 'DECLINED',
+        ]);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.checkout.paypal.return', [
+                'ref' => 'PP-FAIL',
+                'token' => 'PO-FAIL',
+            ]))
+            ->assertRedirect(route('advertiser.checkout'))
+            ->assertSessionHas('error');
+
+        $this->assertSame(0, Order::where('reference_code', 'PP-FAIL')->count());
+    }
+
+    public function test_paypal_return_rejects_missing_token(): void
+    {
+        $this->enablePaypal();
+        $advertiser = $this->advertiser();
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.checkout.paypal.return', ['ref' => 'PP-NONE']))
+            ->assertRedirect(route('advertiser.checkout'))
+            ->assertSessionHas('error', 'Invalid PayPal return.');
+    }
+
+    public function test_paypal_cancel_after_paid_goes_to_orders(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        $this->enablePaypal();
+        Mail::fake();
+
+        $advertiser = $this->advertiser();
+        $site = $this->activeSite($this->publisher());
+        $sub = $this->createApprovedSubmission($advertiser, $site->id);
+
+        $this->fakePaypalCheckout('PO-PAID', [
+            'user_id' => (string) $advertiser->id,
+            'reference_code' => 'PP-PAID',
+        ]);
+        $this->actingAs($advertiser)
+            ->withSession([
+                'cart' => [[
+                    'id' => $site->id,
+                    'name' => $site->site_name,
+                    'quantity' => 1,
+                    'content_submission_id' => $sub->id,
+                ]],
+            ])
+            ->postJson(route('advertiser.checkout.process'), [
+                'payment_method' => 'paypal',
+                'reference_code' => 'PP-PAID',
+                'publication_mode' => 'immediate',
+                'content_submissions' => [
+                    $site->id => [$sub->id],
+                ],
+            ])
+            ->assertOk();
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.checkout.paypal.return', ['ref' => 'PP-PAID', 'token' => 'PO-PAID']))
+            ->assertRedirect(route('advertiser.orders'));
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.checkout.paypal.cancel', ['ref' => 'PP-PAID']))
+            ->assertRedirect(route('advertiser.orders'))
+            ->assertSessionHas('success');
+        $this->assertSame(1, Order::where('reference_code', 'PP-PAID')->where('payment_status', 'paid')->count());
+    }
+
+    public function test_paypal_return_rejects_mismatched_token(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        $this->enablePaypal();
+
+        $advertiser = $this->advertiser();
+        $site = $this->activeSite($this->publisher());
+        $sub = $this->createApprovedSubmission($advertiser, $site->id);
+
+        $this->fakePaypalCheckout('PO-MATCH', [
+            'user_id' => (string) $advertiser->id,
+            'reference_code' => 'PP-TOKEN',
+        ]);
+        $this->actingAs($advertiser)
+            ->withSession([
+                'cart' => [[
+                    'id' => $site->id,
+                    'name' => $site->site_name,
+                    'quantity' => 1,
+                    'content_submission_id' => $sub->id,
+                ]],
+            ])
+            ->postJson(route('advertiser.checkout.process'), [
+                'payment_method' => 'paypal',
+                'reference_code' => 'PP-TOKEN',
+                'publication_mode' => 'immediate',
+                'content_submissions' => [
+                    $site->id => [$sub->id],
+                ],
+            ])
+            ->assertOk();
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.checkout.paypal.return', [
+                'ref' => 'PP-TOKEN',
+                'token' => 'PO-OTHER',
+            ]))
+            ->assertRedirect(route('advertiser.checkout'))
+            ->assertSessionHas('error', 'PayPal order does not match this checkout.');
+
+        $this->assertSame(0, Order::where('reference_code', 'PP-TOKEN')->count());
+        $this->assertNotNull(app(OrderPaymentService::class)->getPendingCheckout('PP-TOKEN'));
+    }
+
+    public function test_paypal_return_credits_wallet_when_capture_amount_mismatches(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        $this->enablePaypal();
+        Mail::fake();
+
+        $advertiser = $this->advertiser();
+        $site = $this->activeSite($this->publisher());
+        $sub = $this->createApprovedSubmission($advertiser, $site->id);
+
+        $this->fakePaypalCheckout('PO-AMT', [
+            'user_id' => (string) $advertiser->id,
+            'reference_code' => 'PP-AMT',
+        ]);
+        $this->actingAs($advertiser)
+            ->withSession([
+                'cart' => [[
+                    'id' => $site->id,
+                    'name' => $site->site_name,
+                    'quantity' => 1,
+                    'content_submission_id' => $sub->id,
+                ]],
+            ])
+            ->postJson(route('advertiser.checkout.process'), [
+                'payment_method' => 'paypal',
+                'reference_code' => 'PP-AMT',
+                'publication_mode' => 'immediate',
+                'content_submissions' => [
+                    $site->id => [$sub->id],
+                ],
+            ])
+            ->assertOk();
+
+        $this->fakePaypalCheckout('PO-AMT', ['amount' => '50.00']);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.checkout.paypal.return', [
+                'ref' => 'PP-AMT',
+                'token' => 'PO-AMT',
+            ]))
+            ->assertRedirect(route('advertiser.checkout'))
+            ->assertSessionHas('error');
+
+        $this->assertSame(0, Order::where('reference_code', 'PP-AMT')->count());
+        $wallet = Wallet::query()
+            ->where('user_id', $advertiser->id)
+            ->where('role_id', Wallet::advertiserRoleId())
+            ->first();
+        $this->assertNotNull($wallet);
+        $this->assertEqualsWithDelta(50.0, (float) $wallet->balance, 0.01);
+    }
+
+    public function test_paypal_return_stores_capture_id_on_first_line_only(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        $this->enablePaypal();
+        Mail::fake();
+
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $siteA = $this->activeSite($publisher, 'paypal-a.example');
+        $siteB = $this->activeSite($publisher, 'paypal-b.example');
+        $subA = $this->createApprovedSubmission($advertiser, $siteA->id);
+        $subB = $this->createApprovedSubmission($advertiser, $siteB->id, 1);
+
+        $this->fakePaypalCheckout('PO-MULTI', [
+            'user_id' => (string) $advertiser->id,
+            'reference_code' => 'PP-MULTI',
+        ]);
+        $this->actingAs($advertiser)
+            ->withSession([
+                'cart' => [
+                    [
+                        'id' => $siteA->id,
+                        'name' => $siteA->site_name,
+                        'quantity' => 1,
+                        'content_submission_id' => $subA->id,
+                    ],
+                    [
+                        'id' => $siteB->id,
+                        'name' => $siteB->site_name,
+                        'quantity' => 1,
+                        'content_submission_id' => $subB->id,
+                    ],
+                ],
+            ])
+            ->postJson(route('advertiser.checkout.process'), [
+                'payment_method' => 'paypal',
+                'reference_code' => 'PP-MULTI',
+                'publication_mode' => 'immediate',
+                'content_submissions' => [
+                    $siteA->id => [$subA->id],
+                    $siteB->id => [$subB->id],
+                ],
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.checkout.paypal.return', [
+                'ref' => 'PP-MULTI',
+                'token' => 'PO-MULTI',
+            ]))
+            ->assertRedirect(route('advertiser.orders'));
+
+        $orders = Order::query()
+            ->where('reference_code', 'PP-MULTI')
+            ->where('payment_method', 'paypal')
+            ->orderBy('id')
+            ->get();
+        $this->assertCount(2, $orders);
+        $this->assertSame('CAP-PO-MULTI', $orders[0]->paypal_capture_id);
+        $this->assertNull($orders[1]->paypal_capture_id);
+        $this->assertSame('PO-MULTI', $orders[0]->paypal_order_id);
+        $this->assertSame('PO-MULTI', $orders[1]->paypal_order_id);
+        $this->assertTrue($orders[0]->paidViaPaypal());
+        $this->assertTrue($orders[1]->paidViaPaypal());
     }
 }
