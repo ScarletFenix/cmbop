@@ -48,6 +48,21 @@ class SavedCardAndPaymentTrustTest extends TestCase
             ->assertDontSee('assets/img/payments/binance.png', false);
     }
 
+    public function test_marketing_footer_shows_paypal_when_configured(): void
+    {
+        config([
+            'services.paypal.enabled' => true,
+            'services.paypal.client_id' => 'paypal-client-test',
+            'services.paypal.secret' => 'paypal-secret-test',
+        ]);
+
+        $this->get('/')
+            ->assertOk()
+            ->assertSee('assets/img/payments/paypal.svg', false)
+            ->assertSee('alt="PayPal"', false)
+            ->assertSee('Stripe', false);
+    }
+
     public function test_add_funds_shows_saved_cards_section(): void
     {
         $user = $this->advertiser();

@@ -114,4 +114,18 @@ class ConversionAndTrustTest extends TestCase
             ->assertSee('assets/img/payments/paypal.svg', false)
             ->assertDontSee('alt="PayPal"', false);
     }
+
+    public function test_trust_strip_shows_paypal_when_configured(): void
+    {
+        config([
+            'services.paypal.enabled' => true,
+            'services.paypal.client_id' => 'paypal-client-test',
+            'services.paypal.secret' => 'paypal-secret-test',
+        ]);
+
+        $this->get('/')
+            ->assertOk()
+            ->assertSee('assets/img/payments/paypal.svg', false)
+            ->assertSee('alt="PayPal"', false);
+    }
 }
