@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -300,6 +301,10 @@ class FinanceController extends Controller
 
     private function ledgerQuery(Request $request): Builder
     {
+        if (! $this->walletTransactionsAvailable()) {
+            return WalletTransaction::query()->whereRaw('0 = 1');
+        }
+
         $query = WalletTransaction::query();
 
         $type = is_string($request->input('type')) ? $request->input('type') : '';
@@ -418,5 +423,14 @@ class FinanceController extends Controller
                 'date_to' => 'nullable|date|after_or_equal:date_from',
             ]
         )->validate();
+    }
+
+    private function walletTransactionsAvailable(): bool
+    {
+        try {
+            return Schema::hasTable('wallet_transactions');
+        } catch (\Throwable) {
+            return false;
+        }
     }
 }

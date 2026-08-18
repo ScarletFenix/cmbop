@@ -31,8 +31,9 @@ class SiteRatingController extends Controller
                 if (in_array($status, [SiteRating::STATUS_APPROVED, SiteRating::STATUS_HIDDEN, SiteRating::STATUS_PENDING], true)) {
                     $query->where('status', $status);
                 }
-                if ($request->filled('site_id')) {
-                    $query->where('site_id', (int) $request->site_id);
+                $siteId = $request->query('site_id');
+                if (is_scalar($siteId) && (int) $siteId > 0) {
+                    $query->where('site_id', (int) $siteId);
                 }
                 $q = is_string($request->query('q')) ? trim($request->query('q')) : '';
                 if ($q !== '') {

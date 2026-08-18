@@ -114,7 +114,21 @@ class SiteEnrichmentController extends Controller
         $sync = $request->boolean('sync', false);
 
         if ($sync) {
-            $run = $enrichment->refreshMetrics($site, 'admin', $request->input('provider'));
+            try {
+                $run = $enrichment->refreshMetrics($site, 'admin', $request->input('provider'));
+            } catch (\Throwable $e) {
+                Log::warning('Admin enrichment refreshMetrics failed', [
+                    'site_id' => $site->id,
+                    'error' => $e->getMessage(),
+                ]);
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Could not refresh metrics. Please try again after migrations are applied.',
+                    'run' => null,
+                    'site' => $site->fresh(),
+                ], 422);
+            }
         } else {
             RefreshSiteMetricsJob::dispatch($site->id, 'admin', $request->input('provider'));
             $run = null;
@@ -161,7 +175,21 @@ class SiteEnrichmentController extends Controller
         $sync = $request->boolean('sync', false);
 
         if ($sync) {
-            $run = $enrichment->refreshScreenshot($site, 'admin');
+            try {
+                $run = $enrichment->refreshScreenshot($site, 'admin');
+            } catch (\Throwable $e) {
+                Log::warning('Admin enrichment refreshScreenshot failed', [
+                    'site_id' => $site->id,
+                    'error' => $e->getMessage(),
+                ]);
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Could not refresh the screenshot. Please try again after migrations are applied.',
+                    'run' => null,
+                    'site' => $site->fresh(),
+                ], 422);
+            }
         } else {
             CaptureSiteScreenshotJob::dispatch($site->id, 'admin');
             $run = null;
@@ -216,7 +244,20 @@ class SiteEnrichmentController extends Controller
         $sync = $request->boolean('sync', false);
 
         if ($sync) {
-            $enrichment->enrich($site, 'admin', true, true);
+            try {
+                $enrichment->enrich($site, 'admin', true, true);
+            } catch (\Throwable $e) {
+                Log::warning('Admin enrichment enrich failed', [
+                    'site_id' => $site->id,
+                    'error' => $e->getMessage(),
+                ]);
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Could not enrich this site. Please try again after migrations are applied.',
+                    'site' => $site->fresh(),
+                ], 422);
+            }
         } else {
             EnrichSiteJob::dispatch($site->id, 'admin', true, true);
         }
@@ -267,13 +308,27 @@ class SiteEnrichmentController extends Controller
             ]);
         }
 
-        $run = $enrichment->applyManualMetrics(
-            $site,
-            isset($data['dr']) ? (int) $data['dr'] : null,
-            isset($data['da']) ? (int) $data['da'] : null,
-            isset($data['traffic']) ? (int) $data['traffic'] : null,
-            'admin'
-        );
+        try {
+            $run = $enrichment->applyManualMetrics(
+                $site,
+                isset($data['dr']) ? (int) $data['dr'] : null,
+                isset($data['da']) ? (int) $data['da'] : null,
+                isset($data['traffic']) ? (int) $data['traffic'] : null,
+                'admin'
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Admin enrichment manualMetrics failed', [
+                'site_id' => $site->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Could not save manual metrics. Please try again after migrations are applied.',
+                'run' => null,
+                'site' => $site->fresh(),
+            ], 422);
+        }
 
         ActivityLogger::tryLog(
             'site.metrics_manual',

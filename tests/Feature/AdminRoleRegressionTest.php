@@ -14,6 +14,7 @@ use App\Models\SiteClaim;
 use App\Models\User;
 use App\Models\Withdrawal;
 use Database\Seeders\RolesTableSeeder;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\DB;
@@ -303,6 +304,46 @@ class AdminRoleRegressionTest extends TestCase
             ->assertOk()
             ->assertSee((string) $publisher->name)
             ->assertSee('—');
+    }
+
+    public function test_bulk_requests_index_survives_missing_onboarding_status(): void
+    {
+        if (! Schema::hasColumn('sites', 'onboarding_status')) {
+            $this->markTestSkipped('sites.onboarding_status is already absent');
+        }
+
+        try {
+            Schema::table('sites', function (Blueprint $table) {
+                $table->dropColumn('onboarding_status');
+            });
+        } catch (\Throwable) {
+            $this->markTestSkipped('Could not drop sites.onboarding_status on this driver');
+        }
+
+        if (Schema::hasColumn('sites', 'onboarding_status')) {
+            $this->markTestSkipped('sites.onboarding_status is still present after drop');
+        }
+
+        try {
+            $admin = $this->userWithRole('admin');
+            $publisher = $this->userWithRole('publisher');
+            BulkSiteRequest::create([
+                'publisher_id' => $publisher->id,
+                'status' => BulkSiteRequest::STATUS_REQUESTED,
+                'estimated_count' => 2,
+            ]);
+
+            $this->actingAs($admin)
+                ->get(route('admin.bulk-site-requests.index'))
+                ->assertOk()
+                ->assertDontSee('Something went wrong');
+        } finally {
+            if (! Schema::hasColumn('sites', 'onboarding_status')) {
+                Schema::table('sites', function (Blueprint $table) {
+                    $table->string('onboarding_status', 32)->nullable();
+                });
+            }
+        }
     }
 
     public function test_order_show_survives_a_missing_publisher_and_chat_user(): void

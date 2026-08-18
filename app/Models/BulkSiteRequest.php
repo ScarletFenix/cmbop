@@ -68,16 +68,28 @@ class BulkSiteRequest extends Model
 
     public function awaitingDetailsCount(): int
     {
+        if (! Site::hasSitesColumn('onboarding_status')) {
+            return 0;
+        }
+
         return $this->sites()->where('onboarding_status', Site::ONBOARDING_AWAITING_DETAILS)->count();
     }
 
     public function detailsCompleteCount(): int
     {
+        if (! Site::hasSitesColumn('onboarding_status')) {
+            return 0;
+        }
+
         return $this->sites()->where('onboarding_status', Site::ONBOARDING_DETAILS_COMPLETE)->count();
     }
 
     public function readyForReviewCount(): int
     {
+        if (! Site::hasSitesColumn('onboarding_status')) {
+            return 0;
+        }
+
         return $this->sites()->where('onboarding_status', Site::ONBOARDING_READY_FOR_REVIEW)->count();
     }
 
@@ -86,6 +98,10 @@ class BulkSiteRequest extends Model
      */
     public function pendingPublisherCount(): int
     {
+        if (! Site::hasSitesColumn('onboarding_status')) {
+            return 0;
+        }
+
         return $this->sites()
             ->notArchived()
             ->whereIn('onboarding_status', [
@@ -292,11 +308,17 @@ class BulkSiteRequest extends Model
                 $completedStillOpen->where('status', self::STATUS_COMPLETED)
                     ->where(function ($q) {
                         $q->whereHas('items', fn ($items) => $items->whereNull('site_id'))
-                            ->orWhereHas('sites', fn ($sites) => $sites->notArchived()
-                                ->whereIn('onboarding_status', [
-                                    Site::ONBOARDING_AWAITING_DETAILS,
-                                    Site::ONBOARDING_DETAILS_COMPLETE,
-                                ]));
+                            ->orWhereHas('sites', function ($sites) {
+                                $sites->notArchived();
+                                if (Site::hasSitesColumn('onboarding_status')) {
+                                    $sites->whereIn('onboarding_status', [
+                                        Site::ONBOARDING_AWAITING_DETAILS,
+                                        Site::ONBOARDING_DETAILS_COMPLETE,
+                                    ]);
+                                } else {
+                                    $sites->whereRaw('0 = 1');
+                                }
+                            });
                     });
             });
         });
