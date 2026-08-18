@@ -293,25 +293,11 @@
                 @else
                     <div class="recommended-sites">
                         @foreach($recommendedSites as $site)
-                            @php
-                                $canSeeUrl = $urlVisibility->canSee(auth()->user(), $site);
-                                $displayUrl = $urlVisibility->hostFor(auth()->user(), $site);
-                                $catalogHref = route('advertiser.catalog', ['site' => $site->id]);
-                                $href = $canSeeUrl
-                                    ? (\Illuminate\Support\Str::startsWith($site->site_url, ['http://', 'https://'])
-                                        ? $site->site_url
-                                        : 'https://' . ltrim((string) $site->site_url, '/'))
-                                    : $catalogHref;
-                            @endphp
-                            <div class="recommended-site">
-                                <div>
-                                    <a href="{{ $href }}"
-                                       @if($canSeeUrl) target="_blank" rel="noopener noreferrer" @endif
-                                       class="rs-name">{{ $displayUrl }}</a>
-                                    <p class="rs-meta mb-0">DR {{ $site->dr }} · {{ fullLanguage($site->language) }}</p>
-                                </div>
-                                <a href="{{ $catalogHref }}" class="rs-price">€{{ number_format($site->display_price, 2) }}</a>
-                            </div>
+                            @include('advertiser.partials.dashboard-recommended-site', [
+                                'site' => $site,
+                                'urlVisibility' => $urlVisibility,
+                                'showLanguage' => true,
+                            ])
                         @endforeach
                     </div>
                 @endif
@@ -543,25 +529,10 @@
                     <h6 class="mb-2">Recommended</h6>
                     <div class="recommended-sites">
                         @foreach($recommendedSites as $site)
-                            @php
-                                $canSeeUrl = $urlVisibility->canSee(auth()->user(), $site);
-                                $displayUrl = $urlVisibility->hostFor(auth()->user(), $site);
-                                $catalogHref = route('advertiser.catalog', ['site' => $site->id]);
-                                $href = $canSeeUrl
-                                    ? (\Illuminate\Support\Str::startsWith($site->site_url, ['http://', 'https://'])
-                                        ? $site->site_url
-                                        : 'https://' . ltrim((string) $site->site_url, '/'))
-                                    : $catalogHref;
-                            @endphp
-                            <div class="recommended-site">
-                                <div>
-                                    <a href="{{ $href }}"
-                                       @if($canSeeUrl) target="_blank" rel="noopener noreferrer" @endif
-                                       class="rs-name">{{ $displayUrl }}</a>
-                                    <p class="rs-meta mb-0">DR {{ $site->dr }}</p>
-                                </div>
-                                <a href="{{ $catalogHref }}" class="rs-price">€{{ number_format($site->display_price, 2) }}</a>
-                            </div>
+                            @include('advertiser.partials.dashboard-recommended-site', [
+                                'site' => $site,
+                                'urlVisibility' => $urlVisibility,
+                            ])
                         @endforeach
                     </div>
                 @endif
@@ -644,8 +615,8 @@
                                             <td class="py-3">
                                                 <a href="{{ $orderFocusUrl }}" class="recent-order-num text-decoration-none">#{{ $numericOrder }}</a>
                                                 <div class="recent-order-site">{{ $firstItem->site_name ?? '—' }}</div>
-                                                @if($canSeeRecentUrl && $recentDisplayHost)
-                                                    <a href="{{ \Illuminate\Support\Str::startsWith((string) $firstItem->site_url, ['http://', 'https://']) ? $firstItem->site_url : 'https://'.ltrim((string) $firstItem->site_url, '/') }}"
+                                                @if($canSeeRecentUrl && $recentDisplayHost && $firstItem?->site_id)
+                                                    <a href="{{ route('advertiser.catalog.visit', $firstItem->site_id) }}"
                                                        target="_blank" rel="noopener" class="recent-order-url"
                                                        onclick="event.stopPropagation()">
                                                         {{ \Illuminate\Support\Str::limit($recentDisplayHost, 48) }}
