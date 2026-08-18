@@ -9,10 +9,12 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Tests\Support\CreatesBlogUploads;
 use Tests\TestCase;
 
 class AdminBlogPublishTest extends TestCase
 {
+    use CreatesBlogUploads;
     use RefreshDatabase;
 
     private function adminUser(): User
@@ -186,7 +188,7 @@ class AdminBlogPublishTest extends TestCase
             ->from(route('admin.blogs.create'))
             ->post(route('admin.blogs.store'), [
                 'status' => 'draft',
-                'featured_image' => UploadedFile::fake()->image('hero.jpg', 800, 450),
+                'featured_image' => $this->fakeBlogUpload('hero.jpg', 800, 450),
                 'translations' => [
                     'en' => [
                         'title' => 'Orphan Featured',
@@ -211,7 +213,7 @@ class AdminBlogPublishTest extends TestCase
             ->from(route('admin.blogs.create'))
             ->post(route('admin.blogs.store'), [
                 'status' => 'draft',
-                'featured_image' => UploadedFile::fake()->image('hero.jpg', 800, 450),
+                'featured_image' => $this->fakeBlogUpload('hero.jpg', 800, 450),
                 'translations' => [
                     'en' => [
                         'title' => 'No Persist Featured',
@@ -371,7 +373,7 @@ class AdminBlogPublishTest extends TestCase
     {
         Storage::fake('public');
         $admin = $this->adminUser();
-        $path = UploadedFile::fake()->image('inline-cleanup.jpg')->store('blogs/content', 'public');
+        $path = $this->fakeBlogUpload('inline-cleanup.jpg')->store('blogs/content', 'public');
 
         $blog = Blog::factory()->create([
             'title' => 'Cleanup Post',
@@ -402,7 +404,7 @@ class AdminBlogPublishTest extends TestCase
     {
         Storage::fake('public');
         $admin = $this->adminUser();
-        $path = UploadedFile::fake()->image('shared-hero.jpg')->store('blogs/featured', 'public');
+        $path = $this->fakeBlogUpload('shared-hero.jpg')->store('blogs/featured', 'public');
 
         $keep = Blog::factory()->create([
             'title' => 'Keeps Featured',
@@ -449,7 +451,7 @@ class AdminBlogPublishTest extends TestCase
     {
         Storage::fake('public');
         $admin = $this->adminUser();
-        $path = UploadedFile::fake()->image('inline-media-cleanup.webp')->store('blogs/content', 'public');
+        $path = $this->fakeBlogUpload('inline-media-cleanup.webp')->store('blogs/content', 'public');
 
         $blog = Blog::factory()->create([
             'title' => 'Media Cleanup Post',

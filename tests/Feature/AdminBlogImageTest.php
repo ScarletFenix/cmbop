@@ -6,12 +6,13 @@ use App\Models\Blog;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Tests\Support\CreatesBlogUploads;
 use Tests\TestCase;
 
 class AdminBlogImageTest extends TestCase
 {
+    use CreatesBlogUploads;
     use RefreshDatabase;
 
     private function adminUser(): User
@@ -498,41 +499,5 @@ class AdminBlogImageTest extends TestCase
         $relative = preg_replace('#^(storage|media)/#', '', $relative) ?: '';
 
         return $relative;
-    }
-
-    /**
-     * Laravel's fake()->image() needs GD. This VM and some Hostinger boxes
-     * do not have it — keep the original bytes so uploads still exercise the
-     * store fallback instead of skipping the suite.
-     */
-    private function fakeBlogUpload(string $name, int $width = 32, int $height = 32): UploadedFile
-    {
-        if (function_exists('imagecreatetruecolor')) {
-            return UploadedFile::fake()->image($name, $width, $height);
-        }
-
-        $ext = strtolower((string) pathinfo($name, PATHINFO_EXTENSION));
-
-        return UploadedFile::fake()->createWithContent(
-            $name,
-            $ext === 'gif' ? $this->tinyGif() : $this->tinyJpeg()
-        );
-    }
-
-    private function tinyJpeg(): string
-    {
-        return base64_decode(
-            '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHR'
-            .'ofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgy'
-            .'IRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/'
-            .'wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAb/xAAUEAEAAAAAAA'
-            .'AAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAGf/8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAgB'
-            .'AQABPwCf/9k='
-        ) ?: 'not-a-jpeg';
-    }
-
-    private function tinyGif(): string
-    {
-        return 'GIF89a'.pack('v2', 1, 1)."\x00\x00\x00,\x00\x00\x00\x00".pack('v2', 1, 1)."\x00\x02\x02\x44\x01\x00;";
     }
 }
