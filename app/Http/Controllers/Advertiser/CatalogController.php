@@ -4126,6 +4126,18 @@ class CatalogController extends Controller
             || $order->payment_status !== 'paid';
     }
 
+    /**
+     * @return 'attention'|'date_desc'|'date_asc'|'total_desc'
+     */
+    private function advertiserOrdersListSort(Request $request): string
+    {
+        $sort = strtolower(search_text($request->input('sort')));
+
+        return in_array($sort, ['attention', 'date_desc', 'date_asc', 'total_desc'], true)
+            ? $sort
+            : 'attention';
+    }
+
     private function orderLibraryContentReadyForPayment(Order $order): bool
     {
         $order->loadMissing('items');
@@ -4352,11 +4364,21 @@ class CatalogController extends Controller
                 $query->whereDate('created_at', '<=', $dateTo);
             }
 
-            AdvertiserOrderStatus::applyQueueOrder($query, $statusFilter);
-            if ($search !== '') {
-                app(AdvertiserOrderSearchQuery::class)->applyRelevanceOrder($query, $search);
+            $sort = $this->advertiserOrdersListSort($request);
+            if ($sort === 'attention') {
+                AdvertiserOrderStatus::applyQueueOrder($query, $statusFilter);
+                if ($search !== '') {
+                    app(AdvertiserOrderSearchQuery::class)->applyRelevanceOrder($query, $search);
+                }
+                $query->orderBy('created_at', 'desc')->orderBy('id', 'desc');
+            } elseif ($sort === 'date_asc') {
+                $query->orderBy('created_at', 'asc')->orderBy('id', 'asc');
+            } elseif ($sort === 'total_desc') {
+                $query->orderBy('total_amount', 'desc')->orderBy('created_at', 'desc')->orderBy('id', 'desc');
+            } else {
+                $query->orderBy('created_at', 'desc')->orderBy('id', 'desc');
             }
-            $orders = $query->orderBy('created_at', 'desc')->orderBy('id', 'desc')->paginate(20);
+            $orders = $query->paginate(20);
 
             $orderIds = collect($orders->items())->pluck('id');
             $unreadByOrder = OrderChatMessage::whereIn('order_id', $orderIds)

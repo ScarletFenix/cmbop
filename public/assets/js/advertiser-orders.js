@@ -75,6 +75,20 @@ window.applyOrdersStatusFilter = applyOrdersStatusFilter;
 const ORDERS_SEARCH_LIVE_MS = 350;
 const ORDERS_SEARCH_MIN_CHARS = 2;
 const ORDERS_FETCH_TIMEOUT_MS = 15000;
+const ORDERS_LIST_SORTS = ['attention', 'date_desc', 'date_asc', 'total_desc'];
+
+function ordersListSort() {
+    const raw = String(document.getElementById('ordersSort')?.value || 'attention').toLowerCase();
+
+    return ORDERS_LIST_SORTS.includes(raw) ? raw : 'attention';
+}
+
+function updateOrdersAttentionChip() {
+    const chip = document.getElementById('ordersAttentionChip');
+    if (chip) {
+        chip.classList.toggle('d-none', ordersListSort() !== 'attention');
+    }
+}
 let ordersSearchTimer = null;
 let ordersFetchController = null;
 let ordersFetchTimeoutId = null;
@@ -226,6 +240,8 @@ function bootAdvertiserOrdersPage() {
         document.getElementById('paymentMethodFilter').value = '';
         document.getElementById('dateFrom').value = '';
         document.getElementById('dateTo').value = '';
+        const sortEl = document.getElementById('ordersSort');
+        if (sortEl) sortEl.value = 'attention';
         updateOrdersSearchClearVisibility();
         currentPage = 1;
         if (ordersSearchTimer) {
@@ -252,7 +268,7 @@ function bootAdvertiserOrdersPage() {
     });
 
     // Dropdown / date filters live-refresh the table (catalog-style), not only on Filter click.
-    ['statusFilter', 'paymentStatusFilter', 'paymentMethodFilter', 'dateFrom', 'dateTo'].forEach(function (id) {
+    ['statusFilter', 'paymentStatusFilter', 'paymentMethodFilter', 'dateFrom', 'dateTo', 'ordersSort'].forEach(function (id) {
         document.getElementById(id)?.addEventListener('change', function () {
             currentPage = 1;
             fetchOrders(1, { historyMode: 'replace', intent: 'search' });
@@ -271,8 +287,9 @@ function bootAdvertiserOrdersPage() {
         setVal('paymentMethodFilter', 'payment_method');
         setVal('dateFrom', 'date_from');
         setVal('dateTo', 'date_to');
+        setVal('ordersSort', 'sort');
         // Clear fields that are no longer in the URL (browser back/forward)
-        ['searchInput', 'statusFilter', 'paymentStatusFilter', 'paymentMethodFilter', 'dateFrom', 'dateTo'].forEach((id) => {
+        ['searchInput', 'statusFilter', 'paymentStatusFilter', 'paymentMethodFilter', 'dateFrom', 'dateTo', 'ordersSort'].forEach((id) => {
             const el = document.getElementById(id);
             if (!el) return;
             const key = id === 'searchInput' ? 'search'
@@ -280,12 +297,16 @@ function bootAdvertiserOrdersPage() {
                 : id === 'paymentStatusFilter' ? 'payment_status'
                 : id === 'paymentMethodFilter' ? 'payment_method'
                 : id === 'dateFrom' ? 'date_from'
-                : 'date_to';
-            if (!params.has(key)) el.value = '';
+                : id === 'dateTo' ? 'date_to'
+                : 'sort';
+            if (!params.has(key)) el.value = id === 'ordersSort' ? 'attention' : '';
         });
         const page = parseInt(params.get('page') || '1', 10);
         currentPage = Number.isFinite(page) && page > 0 ? page : 1;
         updateOrdersSearchClearVisibility();
+        if (typeof updateOrdersAttentionChip === 'function') {
+            updateOrdersAttentionChip();
+        }
     }
     window.hydrateOrdersFiltersFromUrl = hydrateOrdersFiltersFromUrl;
 
@@ -298,6 +319,7 @@ function bootAdvertiserOrdersPage() {
             payment_method: document.getElementById('paymentMethodFilter')?.value || '',
             date_from: document.getElementById('dateFrom')?.value || '',
             date_to: document.getElementById('dateTo')?.value || '',
+            sort: ordersListSort() === 'attention' ? '' : ordersListSort(),
         };
         Object.keys(map).forEach((key) => {
             if (map[key]) url.searchParams.set(key, map[key]);
@@ -710,10 +732,12 @@ function bootAdvertiserOrdersPage() {
             || document.getElementById('paymentMethodFilter')?.value
             || document.getElementById('dateFrom')?.value
             || document.getElementById('dateTo')?.value
+            || ordersListSort() !== 'attention'
         );
     }
 
     function updateResultsCount(pagination) {
+        updateOrdersAttentionChip();
         const el = document.getElementById('resultsCount');
         if (!el) return;
         if (!pagination || !pagination.total) {
@@ -726,6 +750,7 @@ function bootAdvertiserOrdersPage() {
         el.textContent = total
             ? `Showing ${from}–${to} of ${total}`
             : '';
+        updateOrdersAttentionChip();
     }
 
     function fetchOrders(page = 1, options = {}) {
@@ -739,6 +764,7 @@ function bootAdvertiserOrdersPage() {
         const paymentMethod = document.getElementById('paymentMethodFilter')?.value || '';
         const dateFrom = document.getElementById('dateFrom')?.value || '';
         const dateTo = document.getElementById('dateTo')?.value || '';
+        const sort = ordersListSort();
 
         const listUrl = ordersRoute('list');
         if (!listUrl) {
@@ -753,6 +779,8 @@ function bootAdvertiserOrdersPage() {
         if (paymentMethod) url += `&payment_method=${encodeURIComponent(paymentMethod)}`;
         if (dateFrom) url += `&date_from=${encodeURIComponent(dateFrom)}`;
         if (dateTo) url += `&date_to=${encodeURIComponent(dateTo)}`;
+        if (sort && sort !== 'attention') url += `&sort=${encodeURIComponent(sort)}`;
+        updateOrdersAttentionChip();
 
         if (syncUrl && typeof window.syncOrdersFiltersToUrl === 'function') {
             window.syncOrdersFiltersToUrl(page, { historyMode: historyMode === 'none' ? 'push' : historyMode });
@@ -1221,8 +1249,10 @@ function bootAdvertiserOrdersPage() {
             const siteUrlHtml = siteUrl
                 ? `<div class="text-muted small"><a href="${safeUrl(siteHref)}" target="_blank" rel="noopener noreferrer">${escapeHtml(siteUrl)}</a></div>`
                 : '';
+            const siteNames = items.map((it) => it && it.site_name).filter(Boolean);
+            const moreTitle = siteNames.length ? escapeHtml(siteNames.join(', ')) : '';
             const moreHtml = moreCount > 0
-                ? `<div class="small text-muted mt-1">+${moreCount} more</div>`
+                ? `<button type="button" class="btn btn-link btn-sm p-0 orders-more-sites" onclick="viewOrder(${order.id})" title="${moreTitle}">+${moreCount} more</button>`
                 : '';
             const disputeHtml = order.dispute_status
                 ? `<div class="mt-1"><span class="badge text-bg-${order.dispute_status === 'upheld' ? 'danger' : (order.dispute_status === 'dismissed' ? 'secondary' : 'warning')}">Dispute: ${escapeHtml(order.dispute_status)}</span></div>`
@@ -1854,6 +1884,7 @@ function bootAdvertiserOrdersPage() {
             payment_method: document.getElementById('paymentMethodFilter')?.value || '',
             date_from: document.getElementById('dateFrom')?.value || '',
             date_to: document.getElementById('dateTo')?.value || '',
+            sort: ordersListSort() === 'attention' ? '' : ordersListSort(),
         };
         Object.keys(map).forEach((key) => {
             if (map[key]) url.searchParams.set(key, map[key]);

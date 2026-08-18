@@ -111,6 +111,11 @@ class AdvertiserOrdersUxAbcTest extends TestCase
         $this->assertStringContainsString('value="awaiting_payment"', $statusSelect[1]);
         $this->assertStringContainsString('value="awaiting_publisher"', $statusSelect[1]);
 
+        $this->assertStringContainsString('id="ordersSort"', $html);
+        $this->assertStringContainsString('id="ordersAttentionChip"', $html);
+        $this->assertStringContainsString('Needs attention first', $html);
+        $this->assertStringContainsString('value="date_desc"', $html);
+        $this->assertStringContainsString('value="total_desc"', $html);
         $this->assertStringContainsString('<th>Order #</th>', $html);
         $this->assertStringContainsString('<th>Total</th>', $html);
         $this->assertStringContainsString('<th>Payment</th>', $html);
@@ -130,6 +135,8 @@ class AdvertiserOrdersUxAbcTest extends TestCase
         $this->assertIsString($css);
         $this->assertStringContainsString('.orders-order-number', $css);
         $this->assertStringContainsString('.orders-total--refunded', $css);
+        $this->assertStringContainsString('.orders-more-sites', $css);
+        $this->assertStringContainsString('.orders-sort-select', $css);
         $this->assertStringContainsString('type="search"', $html);
         $this->assertStringContainsString('id="ordersSearchStatus"', $html);
         $this->assertStringContainsString('id="ordersSearchClear"', $html);
@@ -163,6 +170,10 @@ class AdvertiserOrdersUxAbcTest extends TestCase
         $this->assertStringContainsString('popstate', $js);
         $this->assertStringContainsString('window.viewOrder', $js);
         $this->assertStringContainsString('+${moreCount} more', $js);
+        $this->assertStringContainsString('orders-more-sites', $js);
+        $this->assertStringContainsString('onclick="viewOrder(${order.id})"', $js);
+        $this->assertStringContainsString('ordersListSort', $js);
+        $this->assertStringContainsString('sort: ordersListSort()', $js);
         $this->assertStringContainsString('ORDERS_SEARCH_LIVE_MS', $js);
         $this->assertStringContainsString('ORDERS_SEARCH_MIN_CHARS', $js);
         $this->assertStringContainsString('AbortController', $js);
@@ -398,6 +409,8 @@ class AdvertiserOrdersUxAbcTest extends TestCase
 
         $this->assertSame(2, $detail['items_count']);
         $this->assertCount(2, $detail['items']);
+        $this->assertSame('Multi A', $detail['items'][0]['site_name']);
+        $this->assertSame('Multi B', $detail['items'][1]['site_name']);
     }
 
     public function test_pagination_payload_includes_from_to_for_results_count(): void
@@ -552,6 +565,58 @@ class AdvertiserOrdersUxAbcTest extends TestCase
             ->json('orders'))->pluck('id')->all();
 
         $this->assertSame([$processing->id, $completed->id], $ids);
+    }
+
+    public function test_date_desc_sort_is_chronological_and_skips_attention_queue(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher, 'Sort Date Site');
+
+        $completed = $this->makeOrder($advertiser, $site, [
+            'order_number' => 'ORD-SORT-DONE',
+            'status' => 'completed',
+            'total_amount' => 10,
+        ]);
+        $review = $this->makeOrder($advertiser, $site, [
+            'order_number' => 'ORD-SORT-REV',
+            'status' => 'review',
+            'total_amount' => 80,
+        ], [
+            'live_url' => 'https://live.example/sort-review',
+        ]);
+        $processing = $this->makeOrder($advertiser, $site, [
+            'order_number' => 'ORD-SORT-PROC',
+            'status' => 'processing',
+            'total_amount' => 40,
+        ]);
+        $completed->forceFill(['created_at' => now()->subHours(8)])->save();
+        $review->forceFill(['created_at' => now()->subHours(4)])->save();
+        $processing->forceFill(['created_at' => now()->subHour()])->save();
+
+        $newestFirst = collect($this->actingAs($advertiser)
+            ->getJson(route('advertiser.orders.list', ['sort' => 'date_desc']))
+            ->assertOk()
+            ->json('orders'))->pluck('id')->all();
+        $this->assertSame([$processing->id, $review->id, $completed->id], $newestFirst);
+
+        $oldestFirst = collect($this->actingAs($advertiser)
+            ->getJson(route('advertiser.orders.list', ['sort' => 'date_asc']))
+            ->assertOk()
+            ->json('orders'))->pluck('id')->all();
+        $this->assertSame([$completed->id, $review->id, $processing->id], $oldestFirst);
+
+        $highestTotal = collect($this->actingAs($advertiser)
+            ->getJson(route('advertiser.orders.list', ['sort' => 'total_desc']))
+            ->assertOk()
+            ->json('orders'))->pluck('id')->all();
+        $this->assertSame([$review->id, $processing->id, $completed->id], $highestTotal);
+
+        $unknownFallsBackToAttention = collect($this->actingAs($advertiser)
+            ->getJson(route('advertiser.orders.list', ['sort' => 'not-a-sort']))
+            ->assertOk()
+            ->json('orders'))->pluck('id')->all();
+        $this->assertSame([$review->id, $processing->id, $completed->id], $unknownFallsBackToAttention);
     }
 
     public function test_list_and_detail_expose_row_action_flags(): void
