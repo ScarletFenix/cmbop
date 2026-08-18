@@ -1039,6 +1039,119 @@ function bootAdvertiserOrdersPage() {
         });
     }
 
+    function orderNeedsContentRevision(order) {
+        if (order && order.needs_content_revision === true) return true;
+        if (order && order.needs_content_revision === false) return false;
+        const items = Array.isArray(order?.items) ? order.items : [];
+        return items.some((it) => it && it.content_revision_requested === 'yes');
+    }
+
+    function orderCanApprove(order) {
+        if (order && order.can_approve === true) return true;
+        if (order && order.can_approve === false) return false;
+        const items = Array.isArray(order?.items) ? order.items : [];
+        return order?.status === 'review'
+            && items.some((it) => it && it.live_url)
+            && !orderNeedsContentRevision(order);
+    }
+
+    function orderCanRequestChanges(order) {
+        if (order && order.can_request_changes === true) return true;
+        if (order && order.can_request_changes === false) return false;
+        return orderCanApprove(order);
+    }
+
+    function orderChatReadonly(order) {
+        if (order && order.chat_readonly === true) return true;
+        return order?.status === 'cancelled' || order?.payment_status !== 'paid';
+    }
+
+    function orderPaymentRefunded(order) {
+        return order?.payment_status === 'refunded';
+    }
+
+    function firstRevisionItem(order) {
+        const items = Array.isArray(order?.items) ? order.items : [];
+        return items.find((it) => it && it.content_revision_requested === 'yes') || items[0] || null;
+    }
+
+    function renderOrderRowActions(order) {
+        const unreadBadge = order.unread_chat > 0
+            ? `<span class="chat-unread-dot">${order.unread_chat}</span>`
+            : '';
+        const chatReadonly = orderChatReadonly(order);
+        const chatClass = chatReadonly
+            ? 'btn btn-sm btn-link text-muted action-btn d-flex align-items-center'
+            : 'btn btn-sm btn-outline-success action-btn d-flex align-items-center';
+        const chatTitle = chatReadonly ? ' title="Chat is read-only"' : '';
+        const viewBtn = `
+                            <button 
+                                type="button"
+                                class="btn btn-sm btn-outline-info action-btn d-flex align-items-center"
+                                onclick="viewOrder(${order.id})">
+                                <i class="fa fa-eye me-1"></i>
+                                <span>View</span>
+                            </button>`;
+        const chatBtn = `
+                            <button 
+                                type="button"
+                                class="${chatClass}"
+                                ${chatTitle}
+                                onclick="openChat(${order.id}, ${jsAttr(order.order_number || '')})">
+                                <i class="fa fa-comments me-1"></i>
+                                <span>Chat</span>${unreadBadge}
+                            </button>`;
+
+        let primary = '';
+        if (order.can_retry_payment) {
+            primary = `
+                            <button
+                                type="button"
+                                class="btn btn-sm btn-primary action-btn d-flex align-items-center"
+                                onclick="retryOrderPayment(${order.id})">
+                                <i class="fa fa-credit-card me-1"></i>
+                                <span>Pay again</span>
+                            </button>`;
+        } else if (orderNeedsContentRevision(order) && (order.status === 'processing' || order.status === 'review')) {
+            const revisionItem = firstRevisionItem(order);
+            const isLibrary = !!(revisionItem && revisionItem.content_submission_id);
+            const currentLabel = (revisionItem && (revisionItem.content_original_name || revisionItem.article_title))
+                || (revisionItem && revisionItem.content_submission_id ? ('Library article #' + revisionItem.content_submission_id) : 'article');
+            primary = `
+                            <button
+                                type="button"
+                                class="btn btn-sm btn-warning action-btn d-flex align-items-center"
+                                onclick="fulfillContentRevision(${order.id}, ${revisionItem && revisionItem.id ? revisionItem.id : 'null'}, {isLibrary: ${isLibrary ? 'true' : 'false'}, currentLabel: ${jsAttr(currentLabel)}})">
+                                <i class="fa fa-upload me-1"></i>
+                                <span>Send revised article</span>
+                            </button>`;
+        } else if (orderCanApprove(order)) {
+            primary = `
+                            <button
+                                type="button"
+                                class="btn btn-sm btn-success action-btn d-flex align-items-center"
+                                onclick="approveOrder(${order.id})">
+                                <i class="fa fa-check-circle me-1"></i>
+                                <span>Approve</span>
+                            </button>`;
+            if (orderCanRequestChanges(order)) {
+                primary += `
+                            <button
+                                type="button"
+                                class="btn btn-sm btn-outline-warning action-btn d-flex align-items-center"
+                                onclick="requestModification(${order.id})">
+                                <i class="fa fa-edit me-1"></i>
+                                <span>Request changes</span>
+                            </button>`;
+            }
+        }
+
+        return `
+                        <div class="action-buttons d-flex align-items-center gap-2 flex-wrap">
+                            ${primary}${viewBtn}${chatBtn}
+                        </div>`;
+    }
+
     function renderOrders(orders, pagination) {
         if (!orders || orders.length === 0) {
             const filtered = ordersHaveActiveFilters();
@@ -1105,9 +1218,6 @@ function bootAdvertiserOrdersPage() {
             
             const paymentMethodName = getPaymentMethodName(order.payment_method);
             const paymentStatusClass = getPaymentStatusClass(order.payment_status);
-            const unreadBadge = order.unread_chat > 0
-                ? `<span class="chat-unread-dot">${order.unread_chat}</span>`
-                : '';
             const siteUrlHtml = siteUrl
                 ? `<div class="text-muted small"><a href="${safeUrl(siteHref)}" target="_blank" rel="noopener noreferrer">${escapeHtml(siteUrl)}</a></div>`
                 : '';
@@ -1117,17 +1227,22 @@ function bootAdvertiserOrdersPage() {
             const disputeHtml = order.dispute_status
                 ? `<div class="mt-1"><span class="badge text-bg-${order.dispute_status === 'upheld' ? 'danger' : (order.dispute_status === 'dismissed' ? 'secondary' : 'warning')}">Dispute: ${escapeHtml(order.dispute_status)}</span></div>`
                 : '';
+            const totalHtml = orderPaymentRefunded(order)
+                ? `<td class="fw-semibold orders-total--refunded"><s>€${totalAmount.toFixed(2)}</s> <span class="small">Refunded</span></td>`
+                : `<td class="fw-semibold text-primary">€${totalAmount.toFixed(2)}</td>`;
             
             html += `
                 <tr>
-                    <td class="fw-semibold">${escapeHtml(order.order_number)}</td>
+                    <td>
+                        <button type="button" class="btn btn-link p-0 fw-semibold orders-order-number" onclick="viewOrder(${order.id})">${escapeHtml(order.order_number)}</button>
+                    </td>
                     <td>
                         <div class="fw-semibold">${escapeHtml(siteName)}</div>
                         ${siteUrlHtml}
                         ${moreHtml}
                     </td>
                     <td>${formatDate(order.created_at)}</td>
-                    <td class="fw-semibold text-primary">€${totalAmount.toFixed(2)}</td>
+                    ${totalHtml}
                     <td>
                         <div class="small mb-1">${escapeHtml(paymentMethodName)}</div>
                         <span class="status-badge ${paymentStatusClass}">${capitalize(order.payment_status)}</span>
@@ -1139,28 +1254,7 @@ function bootAdvertiserOrdersPage() {
                         ${disputeHtml}
                     </td>
                     <td>
-                        <div class="action-buttons d-flex align-items-center gap-2 flex-wrap">
-                            ${order.can_retry_payment ? `
-                            <button
-                                type="button"
-                                class="btn btn-sm btn-primary action-btn d-flex align-items-center"
-                                onclick="retryOrderPayment(${order.id})">
-                                <i class="fa fa-credit-card me-1"></i>
-                                <span>Pay again</span>
-                            </button>` : ''}
-                            <button 
-                                class="btn btn-sm btn-outline-info action-btn d-flex align-items-center"
-                                onclick="viewOrder(${order.id})">
-                                <i class="fa fa-eye me-1"></i>
-                                <span>View</span>
-                            </button>
-                            <button 
-                                class="btn btn-sm btn-outline-success action-btn d-flex align-items-center"
-                                onclick="openChat(${order.id}, ${jsAttr(order.order_number || '')})">
-                                <i class="fa fa-comments me-1"></i>
-                                <span>Chat</span>${unreadBadge}
-                            </button>
-                        </div>
+                        ${renderOrderRowActions(order)}
                     </td>
                 </tr>
             `;

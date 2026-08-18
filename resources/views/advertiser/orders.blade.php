@@ -194,13 +194,13 @@
                 <table class="table table-hover align-middle mb-0 data-table">
                     <thead class="table-light">
                         <tr>
-                            <th>Order ID</th>
+                            <th>Order #</th>
                             <th>Site</th>
                             <th>Date</th>
                             <th>Total</th>
                             <th>Payment</th>
                             <th>Status</th>
-                            <th width="180">Actions</th>
+                            <th width="240">Actions</th>
                         </tr>
                     </thead>
                     <tbody id="ordersTableBody">

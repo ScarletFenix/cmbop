@@ -352,6 +352,25 @@ button.wallet-kpi { cursor: pointer; appearance: none; }
     justify-content: center;
 }
 
+.orders-order-number {
+    color: inherit;
+    text-decoration: none;
+}
+
+.orders-order-number:hover,
+.orders-order-number:focus {
+    color: var(--brand-primary, #1a585e);
+    text-decoration: underline;
+}
+
+.orders-total--refunded {
+    color: #64748b;
+}
+
+.orders-total--refunded s {
+    text-decoration-thickness: 1px;
+}
+
 /* Dark mode styles */
 
 

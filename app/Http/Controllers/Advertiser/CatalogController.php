@@ -4104,6 +4104,28 @@ class CatalogController extends Controller
             && $this->orderLibraryContentReadyForPayment($order);
     }
 
+    /**
+     * Row / details flags so the Orders table can show one primary action
+     * without a second leftover state machine in JS.
+     */
+    private function attachAdvertiserOrderActionFlags(Order $order): void
+    {
+        $items = $order->items;
+        $hasLiveUrl = $items->contains(fn ($line) => filled($line->live_url));
+        $needsRevision = Schema::hasColumn('order_items', 'content_revision_requested')
+            && $items->contains(function ($line) {
+                return $line instanceof OrderItem && $line->isContentRevisionRequested();
+            });
+        $canReview = $order->status === 'review' && $hasLiveUrl && ! $needsRevision;
+
+        $order->can_retry_payment = $this->orderCanRetryPayment($order);
+        $order->needs_content_revision = (bool) $needsRevision;
+        $order->can_approve = $canReview;
+        $order->can_request_changes = $canReview;
+        $order->chat_readonly = $order->status === 'cancelled'
+            || $order->payment_status !== 'paid';
+    }
+
     private function orderLibraryContentReadyForPayment(Order $order): bool
     {
         $order->loadMissing('items');
@@ -4348,13 +4370,13 @@ class CatalogController extends Controller
             $clawbacks = app(OrderClawbackService::class);
             $ordersPayload = collect($orders->items())->map(function ($order) use ($unreadByOrder, $clawbacks) {
                 $order->unread_chat = (int) ($unreadByOrder[$order->id] ?? 0);
-                $order->can_retry_payment = $this->orderCanRetryPayment($order);
                 $order->items_count = $order->items->count();
                 $meta = AdvertiserOrderStatus::meta($order, $order->items->first());
                 $order->status_label = $meta['label'];
                 $order->next_action = $meta['next'];
                 $order->status_cls = $meta['cls'];
                 $order->auto_approve_hint = $meta['auto_approve_hint'];
+                $this->attachAdvertiserOrderActionFlags($order);
                 $item = $order->items->first();
                 if ($item) {
                     $item->auto_approve_hours_remaining = (int) $item->getAutoApproveHoursRemaining();
@@ -4409,13 +4431,13 @@ class CatalogController extends Controller
                 ]);
             }
 
-            $order->can_retry_payment = $this->orderCanRetryPayment($order);
             $order->items_count = $order->items->count();
             $meta = AdvertiserOrderStatus::meta($order, $order->items->first());
             $order->status_label = $meta['label'];
             $order->next_action = $meta['next'];
             $order->status_cls = $meta['cls'];
             $order->auto_approve_hint = $meta['auto_approve_hint'];
+            $this->attachAdvertiserOrderActionFlags($order);
             $item = $order->items->first();
             if ($item) {
                 $item->auto_approve_hours_remaining = (int) $item->getAutoApproveHoursRemaining();
