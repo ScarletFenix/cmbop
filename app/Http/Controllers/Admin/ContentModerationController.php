@@ -42,8 +42,13 @@ class ContentModerationController extends Controller
 
         if ($this->schemaTableAvailable('content_moderation_logs')) {
             try {
+                $with = ['user:id,name,email'];
+                if ($this->schemaTableAvailable('content_submissions')) {
+                    $with[] = 'submission';
+                }
+
                 $query = ContentModerationLog::query()
-                    ->with(['user:id,name,email', 'submission'])
+                    ->with($with)
                     ->latest('id');
 
                 if ($status === 'approved') {
@@ -139,12 +144,41 @@ class ContentModerationController extends Controller
 
     public function show(ContentModerationLog $log, ContentModerationService $moderation): View
     {
-        $log->load(['user:id,name,email', 'submission.user:id,name,email', 'overrider:id,name,email']);
+        $relations = ['user:id,name,email', 'overrider:id,name,email'];
+        if ($this->schemaTableAvailable('content_submissions')) {
+            $relations[] = 'submission.user:id,name,email';
+        }
+
+        try {
+            $log->load($relations);
+        } catch (\Throwable) {
+        }
+
+        try {
+            $submission = $moderation->submissionForLog($log);
+        } catch (\Throwable) {
+            $submission = null;
+        }
+
+        try {
+            $report = $moderation->publicReport($log);
+        } catch (\Throwable) {
+            $report = [
+                'word_count' => $log->word_count,
+                'quality_score' => null,
+                'checks' => [],
+                'passed' => (bool) $log->passed,
+                'status' => $log->status,
+                'matched_terms' => [],
+                'blocked_urls' => [],
+                'fix_hints' => [],
+            ];
+        }
 
         return view('admin.moderation.show', [
             'log' => $log,
-            'submission' => $moderation->submissionForLog($log),
-            'report' => $moderation->publicReport($log),
+            'submission' => $submission,
+            'report' => $report,
         ]);
     }
 
@@ -271,14 +305,22 @@ class ContentModerationController extends Controller
             'notes' => ['required', 'string', 'min:3', 'max:2000'],
         ]);
 
-        $result = $moderation->applyAdminOverride($log, $request->user(), trim($data['notes']));
+        try {
+            $result = $moderation->applyAdminOverride($log, $request->user(), trim($data['notes']));
+        } catch (\Throwable) {
+            return back()->with('error', 'Could not override this scan on this database.');
+        }
 
         return back()->with($result['ok'] ? 'success' : 'error', $result['message']);
     }
 
     public function revert(Request $request, ContentModerationLog $log, ContentModerationService $moderation): RedirectResponse
     {
-        $result = $moderation->revertAdminOverride($log, $request->user());
+        try {
+            $result = $moderation->revertAdminOverride($log, $request->user());
+        } catch (\Throwable) {
+            return back()->with('error', 'Could not revert this override on this database.');
+        }
 
         return back()->with($result['ok'] ? 'success' : 'error', $result['message']);
     }

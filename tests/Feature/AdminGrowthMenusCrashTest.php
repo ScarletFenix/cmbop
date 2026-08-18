@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ContentModerationLog;
 use App\Models\Role;
 use App\Models\User;
 use Database\Seeders\RolesTableSeeder;
@@ -393,6 +394,75 @@ class AdminGrowthMenusCrashTest extends TestCase
                 });
             }
         }
+    }
+
+    public function test_moderation_survives_missing_submissions_table(): void
+    {
+        $admin = $this->admin();
+        $log = ContentModerationLog::create([
+            'document_url' => 'upload:99',
+            'status' => ContentModerationLog::STATUS_REJECTED,
+            'passed' => false,
+            'word_count' => 12,
+            'scan_token' => 'leftover-scan',
+        ]);
+
+        $this->dropTables(['content_submissions']);
+        $this->assertFalse(Schema::hasTable('content_submissions'));
+
+        try {
+            $this->actingAs($admin)
+                ->get(route('admin.moderation.index'))
+                ->assertOk()
+                ->assertSee('Content Moderation', false)
+                ->assertDontSee('Something went wrong');
+
+            $this->actingAs($admin)
+                ->get(route('admin.moderation.show', $log))
+                ->assertOk()
+                ->assertDontSee('Something went wrong');
+
+            $this->actingAs($admin)
+                ->from(route('admin.moderation.show', $log))
+                ->post(route('admin.moderation.override', $log), [
+                    'notes' => 'Approve leftover scan.',
+                ])
+                ->assertRedirect(route('admin.moderation.show', $log))
+                ->assertSessionHas('error');
+        } finally {
+            $this->restoreContentSubmissionsTable();
+        }
+    }
+
+    public function test_moderation_survives_leftover_dates(): void
+    {
+        $admin = $this->admin();
+        $log = ContentModerationLog::create([
+            'document_url' => 'https://example.com/article',
+            'status' => ContentModerationLog::STATUS_REJECTED,
+            'passed' => false,
+            'admin_override' => true,
+            'overridden_by' => $admin->id,
+            'word_count' => 12,
+            'scan_token' => 'leftover-dates',
+        ]);
+
+        ContentModerationLog::query()->whereKey($log->id)->update([
+            'created_at' => 'not-a-date',
+            'updated_at' => 'also-not-a-date',
+            'overridden_at' => 'not-a-date',
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.moderation.index'))
+            ->assertOk()
+            ->assertSee('Content Moderation', false)
+            ->assertDontSee('Something went wrong');
+
+        $this->actingAs($admin)
+            ->get(route('admin.moderation.show', $log->id))
+            ->assertOk()
+            ->assertDontSee('Something went wrong');
     }
 
     public function test_content_library_survives_missing_submissions_and_orders(): void

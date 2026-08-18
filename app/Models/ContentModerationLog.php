@@ -3,13 +3,14 @@
 namespace App\Models;
 
 use App\Models\Concerns\ToleratesMissingSchema;
+use App\Models\Concerns\ToleratesUnparseableDates;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class ContentModerationLog extends Model
 {
-    use ToleratesMissingSchema;
+    use ToleratesMissingSchema, ToleratesUnparseableDates;
 
     public const STATUS_APPROVED = 'approved';
 

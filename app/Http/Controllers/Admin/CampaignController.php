@@ -44,10 +44,17 @@ class CampaignController extends Controller
             $campaigns = new LengthAwarePaginator([], 0, 15);
         }
 
-        $advertisers = $inventory->pickerUsers('advertiser');
-        $publishers = $inventory->pickerUsers('publisher');
-        $pickerCapped = $inventory->pickerIsCapped('advertiser')
-            || $inventory->pickerIsCapped('publisher');
+        try {
+            $advertisers = $inventory->pickerUsers('advertiser');
+            $publishers = $inventory->pickerUsers('publisher');
+            $pickerCapped = $inventory->pickerIsCapped('advertiser')
+                || $inventory->pickerIsCapped('publisher');
+        } catch (\Throwable $e) {
+            Log::warning('Campaign audience picker failed', ['error' => $e->getMessage()]);
+            $advertisers = collect();
+            $publishers = collect();
+            $pickerCapped = false;
+        }
 
         return view('admin.campaigns.index', compact(
             'stats',

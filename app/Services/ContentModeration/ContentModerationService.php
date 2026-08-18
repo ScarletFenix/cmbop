@@ -828,16 +828,24 @@ class ContentModerationService
 
     public function submissionForLog(ContentModerationLog $log): ?ContentSubmission
     {
-        if ($log->content_submission_id) {
-            return ContentSubmission::query()->find($log->content_submission_id);
+        if (! ContentSubmission::tableAvailable()) {
+            return null;
         }
 
-        $fromUrl = $this->submissionIdFromSource((string) $log->document_url);
-        if ($fromUrl) {
-            return ContentSubmission::query()->find($fromUrl);
-        }
+        try {
+            if ($log->content_submission_id) {
+                return ContentSubmission::query()->find($log->content_submission_id);
+            }
 
-        return ContentSubmission::query()->where('moderation_log_id', $log->id)->first();
+            $fromUrl = $this->submissionIdFromSource((string) $log->document_url);
+            if ($fromUrl) {
+                return ContentSubmission::query()->find($fromUrl);
+            }
+
+            return ContentSubmission::query()->where('moderation_log_id', $log->id)->first();
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     /**
