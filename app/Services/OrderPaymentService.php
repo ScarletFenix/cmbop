@@ -2043,7 +2043,7 @@ class OrderPaymentService
         $captureId = trim((string) ($captured['capture_id'] ?? ''));
         $already = $this->paidPaypalOrdersForCapture($captureId, $paypalOrderId, $referenceCode);
         if ($already->isNotEmpty()) {
-            return $already;
+            return collect();
         }
 
         $package = $this->getPendingCheckout($referenceCode);
@@ -2250,7 +2250,7 @@ class OrderPaymentService
         if ($created->isEmpty()) {
             $replay = $this->paidPaypalOrdersForCapture($captureId, $paypalOrderId, $referenceCode);
             if ($replay->isNotEmpty()) {
-                return $replay;
+                return collect();
             }
             if ($userId > 0 && $capturedAmount > 0.009) {
                 $this->creditUnfulfilledCardCapture($userId, $referenceCode, $capturedAmount, $captureId, [$captureId, $paypalOrderId]);

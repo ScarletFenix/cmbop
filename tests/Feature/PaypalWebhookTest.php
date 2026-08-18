@@ -2,12 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Models\InAppNotification;
 use App\Models\Order;
 use App\Models\PaypalWebhookLog;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
 use App\Models\Wallet;
+use App\Services\InAppNotificationService;
 use App\Services\OrderPaymentService;
 use App\Services\PaypalCheckoutService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -372,6 +374,78 @@ class PaypalWebhookTest extends TestCase
         $this->postWebhook($event)->assertOk()->assertJsonPath('status', 'success');
         $this->postWebhook($event)->assertOk()->assertJsonPath('status', 'duplicate');
         $this->assertSame(1, Order::query()->where('reference_code', 'PP-WDUP')->count());
+    }
+
+    public function test_later_capture_event_does_not_renotify_after_settle(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        $this->enablePaypal();
+        Mail::fake();
+
+        $advertiser = $this->advertiser();
+        $site = $this->activeSite($this->publisher());
+        $sub = $this->createApprovedSubmission($advertiser, $site->id);
+        $this->fakePaypal('PO-ONCE', [
+            'user_id' => (string) $advertiser->id,
+            'reference_code' => 'PP-ONCE',
+        ]);
+
+        $this->actingAs($advertiser)
+            ->withSession([
+                'cart' => [[
+                    'id' => $site->id,
+                    'name' => $site->site_name,
+                    'quantity' => 1,
+                    'content_submission_id' => $sub->id,
+                ]],
+            ])
+            ->postJson(route('advertiser.checkout.process'), [
+                'payment_method' => 'paypal',
+                'reference_code' => 'PP-ONCE',
+                'publication_mode' => 'immediate',
+                'content_submissions' => [
+                    $site->id => [$sub->id],
+                ],
+            ])
+            ->assertOk();
+
+        $package = app(OrderPaymentService::class)->getPendingCheckout('PP-ONCE');
+        $amount = number_format((float) $package['amount_due'], 2, '.', '');
+
+        $this->postWebhook($this->captureCompletedEvent(
+            $advertiser,
+            'PP-ONCE',
+            'PO-ONCE',
+            'WH-ONCE-1',
+            $amount
+        ))->assertOk();
+
+        $createdAfterFirst = InAppNotification::query()
+            ->where('type', InAppNotificationService::TYPE_ORDER_CREATED)
+            ->count();
+        $paidAfterFirst = InAppNotification::query()
+            ->where('type', InAppNotificationService::TYPE_PAYMENT_RECEIVED)
+            ->count();
+        $this->assertGreaterThan(0, $createdAfterFirst);
+        $this->assertGreaterThan(0, $paidAfterFirst);
+
+        $this->postWebhook($this->captureCompletedEvent(
+            $advertiser,
+            'PP-ONCE',
+            'PO-ONCE',
+            'WH-ONCE-2',
+            $amount
+        ))->assertOk()->assertJsonPath('status', 'success');
+
+        $this->assertSame(1, Order::query()->where('reference_code', 'PP-ONCE')->count());
+        $this->assertSame(
+            $createdAfterFirst,
+            InAppNotification::query()->where('type', InAppNotificationService::TYPE_ORDER_CREATED)->count()
+        );
+        $this->assertSame(
+            $paidAfterFirst,
+            InAppNotification::query()->where('type', InAppNotificationService::TYPE_PAYMENT_RECEIVED)->count()
+        );
     }
 
     public function test_failed_webhook_can_be_retried(): void
