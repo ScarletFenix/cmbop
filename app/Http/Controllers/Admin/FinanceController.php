@@ -103,8 +103,17 @@ class FinanceController extends Controller
             ));
         }
 
+        $with = ['user:id,name,email'];
+        try {
+            if (Schema::hasTable('wallets')) {
+                $with[] = 'wallet:id,role_id';
+            }
+        } catch (\Throwable) {
+            // Leftover Hostinger: list the ledger even if wallets is gone.
+        }
+
         $transactions = $this->ledgerQuery($request)
-            ->with(['user:id,name,email', 'wallet:id,role_id'])
+            ->with($with)
             ->latest()
             ->paginate(40)
             ->withQueryString();

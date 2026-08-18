@@ -93,7 +93,14 @@ class PaymentController extends Controller
     public function export(Request $request): StreamedResponse
     {
         $this->ensurePaymentColumns();
-        $rows = $this->paymentsQuery($request)->limit(self::EXPORT_LIMIT)->get();
+        try {
+            $rows = $this->paymentsQuery($request)->limit(self::EXPORT_LIMIT)->get();
+        } catch (\Throwable $e) {
+            Log::warning('Admin payments export query failed', [
+                'error' => $e->getMessage(),
+            ]);
+            $rows = collect();
+        }
         $filename = 'order-payments-'.now()->format('Y-m-d-His').'.csv';
 
         ActivityLogger::tryLog(
@@ -166,11 +173,21 @@ class PaymentController extends Controller
                 'success' => true,
                 'data' => $this->serializePaymentRow($order),
             ]);
-        } catch (\Exception $e) {
+        } catch (ModelNotFoundException $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Payment not found',
             ], 404);
+        } catch (\Throwable $e) {
+            Log::warning('Admin payment show failed', [
+                'payment_id' => $id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'Failed to load payment. Please try again.'),
+            ], 500);
         }
     }
 
@@ -310,7 +327,9 @@ class PaymentController extends Controller
                 $order->payment_reference = $paymentReference;
             }
 
-            if ($request->payment_status === 'paid' && ! $order->paid_at) {
+            if ($request->payment_status === 'paid'
+                && ! $order->paid_at
+                && $this->ordersHaveColumn('paid_at')) {
                 $order->paid_at = now();
             }
 
@@ -358,7 +377,9 @@ class PaymentController extends Controller
                     ContentSubmission::releaseAllForOrder((int) $order->id);
                 }
 
-                $order->paid_at = null;
+                if ($this->ordersHaveColumn('paid_at')) {
+                    $order->paid_at = null;
+                }
             }
 
             // Unpaid failure: release leftover checkout bonus and cancel
@@ -479,12 +500,14 @@ class PaymentController extends Controller
         try {
             $order = $order->fresh(['user', 'items']) ?: $order;
 
-            $invoice = Invoice::query()
-                ->where('order_id', $order->id)
-                ->where('type', Invoice::TYPE_TAX_INVOICE)
-                ->where('status', '!=', Invoice::STATUS_CANCELLED)
-                ->latest('id')
-                ->first();
+            $invoice = Invoice::tableAvailable()
+                ? Invoice::query()
+                    ->where('order_id', $order->id)
+                    ->where('type', Invoice::TYPE_TAX_INVOICE)
+                    ->where('status', '!=', Invoice::STATUS_CANCELLED)
+                    ->latest('id')
+                    ->first()
+                : null;
 
             if (! $invoice) {
                 $invoice = app(BillingDocumentService::class)->handlePaymentPaid($order);
@@ -808,6 +831,9 @@ class PaymentController extends Controller
         )->valid();
 
         $dateField = ($dates['date_field'] ?? 'created_at') === 'paid_at' ? 'paid_at' : 'created_at';
+        if ($dateField === 'paid_at' && ! $this->ordersHaveColumn('paid_at')) {
+            $dateField = 'created_at';
+        }
         if (! empty($dates['date_from'])) {
             $query->whereDate($dateField, '>=', $dates['date_from']);
         }
@@ -930,6 +956,15 @@ class PaymentController extends Controller
         }
 
         app(CheckoutSchemaService::class)->ensureCheckoutTables();
+    }
+
+    private function ordersHaveColumn(string $column): bool
+    {
+        try {
+            return Schema::hasColumn('orders', $column);
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     /**

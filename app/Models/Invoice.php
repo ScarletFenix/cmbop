@@ -6,6 +6,7 @@ use App\Models\Concerns\ToleratesUnparseableDates;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 
 class Invoice extends Model
@@ -116,6 +117,15 @@ class Invoice extends Model
         return $this->hasMany(BillingEvent::class);
     }
 
+    public static function tableAvailable(): bool
+    {
+        try {
+            return Schema::hasTable((new static)->getTable());
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
     public function cancelledBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'cancelled_by');
@@ -219,8 +229,15 @@ class Invoice extends Model
 
     public function pdfExists(): bool
     {
-        return $this->hasPdf()
-            && Storage::disk($this->pdf_disk ?: 'local')->exists($this->pdf_path);
+        if (! $this->hasPdf()) {
+            return false;
+        }
+
+        try {
+            return Storage::disk($this->pdf_disk ?: 'local')->exists((string) $this->pdf_path);
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     public function typeLabel(): string

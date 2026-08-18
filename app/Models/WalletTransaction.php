@@ -2,12 +2,15 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\ToleratesUnparseableDates;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 class WalletTransaction extends Model
 {
+    use ToleratesUnparseableDates;
+
     public const TYPE_DEPOSIT = 'deposit';
 
     public const TYPE_BONUS_CREDIT = 'bonus_credit';

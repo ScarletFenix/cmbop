@@ -4,9 +4,19 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\Schema;
 
 class BillingEvent extends Model
 {
+    public static function tableAvailable(): bool
+    {
+        try {
+            return Schema::hasTable((new static)->getTable());
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
     protected $fillable = [
         'event_type',
         'invoice_id',
