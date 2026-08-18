@@ -26,9 +26,25 @@ class WithdrawalMarkPaidConfirmController extends Controller
             return $this->invalidSignatureResponse();
         }
 
-        $withdrawal->loadMissing('user');
+        try {
+            $withdrawal->loadMissing('user');
+        } catch (\Throwable) {
+            $withdrawal->setRelation('user', null);
+        }
         $canMarkPaid = $withdrawal->isActionable();
-        $context = $this->payoutContext($withdrawal, $canMarkPaid);
+        try {
+            $context = $this->payoutContext($withdrawal, $canMarkPaid);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to build withdrawal mark-paid confirm context: '.$e->getMessage(), [
+                'withdrawal_id' => $withdrawal->id,
+            ]);
+            $context = [
+                'currentBalance' => 0.0,
+                'priorPaid' => collect(),
+                'possibleDuplicate' => false,
+                'duplicateMatches' => collect(),
+            ];
+        }
 
         return view('admin.withdrawals.mark-paid-confirm', array_merge($context, [
             'withdrawal' => $withdrawal,

@@ -263,15 +263,23 @@ class AdminWithdrawalController extends Controller
      */
     public function exportCsv(Request $request): StreamedResponse
     {
-        $query = Withdrawal::tableAvailable()
-            ? Withdrawal::with('user:id,name,email')
-            : null;
-        $filters = $query
-            ? $this->applyWithdrawalFilters($query, $request)
-            : ['queue' => 'open', 'status' => ''];
-        $rows = $query
-            ? $query->orderBy('payment_method')->orderBy('created_at')->get()
-            : collect();
+        $filters = ['queue' => 'open', 'status' => ''];
+        try {
+            $query = Withdrawal::tableAvailable()
+                ? Withdrawal::with('user:id,name,email')
+                : null;
+            $filters = $query
+                ? $this->applyWithdrawalFilters($query, $request)
+                : $filters;
+            $rows = $query
+                ? $query->orderBy('payment_method')->orderBy('created_at')->get()
+                : collect();
+        } catch (\Throwable $e) {
+            Log::warning('Admin withdrawals export query failed', [
+                'error' => $e->getMessage(),
+            ]);
+            $rows = collect();
+        }
 
         $filename = 'withdrawals-export-'.now()->format('Y-m-d-His').'.csv';
 

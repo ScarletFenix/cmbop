@@ -24,6 +24,7 @@ use App\Support\OrderLifecycleMailSuppressor;
 use App\Support\UserFacingError;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -49,6 +50,14 @@ class PaymentController extends Controller
      */
     public function getPaymentsData(Request $request)
     {
+        try {
+            if (! Schema::hasTable('orders')) {
+                return $this->emptyPaymentsPayload($request);
+            }
+        } catch (\Throwable) {
+            return $this->emptyPaymentsPayload($request);
+        }
+
         try {
             $this->ensurePaymentColumns();
             $query = $this->paymentsQuery($request);
@@ -166,7 +175,7 @@ class PaymentController extends Controller
     public function show($id)
     {
         try {
-            $order = Order::with(['user', 'items.site'])->findOrFail($id);
+            $order = Order::with(['user'])->findOrFail($id);
             $this->attachInvoiceDocuments(collect([$order]));
 
             return response()->json([
@@ -471,6 +480,17 @@ class PaymentController extends Controller
                 'success' => false,
                 'message' => 'Payment not found',
             ], 404);
+        } catch (\RuntimeException $e) {
+            DB::rollBack();
+            if (! $sendNotification) {
+                app(OrderLifecycleMailSuppressor::class)->forget((int) $id);
+            }
+            Log::warning('Payment status update blocked on leftover schema: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
         } catch (\Exception $e) {
             DB::rollBack();
             if (! $sendNotification) {
@@ -560,6 +580,17 @@ class PaymentController extends Controller
      */
     private function releaseWalletHoldOnAdminFailed(Order $order): float
     {
+        try {
+            return $this->releaseWalletHoldOnAdminFailedInner($order);
+        } catch (\RuntimeException $e) {
+            throw $e;
+        } catch (QueryException $e) {
+            throw new \RuntimeException('Cannot credit the advertiser wallet on this database.', 0, $e);
+        }
+    }
+
+    private function releaseWalletHoldOnAdminFailedInner(Order $order): float
+    {
         if ((string) $order->status === 'completed') {
             return 0.0;
         }
@@ -609,6 +640,17 @@ class PaymentController extends Controller
      * Uses the full order total (tax / surcharges included), not a line helper.
      */
     private function creditAdvertiserRefund(Order $order): float
+    {
+        try {
+            return $this->creditAdvertiserRefundInner($order);
+        } catch (\RuntimeException $e) {
+            throw $e;
+        } catch (QueryException $e) {
+            throw new \RuntimeException('Cannot credit the advertiser wallet on this database.', 0, $e);
+        }
+    }
+
+    private function creditAdvertiserRefundInner(Order $order): float
     {
         $order->loadMissing('items');
         $amount = app(OrderRefundService::class)->resolveOrderCancelRefundAmount($order);
@@ -929,6 +971,28 @@ class PaymentController extends Controller
         }
 
         return 'That payment status change is not allowed for this order.';
+    }
+
+    private function emptyPaymentsPayload(Request $request)
+    {
+        $perPage = max(1, min(100, (int) $request->input('per_page', 20)));
+
+        return response()->json([
+            'success' => true,
+            'data' => [],
+            'pagination' => [
+                'current_page' => 1,
+                'last_page' => 1,
+                'per_page' => $perPage,
+                'total' => 0,
+                'from' => null,
+                'to' => null,
+            ],
+            'summary' => [
+                'unpaid_count' => 0,
+                'unpaid_amount' => 0.0,
+            ],
+        ]);
     }
 
     /**

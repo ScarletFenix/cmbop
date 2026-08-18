@@ -14,6 +14,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -112,11 +113,17 @@ class FinanceController extends Controller
             // Leftover Hostinger: list the ledger even if wallets is gone.
         }
 
-        $transactions = $this->ledgerQuery($request)
-            ->with($with)
-            ->latest()
-            ->paginate(40)
-            ->withQueryString();
+        try {
+            $transactions = $this->ledgerQuery($request)
+                ->with($with)
+                ->latest()
+                ->paginate(40)
+                ->withQueryString();
+        } catch (\Throwable $e) {
+            report($e);
+            $transactions = new LengthAwarePaginator([], 0, 40);
+            $transactions->withPath($request->url())->appends($request->query());
+        }
 
         $types = $this->ledgerTypes();
 
@@ -158,8 +165,35 @@ class FinanceController extends Controller
             ]);
         }
 
-        $query = $this->ledgerQuery($request)->with(['user:id,name,email']);
-        $matchCount = (clone $query)->count();
+        try {
+            $query = $this->ledgerQuery($request)->with(['user:id,name,email']);
+            $matchCount = (clone $query)->count();
+        } catch (\Throwable $e) {
+            report($e);
+
+            $filename = 'wallet-ledger-'.now()->format('Y-m-d-His').'.csv';
+
+            return response()->streamDownload(function () {
+                $out = fopen('php://output', 'w');
+                fputcsv($out, [
+                    'id',
+                    'created_at',
+                    'user_id',
+                    'user_name',
+                    'user_email',
+                    'type',
+                    'direction',
+                    'amount',
+                    'bonus_amount',
+                    'balance_after',
+                    'reference',
+                    'description',
+                ]);
+                fclose($out);
+            }, $filename, [
+                'Content-Type' => 'text/csv; charset=UTF-8',
+            ]);
+        }
         $filename = 'wallet-ledger-'.now()->format('Y-m-d-His').'.csv';
 
         ActivityLogger::tryLog(
@@ -476,7 +510,12 @@ class FinanceController extends Controller
     private function walletTransactionsAvailable(): bool
     {
         try {
-            return Schema::hasTable('wallet_transactions');
+            if (! Schema::hasTable('wallet_transactions')) {
+                return false;
+            }
+            DB::table('wallet_transactions')->limit(1)->exists();
+
+            return true;
         } catch (\Throwable) {
             return false;
         }

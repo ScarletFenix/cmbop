@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ContentSubmission;
 use App\Models\Order;
 use App\Models\OrderChatMessage;
 use App\Models\OrderItem;
@@ -341,5 +342,81 @@ class AdvertiserLibraryOrdersLeftoverTest extends TestCase
             ->assertJsonPath('order.items.0.target_url', null)
             ->assertJsonPath('order.items.0.feature_image_url', null)
             ->assertJsonPath('order.items.0.content_link', null);
+    }
+
+    public function test_library_list_survives_missing_image_rights_columns(): void
+    {
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'title' => 'No Image Rights Column',
+            'preview_html' => '<p>Article with a leftover <img src="https://cdn.example/a.jpg" alt=""></p>',
+        ]);
+
+        Schema::table('content_submissions', function ($table) {
+            $table->dropColumn([
+                'image_rights',
+                'image_rights_source',
+                'image_rights_declared_at',
+            ]);
+        });
+
+        $this->assertTrue(
+            ContentSubmission::query()->whereKey($submission->id)->orderable()->exists()
+        );
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library'))
+            ->assertOk()
+            ->assertSee('No Image Rights Column');
+    }
+
+    public function test_preview_and_serialize_strip_javascript_target_url(): void
+    {
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'title' => 'Unsafe Target Article',
+            'target_url' => 'javascript:alert(1)',
+        ]);
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.content-submissions.preview', $submission))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('target_url', null);
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.content-submissions.archive', $submission))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('submission.target_url', null)
+            ->assertJsonPath('submission.live_url', null);
+    }
+
+    public function test_order_chat_strips_javascript_live_url(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher, 'js-chat-live.example');
+        $order = $this->paidOrder($advertiser, $site, [
+            'live_url' => 'javascript:alert(1)',
+            'live_url_submitted_at' => now(),
+        ]);
+        $order->update(['status' => 'processing']);
+
+        OrderChatMessage::create([
+            'order_id' => $order->id,
+            'user_id' => $publisher->id,
+            'sender_type' => 'publisher',
+            'message' => 'Live link is up.',
+            'is_read' => false,
+        ]);
+
+        $this->actingAs($advertiser)
+            ->getJson(route('chat.messages', $order->id))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('order_details.live_url', null);
     }
 }

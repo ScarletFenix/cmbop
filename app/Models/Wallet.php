@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\ToleratesMissingSchema;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\QueryException;
@@ -11,7 +12,7 @@ use Illuminate\Support\Facades\Schema;
 
 class Wallet extends Model
 {
-    use HasFactory;
+    use HasFactory, ToleratesMissingSchema;
 
     public const PROMOTIONAL_BONUS_MESSAGE = 'This promotional bonus can only be used for purchases within our marketplace and cannot be withdrawn.';
 
@@ -666,6 +667,10 @@ class Wallet extends Model
     {
         $cleared = $this->debtBalance();
         if ($cleared <= 0) {
+            return 0.0;
+        }
+
+        if (! static::hasTableColumn('debt_balance')) {
             return 0.0;
         }
 

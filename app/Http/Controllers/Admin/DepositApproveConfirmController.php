@@ -25,9 +25,28 @@ class DepositApproveConfirmController extends Controller
             return $this->invalidSignatureResponse();
         }
 
-        $deposit->loadMissing('user');
+        try {
+            $deposit->loadMissing('user');
+        } catch (\Throwable) {
+            $deposit->setRelation('user', null);
+        }
         $canApprove = $deposit->isPending();
-        $context = $this->walletContext($deposit, $canApprove);
+        try {
+            $context = $this->walletContext($deposit, $canApprove);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to build deposit approve confirm context: '.$e->getMessage(), [
+                'deposit_id' => $deposit->id,
+            ]);
+            $context = [
+                'currentBalance' => 0.0,
+                'incomingAmount' => round((float) $deposit->amount, 2),
+                'projectedBalance' => null,
+                'priorDeposits' => collect(),
+                'bonusBalance' => 0.0,
+                'possibleDuplicate' => false,
+                'duplicateMatches' => collect(),
+            ];
+        }
 
         return view('admin.deposits.approve-confirm', array_merge($context, [
             'deposit' => $deposit,

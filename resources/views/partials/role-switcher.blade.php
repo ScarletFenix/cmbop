@@ -6,7 +6,11 @@
 @php
     $switchUser = auth()->user();
     if ($switchUser && ! $switchUser->relationLoaded('roles')) {
-        $switchUser->load('roles');
+        try {
+            $switchUser->load('roles');
+        } catch (\Throwable) {
+            $switchUser->setRelation('roles', collect());
+        }
     }
     $otherRoles = $switchUser
         ? $switchUser->roles
