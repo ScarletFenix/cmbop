@@ -12,6 +12,7 @@ use App\Services\CommunityInboxNotifier;
 use App\Services\SiteClaimTransferService;
 use App\Support\CommunityInbox;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
@@ -146,6 +147,12 @@ class CommunityFeedbackController extends Controller
             ? CommunityInbox::occupyingSitesFor($websites)
             : [];
 
+        $claims->getCollection()->each(function ($claim) use ($hasSites) {
+            if (! $hasSites || ! $claim->relationLoaded('site')) {
+                $claim->setRelation('site', null);
+            }
+        });
+
         $claimOpenOrders = [];
         $claimOpenDisputes = [];
         $claimContexts = [];
@@ -166,19 +173,36 @@ class CommunityFeedbackController extends Controller
         }
 
         foreach ($claims as $claim) {
-            if ($claim->status === 'pending' && $claim->site) {
-                $claimOpenOrders[$claim->id] = $this->claimTransfers->openOrderItemsCount($claim->site);
-                $claimOpenDisputes[$claim->id] = $this->claimTransfers->openDisputesCount($claim->site);
+            try {
+                $site = $claim->relationLoaded('site') ? $claim->site : null;
+                if ($claim->status === 'pending' && $site) {
+                    $claimOpenOrders[$claim->id] = $this->claimTransfers->openOrderItemsCount($site);
+                    $claimOpenDisputes[$claim->id] = $this->claimTransfers->openDisputesCount($site);
+                }
+                $pendingOnSite = (int) ($pendingBySite[$claim->site_id] ?? 0);
+                $claimSiblingPending[$claim->id] = max(0, $pendingOnSite - ($claim->status === 'pending' ? 1 : 0));
+                $claimerRoles = ($hasRolePivot && $claim->claimer && $claim->claimer->relationLoaded('roles'))
+                    ? $claim->claimer->roles
+                    : null;
+                $claimContexts[$claim->id] = [
+                    'open_orders' => $claimOpenOrders[$claim->id] ?? 0,
+                    'open_disputes' => $claimOpenDisputes[$claim->id] ?? 0,
+                    'verified' => (bool) ($site?->verified),
+                    'name_matches' => (bool) $claim->name_matches,
+                    'claimer_has_publisher_role' => (bool) ($claimerRoles?->contains('name', 'publisher')),
+                ];
+            } catch (\Throwable $e) {
+                Log::warning('Failed to build community claim context: '.$e->getMessage(), [
+                    'claim_id' => $claim->id,
+                ]);
+                $claimContexts[$claim->id] = [
+                    'open_orders' => 0,
+                    'open_disputes' => 0,
+                    'verified' => false,
+                    'name_matches' => (bool) ($claim->name_matches ?? false),
+                    'claimer_has_publisher_role' => false,
+                ];
             }
-            $pendingOnSite = (int) ($pendingBySite[$claim->site_id] ?? 0);
-            $claimSiblingPending[$claim->id] = max(0, $pendingOnSite - ($claim->status === 'pending' ? 1 : 0));
-            $claimContexts[$claim->id] = [
-                'open_orders' => $claimOpenOrders[$claim->id] ?? 0,
-                'open_disputes' => $claimOpenDisputes[$claim->id] ?? 0,
-                'verified' => (bool) ($claim->site?->verified),
-                'name_matches' => (bool) $claim->name_matches,
-                'claimer_has_publisher_role' => (bool) ($claim->claimer?->roles?->contains('name', 'publisher')),
-            ];
         }
 
         return view('admin.community.index', compact(
@@ -265,14 +289,16 @@ class CommunityFeedbackController extends Controller
         try {
             $this->claimTransfers->approve($claim, $request->user(), $data['admin_notes'] ?? null);
         } catch (ValidationException $e) {
+            $site = $claim->relationLoaded('site') ? $claim->site : null;
+
             return response()->json([
                 'success' => false,
                 'message' => $e->validator->errors()->first() ?: 'This claim could not be approved.',
-                'open_orders' => $claim->site
-                    ? $this->claimTransfers->openOrderItemsCount($claim->site)
+                'open_orders' => $site
+                    ? $this->claimTransfers->openOrderItemsCount($site)
                     : 0,
-                'open_disputes' => $claim->site
-                    ? $this->claimTransfers->openDisputesCount($claim->site)
+                'open_disputes' => $site
+                    ? $this->claimTransfers->openDisputesCount($site)
                     : 0,
             ], 422);
         }
@@ -504,7 +530,13 @@ class CommunityFeedbackController extends Controller
     private function tableExists(string $table): bool
     {
         try {
-            return Schema::hasTable($table);
+            if (! Schema::hasTable($table)) {
+                return false;
+            }
+            // Schema::hasTable can stay true after a leftover DROP TABLE.
+            DB::table($table)->limit(1)->exists();
+
+            return true;
         } catch (\Throwable) {
             return false;
         }

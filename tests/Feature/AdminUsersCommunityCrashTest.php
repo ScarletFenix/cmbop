@@ -147,6 +147,23 @@ class AdminUsersCommunityCrashTest extends TestCase
         ]);
     }
 
+    private function restoreRoleUserTable(): void
+    {
+        $this->artisan('migrate', [
+            '--path' => 'database/migrations/2026_03_27_165117_create_role_user_table.php',
+            '--force' => true,
+        ]);
+    }
+
+    private function restoreSitesTable(): void
+    {
+        $this->artisan('migrate', [
+            '--path' => 'database/migrations/2026_04_06_094704_create_sites_table.php',
+            '--force' => true,
+        ]);
+        $this->restoreCommunityTables();
+    }
+
     public function test_users_index_and_mutations_work(): void
     {
         $admin = $this->admin();
@@ -698,6 +715,71 @@ class AdminUsersCommunityCrashTest extends TestCase
         }
     }
 
+    public function test_claims_tab_survives_missing_sites_table_with_existing_claims(): void
+    {
+        $admin = $this->admin();
+        $publisher = $this->makeUser('publisher');
+        $claimer = $this->makeUser('advertiser', ['name' => 'Orphan Claimer']);
+        $site = $this->siteFor($publisher);
+        $this->pendingClaim($claimer, $site);
+
+        Schema::disableForeignKeyConstraints();
+        Schema::dropIfExists('sites');
+        Schema::enableForeignKeyConstraints();
+        $this->assertFalse(Schema::hasTable('sites'));
+        $claimsRemain = Schema::hasTable('site_claims')
+            && DB::table('site_claims')->where('claimer_id', $claimer->id)->exists();
+
+        try {
+            $page = $this->actingAs($admin)
+                ->get(route('admin.community.index', ['tab' => 'claims']))
+                ->assertOk()
+                ->assertSee('Community feedback', false);
+
+            if ($claimsRemain) {
+                $page->assertSee('Orphan Claimer', false);
+            }
+
+            $this->actingAs($admin)
+                ->getJson(route('admin.dashboard.queue-counts'))
+                ->assertOk()
+                ->assertJsonPath('success', true);
+        } finally {
+            $this->restoreSitesTable();
+        }
+    }
+
+    public function test_claim_reject_does_not_500_when_sites_table_is_gone(): void
+    {
+        $admin = $this->admin();
+        $publisher = $this->makeUser('publisher');
+        $claimer = $this->makeUser('advertiser');
+        $site = $this->siteFor($publisher);
+        $claim = $this->pendingClaim($claimer, $site);
+
+        Schema::disableForeignKeyConstraints();
+        Schema::dropIfExists('sites');
+        Schema::enableForeignKeyConstraints();
+        $this->assertFalse(Schema::hasTable('sites'));
+
+        try {
+            $response = $this->actingAs($admin)
+                ->postJson(route('admin.community.claims.reject', $claim->id), [
+                    'admin_notes' => 'Listing is gone.',
+                ]);
+
+            $this->assertContains($response->status(), [200, 404, 422]);
+            if ($response->status() === 200) {
+                $response->assertJsonPath('success', true);
+                if (Schema::hasTable('site_claims') && $claim->fresh()) {
+                    $this->assertSame('rejected', $claim->fresh()->status);
+                }
+            }
+        } finally {
+            $this->restoreSitesTable();
+        }
+    }
+
     public function test_claim_approve_does_not_500_when_sites_table_is_gone(): void
     {
         $admin = $this->admin();
@@ -724,10 +806,75 @@ class AdminUsersCommunityCrashTest extends TestCase
                 $this->assertSame('pending', $claim->fresh()->status);
             }
         } finally {
-            $this->artisan('migrate', [
-                '--path' => 'database/migrations/2026_04_06_094704_create_sites_table.php',
-                '--force' => true,
-            ]);
+            $this->restoreSitesTable();
+        }
+    }
+
+    public function test_users_index_survives_missing_role_user(): void
+    {
+        $admin = $this->admin();
+        $this->makeUser('advertiser', ['name' => 'Pivotless User']);
+
+        Schema::disableForeignKeyConstraints();
+        Schema::dropIfExists('role_user');
+        Schema::enableForeignKeyConstraints();
+
+        try {
+            $this->actingAs($admin)
+                ->get(route('admin.users.index'))
+                ->assertOk()
+                ->assertSee('User Management', false)
+                ->assertSee('Pivotless User', false);
+        } finally {
+            $this->restoreRoleUserTable();
+        }
+    }
+
+    public function test_marketing_grant_is_422_without_role_user(): void
+    {
+        $admin = $this->admin();
+        $member = $this->makeUser('advertiser');
+
+        Schema::disableForeignKeyConstraints();
+        Schema::dropIfExists('role_user');
+        Schema::enableForeignKeyConstraints();
+
+        try {
+            $this->actingAs($admin)
+                ->postJson(route('admin.users.updateRoles', $member->id), [
+                    'marketing' => true,
+                ])
+                ->assertStatus(422)
+                ->assertJsonPath('success', false);
+        } finally {
+            $this->restoreRoleUserTable();
+        }
+    }
+
+    public function test_claim_approve_does_not_500_when_role_user_is_gone(): void
+    {
+        $admin = $this->admin();
+        $publisher = $this->makeUser('publisher');
+        $claimer = $this->makeUser('advertiser');
+        $site = $this->siteFor($publisher);
+        $claim = $this->pendingClaim($claimer, $site);
+
+        Schema::disableForeignKeyConstraints();
+        Schema::dropIfExists('role_user');
+        Schema::enableForeignKeyConstraints();
+
+        try {
+            $response = $this->actingAs($admin)
+                ->postJson(route('admin.community.claims.approve', $claim->id));
+
+            $this->assertContains($response->status(), [200, 404, 422]);
+            if ($response->status() === 200) {
+                $response->assertJsonPath('success', true);
+                $this->assertSame('approved', $claim->fresh()->status);
+                $this->assertSame($claimer->id, $site->fresh()->publisher_id);
+            }
+        } finally {
+            $this->restoreRoleUserTable();
         }
     }
 

@@ -39,7 +39,13 @@ class RoleMiddleware
         }
 
         // User must have at least one of the allowed roles
-        $userRoleNames = $user->roles()->pluck('name')->all();
+        try {
+            $userRoleNames = $user->roles()->pluck('name')->all();
+        } catch (\Throwable) {
+            // Leftover Hostinger: missing role_user must not 500 every admin page.
+            $activeName = $user->activeRole();
+            $userRoleNames = $activeName ? [$activeName] : [];
+        }
         if (count(array_intersect($allowed, $userRoleNames)) === 0) {
             abort(403, 'Unauthorized: You do not have this role.');
         }

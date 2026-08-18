@@ -89,7 +89,14 @@ class CommunityInboxNotifier
             return;
         }
 
-        $item->loadMissing(['user']);
+        try {
+            $item->loadMissing(['user']);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to load community submitter: '.$e->getMessage(), [
+                'tab' => $tab,
+                'id' => $item->id,
+            ]);
+        }
 
         try {
             if ((int) ($item->user_id ?? 0) > 0) {
@@ -142,8 +149,11 @@ class CommunityInboxNotifier
         if (! $admin instanceof User || ! $suggestionId || $suggestionId <= 0) {
             return;
         }
+        if (! WebsiteSuggestion::tableAvailable()) {
+            return;
+        }
 
-        $suggestion = WebsiteSuggestion::query()->find($suggestionId);
+        $suggestion = WebsiteSuggestion::findAvailable($suggestionId);
         if (! $suggestion || $suggestion->status === 'accepted') {
             return;
         }
@@ -177,7 +187,15 @@ class CommunityInboxNotifier
             return;
         }
 
-        $fresh = $suggestion->fresh(['user']);
+        try {
+            $fresh = $suggestion->fresh(['user']);
+        } catch (\Throwable) {
+            try {
+                $fresh = $suggestion->fresh() ?: $suggestion;
+            } catch (\Throwable) {
+                $fresh = $suggestion;
+            }
+        }
         if ($fresh) {
             try {
                 $this->notifySubmitterReviewed($fresh, CommunityInbox::TAB_WEBSITES);

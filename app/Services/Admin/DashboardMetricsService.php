@@ -186,7 +186,7 @@ class DashboardMetricsService
             ? Withdrawal::whereIn('status', ['pending', 'processing'])->count()
             : 0;
         // Ready-for-admin queue only (exclude unfinished awaiting_details drafts)
-        $unverifiedSites = Site::query()->needsAdminReview()->count();
+        $unverifiedSites = $this->unverifiedSitesCount();
         $pendingPayments = $this->unpaidOrdersCount();
         $pendingClaims = $this->pendingCount(SiteClaim::class, 'site_claims');
         $pendingProblems = $this->pendingCount(ProblemReport::class, 'problem_reports');
@@ -479,6 +479,20 @@ class DashboardMetricsService
             return $model::query()->where('status', 'pending')->latest('id')->take(5)->get()->map($mapper);
         } catch (\Throwable) {
             return collect();
+        }
+    }
+
+    private function unverifiedSitesCount(): int
+    {
+        try {
+            if (! Schema::hasTable('sites')) {
+                return 0;
+            }
+            DB::table('sites')->limit(1)->exists();
+
+            return Site::query()->needsAdminReview()->count();
+        } catch (\Throwable) {
+            return 0;
         }
     }
 
