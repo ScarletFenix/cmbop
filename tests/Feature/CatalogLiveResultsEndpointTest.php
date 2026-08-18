@@ -7,6 +7,7 @@ use App\Models\Site;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
 
 class CatalogLiveResultsEndpointTest extends TestCase
@@ -154,6 +155,15 @@ class CatalogLiveResultsEndpointTest extends TestCase
         $this->assertStringContainsString('id="catalogResults"', $html);
         $this->assertStringContainsString('Shell Include Target', $html);
         $this->assertStringContainsString('id="filterForm"', $html);
+    }
+
+    public function test_results_and_bulk_deals_are_throttled(): void
+    {
+        foreach (['advertiser.catalog.results', 'advertiser.catalog.bulk-deals'] as $name) {
+            $route = Route::getRoutes()->getByName($name);
+            $this->assertNotNull($route, $name);
+            $this->assertContains('throttle:60,1', $route->gatherMiddleware(), $name);
+        }
     }
 
     public function test_guest_cannot_fetch_results(): void

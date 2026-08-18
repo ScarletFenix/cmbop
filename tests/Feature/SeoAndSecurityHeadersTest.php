@@ -222,6 +222,7 @@ class SeoAndSecurityHeadersTest extends TestCase
         $this->assertStringContainsString('cdn.quilljs.com', $csp);
         $this->assertStringContainsString('cdn.jsdelivr.net', $csp);
         $this->assertStringContainsString('js.stripe.com', $csp);
+        $this->assertStringNotContainsString('unsafe-eval', $csp);
 
         $htaccess = (string) file_get_contents(public_path('.htaccess'));
         $this->assertStringNotContainsString(

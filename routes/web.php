@@ -233,13 +233,13 @@ Route::get('/css/{path}', function (string $path) {
 
 // Ad banner / announcement click tracking (public)
 Route::get('/banners/{banner}/click', BannerClickController::class)
-    ->middleware('throttle:60,1')
+    ->middleware('throttle:30,1')
     ->name('banners.click');
 Route::get('/announcements/{announcement}/click', AnnouncementClickController::class)
-    ->middleware('throttle:60,1')
+    ->middleware('throttle:30,1')
     ->name('announcements.click');
 Route::post('/promotions/track', PromotionTrackController::class)
-    ->middleware('throttle:60,1')
+    ->middleware('throttle:30,1')
     ->name('promotions.track');
 
 // External cron fallback for hosts without a real scheduler. This completes orders
@@ -829,12 +829,12 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
 
         // Live search / filter results fragment (HTML partial, same query as index).
         Route::get('/catalog/results', [CatalogController::class, 'results'])
-            ->middleware('throttle:120,1')
+            ->middleware('throttle:60,1')
             ->name('catalog.results');
 
         // Bulk deals rail fragment — follows country= like the listing (Option 1).
         Route::get('/catalog/bulk-deals', [CatalogController::class, 'bulkDeals'])
-            ->middleware('throttle:120,1')
+            ->middleware('throttle:60,1')
             ->name('catalog.bulk-deals');
 
         // One publisher domain per request. Throttled on top of the daily
