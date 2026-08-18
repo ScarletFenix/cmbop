@@ -1645,12 +1645,13 @@ document.addEventListener('DOMContentLoaded', function() {
                         window.location.href = '{{ route("advertiser.orders") }}';
                     });
                 }
-            } else if (data.code === 'fund_wallet_first' && data.redirect_url) {
+            } else if ((data.code === 'fund_wallet_first' || data.code === 'wallet_debt') && data.redirect_url) {
+                const isDebt = data.code === 'wallet_debt';
                 Swal.fire({
-                    icon: 'info',
-                    title: 'Fund your wallet first',
+                    icon: isDebt ? 'warning' : 'info',
+                    title: isDebt ? 'Clear wallet debt first' : 'Fund your wallet first',
                     html: `<div style="text-align:left;">${escapeHtml(data.message || '')}</div>`,
-                    confirmButtonText: 'Add funds & get invoice',
+                    confirmButtonText: isDebt ? 'Add funds' : 'Add funds & get invoice',
                     showCancelButton: true,
                     cancelButtonText: 'Stay here'
                 }).then((result) => {

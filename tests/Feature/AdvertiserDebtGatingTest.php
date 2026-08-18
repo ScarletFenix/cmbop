@@ -109,6 +109,7 @@ class AdvertiserDebtGatingTest extends TestCase
 
         $this->assertStringContainsString('outstanding debt from a refunded deposit', $html);
         $this->assertStringContainsString(route('advertiser.add-funds', [], false), $html);
+        $this->assertStringContainsString("data.code === 'wallet_debt'", $html);
     }
 
     public function test_process_order_is_blocked_while_advertiser_has_debt(): void
@@ -230,7 +231,7 @@ class AdvertiserDebtGatingTest extends TestCase
         });
 
         $advertiser = $this->userWithRole('advertiser');
-        $this->advertiserWallet($advertiser, 0, 17);
+        $this->advertiserWallet($advertiser, 80, 17);
 
         $html = $this->actingAs($advertiser)
             ->get(route('advertiser.add-funds'))
@@ -238,6 +239,7 @@ class AdvertiserDebtGatingTest extends TestCase
             ->getContent();
         $this->assertStringContainsString('outstanding debt from a refunded deposit', $html);
         $this->assertStringContainsString('New deposits pay that debt first', $html);
+        $this->assertMatchesRegularExpression('/id="withdrawOpenBtn"[^>]*\bdisabled\b/', $html);
 
         $this->actingAs($advertiser)
             ->postJson(route('advertiser.add-funds.paypal.create'), [

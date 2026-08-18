@@ -17,7 +17,7 @@
     $pendingWithdrawals = (float) ($summary['pending_withdrawals'] ?? 0);
     $bonusReceived = (float) ($summary['bonus_received'] ?? $bonus);
     $bonusUsed = (float) ($summary['bonus_used'] ?? 0);
-    $canWithdraw = $available > 0;
+    $canWithdraw = $available > 0 && (float) ($advertiserDebtBalance ?? 0) <= 0.009;
     $publisher = $publisher ?? \App\Models\Wallet::emptyRoleSnapshot();
     $showPublisherWallet = (bool) ($showPublisherWallet ?? false);
 @endphp
@@ -728,7 +728,13 @@
                     @if(! $canWithdraw)
                         <div class="alert alert-warning">
                             <i class="fa fa-lock me-1"></i>
-                            {{ $bonus > 0 ? $promotionalBonusMessage : 'You have no available balance to withdraw.' }}
+                            @if((float) ($advertiserDebtBalance ?? 0) > 0.009)
+                                {{ $advertiserDebtReason }}
+                            @elseif($bonus > 0)
+                                {{ $promotionalBonusMessage }}
+                            @else
+                                You have no available balance to withdraw.
+                            @endif
                         </div>
                     @else
                         <div class="alert alert-light border small mb-3">
