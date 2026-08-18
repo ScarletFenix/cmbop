@@ -144,6 +144,28 @@ class AdvertiserOrdersUxAbcTest extends TestCase
         $this->assertStringContainsString('Results update as you type.', $html);
         $this->assertStringContainsString('data-orders-live-search="1"', $html);
         $this->assertStringContainsString('id="ordersSearchHint"', $html);
+        $this->assertStringContainsString('orders-filter-bar', $html);
+        $this->assertStringContainsString('orders-filter-bar__row', $html);
+        $this->assertStringContainsString('orders-filter-bar__actions', $html);
+        $this->assertStringNotContainsString('row g-2 g-md-3 align-items-end', $html);
+        $this->assertStringNotContainsString('col-xl-2', $html);
+        $this->assertStringNotContainsString('col-xl-3', $html);
+        $searchCellPos = strpos($html, 'orders-filter-bar__search');
+        $actionsPos = strpos($html, 'orders-filter-bar__actions');
+        $hintPos = strpos($html, 'id="ordersSearchHint"');
+        $this->assertNotFalse($searchCellPos);
+        $this->assertNotFalse($actionsPos);
+        $this->assertNotFalse($hintPos);
+        $this->assertGreaterThan($searchCellPos, $actionsPos, 'Filter/Reset must sit after Search in the same bar');
+        $this->assertGreaterThan($actionsPos, $hintPos, 'Live-search hint must sit under the whole filter row');
+        $this->assertDoesNotMatchRegularExpression(
+            '/id="dateFrom"[^>]*value="(?!")/',
+            $html
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/id="dateTo"[^>]*value="(?!")/',
+            $html
+        );
         // Live list API must be same-origin relative (Hostinger APP_URL mismatches break fetch).
         $this->assertTrue(
             str_contains($html, 'list: "/advertiser/orders/list"')
