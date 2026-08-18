@@ -5,6 +5,7 @@ namespace App\Services\Billing;
 use App\Models\Invoice;
 use App\Models\InvoiceSequence;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class InvoiceNumberGenerator
 {
@@ -91,15 +92,22 @@ class InvoiceNumberGenerator
     {
         $year = $year ?: (int) now()->format('Y');
 
+        if (! $this->sequencesTableAvailable()) {
+            throw new \RuntimeException('Invoice number sequences are unavailable. Apply the billing migrations.');
+        }
+
         return DB::transaction(function () use ($year, $prefix, $pad) {
             $sequence = $this->lockSequence($prefix, $year);
 
             if (! $sequence) {
-                InvoiceSequence::create([
-                    'series' => $prefix,
+                $row = [
                     'year' => $year,
                     'last_number' => 0,
-                ]);
+                ];
+                if ($this->sequencesHaveSeries()) {
+                    $row['series'] = $prefix;
+                }
+                InvoiceSequence::create($row);
                 $sequence = $this->lockSequence($prefix, $year);
             }
 
@@ -117,10 +125,29 @@ class InvoiceNumberGenerator
 
     private function lockSequence(string $prefix, int $year): ?InvoiceSequence
     {
-        return InvoiceSequence::query()
-            ->where('series', $prefix)
-            ->where('year', $year)
-            ->lockForUpdate()
-            ->first();
+        $query = InvoiceSequence::query()->where('year', $year);
+        if ($this->sequencesHaveSeries()) {
+            $query->where('series', $prefix);
+        }
+
+        return $query->lockForUpdate()->first();
+    }
+
+    private function sequencesTableAvailable(): bool
+    {
+        try {
+            return Schema::hasTable('invoice_sequences');
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    private function sequencesHaveSeries(): bool
+    {
+        try {
+            return Schema::hasColumn('invoice_sequences', 'series');
+        } catch (\Throwable) {
+            return false;
+        }
     }
 }

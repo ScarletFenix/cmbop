@@ -286,8 +286,151 @@ class AdminLedgerPaymentsInvoicesCrashTest extends TestCase
                 ->post(route('admin.invoices.generate'), ['order_id' => 1])
                 ->assertRedirect(route('admin.invoices.index'))
                 ->assertSessionHas('error');
+
+            $this->actingAs($admin)
+                ->get(route('admin.invoices.show', 1))
+                ->assertNotFound();
         } finally {
             $this->restoreBillingTables();
+        }
+    }
+
+    public function test_ledger_export_and_payments_show_survive_leftover_dates(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        $wallet = Wallet::create([
+            'user_id' => $advertiser->id,
+            'role_id' => Wallet::advertiserRoleId(),
+            'balance' => 20,
+            'reserved_balance' => 0,
+            'bonus_balance' => 0,
+            'currency' => 'EUR',
+        ]);
+        $tx = WalletTransaction::create([
+            'user_id' => $advertiser->id,
+            'wallet_id' => $wallet->id,
+            'type' => WalletTransaction::TYPE_DEPOSIT,
+            'direction' => 'credit',
+            'amount' => 20,
+            'bonus_amount' => 0,
+            'balance_after' => 20,
+            'currency' => 'EUR',
+            'status' => 'completed',
+            'description' => 'Export leftover date',
+            'reference' => 'DEP-EXPORT-DATE',
+        ]);
+        DB::table('wallet_transactions')->where('id', $tx->id)->update([
+            'created_at' => 'not-a-date',
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.finance.ledger.export'))
+            ->assertOk();
+
+        $order = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => 'PAY-LEFTOVER-DATE',
+            'reference_code' => 'REF-LEFTOVER-DATE',
+            'subtotal' => 30,
+            'tax' => 0,
+            'total_amount' => 30,
+            'payment_method' => 'wise',
+            'payment_status' => 'paid',
+            'status' => 'pending',
+            'paid_at' => now(),
+        ]);
+        DB::table('orders')->where('id', $order->id)->update([
+            'paid_at' => 'not-a-date',
+        ]);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.payments.show', $order->id))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.order_number', 'PAY-LEFTOVER-DATE')
+            ->assertJsonPath('data.paid_at', null);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.payments.data', ['search' => 'PAY-LEFTOVER-DATE']))
+            ->assertOk()
+            ->assertJsonPath('success', true);
+    }
+
+    public function test_invoice_show_survives_leftover_invoice_date(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        $invoice = Invoice::create([
+            'invoice_number' => 'INV-LEFTOVER-DATE',
+            'type' => Invoice::TYPE_TAX_INVOICE,
+            'status' => Invoice::STATUS_PAID,
+            'user_id' => $advertiser->id,
+            'customer_name' => $advertiser->name,
+            'customer_email' => $advertiser->email,
+            'subtotal' => 10,
+            'total_amount' => 10,
+            'invoice_date' => now(),
+            'line_items' => [['description' => 'Test', 'line_total' => 10]],
+            'pdf_disk' => 'local',
+        ]);
+        DB::table('invoices')->where('id', $invoice->id)->update([
+            'invoice_date' => 'not-a-date',
+            'due_date' => 'also-bad',
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.invoices.show', $invoice->id))
+            ->assertOk()
+            ->assertDontSee('Something went wrong')
+            ->assertSee('INV-LEFTOVER-DATE');
+    }
+
+    public function test_invoice_generate_survives_missing_series_column(): void
+    {
+        if (! Schema::hasTable('invoice_sequences') || ! Schema::hasColumn('invoice_sequences', 'series')) {
+            $this->markTestSkipped('invoice_sequences.series is already absent');
+        }
+
+        try {
+            Schema::table('invoice_sequences', function (Blueprint $table) {
+                $table->dropUnique(['series', 'year']);
+                $table->dropColumn('series');
+            });
+        } catch (\Throwable) {
+            $this->markTestSkipped('Could not drop invoice_sequences.series on this driver');
+        }
+
+        if (Schema::hasColumn('invoice_sequences', 'series')) {
+            $this->markTestSkipped('invoice_sequences.series is still present after drop');
+        }
+
+        try {
+            $admin = $this->admin();
+            $advertiser = $this->advertiser();
+            $order = Order::create([
+                'user_id' => $advertiser->id,
+                'order_number' => 'ORD-NO-SERIES',
+                'reference_code' => 'REF-NO-SERIES',
+                'subtotal' => 40,
+                'tax' => 0,
+                'total_amount' => 40,
+                'payment_method' => 'wallet',
+                'payment_status' => 'paid',
+                'status' => 'pending',
+            ]);
+
+            $this->actingAs($admin)
+                ->from(route('admin.invoices.index'))
+                ->post(route('admin.invoices.generate'), ['order_id' => $order->id])
+                ->assertRedirect();
+            $this->assertFalse(session()->has('error') && str_contains((string) session('error'), 'Something went wrong'));
+        } finally {
+            if (Schema::hasTable('invoice_sequences') && ! Schema::hasColumn('invoice_sequences', 'series')) {
+                Schema::table('invoice_sequences', function (Blueprint $table) {
+                    $table->string('series', 12)->default('INV');
+                });
+            }
         }
     }
 
