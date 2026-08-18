@@ -232,7 +232,7 @@ class FinanceOverviewService
                 'cash_in_bank' => 0.0,
                 'internal_only' => 0.0,
                 'cash_out_payouts' => 0.0,
-                'note' => 'Cash in = Stripe/card + PayPal checkout/deposits + approved bank/Wise/crypto deposits & manual order payments + leftover card credits + featured-site Stripe + paid→failed captures returned to wallet. Wallet refunds do not remove collected card/manual cash (no Stripe refund). PayPal checkout refunds return on PayPal, not as a second wallet credit. Internal = wallet checkouts + welcome bonuses.',
+                'note' => 'Cash in = Stripe/card + PayPal checkout/deposits + approved bank/Wise/crypto deposits & manual order payments + leftover card credits + featured-site Stripe + paid→failed captures returned to wallet. Wallet refunds do not remove collected card/manual cash (no Stripe refund). PayPal checkout refunds return on PayPal, not as a second wallet credit. A PayPal-dashboard refund of an Add Funds deposit is removed from cash in and debited from the wallet. Internal = wallet checkouts + welcome bonuses.',
             ],
             'payable_now' => 0.0,
             'due_to_pay_now' => 0.0,
@@ -762,7 +762,7 @@ class FinanceOverviewService
             'cash_in_bank' => $cashIn,
             'internal_only' => $internal,
             'cash_out_payouts' => round($cashOut, 2),
-            'note' => 'Cash in = Stripe/card + PayPal checkout/deposits + approved bank/Wise/crypto deposits & manual order payments + leftover card credits + featured-site Stripe + paid→failed captures returned to wallet. Wallet refunds do not remove collected card/manual cash (no Stripe refund). PayPal checkout refunds return on PayPal, not as a second wallet credit. Internal = wallet checkouts + welcome bonuses.',
+            'note' => 'Cash in = Stripe/card + PayPal checkout/deposits + approved bank/Wise/crypto deposits & manual order payments + leftover card credits + featured-site Stripe + paid→failed captures returned to wallet. Wallet refunds do not remove collected card/manual cash (no Stripe refund). PayPal checkout refunds return on PayPal, not as a second wallet credit. A PayPal-dashboard refund of an Add Funds deposit is removed from cash in and debited from the wallet. Internal = wallet checkouts + welcome bonuses.',
         ];
     }
 

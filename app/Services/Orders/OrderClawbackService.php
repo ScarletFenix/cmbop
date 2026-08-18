@@ -148,52 +148,17 @@ class OrderClawbackService
         }
 
         $preview = OrderItemDispute::query()->findOrFail($dispute->id);
-        if (! $preview->isOpen()) {
-            throw ValidationException::withMessages([
-                'dispute' => 'Only open disputes can be upheld.',
-            ]);
-        }
         $previewItem = OrderItem::query()->findOrFail($preview->order_item_id);
         $previewOrder = Order::query()->findOrFail($preview->order_id);
-        if ($previewOrder->payment_status === 'refunded') {
-            throw ValidationException::withMessages([
-                'dispute' => 'This order item has already been clawed back or refunded.',
-            ]);
-        }
-        if ($previewOrder->payment_status !== 'paid') {
-            throw ValidationException::withMessages([
-                'dispute' => 'Only paid orders can be clawed back.',
-            ]);
-        }
+        $this->assertUpholdPreconditions($preview, $previewOrder, $previewItem);
         $advertiserCredit = round((float) $previewItem->price, 2);
         $preparedPaypal = $this->refundPaypalCashBeforeUphold($preview, $previewOrder, $advertiserCredit);
 
         return DB::transaction(function () use ($dispute, $admin, $notes, $advertiserCredit, $preparedPaypal) {
             $dispute = OrderItemDispute::where('id', $dispute->id)->lockForUpdate()->firstOrFail();
-            if (! $dispute->isOpen()) {
-                throw ValidationException::withMessages([
-                    'dispute' => 'Only open disputes can be upheld.',
-                ]);
-            }
-
             $item = OrderItem::where('id', $dispute->order_item_id)->lockForUpdate()->firstOrFail();
             $order = Order::where('id', $dispute->order_id)->lockForUpdate()->firstOrFail();
-
-            $existingUpheld = OrderItemDispute::where('order_item_id', $item->id)
-                ->where('status', OrderItemDispute::STATUS_UPHELD)
-                ->where('id', '!=', $dispute->id)
-                ->exists();
-            if ($existingUpheld || $order->payment_status === 'refunded') {
-                throw ValidationException::withMessages([
-                    'dispute' => 'This order item has already been clawed back or refunded.',
-                ]);
-            }
-
-            if ($order->payment_status !== 'paid') {
-                throw ValidationException::withMessages([
-                    'dispute' => 'Only paid orders can be clawed back.',
-                ]);
-            }
+            $this->assertUpholdPreconditions($dispute, $order, $item);
 
             $targetPayout = round((float) $item->publisherPayoutAmount(), 2);
             $advertiserCredit = round((float) $item->price, 2);
@@ -211,24 +176,6 @@ class OrderClawbackService
             $debited = 0.0;
             $debtCreated = 0.0;
             $publisherWallet = null;
-
-            if ($targetPayout > 0 && ! $publisherId) {
-                throw ValidationException::withMessages([
-                    'dispute' => 'Cannot uphold this dispute: the listing (and publisher) is missing, so the publisher clawback cannot be applied. Restore the site first.',
-                ]);
-            }
-
-            if ($advertiserCredit > 0 && ! $advertiserRoleId) {
-                throw ValidationException::withMessages([
-                    'dispute' => 'Cannot uphold this dispute: the advertiser role is missing, so the refund cannot be applied. Seed roles first.',
-                ]);
-            }
-
-            if ($targetPayout > 0 && ! $publisherRoleId) {
-                throw ValidationException::withMessages([
-                    'dispute' => 'Cannot uphold this dispute: the publisher role is missing, so the publisher clawback cannot be applied. Seed roles first.',
-                ]);
-            }
 
             if ($publisherId && $publisherRoleId && $targetPayout > 0) {
                 $publisherWallet = Wallet::lockOrCreateForRole((int) $publisherId, (int) $publisherRoleId);
@@ -431,6 +378,57 @@ class OrderClawbackService
 
             return $cleared;
         });
+    }
+
+    /**
+     * Fail closed before any PayPal HTTP, and again inside the locked TX.
+     */
+    private function assertUpholdPreconditions(OrderItemDispute $dispute, Order $order, OrderItem $item): void
+    {
+        if (! $dispute->isOpen()) {
+            throw ValidationException::withMessages([
+                'dispute' => 'Only open disputes can be upheld.',
+            ]);
+        }
+
+        $existingUpheld = OrderItemDispute::where('order_item_id', $item->id)
+            ->where('status', OrderItemDispute::STATUS_UPHELD)
+            ->where('id', '!=', $dispute->id)
+            ->exists();
+        if ($existingUpheld || $order->payment_status === 'refunded') {
+            throw ValidationException::withMessages([
+                'dispute' => 'This order item has already been clawed back or refunded.',
+            ]);
+        }
+
+        if ($order->payment_status !== 'paid') {
+            throw ValidationException::withMessages([
+                'dispute' => 'Only paid orders can be clawed back.',
+            ]);
+        }
+
+        $targetPayout = round((float) $item->publisherPayoutAmount(), 2);
+        $advertiserCredit = round((float) $item->price, 2);
+        $site = Site::find($item->site_id);
+        $publisherId = $site?->publisher_id;
+
+        if ($targetPayout > 0 && ! $publisherId) {
+            throw ValidationException::withMessages([
+                'dispute' => 'Cannot uphold this dispute: the listing (and publisher) is missing, so the publisher clawback cannot be applied. Restore the site first.',
+            ]);
+        }
+
+        if ($advertiserCredit > 0 && ! Wallet::advertiserRoleId()) {
+            throw ValidationException::withMessages([
+                'dispute' => 'Cannot uphold this dispute: the advertiser role is missing, so the refund cannot be applied. Seed roles first.',
+            ]);
+        }
+
+        if ($targetPayout > 0 && ! Wallet::publisherRoleId()) {
+            throw ValidationException::withMessages([
+                'dispute' => 'Cannot uphold this dispute: the publisher role is missing, so the publisher clawback cannot be applied. Seed roles first.',
+            ]);
+        }
     }
 
     /**

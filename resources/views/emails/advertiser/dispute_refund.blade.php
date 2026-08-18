@@ -1,5 +1,5 @@
 @component('mail::message')
-# Refund credited
+# {{ $viaPaypal ? 'Refund sent to PayPal' : 'Refund credited' }}
 
 Dear {{ $advertiser->name }},
 

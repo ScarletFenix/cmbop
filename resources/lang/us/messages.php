@@ -823,7 +823,7 @@ return [
     'staff_handbook_section7_list1' => 'Paid = transfer confirmed. Use for Wise, bank, and crypto after the money is on the statement. Publishers are notified even if you uncheck customer mail.',
     'staff_handbook_section7_list2' => 'Failed = unpaid or declined. Cancels an in-flight order and releases a wallet hold. Do not use Failed on a completed placement.',
     'staff_handbook_section7_list3' => 'Refunded = cancel the order. Wallet / card / bank / Wise / crypto return as advertiser wallet credit (card does not reverse the Stripe charge). PayPal checkout refunds the capture back to the buyer and does not credit the wallet again. Write a note and optional transfer reference.',
-    'staff_handbook_section7_list4' => 'Completed paid orders cannot be refunded or failed here. Open a link-removed dispute so the publisher payout is clawed back first.',
+    'staff_handbook_section7_list4' => 'Completed paid orders cannot be refunded or failed here. Open a link-removed dispute so the publisher payout is clawed back first. PayPal checkout disputes refund the capture to the buyer instead of crediting the wallet again.',
     'staff_handbook_section7_list5' => 'Stage changes stay on the Orders console. Money status stays on Order Payments.',
     'staff_handbook_terms_link' => 'Publisher Terms of Service',
     'staff_handbook_privacy_link' => 'Privacy Policy',

@@ -427,10 +427,16 @@ class WalletOverviewService
                 'date' => ($d->paid_at ?? $d->created_at)?->toIso8601String(),
                 'timestamp' => ($d->paid_at ?? $d->created_at)?->timestamp ?? 0,
                 'type' => WalletTransaction::TYPE_DEPOSIT,
-                'type_label' => $status === 'pending' ? 'Pending invoice deposit' : 'Deposit',
-                'description' => $status === 'pending'
-                    ? 'Invoice deposit via '.ucfirst((string) $d->payment_method).' — awaiting confirmation'
-                    : 'Wallet deposit via '.ucfirst((string) $d->payment_method),
+                'type_label' => match ($status) {
+                    'pending' => 'Pending invoice deposit',
+                    'refunded' => 'Refunded deposit',
+                    default => 'Deposit',
+                },
+                'description' => match ($status) {
+                    'pending' => 'Invoice deposit via '.ucfirst((string) $d->payment_method).' — awaiting confirmation',
+                    'refunded' => ucfirst((string) $d->payment_method).' deposit refunded and removed from wallet',
+                    default => 'Wallet deposit via '.ucfirst((string) $d->payment_method),
+                },
                 'reference' => $d->reference_code,
                 'amount' => (float) $d->amount,
                 'direction' => 'credit',
