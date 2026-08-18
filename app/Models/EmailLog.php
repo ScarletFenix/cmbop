@@ -6,7 +6,6 @@ use App\Models\Concerns\ToleratesMissingSchema;
 use App\Models\Concerns\ToleratesUnparseableDates;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Facades\Schema;
 
 class EmailLog extends Model
 {
@@ -348,14 +347,6 @@ class EmailLog extends Model
             'failed' => 0,
             'delivered' => 0,
         ];
-
-        try {
-            if (! Schema::hasTable((new static)->getTable())) {
-                return $empty;
-            }
-        } catch (\Throwable) {
-            return $empty;
-        }
 
         $today = now()->toDateString();
         try {

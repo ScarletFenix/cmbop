@@ -28,6 +28,9 @@ use Illuminate\Validation\Rule;
 
 class EmailCenterController extends Controller
 {
+    /** @var array<string, bool> */
+    private array $schemaTableAvailable = [];
+
     public function index(Request $request)
     {
         $stats = EmailLog::dashboardKpis();
@@ -87,8 +90,8 @@ class EmailCenterController extends Controller
             'mail_connection' => config('email_notifications.queue_connection', config('queue.default')),
             'mail_queue' => config('email_notifications.queue', 'emails'),
             'auto_drain' => (bool) config('email_notifications.auto_drain'),
-            'pending_jobs' => $this->schemaTableAvailable('jobs') ? DB::table('jobs')->count() : 0,
-            'failed_jobs' => $this->schemaTableAvailable('failed_jobs') ? DB::table('failed_jobs')->count() : 0,
+            'pending_jobs' => Schema::hasTable('jobs') ? DB::table('jobs')->count() : 0,
+            'failed_jobs' => Schema::hasTable('failed_jobs') ? DB::table('failed_jobs')->count() : 0,
             'mail_pending_jobs' => $this->queuedMailJobsCount(),
             'mail_failed_jobs' => $this->failedMailJobsCount(),
         ];
@@ -1143,7 +1146,7 @@ class EmailCenterController extends Controller
 
     protected function queuedMailJobsCount(): int
     {
-        if (! $this->schemaTableAvailable('jobs')) {
+        if (! Schema::hasTable('jobs')) {
             return 0;
         }
 
@@ -1152,7 +1155,7 @@ class EmailCenterController extends Controller
 
     protected function failedMailJobsCount(): int
     {
-        if (! $this->schemaTableAvailable('failed_jobs')) {
+        if (! Schema::hasTable('failed_jobs')) {
             return 0;
         }
 
@@ -1315,10 +1318,6 @@ class EmailCenterController extends Controller
      */
     private function recentEmailLogs(array $filters): LengthAwarePaginator
     {
-        if (! $this->schemaTableAvailable('email_logs')) {
-            return $this->emptyEmailLogPaginator();
-        }
-
         try {
             return EmailLog::query()
                 ->when($filters['status'] ?? null, fn ($q, $status) => $q->where('status', $status))
@@ -1337,10 +1336,6 @@ class EmailCenterController extends Controller
 
     private function emailTemplateStats(): Collection
     {
-        if (! $this->schemaTableAvailable('email_logs')) {
-            return collect();
-        }
-
         try {
             return EmailLog::query()
                 ->selectRaw(
@@ -1359,10 +1354,6 @@ class EmailCenterController extends Controller
 
     private function emailNotificationSettingRows(): Collection
     {
-        if (! $this->schemaTableAvailable('email_notification_settings')) {
-            return collect();
-        }
-
         try {
             return EmailNotificationSetting::query()->pluck('enabled', 'type');
         } catch (\Throwable) {
@@ -1372,10 +1363,6 @@ class EmailCenterController extends Controller
 
     private function failedEmailLogs(): Collection
     {
-        if (! $this->schemaTableAvailable('email_logs')) {
-            return collect();
-        }
-
         try {
             return EmailLog::failed()->latest('id')->limit(20)->get();
         } catch (\Throwable) {
@@ -1385,7 +1372,7 @@ class EmailCenterController extends Controller
 
     private function recentCampaigns(): Collection
     {
-        if (! $this->schemaTableAvailable('email_campaigns')) {
+        if (! Schema::hasTable('email_campaigns')) {
             return collect();
         }
 
@@ -1403,16 +1390,20 @@ class EmailCenterController extends Controller
 
     private function schemaTableAvailable(string $table): bool
     {
+        if (array_key_exists($table, $this->schemaTableAvailable)) {
+            return $this->schemaTableAvailable[$table];
+        }
+
         if (! Schema::hasTable($table)) {
-            return false;
+            return $this->schemaTableAvailable[$table] = false;
         }
 
         try {
             DB::table($table)->limit(1)->exists();
 
-            return true;
+            return $this->schemaTableAvailable[$table] = true;
         } catch (\Throwable) {
-            return false;
+            return $this->schemaTableAvailable[$table] = false;
         }
     }
 

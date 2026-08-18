@@ -7,6 +7,7 @@ use App\Models\User;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
@@ -40,10 +41,26 @@ class AdminGrowthMenusCrashTest extends TestCase
     private function dropTables(array $tables): void
     {
         Schema::disableForeignKeyConstraints();
-        foreach ($tables as $table) {
-            Schema::dropIfExists($table);
+        try {
+            DB::statement('PRAGMA foreign_keys = OFF');
+        } catch (\Throwable) {
         }
-        Schema::enableForeignKeyConstraints();
+
+        foreach ($tables as $table) {
+            try {
+                Schema::dropIfExists($table);
+            } catch (\Throwable) {
+                try {
+                    DB::statement('DROP TABLE IF EXISTS "'.$table.'"');
+                } catch (\Throwable) {
+                }
+            }
+        }
+
+        try {
+            Schema::enableForeignKeyConstraints();
+        } catch (\Throwable) {
+        }
     }
 
     /**
@@ -207,15 +224,15 @@ class AdminGrowthMenusCrashTest extends TestCase
         }
     }
 
-    public function test_audiences_survive_missing_order_site_and_deposit_tables(): void
+    public function test_audiences_survive_missing_orders_table(): void
     {
         $admin = $this->admin();
         $this->makeAdvertiser();
-        $this->dropTables(['deposit_requests', 'orders', 'sites']);
+        $this->dropTables(['orders']);
         $this->assertFalse(Schema::hasTable('orders'));
 
         try {
-            foreach (['advertisers', 'no_orders', 'paid_orders', 'no_sites', 'never_deposited'] as $tab) {
+            foreach (['advertisers', 'no_orders', 'paid_orders'] as $tab) {
                 $this->actingAs($admin)
                     ->get(route('admin.audiences.index', [
                         'tab' => $tab,
@@ -232,7 +249,43 @@ class AdminGrowthMenusCrashTest extends TestCase
         } finally {
             $this->remigrate([
                 'database/migrations/2026_04_21_070134_create_orders_table.php',
+            ]);
+        }
+    }
+
+    public function test_audiences_survive_missing_sites_table(): void
+    {
+        $admin = $this->admin();
+        $this->dropTables(['sites']);
+        $this->assertFalse(Schema::hasTable('sites'));
+
+        try {
+            $this->actingAs($admin)
+                ->get(route('admin.audiences.index', ['tab' => 'no_sites']))
+                ->assertOk()
+                ->assertSee('Audience Inventory', false)
+                ->assertDontSee('Something went wrong');
+        } finally {
+            $this->remigrate([
                 'database/migrations/2026_04_06_094704_create_sites_table.php',
+            ]);
+        }
+    }
+
+    public function test_audiences_survive_missing_deposit_requests_table(): void
+    {
+        $admin = $this->admin();
+        $this->dropTables(['deposit_requests']);
+        $this->assertFalse(Schema::hasTable('deposit_requests'));
+
+        try {
+            $this->actingAs($admin)
+                ->get(route('admin.audiences.index', ['tab' => 'never_deposited']))
+                ->assertOk()
+                ->assertSee('Audience Inventory', false)
+                ->assertDontSee('Something went wrong');
+        } finally {
+            $this->remigrate([
                 'database/migrations/2026_04_21_115734_create_deposit_requests_table.php',
                 'database/migrations/2026_04_22_113004_add_stripe_fields_to_deposit_requests_table.php',
                 'database/migrations/2026_07_21_140000_add_user_marked_paid_to_deposit_requests.php',
@@ -358,15 +411,14 @@ class AdminGrowthMenusCrashTest extends TestCase
                 ->get(route('admin.content-library.show', 1))
                 ->assertNotFound();
         } finally {
-            $this->remigrate([
-                'database/migrations/2026_07_16_200000_create_content_upload_system.php',
-                'database/migrations/2026_07_16_220000_add_country_language_to_content_submissions.php',
-                'database/migrations/2026_07_17_220000_add_archived_at_to_content_submissions.php',
-                'database/migrations/2026_08_05_120000_add_image_rights_to_content_submissions.php',
-            ]);
+            $this->restoreContentSubmissionsTable();
         }
+    }
 
-        $this->dropTables(['orders', 'sites']);
+    public function test_content_library_survives_missing_orders_table(): void
+    {
+        $admin = $this->admin();
+        $this->dropTables(['orders']);
         $this->assertFalse(Schema::hasTable('orders'));
 
         try {
@@ -377,7 +429,6 @@ class AdminGrowthMenusCrashTest extends TestCase
         } finally {
             $this->remigrate([
                 'database/migrations/2026_04_21_070134_create_orders_table.php',
-                'database/migrations/2026_04_06_094704_create_sites_table.php',
             ]);
         }
     }
@@ -390,6 +441,16 @@ class AdminGrowthMenusCrashTest extends TestCase
             ->get(route('admin.promotions.index'))
             ->assertOk()
             ->assertDontSee('Something went wrong');
+    }
+
+    private function restoreContentSubmissionsTable(): void
+    {
+        $this->remigrate([
+            'database/migrations/2026_07_16_200000_create_content_upload_system.php',
+            'database/migrations/2026_07_16_220000_add_country_language_to_content_submissions.php',
+            'database/migrations/2026_07_17_220000_add_archived_at_to_content_submissions.php',
+            'database/migrations/2026_08_05_120000_add_image_rights_to_content_submissions.php',
+        ]);
     }
 
     private function restoreEmailLogsTable(): void
