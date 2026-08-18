@@ -86,7 +86,15 @@ class CatalogExpandCorrectnessTest extends TestCase
     public function test_expand_separates_link_type_from_tags(): void
     {
         $this->makeSite([
+            'site_name' => 'Sponsored Expand Blog',
+            'site_url' => 'https://expand-sponsored.example',
+            'domain' => 'expand-sponsored.example',
             'sponsored' => true,
+        ]);
+        $this->makeSite([
+            'site_name' => 'Partner Expand Blog',
+            'site_url' => 'https://expand-partner.example',
+            'domain' => 'expand-partner.example',
             'partner_material' => true,
         ]);
 
@@ -97,13 +105,15 @@ class CatalogExpandCorrectnessTest extends TestCase
 
         // Desktop expand: link attribute under its own heading, not under Tags.
         $this->assertMatchesRegularExpression(
-            '/catalog-expand-meta[\s\S]*?<strong>Link type<\/strong>[\s\S]*?NoFollow[\s\S]*?<strong>Tags<\/strong>[\s\S]*?Sponsored[\s\S]*?Partner/u',
+            '/catalog-expand-meta[\s\S]*?<strong>Link type<\/strong>[\s\S]*?NoFollow[\s\S]*?<strong>Tags<\/strong>[\s\S]*?Sponsored/u',
             $html
         );
         $this->assertGreaterThanOrEqual(2, substr_count($html, 'Link type'));
         $this->assertStringContainsString('NoFollow', $html);
         $this->assertStringContainsString('Sponsored', $html);
-        $this->assertStringContainsString('Partner', $html);
+        $this->assertStringContainsString('Partner article', $html);
+        $this->assertStringContainsString('site-chip--sponsored', $html);
+        $this->assertStringContainsString('site-chip--partner', $html);
     }
 
     public function test_expand_layout_separates_pricing_and_empty_states(): void
@@ -264,7 +274,6 @@ class CatalogExpandCorrectnessTest extends TestCase
         $this->makeSite([
             'example_url' => null,
             'sponsored' => true,
-            'partner_material' => true,
             'description' => '<p>Full mobile description for parity.</p>',
             'screenshot_path' => 'site-screenshots/mobile-parity.webp',
         ]);
@@ -278,7 +287,7 @@ class CatalogExpandCorrectnessTest extends TestCase
         $this->assertStringContainsString('Homepage preview', $html);
         $this->assertStringContainsString('Full mobile description for parity.', $html);
         $this->assertStringContainsString('Sponsored', $html);
-        $this->assertStringContainsString('Partner', $html);
+        $this->assertStringContainsString('site-chip--sponsored', $html);
         $this->assertStringContainsString('No sample article yet', $html);
         $this->assertStringContainsString('catalog-deferred-preview', $html);
         $this->assertStringContainsString('Publisher trust', $html);

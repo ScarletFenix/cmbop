@@ -3,6 +3,7 @@
 namespace App\Services\Catalog;
 
 use App\Models\Category;
+use App\Support\SiteTag;
 use Illuminate\Http\Request;
 
 /**
@@ -29,6 +30,7 @@ class CatalogUrlQuery
         'dr_max',
         'traffic_min',
         'traffic_max',
+        'tag',
         'sponsored',
         'favorites_filter',
         'blacklist_filter',
@@ -138,6 +140,14 @@ class CatalogUrlQuery
 
         if (($params['page'] ?? null) === '1') {
             unset($params['page']);
+        }
+
+        $tag = SiteTag::catalogFilterFromInput($params['tag'] ?? null, $params['sponsored'] ?? null);
+        unset($params['sponsored']);
+        if ($tag !== null) {
+            $params['tag'] = $tag;
+        } else {
+            unset($params['tag']);
         }
 
         return $params;

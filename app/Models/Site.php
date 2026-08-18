@@ -1616,9 +1616,12 @@ class Site extends Model
             ->when($filters['link_type'] ?? null, function ($query, $linkType) {
                 $query->where('link_type', $linkType);
             })
-            ->when(isset($filters['sponsored']) && in_array($filters['sponsored'], [0, 1]), function ($query) use ($filters) {
-                $query->where('sponsored', $filters['sponsored']);
-            });
+            ->when(
+                SiteTag::catalogFilterFromInput($filters['tag'] ?? null, $filters['sponsored'] ?? null),
+                function ($query, $tag) {
+                    SiteTag::constrainQuery($query, $tag);
+                }
+            );
     }
 
     /**

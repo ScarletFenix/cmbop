@@ -6,6 +6,7 @@ use App\Models\Category;
 use App\Models\Country;
 use App\Models\Language;
 use App\Models\Site;
+use App\Support\SiteTag;
 use Illuminate\Http\Request;
 
 /**
@@ -17,7 +18,7 @@ class CatalogFilterStatus
     public const QUERY_KEYS = [
         'search', 'category', 'country', 'language',
         'price_min', 'price_max', 'da_min', 'da_max', 'dr_min', 'dr_max',
-        'traffic_min', 'traffic_max', 'sponsored', 'favorites_filter',
+        'traffic_min', 'traffic_max', 'tag', 'sponsored', 'favorites_filter',
         'blacklist_filter', 'new_badge', 'verified', 'bulk_deals', 'on_sale',
         'quality', 'rating_min', 'has_completions', 'site', 'sort', 'per_page', 'wizard',
     ];
@@ -266,6 +267,14 @@ class CatalogFilterStatus
                 continue;
             }
             $query[$key] = $value;
+        }
+
+        $tag = SiteTag::catalogFilterFromInput($query['tag'] ?? null, $query['sponsored'] ?? null);
+        unset($query['sponsored']);
+        if ($tag !== null) {
+            $query['tag'] = $tag;
+        } else {
+            unset($query['tag']);
         }
 
         return $query;

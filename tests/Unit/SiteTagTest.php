@@ -141,4 +141,16 @@ class SiteTagTest extends TestCase
         $this->assertFalse($patched['as_you_prefer']);
         $this->assertSame('Example', $patched['site_name']);
     }
+
+    public function test_catalog_filter_from_input(): void
+    {
+        $this->assertSame('sponsored', SiteTag::catalogFilterFromInput('', '1'));
+        $this->assertSame('partner_material', SiteTag::catalogFilterFromInput('partner_material', '1'));
+        $this->assertSame('none', SiteTag::catalogFilterFromInput('none'));
+        $this->assertSame('as_you_prefer', SiteTag::catalogFilterFromInput('as_you_prefer'));
+        $this->assertNull(SiteTag::catalogFilterFromInput('guest'));
+        $this->assertSame('Sponsored', SiteTag::catalogFilterLabel('sponsored'));
+        $this->assertSame('No tags', SiteTag::catalogFilterLabel('none'));
+        $this->assertSame('All tags', SiteTag::catalogFilterOptions()['']);
+    }
 }

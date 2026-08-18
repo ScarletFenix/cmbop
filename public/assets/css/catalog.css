@@ -1591,6 +1591,24 @@ body:has(.catalog-page) {
     border: 1px solid #bfdbfe;
 }
 
+.site-chip--sponsored {
+    background: #fff7e6;
+    color: #92400e;
+    border: 1px solid #fde68a;
+}
+
+.site-chip--partner {
+    background: #ecfdf5;
+    color: #047857;
+    border: 1px solid #a7f3d0;
+}
+
+.site-chip--prefer {
+    background: #eff6ff;
+    color: #1d4ed8;
+    border: 1px solid #bfdbfe;
+}
+
 .catalog-homepage-hint {
     max-width: 11rem;
     margin-left: auto;

@@ -195,7 +195,7 @@
 
     <!-- FILTERS SECTION -->
 @php
-    $moreFilterKeys = ['sponsored','favorites_filter','blacklist_filter','bulk_deals','da_min','da_max','dr_min','dr_max','traffic_min','traffic_max','new_badge','on_sale','quality','rating_min','has_completions'];
+    $moreFilterKeys = ['tag','sponsored','favorites_filter','blacklist_filter','bulk_deals','da_min','da_max','dr_min','dr_max','traffic_min','traffic_max','new_badge','on_sale','quality','rating_min','has_completions'];
     $moreFiltersOpen = collect($moreFilterKeys)->contains(fn ($k) => filled(request($k)));
     // Each chip carries the query keys it owns so it can be dismissed on its own.
     // Range filters span two inputs, so one chip clears both ends.
@@ -221,7 +221,14 @@
     if ($catalogCountryText !== '') $activeFilterChips[] = ['label' => 'Country', 'key' => 'country', 'params' => ['country']];
     if (request('price_min') || request('price_max')) $activeFilterChips[] = ['label' => 'Price', 'key' => 'price', 'params' => ['price_min', 'price_max']];
     if ($catalogLanguageText !== '') $activeFilterChips[] = ['label' => 'Language', 'key' => 'language', 'params' => ['language']];
-    if (request('sponsored') == '1') $activeFilterChips[] = ['label' => 'Sponsored', 'key' => 'sponsored', 'params' => ['sponsored']];
+    $catalogTagFilter = \App\Support\SiteTag::catalogFilterFromRequest(request());
+    if ($catalogTagFilter !== null) {
+        $activeFilterChips[] = [
+            'label' => \App\Support\SiteTag::catalogFilterLabel($catalogTagFilter) ?? 'Tag',
+            'key' => 'tag',
+            'params' => ['tag', 'sponsored'],
+        ];
+    }
     if (request('favorites_filter') == '1') $activeFilterChips[] = ['label' => 'Favorites', 'key' => 'favorites_filter', 'params' => ['favorites_filter']];
     if (request('blacklist_filter') == '1') $activeFilterChips[] = ['label' => 'Blacklist', 'key' => 'blacklist_filter', 'params' => ['blacklist_filter']];
     if (request('bulk_deals') == '1') $activeFilterChips[] = ['label' => 'Bulk deals', 'key' => 'bulk_deals', 'params' => ['bulk_deals']];
@@ -484,10 +491,13 @@
                     <div id="moreFiltersDrawer" class="mt-3" style="{{ $moreFiltersOpen ? '' : 'display:none;' }}">
                         <div class="row g-3 align-items-end">
                             <div class="col-6 col-md-4 col-lg-3">
-                                <label class="form-label fw-semibold small text-muted mb-1">Sponsored</label>
-                                <select name="sponsored" class="form-select form-select-sm">
-                                    <option value="">All Sites</option>
-                                    <option value="1" {{ request('sponsored') == '1' ? 'selected' : '' }}>Sponsored Only</option>
+                                <label class="form-label fw-semibold small text-muted mb-1" for="catalogTagFilter">
+                                    <abbr class="metric-abbr text-decoration-none" title="{{ \App\Support\SiteTag::FILTER_TOOLTIP }}">Tag</abbr>
+                                </label>
+                                <select name="tag" id="catalogTagFilter" class="form-select form-select-sm" aria-label="Listing tag">
+                                    @foreach(\App\Support\SiteTag::catalogFilterOptions() as $value => $label)
+                                        <option value="{{ $value }}" @selected($catalogTagFilter === $value || ($value === '' && $catalogTagFilter === null))>{{ $label }}</option>
+                                    @endforeach
                                 </select>
                             </div>
 
