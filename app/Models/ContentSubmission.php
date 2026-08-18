@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\ToleratesMissingSchema;
 use App\Models\Concerns\ToleratesUnparseableDates;
 use App\Services\ContentUpload\ArticleDetectedLinks;
 use App\Services\ContentUpload\ArticleHtmlSanitizer;
@@ -17,7 +18,7 @@ use Illuminate\Support\Str;
 
 class ContentSubmission extends Model
 {
-    use ToleratesUnparseableDates;
+    use ToleratesMissingSchema, ToleratesUnparseableDates;
 
     public const STATUS_PENDING = 'pending';
 

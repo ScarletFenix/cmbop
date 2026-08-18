@@ -6,12 +6,13 @@ use App\Models\Blog;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Tests\Support\CreatesBlogUploads;
 use Tests\TestCase;
 
 class AdminBlogImageTest extends TestCase
 {
+    use CreatesBlogUploads;
     use RefreshDatabase;
 
     private function adminUser(): User
@@ -33,7 +34,7 @@ class AdminBlogImageTest extends TestCase
 
         $response = $this->actingAs($admin)
             ->postJson(route('admin.blogs.upload-image'), [
-                'image' => UploadedFile::fake()->image('inline.jpg', 640, 360),
+                'image' => $this->fakeBlogUpload('inline.jpg', 640, 360),
             ]);
 
         $response->assertOk()
@@ -62,7 +63,7 @@ class AdminBlogImageTest extends TestCase
 
         $response = $this->actingAs($admin)
             ->postJson(route('admin.blogs.upload-image'), [
-                'image' => UploadedFile::fake()->image('inline.gif', 32, 32),
+                'image' => $this->fakeBlogUpload('inline.gif', 32, 32),
             ]);
 
         $response->assertOk()
@@ -84,7 +85,7 @@ class AdminBlogImageTest extends TestCase
         Storage::fake('public');
         $admin = $this->adminUser();
 
-        $path = UploadedFile::fake()->image('featured.jpg')->store('blogs/featured', 'public');
+        $path = $this->fakeBlogUpload('featured.jpg')->store('blogs/featured', 'public');
         Storage::disk('public')->assertExists($path);
 
         $blog = Blog::create([
@@ -119,7 +120,7 @@ class AdminBlogImageTest extends TestCase
         Storage::fake('public');
         $admin = $this->adminUser();
 
-        $oldPath = UploadedFile::fake()->image('old-featured.jpg')->store('blogs/featured', 'public');
+        $oldPath = $this->fakeBlogUpload('old-featured.jpg')->store('blogs/featured', 'public');
 
         $blog = Blog::create([
             'title' => 'Replace Featured Post',
@@ -138,7 +139,7 @@ class AdminBlogImageTest extends TestCase
                 'excerpt' => 'Excerpt',
                 'content' => '<p>Body with text.</p>',
                 'status' => 'draft',
-                'featured_image' => UploadedFile::fake()->image('new-featured.jpg', 800, 450),
+                'featured_image' => $this->fakeBlogUpload('new-featured.jpg', 800, 450),
             ])
             ->assertRedirect(route('admin.blogs.index'));
 
@@ -204,7 +205,7 @@ class AdminBlogImageTest extends TestCase
         Storage::fake('public');
         $admin = $this->adminUser();
 
-        $path = UploadedFile::fake()->image('inline-delete.jpg')->store('blogs/content', 'public');
+        $path = $this->fakeBlogUpload('inline-delete.jpg')->store('blogs/content', 'public');
         Storage::disk('public')->assertExists($path);
 
         $this->actingAs($admin)
@@ -238,7 +239,7 @@ class AdminBlogImageTest extends TestCase
     {
         Storage::fake('public');
         $admin = $this->adminUser();
-        $path = UploadedFile::fake()->image('shared-inline.jpg')->store('blogs/content', 'public');
+        $path = $this->fakeBlogUpload('shared-inline.jpg')->store('blogs/content', 'public');
 
         Blog::create([
             'title' => 'Still Uses Image',
@@ -265,7 +266,7 @@ class AdminBlogImageTest extends TestCase
         Storage::fake('public');
         $admin = $this->adminUser();
 
-        $path = UploadedFile::fake()->image('other.jpg')->store('uploads/other', 'public');
+        $path = $this->fakeBlogUpload('other.jpg')->store('uploads/other', 'public');
 
         $this->actingAs($admin)
             ->deleteJson(route('admin.blogs.delete-content-image'), [
@@ -282,7 +283,7 @@ class AdminBlogImageTest extends TestCase
         Storage::fake('public');
         $admin = $this->adminUser();
 
-        $path = UploadedFile::fake()->image('inline-media.webp')->store('blogs/content', 'public');
+        $path = $this->fakeBlogUpload('inline-media.webp')->store('blogs/content', 'public');
         Storage::disk('public')->assertExists($path);
 
         $this->actingAs($admin)
@@ -300,7 +301,7 @@ class AdminBlogImageTest extends TestCase
         Storage::fake('public');
         $admin = $this->adminUser();
 
-        $path = UploadedFile::fake()->image('inline-abs.webp')->store('blogs/content', 'public');
+        $path = $this->fakeBlogUpload('inline-abs.webp')->store('blogs/content', 'public');
         Storage::disk('public')->assertExists($path);
 
         $this->actingAs($admin)
@@ -317,7 +318,7 @@ class AdminBlogImageTest extends TestCase
     {
         Storage::fake('public');
         $admin = $this->adminUser();
-        $path = UploadedFile::fake()->image('keep.webp')->store('blogs/content', 'public');
+        $path = $this->fakeBlogUpload('keep.webp')->store('blogs/content', 'public');
 
         $this->actingAs($admin)
             ->deleteJson(route('admin.blogs.delete-content-image'), [
@@ -345,7 +346,7 @@ class AdminBlogImageTest extends TestCase
     {
         Storage::fake('public');
         $admin = $this->adminUser();
-        $path = UploadedFile::fake()->image('will-remove.jpg')->store('blogs/content', 'public');
+        $path = $this->fakeBlogUpload('will-remove.jpg')->store('blogs/content', 'public');
 
         $blog = Blog::create([
             'title' => 'Inline Cleanup On Save',
@@ -471,7 +472,7 @@ class AdminBlogImageTest extends TestCase
         $this->actingAs($admin)
             ->post(route('admin.blogs.store'), [
                 'status' => 'draft',
-                'featured_image' => UploadedFile::fake()->image('hero.jpg', 800, 450),
+                'featured_image' => $this->fakeBlogUpload('hero.jpg', 800, 450),
                 'translations' => [
                     'en' => [
                         'title' => 'WebP Featured Post',

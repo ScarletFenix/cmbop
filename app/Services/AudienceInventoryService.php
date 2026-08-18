@@ -6,7 +6,10 @@ use App\Models\Role;
 use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Pagination\LengthAwarePaginator as Paginator;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AudienceInventoryService
@@ -270,6 +273,10 @@ class AudienceInventoryService
      */
     public function queryAdvertisersNoOrders(): Builder
     {
+        if (! $this->schemaTableAvailable('orders')) {
+            return $this->emptyUserQuery();
+        }
+
         return $this->queryForRole('advertiser')->whereDoesntHave('orders');
     }
 
@@ -286,6 +293,10 @@ class AudienceInventoryService
      */
     public function queryAdvertisersNoPaidOrders(): Builder
     {
+        if (! $this->schemaTableAvailable('orders')) {
+            return $this->emptyUserQuery();
+        }
+
         return $this->queryForRole('advertiser')
             ->whereDoesntHave('orders', function (Builder $q) {
                 $q->whereIn('payment_status', self::customerPaymentStatuses());
@@ -297,6 +308,10 @@ class AudienceInventoryService
      */
     public function queryPublishersNoSites(): Builder
     {
+        if (! $this->schemaTableAvailable('sites')) {
+            return $this->emptyUserQuery();
+        }
+
         return $this->queryForRole('publisher')->whereDoesntHave('sites');
     }
 
@@ -310,6 +325,10 @@ class AudienceInventoryService
      */
     public function queryPublishersNoActiveSites(): Builder
     {
+        if (! $this->schemaTableAvailable('sites')) {
+            return $this->emptyUserQuery();
+        }
+
         return $this->queryForRole('publisher')
             ->whereDoesntHave('sites', function (Builder $q) {
                 $q->catalogVisible();
@@ -324,6 +343,10 @@ class AudienceInventoryService
      */
     public function queryAdvertisersWithPaidOrders(): Builder
     {
+        if (! $this->schemaTableAvailable('orders')) {
+            return $this->emptyUserQuery();
+        }
+
         return $this->queryForRole('advertiser')
             ->whereHas('orders', function (Builder $q) {
                 $q->whereIn('payment_status', self::customerPaymentStatuses());
@@ -338,6 +361,10 @@ class AudienceInventoryService
      */
     public function queryAdvertisersNeverDeposited(): Builder
     {
+        if (! $this->schemaTableAvailable('deposit_requests')) {
+            return $this->emptyUserQuery();
+        }
+
         return $this->queryForRole('advertiser')
             ->whereDoesntHave('depositRequests', function (Builder $q) {
                 $q->whereIn('status', self::creditedDepositStatuses());
@@ -352,6 +379,10 @@ class AudienceInventoryService
      */
     public function queryAdvertisersDepositedNoOrders(): Builder
     {
+        if (! $this->schemaTableAvailable('deposit_requests') || ! $this->schemaTableAvailable('orders')) {
+            return $this->emptyUserQuery();
+        }
+
         return $this->queryForRole('advertiser')
             ->whereHas('depositRequests', function (Builder $q) {
                 $q->whereIn('status', self::creditedDepositStatuses());
@@ -404,12 +435,18 @@ class AudienceInventoryService
      */
     public function paginate(string $audienceKey, ?string $search = null, int $perPage = 25, array $filters = []): LengthAwarePaginator
     {
-        $query = $this->queryForAudienceKey($audienceKey);
-        $this->applySearch($query, $search);
-        $this->applyInventoryFilters($query, $filters, $audienceKey);
-        $this->applyListCounts($query);
+        try {
+            $query = $this->queryForAudienceKey($audienceKey);
+            $this->applySearch($query, $search);
+            $this->applyInventoryFilters($query, $filters, $audienceKey);
+            $this->applyListCounts($query);
 
-        return $query->paginate($perPage)->withQueryString();
+            return $query->paginate($perPage)->withQueryString();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return (new Paginator([], 0, $perPage))->withQueryString();
+        }
     }
 
     /**
@@ -443,7 +480,11 @@ class AudienceInventoryService
      */
     public function count(string $audience, ?array $selectedIds = null, bool $includeUnverified = false): int
     {
-        return $this->recipientBuilder($audience, $selectedIds, $includeUnverified)->count();
+        try {
+            return $this->recipientBuilder($audience, $selectedIds, $includeUnverified)->count();
+        } catch (\Throwable) {
+            return 0;
+        }
     }
 
     /**
@@ -674,14 +715,17 @@ class AudienceInventoryService
         }
 
         $marketing = $filters['marketing'] ?? 'all';
-        if ($marketing === 'opted_out') {
-            $query->whereHas('emailNotificationPreferences', function (Builder $q) {
-                $q->where('preference_key', 'marketing_emails')->where('enabled', false);
-            });
-        } elseif ($marketing === 'opted_in') {
-            $query->whereDoesntHave('emailNotificationPreferences', function (Builder $q) {
-                $q->where('preference_key', 'marketing_emails')->where('enabled', false);
-            });
+        if (in_array($marketing, ['opted_out', 'opted_in'], true)
+            && $this->schemaTableAvailable('email_notification_preferences')) {
+            if ($marketing === 'opted_out') {
+                $query->whereHas('emailNotificationPreferences', function (Builder $q) {
+                    $q->where('preference_key', 'marketing_emails')->where('enabled', false);
+                });
+            } else {
+                $query->whereDoesntHave('emailNotificationPreferences', function (Builder $q) {
+                    $q->where('preference_key', 'marketing_emails')->where('enabled', false);
+                });
+            }
         }
 
         if (! empty($filters['exclude_dual_role'])) {
@@ -734,11 +778,20 @@ class AudienceInventoryService
 
     protected function applyListCounts(Builder $query): void
     {
-        $query->withCount([
-            'orders as paid_orders_count' => fn (Builder $q) => $q->whereIn('payment_status', self::customerPaymentStatuses()),
-            'sites as sites_count',
-            'depositRequests as completed_deposits_count' => fn (Builder $q) => $q->whereIn('status', self::creditedDepositStatuses()),
-        ]);
+        $counts = [];
+        if ($this->schemaTableAvailable('orders')) {
+            $counts['orders as paid_orders_count'] = fn (Builder $q) => $q->whereIn('payment_status', self::customerPaymentStatuses());
+        }
+        if ($this->schemaTableAvailable('sites')) {
+            $counts[] = 'sites as sites_count';
+        }
+        if ($this->schemaTableAvailable('deposit_requests')) {
+            $counts['depositRequests as completed_deposits_count'] = fn (Builder $q) => $q->whereIn('status', self::creditedDepositStatuses());
+        }
+
+        if ($counts !== []) {
+            $query->withCount($counts);
+        }
     }
 
     /**
@@ -761,11 +814,16 @@ class AudienceInventoryService
     public function exportCsv(string $audienceKey, ?string $search = null, array $filters = []): StreamedResponse
     {
         $filename = $audienceKey.'-audience-'.now()->format('Y-m-d-His').'.csv';
-        $query = $this->queryForAudienceKey($audienceKey);
-        $this->applySearch($query, $search);
-        $this->applyInventoryFilters($query, $filters, $audienceKey);
-        $this->applyListCounts($query);
-        $query->reorder('id');
+        try {
+            $query = $this->queryForAudienceKey($audienceKey);
+            $this->applySearch($query, $search);
+            $this->applyInventoryFilters($query, $filters, $audienceKey);
+            $this->applyListCounts($query);
+            $query->reorder('id');
+        } catch (\Throwable $e) {
+            report($e);
+            $query = $this->emptyUserQuery();
+        }
 
         $headers = [
             'Content-Type' => 'text/csv; charset=UTF-8',
@@ -830,6 +888,25 @@ class AudienceInventoryService
         }
 
         return $s;
+    }
+
+    protected function emptyUserQuery(): Builder
+    {
+        return User::query()->whereRaw('1 = 0');
+    }
+
+    protected function schemaTableAvailable(string $table): bool
+    {
+        try {
+            if (! Schema::hasTable($table)) {
+                return false;
+            }
+            DB::table($table)->limit(1)->exists();
+
+            return true;
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     public function stats(bool $includeUnverified = true): array

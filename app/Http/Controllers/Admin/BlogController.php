@@ -19,8 +19,10 @@ use App\Support\UserFacingError;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -39,48 +41,67 @@ class BlogController extends Controller
             session()->now('error', UserFacingError::message($e, 'Curated blog sync failed. The list below may be incomplete.'));
         }
 
-        $query = Blog::with(['creator', 'translations'])->orderByDesc('created_at');
-
-        $search = trim((string) $request->input('q', ''));
-        if ($search !== '') {
-            $like = '%'.$search.'%';
-            $query->where(function ($inner) use ($like) {
-                $inner->where('title', 'like', $like)
-                    ->orWhere('slug', 'like', $like)
-                    ->orWhere('author', 'like', $like)
-                    ->orWhereHas('translations', function ($translations) use ($like) {
-                        $translations->where('title', 'like', $like)
-                            ->orWhere('slug', 'like', $like);
-                    });
-            });
+        if (! $this->schemaTableAvailable('blogs')) {
+            return view('admin.blogs.index', [
+                'blogs' => $this->emptyBlogPaginator(),
+            ]);
         }
 
-        $status = (string) $request->input('status', '');
-        if (in_array($status, ['draft', 'published'], true)) {
-            $query->where('status', $status);
+        $with = ['creator'];
+        $translationsAvailable = $this->schemaTableAvailable('blog_translations');
+        if ($translationsAvailable) {
+            $with[] = 'translations';
         }
 
-        $locale = (string) $request->input('locale', '');
-        if (PublicI18n::isSupported($locale)) {
-            $query->where('primary_locale', $locale);
-        }
+        try {
+            $query = Blog::with($with)->orderByDesc('created_at');
 
-        $kind = (string) $request->input('kind', '');
-        if ($kind === 'curated') {
-            $query->whereNotNull('curated_key');
-        } elseif ($kind === 'custom') {
-            $query->whereNull('curated_key');
-        }
+            $search = trim((string) $request->input('q', ''));
+            if ($search !== '') {
+                $like = '%'.$search.'%';
+                $query->where(function ($inner) use ($like, $translationsAvailable) {
+                    $inner->where('title', 'like', $like)
+                        ->orWhere('slug', 'like', $like)
+                        ->orWhere('author', 'like', $like);
+                    if ($translationsAvailable) {
+                        $inner->orWhereHas('translations', function ($translations) use ($like) {
+                            $translations->where('title', 'like', $like)
+                                ->orWhere('slug', 'like', $like);
+                        });
+                    }
+                });
+            }
 
-        if ($request->boolean('missing_translations')) {
-            $needed = count(PublicI18n::supported());
-            $query->whereRaw(
-                '(select count(*) from blog_translations where blog_translations.blog_id = blogs.id) < ?',
-                [$needed]
-            );
-        }
+            $status = (string) $request->input('status', '');
+            if (in_array($status, ['draft', 'published'], true)) {
+                $query->where('status', $status);
+            }
 
-        $blogs = $query->paginate(20)->withQueryString();
+            $locale = (string) $request->input('locale', '');
+            if (PublicI18n::isSupported($locale)) {
+                $query->where('primary_locale', $locale);
+            }
+
+            $kind = (string) $request->input('kind', '');
+            if ($kind === 'curated') {
+                $query->whereNotNull('curated_key');
+            } elseif ($kind === 'custom') {
+                $query->whereNull('curated_key');
+            }
+
+            if ($request->boolean('missing_translations') && $translationsAvailable) {
+                $needed = count(PublicI18n::supported());
+                $query->whereRaw(
+                    '(select count(*) from blog_translations where blog_translations.blog_id = blogs.id) < ?',
+                    [$needed]
+                );
+            }
+
+            $blogs = $query->paginate(20)->withQueryString();
+        } catch (\Throwable $e) {
+            Log::warning('Admin blogs list leftover query failed', ['error' => $e->getMessage()]);
+            $blogs = $this->emptyBlogPaginator();
+        }
 
         return view('admin.blogs.index', compact('blogs'));
     }
@@ -225,9 +246,15 @@ class BlogController extends Controller
      */
     public function show($id)
     {
+        if (! $this->schemaTableAvailable('blogs')) {
+            abort(404);
+        }
+
         try {
-            $blog = Blog::with('translations')->findOrFail($id);
-            $en = $blog->translations->firstWhere('locale', 'en');
+            $blog = $this->findAdminBlog($id);
+            $en = $blog->relationLoaded('translations')
+                ? $blog->translations->firstWhere('locale', 'en')
+                : null;
             $safeContent = app(BlogHtmlSanitizer::class)->sanitize(
                 filled($en?->content) ? $en->content : $blog->content
             );
@@ -237,6 +264,10 @@ class BlogController extends Controller
             return redirect()->route('admin.blogs.index')
                 ->with('error', 'Blog not found.');
         } catch (\Throwable $e) {
+            if (! $this->schemaTableAvailable('blogs')) {
+                abort(404);
+            }
+
             Log::error('Error showing blog: '.$e->getMessage());
 
             return redirect()->route('admin.blogs.index')
@@ -249,8 +280,12 @@ class BlogController extends Controller
      */
     public function edit($id)
     {
+        if (! $this->schemaTableAvailable('blogs')) {
+            abort(404);
+        }
+
         try {
-            $blog = Blog::with('translations')->findOrFail($id);
+            $blog = $this->findAdminBlog($id);
 
             return view('admin.blogs.edit', [
                 'blog' => $blog,
@@ -260,6 +295,10 @@ class BlogController extends Controller
             return redirect()->route('admin.blogs.index')
                 ->with('error', 'Blog not found.');
         } catch (\Throwable $e) {
+            if (! $this->schemaTableAvailable('blogs')) {
+                abort(404);
+            }
+
             Log::error('Error editing blog: '.$e->getMessage());
 
             return redirect()->route('admin.blogs.index')
@@ -866,5 +905,45 @@ class BlogController extends Controller
             ->when($ignoreTranslationId, fn ($query) => $query->where('id', '!=', $ignoreTranslationId))
             ->where('slug', $candidate)
             ->exists();
+    }
+
+    /**
+     * Load one admin blog. Skip translations when that leftover table is gone
+     * so show/edit do not 500, and hand the view an empty relation.
+     */
+    private function findAdminBlog(int|string $id): Blog
+    {
+        $query = Blog::query();
+        $translationsAvailable = $this->schemaTableAvailable('blog_translations');
+        if ($translationsAvailable) {
+            $query->with('translations');
+        }
+
+        $blog = $query->findOrFail($id);
+        if (! $translationsAvailable) {
+            $blog->setRelation('translations', $blog->newCollection());
+        }
+
+        return $blog;
+    }
+
+    private function emptyBlogPaginator(): LengthAwarePaginator
+    {
+        return (new LengthAwarePaginator([], 0, 20))->withQueryString();
+    }
+
+    private function schemaTableAvailable(string $table): bool
+    {
+        if (! Schema::hasTable($table)) {
+            return false;
+        }
+
+        try {
+            DB::table($table)->limit(1)->exists();
+
+            return true;
+        } catch (\Throwable) {
+            return false;
+        }
     }
 }

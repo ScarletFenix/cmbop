@@ -702,22 +702,40 @@ class ContentModerationService
 
     public function adminStats(): array
     {
-        return [
-            'total' => ContentModerationLog::query()->count(),
-            'approved' => ContentModerationLog::query()
-                ->where('status', ContentModerationLog::STATUS_APPROVED)
-                ->notSkipped()
-                ->count(),
-            'rejected' => ContentModerationLog::query()
-                ->where('status', ContentModerationLog::STATUS_REJECTED)
-                ->count(),
-            'errors' => ContentModerationLog::query()
-                ->where('status', ContentModerationLog::STATUS_ERROR)
-                ->count(),
-            'skipped' => ContentModerationLog::query()->skipped()->count(),
-            'overridden' => ContentModerationLog::query()->where('admin_override', true)->count(),
-            'today' => ContentModerationLog::query()->whereDate('created_at', today())->count(),
+        $empty = [
+            'total' => 0,
+            'approved' => 0,
+            'rejected' => 0,
+            'errors' => 0,
+            'skipped' => 0,
+            'overridden' => 0,
+            'today' => 0,
         ];
+
+        if (! ContentModerationLog::tableAvailable()) {
+            return $empty;
+        }
+
+        try {
+            return [
+                'total' => ContentModerationLog::query()->count(),
+                'approved' => ContentModerationLog::query()
+                    ->where('status', ContentModerationLog::STATUS_APPROVED)
+                    ->notSkipped()
+                    ->count(),
+                'rejected' => ContentModerationLog::query()
+                    ->where('status', ContentModerationLog::STATUS_REJECTED)
+                    ->count(),
+                'errors' => ContentModerationLog::query()
+                    ->where('status', ContentModerationLog::STATUS_ERROR)
+                    ->count(),
+                'skipped' => ContentModerationLog::query()->skipped()->count(),
+                'overridden' => ContentModerationLog::query()->where('admin_override', true)->count(),
+                'today' => ContentModerationLog::query()->whereDate('created_at', today())->count(),
+            ];
+        } catch (\Throwable) {
+            return $empty;
+        }
     }
 
     /**
@@ -810,16 +828,24 @@ class ContentModerationService
 
     public function submissionForLog(ContentModerationLog $log): ?ContentSubmission
     {
-        if ($log->content_submission_id) {
-            return ContentSubmission::query()->find($log->content_submission_id);
+        if (! ContentSubmission::tableAvailable()) {
+            return null;
         }
 
-        $fromUrl = $this->submissionIdFromSource((string) $log->document_url);
-        if ($fromUrl) {
-            return ContentSubmission::query()->find($fromUrl);
-        }
+        try {
+            if ($log->content_submission_id) {
+                return ContentSubmission::query()->find($log->content_submission_id);
+            }
 
-        return ContentSubmission::query()->where('moderation_log_id', $log->id)->first();
+            $fromUrl = $this->submissionIdFromSource((string) $log->document_url);
+            if ($fromUrl) {
+                return ContentSubmission::query()->find($fromUrl);
+            }
+
+            return ContentSubmission::query()->where('moderation_log_id', $log->id)->first();
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     /**

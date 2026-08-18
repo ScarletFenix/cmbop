@@ -16,7 +16,9 @@ use App\Support\UserFacingError;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Mail\Markdown;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
@@ -26,34 +28,16 @@ use Illuminate\Validation\Rule;
 
 class EmailCenterController extends Controller
 {
+    /** @var array<string, bool> */
+    private array $schemaTableAvailable = [];
+
     public function index(Request $request)
     {
         $stats = EmailLog::dashboardKpis();
         $filters = $this->recentLogFilters($request);
-
-        $recentLogs = EmailLog::query()
-            ->when($filters['status'] ?? null, fn ($q, $status) => $q->where('status', $status))
-            ->when($filters['template_key'] ?? null, fn ($q, $key) => $q->where('template_key', $key))
-            ->when($filters['to_email'] ?? null, fn ($q, $email) => $this->applyToEmailFilter($q, $email))
-            ->when($filters['date_from'] ?? null, fn ($q, $from) => $q->whereRaw('date(coalesce(sent_at, created_at)) >= ?', [$from]))
-            ->when($filters['date_to'] ?? null, fn ($q, $to) => $q->whereRaw('date(coalesce(sent_at, created_at)) <= ?', [$to]))
-            ->latest('id')
-            ->paginate(50)
-            ->withQueryString()
-            ->fragment('ec-recent');
-
-        $templateStats = EmailLog::query()
-            ->selectRaw(
-                'template_key, COUNT(*) as sent_count, MAX(CASE WHEN sent_at >= ? AND sent_at <= ? THEN sent_at END) as last_sent_at',
-                [EmailLog::PLAUSIBLE_SQL_DATETIME_FLOOR, EmailLog::PLAUSIBLE_SQL_DATETIME_CEIL]
-            )
-            ->where('status', EmailLog::STATUS_DELIVERED)
-            ->whereNotNull('template_key')
-            ->groupBy('template_key')
-            ->get()
-            ->keyBy('template_key');
-
-        $settingRows = EmailNotificationSetting::query()->pluck('enabled', 'type');
+        $recentLogs = $this->recentEmailLogs($filters);
+        $templateStats = $this->emailTemplateStats();
+        $settingRows = $this->emailNotificationSettingRows();
         $preferenceLabels = collect(config('email_notifications.preference_keys', []))
             ->map(fn (array $meta) => $meta['label'] ?? null);
         $settings = collect(config('email_notifications.types', []))->map(function (array $meta, string $type) use ($settingRows, $preferenceLabels) {
@@ -112,11 +96,8 @@ class EmailCenterController extends Controller
             'mail_failed_jobs' => $this->failedMailJobsCount(),
         ];
 
-        $failedLogs = EmailLog::failed()->latest('id')->limit(20)->get();
-
-        $recentCampaigns = Schema::hasTable('email_campaigns')
-            ? EmailCampaign::query()->latest('id')->limit(3)->get()
-            : collect();
+        $failedLogs = $this->failedEmailLogs();
+        $recentCampaigns = $this->recentCampaigns();
 
         $brand = config('email_notifications.brand', []);
         $criticalTypes = ['welcome', 'order_status_changed', 'publisher_new_order', 'deposit_approved', 'admin_stalled_order'];
@@ -140,6 +121,10 @@ class EmailCenterController extends Controller
 
     public function updateSettings(Request $request)
     {
+        if (! $this->schemaTableAvailable('email_notification_settings')) {
+            return back()->with('error', 'Notification settings are unavailable because the destination table is missing.');
+        }
+
         $types = config('email_notifications.types', []);
         $editable = collect($types)
             ->reject(fn (array $meta) => ! empty($meta['framework']))
@@ -275,6 +260,10 @@ class EmailCenterController extends Controller
      */
     protected function recordTestSendFailure(array $template, string $key, string $adminEmail, string $dedupe, \Throwable $e): void
     {
+        if (! $this->schemaTableAvailable('email_logs')) {
+            return;
+        }
+
         $payload = [
             'mailable' => $template['mailable'] ?? null,
             'template_key' => $key,
@@ -287,25 +276,33 @@ class EmailCenterController extends Controller
             'meta' => ['source' => 'email_center_test'],
         ];
 
-        $open = EmailLog::openByDedupe($dedupe);
-        if ($open->isNotEmpty()) {
-            foreach ($open as $existing) {
-                $existing->fill($payload);
-                $existing->attempts = max(1, (int) $existing->attempts) + 1;
-                $existing->save();
+        try {
+            $open = EmailLog::openByDedupe($dedupe);
+            if ($open->isNotEmpty()) {
+                foreach ($open as $existing) {
+                    $existing->fill($payload);
+                    $existing->attempts = max(1, (int) $existing->attempts) + 1;
+                    $existing->save();
+                }
+
+                return;
             }
 
-            return;
+            EmailLog::create(array_merge($payload, [
+                'uuid' => (string) Str::uuid(),
+                'attempts' => 1,
+            ]));
+        } catch (\Throwable) {
+            // Leftover Hostinger: missing email_logs must not 500 the test-send flash.
         }
-
-        EmailLog::create(array_merge($payload, [
-            'uuid' => (string) Str::uuid(),
-            'attempts' => 1,
-        ]));
     }
 
     public function retryFailed(Request $request)
     {
+        if (! $this->schemaTableAvailable('email_logs')) {
+            return back()->with('error', 'Email logs are unavailable because the destination table is missing.');
+        }
+
         $data = $request->validate([
             'log_id' => ['nullable', 'integer', 'exists:email_logs,id'],
         ]);
@@ -1314,6 +1311,100 @@ class EmailCenterController extends Controller
     protected function renderMarkdown(string $view, array $data = []): string
     {
         return app(Markdown::class)->render($view, $data);
+    }
+
+    /**
+     * @param  array{status: ?string, template_key: ?string, to_email: ?string, date_from: ?string, date_to: ?string}  $filters
+     */
+    private function recentEmailLogs(array $filters): LengthAwarePaginator
+    {
+        try {
+            return EmailLog::query()
+                ->when($filters['status'] ?? null, fn ($q, $status) => $q->where('status', $status))
+                ->when($filters['template_key'] ?? null, fn ($q, $key) => $q->where('template_key', $key))
+                ->when($filters['to_email'] ?? null, fn ($q, $email) => $this->applyToEmailFilter($q, $email))
+                ->when($filters['date_from'] ?? null, fn ($q, $from) => $q->whereRaw('date(coalesce(sent_at, created_at)) >= ?', [$from]))
+                ->when($filters['date_to'] ?? null, fn ($q, $to) => $q->whereRaw('date(coalesce(sent_at, created_at)) <= ?', [$to]))
+                ->latest('id')
+                ->paginate(50)
+                ->withQueryString()
+                ->fragment('ec-recent');
+        } catch (\Throwable) {
+            return $this->emptyEmailLogPaginator();
+        }
+    }
+
+    private function emailTemplateStats(): Collection
+    {
+        try {
+            return EmailLog::query()
+                ->selectRaw(
+                    'template_key, COUNT(*) as sent_count, MAX(CASE WHEN sent_at >= ? AND sent_at <= ? THEN sent_at END) as last_sent_at',
+                    [EmailLog::PLAUSIBLE_SQL_DATETIME_FLOOR, EmailLog::PLAUSIBLE_SQL_DATETIME_CEIL]
+                )
+                ->where('status', EmailLog::STATUS_DELIVERED)
+                ->whereNotNull('template_key')
+                ->groupBy('template_key')
+                ->get()
+                ->keyBy('template_key');
+        } catch (\Throwable) {
+            return collect();
+        }
+    }
+
+    private function emailNotificationSettingRows(): Collection
+    {
+        try {
+            return EmailNotificationSetting::query()->pluck('enabled', 'type');
+        } catch (\Throwable) {
+            return collect();
+        }
+    }
+
+    private function failedEmailLogs(): Collection
+    {
+        try {
+            return EmailLog::failed()->latest('id')->limit(20)->get();
+        } catch (\Throwable) {
+            return collect();
+        }
+    }
+
+    private function recentCampaigns(): Collection
+    {
+        if (! Schema::hasTable('email_campaigns')) {
+            return collect();
+        }
+
+        try {
+            return EmailCampaign::query()->latest('id')->limit(3)->get();
+        } catch (\Throwable) {
+            return collect();
+        }
+    }
+
+    private function emptyEmailLogPaginator(): LengthAwarePaginator
+    {
+        return (new LengthAwarePaginator([], 0, 50))->withQueryString()->fragment('ec-recent');
+    }
+
+    private function schemaTableAvailable(string $table): bool
+    {
+        if (array_key_exists($table, $this->schemaTableAvailable)) {
+            return $this->schemaTableAvailable[$table];
+        }
+
+        if (! Schema::hasTable($table)) {
+            return $this->schemaTableAvailable[$table] = false;
+        }
+
+        try {
+            DB::table($table)->limit(1)->exists();
+
+            return $this->schemaTableAvailable[$table] = true;
+        } catch (\Throwable) {
+            return $this->schemaTableAvailable[$table] = false;
+        }
     }
 
     /**
