@@ -515,36 +515,42 @@ class AdminMoneyMenusCrashTest extends TestCase
     {
         $admin = $this->admin();
 
-        if (! Schema::hasColumn('wallet_transactions', 'created_at')) {
-            $this->markTestSkipped('wallet_transactions.created_at is already absent');
-        }
-
-        try {
-            Schema::disableForeignKeyConstraints();
-            Schema::table('wallet_transactions', function (Blueprint $blueprint) {
-                $blueprint->dropColumn('created_at');
-            });
-            Schema::enableForeignKeyConstraints();
-        } catch (\Throwable) {
-            Schema::enableForeignKeyConstraints();
-            $this->markTestSkipped('Could not drop wallet_transactions.created_at on this driver');
-        }
-
-        if (Schema::hasColumn('wallet_transactions', 'created_at')) {
-            $this->markTestSkipped('wallet_transactions.created_at is still present after drop');
-        }
+        Schema::disableForeignKeyConstraints();
+        Schema::dropIfExists('wallet_transactions');
+        Schema::create('wallet_transactions', function (Blueprint $blueprint) {
+            $blueprint->id();
+            $blueprint->unsignedBigInteger('user_id');
+            $blueprint->unsignedBigInteger('wallet_id')->nullable();
+            $blueprint->string('type', 40);
+            $blueprint->string('direction', 10);
+            $blueprint->decimal('amount', 12, 2);
+            $blueprint->decimal('bonus_amount', 12, 2)->default(0);
+            $blueprint->decimal('balance_after', 12, 2)->nullable();
+            $blueprint->string('currency', 3)->default('EUR');
+            $blueprint->string('status', 40)->default('completed');
+            $blueprint->string('description')->nullable();
+            $blueprint->string('reference')->nullable();
+            $blueprint->timestamp('updated_at')->nullable();
+        });
+        Schema::enableForeignKeyConstraints();
+        $this->assertFalse(Schema::hasColumn('wallet_transactions', 'created_at'));
 
         try {
             $this->actingAs($admin)
                 ->get(route('admin.finance.ledger'))
                 ->assertOk()
                 ->assertSee('Wallet ledger', false);
+            $this->actingAs($admin)
+                ->get(route('admin.finance.ledger.export'))
+                ->assertOk();
         } finally {
-            if (! Schema::hasColumn('wallet_transactions', 'created_at')) {
-                Schema::table('wallet_transactions', function (Blueprint $blueprint) {
-                    $blueprint->timestamp('created_at')->nullable();
-                });
-            }
+            Schema::disableForeignKeyConstraints();
+            Schema::dropIfExists('wallet_transactions');
+            Schema::enableForeignKeyConstraints();
+            $this->artisan('migrate', [
+                '--path' => 'database/migrations/2026_07_17_140000_create_wallet_transactions_table.php',
+                '--force' => true,
+            ]);
         }
     }
 

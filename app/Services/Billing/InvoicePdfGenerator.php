@@ -11,15 +11,7 @@ class InvoicePdfGenerator
 {
     public function generateAndStore(Invoice $invoice): Invoice
     {
-        $html = view('billing.pdf.invoice', [
-            'invoice' => $invoice,
-            'company' => config('billing.company'),
-            'colors' => config('billing.colors'),
-            'currencySymbol' => config('billing.currency_symbol', '€'),
-        ])->render();
-
-        $pdf = Pdf::loadHTML($html)->setPaper('a4', 'portrait');
-        $binary = $pdf->output();
+        $binary = $this->renderPdf($invoice)->output();
 
         $disk = (string) config('billing.storage.disk', 'local');
         $directory = trim((string) config('billing.storage.directory', 'invoices'), '/');
@@ -51,16 +43,7 @@ class InvoicePdfGenerator
             );
         }
 
-        $html = view('billing.pdf.invoice', [
-            'invoice' => $invoice,
-            'company' => config('billing.company'),
-            'colors' => config('billing.colors'),
-            'currencySymbol' => config('billing.currency_symbol', '€'),
-        ])->render();
-
-        return Pdf::loadHTML($html)
-            ->setPaper('a4', 'portrait')
-            ->stream($invoice->invoice_number.'.pdf');
+        return $this->renderPdf($invoice)->stream($invoice->invoice_number.'.pdf');
     }
 
     public function download(Invoice $invoice)
@@ -73,16 +56,7 @@ class InvoicePdfGenerator
             );
         }
 
-        $html = view('billing.pdf.invoice', [
-            'invoice' => $invoice,
-            'company' => config('billing.company'),
-            'colors' => config('billing.colors'),
-            'currencySymbol' => config('billing.currency_symbol', '€'),
-        ])->render();
-
-        return Pdf::loadHTML($html)
-            ->setPaper('a4', 'portrait')
-            ->download($invoice->invoice_number.'.pdf');
+        return $this->renderPdf($invoice)->download($invoice->invoice_number.'.pdf');
     }
 
     public function absolutePath(Invoice $invoice): ?string
@@ -92,5 +66,48 @@ class InvoicePdfGenerator
         }
 
         return Storage::disk($invoice->pdfStorageDisk())->path($invoice->pdf_path);
+    }
+
+    /**
+     * Dompdf's CPDF adapter needs PHP GD to embed PNG logos. Hostinger /
+     * this VM can lack gd — still produce the invoice, just without the raster.
+     */
+    private function renderPdf(Invoice $invoice)
+    {
+        $includeLogo = extension_loaded('gd');
+
+        try {
+            return $this->makePdf($invoice, $includeLogo);
+        } catch (\Throwable $e) {
+            if (! $includeLogo || ! $this->isMissingGdException($e)) {
+                throw $e;
+            }
+
+            return $this->makePdf($invoice, false);
+        }
+    }
+
+    private function makePdf(Invoice $invoice, bool $includeLogo)
+    {
+        $html = view('billing.pdf.invoice', [
+            'invoice' => $invoice,
+            'company' => config('billing.company'),
+            'colors' => config('billing.colors'),
+            'currencySymbol' => config('billing.currency_symbol', '€'),
+            'includeLogo' => $includeLogo,
+        ])->render();
+
+        $pdf = Pdf::loadHTML($html)->setPaper('a4', 'portrait');
+        // Force rasterization now so a missing-GD throw happens here,
+        // not inside stream()/download() after headers may have started.
+        $pdf->output();
+
+        return $pdf;
+    }
+
+    private function isMissingGdException(\Throwable $e): bool
+    {
+        return str_contains($e->getMessage(), 'GD extension')
+            || str_contains($e->getMessage(), 'GD is required');
     }
 }

@@ -117,7 +117,10 @@
     <tr>
         <td width="55%">
             @php
-                $logoDataUri = billing_company_logo_data_uri();
+                // Dompdf needs PHP GD for PNG data-URIs. InvoicePdfGenerator
+                // sets includeLogo=false when gd is missing so PDFs still render.
+                $includeLogo = $includeLogo ?? true;
+                $logoDataUri = $includeLogo ? billing_company_logo_data_uri() : null;
             @endphp
             @if($logoDataUri)
                 <img src="{{ $logoDataUri }}" alt="{{ $company['name'] ?? config('app.name') }}" style="height:42px;width:auto;max-width:220px;margin:0 0 10px 0;display:block;">
