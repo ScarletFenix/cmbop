@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ContentSubmission;
 use App\Models\Country;
 use App\Models\Language;
+use App\Models\OrderItemDispute;
 use App\Models\User;
 use App\Services\Advertiser\ContentLibrarySearchQuery;
 use App\Services\ContentUpload\ContentUploadService;
@@ -90,9 +91,14 @@ class ContentLibraryController extends Controller
             $availability = 'available';
         }
 
+        $with = ['order', 'orderItem.site', 'orderItems.site', 'orderItems.order'];
+        if (OrderItemDispute::tableAvailable()) {
+            $with[] = 'orderItems.disputes';
+        }
+
         $query = ContentSubmission::query()
             ->forLibraryList()
-            ->with(['order', 'orderItem.site', 'orderItems.site', 'orderItems.order', 'orderItems.disputes'])
+            ->with($with)
             ->where('user_id', auth()->id())
             ->latest('id');
 
@@ -643,12 +649,19 @@ class ContentLibraryController extends Controller
             'editor_notice_ok' => false,
             'archived' => $s->isArchived(),
             'availability' => $s->libraryAvailability(),
-            'live_url' => $s->liveUrl(),
+            'live_url' => self::safeLiveUrl($s->liveUrl()),
             'download_url' => $s->canDownloadOriginal()
                 ? route('advertiser.content-submissions.download', $s)
                 : null,
             'created_at' => optional($s->created_at)?->toDateTimeString(),
         ];
+    }
+
+    protected static function safeLiveUrl(?string $url): ?string
+    {
+        $safe = safe_external_url($url, '');
+
+        return $safe !== '' ? $safe : null;
     }
 
     /**

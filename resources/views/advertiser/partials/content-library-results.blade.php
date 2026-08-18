@@ -167,15 +167,22 @@
                         $availability = $submission->libraryAvailability();
                         $placement = $submission->libraryPlacementItem();
                         $libraryOrder = $submission->libraryOrder();
-                        $liveUrl = $submission->liveUrl();
+                        $rawLiveUrl = $submission->liveUrl();
+                        $liveUrl = $rawLiveUrl ? safe_external_url($rawLiveUrl, '') : '';
+                        $liveUrl = $liveUrl !== '' ? $liveUrl : null;
                         $siteName = $placement?->site_name
                             ?: $placement?->site?->site_name
                             ?: null;
-                        $publishedAt = $placement?->live_url_submitted_at
-                            ?: ($liveUrl ? $placement?->updated_at : null);
-                        $publishedDateLabel = $publishedAt
-                            ? $publishedAt->timezone(config('app.timezone'))->format('M j, Y')
-                            : null;
+                        $publishedDateLabel = null;
+                        try {
+                            $publishedAt = $placement?->live_url_submitted_at
+                                ?: ($placement?->hasLiveUrl() ? $placement?->updated_at : null);
+                            if ($publishedAt) {
+                                $publishedDateLabel = $publishedAt->timezone(config('app.timezone'))->format('M j, Y');
+                            }
+                        } catch (\Throwable) {
+                            $publishedDateLabel = null;
+                        }
                         // Align Status column with filter chips: Approved · Needs corrections · Completed/LIVE
                         $statusDisplay = $libraryStatusDisplay($availability, (string) $submission->moderation_status);
                         $label = $statusDisplay['label'];

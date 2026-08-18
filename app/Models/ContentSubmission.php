@@ -1043,6 +1043,10 @@ class ContentSubmission extends Model
      */
     public function scopeNotArchived($query)
     {
+        if (! Schema::hasColumn($query->getModel()->getTable(), 'archived_at')) {
+            return $query;
+        }
+
         return $query->where(function ($q) {
             $q->whereNull('archived_at')
                 ->orWhere('archived_at', '>', static::PLAUSIBLE_SQL_DATETIME_CEIL)
@@ -1056,6 +1060,10 @@ class ContentSubmission extends Model
      */
     public function scopeArchived($query)
     {
+        if (! Schema::hasColumn($query->getModel()->getTable(), 'archived_at')) {
+            return $query->whereRaw('0 = 1');
+        }
+
         return $query->whereNotNull('archived_at')
             ->where('archived_at', '>=', static::PLAUSIBLE_SQL_DATETIME_FLOOR)
             ->where('archived_at', '<=', static::PLAUSIBLE_SQL_DATETIME_CEIL);
