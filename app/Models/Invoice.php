@@ -126,6 +126,22 @@ class Invoice extends Model
         }
     }
 
+    /**
+     * Implicit /invoices/{invoice} must 404, not 500, when the table is gone.
+     */
+    public function resolveRouteBinding($value, $field = null)
+    {
+        if (! static::tableAvailable()) {
+            return null;
+        }
+
+        try {
+            return parent::resolveRouteBinding($value, $field);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
     public function cancelledBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'cancelled_by');
