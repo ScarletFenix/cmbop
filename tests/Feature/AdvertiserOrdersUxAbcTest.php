@@ -174,6 +174,9 @@ class AdvertiserOrdersUxAbcTest extends TestCase
         $this->assertStringContainsString('onclick="viewOrder(${order.id})"', $js);
         $this->assertStringContainsString('ordersListSort', $js);
         $this->assertStringContainsString('sort: ordersListSort()', $js);
+        $this->assertStringContainsString('function formatEuro(amount)', $js);
+        $this->assertStringContainsString('Number.isFinite(n)', $js);
+        $this->assertStringContainsString('sortEl.value = ordersListSort()', $js);
         $this->assertStringContainsString('ORDERS_SEARCH_LIVE_MS', $js);
         $this->assertStringContainsString('ORDERS_SEARCH_MIN_CHARS', $js);
         $this->assertStringContainsString('AbortController', $js);
@@ -206,7 +209,10 @@ class AdvertiserOrdersUxAbcTest extends TestCase
         $this->assertNotEmpty($renderOrdersFn[1] ?? null, 'renderOrders function should be present');
         $this->assertStringContainsString('orders-order-number', $renderOrdersFn[1]);
         $this->assertStringContainsString('orders-total--refunded', $renderOrdersFn[1]);
+        $this->assertStringContainsString('formatEuro(order.total_amount)', $renderOrdersFn[1]);
         $this->assertStringContainsString('renderOrderRowActions(order)', $renderOrdersFn[1]);
+        $this->assertStringContainsString('orders-total--refunded', $js);
+        $this->assertStringContainsString('formatEuro(order.total_amount)', $js);
         $this->assertStringNotContainsString('reportLinkRemoved', $renderOrdersFn[1]);
         $this->assertStringContainsString('window.reportLinkRemoved = function(orderId, itemId)', $js);
         $this->assertStringContainsString('payload.order_item_id', $js);

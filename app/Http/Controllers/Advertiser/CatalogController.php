@@ -4374,7 +4374,11 @@ class CatalogController extends Controller
             } elseif ($sort === 'date_asc') {
                 $query->orderBy('created_at', 'asc')->orderBy('id', 'asc');
             } elseif ($sort === 'total_desc') {
-                $query->orderBy('total_amount', 'desc')->orderBy('created_at', 'desc')->orderBy('id', 'desc');
+                if (Schema::hasColumn('orders', 'total_amount')) {
+                    $query->orderBy('total_amount', 'desc')->orderBy('created_at', 'desc')->orderBy('id', 'desc');
+                } else {
+                    $query->orderBy('created_at', 'desc')->orderBy('id', 'desc');
+                }
             } else {
                 $query->orderBy('created_at', 'desc')->orderBy('id', 'desc');
             }

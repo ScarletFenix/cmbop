@@ -186,7 +186,7 @@
                 </span>
             </div>
             <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
-                <span id="ordersAttentionChip" class="badge rounded-pill text-bg-light border orders-attention-chip">Needs attention first</span>
+                <span id="ordersAttentionChip" class="badge rounded-pill text-bg-light border orders-attention-chip{{ in_array(search_text(request('sort')), ['date_desc', 'date_asc', 'total_desc'], true) ? ' d-none' : '' }}">Needs attention first</span>
                 <label class="small text-muted mb-0" for="ordersSort">Sort</label>
                 <select id="ordersSort" name="sort" class="form-select form-select-sm orders-sort-select" aria-label="Sort orders">
                     <option value="attention" {{ search_text(request('sort')) === '' || search_text(request('sort')) === 'attention' ? 'selected' : '' }}>Needs attention first</option>

@@ -89,6 +89,12 @@ function updateOrdersAttentionChip() {
         chip.classList.toggle('d-none', ordersListSort() !== 'attention');
     }
 }
+
+function formatEuro(amount) {
+    const n = parseFloat(amount);
+
+    return Number.isFinite(n) ? ('€' + n.toFixed(2)) : '—';
+}
 let ordersSearchTimer = null;
 let ordersFetchController = null;
 let ordersFetchTimeoutId = null;
@@ -301,6 +307,10 @@ function bootAdvertiserOrdersPage() {
                 : 'sort';
             if (!params.has(key)) el.value = id === 'ordersSort' ? 'attention' : '';
         });
+        const sortEl = document.getElementById('ordersSort');
+        if (sortEl) {
+            sortEl.value = ordersListSort();
+        }
         const page = parseInt(params.get('page') || '1', 10);
         currentPage = Number.isFinite(page) && page > 0 ? page : 1;
         updateOrdersSearchClearVisibility();
@@ -1091,6 +1101,7 @@ function bootAdvertiserOrdersPage() {
 
     function orderChatReadonly(order) {
         if (order && order.chat_readonly === true) return true;
+        if (order && order.chat_readonly === false) return false;
         return order?.status === 'cancelled' || order?.payment_status !== 'paid';
     }
 
@@ -1240,9 +1251,9 @@ function bootAdvertiserOrdersPage() {
             const siteName = firstItem ? firstItem.site_name : 'N/A';
             const siteUrl = firstItem ? firstItem.site_url : '';
             const siteHref = (firstItem && firstItem.visit_url) ? firstItem.visit_url : siteUrl;
-            const itemsCount = order.items_count || items.length || 0;
+            const itemsCount = Number(order.items_count) || items.length || 0;
             const moreCount = Math.max(0, itemsCount - 1);
-            const totalAmount = parseFloat(order.total_amount || 0);
+            const totalLabel = formatEuro(order.total_amount);
             
             const paymentMethodName = getPaymentMethodName(order.payment_method);
             const paymentStatusClass = getPaymentStatusClass(order.payment_status);
@@ -1258,8 +1269,8 @@ function bootAdvertiserOrdersPage() {
                 ? `<div class="mt-1"><span class="badge text-bg-${order.dispute_status === 'upheld' ? 'danger' : (order.dispute_status === 'dismissed' ? 'secondary' : 'warning')}">Dispute: ${escapeHtml(order.dispute_status)}</span></div>`
                 : '';
             const totalHtml = orderPaymentRefunded(order)
-                ? `<td class="fw-semibold orders-total--refunded"><s>€${totalAmount.toFixed(2)}</s> <span class="small">Refunded</span></td>`
-                : `<td class="fw-semibold text-primary">€${totalAmount.toFixed(2)}</td>`;
+                ? `<td class="fw-semibold orders-total--refunded"><s>${totalLabel}</s> <span class="small">Refunded</span></td>`
+                : `<td class="fw-semibold text-primary">${totalLabel}</td>`;
             
             html += `
                 <tr>
@@ -1832,7 +1843,9 @@ function bootAdvertiserOrdersPage() {
                     ${statusMeta.autoHint ? `<p class="small text-muted mb-1"><i class="fa fa-clock-o me-1"></i>${escapeHtml(statusMeta.autoHint)}</p>` : ''}
                     <hr class="my-2">
                     ${pricingRows}
-                    <div class="ov-row"><strong>Total</strong><span class="fw-bold text-primary">€${parseFloat(order.total_amount).toFixed(2)}</span></div>
+                    <div class="ov-row"><strong>Total</strong>${orderPaymentRefunded(order)
+                        ? `<span class="fw-bold orders-total--refunded"><s>${formatEuro(order.total_amount)}</s> <span class="small fw-normal">Refunded</span></span>`
+                        : `<span class="fw-bold text-primary">${formatEuro(order.total_amount)}</span>`}</div>
                     <div class="order-view-refund">
                         Declines refund automatically · request changes before auto-approve ·
                         <a href="${ordersRoute('refundPolicy')}" target="_blank" rel="noopener">Refund policy</a>
