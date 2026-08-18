@@ -177,7 +177,7 @@ class CatalogFilterStatusEmptyUxTest extends TestCase
         $this->assertStringContainsString('No sites matching “garden” · Sponsored', $html);
         $this->assertStringContainsString('catalog-clear-tag', $html);
         $this->assertStringContainsString('Clear tag', $html);
-        $this->assertStringContainsString('Clear the tag filter to see more listings', $html);
+        $this->assertStringContainsString('Clear the tag filter (Sponsored) to see more listings', $html);
 
         $this->assertTrue(
             (bool) preg_match('/<a\b[^>]*catalog-clear-tag[^>]*>/i', $html, $m),

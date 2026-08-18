@@ -210,7 +210,7 @@ class CatalogFilterStatus
         }
 
         if ($hasTag && ! str_contains(strtolower($body), 'tag filter')) {
-            $body = rtrim($body, '.').'. Clear the tag filter to see more listings.';
+            $body = rtrim($body, '.').'. Clear the tag filter ('.$tagLabel.') to see more listings.';
         }
 
         return [
