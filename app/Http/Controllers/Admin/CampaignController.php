@@ -12,8 +12,10 @@ use App\Services\AudienceInventoryService;
 use App\Support\CampaignHtml;
 use App\Support\EmailCatalog;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 
 class CampaignController extends Controller
@@ -26,11 +28,21 @@ class CampaignController extends Controller
             Log::warning('Campaign stall recovery failed', ['error' => $e->getMessage()]);
         }
 
-        $stats = $inventory->stats(includeUnverified: false);
-        $campaigns = EmailCampaign::query()
-            ->with('creator')
-            ->latest('id')
-            ->paginate(15);
+        try {
+            $stats = $inventory->stats(includeUnverified: false);
+        } catch (\Throwable $e) {
+            Log::warning('Campaign audience stats failed', ['error' => $e->getMessage()]);
+            $stats = $this->emptyCampaignStats();
+        }
+
+        try {
+            $campaigns = EmailCampaign::tableAvailable()
+                ? EmailCampaign::query()->with('creator')->latest('id')->paginate(15)
+                : new LengthAwarePaginator([], 0, 15);
+        } catch (\Throwable $e) {
+            Log::warning('Campaign list failed', ['error' => $e->getMessage()]);
+            $campaigns = new LengthAwarePaginator([], 0, 15);
+        }
 
         $advertisers = $inventory->pickerUsers('advertiser');
         $publishers = $inventory->pickerUsers('publisher');
@@ -102,6 +114,11 @@ class CampaignController extends Controller
             'cta_url' => $this->ctaUrlRules(),
             'respect_preferences' => ['boolean'],
         ]));
+
+        if (! EmailCampaign::tableAvailable()
+            || ! $this->schemaTableAvailable((new EmailCampaignRecipient)->getTable())) {
+            return back()->withInput()->with('error', 'Campaigns are unavailable on this database.');
+        }
 
         if ($data['audience'] === 'selected' && empty($data['user_ids'])) {
             return back()->withInput()->with('error', 'Select at least one user for a custom audience.');
@@ -259,6 +276,40 @@ class CampaignController extends Controller
         $canonical = AudienceInventoryService::canonicalAudienceKey($raw);
         if ($canonical !== null) {
             $request->merge(['audience' => $canonical]);
+        }
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private function emptyCampaignStats(): array
+    {
+        return [
+            'advertisers' => 0,
+            'publishers' => 0,
+            'both_unique' => 0,
+            'advertisers_no_orders' => 0,
+            'advertisers_never_checked_out' => 0,
+            'advertisers_no_paid_orders' => 0,
+            'advertisers_paid_orders' => 0,
+            'publishers_no_sites' => 0,
+            'publishers_no_active_sites' => 0,
+            'advertisers_never_deposited' => 0,
+            'advertisers_deposited_no_orders' => 0,
+        ];
+    }
+
+    private function schemaTableAvailable(string $table): bool
+    {
+        try {
+            if (! Schema::hasTable($table)) {
+                return false;
+            }
+            DB::table($table)->limit(1)->exists();
+
+            return true;
+        } catch (\Throwable) {
+            return false;
         }
     }
 }

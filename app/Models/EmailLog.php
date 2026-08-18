@@ -2,13 +2,15 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\ToleratesMissingSchema;
 use App\Models\Concerns\ToleratesUnparseableDates;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Schema;
 
 class EmailLog extends Model
 {
-    use ToleratesUnparseableDates;
+    use ToleratesMissingSchema, ToleratesUnparseableDates;
 
     public const STATUS_PENDING = 'pending';
 
@@ -340,17 +342,36 @@ class EmailLog extends Model
      */
     public static function dashboardKpis(): array
     {
+        $empty = [
+            'sent_today' => 0,
+            'pending' => 0,
+            'failed' => 0,
+            'delivered' => 0,
+        ];
+
+        try {
+            if (! Schema::hasTable((new static)->getTable())) {
+                return $empty;
+            }
+        } catch (\Throwable) {
+            return $empty;
+        }
+
         $today = now()->toDateString();
-        $row = static::query()
-            ->toBase()
-            ->selectRaw(
-                'SUM(CASE WHEN date(coalesce(sent_at, created_at)) = ? THEN 1 ELSE 0 END) as sent_today,
-                 SUM(CASE WHEN status = ? AND date(coalesce(sent_at, created_at)) = ? THEN 1 ELSE 0 END) as delivered_today,
-                 SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as pending_count,
-                 SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as failed_count',
-                [$today, self::STATUS_DELIVERED, $today, self::STATUS_PENDING, self::STATUS_FAILED]
-            )
-            ->first();
+        try {
+            $row = static::query()
+                ->toBase()
+                ->selectRaw(
+                    'SUM(CASE WHEN date(coalesce(sent_at, created_at)) = ? THEN 1 ELSE 0 END) as sent_today,
+                     SUM(CASE WHEN status = ? AND date(coalesce(sent_at, created_at)) = ? THEN 1 ELSE 0 END) as delivered_today,
+                     SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as pending_count,
+                     SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as failed_count',
+                    [$today, self::STATUS_DELIVERED, $today, self::STATUS_PENDING, self::STATUS_FAILED]
+                )
+                ->first();
+        } catch (\Throwable) {
+            return $empty;
+        }
 
         return [
             'sent_today' => (int) ($row->sent_today ?? 0),

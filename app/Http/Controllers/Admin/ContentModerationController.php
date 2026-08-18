@@ -11,6 +11,9 @@ use App\Services\ContentUpload\ContentUploadService;
 use App\Support\PhpIniSize;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
@@ -31,60 +34,75 @@ class ContentModerationController extends Controller
         $from = scalar_text($request->query('from', ''));
         $to = scalar_text($request->query('to', ''));
 
-        $query = ContentModerationLog::query()
-            ->with(['user:id,name,email', 'submission'])
-            ->latest('id');
-
-        if ($status === 'approved') {
-            $query->where('status', ContentModerationLog::STATUS_APPROVED)
-                ->notSkipped()
-                ->where('admin_override', false);
-        } elseif ($status === 'rejected') {
-            $query->where('status', ContentModerationLog::STATUS_REJECTED);
-        } elseif ($status === 'error') {
-            $query->where('status', ContentModerationLog::STATUS_ERROR);
-        } elseif ($status === 'skipped') {
-            $query->skipped();
-        } elseif ($status === 'overridden') {
-            $query->where('admin_override', true);
-        }
-
-        if ($search !== '') {
-            $like = like_contains($search);
-            $query->where(function ($q) use ($like, $search) {
-                $q->where('document_url', 'like', $like)
-                    ->orWhere('detected_category', 'like', $like)
-                    ->orWhere('error_message', 'like', $like)
-                    ->orWhereHas('user', function ($u) use ($like) {
-                        $u->where('email', 'like', $like)->orWhere('name', 'like', $like);
-                    });
-                if (ctype_digit($search)) {
-                    $q->orWhere('id', (int) $search)
-                        ->orWhere('content_submission_id', (int) $search);
-                }
-            });
-        }
-
-        if ($category !== '' && $category !== 'all') {
-            $query->where('detected_category', $category);
-        }
-
-        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $from)) {
-            $query->whereDate('created_at', '>=', $from);
-        } else {
-            $from = '';
-        }
-        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $to)) {
-            $query->whereDate('created_at', '<=', $to);
-        } else {
-            $to = '';
-        }
-
         $page = (int) scalar_text($request->query('page', 1));
         if ($page < 1) {
             $page = 1;
         }
-        $logs = $query->paginate(25, ['*'], 'page', $page)->withQueryString();
+        $logs = $this->emptyModerationLogPaginator($page);
+
+        if ($this->schemaTableAvailable('content_moderation_logs')) {
+            try {
+                $query = ContentModerationLog::query()
+                    ->with(['user:id,name,email', 'submission'])
+                    ->latest('id');
+
+                if ($status === 'approved') {
+                    $query->where('status', ContentModerationLog::STATUS_APPROVED)
+                        ->notSkipped()
+                        ->where('admin_override', false);
+                } elseif ($status === 'rejected') {
+                    $query->where('status', ContentModerationLog::STATUS_REJECTED);
+                } elseif ($status === 'error') {
+                    $query->where('status', ContentModerationLog::STATUS_ERROR);
+                } elseif ($status === 'skipped') {
+                    $query->skipped();
+                } elseif ($status === 'overridden') {
+                    $query->where('admin_override', true);
+                }
+
+                if ($search !== '') {
+                    $like = like_contains($search);
+                    $query->where(function ($q) use ($like, $search) {
+                        $q->where('document_url', 'like', $like)
+                            ->orWhere('detected_category', 'like', $like)
+                            ->orWhere('error_message', 'like', $like)
+                            ->orWhereHas('user', function ($u) use ($like) {
+                                $u->where('email', 'like', $like)->orWhere('name', 'like', $like);
+                            });
+                        if (ctype_digit($search)) {
+                            $q->orWhere('id', (int) $search)
+                                ->orWhere('content_submission_id', (int) $search);
+                        }
+                    });
+                }
+
+                if ($category !== '' && $category !== 'all') {
+                    $query->where('detected_category', $category);
+                }
+
+                if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $from)) {
+                    $query->whereDate('created_at', '>=', $from);
+                } else {
+                    $from = '';
+                }
+                if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $to)) {
+                    $query->whereDate('created_at', '<=', $to);
+                } else {
+                    $to = '';
+                }
+
+                $logs = $query->paginate(25, ['*'], 'page', $page)->withQueryString();
+            } catch (\Throwable) {
+                $logs = $this->emptyModerationLogPaginator($page);
+            }
+        } else {
+            if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $from)) {
+                $from = '';
+            }
+            if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $to)) {
+                $to = '';
+            }
+        }
 
         $phpUploadMaxKb = PhpIniSize::uploadMaxKilobytes();
         $articleUploadMaxKb = $uploads->effectiveMaxKilobytes($uploadCfg);
@@ -132,6 +150,10 @@ class ContentModerationController extends Controller
 
     public function updateSettings(Request $request): RedirectResponse
     {
+        if (! $this->schemaTableAvailable('content_moderation_settings')) {
+            return back()->with('error', 'Moderation settings are unavailable because the destination table is missing.');
+        }
+
         $allCats = array_keys(config('content_moderation.categories', []));
         $data = $request->validate([
             'enabled' => ['sometimes', 'boolean'],
@@ -151,6 +173,21 @@ class ContentModerationController extends Controller
             'min_uniqueness' => ['nullable', 'integer', 'min:0', 'max:100'],
         ]);
 
+        try {
+            return $this->persistModerationSettings($request, $data, $allCats);
+        } catch (\RuntimeException $e) {
+            return back()->withInput()->with('error', $e->getMessage());
+        } catch (\Throwable) {
+            return back()->withInput()->with('error', 'Could not save moderation settings on this database.');
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @param  list<string>  $allCats
+     */
+    private function persistModerationSettings(Request $request, array $data, array $allCats): RedirectResponse
+    {
         $wasEnabled = (bool) ((ContentModerationSetting::getValue('config_override', []) ?: [])['enabled']
             ?? config('content_moderation.enabled', true));
         $previousDisabled = ContentModerationSetting::getValue('disabled_categories', []) ?: [];
@@ -340,5 +377,25 @@ class ContentModerationController extends Controller
         }
 
         return array_values(array_unique($out));
+    }
+
+    private function emptyModerationLogPaginator(int $page): LengthAwarePaginator
+    {
+        return (new LengthAwarePaginator([], 0, 25, $page))->withQueryString();
+    }
+
+    private function schemaTableAvailable(string $table): bool
+    {
+        if (! Schema::hasTable($table)) {
+            return false;
+        }
+
+        try {
+            DB::table($table)->limit(1)->exists();
+
+            return true;
+        } catch (\Throwable) {
+            return false;
+        }
     }
 }

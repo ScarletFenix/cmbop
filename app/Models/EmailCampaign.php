@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Jobs\SendEmailCampaignJob;
 use App\Mail\AudienceCampaignMail;
+use App\Models\Concerns\ToleratesMissingSchema;
 use App\Models\Concerns\ToleratesUnparseableDates;
 use App\Services\AudienceInventoryService;
 use App\Support\MailJobPayload;
@@ -20,7 +21,7 @@ use Illuminate\Support\Facades\Schema;
 
 class EmailCampaign extends Model
 {
-    use ToleratesUnparseableDates;
+    use ToleratesMissingSchema, ToleratesUnparseableDates;
 
     public const STATUS_DRAFT = 'draft';
 

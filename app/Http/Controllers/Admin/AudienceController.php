@@ -16,7 +16,11 @@ class AudienceController extends Controller
         $search = search_text($request->get('q'));
         $filters = $this->inventoryFilters($request);
         $users = $inventory->paginate($audienceKey, $search !== '' ? $search : null, 25, $filters);
-        $stats = $inventory->stats();
+        try {
+            $stats = $inventory->stats();
+        } catch (\Throwable) {
+            $stats = [];
+        }
         $campaignAudience = $audienceKey;
         $filterQuery = $this->filterQuery($search, $filters);
 
@@ -37,7 +41,11 @@ class AudienceController extends Controller
         $search = search_text($request->get('q'));
         $filters = $this->inventoryFilters($request);
 
-        $rowCount = $inventory->exportMatchCount($audienceKey, $search !== '' ? $search : null, $filters);
+        try {
+            $rowCount = $inventory->exportMatchCount($audienceKey, $search !== '' ? $search : null, $filters);
+        } catch (\Throwable) {
+            $rowCount = 0;
+        }
 
         ActivityLogger::tryLog(
             'audience.exported',

@@ -13,6 +13,10 @@ use App\Services\ContentUpload\ArticlePreviewHtml;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -28,25 +32,28 @@ class ContentLibraryController extends Controller
     public function index(Request $request)
     {
         $filters = $this->parseFilters($request);
-
-        $query = ContentSubmission::query()
-            ->forLibraryList()
-            ->with([
-                'user:id,name,email',
-                'order:id,status,payment_status,order_number',
-                'orderItem.site:id,site_name,site_url',
-                'orderItems.site:id,site_name,site_url',
-                'orderItems.order:id,status,payment_status,order_number',
-            ])
-            ->latest('id');
-
-        $this->applyListFilters($query, $filters);
-
         $page = (int) scalar_text($request->query('page', 1));
         if ($page < 1) {
             $page = 1;
         }
-        $submissions = $query->paginate(30, ['*'], 'page', $page)->withQueryString();
+
+        $submissions = $this->emptyLibraryPaginator($page);
+        if ($this->schemaTableAvailable('content_submissions')) {
+            try {
+                $query = ContentSubmission::query()
+                    ->forLibraryList()
+                    ->with($this->libraryListRelations())
+                    ->latest('id');
+
+                $this->applyListFilters($query, $filters);
+                $submissions = $query->paginate(30, ['*'], 'page', $page)->withQueryString();
+            } catch (\Throwable $e) {
+                Log::warning('Admin content library list leftover query failed', [
+                    'error' => $e->getMessage(),
+                ]);
+                $submissions = $this->emptyLibraryPaginator($page);
+            }
+        }
 
         $filterUser = $filters['user_id'] > 0
             ? User::query()->select(['id', 'name', 'email'])->find($filters['user_id'])
@@ -69,14 +76,14 @@ class ContentLibraryController extends Controller
 
     public function show(Request $request, ContentSubmission $submission)
     {
-        $submission->load([
-            'user:id,name,email',
-            'order:id,status,payment_status,order_number,user_id',
-            'orderItem.site:id,site_name,site_url',
-            'orderItems.site:id,site_name,site_url',
-            'orderItems.order:id,status,payment_status,order_number',
-            'moderationLog.overrider:id,name,email',
-        ]);
+        try {
+            $submission->load($this->libraryShowRelations());
+        } catch (\Throwable $e) {
+            Log::warning('Admin content library show leftover relations failed', [
+                'submission_id' => $submission->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
 
         $filters = $this->parseFilters($request);
         $placement = $submission->libraryPlacementItem();
@@ -309,12 +316,20 @@ class ContentLibraryController extends Controller
         $query->notArchived();
 
         if ($availability === 'expired') {
-            $query->expiredUnused();
+            if ($this->schemaTableAvailable('orders')) {
+                $query->expiredUnused();
+            }
 
             return;
         }
 
-        $this->excludeExpiredUnused($query);
+        if ($this->schemaTableAvailable('orders')) {
+            $this->excludeExpiredUnused($query);
+        }
+
+        if (! $this->schemaTableAvailable('orders')) {
+            return;
+        }
 
         if ($availability === 'available') {
             $query->checkoutReady();
@@ -366,33 +381,69 @@ class ContentLibraryController extends Controller
      */
     protected function availabilityCounts(array $filters): array
     {
-        $base = ContentSubmission::query();
-        if ($filters['language'] !== '') {
-            $base->where('language', $filters['language']);
-        }
-        if ($filters['country'] !== '') {
-            $base->where('country', $filters['country']);
-        }
-        if ($filters['user_id'] > 0) {
-            $base->where('user_id', $filters['user_id']);
-        }
-        if ($filters['search'] !== '') {
-            $this->applySearch($base, $filters['search']);
-        }
-
-        $active = (clone $base)->notArchived();
-        $this->excludeExpiredUnused($active);
-
-        return [
-            'all' => (int) (clone $active)->count(),
-            'available' => (int) (clone $active)->checkoutReady()->count(),
-            'evaluating' => (int) (clone $active)->evaluatingInLibrary()->count(),
-            'in_progress' => (int) (clone $active)->inProgressInLibrary()->count(),
-            'needs_fix' => (int) (clone $active)->needsLibraryFix()->count(),
-            'completed' => (int) (clone $active)->withCurrentLivePlacement()->count(),
-            'expired' => (int) (clone $base)->notArchived()->expiredUnused()->count(),
-            'archived' => (int) (clone $base)->archived()->count(),
+        $empty = [
+            'all' => 0,
+            'available' => 0,
+            'evaluating' => 0,
+            'in_progress' => 0,
+            'needs_fix' => 0,
+            'completed' => 0,
+            'expired' => 0,
+            'archived' => 0,
         ];
+
+        if (! $this->schemaTableAvailable('content_submissions')) {
+            return $empty;
+        }
+
+        try {
+            $base = ContentSubmission::query();
+            if ($filters['language'] !== '') {
+                $base->where('language', $filters['language']);
+            }
+            if ($filters['country'] !== '') {
+                $base->where('country', $filters['country']);
+            }
+            if ($filters['user_id'] > 0) {
+                $base->where('user_id', $filters['user_id']);
+            }
+            if ($filters['search'] !== '') {
+                $this->applySearch($base, $filters['search']);
+            }
+
+            $active = (clone $base)->notArchived();
+            if ($this->schemaTableAvailable('orders')) {
+                $this->excludeExpiredUnused($active);
+            }
+
+            $counts = [
+                'all' => (int) (clone $active)->count(),
+                'available' => 0,
+                'evaluating' => 0,
+                'in_progress' => 0,
+                'needs_fix' => 0,
+                'completed' => 0,
+                'expired' => 0,
+                'archived' => (int) (clone $base)->archived()->count(),
+            ];
+
+            if ($this->schemaTableAvailable('orders')) {
+                $counts['available'] = (int) (clone $active)->checkoutReady()->count();
+                $counts['evaluating'] = (int) (clone $active)->evaluatingInLibrary()->count();
+                $counts['in_progress'] = (int) (clone $active)->inProgressInLibrary()->count();
+                $counts['needs_fix'] = (int) (clone $active)->needsLibraryFix()->count();
+                $counts['completed'] = (int) (clone $active)->withCurrentLivePlacement()->count();
+                $counts['expired'] = (int) (clone $base)->notArchived()->expiredUnused()->count();
+            }
+
+            return $counts;
+        } catch (\Throwable $e) {
+            Log::warning('Admin content library counts leftover query failed', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return $empty;
+        }
     }
 
     /**
@@ -400,16 +451,24 @@ class ContentLibraryController extends Controller
      */
     protected function marketCodes(string $column): array
     {
-        return ContentSubmission::query()
-            ->whereNotNull($column)
-            ->where($column, '!=', '')
-            ->distinct()
-            ->orderBy($column)
-            ->pluck($column)
-            ->map(fn ($code) => strtolower((string) $code))
-            ->unique()
-            ->values()
-            ->all();
+        if (! $this->schemaTableAvailable('content_submissions')) {
+            return [];
+        }
+
+        try {
+            return ContentSubmission::query()
+                ->whereNotNull($column)
+                ->where($column, '!=', '')
+                ->distinct()
+                ->orderBy($column)
+                ->pluck($column)
+                ->map(fn ($code) => strtolower((string) $code))
+                ->unique()
+                ->values()
+                ->all();
+        } catch (\Throwable) {
+            return [];
+        }
     }
 
     /**
@@ -482,5 +541,68 @@ class ContentLibraryController extends Controller
         }
 
         return $fileOnDisk || $submission->hasPreviewHtml();
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function libraryListRelations(): array
+    {
+        $with = ['user:id,name,email'];
+        if ($this->schemaTableAvailable('orders')) {
+            $with[] = 'order:id,status,payment_status,order_number';
+        }
+        if ($this->schemaTableAvailable('order_items') && $this->schemaTableAvailable('sites')) {
+            $with[] = 'orderItem.site:id,site_name,site_url';
+            $with[] = 'orderItems.site:id,site_name,site_url';
+        }
+        if ($this->schemaTableAvailable('order_items') && $this->schemaTableAvailable('orders')) {
+            $with[] = 'orderItems.order:id,status,payment_status,order_number';
+        }
+
+        return $with;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function libraryShowRelations(): array
+    {
+        $with = ['user:id,name,email'];
+        if ($this->schemaTableAvailable('orders')) {
+            $with[] = 'order:id,status,payment_status,order_number,user_id';
+        }
+        if ($this->schemaTableAvailable('order_items') && $this->schemaTableAvailable('sites')) {
+            $with[] = 'orderItem.site:id,site_name,site_url';
+            $with[] = 'orderItems.site:id,site_name,site_url';
+        }
+        if ($this->schemaTableAvailable('order_items') && $this->schemaTableAvailable('orders')) {
+            $with[] = 'orderItems.order:id,status,payment_status,order_number';
+        }
+        if ($this->schemaTableAvailable('content_moderation_logs')) {
+            $with[] = 'moderationLog.overrider:id,name,email';
+        }
+
+        return $with;
+    }
+
+    private function emptyLibraryPaginator(int $page): LengthAwarePaginator
+    {
+        return (new LengthAwarePaginator([], 0, 30, $page))->withQueryString();
+    }
+
+    private function schemaTableAvailable(string $table): bool
+    {
+        if (! Schema::hasTable($table)) {
+            return false;
+        }
+
+        try {
+            DB::table($table)->limit(1)->exists();
+
+            return true;
+        } catch (\Throwable) {
+            return false;
+        }
     }
 }
