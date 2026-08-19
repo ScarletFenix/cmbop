@@ -159,5 +159,6 @@ class CatalogImprovementsTest extends TestCase
         $this->assertStringContainsString("options.intent === 'search'", $js);
         $this->assertStringContainsString('lastAppliedQuery = CatalogUrl.fromForm({ keepPage: true }).toString()', $js);
         $this->assertStringContainsString("addEventListener('blur'", $js);
+        $this->assertStringContainsString('if (lastAppliedQuery !== current) return;', $js);
     }
 }

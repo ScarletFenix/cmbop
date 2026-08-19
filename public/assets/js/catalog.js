@@ -3007,8 +3007,14 @@ const CatalogLive = (function () {
     if (liveSearchInput) {
         liveSearchInput.addEventListener('blur', function () {
             if (!lastEffectiveParams) return;
+            const current = CatalogUrl.fromForm({ keepPage: true }).toString();
+            const effective = lastEffectiveParams.toString();
+            if (current === effective) return;
+            // Only strip already-applied metric tokens. Unapplied typing
+            // (lastAppliedQuery !== form) must stay so blur does not wipe it.
+            if (lastAppliedQuery !== current) return;
             CatalogUrl.applyToForm(lastEffectiveParams);
-            lastAppliedQuery = lastEffectiveParams.toString();
+            lastAppliedQuery = effective;
             CatalogUrl.replaceState(lastEffectiveParams);
         });
     }
