@@ -314,6 +314,9 @@
                                        value="{{ $catalogSearchText }}"
                                        autocomplete="off"
                                        enterkeyhint="search"
+                                       aria-autocomplete="list"
+                                       aria-haspopup="listbox"
+                                       aria-expanded="false"
                                        aria-describedby="catalogSearchStatus">
                                 <button type="button"
                                         id="catalogSearchClear"

@@ -27,6 +27,8 @@
         || request()->input('has_completions') == '1'
         || request()->input('bulk_deals') == '1'
         || request()->input('on_sale') == '1'
+        || \App\Services\Catalog\CatalogUrlQuery::perPage(request())
+            !== \App\Services\Catalog\CatalogUrlQuery::DEFAULT_PER_PAGE
     );
     // Live results fragment may not inherit parent @php; compute recovery when empty.
     $catalogEmptyRecovery = $catalogEmptyRecovery ?? (
@@ -1196,7 +1198,7 @@
                                 <span class="text-decoration-line-through">€{{ number_format($catalogListPrice, 2) }}</span>
                                 (offer price)
                             @else
-                                (Base price)
+                                (base price)
                             @endif
                         </small>
                     </div>

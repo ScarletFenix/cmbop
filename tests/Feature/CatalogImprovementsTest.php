@@ -117,6 +117,7 @@ class CatalogImprovementsTest extends TestCase
         ])->render();
 
         $this->assertStringNotContainsString('DoFollow', $html);
+        $this->assertStringNotContainsString('catalog-meta-chips', $html);
     }
 
     public function test_catalog_shell_has_tag_quick_suggest_and_delegated_category_toggle(): void
@@ -140,6 +141,9 @@ class CatalogImprovementsTest extends TestCase
         $results = (string) file_get_contents(resource_path('views/advertiser/partials/catalog-results.blade.php'));
         $this->assertStringContainsString('toggle-cats-btn', $results);
         $this->assertStringNotContainsString('onclick=', $results);
+        $this->assertStringContainsString('DEFAULT_PER_PAGE', $results);
+        $this->assertStringNotContainsString('(Base price)', $results);
+        $this->assertStringContainsString('(base price)', $results);
     }
 
     public function test_catalog_js_wires_suggest_and_category_toggle(): void
@@ -150,5 +154,8 @@ class CatalogImprovementsTest extends TestCase
         $this->assertStringContainsString('function initCatalogCategoryToggle', $js);
         $this->assertStringContainsString('function initCatalogTagQuick', $js);
         $this->assertStringContainsString('data-effective-query', $js);
+        $this->assertStringContainsString('searchFocused', $js);
+        $this->assertStringContainsString('typedSearch', $js);
+        $this->assertStringContainsString('lastAppliedQuery = applied.toString()', $js);
     }
 }

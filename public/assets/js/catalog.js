@@ -1857,7 +1857,7 @@ function multiDisplayOverflows(container) {
  * - Search debounce: reuse CATALOG_FILTER_LIVE_MS (~350ms).
  * - Min chars before live search: 2 (empty query still clears → full catalog).
  * - Enter / Apply: submit with history entry (same as today).
- * - Suggest endpoint: kept registered but unused by typing UX.
+ * - Suggest endpoint: thin jump list under the search box; typing still drives live /results.
  * - Hide mode: live /results HTML still applies eye/mask rules server-side.
  * - Multi-select: always named tags (no “2 countries” count chip); wrap OK for v1.
  * - Tag ×: keep per-value remove (no compact clear-all chip).
@@ -2811,7 +2811,13 @@ const CatalogLive = (function () {
     function afterSwap(card, params, options) {
         const effective = effectiveParamsFromCard(card, params);
         if (effective && params && effective.toString() !== params.toString()) {
+            const searchEl = document.getElementById('catalogSearchInput');
+            const typedSearch = searchEl ? searchEl.value : '';
+            const searchFocused = !!(searchEl && document.activeElement === searchEl);
             CatalogUrl.applyToForm(effective);
+            if (searchFocused && searchEl) {
+                searchEl.value = typedSearch;
+            }
             CatalogUrl.replaceState(effective);
             params = effective;
         }
@@ -2854,6 +2860,8 @@ const CatalogLive = (function () {
                 try { card.focus(); } catch (err2) { /* ignore */ }
             }
         }
+
+        return params;
     }
 
     /**
@@ -2885,6 +2893,7 @@ const CatalogLive = (function () {
             && document.getElementById('catalogResults')) {
             syncFilterChips(params);
             syncMoreFiltersBadge(params);
+            syncTagQuick(params);
             syncSuggestButtons(params);
             return Promise.resolve();
         }
@@ -2939,11 +2948,11 @@ const CatalogLive = (function () {
                 if (seq !== requestSeq) return;
                 const card = applyResultsHtml(html);
                 if (!card) throw new Error('Catalog results markup missing');
-                lastAppliedQuery = queryKey;
-                afterSwap(card, params, options);
+                const applied = afterSwap(card, params, options) || params;
+                lastAppliedQuery = applied.toString();
                 // Option 1: bulk rail follows Catalog country= — refresh after results.
                 // Own AbortController inside refreshBulkDeals (not the results timeout).
-                return refreshBulkDeals(params, seq);
+                return refreshBulkDeals(applied, seq);
             })
             .catch(function (err) {
                 // Newer request aborted us — leave its busy state alone.
@@ -3221,7 +3230,7 @@ function initCatalogSuggest(searchInput) {
         list.innerHTML = '';
         list.hidden = true;
         list.classList.add('d-none');
-        searchInput.removeAttribute('aria-expanded');
+        searchInput.setAttribute('aria-expanded', 'false');
         searchInput.removeAttribute('aria-controls');
     }
 

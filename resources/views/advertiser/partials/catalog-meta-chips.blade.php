@@ -18,6 +18,7 @@
         ?: trim((string) ($turnaround ?? ''));
 @endphp
 
+@if($chipLinkType || $chipTurnaround !== '')
 <div class="catalog-meta-chips">
     @if($chipLinkType)
     <span class="catalog-meta-chip" title="{{ $chipLinkType }} links on this placement">
@@ -32,3 +33,4 @@
         </span>
     @endif
 </div>
+@endif
