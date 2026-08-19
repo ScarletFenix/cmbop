@@ -244,6 +244,34 @@ class PaypalWebhookTest extends TestCase
         ])->assertStatus(400)->assertJsonPath('error', 'Invalid signature');
     }
 
+    public function test_webhook_log_stores_redacted_payload_only(): void
+    {
+        $this->enablePaypal();
+        $this->fakePaypal('PO-REDACT');
+
+        $this->postWebhook([
+            'id' => 'WH-REDACT-1',
+            'event_type' => 'PAYMENT.CAPTURE.DENIED',
+            'create_time' => '2026-01-01T00:00:00Z',
+            'resource' => [
+                'id' => 'CAP-DENIED',
+                'payer' => ['email_address' => 'buyer@example.com'],
+                'amount' => ['currency_code' => 'EUR', 'value' => '99.00'],
+            ],
+        ])->assertOk()->assertJsonPath('status', 'success');
+
+        $log = PaypalWebhookLog::query()->where('event_id', 'WH-REDACT-1')->first();
+        $this->assertNotNull($log);
+        $stored = $log->payload;
+        $this->assertIsArray($stored);
+        $this->assertSame('WH-REDACT-1', $stored['id'] ?? null);
+        $this->assertSame('PAYMENT.CAPTURE.DENIED', $stored['event_type'] ?? null);
+        $this->assertSame('CAP-DENIED', $stored['resource_id'] ?? null);
+        $this->assertArrayNotHasKey('resource', $stored);
+        $this->assertStringNotContainsString('buyer@example.com', json_encode($stored));
+        $this->assertStringNotContainsString('99.00', json_encode($stored));
+    }
+
     public function test_capture_completed_settles_paid_orders_without_return_url(): void
     {
         config(['content_moderation.enabled' => false]);

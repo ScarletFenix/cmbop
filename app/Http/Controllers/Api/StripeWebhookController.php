@@ -13,6 +13,7 @@ use App\Services\OrderPaymentService;
 use App\Services\SitePromotionService;
 use App\Services\WalletStripeDepositService;
 use App\Support\UserMessages;
+use App\Support\WebhookPayloadRedactor;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Stripe\Exception\SignatureVerificationException;
@@ -56,7 +57,7 @@ class StripeWebhookController extends Controller
                 StripeWebhookLog::create([
                     'event_id' => $eventId,
                     'event_type' => $eventType,
-                    'payload' => json_encode($event),
+                    'payload' => WebhookPayloadRedactor::stripe($event),
                     'processed' => false,
                 ]);
             }

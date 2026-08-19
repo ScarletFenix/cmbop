@@ -161,6 +161,8 @@ return [
     'about_page_email_label' => 'Support email',
     'about_page_markets_label' => 'Markets',
     'about_page_markets_body' => 'Europe (EN/US/DE/FR/NL/ES/IT public site) plus English-speaking and other supported publisher markets in the catalog.',
+    'about_page_security_title' => 'Payments and data protection',
+    'about_page_security_body' => 'Card payments are processed by Stripe. We do not store your full card number on our servers. Wallet deposits and orders are confirmed after the payment provider reports success. How we handle personal data is in our Privacy Policy.',
     'home' => 'Home',
 
     // FAQ

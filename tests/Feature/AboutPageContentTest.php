@@ -60,6 +60,19 @@ class AboutPageContentTest extends TestCase
             ->assertDontSee('4.9', false);
     }
 
+    public function test_about_page_shows_payment_and_data_protection_strip(): void
+    {
+        $this->get('/about')
+            ->assertOk()
+            ->assertSee(__('messages.about_page_security_title'), false)
+            ->assertSee(__('messages.about_page_security_body'), false)
+            ->assertSee('Payments secured by', false)
+            ->assertSee('assets/img/payments/visa.svg', false)
+            ->assertSee(localized_url('privacy-policy'), false)
+            ->assertSee(localized_url('refund-policy'), false)
+            ->assertDontSee('100% secure', false);
+    }
+
     public function test_about_page_falls_back_when_support_email_env_is_blank(): void
     {
         config([

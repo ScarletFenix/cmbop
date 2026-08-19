@@ -633,6 +633,8 @@ return [
     'about_page_email_label' => 'E-mail support',
     'about_page_markets_label' => 'Marchés',
     'about_page_markets_body' => 'Europe (site public EN/DE/FR/NL) et autres marchés éditeurs pris en charge dans le catalogue.',
+    'about_page_security_title' => 'Paiements et protection des données',
+    'about_page_security_body' => 'Les paiements par carte sont traités par Stripe. Nous ne stockons pas votre numéro de carte complet sur nos serveurs. Les dépôts portefeuille et les commandes sont confirmés après le succès signalé par le prestataire de paiement. Notre traitement des données personnelles est décrit dans la politique de confidentialité.',
     'home' => 'Accueil',
     'faq_kicker' => 'Centre d’aide',
     'faq_title' => 'Questions fréquentes',

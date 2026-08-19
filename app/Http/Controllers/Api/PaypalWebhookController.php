@@ -9,6 +9,7 @@ use App\Services\Orders\OrderRefundService;
 use App\Services\PaypalCheckoutService;
 use App\Services\WalletPaypalDepositService;
 use App\Support\UserMessages;
+use App\Support\WebhookPayloadRedactor;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -53,7 +54,7 @@ class PaypalWebhookController extends Controller
                 PaypalWebhookLog::create([
                     'event_id' => $eventId,
                     'event_type' => $eventType !== '' ? $eventType : 'unknown',
-                    'payload' => $event,
+                    'payload' => WebhookPayloadRedactor::paypal($event),
                     'processed' => false,
                 ]);
             }

@@ -17,6 +17,8 @@ class UserMessagesTest extends TestCase
             'register.unavailable',
             'password.throttled',
             'password.reset_sent',
+            'password.reset_success',
+            'password.reset_invalid',
             'session.expired',
             'generic.retry',
             'oauth.unavailable',

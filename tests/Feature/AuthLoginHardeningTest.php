@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Role;
 use App\Models\User;
+use App\Support\UserMessages;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Route;
@@ -75,8 +76,31 @@ class AuthLoginHardeningTest extends TestCase
         $this->postJson(route('login.post'), $payload)
             ->assertStatus(429)
             ->assertJsonPath('status', 'error')
-            ->assertJsonPath('message', 'Too many attempts. Please try again later.')
+            ->assertJsonPath('message', UserMessages::get('login.throttled'))
             ->assertHeader('Retry-After');
+    }
+
+    public function test_successful_login_regenerates_the_session(): void
+    {
+        $role = Role::where('name', 'advertiser')->firstOrFail();
+        $user = User::factory()->create([
+            'email' => 'verified-login@example.com',
+            'email_verified_at' => now(),
+            'password' => 'password',
+            'active_role_id' => $role->id,
+        ]);
+        $user->roles()->attach($role->id);
+
+        $this->get(route('login'))->assertOk();
+        $before = session()->getId();
+
+        $this->postJson(route('login.post'), [
+            'email' => $user->email,
+            'password' => 'password',
+        ])->assertOk()->assertJsonPath('status', 'success');
+
+        $this->assertNotSame($before, session()->getId());
+        $this->assertAuthenticatedAs($user);
     }
 
     public function test_logout_invalidates_the_session(): void

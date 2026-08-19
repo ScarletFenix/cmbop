@@ -633,6 +633,8 @@ return [
     'about_page_email_label' => 'Support-E-Mail',
     'about_page_markets_label' => 'Märkte',
     'about_page_markets_body' => 'Europa (öffentliche Website EN/DE/FR/NL) sowie weitere unterstützte Publisher-Märkte im Katalog.',
+    'about_page_security_title' => 'Zahlungen und Datenschutz',
+    'about_page_security_body' => 'Kartenzahlungen werden von Stripe verarbeitet. Wir speichern Ihre vollständige Kartennummer nicht auf unseren Servern. Wallet-Einzahlungen und Bestellungen werden bestätigt, nachdem der Zahlungsanbieter den Erfolg gemeldet hat. Wie wir personenbezogene Daten behandeln, steht in unserer Datenschutzrichtlinie.',
     'home' => 'Startseite',
     'faq_kicker' => 'Hilfe',
     'faq_title' => 'Häufig gestellte Fragen',

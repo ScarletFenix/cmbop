@@ -324,6 +324,17 @@
             <li><strong>{{ __('messages.about_page_markets_label') }}:</strong> {{ __('messages.about_page_markets_body') }}</li>
         </ul>
     </div>
+
+    <section class="mt-4 p-4 rounded-3 about-security" style="background:#f7fafb; border:1px solid #e2e8f0;" aria-labelledby="about-security-heading">
+        <h2 id="about-security-heading" class="h4 mb-3" style="color:#1a585e;">{{ __('messages.about_page_security_title') }}</h2>
+        <p class="text-muted mb-3">{{ __('messages.about_page_security_body') }}</p>
+        @include('partials.payment-trust', ['compact' => false, 'showMethods' => true])
+        <p class="mb-0 mt-3 small">
+            <a href="{{ localized_url('privacy-policy') }}" class="link-teal">{{ __('messages.privacy_policy') }}</a>
+            <span class="text-muted"> · </span>
+            <a href="{{ localized_url('refund-policy') }}" class="link-teal">{{ __('messages.refund_policy') }}</a>
+        </p>
+    </section>
 </div>
 
 <style>
