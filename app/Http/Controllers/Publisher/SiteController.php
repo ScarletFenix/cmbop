@@ -315,7 +315,7 @@ class SiteController extends Controller
             if (str_contains($e->getMessage(), 'Unknown column')
                 || str_contains($e->getMessage(), 'Data too long')
                 || str_contains($e->getMessage(), 'onboarding_status')) {
-                $hint = 'We could not save this website because the database is missing a recent update. Please contact support (or run the sites column migration SQL).';
+                $hint = 'We could not save this website because the database is missing a recent update. Please contact support.';
             }
 
             return redirect()->back()
@@ -855,7 +855,7 @@ class SiteController extends Controller
             if (str_contains($e->getMessage(), 'Unknown column')
                 || str_contains($e->getMessage(), 'Data too long')
                 || str_contains($e->getMessage(), 'onboarding_status')) {
-                $hint = 'We could not update this website because the database is missing a recent update. Please contact support (or run the sites column migration SQL).';
+                $hint = 'We could not update this website because the database is missing a recent update. Please contact support.';
             }
 
             return redirect()->back()

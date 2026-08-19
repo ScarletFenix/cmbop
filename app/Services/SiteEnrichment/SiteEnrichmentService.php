@@ -5,6 +5,7 @@ namespace App\Services\SiteEnrichment;
 use App\Models\Site;
 use App\Models\SiteEnrichmentRun;
 use App\Support\SiteImageUpload;
+use App\Support\UserFacingError;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -82,14 +83,15 @@ class SiteEnrichmentService
                 'error' => $e->getMessage(),
             ]);
 
+            $safeError = UserFacingError::message($e, 'Metrics refresh failed.');
             $this->persistSiteColumns($site, [
                 'enrichment_status' => 'failed',
-                'enrichment_error' => $e->getMessage(),
+                'enrichment_error' => $safeError,
             ]);
 
             $this->finishRun($run, [
                 'status' => 'failed',
-                'error' => $e->getMessage(),
+                'error' => $safeError,
                 'finished_at' => now(),
             ]);
         }
@@ -161,7 +163,10 @@ class SiteEnrichmentService
                 'error' => $e->getMessage(),
             ]);
 
-            $this->markScreenshotRunFailed($run, $e->getMessage());
+            $this->markScreenshotRunFailed(
+                $run,
+                UserFacingError::message($e, 'Screenshot capture failed.')
+            );
         }
 
         return $run->exists ? ($run->fresh() ?? $run) : $run;

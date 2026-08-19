@@ -211,7 +211,10 @@ class ContentModerationController extends Controller
         try {
             return $this->persistModerationSettings($request, $data, $allCats);
         } catch (\RuntimeException $e) {
-            return back()->withInput()->with('error', UserFacingError::message($e, 'Could not save moderation settings. Please try again.'));
+            return back()->withInput()->with('error', UserFacingError::message(
+                $e,
+                'Could not save moderation settings on this database.'
+            ));
         } catch (\Throwable) {
             return back()->withInput()->with('error', 'Could not save moderation settings on this database.');
         }

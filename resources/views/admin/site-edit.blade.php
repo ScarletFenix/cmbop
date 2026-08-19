@@ -49,11 +49,6 @@
         </div>
     </div>
 
-
-    @if(session('success'))
-        <div class="alert alert-success border-0 shadow-sm">{{ session('success') }}</div>
-    @endif
-
     @if($errors->any())
         <div class="alert alert-danger border-0 shadow-sm">
             <ul class="mb-0">

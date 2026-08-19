@@ -1332,6 +1332,20 @@ class Site extends Model
     }
 
     /**
+     * Publisher (or staff) explicitly submitted this listing for review.
+     * Legacy rows with a null onboarding status are admin-verify-first —
+     * marketers must not treat those as skip-verify.
+     */
+    public function isSubmittedForAdminReview(): bool
+    {
+        if (! static::hasSitesColumn('onboarding_status')) {
+            return false;
+        }
+
+        return $this->onboarding_status === self::ONBOARDING_READY_FOR_REVIEW;
+    }
+
+    /**
      * @param  Builder<Site>  $query
      * @return Builder<Site>
      */

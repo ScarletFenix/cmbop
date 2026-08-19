@@ -2745,22 +2745,12 @@ class SiteController extends Controller
             } catch (ValidationException $e) {
                 throw $e;
             } catch (\Throwable $e) {
-                Log::error('Failed to update site verification', [
-                    'site_id' => $id,
-                    'error' => $e->getMessage(),
-                ]);
-
-                $hint = '';
-                if (str_contains($e->getMessage(), 'onboarding_status')) {
-                    $hint = ' Run database/sql/fix_sites_onboarding_status.sql on the database if this persists.';
-                } elseif (str_contains($e->getMessage(), 'status_reason')) {
-                    $hint = ' Run database/sql/add_sites_status_reason.sql on the database if this persists.';
-                }
-
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Could not update verification.'.$hint,
-                ], 500);
+                return $this->staffSiteMutationFailure(
+                    'Failed to update site verification',
+                    (int) $id,
+                    $e,
+                    'Could not update verification.'
+                );
             }
 
             $this->syncLinkedBulkAfterSiteRemoved($site->bulk_site_request_id);
@@ -2827,22 +2817,12 @@ class SiteController extends Controller
         } catch (ModelNotFoundException $e) {
             throw $e;
         } catch (\Throwable $e) {
-            Log::error('Failed to update site verification', [
-                'site_id' => $id,
-                'error' => $e->getMessage(),
-            ]);
-
-            $hint = '';
-            if (str_contains($e->getMessage(), 'onboarding_status')) {
-                $hint = ' Run database/sql/fix_sites_onboarding_status.sql on the database if this persists.';
-            } elseif (str_contains($e->getMessage(), 'status_reason')) {
-                $hint = ' Run database/sql/add_sites_status_reason.sql on the database if this persists.';
-            }
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Could not update verification.'.$hint,
-            ], 500);
+            return $this->staffSiteMutationFailure(
+                'Failed to update site verification',
+                (int) $id,
+                $e,
+                'Could not update verification.'
+            );
         }
     }
 
@@ -2855,7 +2835,20 @@ class SiteController extends Controller
 
     private function marketingMaySkipVerify(bool $isMarketingActor, Site $site): bool
     {
-        return $isMarketingActor && ($site->marketingCanActivate() || $site->needsAdminReview());
+        return $isMarketingActor && $site->isSubmittedForAdminReview();
+    }
+
+    private function staffSiteMutationFailure(string $logMessage, int $siteId, \Throwable $e, string $userMessage): JsonResponse
+    {
+        Log::error($logMessage, [
+            'site_id' => $siteId,
+            'error' => $e->getMessage(),
+        ]);
+
+        return response()->json([
+            'success' => false,
+            'message' => $userMessage,
+        ], 500);
     }
 
     private function staffCanActivateSite(Site $site): bool
@@ -2927,7 +2920,7 @@ class SiteController extends Controller
             $verifyOnActivate = $activating
                 && $isMarketingActor
                 && ! (bool) $site->verified
-                && $site->needsAdminReview();
+                && $site->isSubmittedForAdminReview();
             $site->active = $activating ? 1 : 0;
             if ($activating) {
                 // Marketing has no verify route; Activate is the go-live action
@@ -3033,22 +3026,12 @@ class SiteController extends Controller
         } catch (ModelNotFoundException $e) {
             throw $e;
         } catch (\Throwable $e) {
-            Log::error('Failed to toggle site active status', [
-                'site_id' => $id,
-                'error' => $e->getMessage(),
-            ]);
-
-            $hint = '';
-            if (str_contains($e->getMessage(), 'onboarding_status')) {
-                $hint = ' Run database/sql/fix_sites_onboarding_status.sql on the database if this persists.';
-            } elseif (str_contains($e->getMessage(), 'status_reason')) {
-                $hint = ' Run database/sql/add_sites_status_reason.sql on the database if this persists.';
-            }
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Could not update active status.'.$hint,
-            ], 500);
+            return $this->staffSiteMutationFailure(
+                'Failed to toggle site active status',
+                (int) $id,
+                $e,
+                'Could not update active status.'
+            );
         }
     }
 
