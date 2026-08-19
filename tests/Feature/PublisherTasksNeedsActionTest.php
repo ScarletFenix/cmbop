@@ -173,6 +173,14 @@ class PublisherTasksNeedsActionTest extends TestCase
             '/\.action-buttons\s*\{[^}]*flex-direction:\s*row/s',
             $css
         );
+        $this->assertMatchesRegularExpression(
+            '/\.action-buttons\s*\{[^}]*flex-wrap:\s*nowrap/s',
+            $css
+        );
+        $this->assertMatchesRegularExpression(
+            '/\.btn-action-sm\s*\{[^}]*white-space:\s*nowrap/s',
+            $css
+        );
         $this->assertDoesNotMatchRegularExpression(
             '/\.action-buttons\s*\{[^}]*flex-direction:\s*column/s',
             $css
