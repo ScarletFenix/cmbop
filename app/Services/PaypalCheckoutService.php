@@ -191,8 +191,6 @@ class PaypalCheckoutService
                     'experience_context' => $experience,
                 ],
             ],
-            // Deprecated but still accepted; some live apps 422 without it.
-            'application_context' => $experience,
         ];
 
         $this->accessToken();
