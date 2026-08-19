@@ -8,6 +8,7 @@ use App\Services\ContentUpload\ArticleDetectedLinks;
 use App\Services\ContentUpload\ArticleHtmlSanitizer;
 use App\Services\ContentUpload\ArticlePreviewHtml;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -437,6 +438,43 @@ class ContentSubmission extends Model
                     ->whereNotExpired();
             });
         });
+    }
+
+    /**
+     * Latest picker-ready articles, plus any assigned IDs that fell off the cap.
+     *
+     * @param  list<int|string|null>  $mustIncludeIds
+     * @return Collection<int, static>
+     */
+    public static function pickerArticlesForUser(int $userId, array $mustIncludeIds = [], int $limit = 100)
+    {
+        $approved = static::query()
+            ->forArticlePicker()
+            ->with(['order', 'orderItems.order'])
+            ->where('user_id', $userId)
+            ->availableForPicker()
+            ->latest('id')
+            ->limit(max(1, $limit))
+            ->get();
+
+        $mustIncludeIds = array_values(array_unique(array_filter(array_map(
+            static fn ($id) => (int) $id,
+            $mustIncludeIds
+        ))));
+        $missing = array_values(array_diff($mustIncludeIds, $approved->pluck('id')->all()));
+        if ($missing === []) {
+            return $approved;
+        }
+
+        $extra = static::query()
+            ->forArticlePicker()
+            ->with(['order', 'orderItems.order'])
+            ->where('user_id', $userId)
+            ->whereIn('id', $missing)
+            ->availableForPicker()
+            ->get();
+
+        return $approved->concat($extra)->unique('id')->values();
     }
 
     /**

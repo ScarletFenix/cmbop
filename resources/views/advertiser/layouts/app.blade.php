@@ -479,7 +479,7 @@
                 if (v && !codes.includes(v)) codes.push(v);
             });
         }
-        return codes;
+        return codes.sort();
     }
 
     function articleFitsSiteLanguages(article, siteLangs) {
@@ -899,12 +899,12 @@
                         const emptyHint = options.length === 0 && !selectedId
                             ? `<div class="cart-item-article-empty mt-1">Need another article? <a class="cart-item-upload-link cart-item-upload-link--primary" href="${contentLibraryUploadUrl}">Upload article</a></div>`
                             : '';
-                        const noMatchNote = (!requireSameLanguage && matching.length === 0 && other.length > 0)
+                        const noMatchNote = (!requireSameLanguage && !selectedId && matching.length === 0 && other.length > 0)
                             ? `<div class="cart-item-language-note">This site is ${escapeHtml(siteLangLabel || 'unknown')}. None of your articles match — you can still assign one.</div>`
                             : '';
-                        const langNote = noMatchNote || (item.language_note
+                        const langNote = (selectedId && item.language_note)
                             ? `<div class="cart-item-language-note" title="Preferred match is the same language as the site">${escapeHtml(item.language_note)}</div>`
-                            : '');
+                            : noMatchNote;
                         const uploadLink = `<a class="cart-item-upload-link" href="${contentLibraryUploadUrl}">${selectedId ? 'Upload another' : 'Upload new'}</a>`;
                         return `
                         <div class="cart-item-article ${selectedId ? 'is-assigned' : 'needs-document'}">

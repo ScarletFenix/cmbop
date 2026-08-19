@@ -120,8 +120,72 @@ class CartArticlePickerTest extends TestCase
         $this->assertStringContainsString('Assigned article', $layout);
         $this->assertStringContainsString('<optgroup label="Matches this site">', $layout);
         $this->assertStringContainsString('None of your articles match — you can still assign one.', $layout);
+        $this->assertStringContainsString('!selectedId && matching.length === 0 && other.length > 0', $layout);
+        $this->assertStringContainsString('selectedId && item.language_note', $layout);
         $this->assertStringNotContainsString('Assigned document #', $layout);
         $this->assertStringNotContainsString("' · different language'", $layout);
         $this->assertStringNotContainsString('/^[A-Za-z0-9_-]{12,}$/', $layout);
+    }
+
+    public function test_cart_get_includes_assigned_article_past_the_hundred_cap(): void
+    {
+        $site = $this->site();
+        $assigned = $this->createApprovedSubmission($this->advertiser, null, 0, 'anchor', 'https://example.com/a', 'de', 'de');
+        $assigned->update(['title' => 'Assigned older article']);
+
+        for ($i = 0; $i < 100; $i++) {
+            $clone = $assigned->replicate();
+            $clone->title = 'Newer article '.$i;
+            $clone->original_filename = 'newer-'.$i.'.docx';
+            $clone->save();
+        }
+
+        $payload = $this->actingAs($this->advertiser)
+            ->withSession([
+                'cart' => [[
+                    'id' => $site->id,
+                    'name' => $site->site_name,
+                    'price' => 40,
+                    'quantity' => 1,
+                    'language' => 'de',
+                    'country' => 'de',
+                    'content_submission_id' => $assigned->id,
+                ]],
+            ])
+            ->getJson(route('advertiser.cart.get'))
+            ->assertOk()
+            ->json();
+
+        $articleIds = collect($payload['approved_articles'] ?? [])->pluck('id')->all();
+        $this->assertContains($assigned->id, $articleIds);
+        $this->assertSame($assigned->id, (int) ($payload['cart'][0]['content_submission_id'] ?? 0));
+        $this->assertContains('Assigned older article', collect($payload['approved_articles'])->pluck('title')->all());
+    }
+
+    public function test_second_cart_get_does_not_rewrite_a_stable_session(): void
+    {
+        $site = $this->site();
+
+        $this->actingAs($this->advertiser)
+            ->withSession([
+                'cart' => [[
+                    'id' => $site->id,
+                    'name' => $site->site_name,
+                    'price' => 40,
+                    'quantity' => 1,
+                    'language' => 'de',
+                    'country' => 'de',
+                ]],
+            ])
+            ->getJson(route('advertiser.cart.get'))
+            ->assertOk();
+
+        $afterFirst = session('cart');
+
+        $this->actingAs($this->advertiser)
+            ->getJson(route('advertiser.cart.get'))
+            ->assertOk();
+
+        $this->assertSame($afterFirst, session('cart'));
     }
 }

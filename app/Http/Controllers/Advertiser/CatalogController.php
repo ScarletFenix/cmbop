@@ -1019,6 +1019,44 @@ class CatalogController extends Controller
     }
 
     /**
+     * Stable compare for session cart writes (ignore key order and empty assignment ids).
+     *
+     * @param  array<int, array<string, mixed>>  $cart
+     */
+    private function cartSessionFingerprint(array $cart): string
+    {
+        $lines = [];
+        foreach (array_values($cart) as $line) {
+            if (! is_array($line)) {
+                continue;
+            }
+            if (($line['content_submission_id'] ?? 0) <= 0) {
+                unset($line['content_submission_id']);
+            }
+            foreach (['languages', 'countries'] as $listKey) {
+                if (isset($line[$listKey]) && is_array($line[$listKey])) {
+                    $codes = array_values(array_filter(array_map(
+                        static fn ($c) => strtolower(trim((string) $c)),
+                        $line[$listKey]
+                    )));
+                    sort($codes, SORT_STRING);
+                    $line[$listKey] = $codes;
+                }
+            }
+            if (isset($line['content_submission_ids']) && is_array($line['content_submission_ids'])) {
+                $line['content_submission_ids'] = array_values(array_map(
+                    static fn ($id) => max(0, (int) $id),
+                    $line['content_submission_ids']
+                ));
+            }
+            ksort($line);
+            $lines[] = $line;
+        }
+
+        return (string) json_encode($lines, JSON_UNESCAPED_UNICODE);
+    }
+
+    /**
      * Store DA/DR as int or null so a MySQL string "40" does not rewrite the session on every getCart.
      * Zero is the column default and is not a real metric — keep it null so the drawer does not show "DA 0".
      */
@@ -1131,17 +1169,26 @@ class CatalogController extends Controller
         $removedInactive = array_values(array_unique($removedInactive));
         $removedOwned = array_values(array_unique($removedOwned));
         $cart = $kept;
+        $sessionCart = array_values(session()->get('cart', []));
         // Repriced lines (sensitive add-ons / live listing) should persist.
-        $cartChanged = $removedInactive !== [] || $removedOwned !== [] || $cart !== array_values(session()->get('cart', []));
+        // Compare a canonical fingerprint so key order / 0 vs unset id does not rewrite every load.
+        $cartChanged = $removedInactive !== [] || $removedOwned !== []
+            || $this->cartSessionFingerprint($cart) !== $this->cartSessionFingerprint($sessionCart);
 
-        $approved = ContentSubmission::query()
-            ->forArticlePicker()
-            ->with(['order', 'orderItems.order'])
-            ->where('user_id', auth()->id())
-            ->availableForPicker()
-            ->latest('id')
-            ->limit(100)
-            ->get();
+        $mustIncludeIds = [];
+        foreach ($cart as $line) {
+            foreach ($this->cartLineContentIds($line) as $submissionId) {
+                if ($submissionId > 0) {
+                    $mustIncludeIds[] = $submissionId;
+                }
+            }
+        }
+        $activeCheckoutId = (int) session('checkout_content_submission_id');
+        if ($activeCheckoutId > 0) {
+            $mustIncludeIds[] = $activeCheckoutId;
+        }
+
+        $approved = ContentSubmission::pickerArticlesForUser((int) auth()->id(), $mustIncludeIds);
 
         // Drop articles that are no longer orderable (used/archived). Soft language prefer is UI-only unless require_same_language.
         $approvedById = $approved->keyBy('id');
@@ -6247,7 +6294,19 @@ class CatalogController extends Controller
         }
 
         if ($restoredCart !== []) {
-            $this->putCatalogVisibleCart($restoredCart);
+            $siteIds = collect($restoredCart)->pluck('id')->filter()->unique()->values();
+            $sites = $siteIds->isEmpty()
+                ? collect()
+                : Site::query()->catalogVisible()->whereIn('id', $siteIds)->get()->keyBy('id');
+            $normalized = [];
+            foreach ($restoredCart as $line) {
+                $site = $sites->get((int) ($line['id'] ?? 0));
+                if (! $site) {
+                    continue;
+                }
+                $normalized[] = $this->normalizeCartLineForSite($site, is_array($line) ? $line : []);
+            }
+            $this->putCatalogVisibleCart($normalized);
         }
         if ($submissionId) {
             session()->put('checkout_content_submission_id', $submissionId);
