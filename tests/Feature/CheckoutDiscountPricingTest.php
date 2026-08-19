@@ -111,6 +111,40 @@ class CheckoutDiscountPricingTest extends TestCase
             ->json();
     }
 
+    public function test_ten_percent_sale_on_one_hundred_shows_one_thirteen_then_one_oh_one_seventy(): void
+    {
+        $site = $this->makeSite('tenoff', 100, [
+            'custom_discount_percent' => 10,
+            'custom_discount_starts_at' => now()->subDay(),
+            'custom_discount_ends_at' => now()->addDays(5),
+        ]);
+        $sub = $this->createApprovedSubmission($this->advertiser, null, 0, 'ten off', 'https://example.com/ten');
+        $expected = app(CartPricingService::class)->priceForAdvertiser($site);
+        $this->assertSame(113.0, $expected['list_total']);
+        $this->assertSame(101.7, $expected['total']);
+        $this->assertSame(10.0, $expected['discount_percent']);
+
+        $cart = [[
+            'id' => $site->id,
+            'name' => $site->site_name,
+            'quantity' => 1,
+            'content_submission_id' => $sub->id,
+        ]];
+
+        $html = $this->checkoutPage($cart);
+        $this->assertStringContainsString('€113.00', $html);
+        $this->assertStringContainsString('€101.70', $html);
+        $this->assertStringContainsString('You save €11.30', $html);
+        $this->assertStringContainsString('text-decoration-line-through', $html);
+
+        $this->payWallet($cart, 'TEN10');
+
+        $item = OrderItem::query()->whereHas('order', fn ($q) => $q->where('reference_code', 'TEN10'))->firstOrFail();
+        $this->assertEquals(101.7, (float) $item->price);
+        $this->assertEquals(100.0, (float) $item->publisher_price);
+        $this->assertEquals(1.7, (float) $item->platform_fee_amount);
+    }
+
     public function test_sale_discount_shows_on_checkout_and_charges_floored_price(): void
     {
         $site = $this->makeSite('sale', 90, [

@@ -156,19 +156,37 @@ class CartPricingServiceTest extends TestCase
 
     public function test_modest_discount_reduces_fee_but_keeps_publisher_whole(): void
     {
-        // 10% off €113 = €101.70 > publisher €100 → fee shrinks to €1.70
+        // Publisher list €100 + 10% sale. Advertiser sees €113 then €101.70.
         $site = $this->siteWithCustomDiscount(100, 10);
 
         $result = $this->pricing->priceForAdvertiser($site);
 
         $this->assertSame(113.0, $result['list_total']);
         $this->assertSame(101.7, $result['total']);
+        $this->assertSame(10.0, $result['discount_percent']);
+        $this->assertSame(10.0, $result['discount_percent_nominal']);
+        $this->assertSame(11.3, $result['discount_amount']);
         $this->assertSame(100.0, $result['publisher_price']);
         $this->assertSame(1.7, $result['platform_fee_amount']);
         $this->assertGreaterThanOrEqual(
             $result['publisher_price'] + $result['additional'],
             $result['total']
         );
+    }
+
+    public function test_fifteen_percent_on_three_oh_four_floors_advertiser_at_publisher_list(): void
+    {
+        // Publisher My Sites shows €304 → €258.40. Advertiser still pays €304 (option A).
+        $site = $this->siteWithCustomDiscount(304, 15);
+
+        $result = $this->pricing->priceForAdvertiser($site);
+
+        $this->assertEqualsWithDelta(340.48, $result['list_total'], 0.001);
+        $this->assertSame(304.0, $result['total']);
+        $this->assertSame(15.0, $result['discount_percent_nominal']);
+        $this->assertSame(10.71, $result['discount_percent']);
+        $this->assertSame(304.0, $result['publisher_price']);
+        $this->assertSame(0.0, $result['platform_fee_amount']);
     }
 
     /**

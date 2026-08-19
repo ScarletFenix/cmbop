@@ -395,23 +395,20 @@
         color: var(--brand-primary, #1a585e);
     }
 
-    .site-row-price-advertiser {
+    .site-row-price-sale {
         display: block;
-        font-size: 11px;
-        font-weight: 600;
-        color: #0f766e;
+        font-size: 12px;
+        font-weight: 700;
+        color: #b91c1c;
         line-height: 1.25;
         white-space: normal;
         max-width: 11.5rem;
     }
 
-    .site-row-price-advertiser--pack {
+    .site-row-price-sale--pack {
         color: #334155;
         font-weight: 500;
-    }
-
-    .site-row-price-advertiser__cut {
-        color: #b91c1c;
+        font-size: 11px;
     }
 
     .modern-table td[data-label="Price"] .site-row-price-wrap {
@@ -1030,6 +1027,7 @@
                 <div class="site-row-price-wrap">
                 @php
                     $fmtPct = static fn ($n) => rtrim(rtrim(number_format((float) $n, 1), '0'), '.');
+                    $fmtEur = static fn ($n) => number_format((float) $n, 2);
                     $pubCustomPct = $site->activeCustomDiscountPercent();
                     $pubBulkPct = $site->joinsBulkDiscount()
                         ? (float) $site->bulk_discount_percent
@@ -1038,32 +1036,28 @@
                     $pubJoinedBulk = $pubBulkPct !== null;
                     $bulkMinQty = (int) config('site_promotions.bulk.min_qty', 3);
                     $bulkMaxQty = (int) config('site_promotions.bulk.max_qty', 5);
-                    $cartPricing = app(\App\Services\CartPricingService::class);
-                    $pubSalePricing = $pubShowSaleBadge
-                        ? $cartPricing->priceForAdvertiser($site, null, 1)
+                    $pubListPrice = round((float) $site->price, 2);
+                    $pubAfterPct = static fn (float $list, float $pct): float => round($list * (1 - $pct / 100), 2);
+                    $pubSalePrice = $pubShowSaleBadge
+                        ? $pubAfterPct($pubListPrice, (float) $pubCustomPct)
                         : null;
-                    $pubBulkPricing = $pubJoinedBulk
-                        ? $cartPricing->priceForAdvertiser($site, null, $bulkMinQty)
+                    $pubBulkUnit = $pubJoinedBulk
+                        ? $pubAfterPct($pubListPrice, (float) $pubBulkPct)
                         : null;
-                    $pubSalePay = $pubSalePricing ? (float) ($pubSalePricing['total'] ?? 0) : null;
-                    $pubSaleList = $pubSalePricing ? (float) ($pubSalePricing['list_total'] ?? 0) : null;
-                    $pubSaleEff = $pubSalePricing ? (float) ($pubSalePricing['discount_percent'] ?? 0) : 0;
-                    $pubBulkPay = $pubBulkPricing ? (float) ($pubBulkPricing['total'] ?? 0) : null;
-                    $pubBulkEff = $pubBulkPricing ? (float) ($pubBulkPricing['discount_percent'] ?? 0) : 0;
-                    $pubAdvTip = null;
-                    if ($pubShowSaleBadge && $pubSaleEff > 0 && $pubSaleList > $pubSalePay) {
-                        $pubAdvTip = 'Advertisers see about −'.$fmtPct($pubSaleEff)
-                            .'% off (€'.number_format($pubSaleList, 0)
-                            .' → €'.number_format($pubSalePay, 0)
-                            .') after the fee floor — exclusive better-of with bulk, not stacked.';
-                    }
+                    $saleWinsPack = $pubShowSaleBadge && $pubJoinedBulk
+                        && (float) $pubCustomPct >= (float) $pubBulkPct;
+                    $pubPackUnit = $saleWinsPack ? $pubSalePrice : $pubBulkUnit;
+                    $pubSaleTip = $pubShowSaleBadge
+                        ? 'Timed sale −'.$fmtPct($pubCustomPct).'% off your list (€'.$fmtEur($pubListPrice)
+                            .' → €'.$fmtEur($pubSalePrice).'). Advertisers pay your list plus the platform fee, then this same percent. Exclusive better-of with bulk, not stacked.'
+                        : 'Your timed discount is live on this site.';
                     $pubBulkTip = 'Joined the bulk discount programme ('.$bulkMinQty.'–'.$bulkMaxQty.' articles). Exclusive better-of with a timed sale — not stacked.';
-                    if ($pubShowSaleBadge && $pubCustomPct !== null && (float) $pubCustomPct >= (float) $pubBulkPct) {
+                    if ($saleWinsPack) {
                         $pubBulkTip = 'Timed sale is stronger on packs too — exclusive better-of, not stacked.';
-                    } elseif ($pubJoinedBulk && $pubBulkPay && $pubBulkEff > 0) {
-                        $pubBulkTip = 'Advertisers pay about €'.number_format($pubBulkPay * $bulkMinQty, 0)
-                            .' for '.$bulkMinQty.' articles (−'.$fmtPct($pubBulkEff)
-                            .'%). Exclusive better-of with a timed sale — not stacked.';
+                    } elseif ($pubJoinedBulk && $pubBulkUnit !== null) {
+                        $pubBulkTip = 'Bulk −'.$fmtPct($pubBulkPct).'% off your list (€'.$fmtEur($pubListPrice)
+                            .' → €'.$fmtEur($pubBulkUnit).') on '.$bulkMinQty.'–'.$bulkMaxQty
+                            .' articles. Exclusive better-of with a timed sale — not stacked.';
                     }
                     $featureDaysLeft = ($site->isFeatured() && $site->safeFeaturedUntil())
                         ? max(1, (int) now()->diffInDays($site->safeFeaturedUntil()))
@@ -1071,25 +1065,15 @@
                     $featurePriceLabel = number_format((float) config('site_promotions.feature.price', 10), 0);
                     $featureDaysCfg = (int) config('site_promotions.feature.days', 7);
                 @endphp
-                <span class="site-row-price">€{{ number_format((float) $site->price, 2) }}</span>
-                @if($pubShowSaleBadge && $pubSalePay !== null)
-                    <span class="site-row-price-advertiser">
-                        Advertisers from €{{ number_format($pubSalePay, 0) }}
-                        @if($pubSaleEff > 0)
-                            <span class="site-row-price-advertiser__cut">−{{ $fmtPct($pubSaleEff) }}%</span>
-                        @endif
-                    </span>
-                @elseif($pubJoinedBulk && $pubBulkPay !== null)
-                    <span class="site-row-price-advertiser">
-                        Advertisers from €{{ number_format($pubBulkPay, 0) }}
-                        @if($pubBulkEff > 0)
-                            <span class="site-row-price-advertiser__cut">−{{ $fmtPct($pubBulkEff) }}%</span>
-                        @endif
-                    </span>
+                <span class="site-row-price">€{{ $fmtEur($pubListPrice) }}</span>
+                @if($pubShowSaleBadge && $pubSalePrice !== null)
+                    <span class="site-row-price-sale">€{{ $fmtEur($pubSalePrice) }}</span>
+                @elseif($pubJoinedBulk && $pubBulkUnit !== null)
+                    <span class="site-row-price-sale">€{{ $fmtEur($pubBulkUnit) }}</span>
                 @endif
-                @if($pubJoinedBulk && $pubBulkPay !== null && $pubShowSaleBadge)
-                    <span class="site-row-price-advertiser site-row-price-advertiser--pack">
-                        Pack of {{ $bulkMinQty }} from €{{ number_format($pubBulkPay * $bulkMinQty, 0) }}
+                @if($pubJoinedBulk && $pubPackUnit !== null && $pubShowSaleBadge)
+                    <span class="site-row-price-sale site-row-price-sale--pack">
+                        Pack of {{ $bulkMinQty }} from €{{ $fmtEur($pubPackUnit * $bulkMinQty) }}
                     </span>
                 @endif
                 <span class="site-row-price-meta">
@@ -1105,7 +1089,7 @@
                         <span class="badge bg-danger"
                               data-glass-tip
                               data-glass-tip-title="Timed sale −{{ $fmtPct($pubCustomPct) }}% (configured)"
-                              data-glass-tip-body="{{ $pubAdvTip ?: 'Your timed discount is live on this site.' }}"
+                              data-glass-tip-body="{{ $pubSaleTip }}"
                               data-glass-tip-placement="top"
                               data-glass-tip-hover-only="1">−{{ $fmtPct($pubCustomPct) }}%</span>
                     @endif
@@ -1223,14 +1207,15 @@
                         data-id="{{ $site->id }}"
                         data-name="{{ $site->site_name }}"
                         data-percent="{{ $site->custom_discount_percent }}"
+                        data-price="{{ $pubListPrice }}"
                         data-ends="{{ optional($site->safeCustomDiscountEndsAt())?->toIso8601String() }}"
                         aria-pressed="{{ $site->hasActiveCustomDiscount() ? 'true' : 'false' }}"
                         aria-label="{{ $site->hasActiveCustomDiscount() ? 'Timed discount active' : 'Set timed discount' }}"
                         data-glass-tip
                         data-glass-tip-title="{{ $site->hasActiveCustomDiscount() ? 'Timed sale −'.$fmtPct($pubCustomPct).'%' : 'Set timed sale' }}"
                         data-glass-tip-body="{{ $site->hasActiveCustomDiscount()
-                            ? 'Live until '.optional($site->safeCustomDiscountEndsAt())->timezone(config('app.timezone'))->format('j M').'. Advertisers get the better of this or bulk — not both.'
-                            : 'Temporary % off for a limited time. Advertisers see the better of this or bulk — not both.' }}"
+                            ? 'Live until '.optional($site->safeCustomDiscountEndsAt())->timezone(config('app.timezone'))->format('j M').'. Off your list (€'.$fmtEur($pubListPrice).' → €'.$fmtEur($pubSalePrice).'). Advertisers pay list plus the platform fee, then this same percent. Exclusive with bulk — not both.'
+                            : 'Temporary % off your list price. Advertisers pay your list plus the platform fee, then this same percent. Exclusive with bulk — not both.' }}"
                         data-glass-tip-placement="top">
                     <i class="fa fa-percent" aria-hidden="true"></i>
                     <span class="site-offer-chip__label">{{ $site->hasActiveCustomDiscount()
@@ -1243,6 +1228,7 @@
                         data-id="{{ $site->id }}"
                         data-name="{{ $site->site_name }}"
                         data-percent="{{ $pubBulkPct }}"
+                        data-price="{{ $pubListPrice }}"
                         data-joined="1"
                         aria-pressed="true"
                         aria-label="Edit or leave bulk"
@@ -1258,6 +1244,7 @@
                         class="site-offer-chip btn-bulk-site"
                         data-id="{{ $site->id }}"
                         data-name="{{ $site->site_name }}"
+                        data-price="{{ $pubListPrice }}"
                         data-joined="0"
                         aria-pressed="false"
                         aria-label="Join bulk"
