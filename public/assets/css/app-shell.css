@@ -57,6 +57,18 @@ body.role-shell-publisher { --role-accent: #c45c26; }
 body.role-shell-admin { --role-accent: #1a585e; }
 body.role-shell-marketing { --role-accent: #1a585e; }
 
+/* Short pages: grow the content column so the footer sits on the
+   viewport edge. Do not use a 100vh min-height on #content — that
+   stretches the white cards, not just the page mist. */
+body.role-shell-advertiser,
+body.role-shell-publisher,
+body.role-shell-admin,
+body.role-shell-marketing {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
+
 body.role-shell-advertiser .top-navbar,
 body.role-shell-publisher .top-navbar,
 body.role-shell-admin .top-navbar,
@@ -468,6 +480,7 @@ footer,
   min-height: 0;
   min-width: 0;
   max-width: 100%;
+  flex: 1 0 auto;
   overflow-x: visible;
   overflow-y: visible;
 }
@@ -490,19 +503,22 @@ footer,
 footer.app-shell-footer,
 body > footer {
   margin-left: var(--shell-sidebar-width);
+  margin-top: auto;
+  flex-shrink: 0;
   padding: 15px;
   text-align: center;
   background: #fff;
   border-top: 1px solid var(--shell-border);
 }
 
-/* Legal + Trustpilot stay a group; payment logos wrap instead of merging. */
+/* Grid may stack groups. The logo strip stays one line and never
+   shrinks, so Visa–Bitcoin cannot merge or wrap onto each other. */
 .app-shell-footer__grid {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 12px 20px;
+  gap: 10px 16px;
   width: 100%;
   min-width: 0;
   text-align: left;
@@ -528,29 +544,33 @@ body > footer {
 }
 .app-shell-footer__grid > .payment-trust {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: flex-end;
   gap: 10px 12px;
-  flex: 1 1 16rem;
+  flex: 1 1 auto;
   min-width: 0;
   overflow: visible;
 }
 .app-shell-footer__grid .payment-trust__secure {
   min-width: 0;
-  flex: 1 1 12rem;
+  flex: 1 1 8rem;
 }
 .app-shell-footer__grid .payment-trust__secure span {
-  overflow: visible;
-  text-overflow: unset;
-  white-space: normal;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow-wrap: normal;
   word-break: normal;
 }
 .app-shell-footer__grid .payment-trust__methods {
-  flex: 1 1 auto;
-  flex-wrap: wrap;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
   justify-content: flex-end;
+  gap: 8px 10px;
+}
+.app-shell-footer__grid .payment-trust__logo {
+  flex-shrink: 0;
 }
 
 /* Last dashboard block (Recent orders / Recent tasks): extra mist gap
