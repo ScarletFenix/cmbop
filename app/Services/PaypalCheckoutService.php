@@ -190,10 +190,10 @@ class PaypalCheckoutService
         ]);
         $data = $response->json() ?? [];
         $orderId = (string) ($data['id'] ?? '');
-        $approveUrl = $this->linkHref($data, 'approve');
+        $approveUrl = $this->linkHref($data, 'approve') ?: $this->linkHref($data, 'payer-action');
 
         if ($orderId === '' || $approveUrl === '') {
-            throw new RuntimeException('PayPal did not return an approve link.');
+            throw new RuntimeException(UserMessages::get('payment.paypal_rejected', ['code' => 'NO-APPROVE-URL']));
         }
 
         return [
@@ -492,21 +492,22 @@ class PaypalCheckoutService
         }
 
         $response = $this->fetchAccessToken($this->baseUrl());
+        $token = $this->oauthAccessToken($response);
 
-        if ($response?->successful()) {
+        if ($token !== '') {
             if ($this->resolvedBaseUrl !== null) {
-                return $this->tokenFromOAuthResponse($response);
+                return $token;
             }
 
             return $this->rememberAccessToken($cacheKey, $response);
         }
 
         $canFallback = $allowHostFallback && $this->canProbeAlternateHost();
-        $primaryMissed = $response === null || (int) $response->status() === 401;
-        if ($canFallback && $primaryMissed) {
+        if ($canFallback) {
             $altHost = $this->alternateBaseUrl();
             $alt = $this->fetchAccessToken($altHost);
-            if ($alt?->successful()) {
+            $altToken = $this->oauthAccessToken($alt);
+            if ($altToken !== '') {
                 Log::warning('PayPal credentials matched the other environment; using that host for this request', [
                     'configured_mode' => $this->mode(),
                     'working_host' => $altHost,
@@ -515,7 +516,7 @@ class PaypalCheckoutService
                 $this->resolvedBaseUrl = $altHost;
 
                 // Do not cache: the next process must re-probe until PAYPAL_MODE matches.
-                return $this->tokenFromOAuthResponse($alt);
+                return $altToken;
             }
         }
 
@@ -529,11 +530,7 @@ class PaypalCheckoutService
             'mode' => $this->mode(),
             'error' => $paypalError,
         ], fn ($value) => $value !== null && $value !== ''));
-        throw new RuntimeException(UserMessages::get(
-            (int) $response->status() === 401
-                ? 'payment.paypal_auth'
-                : 'payment.paypal_unavailable'
-        ));
+        throw new RuntimeException($this->oauthFailureMessage($response));
     }
 
     private function paypalRequest(string $method, string $path, mixed $body = null, array $headers = [], bool $throw = true): Response
@@ -807,6 +804,7 @@ class PaypalCheckoutService
         throw new RuntimeException(match ($issue) {
             'INVALID_RETURN_URL', 'INVALID_CANCEL_URL' => UserMessages::get('payment.paypal_return_url'),
             'DUPLICATE_INVOICE_ID' => UserMessages::get('payment.paypal_duplicate'),
+            'PAYEE_ACCOUNT_RESTRICTED', 'PAYEE_ACCOUNT_LOCKED', 'PAYEE_ACCOUNT_INVALID', 'PAYEE_NOT_ENABLED' => UserMessages::get('payment.paypal_restricted'),
             default => $this->safePaypalUserMessage($response),
         });
     }
@@ -843,7 +841,12 @@ class PaypalCheckoutService
             }
         }
 
-        return UserMessages::get('payment.paypal_unavailable');
+        $status = (int) $response->status();
+        if ($status >= 500) {
+            return UserMessages::get('payment.paypal_unavailable');
+        }
+
+        return UserMessages::get('payment.paypal_rejected', ['code' => $this->diagnosticCode($response)]);
     }
 
     private function firstPaypalDescription(Response $response): string
@@ -903,7 +906,7 @@ class PaypalCheckoutService
     {
         $token = trim((string) $response->json('access_token'));
         if ($token === '') {
-            throw new RuntimeException(UserMessages::get('payment.paypal_unavailable'));
+            throw new RuntimeException(UserMessages::get('payment.paypal_unreachable'));
         }
 
         return $token;
@@ -928,6 +931,65 @@ class PaypalCheckoutService
         }
 
         return preg_replace('/\s+/u', '', trim($value)) ?? trim($value);
+    }
+
+    private function oauthAccessToken(?Response $response): string
+    {
+        if ($response === null) {
+            return '';
+        }
+
+        return trim((string) $response->json('access_token'));
+    }
+
+    private function oauthLooksLikeHtml(Response $response): bool
+    {
+        $body = ltrim((string) $response->body());
+
+        return $body !== '' && ($body[0] === '<' || str_starts_with(strtolower($body), '<!doctype'));
+    }
+
+    private function oauthLooksLikeAuthFailure(Response $response): bool
+    {
+        $error = $this->safePaypalErrorCode($response);
+        if (in_array($error, ['invalid_client', 'unauthorized_client', 'invalid_request', 'invalid_grant'], true)) {
+            return true;
+        }
+
+        $status = (int) $response->status();
+
+        return in_array($status, [400, 401], true) && ! $this->oauthLooksLikeHtml($response);
+    }
+
+    private function oauthFailureMessage(Response $response): string
+    {
+        $status = (int) $response->status();
+        if ($this->oauthLooksLikeAuthFailure($response)) {
+            return UserMessages::get('payment.paypal_auth');
+        }
+        if ($status === 403 || $this->oauthLooksLikeHtml($response) || ($response->successful() && $this->oauthAccessToken($response) === '')) {
+            return UserMessages::get('payment.paypal_unreachable');
+        }
+        if ($status >= 500) {
+            return UserMessages::get('payment.paypal_unavailable');
+        }
+
+        return UserMessages::get('payment.paypal_rejected', ['code' => $this->diagnosticCode($response)]);
+    }
+
+    private function diagnosticCode(Response $response): string
+    {
+        $issue = $this->safePaypalIssue($response);
+        if ($issue !== '') {
+            return $issue;
+        }
+
+        $error = $this->safePaypalErrorCode($response);
+        if ($error !== '') {
+            return strtoupper(str_replace('.', '-', $error));
+        }
+
+        return 'HTTP-'.(int) $response->status();
     }
 
     private function safePaypalErrorCode(Response $response): string

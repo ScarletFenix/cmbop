@@ -548,6 +548,76 @@ class PaypalCheckoutServiceTest extends TestCase
         });
     }
 
+    public function test_oauth_400_explains_sandbox_versus_live_keys(): void
+    {
+        Http::fake([
+            'https://api-m.sandbox.paypal.com/v1/oauth2/token' => Http::response([
+                'error' => 'invalid_client',
+                'error_description' => 'Client Authentication failed',
+            ], 400),
+            'https://api-m.paypal.com/v1/oauth2/token' => Http::response([
+                'error' => 'invalid_client',
+            ], 400),
+        ]);
+
+        try {
+            (new PaypalCheckoutService)->accessToken();
+            $this->fail('Expected a PayPal OAuth exception.');
+        } catch (RuntimeException $e) {
+            $this->assertSame(UserMessages::get('payment.paypal_auth'), $e->getMessage());
+        }
+    }
+
+    public function test_oauth_uses_live_host_when_sandbox_returns_400(): void
+    {
+        Http::fake(function ($request) {
+            $url = $request->url();
+            if (str_contains($url, 'https://api-m.sandbox.paypal.com/v1/oauth2/token')) {
+                return Http::response(['error' => 'invalid_client'], 400);
+            }
+            if (str_contains($url, 'https://api-m.paypal.com/v1/oauth2/token')) {
+                return Http::response([
+                    'access_token' => 'tok_live',
+                    'expires_in' => 300,
+                    'token_type' => 'Bearer',
+                ], 200);
+            }
+            if (str_contains($url, 'https://api-m.paypal.com/v2/checkout/orders')) {
+                return Http::response([
+                    'id' => 'PO-400-LIVE',
+                    'status' => 'CREATED',
+                    'links' => [
+                        ['rel' => 'approve', 'href' => 'https://www.paypal.com/checkoutnow?token=PO-400-LIVE'],
+                    ],
+                ], 201);
+            }
+
+            return Http::response(['name' => 'RESOURCE_NOT_FOUND'], 404);
+        });
+
+        $created = (new PaypalCheckoutService)->createOrder(12.5, [
+            'type' => PaypalCheckoutService::TYPE_ORDER_CHECKOUT,
+            'user_id' => 9,
+            'reference_code' => 'PP-400-LIVE',
+        ], 'https://example.test/return', 'https://example.test/cancel');
+
+        $this->assertSame('PO-400-LIVE', $created['id']);
+    }
+
+    public function test_oauth_html_block_is_unreachable_not_unavailable(): void
+    {
+        Http::fake(function () {
+            return Http::response('<html><h1>Access Denied</h1></html>', 403);
+        });
+
+        try {
+            (new PaypalCheckoutService)->accessToken();
+            $this->fail('Expected PayPal to be unreachable.');
+        } catch (RuntimeException $e) {
+            $this->assertSame(UserMessages::get('payment.paypal_unreachable'), $e->getMessage());
+        }
+    }
+
     public function test_oauth_probes_live_when_sandbox_connection_fails(): void
     {
         Http::fake(function ($request) {
@@ -613,8 +683,8 @@ class PaypalCheckoutServiceTest extends TestCase
                 'name' => 'INVALID_REQUEST',
                 'message' => 'Request is not well formed.',
                 'details' => [[
-                    'issue' => 'PAYEE_ACCOUNT_RESTRICTED',
-                    'description' => 'The payee account is restricted and cannot receive payments.',
+                    'issue' => 'CURRENCY_NOT_SUPPORTED',
+                    'description' => 'The specified currency is not supported.',
                 ]],
             ], 422);
         });
@@ -627,10 +697,82 @@ class PaypalCheckoutServiceTest extends TestCase
             $this->fail('Expected a PayPal API description.');
         } catch (RuntimeException $e) {
             $this->assertSame(
-                'The payee account is restricted and cannot receive payments.',
+                'The specified currency is not supported.',
                 $e->getMessage()
             );
         }
+    }
+
+    public function test_create_order_maps_restricted_payee(): void
+    {
+        $this->fakePaypal([
+            '/v2/checkout/orders' => Http::response([
+                'name' => 'UNPROCESSABLE_ENTITY',
+                'details' => [['issue' => 'PAYEE_ACCOUNT_RESTRICTED']],
+            ], 422),
+        ]);
+
+        try {
+            $this->paypal->createOrder(10, [
+                'user_id' => 1,
+                'reference_code' => 'REF-RESTRICTED',
+            ], 'https://app.test/ok', 'https://app.test/no');
+            $this->fail('Expected a restricted PayPal account exception.');
+        } catch (RuntimeException $e) {
+            $this->assertSame(UserMessages::get('payment.paypal_restricted'), $e->getMessage());
+        }
+    }
+
+    public function test_create_order_includes_issue_when_description_is_too_long(): void
+    {
+        $this->fakePaypal([
+            '/v2/checkout/orders' => Http::response([
+                'name' => 'INVALID_REQUEST',
+                'message' => str_repeat('Request is not well formed. ', 20),
+                'details' => [[
+                    'issue' => 'FIELD_NOT_VALID',
+                    'description' => str_repeat('The value of a field does not conform to the expected format. ', 8),
+                ]],
+            ], 422),
+        ]);
+
+        try {
+            $this->paypal->createOrder(10, [
+                'user_id' => 1,
+                'reference_code' => 'REF-LONG',
+            ], 'https://app.test/ok', 'https://app.test/no');
+            $this->fail('Expected a PayPal issue code.');
+        } catch (RuntimeException $e) {
+            $this->assertSame(
+                UserMessages::get('payment.paypal_rejected', ['code' => 'FIELD_NOT_VALID']),
+                $e->getMessage()
+            );
+            $this->assertStringNotContainsString(
+                UserMessages::get('payment.paypal_unavailable'),
+                $e->getMessage()
+            );
+        }
+    }
+
+    public function test_create_order_accepts_payer_action_link(): void
+    {
+        $this->fakePaypal([
+            '/v2/checkout/orders' => Http::response([
+                'id' => 'PO-ACTION',
+                'status' => 'PAYER_ACTION_REQUIRED',
+                'links' => [
+                    ['rel' => 'payer-action', 'href' => 'https://www.sandbox.paypal.com/checkoutnow?token=PO-ACTION'],
+                ],
+            ], 201),
+        ]);
+
+        $created = $this->paypal->createOrder(10, [
+            'user_id' => 1,
+            'reference_code' => 'REF-ACTION',
+        ], 'https://app.test/ok', 'https://app.test/no');
+
+        $this->assertSame('PO-ACTION', $created['id']);
+        $this->assertSame('https://www.sandbox.paypal.com/checkoutnow?token=PO-ACTION', $created['approve_url']);
     }
 
     public function test_env_example_does_not_commit_paypal_secrets(): void

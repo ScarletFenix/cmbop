@@ -295,6 +295,28 @@ class CheckoutPaypalProcessTest extends TestCase
         $this->assertSame(0, Order::where('reference_code', 'PP-401')->count());
     }
 
+    public function test_process_order_paypal_oauth_400_is_not_generic_unavailable(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        $this->enablePaypal();
+        Http::fake([
+            'https://api-m.sandbox.paypal.com/v1/oauth2/token' => Http::response([
+                'error' => 'invalid_client',
+            ], 400),
+            'https://api-m.paypal.com/v1/oauth2/token' => Http::response([
+                'error' => 'invalid_client',
+            ], 400),
+        ]);
+
+        $this->postPaypalCheckout('PP-400')
+            ->assertOk()
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', UserMessages::get('payment.paypal_auth'))
+            ->assertJsonMissing(['message' => UserMessages::get('payment.paypal_unavailable')]);
+
+        $this->assertSame(0, Order::where('reference_code', 'PP-400')->count());
+    }
+
     public function test_process_order_paypal_connection_error_is_not_generic_order_error(): void
     {
         config(['content_moderation.enabled' => false]);

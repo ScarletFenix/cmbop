@@ -80,6 +80,26 @@ class PaypalStatusCommandTest extends TestCase
         $this->assertStringNotContainsString('paypal-secret-test', $output);
     }
 
+    public function test_status_points_at_live_when_sandbox_oauth_returns_400(): void
+    {
+        $this->enablePaypal();
+        Http::fake([
+            'https://api-m.sandbox.paypal.com/v1/oauth2/token' => Http::response([
+                'error' => 'invalid_client',
+            ], 400),
+            'https://api-m.paypal.com/v1/oauth2/token' => Http::response([
+                'access_token' => 'tok_live',
+                'expires_in' => 300,
+                'token_type' => 'Bearer',
+            ], 200),
+        ]);
+
+        $this->assertSame(1, Artisan::call('paypal:status'));
+        $output = Artisan::output();
+        $this->assertStringContainsString('These keys work on https://api-m.paypal.com', $output);
+        $this->assertStringContainsString('PAYPAL_MODE=live', $output);
+    }
+
     public function test_status_rejects_webhook_id_used_as_secret(): void
     {
         $this->enablePaypal();
