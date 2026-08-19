@@ -66,6 +66,8 @@ class MarketingPanelHistoryTest extends TestCase
         $this->assertStringContainsString('role-shell-marketing', $html);
         $this->assertStringContainsString('mkt-history-table', $html);
         $this->assertStringContainsString('mkt-history-table__subject-line', $html);
+        $this->assertStringContainsString('mkt-history-table__col-when', $html);
+        $this->assertStringContainsString('mkt-history-table__col-details', $html);
         $this->assertStringContainsString('See full history', $html);
         $this->assertStringContainsString(ActivityLog::query()->first()->created_at->diffForHumans(), $html);
         $this->assertStringContainsString(ActivityLog::query()->first()->created_at->format('d M Y H:i'), $html);
@@ -76,8 +78,11 @@ class MarketingPanelHistoryTest extends TestCase
 
         $css = (string) file_get_contents(public_path('assets/css/marketing-shell.css'));
         $this->assertStringContainsString('body.role-shell-marketing .mkt-history-table > :not(caption) > * > *', $css);
+        $this->assertStringContainsString('table-layout: fixed', $css);
         $this->assertStringContainsString('vertical-align: top', $css);
         $this->assertStringContainsString('white-space: nowrap', $css);
+        $this->assertStringContainsString('text-overflow: ellipsis', $css);
+        $this->assertStringContainsString('.mkt-history-table__col-when', $css);
         $this->assertStringContainsString('.mkt-history-table__removed', $css);
     }
 
