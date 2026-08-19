@@ -607,9 +607,6 @@
                                 <i class="fa-solid fa-image text-muted" style="font-size: 28px;" aria-hidden="true"></i>
                                 <span class="small text-muted">Screenshot not available yet</span>
                             </div>
-                            <p class="small text-muted mb-0 mt-1 catalog-preview-caption">
-                                Homepage capture
-                            </p>
                         @else
                             <div class="site-preview-fallback bg-light border rounded d-inline-flex flex-column align-items-center justify-content-center gap-2 px-3" role="img" aria-label="Screenshot not available yet">
                                 <i class="fa-solid fa-image text-muted" style="font-size: 28px;" aria-hidden="true"></i>
@@ -629,9 +626,6 @@
                                 <span>No description yet</span>
                             @endif
                         </div>
-                        @if(\App\Support\CatalogPlaceholderListing::matches($site))
-                            <p class="small text-muted mb-0 mt-2 catalog-placeholder-listing">Placeholder listing — sample copy, not a live publisher brief.</p>
-                        @endif
                         @if($site->lastPublicationLabel())
                             <p class="text-muted small mb-0 mt-1" style="color:#94a3b8 !important;">
                                 {{ $site->lastPublicationLabel() }}
@@ -1362,9 +1356,6 @@
                                 <i class="fa-solid fa-image text-muted" style="font-size: 24px;" aria-hidden="true"></i>
                                 <span class="small text-muted">Screenshot not available yet</span>
                             </div>
-                            <p class="small text-muted mb-0 mt-1 catalog-preview-caption">
-                                Homepage capture
-                            </p>
                         @else
                             <span class="text-muted small">Screenshot not available yet</span>
                         @endif
@@ -1434,21 +1425,16 @@
                         @endif
                     </dd>
                 </div>
-                @if($site->description || \App\Support\CatalogPlaceholderListing::matches($site))
+                @if($site->description)
                     <div class="catalog-card-details__row">
                         <dt>About this site</dt>
                         {{-- Cards stay plain-text; desktop expand keeps rich HTML via safeDescriptionHtml().
                              Hide-mode rows stay gated — publishers often paste the listing URL here. --}}
                         <dd class="catalog-card-details__description text-muted small">
-                            @if($site->description)
-                                @if($inCatalogHideMode && ! $showsIdentity)
-                                    Use the eye to show this listing’s name and URL, then the description appears.
-                                @else
-                                    {{ site_description_excerpt($site->description) }}
-                                @endif
-                            @endif
-                            @if(\App\Support\CatalogPlaceholderListing::matches($site))
-                                <span class="d-block mt-1 catalog-placeholder-listing">Placeholder listing — sample copy, not a live publisher brief.</span>
+                            @if($inCatalogHideMode && ! $showsIdentity)
+                                Use the eye to show this listing’s name and URL, then the description appears.
+                            @else
+                                {{ site_description_excerpt($site->description) }}
                             @endif
                         </dd>
                     </div>
