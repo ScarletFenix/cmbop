@@ -480,6 +480,14 @@ footer,
 
 /* ——— Content + footer ——— */
 #content,
+#main-content,
+footer.app-shell-footer,
+body > footer {
+  width: calc(100% - var(--shell-sidebar-width));
+  max-width: calc(100% - var(--shell-sidebar-width));
+  box-sizing: border-box;
+}
+#content,
 #main-content {
   margin-left: var(--shell-sidebar-width);
   /* Extra top padding so Poppins 700 page titles are not sheared.
@@ -488,7 +496,6 @@ footer,
   padding: 28px 28px var(--shell-footer-clearance);
   min-height: calc(100dvh - var(--shell-topbar-height) - var(--shell-footer-height));
   min-width: 0;
-  max-width: 100%;
   flex: 1 0 auto;
   overflow-x: visible;
   overflow-y: visible;
@@ -507,7 +514,13 @@ footer,
   flex: 1 1 auto;
 }
 #content.collapsed,
-#main-content.collapsed { margin-left: var(--shell-sidebar-collapsed); }
+#main-content.collapsed,
+footer.collapsed,
+body > footer.collapsed {
+  margin-left: var(--shell-sidebar-collapsed);
+  width: calc(100% - var(--shell-sidebar-collapsed));
+  max-width: calc(100% - var(--shell-sidebar-collapsed));
+}
 
 footer.app-shell-footer,
 body > footer {
@@ -538,7 +551,7 @@ body > footer {
   flex-wrap: nowrap;
   align-items: center;
   gap: 12px;
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   min-width: 0;
 }
 .app-shell-footer__legal {
@@ -546,11 +559,26 @@ body > footer {
   flex-wrap: nowrap;
   align-items: center;
   gap: 0 4px;
-  flex: 0 1 auto;
-  min-width: 0;
+  flex: 0 0 auto;
+}
+.app-shell-footer__legal,
+.app-shell-footer__legal span,
+.app-shell-footer__legal .btn-link {
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .app-shell-footer__left > .trustpilot-trust {
   flex: 0 0 auto;
+}
+.app-shell-footer__left .trustpilot-trust,
+.app-shell-footer__left .trustpilot-trust__text {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.app-shell-footer__left .trustpilot-trust__cta {
+  display: none !important;
 }
 .app-shell-footer__grid > .payment-trust {
   display: flex;
@@ -564,7 +592,8 @@ body > footer {
 }
 .app-shell-footer__grid .payment-trust__secure {
   min-width: 0;
-  flex: 1 1 8rem;
+  flex: 0 1 0;
+  overflow: hidden;
 }
 .app-shell-footer__grid .payment-trust__secure span {
   overflow: hidden;
@@ -592,10 +621,6 @@ body > footer {
   display: flex;
   flex-direction: column;
   min-width: 0;
-}
-footer.collapsed,
-body > footer.collapsed {
-  margin-left: var(--shell-sidebar-collapsed);
 }
 
 /* ——— Balance ——— */
@@ -738,6 +763,8 @@ body > footer.collapsed {
   footer,
   body > footer {
     margin-left: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
   }
   #content,
   #main-content {
