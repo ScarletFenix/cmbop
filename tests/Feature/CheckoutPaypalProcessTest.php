@@ -308,7 +308,7 @@ class CheckoutPaypalProcessTest extends TestCase
         $this->postPaypalCheckout('PP-CONN')
             ->assertOk()
             ->assertJsonPath('success', false)
-            ->assertJsonPath('message', UserMessages::get('payment.paypal_unavailable'))
+            ->assertJsonPath('message', UserMessages::get('payment.paypal_unreachable'))
             ->assertJsonMissing(['message' => 'We could not process your order. Please try again.'])
             ->assertJsonMissing(['message' => 'Failed to start PayPal checkout. Please try again.']);
     }

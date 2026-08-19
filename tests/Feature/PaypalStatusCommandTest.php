@@ -89,6 +89,22 @@ class PaypalStatusCommandTest extends TestCase
         $this->assertStringContainsString(UserMessages::get('payment.paypal_webhook_as_secret'), Artisan::output());
     }
 
+    public function test_status_warns_when_webhook_id_is_not_wh_prefixed(): void
+    {
+        $this->enablePaypal();
+        config(['services.paypal.webhook_id' => '40650356J02082735']);
+        Http::fake([
+            'https://api-m.sandbox.paypal.com/v1/oauth2/token' => Http::response([
+                'access_token' => 'tok_test',
+                'expires_in' => 300,
+                'token_type' => 'Bearer',
+            ], 200),
+        ]);
+
+        $this->assertSame(0, Artisan::call('paypal:status'));
+        $this->assertStringContainsString('should start with WH-', Artisan::output());
+    }
+
     public function test_status_fails_when_unconfigured(): void
     {
         config([

@@ -50,6 +50,7 @@ return [
         'leftover_credit_applied' => 'This leftover was paid using the card credit already in your wallet.',
         'paypal_auth' => 'PayPal rejected these credentials. Use sandbox keys with sandbox mode, or live keys with live mode.',
         'paypal_unavailable' => 'PayPal is temporarily unavailable. Please try again or use another payment method.',
+        'paypal_unreachable' => 'This server could not reach PayPal. Try again in a moment, or pay with wallet or card.',
         'paypal_webhook_as_secret' => 'PAYPAL_SECRET is a webhook ID (WH-…). Paste the REST app Secret from the PayPal dashboard, not the webhook ID.',
         'paypal_return_url' => 'PayPal needs a public https:// return URL. Set APP_URL to your live domain, then run php artisan config:clear.',
         'paypal_duplicate' => 'This checkout was already sent to PayPal. Refresh the page and try again.',

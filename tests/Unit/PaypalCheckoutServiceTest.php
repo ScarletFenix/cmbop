@@ -4,6 +4,7 @@ namespace Tests\Unit;
 
 use App\Services\PaypalCheckoutService;
 use App\Support\UserMessages;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -547,6 +548,100 @@ class PaypalCheckoutServiceTest extends TestCase
         });
     }
 
+    public function test_oauth_probes_live_when_sandbox_connection_fails(): void
+    {
+        Http::fake(function ($request) {
+            $url = $request->url();
+            if (str_contains($url, 'https://api-m.sandbox.paypal.com/')) {
+                throw new ConnectionException('cURL error 7: Failed to connect to api-m.sandbox.paypal.com');
+            }
+            if (str_contains($url, 'https://api-m.paypal.com/v1/oauth2/token')) {
+                return Http::response([
+                    'access_token' => 'tok_live',
+                    'expires_in' => 300,
+                    'token_type' => 'Bearer',
+                ], 200);
+            }
+            if (str_contains($url, 'https://api-m.paypal.com/v2/checkout/orders')) {
+                return Http::response([
+                    'id' => 'PO-CONN-LIVE',
+                    'status' => 'CREATED',
+                    'links' => [
+                        ['rel' => 'approve', 'href' => 'https://www.paypal.com/checkoutnow?token=PO-CONN-LIVE'],
+                    ],
+                ], 201);
+            }
+
+            return Http::response(['name' => 'RESOURCE_NOT_FOUND'], 404);
+        });
+
+        $created = (new PaypalCheckoutService)->createOrder(12.5, [
+            'type' => PaypalCheckoutService::TYPE_ORDER_CHECKOUT,
+            'user_id' => 9,
+            'reference_code' => 'PP-CONN-LIVE',
+        ], 'https://example.test/return', 'https://example.test/cancel');
+
+        $this->assertSame('PO-CONN-LIVE', $created['id']);
+    }
+
+    public function test_oauth_unreachable_when_both_hosts_fail_to_connect(): void
+    {
+        Http::fake(function () {
+            throw new ConnectionException('cURL error 7: Failed to connect');
+        });
+
+        try {
+            (new PaypalCheckoutService)->accessToken();
+            $this->fail('Expected PayPal to be unreachable.');
+        } catch (RuntimeException $e) {
+            $this->assertSame(UserMessages::get('payment.paypal_unreachable'), $e->getMessage());
+        }
+    }
+
+    public function test_create_order_surfaces_safe_paypal_description(): void
+    {
+        Http::fake(function ($request) {
+            if (str_contains($request->url(), '/v1/oauth2/token')) {
+                return Http::response([
+                    'access_token' => 'tok_test',
+                    'expires_in' => 300,
+                    'token_type' => 'Bearer',
+                ], 200);
+            }
+
+            return Http::response([
+                'name' => 'INVALID_REQUEST',
+                'message' => 'Request is not well formed.',
+                'details' => [[
+                    'issue' => 'PAYEE_ACCOUNT_RESTRICTED',
+                    'description' => 'The payee account is restricted and cannot receive payments.',
+                ]],
+            ], 422);
+        });
+
+        try {
+            $this->paypal->createOrder(10, [
+                'user_id' => 1,
+                'reference_code' => 'REF-DESC',
+            ], 'https://app.test/ok', 'https://app.test/no');
+            $this->fail('Expected a PayPal API description.');
+        } catch (RuntimeException $e) {
+            $this->assertSame(
+                'The payee account is restricted and cannot receive payments.',
+                $e->getMessage()
+            );
+        }
+    }
+
+    public function test_env_example_does_not_commit_paypal_secrets(): void
+    {
+        $env = (string) file_get_contents(base_path('.env.example'));
+
+        $this->assertMatchesRegularExpression('/^PAYPAL_CLIENT_ID=\s*$/m', $env);
+        $this->assertMatchesRegularExpression('/^PAYPAL_SECRET=\s*$/m', $env);
+        $this->assertDoesNotMatchRegularExpression('/^PAYPAL_CLIENT_ID=.+/m', $env);
+    }
+
     public function test_oauth_strips_interior_whitespace_from_credentials(): void
     {
         $this->enablePaypal([
@@ -590,6 +685,7 @@ class PaypalCheckoutServiceTest extends TestCase
         $this->assertTrue($snap['configured']);
         $this->assertTrue($snap['client_id_set']);
         $this->assertTrue($snap['secret_set']);
+        $this->assertTrue($snap['webhook_id_ok']);
         $this->assertSame(strlen('paypal-secret-test'), $snap['secret_length']);
         $this->assertStringStartsWith('paypal', $snap['client_id_hint']);
         $this->assertStringNotContainsString('paypal-secret-test', json_encode($snap));
