@@ -32,7 +32,11 @@ class PortalWrappingCssTest extends TestCase
             $css
         );
         $this->assertDoesNotMatchRegularExpression(
-            '/#content,\s*#main-content\s*\{[^}]*min-height:\s*calc\(\s*100vh/s',
+            '/#content,\s*#main-content\s*\{[^}]*min-height:\s*calc\(\s*100vh\s*-/s',
+            $css
+        );
+        $this->assertMatchesRegularExpression(
+            '/#content,\s*#main-content\s*\{[^}]*min-height:\s*calc\(\s*100dvh/s',
             $css
         );
         $this->assertMatchesRegularExpression(
@@ -40,7 +44,15 @@ class PortalWrappingCssTest extends TestCase
             $css
         );
         $this->assertMatchesRegularExpression(
-            '/\.app-shell-footer__grid\s*\{[^}]*flex-wrap:\s*wrap/s',
+            '/\.app-shell-footer__grid\s*\{[^}]*flex-wrap:\s*nowrap/s',
+            $css
+        );
+        $this->assertMatchesRegularExpression(
+            '/\.app-shell-footer__left\s*\{[^}]*flex:\s*0 1 auto/s',
+            $css
+        );
+        $this->assertMatchesRegularExpression(
+            '/#sidebar\s*\{[^}]*flex:\s*none/s',
             $css
         );
         $this->assertMatchesRegularExpression(
