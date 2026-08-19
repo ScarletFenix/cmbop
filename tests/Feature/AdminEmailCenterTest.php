@@ -1002,6 +1002,62 @@ class AdminEmailCenterTest extends TestCase
         $this->assertSame(0, EmailLog::query()->where('status', EmailLog::STATUS_DELIVERED)->count());
     }
 
+    public function test_retry_rebuilds_campaign_log_without_failed_job(): void
+    {
+        Queue::fake();
+        Mail::fake();
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $campaign = EmailCampaign::create([
+            'name' => 'Rebuild campaign',
+            'subject' => 'Rebuild campaign',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'sent_count' => 0,
+            'skipped_count' => 1,
+            'status' => EmailCampaign::STATUS_FAILED,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        $log = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => AudienceCampaignMail::class,
+            'template_key' => 'audience_campaign',
+            'dedupe_key' => 'audience_campaign:'.$campaign->id.':user:'.$advertiser->id,
+            'to_email' => $advertiser->email,
+            'subject' => 'Rebuild campaign',
+            'status' => EmailLog::STATUS_FAILED,
+            'error' => 'SMTP down',
+            'attempts' => 1,
+            'meta' => [
+                'source' => 'queue',
+                'campaign_id' => $campaign->id,
+                'user_id' => $advertiser->id,
+            ],
+        ]);
+        $row = EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_FAILED,
+            'skip_reason' => EmailCampaignRecipient::SKIP_ERROR,
+            'email_log_id' => $log->id,
+        ]);
+
+        $this->actingAs($admin)
+            ->from(route('admin.emails.index'))
+            ->post(route('admin.emails.retry'), ['log_id' => $log->id])
+            ->assertRedirect(route('admin.emails.index'))
+            ->assertSessionHas('success');
+
+        $this->assertSame(EmailCampaignRecipient::STATUS_PENDING, $row->fresh()->status);
+        $this->assertNull($row->fresh()->email_log_id);
+        $this->assertSame(EmailLog::STATUS_PENDING, $log->fresh()->status);
+        $this->assertSame(EmailCampaign::STATUS_SENDING, $campaign->fresh()->status);
+        Queue::assertPushed(SendEmailCampaignJob::class, fn (SendEmailCampaignJob $job) => $job->campaignId === $campaign->id);
+    }
+
     public function test_retry_production_log_requeues_matching_mail_job(): void
     {
         $admin = $this->userWithRole('admin');

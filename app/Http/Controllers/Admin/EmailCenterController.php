@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\SendEmailCampaignJob;
+use App\Mail\AudienceCampaignMail;
 use App\Mail\PlatformMailable;
 use App\Models\EmailCampaign;
 use App\Models\EmailCampaignRecipient;
@@ -417,7 +419,89 @@ class EmailCenterController extends Controller
             return back()->with('success', 'Re-queued the failed mail job for this log.');
         }
 
+        $rebuilt = $this->retryCampaignLogWithoutJob($log);
+        if ($rebuilt !== null) {
+            return $rebuilt;
+        }
+
         return back()->with('error', 'Cannot rebuild production payload — retry the queue job.');
+    }
+
+    /**
+     * Campaign mail can be rebuilt from the stored campaign + user.
+     * Other production templates cannot — retrying those from the catalog
+     * would send the wrong letter.
+     */
+    protected function retryCampaignLogWithoutJob(EmailLog $log): mixed
+    {
+        $campaignId = $this->campaignIdFromLog($log);
+        $userId = $this->userIdFromLog($log);
+        if ($campaignId < 1 || $userId < 1) {
+            return null;
+        }
+
+        $isCampaign = $log->mailable === AudienceCampaignMail::class
+            || $log->template_key === 'audience_campaign'
+            || str_starts_with((string) $log->dedupe_key, 'audience_campaign:');
+        if (! $isCampaign) {
+            return null;
+        }
+
+        $campaign = EmailCampaign::query()->find($campaignId);
+        $user = User::query()->find($userId);
+        if (! $campaign || ! $user) {
+            return back()->with('error', 'That campaign recipient is no longer available.');
+        }
+
+        try {
+            if (Schema::hasTable((new EmailCampaignRecipient)->getTable())) {
+                EmailCampaignRecipient::query()
+                    ->where('email_campaign_id', $campaignId)
+                    ->where('user_id', $userId)
+                    ->where(function ($query) {
+                        $query->where('status', EmailCampaignRecipient::STATUS_FAILED)
+                            ->orWhere(function ($skipped) {
+                                $skipped->where('status', EmailCampaignRecipient::STATUS_SKIPPED)
+                                    ->where('skip_reason', EmailCampaignRecipient::SKIP_STALE);
+                            });
+                    })
+                    ->update([
+                        'status' => EmailCampaignRecipient::STATUS_PENDING,
+                        'skip_reason' => null,
+                        'email_log_id' => null,
+                    ]);
+            }
+
+            if ($campaign->status === EmailCampaign::STATUS_FAILED) {
+                $campaign->clearFailStreak();
+                $campaign->update([
+                    'status' => EmailCampaign::STATUS_SENDING,
+                    'sent_at' => null,
+                ]);
+            } else {
+                $campaign->touch();
+            }
+            $campaign->recountRecipientTotals();
+
+            $log->update([
+                'status' => EmailLog::STATUS_PENDING,
+                'error' => null,
+                'attempts' => max(1, (int) $log->attempts) + 1,
+            ]);
+
+            SendEmailCampaignJob::dispatch($campaign->id);
+        } catch (\Throwable $e) {
+            return back()->with('error', UserFacingError::message($e, 'Could not retry this campaign email. Please try again.'));
+        }
+
+        ActivityLogger::tryLog(
+            'email.retried',
+            (auth()->user()?->name ?? 'Admin').' rebuilt campaign mail log #'.$log->id,
+            null,
+            ['count' => 1, 'log_id' => $log->id, 'campaign_id' => $campaign->id]
+        );
+
+        return back()->with('success', 'Re-queued this campaign email.');
     }
 
     protected function retryTestLog(EmailLog $log)
