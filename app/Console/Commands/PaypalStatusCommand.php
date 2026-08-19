@@ -63,22 +63,23 @@ class PaypalStatusCommand extends Command
         try {
             $paypal->accessToken(allowHostFallback: false);
         } catch (RuntimeException $e) {
-            $canProbe = in_array($e->getMessage(), [
-                UserMessages::get('payment.paypal_auth'),
-                UserMessages::get('payment.paypal_unreachable'),
-            ], true);
-            if ($canProbe) {
-                try {
-                    $paypal->accessToken(allowHostFallback: true);
+            try {
+                $paypal->accessToken(allowHostFallback: true);
+                if ($paypal->baseUrl() !== $snap['host']) {
                     $this->newLine();
                     $this->error('OAuth failed on '.$snap['host'].'.');
                     $this->line('  These keys work on '.$paypal->baseUrl().'.');
                     $this->line('  Set PAYPAL_MODE='.($paypal->mode() === 'live' ? 'sandbox' : 'live').' then php artisan config:clear.');
 
                     return self::FAILURE;
-                } catch (RuntimeException) {
-                    // Both hosts rejected the keys or were unreachable.
                 }
+
+                $this->newLine();
+                $this->info('OAuth: ok');
+
+                return self::SUCCESS;
+            } catch (RuntimeException) {
+                // Both hosts rejected the keys or were unreachable.
             }
 
             $this->newLine();
