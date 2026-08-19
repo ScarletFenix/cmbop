@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Role;
 use App\Models\User;
+use App\Support\PublicI18n;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -45,6 +46,8 @@ class AdvertiserUiAndTrustFooterTest extends TestCase
             ->getContent();
 
         $this->assertStringContainsString('trustpilot-trust', $html);
+        $this->assertStringContainsString('app-shell-footer__grid', $html);
+        $this->assertStringContainsString('app-shell-footer__legal', $html);
         $this->assertStringContainsString(config('services.trustpilot.review_url'), $html);
         $this->assertStringContainsString('helpFeedbackHide', $html);
         $this->assertStringContainsString('helpFeedbackShow', $html);
@@ -53,6 +56,11 @@ class AdvertiserUiAndTrustFooterTest extends TestCase
             '.catalog-pagination',
             (string) file_get_contents(public_path('assets/css/catalog.css'))
         );
+        $shell = (string) file_get_contents(public_path('assets/css/app-shell.css'));
+        $this->assertStringContainsString('.app-shell-footer__grid', $shell);
+        $this->assertStringContainsString('"legal secure"', $shell);
+        $this->assertStringContainsString('"reviews methods"', $shell);
+        $this->assertStringContainsString('display: contents', $shell);
     }
 
     public function test_the_trust_badge_claims_no_rating_we_cannot_prove(): void
@@ -76,7 +84,7 @@ class AdvertiserUiAndTrustFooterTest extends TestCase
 
     public function test_trustpilot_strings_exist_in_every_locale(): void
     {
-        foreach (\App\Support\PublicI18n::supported() as $locale) {
+        foreach (PublicI18n::supported() as $locale) {
             $messages = require resource_path('lang/'.$locale.'/messages.php');
             foreach (['trustpilot_read_reviews', 'trustpilot_aria'] as $key) {
                 $this->assertArrayHasKey($key, $messages, $locale.' is missing '.$key);
