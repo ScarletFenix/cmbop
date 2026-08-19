@@ -155,7 +155,7 @@ class AdminBlogImageTest extends TestCase
             $this->assertStringEndsWith('.webp', $blog->featured_image);
             $this->assertStringStartsWith('RIFF', Storage::disk('public')->get($blog->featured_image));
         } else {
-            $this->assertMatchesRegularExpression('/\.(jpe?g|png)$/i', $blog->featured_image);
+            $this->assertMatchesRegularExpression('/\.(jpe?g|png)$/i', (string) $blog->featured_image);
         }
 
         $this->actingAs($admin)
@@ -493,7 +493,7 @@ class AdminBlogImageTest extends TestCase
             $this->assertStringEndsWith('.webp', $blog->featured_image);
             $this->assertStringStartsWith('RIFF', Storage::disk('public')->get($blog->featured_image));
         } else {
-            $this->assertMatchesRegularExpression('/\.(jpe?g|png)$/i', $blog->featured_image);
+            $this->assertMatchesRegularExpression('/\.(jpe?g|png)$/i', (string) $blog->featured_image);
         }
     }
 

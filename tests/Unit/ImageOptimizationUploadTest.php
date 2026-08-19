@@ -109,4 +109,40 @@ class ImageOptimizationUploadTest extends TestCase
             @unlink($jpgTmp);
         }
     }
+
+    public function test_safe_store_keeps_valid_jpeg_when_webp_unavailable(): void
+    {
+        Storage::fake('public');
+        $file = $this->fakeBlogUpload('cover.jpg', 80, 60);
+
+        $path = app(ImageOptimizationService::class)->storeSafePublicImage($file, 'sites');
+        $this->assertIsString($path);
+        $this->assertStringStartsWith('sites/', $path);
+        Storage::disk('public')->assertExists($path);
+
+        if (function_exists('imagewebp')) {
+            $this->assertStringEndsWith('.webp', $path);
+            $this->assertStringStartsWith('RIFF', Storage::disk('public')->get($path));
+        } else {
+            $this->assertMatchesRegularExpression('/\.jpe?g$/i', $path);
+            $this->assertStringStartsWith("\xff\xd8\xff", Storage::disk('public')->get($path));
+        }
+    }
+
+    public function test_store_optimized_keeps_original_png_when_webp_unavailable(): void
+    {
+        Storage::fake('public');
+        $png = $this->screenshotRasterBytes();
+
+        $stored = app(ImageOptimizationService::class)->storeOptimizedWebp($png, 'site-screenshots', 'site-1-original');
+        $this->assertNotNull($stored);
+        $this->assertTrue(Storage::disk('public')->exists($stored['path']));
+
+        if (function_exists('imagewebp')) {
+            $this->assertStringEndsWith('.webp', $stored['path']);
+        } else {
+            $this->assertStringEndsWith('.png', $stored['path']);
+            $this->assertNull($stored['thumb_path']);
+        }
+    }
 }

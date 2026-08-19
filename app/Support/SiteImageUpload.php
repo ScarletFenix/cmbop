@@ -61,7 +61,7 @@ final class SiteImageUpload
     }
 
     /**
-     * Staff-assign screenshots are site-screenshots/site-{id}-*.webp.
+     * Staff-assign screenshots are site-screenshots/site-{id}-*.{webp,jpg,png,gif}.
      * Shared catalog placeholders (home-placeholder.webp) are never matched.
      */
     public static function publicScreenshotPath(mixed $raw, ?int $siteId = null): ?string
@@ -75,7 +75,7 @@ final class SiteImageUpload
 
         $path = ltrim(str_replace('\\', '/', $raw), '/');
         $idPattern = $siteId !== null && $siteId > 0 ? (string) (int) $siteId : '[0-9]+';
-        if (preg_match('#^site-screenshots/site-'.$idPattern.'-[A-Za-z0-9._-]+\.webp$#i', $path) !== 1) {
+        if (preg_match('#^site-screenshots/site-'.$idPattern.'-[A-Za-z0-9._-]+\.(jpe?g|png|gif|webp)$#i', $path) !== 1) {
             return null;
         }
 

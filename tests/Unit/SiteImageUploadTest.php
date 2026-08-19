@@ -44,6 +44,20 @@ class SiteImageUploadTest extends TestCase
         $this->assertContains('regex:'.SiteImageUpload::STORED_PATH_REGEX, $rules);
     }
 
+    public function test_public_screenshot_path_accepts_original_raster(): void
+    {
+        $this->assertSame(
+            'site-screenshots/site-12-20260101120000.jpg',
+            SiteImageUpload::publicScreenshotPath('site-screenshots/site-12-20260101120000.jpg', 12)
+        );
+        $this->assertSame(
+            'site-screenshots/site-12-20260101120000.png',
+            SiteImageUpload::publicScreenshotPath('site-screenshots/site-12-20260101120000.png', 12)
+        );
+        $this->assertNull(SiteImageUpload::publicScreenshotPath('site-screenshots/home-placeholder.webp'));
+        $this->assertNull(SiteImageUpload::publicScreenshotPath('site-screenshots/site-99-shot.jpg', 12));
+    }
+
     public function test_field_rules_for_uploads_use_the_10mb_app_cap(): void
     {
         $rules = SiteImageUpload::fieldRules(true);
