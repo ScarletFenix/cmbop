@@ -59,6 +59,14 @@ class DesignConsistencyTest extends TestCase
         $this->assertStringContainsString('var(--brand-primary-tint', $checkout);
         $this->assertStringContainsString('var(--radius-lg', $checkout);
         $this->assertStringContainsString('payment-option-card', $checkout);
+        $this->assertDoesNotMatchRegularExpression(
+            '/\.payment-option-card\.recommended\s*\{[^}]*background:\s*var\(--brand-primary-bg/',
+            $checkout
+        );
+        $this->assertMatchesRegularExpression(
+            '/\.payment-option\.selected\s+\.payment-option-card\s*\{[^}]*background:\s*var\(--brand-primary-bg/',
+            $checkout
+        );
     }
 
     public function test_select_css_uses_border_and_focus_tokens(): void
