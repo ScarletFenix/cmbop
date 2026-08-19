@@ -834,12 +834,12 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
 
         // Live search / filter results fragment (HTML partial, same query as index).
         Route::get('/catalog/results', [CatalogListingController::class, 'results'])
-            ->middleware('throttle:120,1')
+            ->middleware('throttle:60,1')
             ->name('catalog.results');
 
         // Bulk deals rail fragment — follows country= like the listing (Option 1).
         Route::get('/catalog/bulk-deals', [CatalogListingController::class, 'bulkDeals'])
-            ->middleware('throttle:120,1')
+            ->middleware('throttle:60,1')
             ->name('catalog.bulk-deals');
 
         // One publisher domain per request. Throttled on top of the daily
