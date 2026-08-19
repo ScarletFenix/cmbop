@@ -278,8 +278,8 @@ Route::middleware('guest')->group(function () {
     Route::get('/login', [LoginController::class, 'show'])->name('login');
 });
 
-// Google OAuth must stay outside `guest`: the callback authenticates the user in-request,
-// and a lost OAuth "state" session should still be able to complete via stateless fallback.
+// Google OAuth must stay outside `guest`: the callback authenticates the user in-request.
+// Local/testing may retry without OAuth "state"; production refuses that fallback.
 Route::get('auth/google', [SocialiteController::class, 'redirectToGoogle'])->name('auth.google');
 Route::get('auth/google/callback', [SocialiteController::class, 'handleGoogleCallback'])->name('auth.google.callback');
 

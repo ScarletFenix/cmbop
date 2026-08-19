@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Cookie;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Schema;
 use Symfony\Component\HttpFoundation\IpUtils;
 
@@ -69,7 +70,7 @@ class WelcomeBonusService
         }
 
         $ip = $this->normalizedIp($request);
-        if ($ip === null || $this->ipAlreadyClaimed($ip)) {
+        if ($ip === null || $this->ipAlreadyClaimed($ip) || $this->prefixGrantCapReached($ip)) {
             return 0.0;
         }
 
@@ -103,12 +104,12 @@ class WelcomeBonusService
                 return false;
             }
 
-            if ($this->userAlreadyClaimed((int) $user->id) || $this->ipAlreadyClaimed($ip, true)) {
+            if ($this->userAlreadyClaimed((int) $user->id) || $this->ipAlreadyClaimed($ip, true) || $this->prefixGrantCapReached($ip)) {
                 return false;
             }
 
             $insert = function () use ($user, $request, $amount, $source, $ip): bool {
-                if ($this->userAlreadyClaimed((int) $user->id) || $this->ipAlreadyClaimed($ip, true)) {
+                if ($this->userAlreadyClaimed((int) $user->id) || $this->ipAlreadyClaimed($ip, true) || $this->prefixGrantCapReached($ip)) {
                     return false;
                 }
 
@@ -120,6 +121,7 @@ class WelcomeBonusService
                         'source' => $source,
                         'amount' => $amount,
                     ]);
+                    $this->hitPrefixGrant($ip);
 
                     return true;
                 } catch (UniqueConstraintViolationException) {
@@ -590,5 +592,52 @@ class WelcomeBonusService
         return $sqlState === '23000'
             || str_contains($message, 'UNIQUE')
             || str_contains($message, 'unique');
+    }
+
+    /**
+     * IPv4 /24 daily grant cap. IPv6 is already locked to a /64 place key.
+     */
+    private function prefixGrantCapReached(string $ip): bool
+    {
+        $key = $this->prefixGrantKey($ip);
+        if ($key === null) {
+            return false;
+        }
+
+        $max = (int) config('welcome_bonus.prefix_grants_per_day', 5);
+        if ($max < 1) {
+            return false;
+        }
+
+        return RateLimiter::tooManyAttempts($key, $max);
+    }
+
+    private function hitPrefixGrant(string $ip): void
+    {
+        $key = $this->prefixGrantKey($ip);
+        if ($key === null) {
+            return;
+        }
+
+        if ((int) config('welcome_bonus.prefix_grants_per_day', 5) < 1) {
+            return;
+        }
+
+        RateLimiter::hit($key, 86400);
+    }
+
+    private function prefixGrantKey(string $ip): ?string
+    {
+        $v4 = $this->ipv4Key($ip);
+        if ($v4 === null) {
+            return null;
+        }
+
+        $parts = explode('.', $v4);
+        if (count($parts) !== 4) {
+            return null;
+        }
+
+        return 'welcome-prefix:'.$parts[0].'.'.$parts[1].'.'.$parts[2];
     }
 }
