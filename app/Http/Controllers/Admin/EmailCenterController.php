@@ -402,9 +402,14 @@ class EmailCenterController extends Controller
 
             if ($this->queueRetryMissedJob(Artisan::output())
                 || $this->actuallyRetriedJobUuids([$uuid]) === []) {
-                $rebuilt = $this->retryRebuildableProductionLogWithoutJob($log);
-                if ($rebuilt !== null) {
-                    return $rebuilt;
+                // Only rebuild when the identified job is gone. A no-op
+                // queue:retry that left the row in failed_jobs must not
+                // also dispatch a second send.
+                if (! $this->failedJobStillQueued($uuid)) {
+                    $rebuilt = $this->retryRebuildableProductionLogWithoutJob($log);
+                    if ($rebuilt !== null) {
+                        return $rebuilt;
+                    }
                 }
 
                 return back()->with('error', 'Cannot rebuild production payload — retry the queue job.');
@@ -703,6 +708,15 @@ class EmailCenterController extends Controller
      * @param  list<string>  $uuids
      * @return list<string>
      */
+    protected function failedJobStillQueued(string $uuid): bool
+    {
+        if ($uuid === '' || ! Schema::hasTable('failed_jobs')) {
+            return false;
+        }
+
+        return DB::table('failed_jobs')->where('uuid', $uuid)->exists();
+    }
+
     protected function actuallyRetriedJobUuids(array $uuids): array
     {
         if ($uuids === [] || ! Schema::hasTable('failed_jobs')) {
