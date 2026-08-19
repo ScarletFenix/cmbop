@@ -62,6 +62,8 @@ return [
         /** Template with {url} placeholder, used when provider=url_api */
         'api_url' => env('SITE_SCREENSHOT_API_URL'),
         'timeout' => (int) env('SITE_SCREENSHOT_TIMEOUT', 45),
+        /** Optional absolute path to cwebp when PHP GD/Imagick cannot encode WebP. */
+        'cwebp_path' => env('SITE_CWEBP_PATH', ''),
         'refresh_with_metrics' => (bool) env('SITE_SCREENSHOT_REFRESH_WITH_METRICS', true),
     ],
 ];

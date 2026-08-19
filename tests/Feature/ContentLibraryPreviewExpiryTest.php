@@ -7,15 +7,18 @@ use App\Models\Role;
 use App\Models\User;
 use App\Services\ContentUpload\ArticlePreviewImage;
 use App\Services\ContentUpload\ContentUploadService;
+use App\Services\SiteEnrichment\ImageOptimizationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
+use Tests\Support\CreatesBlogUploads;
 use Tests\Support\CreatesContentSubmissions;
 use Tests\TestCase;
 
 class ContentLibraryPreviewExpiryTest extends TestCase
 {
+    use CreatesBlogUploads;
     use CreatesContentSubmissions;
     use RefreshDatabase;
 
@@ -269,8 +272,8 @@ class ContentLibraryPreviewExpiryTest extends TestCase
 
     public function test_editor_image_stores_webp_on_public_disk_not_private(): void
     {
-        if (! function_exists('imagecreatetruecolor') || ! function_exists('imagewebp')) {
-            $this->markTestSkipped('GD WebP not available');
+        if (! ImageOptimizationService::canEncodeWebp()) {
+            $this->markTestSkipped('No WebP encoder (GD, Imagick, or cwebp)');
         }
 
         $advertiser = $this->advertiser();
@@ -278,7 +281,7 @@ class ContentLibraryPreviewExpiryTest extends TestCase
         Storage::fake('public');
         Storage::fake('local');
 
-        $png = $this->largePngBytes();
+        $png = $this->largePreviewPngBytes();
         $this->assertGreaterThan(ArticlePreviewImage::SKIP_UNDER_BYTES, strlen($png));
         $path = sys_get_temp_dir().'/preview-'.uniqid('', true).'.png';
         file_put_contents($path, $png);
@@ -310,7 +313,7 @@ class ContentLibraryPreviewExpiryTest extends TestCase
         Storage::fake('public');
         Storage::fake('local');
         $advertiser = $this->advertiser();
-        $png = $this->pngBytes(16, 16);
+        $png = $this->validPngBytes(16, 16);
 
         $url = app(ContentUploadService::class)->storeArticleImage($png, 'png', 'tiny.png', $advertiser);
 
@@ -330,29 +333,5 @@ class ContentLibraryPreviewExpiryTest extends TestCase
             ->assertSee('preview only', false)
             ->assertSee('original file is removed', false)
             ->assertDontSee('Automatic purge deletes unused expired files only', false);
-    }
-
-    private function pngBytes(int $width, int $height): string
-    {
-        $img = imagecreatetruecolor($width, $height);
-        imagefilledrectangle($img, 0, 0, $width, $height, imagecolorallocate($img, 12, 80, 160));
-        ob_start();
-        imagepng($img);
-        $png = ob_get_clean();
-        imagedestroy($img);
-
-        return is_string($png) ? $png : '';
-    }
-
-    private function largePngBytes(): string
-    {
-        $img = imagecreatetruecolor(320, 240);
-        imagefilledrectangle($img, 0, 0, 319, 239, imagecolorallocate($img, 12, 80, 160));
-        ob_start();
-        imagepng($img, null, 0);
-        $png = ob_get_clean();
-        imagedestroy($img);
-
-        return is_string($png) ? $png : '';
     }
 }

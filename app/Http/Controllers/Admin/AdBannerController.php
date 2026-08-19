@@ -7,6 +7,7 @@ use App\Models\AdBanner;
 use App\Services\ActivityLogger;
 use App\Services\PromotionListQuery;
 use App\Services\PromotionService;
+use App\Services\SiteEnrichment\ImageOptimizationService;
 use App\Support\PromotionUrl;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -299,7 +300,10 @@ class AdBannerController extends Controller
             return null;
         }
 
-        return $request->file('image')->store('banners', 'public');
+        return app(ImageOptimizationService::class)->storeSafePublicImage(
+            $request->file('image'),
+            'banners'
+        );
     }
 
     private function deleteStoredImage(?string $path): void

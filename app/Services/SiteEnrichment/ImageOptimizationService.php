@@ -47,36 +47,33 @@ class ImageOptimizationService
         ];
     }
 
+    public static function canEncodeWebp(): bool
+    {
+        return self::gdWebpAvailable() || self::imagickWebpAvailable() || self::cwebpBinary() !== null;
+    }
+
     public function toWebp(string $binary, int $quality = 82): ?string
     {
-        if (! function_exists('imagecreatefromstring') || ! function_exists('imagewebp')) {
-            Log::warning('GD WebP support unavailable; validated JPEG/PNG originals may be stored instead.');
-
+        if ($binary === '') {
             return null;
         }
 
-        $image = @imagecreatefromstring($binary);
-        if ($image === false) {
-            return null;
-        }
+        $quality = max(1, min(100, $quality));
 
-        if (function_exists('imagepalettetotruecolor')) {
-            @imagepalettetotruecolor($image);
-        }
-        @imagealphablending($image, true);
-        @imagesavealpha($image, true);
-
-        ob_start();
-        $ok = imagewebp($image, null, max(1, min(100, $quality)));
-        imagedestroy($image);
-        $data = ob_get_clean();
-
-        return $ok && is_string($data) && $data !== '' ? $data : null;
+        return $this->toWebpViaGd($binary, $quality)
+            ?? $this->toWebpViaImagick($binary, $quality)
+            ?? $this->toWebpViaCwebp($binary, $quality);
     }
 
     public function resizeToWebp(string $binary, int $targetWidth, int $quality = 80): ?string
     {
-        if (! function_exists('imagecreatefromstring') || ! function_exists('imagecreatetruecolor')) {
+        $quality = max(1, min(100, $quality));
+        $viaCli = $this->toWebpViaCwebp($binary, $quality, $targetWidth);
+        if ($viaCli !== null) {
+            return $viaCli;
+        }
+
+        if (! self::gdWebpAvailable() || ! function_exists('imagecreatetruecolor')) {
             return null;
         }
 
@@ -118,32 +115,13 @@ class ImageOptimizationService
     }
 
     /**
-     * Generate a professional placeholder WebP when capture fails.
+     * Generate a professional placeholder when capture fails. Drawn with GD
+     * when present, otherwise a solid PNG. Encoded to WebP by toWebp().
      */
     public function storePlaceholder(string $directory, string $basename, string $label = 'Preview unavailable'): ?array
     {
-        if (! function_exists('imagecreatetruecolor')) {
-            return null;
-        }
-
-        $width = 1280;
-        $height = 720;
-        $img = imagecreatetruecolor($width, $height);
-        $bg = imagecolorallocate($img, 241, 245, 249);
-        $bar = imagecolorallocate($img, 226, 232, 240);
-        $text = imagecolorallocate($img, 100, 116, 139);
-        imagefilledrectangle($img, 0, 0, $width, $height, $bg);
-        imagefilledrectangle($img, 0, 0, $width, 56, $bar);
-
-        $message = $label;
-        imagestring($img, 5, (int) (($width - (strlen($message) * 9)) / 2), (int) ($height / 2 - 8), $message, $text);
-
-        ob_start();
-        imagewebp($img, null, 80);
-        $binary = ob_get_clean();
-        imagedestroy($img);
-
-        if (! is_string($binary) || $binary === '') {
+        $binary = $this->placeholderRaster($label);
+        if ($binary === null || $binary === '') {
             return null;
         }
 
@@ -151,9 +129,10 @@ class ImageOptimizationService
     }
 
     /**
-     * Store a public-disk image. WebP when GD can convert. GIF stays GIF
-     * (animation). JPEG/PNG keep original bytes only when they decode as a
-     * real image and WebP conversion is unavailable.
+     * Store a public-disk image. WebP when an encoder is available (GD,
+     * Imagick, or cwebp). GIF stays GIF (animation). JPEG/PNG/WebP keep
+     * original bytes only when they decode as a real image and conversion
+     * is unavailable.
      */
     public function storeSafePublicImage(UploadedFile $file, string $directory): ?string
     {
@@ -163,7 +142,7 @@ class ImageOptimizationService
         }
 
         $ext = strtolower((string) ($file->getClientOriginalExtension() ?: $file->extension() ?: ''));
-        if (! in_array($ext, ['gif', 'jpg', 'jpeg', 'png'], true)) {
+        if (! in_array($ext, ['gif', 'jpg', 'jpeg', 'png', 'webp'], true)) {
             return null;
         }
 
@@ -174,7 +153,11 @@ class ImageOptimizationService
             }
 
             $binary = (string) file_get_contents($sourcePath);
-            if (! $this->isDecodableRasterImage($binary, $ext)) {
+            if ($ext === 'webp') {
+                if (! $this->looksLikeWebp($binary)) {
+                    return null;
+                }
+            } elseif (! $this->isDecodableRasterImage($binary, $ext)) {
                 return null;
             }
         }
@@ -189,7 +172,7 @@ class ImageOptimizationService
     }
 
     /**
-     * Persist a captured screenshot as JPEG/PNG/WebP when GD cannot re-encode.
+     * Persist a captured screenshot as JPEG/PNG/WebP when no encoder can re-encode.
      *
      * @return array{path: string, thumb_path: ?string}|null
      */
@@ -217,6 +200,56 @@ class ImageOptimizationService
             : null;
     }
 
+    private function placeholderRaster(string $label): ?string
+    {
+        if (function_exists('imagecreatetruecolor') && function_exists('imagepng')) {
+            $width = 1280;
+            $height = 720;
+            $img = imagecreatetruecolor($width, $height);
+            $bg = imagecolorallocate($img, 241, 245, 249);
+            $bar = imagecolorallocate($img, 226, 232, 240);
+            $text = imagecolorallocate($img, 100, 116, 139);
+            imagefilledrectangle($img, 0, 0, $width, $height, $bg);
+            imagefilledrectangle($img, 0, 0, $width, 56, $bar);
+            imagestring($img, 5, (int) (($width - (strlen($label) * 9)) / 2), (int) ($height / 2 - 8), $label, $text);
+
+            ob_start();
+            $ok = imagepng($img);
+            $data = ob_get_clean();
+            imagedestroy($img);
+
+            if ($ok && is_string($data) && $data !== '') {
+                return $data;
+            }
+        }
+
+        return $this->solidPngBytes(640, 360, [241, 245, 249]);
+    }
+
+    /**
+     * @param  array{0:int,1:int,2:int}  $rgb
+     */
+    private function solidPngBytes(int $width, int $height, array $rgb): string
+    {
+        $width = max(1, $width);
+        $height = max(1, $height);
+        $pixel = pack('C3', $rgb[0] & 255, $rgb[1] & 255, $rgb[2] & 255);
+        $raw = str_repeat("\x00".$pixel.str_repeat($pixel, $width - 1), $height);
+        $ihdr = pack('N2C5', $width, $height, 8, 2, 0, 0, 0);
+        $deflate = function_exists('zlib_encode')
+            ? zlib_encode($raw, ZLIB_ENCODING_DEFLATE, 6)
+            : gzcompress($raw, 6);
+
+        $chunk = static function (string $type, string $data): string {
+            return pack('N', strlen($data)).$type.$data.pack('N', crc32($type.$data));
+        };
+
+        return "\x89PNG\r\n\x1a\n"
+            .$chunk('IHDR', $ihdr)
+            .$chunk('IDAT', $deflate)
+            .$chunk('IEND', '');
+    }
+
     private function detectRasterExtension(string $binary): ?string
     {
         if ($this->looksLikeJpeg($binary)) {
@@ -225,7 +258,7 @@ class ImageOptimizationService
         if ($this->looksLikePng($binary)) {
             return 'png';
         }
-        if (str_starts_with($binary, 'RIFF') && str_contains(substr($binary, 0, 16), 'WEBP')) {
+        if ($this->looksLikeWebp($binary)) {
             return 'webp';
         }
 
@@ -270,6 +303,13 @@ class ImageOptimizationService
         return str_ends_with($binary, "\xff\xd9");
     }
 
+    protected function looksLikeWebp(string $binary): bool
+    {
+        return strlen($binary) >= 16
+            && str_starts_with($binary, 'RIFF')
+            && str_contains(substr($binary, 0, 16), 'WEBP');
+    }
+
     protected function looksLikePng(string $binary): bool
     {
         $signature = "\x89PNG\r\n\x1a\n";
@@ -286,7 +326,7 @@ class ImageOptimizationService
 
     /**
      * Convert a staff-uploaded cover (JPEG/PNG/WebP) to WebP on the public disk.
-     * Returns null for GIF (keep animation) or when GD cannot re-encode.
+     * Returns null for GIF (keep animation) or when no encoder can re-encode.
      * Callers that must still persist the file use storeSafePublicImage().
      */
     public function storeUploadedImageAsWebp(UploadedFile $file, string $directory = 'sites'): ?string
@@ -329,5 +369,179 @@ class ImageOptimizationService
         }
 
         return $disk->exists($path) ? $path : null;
+    }
+
+    private static function gdWebpAvailable(): bool
+    {
+        return function_exists('imagecreatefromstring') && function_exists('imagewebp');
+    }
+
+    private static function imagickWebpAvailable(): bool
+    {
+        if (! extension_loaded('imagick') || ! class_exists(\Imagick::class)) {
+            return false;
+        }
+
+        try {
+            $formats = array_map('strtoupper', \Imagick::queryFormats('WEBP') ?: []);
+
+            return in_array('WEBP', $formats, true);
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    private static function cwebpBinary(): ?string
+    {
+        static $resolved = false;
+        static $path = null;
+
+        if ($resolved) {
+            return $path;
+        }
+        $resolved = true;
+
+        $configured = trim((string) config('site_enrichment.screenshots.cwebp_path', ''));
+        $candidates = array_values(array_filter([
+            $configured,
+            '/usr/bin/cwebp',
+            '/usr/local/bin/cwebp',
+        ]));
+
+        foreach (explode(PATH_SEPARATOR, (string) getenv('PATH')) as $dir) {
+            $dir = trim($dir);
+            if ($dir !== '') {
+                $candidates[] = rtrim($dir, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR.'cwebp';
+            }
+        }
+
+        foreach (array_unique($candidates) as $candidate) {
+            if (is_string($candidate) && $candidate !== '' && is_executable($candidate)) {
+                $path = $candidate;
+
+                return $path;
+            }
+        }
+
+        return null;
+    }
+
+    private function toWebpViaGd(string $binary, int $quality): ?string
+    {
+        if (! self::gdWebpAvailable()) {
+            return null;
+        }
+
+        $image = @imagecreatefromstring($binary);
+        if ($image === false) {
+            return null;
+        }
+
+        if (function_exists('imagepalettetotruecolor')) {
+            @imagepalettetotruecolor($image);
+        }
+        @imagealphablending($image, true);
+        @imagesavealpha($image, true);
+
+        ob_start();
+        $ok = imagewebp($image, null, $quality);
+        imagedestroy($image);
+        $data = ob_get_clean();
+
+        return $ok && is_string($data) && $data !== '' && str_starts_with($data, 'RIFF') ? $data : null;
+    }
+
+    private function toWebpViaImagick(string $binary, int $quality): ?string
+    {
+        if (! self::imagickWebpAvailable()) {
+            return null;
+        }
+
+        try {
+            $image = new \Imagick;
+            $image->readImageBlob($binary);
+            if ($image->getNumberImages() > 1) {
+                $image->clear();
+                $image->destroy();
+
+                return null;
+            }
+            $image->setImageFormat('webp');
+            $image->setImageCompressionQuality($quality);
+            $blob = $image->getImageBlob();
+            $image->clear();
+            $image->destroy();
+
+            return is_string($blob) && $blob !== '' && str_starts_with($blob, 'RIFF') ? $blob : null;
+        } catch (\Throwable $e) {
+            Log::notice('Imagick WebP encode skipped', ['error' => $e->getMessage()]);
+
+            return null;
+        }
+    }
+
+    private function toWebpViaCwebp(string $binary, int $quality, ?int $targetWidth = null): ?string
+    {
+        $encoder = self::cwebpBinary();
+        if ($encoder === null) {
+            return null;
+        }
+
+        $in = tempnam(sys_get_temp_dir(), 'cmbop-webp-in-');
+        $out = tempnam(sys_get_temp_dir(), 'cmbop-webp-out-');
+        if (! is_string($in) || ! is_string($out)) {
+            return null;
+        }
+
+        $outWebp = $out.'.webp';
+        try {
+            if (file_put_contents($in, $binary) === false) {
+                return null;
+            }
+
+            $command = [$encoder, '-quiet', '-q', (string) $quality];
+            if ($targetWidth !== null && $targetWidth > 0) {
+                $command[] = '-resize';
+                $command[] = (string) max(1, $targetWidth);
+                $command[] = '0';
+            }
+            $command[] = $in;
+            $command[] = '-o';
+            $command[] = $outWebp;
+
+            $pipes = [];
+            $process = proc_open($command, [
+                0 => ['pipe', 'r'],
+                1 => ['pipe', 'w'],
+                2 => ['pipe', 'w'],
+            ], $pipes);
+            if (! is_resource($process)) {
+                return null;
+            }
+
+            foreach ($pipes as $pipe) {
+                if (is_resource($pipe)) {
+                    fclose($pipe);
+                }
+            }
+            $status = proc_close($process);
+            if ($status !== 0 || ! is_file($outWebp)) {
+                return null;
+            }
+
+            $data = (string) file_get_contents($outWebp);
+
+            return $data !== '' && str_starts_with($data, 'RIFF') ? $data : null;
+        } catch (\Throwable $e) {
+            Log::notice('cwebp encode skipped', ['error' => $e->getMessage()]);
+
+            return null;
+        } finally {
+            foreach ([$in, $out, $outWebp] as $tmp) {
+                if (is_string($tmp) && $tmp !== '' && is_file($tmp)) {
+                    @unlink($tmp);
+                }
+            }
+        }
     }
 }

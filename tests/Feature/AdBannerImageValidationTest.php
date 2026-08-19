@@ -2,15 +2,20 @@
 
 namespace Tests\Feature;
 
+use App\Models\AdBanner;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\SiteEnrichment\ImageOptimizationService;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
+use Tests\Support\CreatesBlogUploads;
 use Tests\TestCase;
 
 class AdBannerImageValidationTest extends TestCase
 {
+    use CreatesBlogUploads;
     use RefreshDatabase;
 
     private User $admin;
@@ -83,6 +88,36 @@ class AdBannerImageValidationTest extends TestCase
                 'is_active' => 1,
             ])
             ->assertRedirect(route('admin.promotions.banners.index'));
+    }
+
+    public function test_custom_banner_jpeg_is_converted_to_webp_when_encoder_exists(): void
+    {
+        if (! ImageOptimizationService::canEncodeWebp()) {
+            $this->markTestSkipped('No WebP encoder (GD, Imagick, or cwebp)');
+        }
+
+        Storage::fake('public');
+
+        $this->actingAs($this->admin)
+            ->post(route('admin.promotions.banners.store'), [
+                'name' => 'WebP banner',
+                'size_key' => 'custom',
+                'width' => 300,
+                'height' => 250,
+                'placement' => 'header',
+                'audience' => 'all',
+                'image' => $this->fakeBlogUpload('promo.jpg', 300, 250),
+                'is_active' => 1,
+            ])
+            ->assertRedirect(route('admin.promotions.banners.index'));
+
+        $banner = AdBanner::query()->where('name', 'WebP banner')->first();
+        $this->assertNotNull($banner);
+        $this->assertNotEmpty($banner->image_path);
+        $this->assertStringStartsWith('banners/', (string) $banner->image_path);
+        $this->assertStringEndsWith('.webp', (string) $banner->image_path);
+        Storage::disk('public')->assertExists((string) $banner->image_path);
+        $this->assertStringStartsWith('RIFF', Storage::disk('public')->get((string) $banner->image_path));
     }
 
     private function png(int $width, int $height): UploadedFile

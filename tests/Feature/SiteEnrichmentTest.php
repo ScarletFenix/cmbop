@@ -95,11 +95,8 @@ class SiteEnrichmentTest extends TestCase
         $this->assertSame('3 Days', $site->averagePublishLabel());
     }
 
-    public function test_screenshot_failure_stores_placeholder_when_gd_available(): void
+    public function test_screenshot_failure_stores_placeholder(): void
     {
-        if (! function_exists('imagecreatetruecolor') || ! function_exists('imagewebp')) {
-            $this->markTestSkipped('GD WebP not available');
-        }
 
         Storage::fake('public');
         config([
@@ -234,23 +231,20 @@ class SiteEnrichmentTest extends TestCase
 
     public function test_image_optimizer_converts_png_to_webp(): void
     {
-        if (! function_exists('imagecreatetruecolor') || ! function_exists('imagewebp')) {
-            $this->markTestSkipped('GD WebP not available');
+        if (! ImageOptimizationService::canEncodeWebp()) {
+            $this->markTestSkipped('No WebP encoder (GD, Imagick, or cwebp)');
         }
 
         Storage::fake('public');
-        $img = imagecreatetruecolor(40, 30);
-        $bg = imagecolorallocate($img, 20, 40, 60);
-        imagefilledrectangle($img, 0, 0, 40, 30, $bg);
-        ob_start();
-        imagepng($img);
-        $png = ob_get_clean();
-        imagedestroy($img);
-
-        $stored = app(ImageOptimizationService::class)->storeOptimizedWebp($png, 'site-screenshots', 'test-site');
+        $stored = app(ImageOptimizationService::class)->storeOptimizedWebp(
+            $this->tinyPngBytes(),
+            'site-screenshots',
+            'test-site'
+        );
         $this->assertNotNull($stored);
         $this->assertTrue(Storage::disk('public')->exists($stored['path']));
         $this->assertStringEndsWith('.webp', $stored['path']);
+        $this->assertStringStartsWith('RIFF', Storage::disk('public')->get($stored['path']));
     }
 
     public function test_ahrefs_provider_does_not_invent_values_when_unconfigured(): void
@@ -558,37 +552,6 @@ class SiteEnrichmentTest extends TestCase
 
     public function test_refresh_screenshot_endpoint_reports_placeholder_as_failure(): void
     {
-        if (! function_exists('imagecreatetruecolor') || ! function_exists('imagewebp')) {
-            Storage::fake('public');
-            config([
-                'site_enrichment.enabled' => true,
-                'site_enrichment.screenshots.provider' => 'none',
-            ]);
-
-            $this->seed(RolesTableSeeder::class);
-            $adminRole = Role::where('name', 'admin')->firstOrFail();
-            $admin = User::factory()->create([
-                'email_verified_at' => now(),
-                'active_role_id' => $adminRole->id,
-            ]);
-            $admin->roles()->attach($adminRole->id);
-
-            $site = $this->makeSite();
-
-            $this->actingAs($admin)
-                ->postJson(route('admin.sites.refresh-screenshot', $site->id), ['sync' => true])
-                ->assertStatus(422)
-                ->assertJsonPath('success', false)
-                ->assertJsonMissing(['debug']);
-
-            $site->refresh();
-            $this->assertNull($site->screenshot_path);
-            $this->assertNotEmpty($site->enrichment_error);
-            $this->assertStringNotContainsString('SQLSTATE', (string) $site->enrichment_error);
-
-            return;
-        }
-
         Storage::fake('public');
         config([
             'site_enrichment.enabled' => true,
@@ -670,6 +633,12 @@ class SiteEnrichmentTest extends TestCase
 
         $this->assertTrue($result['success']);
         $this->assertNotEmpty($result['path']);
+        if (ImageOptimizationService::canEncodeWebp()) {
+            $this->assertStringEndsWith('.webp', (string) $result['path']);
+            $this->assertStringStartsWith('RIFF', Storage::disk('public')->get((string) $result['path']));
+        } else {
+            $this->assertStringEndsWith('.png', (string) $result['path']);
+        }
         Http::assertSent(function ($request) {
             return str_contains($request->url(), 'image.thum.io/get/width/1280/crop/800/viewportWidth/1280/')
                 && str_contains($request->url(), rawurlencode('https://desktop-shot.example:8080/home'));
