@@ -179,7 +179,7 @@ class PaypalRefundInvoiceTest extends TestCase
         Http::assertSent(fn ($request) => str_contains($request->url(), '/v2/payments/captures/CAP-INV-1/refund'));
     }
 
-    public function test_paypal_refund_falls_back_to_wallet_when_unconfigured(): void
+    public function test_paypal_refund_fails_closed_when_unconfigured_with_capture(): void
     {
         Mail::fake();
         Storage::fake('local');
@@ -205,18 +205,22 @@ class PaypalRefundInvoiceTest extends TestCase
         Invoice::query()->where('order_id', $order->id)->delete();
         app(BillingDocumentService::class)->handlePaymentPaid($order->fresh(['user', 'items']));
 
-        $applied = app(OrderRefundService::class)->cancelAndRefund($order->fresh(), 'Publisher rejected');
-        $this->assertTrue($applied);
+        try {
+            app(OrderRefundService::class)->cancelAndRefund($order->fresh(), 'Publisher rejected');
+            $this->fail('Expected PayPal refund to fail closed when a capture exists.');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('PayPal is not configured', $e->getMessage());
+        }
 
         $fresh = $order->fresh();
-        $this->assertSame('refunded', $fresh->payment_status);
+        $this->assertSame('paid', $fresh->payment_status);
         $this->assertNull($fresh->paypal_refund_id);
 
         $wallet = Wallet::query()
             ->where('user_id', $advertiser->id)
             ->where('role_id', Wallet::advertiserRoleId())
             ->first();
-        $this->assertEqualsWithDelta(100.40, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(10.0, (float) $wallet->balance, 0.01);
         Http::assertNothingSent();
     }
 

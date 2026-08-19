@@ -517,7 +517,7 @@ class PaymentController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => $e->getMessage(),
+                'message' => UserFacingError::message($e, 'Failed to update payment status. Please try again.'),
             ], 422);
         } catch (\Exception $e) {
             DB::rollBack();

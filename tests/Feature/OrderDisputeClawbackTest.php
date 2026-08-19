@@ -1173,7 +1173,7 @@ class OrderDisputeClawbackTest extends TestCase
         Mail::assertQueued(DisputeRefundAdvertiser::class, fn (DisputeRefundAdvertiser $mail) => $mail->viaPaypal === true);
     }
 
-    public function test_uphold_paypal_falls_back_to_wallet_when_unconfigured(): void
+    public function test_uphold_paypal_fails_closed_when_unconfigured(): void
     {
         config([
             'services.paypal.enabled' => false,
@@ -1203,10 +1203,11 @@ class OrderDisputeClawbackTest extends TestCase
 
         $this->actingAs($admin)->postJson(
             route('admin.orders.disputes.uphold', $dispute->id),
-            ['admin_notes' => 'Confirmed 404. PayPal is off so credit the wallet.']
-        )->assertOk()->assertJsonPath('success', true);
+            ['admin_notes' => 'Confirmed 404. PayPal is off so do not credit the wallet.']
+        )->assertStatus(422)->assertJsonPath('success', false);
 
-        $this->assertEqualsWithDelta(125.0, (float) $advWallet->fresh()->balance, 0.01);
+        $this->assertEqualsWithDelta(10.0, (float) $advWallet->fresh()->balance, 0.01);
+        $this->assertSame('paid', $order->fresh()->payment_status);
         $this->assertNull($order->fresh()->paypal_refund_id);
         Http::assertNothingSent();
     }

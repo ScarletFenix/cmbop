@@ -11,6 +11,7 @@ use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
 use App\Models\Wallet;
+use App\Services\CheckoutIntentService;
 use App\Services\InAppNotificationService;
 use App\Services\OrderPaymentService;
 use App\Services\PaypalCheckoutService;
@@ -560,11 +561,12 @@ class PaypalWebhookTest extends TestCase
             'user_id' => $advertiser->id,
             'role_id' => Wallet::advertiserRoleId(),
             'balance' => 5,
-            'reserved_balance' => 0,
+            'reserved_balance' => 20,
             'bonus_balance' => 0,
-            'bonus_reserved' => 0,
+            'bonus_reserved' => 20,
             'currency' => 'EUR',
         ]);
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'PP-RF', 20);
 
         $order = Order::create([
             'user_id' => $advertiser->id,
@@ -604,7 +606,10 @@ class PaypalWebhookTest extends TestCase
         $this->assertSame('refunded', $fresh->payment_status);
         $this->assertSame('cancelled', $fresh->status);
         $this->assertSame('RF-PO-RF', $fresh->paypal_refund_id);
-        $this->assertEqualsWithDelta(5.0, (float) $wallet->fresh()->balance, 0.01);
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(5.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_reserved, 0.01);
     }
 
     public function test_refunded_deposit_webhook_reverses_wallet_credit(): void
