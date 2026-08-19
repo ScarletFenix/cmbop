@@ -126,7 +126,7 @@
                                                 <a href="{{ $readyOpenUrl }}" class="btn btn-sm btn-outline-secondary">Open</a>
                                                 <a href="{{ staff_route('sites.edit', $site->id) }}" class="btn btn-sm btn-outline-primary">{{ $site->isLockedForMarketingEdits() ? 'View' : 'Edit' }}</a>
                                                 @if($readyCanActivate)
-                                                    <button type="button" class="btn btn-sm btn-success js-mkt-activate" data-id="{{ $site->id }}" data-name="{{ $site->site_name }}">Activate</button>
+                                                    <button type="button" class="btn btn-sm btn-success js-mkt-activate" data-id="{{ $site->id }}" data-name="{{ $site->site_name }}" data-description-english="{{ $site->descriptionLooksLikeEnglish() ? '1' : '0' }}" data-description-excerpt="{{ site_description_excerpt($site->description, 200) }}">Activate</button>
                                                 @endif
                                             </div>
                                         </td>
@@ -267,12 +267,19 @@
         btn.addEventListener('click', function () {
             const id = this.dataset.id;
             const name = this.dataset.name || 'this site';
-            const go = window.slbConfirm({
-                title: 'Activate Site?',
-                text: 'Make "' + name + '" live in the catalog?',
-                icon: 'question',
-                confirmText: 'Activate',
-            });
+            const go = (typeof window.slbConfirmActivate === 'function')
+                ? window.slbConfirmActivate({
+                    looksEnglish: this.dataset.descriptionEnglish !== '0',
+                    excerpt: this.dataset.descriptionExcerpt || '',
+                    name: name,
+                    confirmText: 'Activate',
+                })
+                : window.slbConfirm({
+                    title: 'Activate Site?',
+                    text: 'Make "' + name + '" live in the catalog?',
+                    icon: 'question',
+                    confirmText: 'Activate',
+                });
             go.then((ok) => {
                 if (!ok) return;
                 fetch(activateUrl.replace('__ID__', encodeURIComponent(id)), {

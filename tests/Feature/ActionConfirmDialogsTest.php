@@ -13,9 +13,14 @@ class ActionConfirmDialogsTest extends TestCase
 
         $js = file_get_contents($path);
         $this->assertStringContainsString('function slbConfirm', $js);
+        $this->assertStringContainsString('function slbConfirmActivate', $js);
         $this->assertStringContainsString('function slbAlert', $js);
         $this->assertStringContainsString('data-slb-confirm', $js);
         $this->assertStringContainsString('global.slbConfirm', $js);
+        $this->assertStringContainsString('global.slbConfirmActivate', $js);
+        $this->assertStringContainsString('This brief does not look English', $js);
+        $this->assertStringContainsString('Activate anyway', $js);
+        $this->assertStringContainsString("opts.looksEnglish !== 'false'", $js);
 
         // Capture-phase listener must only consume slbAllowSubmit for declarative confirms.
         // Otherwise imperative callers (bulk Done "Add drafts") lose their allow flag.

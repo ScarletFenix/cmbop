@@ -433,4 +433,82 @@ class AdminSiteActivateGuardTest extends TestCase
         $this->assertStringContainsString('activate_block_reason', $blade);
         $this->assertStringContainsString('Cannot activate', $blade);
     }
+
+    public function test_non_english_brief_does_not_block_verify_or_activate(): void
+    {
+        $site = $this->site([
+            'site_name' => 'German Brief Site',
+            'site_url' => 'https://german-brief.example',
+            'domain' => 'german-brief.example',
+            'verified' => false,
+            'description' => 'Ein deutscher Verlag für Gastbeiträge mit klarer Zielgruppe und vielen Lesern in der Region.',
+        ]);
+        $this->assertFalse($site->descriptionLooksLikeEnglish());
+
+        $this->actingAs($this->admin)
+            ->postJson(route('admin.sites.verify', $site->id), ['verified' => 1])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->actingAs($this->admin)
+            ->postJson(route('admin.sites.active', $site->id), ['active' => 1])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertTrue((bool) $site->fresh()->active);
+
+        $activated = ActivityLog::query()
+            ->where('action', 'site.activated')
+            ->where('subject_id', $site->id)
+            ->latest('id')
+            ->first();
+        $this->assertNotNull($activated);
+        $this->assertTrue((bool) data_get($activated->properties, 'non_english_brief_warned'));
+
+        $this->actingAs($this->marketer)
+            ->postJson(route('marketing.sites.active', $site->id), [
+                'active' => 0,
+                'reason' => 'Taking this listing off the catalog for now.',
+            ])
+            ->assertOk();
+
+        $this->actingAs($this->marketer)
+            ->postJson(route('marketing.sites.active', $site->id), ['active' => 1])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+    }
+
+    public function test_staff_list_flags_whether_the_brief_looks_english(): void
+    {
+        $german = $this->site([
+            'site_name' => 'German Flag Site',
+            'site_url' => 'https://german-flag.example',
+            'domain' => 'german-flag.example',
+            'description' => 'Ein deutscher Verlag für Gastbeiträge mit klarer Zielgruppe und vielen Lesern in der Region.',
+        ]);
+        $english = $this->site([
+            'site_name' => 'English Flag Site',
+            'site_url' => 'https://english-flag.example',
+            'domain' => 'english-flag.example',
+            'description' => 'This listing is for your audience and the publishers who write with them about guest posts.',
+        ]);
+
+        $sites = $this->actingAs($this->admin)
+            ->getJson(route('admin.users.sites', $this->publisher->id))
+            ->assertOk()
+            ->json('sites');
+
+        $byId = collect($sites)->keyBy('id');
+        $this->assertFalse((bool) $byId[$german->id]['description_looks_english']);
+        $this->assertTrue((bool) $byId[$english->id]['description_looks_english']);
+        $this->assertNotSame('', $byId[$german->id]['description_excerpt']);
+
+        $adminBlade = (string) file_get_contents(resource_path('views/admin/sites.blade.php'));
+        $mktBlade = (string) file_get_contents(resource_path('views/marketing/dashboard.blade.php'));
+        $this->assertStringContainsString('slbConfirmActivate', $adminBlade);
+        $this->assertStringContainsString('slbConfirmActivate', $mktBlade);
+        $this->assertStringContainsString('data-description-english', $adminBlade);
+        $this->assertStringContainsString('data-description-english', $mktBlade);
+        $this->assertStringNotContainsString('Promise.resolve(true)', $adminBlade);
+    }
 }
