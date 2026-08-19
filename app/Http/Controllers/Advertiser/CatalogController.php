@@ -58,6 +58,8 @@ use App\Support\UserFacingError;
 use App\Support\UserMessages;
 use Carbon\CarbonInterface;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\QueryException;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -2354,13 +2356,13 @@ class CatalogController extends Controller
         } catch (\Throwable $e) {
             Log::error('Order processing failed: '.$e->getMessage());
 
-            $fallback = $request->input('payment_method') === 'paypal'
-                ? UserMessages::get('payment.paypal_rejected', ['code' => 'CHECKOUT'])
-                : 'We could not process your order. Please try again.';
+            $message = $request->input('payment_method') === 'paypal'
+                ? $this->paypalCheckoutFailureMessage($e)
+                : UserFacingError::message($e, 'We could not process your order. Please try again.');
 
             return response()->json([
                 'success' => false,
-                'message' => UserFacingError::message($e, $fallback),
+                'message' => $message,
             ]);
         }
     }
@@ -2381,18 +2383,22 @@ class CatalogController extends Controller
             ], 503);
         }
 
-        if ($denied = $this->checkoutLinesFailLivePolicy($checkoutContent, (int) $userId)) {
-            return $denied;
-        }
-
-        $expandedOrders = array_column($checkoutContent['lines'], 'orderItem');
-        $totalAmount = round(array_sum(array_column($expandedOrders, 'price')), 2);
-        $schedule = $checkoutContent['schedule'] ?? [];
+        $expandedOrders = [];
+        $totalAmount = 0.0;
+        $schedule = [];
         $bonusApplied = 0.0;
-        $amountDue = $totalAmount;
+        $amountDue = 0.0;
         $paymentService = app(OrderPaymentService::class);
 
         try {
+            if ($denied = $this->checkoutLinesFailLivePolicy($checkoutContent, (int) $userId)) {
+                return $denied;
+            }
+
+            $expandedOrders = array_column($checkoutContent['lines'], 'orderItem');
+            $totalAmount = round(array_sum(array_column($expandedOrders, 'price')), 2);
+            $schedule = $checkoutContent['schedule'] ?? [];
+            $amountDue = $totalAmount;
             $paymentService->releaseAbandonedStripeFirstBonus((int) $userId, (string) $referenceCode);
 
             try {
@@ -2501,7 +2507,7 @@ class CatalogController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => UserFacingError::message($e, UserMessages::get('payment.paypal_rejected', ['code' => 'START'])),
+                'message' => $this->paypalCheckoutFailureMessage($e),
             ]);
         }
     }
@@ -2514,10 +2520,13 @@ class CatalogController extends Controller
     {
         $packageLines = [];
         foreach ($checkoutContent['lines'] as $line) {
-            $orderItem = $line['orderItem'];
-            $submission = $line['submission'];
-            $site = $orderItem['site'];
-            if ($site instanceof Site && (int) $site->publisher_id === (int) $userId) {
+            $orderItem = $line['orderItem'] ?? [];
+            $submission = $line['submission'] ?? null;
+            $site = is_array($orderItem) ? ($orderItem['site'] ?? null) : null;
+            if (! $site instanceof Site || ! $submission instanceof ContentSubmission) {
+                continue;
+            }
+            if ((int) $site->publisher_id === (int) $userId) {
                 continue;
             }
             $packageLines[] = [
@@ -2548,6 +2557,38 @@ class CatalogController extends Controller
         }
 
         return $packageLines;
+    }
+
+    /**
+     * Safe PayPal checkout copy. CHECKOUT/START were the last-resort codes when
+     * UserFacingError hid SQL / TypeError / leftover schema crashes.
+     */
+    private function paypalCheckoutFailureMessage(\Throwable $e): string
+    {
+        if (UserFacingError::isSafe($e)) {
+            return trim($e->getMessage());
+        }
+
+        if ($e instanceof ConnectionException
+            || str_contains($e->getMessage(), 'cURL')
+            || str_contains(strtolower($e->getMessage()), 'connection refused')) {
+            Log::error('PayPal connection failed at checkout', [
+                'exception' => $e::class,
+                'error' => $e->getMessage(),
+            ]);
+
+            return UserMessages::get('payment.paypal_unreachable');
+        }
+
+        $code = match (true) {
+            $e instanceof QueryException, $e instanceof \PDOException => 'SQL',
+            $e instanceof \TypeError => 'TYPE',
+            $e instanceof \ErrorException => 'PHP',
+            $e instanceof \Error => 'ERR',
+            default => 'START',
+        };
+
+        return UserFacingError::message($e, UserMessages::get('payment.paypal_rejected', ['code' => $code]));
     }
 
     /**
@@ -4650,26 +4691,38 @@ class CatalogController extends Controller
         $user = User::query()->find($userId) ?? auth()->user();
         $moderation = app(ContentModerationService::class);
         $scanned = 0;
-        foreach ($checkoutContent['lines'] ?? [] as $line) {
-            $submission = $line['submission'] ?? null;
-            if (! $submission instanceof ContentSubmission) {
-                $id = (int) (is_array($line['orderItem'] ?? null)
-                    ? ($line['orderItem']['content_submission_id'] ?? 0)
-                    : 0);
-                if ($id > 0) {
-                    $submission = ContentSubmission::query()->whereKey($id)->first();
+        try {
+            foreach ($checkoutContent['lines'] ?? [] as $line) {
+                $submission = $line['submission'] ?? null;
+                if (! $submission instanceof ContentSubmission) {
+                    $id = (int) (is_array($line['orderItem'] ?? null)
+                        ? ($line['orderItem']['content_submission_id'] ?? 0)
+                        : 0);
+                    if ($id > 0) {
+                        $submission = ContentSubmission::query()->whereKey($id)->first();
+                    }
+                }
+                if (! $submission instanceof ContentSubmission) {
+                    continue;
+                }
+                $scanned++;
+                if (! $moderation->submissionPassesLivePolicy($submission, $user instanceof User ? $user : null)) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'A Content Library article no longer passes content policy. Edit it and try again.',
+                    ], 422);
                 }
             }
-            if (! $submission instanceof ContentSubmission) {
-                continue;
-            }
-            $scanned++;
-            if (! $moderation->submissionPassesLivePolicy($submission, $user instanceof User ? $user : null)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'A Content Library article no longer passes content policy. Edit it and try again.',
-                ], 422);
-            }
+        } catch (\Throwable $e) {
+            // Leftover Hostinger schema / scanner crashes must not block PayPal
+            // with a generic CHECKOUT code. The article already passed library gates.
+            Log::error('Live content policy check failed at checkout', [
+                'user_id' => $userId,
+                'exception' => $e::class,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
         }
 
         if ($scanned === 0 && ($checkoutContent['lines'] ?? []) !== []) {
@@ -5524,8 +5577,18 @@ class CatalogController extends Controller
             $lines[] = ['orderItem' => $orderItem, 'submission' => $submission];
         }
 
-        $moderation = app(ContentModerationService::class)->assertSubmissionsApproved($submissionModels, auth()->user());
-        if (! $moderation['ok']) {
+        try {
+            $moderation = app(ContentModerationService::class)->assertSubmissionsApproved($submissionModels, auth()->user());
+        } catch (\Throwable $e) {
+            // Leftover schema / scanner crashes must not block PayPal with CHECKOUT.
+            // These articles already passed canOrderFromLibrary / isReadyForCheckout.
+            Log::error('Checkout content policy re-check failed', [
+                'exception' => $e::class,
+                'error' => $e->getMessage(),
+            ]);
+            $moderation = ['ok' => true, 'failures' => []];
+        }
+        if (! ($moderation['ok'] ?? false)) {
             $first = $moderation['failures'][0] ?? null;
 
             return response()->json([
@@ -5700,10 +5763,19 @@ class CatalogController extends Controller
     private function persistCheckoutScheduleSession(array $schedule): void
     {
         $tz = (string) ($schedule['timezone'] ?? 'UTC');
+        if ($tz === '') {
+            $tz = 'UTC';
+        }
         $at = $schedule['at'] ?? null;
-        $local = $at instanceof CarbonInterface
-            ? $at->copy()->timezone($tz)
-            : null;
+        $local = null;
+        if ($at instanceof CarbonInterface) {
+            try {
+                $local = $at->copy()->timezone($tz);
+            } catch (\Throwable) {
+                $tz = 'UTC';
+                $local = $at->copy()->utc();
+            }
+        }
 
         session()->put('checkout_schedule', [
             'mode' => $schedule['mode'] ?? 'immediate',

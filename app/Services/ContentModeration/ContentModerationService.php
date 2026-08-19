@@ -13,6 +13,7 @@ use App\Services\ContentUpload\DocumentTextExtractor;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -429,13 +430,21 @@ class ContentModerationService
                     : ContentSubmission::STATUS_REJECTED);
             $fields = [
                 'moderation_status' => $newStatus,
-                'moderation_log_id' => $result['log']?->id,
+                'moderation_log_id' => $result['log'] instanceof ContentModerationLog ? $result['log']->id : null,
                 'scan_token' => $result['scan_token'],
             ];
             if ($this->checkoutShouldSyncEvaluation($submission, $newStatus, $result)) {
                 $fields = array_merge($fields, $this->evaluationFieldsFromScan($submission, $result));
             }
-            $submission->update($fields);
+            try {
+                $submission->update($fields);
+            } catch (\Throwable $e) {
+                Log::warning('Live-policy scan fields could not be saved', [
+                    'submission_id' => $submission->id,
+                    'exception' => $e::class,
+                    'error' => $e->getMessage(),
+                ]);
+            }
 
             // scanExtractedContent / resultFromLog use passed + user_title/user_message
             // (not approved/title/message). Wrong keys crashed checkout on reject
@@ -1649,19 +1658,24 @@ class ContentModerationService
             $report['blocked_urls'] = $urls;
 
             $updated = false;
+            $topic = $this->categoryTopic(
+                $result['log'] instanceof ContentModerationLog
+                    ? $result['log']->detected_category
+                    : null
+            );
             foreach ($checks as $i => $check) {
                 if (! is_array($check) || ($check['key'] ?? '') !== 'restricted_content') {
                     continue;
                 }
                 $checks[$i]['status'] = 'fail';
-                $checks[$i]['label'] = 'Restricted content ('.$this->categoryTopic($result['log']?->detected_category ?? null).')';
+                $checks[$i]['label'] = 'Restricted content ('.$topic.')';
                 $checks[$i]['detail'] = $detail;
                 $updated = true;
             }
             if (! $updated && ! $error) {
                 $checks[] = [
                     'key' => 'restricted_content',
-                    'label' => 'Restricted content ('.$this->categoryTopic($result['log']?->detected_category ?? null).')',
+                    'label' => 'Restricted content ('.$topic.')',
                     'status' => 'fail',
                     'detail' => $detail,
                 ];
