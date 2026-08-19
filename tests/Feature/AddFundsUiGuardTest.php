@@ -66,6 +66,11 @@ class AddFundsUiGuardTest extends TestCase
         $this->assertStringContainsString('AddFundsBoot', $view);
         $this->assertStringContainsString('createPaypal', $view);
         $this->assertStringContainsString('data-method="paypal"', $view);
+        $this->assertStringContainsString('payment-card-brands', $view);
+        $this->assertStringContainsString('Recently used', $view);
+        $this->assertStringContainsString('add_funds.paypal', $view);
+        $this->assertStringContainsString('lastUsedMethod', $view);
+        $this->assertStringNotContainsString('fab fa-stripe', $view);
         $this->assertStringNotContainsString('PayPal coming soon', $view);
         $this->assertStringContainsString('assets/js/add-funds.js', $view);
         $this->assertStringContainsString('assets/css/add-funds.css', $view);

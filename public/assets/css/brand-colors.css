@@ -462,6 +462,40 @@ code.font-monospace {
   box-shadow: none !important;
 }
 
+.feature-new-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 18px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.payment-brand-logos {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.payment-brand-logos img {
+  display: block;
+  width: auto;
+  height: 16px;
+  object-fit: contain;
+}
+
+.payment-brand-logos--header img {
+  height: 12px;
+}
+
 .badge-warn,
 .badge-pending {
   background: #fff7ed !important;

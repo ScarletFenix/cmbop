@@ -74,6 +74,25 @@ class AddFundsController extends Controller
         $prefillMethod = in_array($request->query('method'), ['wise', 'bank', 'crypto', 'card', 'paypal'], true)
             ? $request->query('method')
             : null;
+        $lastUsedMethod = DepositRequest::lastUsedMethodForUser((int) $user->id);
+        $depositMethodOrder = ['card', 'bank', 'paypal', 'wise', 'crypto'];
+        if (is_string($lastUsedMethod) && in_array($lastUsedMethod, $depositMethodOrder, true)) {
+            $depositMethodOrder = array_values(array_unique(array_merge([$lastUsedMethod], $depositMethodOrder)));
+        }
+        $stripeConfigured = app(StripeCustomerService::class)->configured();
+        $paypalConfigured = app(PaypalCheckoutService::class)->configured();
+        $cryptoEnabled = DepositPaymentConfig::cryptoEnabled();
+        if ($prefillMethod === null && $lastUsedMethod) {
+            $canPrefillLastUsed = match ($lastUsedMethod) {
+                'card' => $stripeConfigured,
+                'paypal' => $paypalConfigured,
+                'crypto' => $cryptoEnabled,
+                default => true,
+            };
+            if ($canPrefillLastUsed) {
+                $prefillMethod = $lastUsedMethod;
+            }
+        }
 
         $publisherRoleId = Wallet::publisherRoleId();
         $publisherWallet = ($publisherRoleId && $user->hasRole('publisher'))
@@ -100,13 +119,15 @@ class AddFundsController extends Controller
             'availableMethods' => $this->payoutProfiles->availableMethods($user),
             'prefillAmount' => $prefillAmount >= 10 ? $prefillAmount : null,
             'prefillMethod' => $prefillMethod,
+            'lastUsedMethod' => $lastUsedMethod,
+            'depositMethodOrder' => $depositMethodOrder,
             'savedCards' => app(StripeCustomerService::class)->listCards($user),
-            'stripeConfigured' => app(StripeCustomerService::class)->configured(),
-            'paypalConfigured' => app(PaypalCheckoutService::class)->configured(),
+            'stripeConfigured' => $stripeConfigured,
+            'paypalConfigured' => $paypalConfigured,
             'cardsTab' => $request->query('tab') === 'cards',
             'depositPayment' => DepositPaymentConfig::depositPayment(),
             'wisePayUrl' => DepositPaymentConfig::wisePayUrl(),
-            'cryptoEnabled' => DepositPaymentConfig::cryptoEnabled(),
+            'cryptoEnabled' => $cryptoEnabled,
             'cryptoNetworks' => DepositPaymentConfig::cryptoNetworks(),
             'cryptoNote' => DepositPaymentConfig::cryptoNote(),
         ]);

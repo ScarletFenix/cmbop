@@ -68,8 +68,8 @@ class ConversionAndTrustTest extends TestCase
             ->assertSee('Wallet refund if a publisher cannot deliver', false)
             ->getContent();
 
-        $this->assertStringNotContainsString('alt="PayPal"', $html);
-        $this->assertStringNotContainsString('paypal.svg', $html);
+        $this->assertStringContainsString('alt="PayPal"', $html);
+        $this->assertStringContainsString('paypal.svg', $html);
     }
 
     public function test_catalog_cart_includes_buy_confidence_strip(): void
@@ -82,7 +82,7 @@ class ConversionAndTrustTest extends TestCase
             ->assertSee('buy-confidence', false)
             ->assertSee('Price shown is what you pay', false)
             ->assertSee('wallet refund per our refund policy', false)
-            ->assertDontSee('alt="PayPal"', false);
+            ->assertSee('alt="PayPal"', false);
     }
 
     public function test_checkout_includes_buy_confidence_and_paypal_tile(): void
@@ -112,7 +112,10 @@ class ConversionAndTrustTest extends TestCase
             ->assertSee('See refund policy', false)
             ->assertSee('data-method="paypal"', false)
             ->assertSee('assets/img/payments/paypal.svg', false)
-            ->assertDontSee('alt="PayPal"', false);
+            ->assertSee('assets/img/payments/visa.svg', false)
+            ->assertSee('assets/img/payments/mastercard.svg', false)
+            ->assertDontSee('fab fa-stripe', false)
+            ->assertSee('alt="PayPal"', false);
     }
 
     public function test_trust_strip_shows_paypal_when_configured(): void
