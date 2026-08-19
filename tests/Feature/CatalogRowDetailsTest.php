@@ -5,7 +5,6 @@ namespace Tests\Feature;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
-use App\Support\SiteDescriptionRules;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -123,7 +122,7 @@ class CatalogRowDetailsTest extends TestCase
         $this->assertMatchesRegularExpression('/catalog-mobile-metrics__label[\s\S]*?>[\s\S]*?DA/', $html);
     }
 
-    public function test_non_english_description_offers_google_translate_without_overwriting_html(): void
+    public function test_description_stays_on_the_page_without_a_translate_control(): void
     {
         $site = $this->makeSite();
 
@@ -132,43 +131,15 @@ class CatalogRowDetailsTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        $this->assertStringContainsString('Brief in German', $html);
-        $this->assertStringContainsString('Translate to English', $html);
-        $this->assertStringContainsString('English (machine translation)', $html);
-        $this->assertStringContainsString('translate.google.com', $html);
-        $this->assertStringContainsString('sl=auto', $html);
-        $this->assertStringContainsString('tl=en', $html);
         $this->assertStringContainsString('<strong>deutscher</strong>', $html);
         $this->assertStringContainsString(e(site_description_excerpt($site->description)), $html);
-
-        $expectedUrl = SiteDescriptionRules::googleTranslateUrl($site->description);
-        $this->assertNotNull($expectedUrl);
-        $this->assertStringContainsString(e($expectedUrl), $html);
-    }
-
-    public function test_english_listing_hides_translate_control(): void
-    {
-        $this->makeSite([
-            'site_name' => 'English Row Blog',
-            'site_url' => 'https://english-row.example',
-            'domain' => 'english-row.example',
-            'language' => 'en',
-            'languages' => ['en'],
-            'description' => '<p>An <strong>English</strong> publisher brief for guest posts and placements.</p>',
-            'partner_material' => false,
-        ]);
-
-        $html = $this->actingAs($this->advertiser)
-            ->get(route('advertiser.catalog', ['search' => 'English Row']))
-            ->assertOk()
-            ->getContent();
-
-        $this->assertStringContainsString('<strong>English</strong>', $html);
         $this->assertStringNotContainsString('Translate to English', $html);
-        $this->assertStringNotContainsString('Brief in English', $html);
+        $this->assertStringNotContainsString('translate.google.com', $html);
+        $this->assertStringNotContainsString('catalog-description-translate', $html);
+        $this->assertStringNotContainsString('Brief in German', $html);
     }
 
-    public function test_hide_mode_blanks_description_and_omits_translate_until_identity_is_shown(): void
+    public function test_hide_mode_blanks_description_until_identity_is_shown(): void
     {
         $this->makeSite();
 
@@ -179,7 +150,6 @@ class CatalogRowDetailsTest extends TestCase
 
         $this->assertStringContainsString('then the description appears', $html);
         $this->assertStringNotContainsString('Translate to English', $html);
-        $this->assertStringNotContainsString('Brief in German', $html);
         $this->assertStringNotContainsString('<strong>deutscher</strong>', $html);
         $this->assertStringNotContainsString('Ein deutscher Verlag', $html);
     }
@@ -220,17 +190,5 @@ class CatalogRowDetailsTest extends TestCase
 
         $this->assertStringContainsString('not a country code', $tile);
         $this->assertStringContainsString('aria-hidden="true"', $tile);
-    }
-
-    public function test_google_translate_helper_strips_html_before_encoding(): void
-    {
-        $url = catalog_description_translate_url('<p>Hallo <strong>Welt</strong></p>');
-
-        $this->assertIsString($url);
-        $this->assertStringStartsWith('https://translate.google.com/', $url);
-        $this->assertStringNotContainsString('<strong>', $url);
-        $this->assertStringContainsString('Hallo', $url);
-        $this->assertFalse(SiteDescriptionRules::shouldOfferEnglishTranslate('en', '<p>Hello world editorial copy here.</p>'));
-        $this->assertTrue(SiteDescriptionRules::shouldOfferEnglishTranslate('de', '<p>Hallo Welt editorial copy here.</p>'));
     }
 }

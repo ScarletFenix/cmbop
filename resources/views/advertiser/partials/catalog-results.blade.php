@@ -625,10 +625,6 @@
                                 <span>Use the eye to show this listing’s name and URL, then the description appears.</span>
                             @elseif($hasExpandDescription)
                                 {!! $expandDescriptionHtml !!}
-                                @include('advertiser.partials.catalog-description-translate', [
-                                    'site' => $site,
-                                    'showsIdentity' => $showsIdentity,
-                                ])
                             @else
                                 <span>No description yet</span>
                             @endif
@@ -1449,10 +1445,6 @@
                                     Use the eye to show this listing’s name and URL, then the description appears.
                                 @else
                                     {{ site_description_excerpt($site->description) }}
-                                    @include('advertiser.partials.catalog-description-translate', [
-                                        'site' => $site,
-                                        'showsIdentity' => $showsIdentity,
-                                    ])
                                 @endif
                             @endif
                             @if(\App\Support\CatalogPlaceholderListing::matches($site))

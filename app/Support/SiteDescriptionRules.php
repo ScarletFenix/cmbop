@@ -15,13 +15,6 @@ class SiteDescriptionRules
 
     public const EXCERPT_CHARS = 260;
 
-    /**
-     * Marketplace language codes that already read as English to advertisers.
-     *
-     * @var list<string>
-     */
-    public const ENGLISH_LANGUAGE_CODES = ['en', 'us', 'en-us', 'en-gb', 'en-uk', 'english'];
-
     public static function plainText(string $html): string
     {
         $text = html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8');
@@ -80,42 +73,6 @@ class SiteDescriptionRules
         }
 
         return Str::limit($plain, $limit ?? self::EXCERPT_CHARS);
-    }
-
-    public static function isEnglishLanguage(?string $code): bool
-    {
-        $key = strtolower(trim((string) $code));
-
-        return in_array($key, self::ENGLISH_LANGUAGE_CODES, true);
-    }
-
-    /**
-     * v1 translate control: Google Translate tab with a plain-text excerpt.
-     * Returns null when there is nothing safe to send, or the listing is already English.
-     */
-    public static function googleTranslateUrl(?string $html, string $target = 'en'): ?string
-    {
-        $plain = self::excerpt($html);
-        if ($plain === '') {
-            return null;
-        }
-
-        $locale = strtolower(trim($target));
-        if ($locale === '') {
-            $locale = 'en';
-        }
-
-        return 'https://translate.google.com/?sl=auto&tl='.rawurlencode($locale).'&text='.rawurlencode($plain);
-    }
-
-    public static function shouldOfferEnglishTranslate(?string $language, ?string $html): bool
-    {
-        $code = strtolower(trim((string) $language));
-        if ($code === '' || self::isEnglishLanguage($code)) {
-            return false;
-        }
-
-        return self::googleTranslateUrl($html) !== null;
     }
 
     public static function helpText(): string
