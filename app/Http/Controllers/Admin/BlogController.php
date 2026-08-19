@@ -727,7 +727,8 @@ class BlogController extends Controller
     }
 
     /**
-     * Persist a blog image as WebP (GIF stays GIF). Raw JPEG/PNG is refused.
+     * Persist a blog image as WebP when GD can convert. GIF stays GIF.
+     * JPEG/PNG keep original bytes when they are a real image and WebP is unavailable.
      */
     private function storeBlogImage(UploadedFile $file, string $directory): ?string
     {
@@ -754,7 +755,7 @@ class BlogController extends Controller
 
     private static function imageConversionFailedMessage(): string
     {
-        return 'Could not convert this image. JPEG and PNG need PHP GD with WebP on the server. GIF uploads still work.';
+        return 'Could not store this image. Use a valid JPEG, PNG, GIF, or WebP file.';
     }
 
     private function sanitizeTranslations(array $translations, bool $requireEnglish): array

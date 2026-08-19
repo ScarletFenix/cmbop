@@ -2285,7 +2285,8 @@ class SiteController extends Controller
     }
 
     /**
-     * Persist a staff cover as WebP (GIF stays GIF). Raw JPEG/PNG is refused.
+     * Persist a staff cover as WebP when GD can convert. GIF stays GIF.
+     * JPEG/PNG keep original bytes when they are a real image and WebP is unavailable.
      */
     private function storeStaffSiteImage(UploadedFile $file): ?string
     {

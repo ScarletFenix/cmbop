@@ -149,9 +149,39 @@ class OrderRefundService
     }
 
     /**
+     * PayPal already returned cash. Restore leftover checkout bonus only —
+     * never mint wallet credit for a capture that was refunded outside admin.
+     */
+    public function restoreCheckoutBonusAfterExternalPaypalRefund(Order $order): float
+    {
+        if (($order->payment_method ?? '') !== 'paypal') {
+            return 0.0;
+        }
+
+        return DB::transaction(function () use ($order) {
+            $locked = Order::whereKey($order->getKey())->lockForUpdate()->first();
+            if (! $locked) {
+                return 0.0;
+            }
+
+            $amount = $this->resolveOrderCancelRefundAmount($locked);
+            if ($amount <= 0) {
+                return 0.0;
+            }
+
+            $moved = $this->applyAdvertiserRefund($locked, $amount, 'PayPal capture refunded');
+            $order->setRawAttributes($locked->getAttributes(), true);
+
+            return $moved['bonus'];
+        });
+    }
+
+    /**
      * Refund a PayPal capture when one exists. HTTP stays outside the caller's
-     * DB transaction when this is invoked first. Returns null to fall back to
-     * a wallet credit (no capture, or PayPal not configured).
+     * DB transaction when this is invoked first. Returns null only when there
+     * is no capture (wallet fallback). A capture with PayPal unconfigured
+     * fails closed — do not mint wallet cash while the buyer can still be
+     * refunded in the PayPal dashboard.
      *
      * @return array{id: string, amount: float, status: string}|null
      */
@@ -182,7 +212,9 @@ class OrderRefundService
 
         $paypal = app(PaypalCheckoutService::class);
         if (! $paypal->configured()) {
-            return null;
+            throw new \RuntimeException(
+                'PayPal is not configured. Refund this capture in the PayPal dashboard first.'
+            );
         }
 
         if (DB::transactionLevel() > 0) {

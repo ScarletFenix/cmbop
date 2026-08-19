@@ -6186,6 +6186,37 @@ class CatalogController extends Controller
         }
     }
 
+    /**
+     * PayPal-first packages have no order rows until return/webhook.
+     * A completed capture must not release this reference's bonus.
+     */
+    private function paypalCheckoutCaptureIsCompleted(array $package): bool
+    {
+        $orderId = search_text($package['paypal_order_id'] ?? '');
+        if ($orderId === '') {
+            return false;
+        }
+
+        $paypal = app(PaypalCheckoutService::class);
+        if (! $paypal->configured()) {
+            return false;
+        }
+
+        try {
+            $captured = $paypal->getCompletedCapture($orderId);
+
+            return strtoupper((string) ($captured['status'] ?? '')) === 'COMPLETED'
+                && filled($captured['capture_id'] ?? null);
+        } catch (\Throwable $e) {
+            Log::warning('Could not verify PayPal capture before cancel cleanup', [
+                'paypal_order_id' => $orderId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
+    }
+
     private function cancelUnpaidCardOrdersAndRestoreCart(string $referenceCode): void
     {
         $referenceCode = search_text($referenceCode);
@@ -6222,10 +6253,11 @@ class CatalogController extends Controller
                 return;
             }
 
-            if ($this->stripeCheckoutSessionIsPaid($package)) {
-                Log::info('Skipping cancel bonus release; Stripe session already paid', [
+            if ($this->stripeCheckoutSessionIsPaid($package) || $this->paypalCheckoutCaptureIsCompleted($package)) {
+                Log::info('Skipping cancel bonus release; checkout capture already completed', [
                     'reference_code' => $referenceCode,
                     'session_id' => $package['stripe_session_id'] ?? null,
+                    'paypal_order_id' => $package['paypal_order_id'] ?? null,
                 ]);
 
                 return;

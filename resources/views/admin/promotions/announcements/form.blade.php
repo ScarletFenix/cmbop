@@ -147,13 +147,11 @@
                         @endif
                         <a href="{{ staff_route('promotions.preview', ['audience' => $announcement->audience === 'all' ? 'public' : $announcement->audience]) }}"
                            class="btn btn-outline-secondary" target="_blank" rel="noopener">Preview as audience</a>
-                        @if(auth()->user()?->isAdmin() && $mode === 'edit')
-                            <a href="{{ route('admin.campaigns.index', [
-                                'audience' => $announcement->audience === 'publisher' ? 'publishers' : 'advertisers',
-                                'subject' => $announcement->title,
-                                'cta_label' => $announcement->cta_label,
-                                'cta_url' => $announcement->cta_url,
-                            ]) }}" class="btn btn-outline-secondary">Email this audience</a>
+                        @php
+                            $campaignHandoff = \App\Support\PromotionCampaignHandoff::query($announcement);
+                        @endphp
+                        @if(auth()->user()?->isAdmin() && $mode === 'edit' && $campaignHandoff !== [])
+                            <a href="{{ route('admin.campaigns.index', $campaignHandoff) }}" class="btn btn-outline-secondary">Email this audience</a>
                         @endif
                     </div>
                 </div>

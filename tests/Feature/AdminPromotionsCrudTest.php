@@ -216,4 +216,65 @@ class AdminPromotionsCrudTest extends TestCase
             ->getContent();
         $this->assertDoesNotMatchRegularExpression('/id="is_active"[^>]*checked/', $html);
     }
+
+    public function test_everyone_announcement_email_handoff_targets_both_roles(): void
+    {
+        $announcement = SiteAnnouncement::create([
+            'title' => 'Everyone sale',
+            'message' => 'Save 20% this week.',
+            'type' => 'general',
+            'style' => 'promo',
+            'audience' => 'all',
+            'cta_label' => 'Shop',
+            'cta_url' => '/advertiser/catalog',
+            'is_active' => true,
+            'priority' => 10,
+            'created_by' => $this->admin->id,
+        ]);
+
+        $indexHtml = $this->actingAs($this->admin)
+            ->get(route('admin.promotions.announcements.index'))
+            ->assertOk()
+            ->getContent();
+        $this->assertStringContainsString('audience=both', html_entity_decode($indexHtml));
+        $this->assertStringContainsString('body_html=', $indexHtml);
+        $this->assertStringNotContainsString('audience=advertisers', html_entity_decode($indexHtml));
+
+        $editHtml = $this->actingAs($this->admin)
+            ->get(route('admin.promotions.announcements.edit', $announcement))
+            ->assertOk()
+            ->getContent();
+        $this->assertStringContainsString('audience=both', html_entity_decode($editHtml));
+
+        $campaignHtml = $this->actingAs($this->admin)
+            ->get(route('admin.campaigns.index', [
+                'audience' => 'both',
+                'subject' => 'Everyone sale',
+                'body_html' => '<p>Save 20% this week.</p>',
+            ]))
+            ->assertOk()
+            ->getContent();
+        $this->assertMatchesRegularExpression('/value="both"[^>]*selected/', $campaignHtml);
+        $this->assertStringContainsString('Save 20% this week.', $campaignHtml);
+    }
+
+    public function test_public_announcement_has_no_email_handoff(): void
+    {
+        SiteAnnouncement::create([
+            'title' => 'Homepage only',
+            'message' => 'Public visitors only.',
+            'type' => 'general',
+            'style' => 'info',
+            'audience' => 'public',
+            'is_active' => true,
+            'priority' => 10,
+            'created_by' => $this->admin->id,
+        ]);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.promotions.announcements.index'))
+            ->assertOk()
+            ->assertSee('Homepage only', false)
+            ->assertDontSee('>Email</a>', false);
+    }
 }
