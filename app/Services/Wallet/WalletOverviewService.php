@@ -27,14 +27,10 @@ class WalletOverviewService
         $available = $wallet->withdrawableBalance();
         $bonus = $wallet->lockedBonusBalance();
         $pendingReserved = round((float) $wallet->reserved_balance, 2);
-        $pendingDeposits = (float) DepositRequest::where('user_id', $userId)
-            ->whereIn('status', ['pending'])
-            ->sum('amount');
+        $pendingDeposits = $this->depositAmountSum($userId, ['pending']);
         $pendingBalance = round($pendingReserved + $pendingDeposits, 2);
 
-        $lifetimeDeposits = (float) DepositRequest::where('user_id', $userId)
-            ->whereIn('status', $this->spend->settledDepositStatuses())
-            ->sum('amount');
+        $lifetimeDeposits = $this->depositAmountSum($userId, $this->spend->settledDepositStatuses());
 
         $spendSummary = $this->spend->summary($userId);
         $lifetimeSpending = $spendSummary['net'];
@@ -110,15 +106,9 @@ class WalletOverviewService
             $cursor = $bucket === 'day' ? $cursor->addDay() : $cursor->addMonth();
         }
 
-        $depositRows = DepositRequest::where('user_id', $userId)
-            ->whereIn('status', $this->spend->settledDepositStatuses())
-            ->whereBetween(DB::raw('COALESCE(paid_at, approved_at, created_at)'), [$from, $to])
-            ->get(['amount', 'paid_at', 'approved_at', 'created_at']);
-
-        foreach ($depositRows as $row) {
-            $at = $row->paid_at ?? $row->approved_at ?? $row->created_at;
-            $key = $bucket === 'day' ? $at->format('Y-m-d') : $at->format('Y-m');
-            if (isset($labels[$key])) {
+        foreach ($this->settledDepositRows($userId, $from, $to) as $row) {
+            $key = $this->chartDateKey($row->paid_at ?? $row->approved_at ?? $row->created_at, $bucket);
+            if ($key !== null && isset($labels[$key])) {
                 $labels[$key]['deposits'] += (float) $row->amount;
             }
         }
@@ -149,9 +139,9 @@ class WalletOverviewService
 
         foreach ($orderRows as $row) {
             $at = $row->paid_at ?? $row->created_at;
-            $key = $bucket === 'day' ? $at->format('Y-m-d') : $at->format('Y-m');
+            $key = $this->chartDateKey($at, $bucket);
             $amount = (float) $row->total_amount;
-            if (isset($labels[$key])) {
+            if ($key !== null && isset($labels[$key])) {
                 $labels[$key]['order_ids'][] = $row->id;
                 $labels[$key]['largest_order'] = max(
                     (float) $labels[$key]['largest_order'],
@@ -194,8 +184,8 @@ class WalletOverviewService
             ->get(['amount', 'created_at']);
 
         foreach ($withdrawalRows as $row) {
-            $key = $bucket === 'day' ? $row->created_at->format('Y-m-d') : $row->created_at->format('Y-m');
-            if (isset($labels[$key])) {
+            $key = $this->chartDateKey($row->created_at, $bucket);
+            if ($key !== null && isset($labels[$key])) {
                 $labels[$key]['withdrawals'] += (float) $row->amount;
             }
         }
@@ -207,8 +197,8 @@ class WalletOverviewService
             ->get(['bonus_amount', 'created_at']);
 
         foreach ($bonusRows as $row) {
-            $key = $bucket === 'day' ? $row->created_at->format('Y-m-d') : $row->created_at->format('Y-m');
-            if (isset($labels[$key])) {
+            $key = $this->chartDateKey($row->created_at, $bucket);
+            if ($key !== null && isset($labels[$key])) {
                 $labels[$key]['bonus_usage'] += (float) $row->bonus_amount;
             }
         }
@@ -314,7 +304,7 @@ class WalletOverviewService
                 if ($tx->related_type === Invoice::class || str_contains((string) $tx->related_type, 'Invoice')) {
                     $invoice = Invoice::find($tx->related_id);
                 } elseif ($tx->type === WalletTransaction::TYPE_DEPOSIT) {
-                    $deposit = DepositRequest::find($tx->related_id);
+                    $deposit = $this->findDeposit((int) $tx->related_id);
                     if ($deposit) {
                         $invoice = Invoice::where('user_id', $userId)
                             ->where(function ($q) use ($deposit) {
@@ -407,7 +397,16 @@ class WalletOverviewService
 
         // Legacy deposits not yet in ledger
         $ledgerDepositRefs = $ledger->where('type', WalletTransaction::TYPE_DEPOSIT)->pluck('reference')->filter()->all();
-        DepositRequest::where('user_id', $userId)->orderByDesc('created_at')->get()->each(function ($d) use ($rows, $ledgerDepositRefs, $userId) {
+        if (DepositRequest::tableAvailable()) {
+            try {
+                $legacyDeposits = DepositRequest::where('user_id', $userId)->orderByDesc('created_at')->get();
+            } catch (\Throwable) {
+                $legacyDeposits = collect();
+            }
+        } else {
+            $legacyDeposits = collect();
+        }
+        $legacyDeposits->each(function ($d) use ($rows, $ledgerDepositRefs, $userId) {
             if (in_array($d->reference_code, $ledgerDepositRefs, true)) {
                 return;
             }
@@ -686,5 +685,64 @@ class WalletOverviewService
             'lifetime' => [now()->subYears(5)->startOfMonth(), $to, 'month'],
             default => [now()->subDays(29)->startOfDay(), $to, 'day'], // 30d / month
         };
+    }
+
+    /**
+     * @param  list<string>  $statuses
+     */
+    private function depositAmountSum(int $userId, array $statuses): float
+    {
+        if (! DepositRequest::tableAvailable()) {
+            return 0.0;
+        }
+
+        try {
+            return (float) DepositRequest::where('user_id', $userId)
+                ->whereIn('status', $statuses)
+                ->sum('amount');
+        } catch (\Throwable) {
+            return 0.0;
+        }
+    }
+
+    /**
+     * @return Collection<int, DepositRequest>
+     */
+    private function settledDepositRows(int $userId, Carbon $from, Carbon $to): Collection
+    {
+        if (! DepositRequest::tableAvailable()) {
+            return collect();
+        }
+
+        try {
+            return DepositRequest::where('user_id', $userId)
+                ->whereIn('status', $this->spend->settledDepositStatuses())
+                ->whereBetween(DB::raw('COALESCE(paid_at, approved_at, created_at)'), [$from, $to])
+                ->get(['amount', 'paid_at', 'approved_at', 'created_at']);
+        } catch (\Throwable) {
+            return collect();
+        }
+    }
+
+    private function findDeposit(int $id): ?DepositRequest
+    {
+        if ($id < 1 || ! DepositRequest::tableAvailable()) {
+            return null;
+        }
+
+        try {
+            return DepositRequest::find($id);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    private function chartDateKey(mixed $at, string $bucket): ?string
+    {
+        if (! $at instanceof \DateTimeInterface) {
+            return null;
+        }
+
+        return $bucket === 'day' ? $at->format('Y-m-d') : $at->format('Y-m');
     }
 }

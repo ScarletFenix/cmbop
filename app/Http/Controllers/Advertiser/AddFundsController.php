@@ -58,17 +58,36 @@ class AddFundsController extends Controller
             ]
         );
 
-        $pendingRequests = DepositRequest::where('user_id', $user->id)
-            ->where('status', 'pending')
-            ->latest()
-            ->get();
+        $pendingRequests = collect();
+        if (DepositRequest::tableAvailable()) {
+            try {
+                $pendingRequests = DepositRequest::where('user_id', $user->id)
+                    ->where('status', 'pending')
+                    ->latest()
+                    ->get();
+            } catch (\Throwable $e) {
+                Log::warning('Add Funds pending deposits query skipped', [
+                    'user_id' => $user->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
 
         $wallet->repairOrphanedWelcomeBonus();
         $wallet->reconcileInflatedBonusBalance();
         $wallet->refresh();
 
-        $summary = $this->overview->summary($user->id, $wallet);
-        $analytics = $this->overview->analytics($user->id, 'month');
+        try {
+            $summary = $this->overview->summary($user->id, $wallet);
+            $analytics = $this->overview->analytics($user->id, 'month');
+        } catch (\Throwable $e) {
+            Log::warning('Add Funds wallet overview failed', [
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+            ]);
+            $summary = [];
+            $analytics = ['labels' => [], 'deposits' => [], 'orders' => []];
+        }
 
         $prefillAmount = max(0, (float) $request->query('amount', 0));
         $stripeConfigured = app(StripeCustomerService::class)->configured();
@@ -199,7 +218,7 @@ class AddFundsController extends Controller
     {
         try {
             $request->validate([
-                'amount' => 'required|numeric|min:10',
+                'amount' => 'required|numeric|min:10|max:100000',
                 'reference_code' => 'required|string',
             ]);
 
@@ -254,6 +273,8 @@ class AddFundsController extends Controller
                 'session_id' => $checkoutSession->id,
             ]);
 
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
             Log::error('Stripe checkout error: '.$e->getMessage());
 
@@ -298,6 +319,8 @@ class AddFundsController extends Controller
                 'paypal_order_id' => $created['id'],
                 'reference_code' => $referenceCode,
             ]);
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
             Log::error('PayPal wallet deposit create error: '.$e->getMessage());
 
@@ -500,7 +523,7 @@ class AddFundsController extends Controller
     public function payWithSavedCard(Request $request)
     {
         $request->validate([
-            'amount' => 'required|numeric|min:10',
+            'amount' => 'required|numeric|min:10|max:100000',
             'payment_method_id' => 'required|string',
             'reference_code' => 'required|string',
         ]);
@@ -576,7 +599,7 @@ class AddFundsController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Saved card payment failed. Please try again or use a new card.',
+                'message' => UserFacingError::message($e, 'Saved card payment failed. Please try again or use a new card.'),
             ], 422);
         }
     }
@@ -585,7 +608,7 @@ class AddFundsController extends Controller
     {
         try {
             $request->validate([
-                'amount' => 'required|numeric|min:10',
+                'amount' => 'required|numeric|min:10|max:100000',
                 'payment_method' => 'required|in:wise,crypto,bank',
                 'reference_code' => 'required|string',
             ]);
@@ -608,6 +631,13 @@ class AddFundsController extends Controller
                     'success' => false,
                     'message' => 'Cryptocurrency deposits are temporarily unavailable. Please use Bank or Wise.',
                 ], 422);
+            }
+
+            if (! DepositRequest::tableAvailable()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Deposits are temporarily unavailable. Please try again shortly.',
+                ], 503);
             }
 
             // Use the provided reference code
@@ -666,6 +696,8 @@ class AddFundsController extends Controller
                 'mark_paid_url' => route('advertiser.add-funds.mark-paid', $depositRequest),
             ]);
 
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
             Log::error('Error submitting deposit request: '.$e->getMessage());
 
