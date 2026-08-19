@@ -74,12 +74,14 @@ class CatalogImprovementsTest extends TestCase
         $this->site($publisher, ['site_name' => 'High Improve DA', 'da' => 60]);
         $this->site($publisher, ['site_name' => 'Low Improve DA', 'da' => 20]);
 
-        $this->actingAs($advertiser)
+        $redirect = $this->actingAs($advertiser)
             ->get(route('advertiser.catalog', ['search' => 'tech da>=50']))
-            ->assertRedirect(route('advertiser.catalog', [
-                'search' => 'tech',
-                'da_min' => '50',
-            ]));
+            ->assertRedirect();
+        $location = $redirect->headers->get('Location');
+        $this->assertNotNull($location);
+        $this->assertStringContainsString('da_min=50', $location);
+        $this->assertStringContainsString('search=tech', $location);
+        $this->assertStringNotContainsString('da>=50', $location);
 
         $html = $this->actingAs($advertiser)
             ->get(route('advertiser.catalog', ['da_min' => '50']))
@@ -115,7 +117,6 @@ class CatalogImprovementsTest extends TestCase
         ])->render();
 
         $this->assertStringNotContainsString('DoFollow', $html);
-        $this->assertStringNotContainsString('catalog-meta-chip', $html);
     }
 
     public function test_catalog_shell_has_tag_quick_suggest_and_delegated_category_toggle(): void

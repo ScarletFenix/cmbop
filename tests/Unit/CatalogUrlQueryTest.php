@@ -126,6 +126,7 @@ class CatalogUrlQueryTest extends TestCase
         $request = Request::create('/advertiser/catalog', 'GET', [
             'search' => 'da>=50',
         ]);
+        $originalQuery = $request->query();
         $request->merge(['search' => '', 'da_min' => 50]);
 
         $this->assertSame(
@@ -134,7 +135,7 @@ class CatalogUrlQueryTest extends TestCase
         );
         $this->assertSame(
             ['da_min' => '50'],
-            CatalogUrlQuery::canonicalRedirectParams($request)
+            CatalogUrlQuery::canonicalRedirectParams($request, $originalQuery)
         );
     }
 }

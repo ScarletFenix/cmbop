@@ -75,10 +75,12 @@ class CatalogUrlQuery
      *
      * @return array<string, string>|null
      */
-    public static function canonicalRedirectParams(Request $request): ?array
+    public static function canonicalRedirectParams(Request $request, ?array $originalQuery = null): ?array
     {
         $effective = self::fromRequest($request);
-        $query = self::canonicalize($request->query());
+        // Snapshot the browser query before merge — on GET, merge() writes
+        // the same bag that query() reads, so "after" query is useless.
+        $query = self::canonicalize($originalQuery ?? $request->query());
 
         ksort($effective);
         ksort($query);

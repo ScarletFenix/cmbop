@@ -154,8 +154,9 @@ class CatalogController extends Controller
 
     public function index(Request $request)
     {
+        $originalQuery = $request->query();
         $this->mergeCatalogSearchTokens($request);
-        if ($canonical = CatalogUrlQuery::canonicalRedirectParams($request)) {
+        if ($canonical = CatalogUrlQuery::canonicalRedirectParams($request, $originalQuery)) {
             return redirect()->route('advertiser.catalog', $canonical);
         }
 
@@ -487,6 +488,7 @@ class CatalogController extends Controller
         // Country & language stay on the dedicated multi-selects.
         // Parse before blacklist so a name search can still surface blocked rows.
         $this->mergeCatalogSearchTokens($request);
+        $catalogSearch = app(CatalogSearchQuery::class);
         $searchText = search_text($request->input('search'));
 
         // Blacklist filter / browse hide — but free-text search includes matches
