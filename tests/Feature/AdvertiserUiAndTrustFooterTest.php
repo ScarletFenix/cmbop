@@ -87,6 +87,8 @@ class AdvertiserUiAndTrustFooterTest extends TestCase
             $shell
         );
         $this->assertStringContainsString('flex-wrap: nowrap', $shell);
+        $this->assertStringContainsString('@property --shell-rail', $shell);
+        $this->assertStringContainsString('body.role-shell-advertiser:has(#sidebar.collapsed)', $shell);
         $this->assertStringContainsString('text-overflow: ellipsis', $shell);
         $this->assertStringNotContainsString('"legal secure"', $shell);
     }
