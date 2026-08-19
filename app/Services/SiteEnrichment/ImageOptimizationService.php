@@ -151,8 +151,33 @@ class ImageOptimizationService
     }
 
     /**
-     * Convert a staff-uploaded cover (JPEG/PNG/GIF/WebP) to WebP on the public disk.
-     * Returns null so the caller can store the original (animated GIF, missing GD, corrupt file).
+     * Store a public-disk image without keeping raw JPEG/PNG bytes.
+     * WebP when GD can convert. GIF stays GIF (animation). Anything else is refused.
+     */
+    public function storeSafePublicImage(UploadedFile $file, string $directory): ?string
+    {
+        $converted = $this->storeUploadedImageAsWebp($file, $directory);
+        if (is_string($converted) && $converted !== '') {
+            return $converted;
+        }
+
+        $ext = strtolower((string) ($file->getClientOriginalExtension() ?: $file->extension() ?: ''));
+        if ($ext !== 'gif') {
+            return null;
+        }
+
+        try {
+            $stored = $file->store(trim($directory, '/'), 'public');
+        } catch (\Throwable) {
+            return null;
+        }
+
+        return is_string($stored) && $stored !== '' ? $stored : null;
+    }
+
+    /**
+     * Convert a staff-uploaded cover (JPEG/PNG/WebP) to WebP on the public disk.
+     * Returns null for GIF (keep animation) or when GD cannot re-encode.
      */
     public function storeUploadedImageAsWebp(UploadedFile $file, string $directory = 'sites'): ?string
     {

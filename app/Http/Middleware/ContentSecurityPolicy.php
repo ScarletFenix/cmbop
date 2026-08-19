@@ -13,7 +13,7 @@ class ContentSecurityPolicy
 
         $csp = implode('; ', [
             "default-src 'self'",
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval'
+            "script-src 'self' 'unsafe-inline'
                 https://cdn.jsdelivr.net
                 https://cdnjs.cloudflare.com
                 https://code.jquery.com",
@@ -23,7 +23,7 @@ class ContentSecurityPolicy
                 https://fonts.googleapis.com",
             "img-src 'self' data: https:",
             "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com",
-            "connect-src 'self' https:",
+            "connect-src 'self' https://js.stripe.com https://api.stripe.com",
             "frame-src 'self'",
             "frame-ancestors 'self'",
         ]);

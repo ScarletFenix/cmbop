@@ -243,9 +243,13 @@ class MarketingSiteImageUploadTest extends TestCase
 
     public function test_create_image_save_failure_returns_site_image_error(): void
     {
+        if (! function_exists('imagecreatetruecolor')) {
+            $this->markTestSkipped('GD extension is not installed.');
+        }
+
         Mail::fake();
         $this->mock(ImageOptimizationService::class, function ($mock) {
-            $mock->shouldReceive('storeUploadedImageAsWebp')->andReturn('sites/missing-cover.webp');
+            $mock->shouldReceive('storeSafePublicImage')->andReturn('sites/missing-cover.webp');
         });
 
         $this->actingAs($this->admin)

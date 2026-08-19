@@ -36,7 +36,7 @@ class PromotionUrl
         }
 
         // Keep site paths relative so click redirects are not rebuilt from the
-        // request host (trustProxies=* would honor X-Forwarded-Host).
+        // request host (even a trusted proxy can pass X-Forwarded-Host).
         return $url;
     }
 

@@ -39,6 +39,8 @@ class WelcomeBonusGrantTest extends TestCase
             RateLimiter::clear('register:'.$ip);
             RateLimiter::clear('register-http:'.$ip);
         }
+        RateLimiter::clear('welcome-prefix:198.51.100');
+        RateLimiter::clear('welcome-prefix:203.0.113');
     }
 
     public function test_first_advertiser_from_ip_receives_bonus_and_claim(): void
@@ -86,6 +88,34 @@ class WelcomeBonusGrantTest extends TestCase
         $this->assertAdvertiserBonus($second, 0.0);
         $this->assertSame('1.2.3.4', WelcomeBonusClaim::query()->where('user_id', $first->id)->value('ip_address'));
         $this->assertSame(1, WelcomeBonusClaim::query()->count());
+    }
+
+    public function test_sixth_advertiser_in_same_slash_24_gets_no_bonus(): void
+    {
+        Notification::fake();
+
+        for ($i = 1; $i <= 5; $i++) {
+            $ip = '198.51.100.'.$i;
+            RateLimiter::clear('register:'.$ip);
+            RateLimiter::clear('register-http:'.$ip);
+            $this->withServerVariables(['REMOTE_ADDR' => $ip])
+                ->postJson('/register', $this->registerPayload("prefix-{$i}@example.com"))
+                ->assertOk()
+                ->assertJsonPath('status', 'success');
+            $this->assertAdvertiserBonus(User::where('email', "prefix-{$i}@example.com")->first(), 20.0);
+        }
+
+        RateLimiter::clear('register:198.51.100.6');
+        RateLimiter::clear('register-http:198.51.100.6');
+
+        $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.6'])
+            ->postJson('/register', $this->registerPayload('prefix-6@example.com'))
+            ->assertOk()
+            ->assertJsonPath('status', 'success');
+
+        $sixth = User::where('email', 'prefix-6@example.com')->first();
+        $this->assertAdvertiserBonus($sixth, 0.0);
+        $this->assertSame(5, WelcomeBonusClaim::query()->count());
     }
 
     public function test_second_advertiser_from_same_ip_gets_no_bonus(): void

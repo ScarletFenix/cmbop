@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Support\UserMessages;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\RateLimiter;
@@ -31,9 +32,15 @@ class LoginController extends Controller
         $ipKey = 'login-ip:'.$request->ip();
 
         if (RateLimiter::tooManyAttempts($key, 5) || RateLimiter::tooManyAttempts($ipKey, 30)) {
+            $retry = max(
+                RateLimiter::availableIn($key),
+                RateLimiter::availableIn($ipKey),
+                1
+            );
+
             return response()->json([
                 'status' => 'error',
-                'message' => 'Too many login attempts. Please try again later.',
+                'message' => UserMessages::get('login.throttled'),
             ]);
         }
 
@@ -60,19 +67,21 @@ class LoginController extends Controller
         if (! Auth::attempt($credentials, $remember)) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Invalid email or password.',
+                'message' => UserMessages::get('login.invalid'),
             ]);
         }
 
         $user = Auth::user();
 
-        // 🚨 Email verification check
+        // Same wording as a bad password so login cannot confirm the account exists.
         if (! $user->hasVerifiedEmail()) {
             Auth::logout();
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
 
             return response()->json([
                 'status' => 'unverified',
-                'message' => 'Your email is not verified.',
+                'message' => UserMessages::get('login.unverified'),
                 'email' => $user->email,
             ]);
         }
@@ -87,7 +96,7 @@ class LoginController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'message' => 'Login successful!',
+            'message' => UserMessages::get('login.success'),
             'redirect' => $redirect,
         ]);
     }
@@ -95,10 +104,23 @@ class LoginController extends Controller
     /**
      * Logout
      */
-    public function logout()
+    public function logout(Request $request)
     {
         Auth::logout();
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
 
         return redirect('/');
+    }
+
+    /**
+     * @return JsonResponse
+     */
+    private function failedLoginResponse()
+    {
+        return response()->json([
+            'status' => 'error',
+            'message' => 'Invalid email or password.',
+        ]);
     }
 }
