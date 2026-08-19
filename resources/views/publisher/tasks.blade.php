@@ -153,9 +153,9 @@
                         <tr>
                             <th>Order ID</th>
                             <th>Site Details</th>
-                            <th>Base Price</th>
-                            <th>Sensitive Price</th>
-                            <th>Total Price</th>
+                            <th>Base</th>
+                            <th>Sensitive</th>
+                            <th>You earn</th>
                             <th>Order Status</th>
                             <th>Content Link</th>
                             <th width="120">Action</th>
@@ -1204,9 +1204,21 @@ $(document).ready(function() {
             var orderStatus = item.order ? item.order.status : 'pending';
             var orderNumber = item.order ? item.order.order_number : 'N/A';
             var additionalPrice = parseFloat(item.additional_price || 0);
-            var basePrice = parseFloat(item.price) - additionalPrice;
-            var totalPrice = parseFloat(item.price);
+            var homepagePrice = parseFloat(item.homepage_price || 0);
+            var homepageDays = item.homepage_days !== null && item.homepage_days !== undefined
+                ? parseInt(item.homepage_days, 10) : null;
+            var basePrice = item.publisher_base !== undefined && item.publisher_base !== null
+                ? parseFloat(item.publisher_base)
+                : Math.max(0, parseFloat(item.price) - additionalPrice - homepagePrice);
+            var totalPrice = item.you_earn !== undefined && item.you_earn !== null
+                ? parseFloat(item.you_earn)
+                : parseFloat(item.price);
             var sensitiveType = item.sensitive_type || null;
+            var homepageLine = homepagePrice > 0
+                ? '<div class="text-muted small">Homepage'
+                    + (homepageDays ? ' · ' + homepageDays + 'd' : '')
+                    + ' +€' + homepagePrice.toFixed(2) + '</div>'
+                : '';
             
             var hasLiveUrl = !!(item.live_url && item.live_url !== '');
             var modificationRequested = item.modification_requested === 'yes';
@@ -1312,7 +1324,7 @@ $(document).ready(function() {
                 '<td data-label="Site"><div class="fw-semibold">' + escapeHtml(item.site_name) + '</div><div class="text-muted small"><a href="' + escapeHtml(item.site_url) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(item.site_url) + '</a></div></td>' +
                 '<td data-label="Base" class="text-primary">€' + basePrice.toFixed(2) + '</td>' +
                 '<td data-label="Sensitive">' + (additionalPrice > 0 ? '<span class="sensitive-badge"><i class="fa fa-plus-circle"></i> ' + escapeHtml(sensitiveType || 'Extra') + ' (+€' + additionalPrice.toFixed(2) + ')</span>' : '<span class="text-muted">—</span>') + '</td>' +
-                '<td data-label="Total" class="fw-semibold total-price" style="color: #10b981;">€' + totalPrice.toFixed(2) + '</td>' +
+                '<td data-label="You earn" class="fw-semibold total-price" style="color: #10b981;">€' + totalPrice.toFixed(2) + homepageLine + '</td>' +
                 '<td data-label="Status"><span class="status-badge ' + statusMeta.statusClass + '">' + statusMeta.statusText + '</span><div class="next-step-hint">' + statusMeta.nextStep + '</div></td>' +
                 '<td class="link-cell" data-label="Content">' + ((item.content_download_url || item.content_link) ? '<a href="' + escapeHtml(item.content_download_url || item.content_link) + '" class="btn btn-sm btn-outline-primary" rel="noopener noreferrer"><i class="fa fa-download me-1"></i> ' + (item.content_original_name ? 'Document' : 'View') + '</a>' : '<span class="text-muted">Not submitted</span>') + '</td>' +
                 '<td data-label="Action">' + actions + '</td>' +
