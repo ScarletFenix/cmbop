@@ -489,6 +489,55 @@ body > footer {
   border-top: 1px solid var(--shell-border);
 }
 
+/* Two aligned rows: legal | Stripe copy, then Trustpilot | payment marks. */
+.app-shell-footer__grid {
+  display: grid;
+  width: 100%;
+  align-items: center;
+  column-gap: 16px;
+  row-gap: 8px;
+  grid-template-columns: 1fr;
+  grid-template-areas:
+    "legal"
+    "reviews"
+    "secure"
+    "methods";
+  justify-items: start;
+  text-align: left;
+}
+.app-shell-footer__legal {
+  grid-area: legal;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 4px;
+  min-width: 0;
+}
+.app-shell-footer__grid > .trustpilot-trust {
+  grid-area: reviews;
+}
+.app-shell-footer__grid > .payment-trust {
+  display: contents;
+}
+.app-shell-footer__grid .payment-trust__secure {
+  grid-area: secure;
+}
+.app-shell-footer__grid .payment-trust__methods {
+  grid-area: methods;
+}
+@media (min-width: 768px) {
+  .app-shell-footer__grid {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "legal secure"
+      "reviews methods";
+  }
+  .app-shell-footer__grid .payment-trust__secure,
+  .app-shell-footer__grid .payment-trust__methods {
+    justify-self: end;
+  }
+}
+
 /* Last dashboard block (Recent orders / Recent tasks): extra mist gap
    above the white footer so the card does not visually merge with it. */
 .dash-page-end {
