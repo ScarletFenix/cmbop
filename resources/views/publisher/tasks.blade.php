@@ -151,14 +151,14 @@
                 <table class="table table-hover align-middle mb-0">
                     <thead class="table-light">
                         <tr>
-                            <th>Order ID</th>
+                            <th class="publisher-task-col-id">Order ID</th>
                             <th>Site Details</th>
-                            <th class="text-nowrap">Base</th>
-                            <th class="text-nowrap">Sensitive</th>
-                            <th class="text-nowrap">You earn</th>
+                            <th class="publisher-task-col-money text-nowrap">Base</th>
+                            <th class="publisher-task-col-sensitive text-nowrap">Sensitive</th>
+                            <th class="publisher-task-col-money text-nowrap">You earn</th>
                             <th>Order Status</th>
-                            <th>Content Link</th>
-                            <th class="publisher-task-actions-col">Action</th>
+                            <th class="publisher-task-col-content">Content Link</th>
+                            <th class="publisher-task-actions-col text-end">Action</th>
                         </tr>
                     </thead>
                     <tbody id="tasksTableBody">
@@ -1319,15 +1319,24 @@ $(document).ready(function() {
                 actions = '<div class="action-buttons">' + viewBtn + chatBtn + liveBtn + '</div>';
             }
             
+            var siteUrl = item.site_url || '';
+            var siteHost = tasksSiteHost(siteUrl);
+            var nextStep = statusMeta.nextStep || '';
             html += '<tr class="tasks-row">' +
                 '<td data-label="Order ID"><strong>#' + escapeHtml(orderNumber) + '</strong></td>' +
-                '<td data-label="Site"><div class="fw-semibold">' + escapeHtml(item.site_name) + '</div><div class="text-muted small"><a href="' + escapeHtml(item.site_url) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(item.site_url) + '</a></div></td>' +
-                '<td data-label="Base" class="text-primary text-nowrap">€' + basePrice.toFixed(2) + '</td>' +
-                '<td data-label="Sensitive">' + (additionalPrice > 0 ? '<span class="sensitive-badge"><i class="fa fa-plus-circle"></i> ' + escapeHtml(sensitiveType || 'Extra') + ' (+€' + additionalPrice.toFixed(2) + ')</span>' : '<span class="text-muted">—</span>') + '</td>' +
-                '<td data-label="You earn" class="fw-semibold total-price text-nowrap" style="color: #10b981;">€' + totalPrice.toFixed(2) + homepageLine + '</td>' +
-                '<td data-label="Status"><span class="status-badge ' + statusMeta.statusClass + '">' + statusMeta.statusText + '</span><div class="next-step-hint">' + statusMeta.nextStep + '</div></td>' +
-                '<td class="link-cell" data-label="Content">' + ((item.content_download_url || item.content_link) ? '<a href="' + escapeHtml(item.content_download_url || item.content_link) + '" class="btn btn-sm btn-outline-primary" rel="noopener noreferrer"><i class="fa fa-download me-1"></i> ' + (item.content_original_name ? 'Document' : 'View') + '</a>' : '<span class="text-muted">Not submitted</span>') + '</td>' +
-                '<td data-label="Action">' + actions + '</td>' +
+                '<td data-label="Site"><div class="fw-semibold tasks-site-name">' + escapeHtml(item.site_name) + '</div>' +
+                    (siteUrl
+                        ? '<a class="tasks-site-url" href="' + escapeHtml(siteUrl) + '" target="_blank" rel="noopener noreferrer" title="' + escapeHtml(siteUrl) + '">' + escapeHtml(siteHost) + '</a>'
+                        : '') +
+                '</td>' +
+                '<td data-label="Base" class="text-primary text-nowrap publisher-task-col-money">€' + basePrice.toFixed(2) + '</td>' +
+                '<td data-label="Sensitive">' + (additionalPrice > 0 ? '<span class="sensitive-badge"><i class="fa fa-plus-circle"></i> ' + escapeHtml(sensitiveType || 'Extra') + ' (+€' + additionalPrice.toFixed(2) + ')</span>' : '<span class="text-muted tasks-sensitive-empty">None</span>') + '</td>' +
+                '<td data-label="You earn" class="fw-semibold total-price text-nowrap publisher-task-col-money" style="color: #10b981;">€' + totalPrice.toFixed(2) + homepageLine + '</td>' +
+                '<td data-label="Status"><span class="status-badge ' + statusMeta.statusClass + '">' + statusMeta.statusText + '</span>' +
+                    (nextStep ? '<div class="next-step-hint" title="' + escapeHtml(nextStep) + '">' + escapeHtml(nextStep) + '</div>' : '') +
+                '</td>' +
+                '<td class="link-cell" data-label="Content">' + ((item.content_download_url || item.content_link) ? '<a href="' + escapeHtml(item.content_download_url || item.content_link) + '" class="btn btn-sm btn-outline-primary tasks-content-link" rel="noopener noreferrer"><i class="fa fa-download me-1"></i> ' + (item.content_original_name ? 'Document' : 'View') + '</a>' : '<span class="text-muted">Not submitted</span>') + '</td>' +
+                '<td data-label="Action" class="publisher-task-actions-col">' + actions + '</td>' +
                 '</tr>';
         });
         
@@ -1726,6 +1735,16 @@ $(document).ready(function() {
                     $('#needsActionBanner').addClass('d-none');
                 }
             });
+    }
+
+    function tasksSiteHost(url) {
+        if (!url) return '';
+        try {
+            var host = new URL(url, window.location.origin).hostname;
+            return host || String(url);
+        } catch (err) {
+            return String(url).replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
+        }
     }
 
     function escapeHtml(str) {

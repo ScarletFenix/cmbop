@@ -166,6 +166,11 @@ class PublisherTasksNeedsActionTest extends TestCase
         $this->assertStringContainsString('row-cols-xl-5', $blade);
         $this->assertStringContainsString('publisher-task-filters', $blade);
         $this->assertStringContainsString('publisher-task-actions-col', $blade);
+        $this->assertStringContainsString('publisher-task-col-money', $blade);
+        $this->assertStringContainsString('text-end', $blade);
+        $this->assertStringContainsString('function tasksSiteHost', $blade);
+        $this->assertStringContainsString('tasks-site-url', $blade);
+        $this->assertStringContainsString('tasks-sensitive-empty', $blade);
         $this->assertFileExists(public_path('assets/css/publisher-tasks.css'));
         $css = file_get_contents(public_path('assets/css/publisher-tasks.css'));
         $this->assertStringContainsString('@media (max-width: 768px)', $css);
@@ -179,6 +184,14 @@ class PublisherTasksNeedsActionTest extends TestCase
         );
         $this->assertMatchesRegularExpression(
             '/\.btn-action-sm\s*\{[^}]*white-space:\s*nowrap/s',
+            $css
+        );
+        $this->assertMatchesRegularExpression(
+            '/\.publisher-task-actions-col,\s*td\[data-label="Action"\]\s*\{[^}]*text-align:\s*right/s',
+            $css
+        );
+        $this->assertMatchesRegularExpression(
+            '/\.next-step-hint\s*\{[^}]*text-overflow:\s*ellipsis/s',
             $css
         );
         $this->assertDoesNotMatchRegularExpression(
