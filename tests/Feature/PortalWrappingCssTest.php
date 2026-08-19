@@ -48,9 +48,14 @@ class PortalWrappingCssTest extends TestCase
             $css
         );
         $this->assertMatchesRegularExpression(
-            '/\.app-shell-footer__left\s*\{[^}]*flex:\s*0 1 auto/s',
+            '/\.app-shell-footer__left\s*\{[^}]*flex:\s*0 0 auto/s',
             $css
         );
+        $this->assertMatchesRegularExpression(
+            '/\.app-shell-footer__legal,\s*\.app-shell-footer__legal span,\s*\.app-shell-footer__legal \.btn-link\s*\{[^}]*white-space:\s*nowrap/s',
+            $css
+        );
+        $this->assertStringContainsString('display: none !important', $css);
         $this->assertMatchesRegularExpression(
             '/#sidebar\s*\{[^}]*flex:\s*none/s',
             $css

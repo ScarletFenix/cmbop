@@ -67,7 +67,11 @@ class AdvertiserUiAndTrustFooterTest extends TestCase
             $shell
         );
         $this->assertMatchesRegularExpression(
-            '/\.app-shell-footer__left\s*\{[^}]*flex:\s*0 1 auto/s',
+            '/\.app-shell-footer__left\s*\{[^}]*flex:\s*0 0 auto/s',
+            $shell
+        );
+        $this->assertMatchesRegularExpression(
+            '/\.app-shell-footer__legal,\s*\.app-shell-footer__legal span,\s*\.app-shell-footer__legal \.btn-link\s*\{[^}]*white-space:\s*nowrap/s',
             $shell
         );
         $this->assertMatchesRegularExpression(
