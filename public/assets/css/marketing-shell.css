@@ -81,3 +81,51 @@ body.role-shell-marketing .topbar-icon-btn:hover {
   color: var(--brand-primary, #1a585e);
   border-color: var(--brand-primary-border, #b8e4e4);
 }
+
+/* Recent tasks / history: one row per task, cells top-aligned like the dashboard mock. */
+body.role-shell-marketing .mkt-history-table {
+  --bs-table-bg: transparent;
+}
+body.role-shell-marketing .mkt-history-table > :not(caption) > * > * {
+  vertical-align: top;
+  padding: 12px 16px;
+  border-bottom-color: #eee;
+}
+body.role-shell-marketing .mkt-history-table thead th {
+  font-weight: 700;
+  color: #111827;
+  border-bottom-color: #e5e7eb;
+}
+body.role-shell-marketing .mkt-history-table tbody tr:last-child > * {
+  border-bottom: 0;
+}
+body.role-shell-marketing .mkt-history-table__when-rel {
+  color: #374151;
+}
+body.role-shell-marketing .mkt-history-table__when-abs {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: #9ca3af;
+}
+body.role-shell-marketing .mkt-history-table__subject-line {
+  white-space: nowrap;
+}
+body.role-shell-marketing .mkt-history-table__subject a {
+  color: #2563eb;
+  text-decoration: none;
+}
+body.role-shell-marketing .mkt-history-table__subject a:hover {
+  color: #1d4ed8;
+  text-decoration: underline;
+}
+body.role-shell-marketing .mkt-history-table__removed {
+  margin-left: 8px;
+  vertical-align: middle;
+}
+body.role-shell-marketing .mkt-history-table__bulk {
+  margin-top: 2px;
+}
+body.role-shell-marketing .mkt-history-table__details-line {
+  white-space: nowrap;
+}

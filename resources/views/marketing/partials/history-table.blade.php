@@ -2,7 +2,7 @@
     $historyLookup = \App\Support\MarketingHistoryDisplay::preload($logs);
 @endphp
 <div class="table-responsive">
-    <table class="table table-hover align-middle mb-0">
+    <table class="table table-hover mb-0 mkt-history-table">
         <thead class="table-light">
             <tr>
                 <th>When</th>
@@ -23,31 +23,33 @@
                     $removed = \App\Support\MarketingHistoryDisplay::isRemoved($log, $historyLookup);
                 @endphp
                 <tr>
-                    <td class="small text-nowrap">
-                        <div>{{ $log->created_at?->diffForHumans() }}</div>
-                        <span class="text-muted">{{ $log->created_at?->format('d M Y H:i') }}</span>
+                    <td class="mkt-history-table__when text-nowrap">
+                        <div class="mkt-history-table__when-rel">{{ $log->created_at?->diffForHumans() }}</div>
+                        <span class="mkt-history-table__when-abs">{{ $log->created_at?->format('d M Y H:i') }}</span>
                     </td>
                     <td>
                         <div class="fw-semibold">{{ marketing_task_label($log->action) }}</div>
                     </td>
-                    <td class="small">
-                        @if($subjectUrl)
-                            <a href="{{ $subjectUrl }}">{{ $log->subject_label ?: 'Open' }}</a>
-                        @else
-                            {{ $log->subject_label ?: '—' }}
-                        @endif
-                        @if($removed)
-                            <span class="badge bg-secondary ms-1" data-history-removed>Removed</span>
-                        @endif
+                    <td class="small mkt-history-table__subject">
+                        <div class="mkt-history-table__subject-line">
+                            @if($subjectUrl)
+                                <a href="{{ $subjectUrl }}">{{ $log->subject_label ?: 'Open' }}</a>
+                            @else
+                                {{ $log->subject_label ?: '—' }}
+                            @endif
+                            @if($removed)
+                                <span class="badge bg-secondary mkt-history-table__removed" data-history-removed>Removed</span>
+                            @endif
+                        </div>
                         @if($bulkUrl)
-                            <div>
+                            <div class="mkt-history-table__bulk">
                                 <a href="{{ $bulkUrl }}">Bulk request</a>
                             </div>
                         @endif
                     </td>
                     <td class="small">{{ $publisherLabel ?: '—' }}</td>
-                    <td class="small">
-                        <div>{{ $log->description }}</div>
+                    <td class="small mkt-history-table__details">
+                        <div class="mkt-history-table__details-line">{{ $log->description }}</div>
                         @if($reason)
                             <div class="text-muted mt-1" data-history-reason>{{ \App\Support\MarketingHistoryDisplay::reasonLabel($log) }}: {{ $reason }}</div>
                         @endif
