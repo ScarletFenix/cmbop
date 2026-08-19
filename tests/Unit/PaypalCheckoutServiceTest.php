@@ -150,7 +150,7 @@ class PaypalCheckoutServiceTest extends TestCase
                 && ($body['purchase_units'][0]['custom_id'] ?? null) === 'order_checkout:7:REF-PP-1'
                 && ($body['payment_source']['paypal']['experience_context']['user_action'] ?? null) === 'PAY_NOW'
                 && ($body['payment_source']['paypal']['experience_context']['shipping_preference'] ?? null) === 'NO_SHIPPING'
-                && ($body['application_context']['user_action'] ?? null) === 'PAY_NOW'
+                && ! array_key_exists('application_context', $body)
                 && str_contains($request->url(), 'api-m.sandbox.paypal.com');
         });
     }
