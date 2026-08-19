@@ -439,25 +439,16 @@
     }
 
     function confirmSend(text) {
-        if (typeof window.slbConfirm === 'function') {
-            return window.slbConfirm({
-                title: 'Send campaign?',
-                text: text,
-                confirmText: 'Send now',
-                icon: 'question',
-            });
-        }
-
-        return Promise.resolve(window.confirm(text));
+        return slbConfirm({
+            title: 'Send campaign?',
+            text: text,
+            confirmText: 'Send now',
+            icon: 'question',
+        });
     }
 
     function alertSend(title) {
-        if (typeof window.slbAlert === 'function') {
-            return window.slbAlert({ icon: 'error', title: title, toast: false });
-        }
-
-        window.alert(title);
-        return Promise.resolve();
+        return slbAlert({ icon: 'error', title: title, toast: false });
     }
 
     form.addEventListener('submit', function (e) {

@@ -218,7 +218,7 @@ class UiConsistencyGuardTest extends TestCase
     {
         $css = file_get_contents(public_path('assets/css/app-shell.css'));
         $this->assertStringContainsString('--shell-footer-clearance:', $css);
-        $this->assertStringContainsString('padding: 20px 28px var(--shell-footer-clearance)', $css);
+        $this->assertStringContainsString('padding: 28px 28px var(--shell-footer-clearance)', $css);
         $this->assertStringContainsString('.dash-recent-col', $css);
         $this->assertStringContainsString('.dash-page-end', $css);
 
