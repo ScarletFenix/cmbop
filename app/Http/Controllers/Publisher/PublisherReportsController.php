@@ -22,7 +22,7 @@ class PublisherReportsController extends Controller
 
     private const WITHDRAWAL_STATUSES = ['pending', 'processing', 'completed', 'cancelled'];
 
-    private const OPEN_ORDER_STATUSES = ['pending', 'processing', 'review', 'scheduled'];
+    private const OPEN_ORDER_STATUSES = ['pending', 'processing', 'review'];
 
     public function index()
     {
@@ -39,6 +39,7 @@ class PublisherReportsController extends Controller
             $totalEarned = 0.0;
             $completedOrders = 0;
             $pendingOrders = 0;
+            $openOrders = 0;
 
             if ($siteIds !== []) {
                 $paidCompleted = function ($q) {
@@ -53,6 +54,14 @@ class PublisherReportsController extends Controller
                 $completedOrders = (clone $keptCompleted)->count();
 
                 $pendingOrders = OrderItem::whereIn('site_id', $siteIds)
+                    ->whereHas('order', function ($q) {
+                        $q->where('payment_status', 'paid')
+                            ->where('status', 'pending')
+                            ->notAwaitingScheduledRelease();
+                    })
+                    ->count();
+
+                $openOrders = OrderItem::whereIn('site_id', $siteIds)
                     ->whereHas('order', function ($q) {
                         $q->where('payment_status', 'paid')
                             ->whereIn('status', self::OPEN_ORDER_STATUSES);
@@ -82,6 +91,7 @@ class PublisherReportsController extends Controller
                     'total_earned' => round($totalEarned, 2),
                     'completed_orders' => $completedOrders,
                     'pending_orders' => $pendingOrders,
+                    'open_orders' => $openOrders,
                     'total_withdrawn' => round($totalWithdrawnNet, 2),
                     'total_withdrawn_gross' => round($totalWithdrawnGross, 2),
                     'total_withdrawal_fees' => $totalWithdrawalFees,
@@ -270,6 +280,7 @@ class PublisherReportsController extends Controller
     {
         $payout = $item->publisherPayoutAmount();
         $additional = (float) ($item->additional_price ?? 0);
+        $homepage = (float) ($item->homepage_price ?? 0);
         $clawed = $item->isClawedBack();
         $state = $this->reportPayoutState($item, $clawed);
 
@@ -281,8 +292,10 @@ class PublisherReportsController extends Controller
             'live_url' => $item->live_url,
             'sensitive_type' => $item->sensitive_type,
             'additional_price' => $additional,
+            'homepage_price' => $homepage,
+            'homepage_days' => $item->hasHomepagePlacement() ? (int) $item->homepage_days : null,
             'price' => $payout,
-            'publisher_base_price' => round($payout - $additional, 2),
+            'publisher_base_price' => $item->publisherBasePrice(),
             'created_at' => $item->created_at,
             'is_clawed_back' => $clawed,
             'payout_state' => $state,
