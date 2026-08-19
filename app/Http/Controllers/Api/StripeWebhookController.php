@@ -31,7 +31,7 @@ class StripeWebhookController extends Controller
             if (! $endpointSecret) {
                 Log::error('Stripe webhook secret not configured');
 
-                return response()->json(['error' => 'Webhook not configured'], 500);
+                return response()->json(['error' => 'Webhook unavailable'], 503);
             }
 
             $event = Webhook::constructEvent($payload, $sigHeader, $endpointSecret);
@@ -86,7 +86,7 @@ class StripeWebhookController extends Controller
                 'exception' => $e::class,
             ]);
 
-            return response()->json(['error' => $e->getMessage()], 500);
+            return response()->json(['error' => 'Webhook unavailable'], 500);
         }
     }
 

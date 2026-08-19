@@ -712,4 +712,13 @@ class StripeWebhookCompletenessTest extends TestCase
         $this->signedWebhook($event)->assertStatus(500);
         $this->assertSame('pending', $order->fresh()->payment_status);
     }
+
+    public function test_missing_webhook_secret_is_unavailable(): void
+    {
+        config(['services.stripe.webhook_secret' => '']);
+
+        $this->postJson('/api/stripe/webhook', ['type' => 'ping'])
+            ->assertStatus(503)
+            ->assertJsonPath('error', 'Webhook unavailable');
+    }
 }
