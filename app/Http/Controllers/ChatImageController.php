@@ -5,11 +5,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\Order;
+use App\Services\SiteEnrichment\ImageOptimizationService;
 use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
 
 class ChatImageController extends Controller
 {
@@ -38,10 +38,15 @@ class ChatImageController extends Controller
             }
 
             $image = $request->file('image');
-            $filename = Str::random(40).'.'.$image->getClientOriginalExtension();
             $folder = "chat_images/{$orderId}/".date('Y/m');
-
-            $path = $image->storeAs($folder, $filename, 'public');
+            $path = app(ImageOptimizationService::class)->storeSafePublicImage($image, $folder);
+            if (! is_string($path) || $path === '') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Could not store this image. Use a JPEG, PNG, GIF, or WebP file.',
+                ], 422);
+            }
+            $filename = basename($path);
             $url = Storage::url($path);
 
             return response()->json([

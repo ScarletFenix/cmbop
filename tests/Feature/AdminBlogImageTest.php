@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Blog;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\SiteEnrichment\ImageOptimizationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use Tests\Support\CreatesBlogUploads;
@@ -49,7 +50,7 @@ class AdminBlogImageTest extends TestCase
         $relative = $this->blogDiskPathFromUrl($url);
         $this->assertNotSame('', $relative);
         Storage::disk('public')->assertExists($relative);
-        if (function_exists('imagewebp')) {
+        if (ImageOptimizationService::canEncodeWebp()) {
             $this->assertStringEndsWith('.webp', $relative);
             $this->assertStringStartsWith('RIFF', Storage::disk('public')->get($relative));
         } else {
@@ -151,7 +152,7 @@ class AdminBlogImageTest extends TestCase
         $this->assertStringStartsWith('blogs/featured/', $blog->featured_image);
         Storage::disk('public')->assertMissing($oldPath);
         Storage::disk('public')->assertExists($blog->featured_image);
-        if (function_exists('imagewebp')) {
+        if (ImageOptimizationService::canEncodeWebp()) {
             $this->assertStringEndsWith('.webp', $blog->featured_image);
             $this->assertStringStartsWith('RIFF', Storage::disk('public')->get($blog->featured_image));
         } else {
@@ -489,7 +490,7 @@ class AdminBlogImageTest extends TestCase
         $this->assertStringStartsWith('blogs/featured/', $blog->featured_image);
         Storage::disk('public')->assertExists($blog->featured_image);
         $this->assertSame('/media/'.$blog->featured_image, $blog->featuredImageUrl());
-        if (function_exists('imagewebp')) {
+        if (ImageOptimizationService::canEncodeWebp()) {
             $this->assertStringEndsWith('.webp', $blog->featured_image);
             $this->assertStringStartsWith('RIFF', Storage::disk('public')->get($blog->featured_image));
         } else {

@@ -13,7 +13,7 @@ class ArticlePreviewImage
     /** Skip WebP when the source is already this small (bytes). */
     public const SKIP_UNDER_BYTES = 8192;
 
-    /** Skip GD compress on huge embeds — a 10 MB photo can OOM imagecreatefromstring. */
+    /** Skip compress on huge embeds — a 10 MB photo can OOM imagecreatefromstring. */
     public const SKIP_OVER_BYTES = 5 * 1024 * 1024;
 
     public const WEBP_QUALITY = 82;
@@ -37,10 +37,6 @@ class ArticlePreviewImage
         }
 
         if (strlen($binary) <= self::SKIP_UNDER_BYTES || strlen($binary) > self::SKIP_OVER_BYTES) {
-            return [$binary, $ext];
-        }
-
-        if (! function_exists('imagecreatefromstring') || ! function_exists('imagewebp')) {
             return [$binary, $ext];
         }
 

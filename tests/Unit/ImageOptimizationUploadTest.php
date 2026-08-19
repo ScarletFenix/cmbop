@@ -14,32 +14,19 @@ class ImageOptimizationUploadTest extends TestCase
 
     public function test_uploaded_png_is_stored_as_webp(): void
     {
-        if (! function_exists('imagecreatetruecolor') || ! function_exists('imagepng') || ! function_exists('imagewebp')) {
-            $this->markTestSkipped('GD WebP not available');
+        if (! ImageOptimizationService::canEncodeWebp()) {
+            $this->markTestSkipped('No WebP encoder (GD, Imagick, or cwebp)');
         }
 
         Storage::fake('public');
+        $file = $this->fakeBlogUpload('cover-shot.png', 80, 60);
 
-        $img = imagecreatetruecolor(80, 60);
-        $bg = imagecolorallocate($img, 30, 80, 120);
-        imagefilledrectangle($img, 0, 0, 80, 60, $bg);
-        $tmp = tempnam(sys_get_temp_dir(), 'cmbop-png-');
-        $this->assertIsString($tmp);
-        imagepng($img, $tmp);
-        imagedestroy($img);
-
-        $file = new UploadedFile($tmp, 'cover-shot.png', 'image/png', null, true);
-
-        try {
-            $path = app(ImageOptimizationService::class)->storeUploadedImageAsWebp($file, 'sites');
-            $this->assertIsString($path);
-            $this->assertStringStartsWith('sites/', $path);
-            $this->assertStringEndsWith('.webp', $path);
-            Storage::disk('public')->assertExists($path);
-            $this->assertStringStartsWith('RIFF', Storage::disk('public')->get($path));
-        } finally {
-            @unlink($tmp);
-        }
+        $path = app(ImageOptimizationService::class)->storeUploadedImageAsWebp($file, 'sites');
+        $this->assertIsString($path);
+        $this->assertStringStartsWith('sites/', $path);
+        $this->assertStringEndsWith('.webp', $path);
+        Storage::disk('public')->assertExists($path);
+        $this->assertStringStartsWith('RIFF', Storage::disk('public')->get($path));
     }
 
     public function test_gif_upload_is_not_converted(): void
@@ -99,7 +86,7 @@ class ImageOptimizationUploadTest extends TestCase
             $this->assertIsString($jpgPath);
             $this->assertStringContainsString('blogs/featured/', $jpgPath);
             Storage::disk('public')->assertExists($jpgPath);
-            if (function_exists('imagewebp')) {
+            if (ImageOptimizationService::canEncodeWebp()) {
                 $this->assertStringEndsWith('.webp', $jpgPath);
                 $this->assertStringStartsWith('RIFF', Storage::disk('public')->get($jpgPath));
             } else {
@@ -120,7 +107,7 @@ class ImageOptimizationUploadTest extends TestCase
         $this->assertStringStartsWith('sites/', $path);
         Storage::disk('public')->assertExists($path);
 
-        if (function_exists('imagewebp')) {
+        if (ImageOptimizationService::canEncodeWebp()) {
             $this->assertStringEndsWith('.webp', $path);
             $this->assertStringStartsWith('RIFF', Storage::disk('public')->get($path));
         } else {
@@ -129,16 +116,38 @@ class ImageOptimizationUploadTest extends TestCase
         }
     }
 
+    public function test_to_webp_encodes_png_with_available_backend(): void
+    {
+        if (! ImageOptimizationService::canEncodeWebp()) {
+            $this->markTestSkipped('No WebP encoder (GD, Imagick, or cwebp)');
+        }
+
+        $webp = app(ImageOptimizationService::class)->toWebp($this->tinyPngBytes());
+        $this->assertIsString($webp);
+        $this->assertStringStartsWith('RIFF', $webp);
+    }
+
+    public function test_to_webp_encodes_jpeg_with_available_backend(): void
+    {
+        if (! ImageOptimizationService::canEncodeWebp()) {
+            $this->markTestSkipped('No WebP encoder (GD, Imagick, or cwebp)');
+        }
+
+        $webp = app(ImageOptimizationService::class)->toWebp($this->tinyJpegBytes());
+        $this->assertIsString($webp);
+        $this->assertStringStartsWith('RIFF', $webp);
+    }
+
     public function test_store_optimized_keeps_original_png_when_webp_unavailable(): void
     {
         Storage::fake('public');
-        $png = $this->screenshotRasterBytes();
+        $png = $this->tinyPngBytes();
 
         $stored = app(ImageOptimizationService::class)->storeOptimizedWebp($png, 'site-screenshots', 'site-1-original');
         $this->assertNotNull($stored);
         $this->assertTrue(Storage::disk('public')->exists($stored['path']));
 
-        if (function_exists('imagewebp')) {
+        if (ImageOptimizationService::canEncodeWebp()) {
             $this->assertStringEndsWith('.webp', $stored['path']);
         } else {
             $this->assertStringEndsWith('.png', $stored['path']);

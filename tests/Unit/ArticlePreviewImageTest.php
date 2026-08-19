@@ -3,17 +3,17 @@
 namespace Tests\Unit;
 
 use App\Services\ContentUpload\ArticlePreviewImage;
+use App\Services\SiteEnrichment\ImageOptimizationService;
+use Tests\Support\CreatesBlogUploads;
 use Tests\TestCase;
 
 class ArticlePreviewImageTest extends TestCase
 {
+    use CreatesBlogUploads;
+
     public function test_tiny_png_is_not_converted_to_webp(): void
     {
-        if (! function_exists('imagecreatetruecolor') || ! function_exists('imagepng')) {
-            $this->markTestSkipped('GD PNG not available');
-        }
-
-        $png = $this->pngBytes(8, 8);
+        $png = $this->validPngBytes(8, 8);
         $this->assertLessThanOrEqual(ArticlePreviewImage::SKIP_UNDER_BYTES, strlen($png));
 
         [$out, $ext] = app(ArticlePreviewImage::class)->compressForPreview($png, 'png');
@@ -24,11 +24,11 @@ class ArticlePreviewImageTest extends TestCase
 
     public function test_large_png_converts_to_smaller_webp(): void
     {
-        if (! function_exists('imagecreatetruecolor') || ! function_exists('imagepng') || ! function_exists('imagewebp')) {
-            $this->markTestSkipped('GD WebP not available');
+        if (! ImageOptimizationService::canEncodeWebp()) {
+            $this->markTestSkipped('No WebP encoder (GD, Imagick, or cwebp)');
         }
 
-        $png = $this->largePngBytes();
+        $png = $this->largePreviewPngBytes();
         $this->assertGreaterThan(ArticlePreviewImage::SKIP_UNDER_BYTES, strlen($png));
 
         [$out, $ext] = app(ArticlePreviewImage::class)->compressForPreview($png, 'png');
@@ -82,29 +82,5 @@ class ArticlePreviewImageTest extends TestCase
         [$out, $ext] = $service->compressForPreview($png, 'png');
         $this->assertSame('png', $ext);
         $this->assertSame($png, $out);
-    }
-
-    private function pngBytes(int $width, int $height): string
-    {
-        $img = imagecreatetruecolor($width, $height);
-        imagefilledrectangle($img, 0, 0, $width, $height, imagecolorallocate($img, 12, 80, 160));
-        ob_start();
-        imagepng($img);
-        $png = ob_get_clean();
-        imagedestroy($img);
-
-        return is_string($png) ? $png : '';
-    }
-
-    private function largePngBytes(): string
-    {
-        $img = imagecreatetruecolor(320, 240);
-        imagefilledrectangle($img, 0, 0, 319, 239, imagecolorallocate($img, 12, 80, 160));
-        ob_start();
-        imagepng($img, null, 0);
-        $png = ob_get_clean();
-        imagedestroy($img);
-
-        return is_string($png) ? $png : '';
     }
 }

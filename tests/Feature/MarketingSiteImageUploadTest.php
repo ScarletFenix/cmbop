@@ -125,7 +125,7 @@ class MarketingSiteImageUploadTest extends TestCase
         $this->assertNotEmpty($path);
         $this->assertStringStartsWith('sites/', (string) $path);
         Storage::disk('public')->assertExists((string) $path);
-        if (function_exists('imagewebp')) {
+        if (ImageOptimizationService::canEncodeWebp()) {
             $this->assertStringEndsWith('.webp', (string) $path);
             $this->assertStringStartsWith('RIFF', Storage::disk('public')->get((string) $path));
         }
@@ -166,7 +166,7 @@ class MarketingSiteImageUploadTest extends TestCase
         $this->assertNotEmpty($site->site_image);
         $this->assertStringStartsWith('sites/', $site->site_image);
         Storage::disk('public')->assertExists($site->site_image);
-        if (function_exists('imagewebp')) {
+        if (ImageOptimizationService::canEncodeWebp()) {
             $this->assertStringEndsWith('.webp', $site->site_image);
         }
     }
@@ -346,7 +346,7 @@ class MarketingSiteImageUploadTest extends TestCase
         $site->refresh();
         $this->assertNotEmpty($site->site_image);
         Storage::disk('public')->assertExists($site->site_image);
-        if (function_exists('imagewebp')) {
+        if (ImageOptimizationService::canEncodeWebp()) {
             $this->assertStringEndsWith('.webp', $site->site_image);
             $this->assertStringEndsWith('.webp', (string) $response->json('image_path'));
         }

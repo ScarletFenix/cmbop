@@ -45,9 +45,11 @@ This agent cannot SSH to live Hostinger. `HOSTINGER_WEB_HEAL` (default on) plus
    the same numbers are saved in hPanel. A 5 MB Word file is rejected as
    `UPLOAD_ERR_INI_SIZE` while PHP stays at the default 2M. This cannot be
    self-healed from PHP.
-9. Blog / staff JPEG and PNG covers convert to WebP when `php-gd` with WebP
-   is present (`extension=gd`). Without it a validated original JPEG/PNG is
-   stored (GIF still stays GIF). Enable GD on Hostinger so new uploads become WebP.
+9. Blog / staff / banner / article-preview JPEG and PNG convert to WebP when
+   PHP can encode it: `php-gd` with WebP, Imagick WEBP, or a `cwebp` binary
+   (`SITE_CWEBP_PATH=/usr/bin/cwebp`). Without an encoder a validated original
+   JPEG/PNG is stored (GIF still stays GIF). Enable one of those on Hostinger
+   so new uploads become WebP.
 10. Confirm MySQL, `APP_URL`, `MEDIA_PATH`, uploads, mail drain, and the scheduler:
    `php artisan ops:production-ready --repair --strict`
    Web traffic also runs `schedule:run` about once a minute. Add system cron if
