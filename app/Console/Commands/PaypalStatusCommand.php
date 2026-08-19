@@ -24,6 +24,9 @@ class PaypalStatusCommand extends Command
         $this->newLine();
         $this->line(sprintf('  Mode        %s', $snap['mode']));
         $this->line(sprintf('  Host        %s', $snap['host']));
+        if ($snap['forced_live']) {
+            $this->warn('  PAYPAL_MODE was sandbox; production is using live. Set PAYPAL_MODE=live or PAYPAL_ALLOW_SANDBOX=true.');
+        }
         $this->line(sprintf(
             '  Client ID   %s',
             $snap['client_id_set'] ? $snap['client_id_hint'] : 'missing'

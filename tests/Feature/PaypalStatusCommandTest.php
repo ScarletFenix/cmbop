@@ -125,6 +125,24 @@ class PaypalStatusCommandTest extends TestCase
         $this->assertStringContainsString('should start with WH-', Artisan::output());
     }
 
+    public function test_status_warns_when_production_forces_live(): void
+    {
+        $this->app['env'] = 'production';
+        $this->enablePaypal();
+        Http::fake([
+            'https://api-m.paypal.com/v1/oauth2/token' => Http::response([
+                'access_token' => 'tok_live',
+                'expires_in' => 300,
+                'token_type' => 'Bearer',
+            ], 200),
+        ]);
+
+        $this->assertSame(0, Artisan::call('paypal:status'));
+        $output = Artisan::output();
+        $this->assertStringContainsString('production is using live', $output);
+        $this->assertStringContainsString('api-m.paypal.com', $output);
+    }
+
     public function test_status_fails_when_unconfigured(): void
     {
         config([

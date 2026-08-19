@@ -2355,7 +2355,7 @@ class CatalogController extends Controller
             Log::error('Order processing failed: '.$e->getMessage());
 
             $fallback = $request->input('payment_method') === 'paypal'
-                ? UserMessages::get('payment.paypal_unavailable')
+                ? UserMessages::get('payment.paypal_rejected', ['code' => 'CHECKOUT'])
                 : 'We could not process your order. Please try again.';
 
             return response()->json([
@@ -2501,7 +2501,7 @@ class CatalogController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => UserFacingError::message($e, UserMessages::get('payment.paypal_unavailable')),
+                'message' => UserFacingError::message($e, UserMessages::get('payment.paypal_rejected', ['code' => 'START'])),
             ]);
         }
     }

@@ -27,6 +27,7 @@ class ProductionRepair
         $this->seedRoles($notes);
         $this->ensureMedia($notes, $persistEnv, $wroteEnv);
         $this->ensureAppUrl($notes, $persistEnv, $wroteEnv);
+        $this->ensurePaypalLiveMode($notes, $persistEnv, $wroteEnv);
         $this->ensureStorageLink($notes);
 
         if ($wroteEnv) {
@@ -162,6 +163,39 @@ class ProductionRepair
         $notes[] = $wrote
             ? 'APP_URL written from PUBLIC_APP_URL ('.$fallback.')'
             : 'APP_URL runtime set from PUBLIC_APP_URL ('.$fallback.')';
+    }
+
+    /**
+     * .env.example defaults PAYPAL_MODE=sandbox. Live REST keys against that
+     * host return 400/401 and checkout looks "temporarily unavailable".
+     *
+     * @param  list<string>  $notes
+     */
+    private function ensurePaypalLiveMode(array &$notes, bool $persistEnv, bool &$wroteEnv): void
+    {
+        if (! app()->environment('production') && ! HostingerMediaPath::looksLikeHostinger()) {
+            return;
+        }
+
+        $allow = config('services.paypal.allow_sandbox');
+        $allowSandbox = $allow === true
+            || $allow === 1
+            || (is_string($allow) && in_array(strtolower(trim($allow)), ['1', 'true', 'on', 'yes'], true));
+        if ($allowSandbox) {
+            return;
+        }
+
+        $mode = strtolower(trim((string) config('services.paypal.mode', 'sandbox')));
+        if ($mode === 'live') {
+            return;
+        }
+
+        config(['services.paypal.mode' => 'live']);
+        $wrote = $this->persistKey('PAYPAL_MODE', 'live', $persistEnv);
+        $wroteEnv = $wroteEnv || $wrote;
+        $notes[] = $wrote
+            ? 'PAYPAL_MODE set to live (production)'
+            : 'PAYPAL_MODE runtime set to live (production)';
     }
 
     private function persistKey(string $key, string $value, bool $persistEnv): bool

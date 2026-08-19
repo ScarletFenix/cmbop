@@ -110,11 +110,15 @@ class HostingerSelfHealTest extends TestCase
                 'app.url' => 'http://127.0.0.1:8000',
                 'app.public_url' => 'https://seolinkbuildings.example',
                 'filesystems.media_path' => $dir,
+                'services.paypal.mode' => 'sandbox',
+                'services.paypal.allow_sandbox' => false,
             ]);
 
             $notes = app(ProductionRepair::class)->run(true);
 
             $this->assertSame('https://seolinkbuildings.example', config('app.url'));
+            $this->assertSame('live', config('services.paypal.mode'));
+            $this->assertTrue(collect($notes)->contains(fn (string $note) => str_contains($note, 'PAYPAL_MODE runtime set to live')));
             $this->assertSame($dir, config('filesystems.media_path'));
             $this->assertSame($dir, config('filesystems.disks.public.root'));
             $this->assertTrue(collect($notes)->contains(fn (string $note) => str_contains($note, 'migrate --force')));
