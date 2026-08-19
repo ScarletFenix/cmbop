@@ -71,27 +71,25 @@ class AddFundsController extends Controller
         $analytics = $this->overview->analytics($user->id, 'month');
 
         $prefillAmount = max(0, (float) $request->query('amount', 0));
+        $stripeConfigured = app(StripeCustomerService::class)->configured();
+        $paypalConfigured = app(PaypalCheckoutService::class)->configured();
+        $cryptoEnabled = DepositPaymentConfig::cryptoEnabled();
         $prefillMethod = in_array($request->query('method'), ['wise', 'bank', 'crypto', 'card', 'paypal'], true)
             ? $request->query('method')
             : null;
+        if (is_string($prefillMethod) && ! $this->depositRailReady($prefillMethod, $stripeConfigured, $paypalConfigured, $cryptoEnabled)) {
+            $prefillMethod = null;
+        }
         $lastUsedMethod = DepositRequest::lastUsedMethodForUser((int) $user->id);
+        if (is_string($lastUsedMethod) && ! $this->depositRailReady($lastUsedMethod, $stripeConfigured, $paypalConfigured, $cryptoEnabled)) {
+            $lastUsedMethod = null;
+        }
         $depositMethodOrder = ['card', 'bank', 'paypal', 'wise', 'crypto'];
         if (is_string($lastUsedMethod) && in_array($lastUsedMethod, $depositMethodOrder, true)) {
             $depositMethodOrder = array_values(array_unique(array_merge([$lastUsedMethod], $depositMethodOrder)));
         }
-        $stripeConfigured = app(StripeCustomerService::class)->configured();
-        $paypalConfigured = app(PaypalCheckoutService::class)->configured();
-        $cryptoEnabled = DepositPaymentConfig::cryptoEnabled();
         if ($prefillMethod === null && $lastUsedMethod) {
-            $canPrefillLastUsed = match ($lastUsedMethod) {
-                'card' => $stripeConfigured,
-                'paypal' => $paypalConfigured,
-                'crypto' => $cryptoEnabled,
-                default => true,
-            };
-            if ($canPrefillLastUsed) {
-                $prefillMethod = $lastUsedMethod;
-            }
+            $prefillMethod = $lastUsedMethod;
         }
 
         $publisherRoleId = Wallet::publisherRoleId();
@@ -131,6 +129,21 @@ class AddFundsController extends Controller
             'cryptoNetworks' => DepositPaymentConfig::cryptoNetworks(),
             'cryptoNote' => DepositPaymentConfig::cryptoNote(),
         ]);
+    }
+
+    private function depositRailReady(
+        string $method,
+        bool $stripeConfigured,
+        bool $paypalConfigured,
+        bool $cryptoEnabled,
+    ): bool {
+        return match ($method) {
+            'card' => $stripeConfigured,
+            'paypal' => $paypalConfigured,
+            'crypto' => $cryptoEnabled,
+            'wise', 'bank' => true,
+            default => false,
+        };
     }
 
     /**

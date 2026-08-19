@@ -98,6 +98,46 @@ class AddFundsPaymentUxTest extends TestCase
         $this->assertStringContainsString('prefillMethod: "bank"', $html);
     }
 
+    public function test_query_method_is_ignored_when_that_rail_is_offline(): void
+    {
+        config(['services.stripe.secret' => '']);
+
+        $html = $this->actingAs($this->advertiser())
+            ->get(route('advertiser.add-funds', ['method' => 'card', 'amount' => 150]))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringNotContainsString('prefillMethod: "card"', $html);
+        $this->assertStringContainsString('prefillAmount: 150', $html);
+    }
+
+    public function test_disabled_crypto_last_used_does_not_sort_or_prefill(): void
+    {
+        config(['billing.deposit_payment.crypto.enabled' => false]);
+
+        $user = $this->advertiser();
+        DepositRequest::create([
+            'user_id' => $user->id,
+            'reference_code' => 'LU004444',
+            'amount' => 80,
+            'payment_method' => 'crypto',
+            'status' => 'completed',
+        ]);
+
+        $html = $this->actingAs($user)
+            ->get(route('advertiser.add-funds'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringNotContainsString('lastUsedMethod: "crypto"', $html);
+        $this->assertStringNotContainsString('prefillMethod: "crypto"', $html);
+        $this->assertStringNotContainsString('Recently used', $html);
+        $this->assertDoesNotMatchRegularExpression(
+            '/payment-methods-row[\s\S]*?data-method="crypto"[\s\S]*?data-method="card"/',
+            $html
+        );
+    }
+
     public function test_paypal_shows_new_badge_while_configured_window_is_open(): void
     {
         config([

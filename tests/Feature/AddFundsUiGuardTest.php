@@ -65,7 +65,7 @@ class AddFundsUiGuardTest extends TestCase
         $this->assertStringContainsString('function syncWiseQr', $js);
         $this->assertStringContainsString('AddFundsBoot', $view);
         $this->assertStringContainsString('createPaypal', $view);
-        $this->assertStringContainsString("data-method=\"{{ \$methodKey }}\"", $view);
+        $this->assertStringContainsString('data-method="{{ $methodKey }}"', $view);
         $this->assertStringContainsString("'paypal'", $view);
         $this->assertStringContainsString('payment-card-brands', $view);
         $this->assertStringContainsString('Recently used', $view);
@@ -73,6 +73,9 @@ class AddFundsUiGuardTest extends TestCase
         $this->assertStringContainsString('lastUsedMethod', $view);
         $this->assertStringNotContainsString('fab fa-stripe', $view);
         $this->assertStringNotContainsString('PayPal coming soon', $view);
+        $this->assertStringContainsString("prefillMethod === 'card' && !stripeReady", $js);
+        $this->assertStringContainsString("prefillMethod === 'paypal' && !paypalReady", $js);
+        $this->assertStringContainsString("opt.getAttribute('aria-disabled') === 'true'", $js);
         $this->assertStringContainsString('assets/js/add-funds.js', $view);
         $this->assertStringContainsString('assets/css/add-funds.css', $view);
         $this->assertStringNotContainsString('#9333ea', $view);
