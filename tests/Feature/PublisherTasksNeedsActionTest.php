@@ -7,6 +7,7 @@ use App\Models\OrderItem;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
+use App\Support\PublisherNeedsAction;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -208,5 +209,46 @@ class PublisherTasksNeedsActionTest extends TestCase
             ->getJson(route('publisher.orders.statistics'))
             ->assertOk()
             ->assertJsonPath('data.pending_orders', 1);
+    }
+
+    public function test_helper_badge_and_tasks_filter_share_the_same_needs_you_count(): void
+    {
+        $acceptNow = $this->makeItem('paid', 'pending');
+        $this->makeItem('paid', 'pending', [
+            'publication_mode' => 'scheduled',
+            'scheduled_publish_at' => now()->addDays(5),
+            'schedule_timezone' => 'Europe/Berlin',
+        ]);
+        $this->makeItem('pending', 'pending');
+        $this->makeItem('paid', 'review');
+        $processingNoUrl = $this->makeItem('paid', 'processing');
+        $processingDone = $this->makeItem('paid', 'processing');
+        $processingDone->update(['live_url' => 'https://live.example/done']);
+        $modification = $this->makeItem('paid', 'processing');
+        $modification->update([
+            'live_url' => 'https://live.example/mod',
+            'modification_requested' => 'yes',
+        ]);
+
+        $helperCount = PublisherNeedsAction::needsYouCount((int) $this->publisher->id);
+        $this->assertSame(3, $helperCount);
+        $this->assertSame(1, PublisherNeedsAction::waitingOnAdvertiserCount((int) $this->publisher->id));
+
+        $badge = $this->actingAs($this->publisher)
+            ->getJson('/chat/unread-summary')
+            ->assertOk()
+            ->json();
+        $this->assertSame($helperCount, (int) ($badge['needs_action'] ?? 0));
+
+        $list = $this->actingAs($this->publisher)
+            ->getJson(route('publisher.orders.data', ['needs_action' => 1]))
+            ->assertOk()
+            ->json('data');
+        $ids = collect($list)->pluck('id')->all();
+        $this->assertCount($helperCount, $ids);
+        $this->assertContains($acceptNow->id, $ids);
+        $this->assertContains($processingNoUrl->id, $ids);
+        $this->assertContains($modification->id, $ids);
+        $this->assertNotContains($processingDone->id, $ids);
     }
 }

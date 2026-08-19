@@ -12,13 +12,13 @@ use App\Services\InAppNotificationService;
 use App\Services\OrderChatContactGuard;
 use App\Support\AdvertiserOrderStatus;
 use App\Support\CatalogVisitUrl;
+use App\Support\PublisherNeedsAction;
 use App\Support\UserFacingError;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 
 class ChatController extends Controller
@@ -79,35 +79,7 @@ class ChatController extends Controller
                     }
                 }
 
-                $publisherItems = OrderItem::whereHas('site', function ($q) use ($user) {
-                    $q->where('publisher_id', $user->id);
-                })->whereHas('order', function ($q) {
-                    // Match Tasks list: only paid orders appear in My Tasks.
-                    $q->where('payment_status', 'paid')
-                        ->whereIn('status', ['pending', 'processing', 'review']);
-                });
-
-                $needsActionQuery = (clone $publisherItems)->whereHas('order', function ($q) {
-                    $q->where('status', 'processing');
-                })->where(function ($q) {
-                    $q->whereNull('live_url')->orWhere('live_url', '');
-                })->where(function ($q) {
-                    $q->whereNull('modification_requested')
-                        ->orWhere('modification_requested', '!=', 'yes');
-                });
-
-                if (Schema::hasColumn('order_items', 'content_revision_requested')) {
-                    $needsActionQuery->where(function ($q) {
-                        $q->whereNull('content_revision_requested')
-                            ->orWhere('content_revision_requested', '!=', 'yes');
-                    });
-                }
-
-                $needsAction = (clone $publisherItems)->whereHas('order', function ($q) {
-                    $q->where('status', 'pending')->notAwaitingScheduledRelease();
-                })->count()
-                + (clone $publisherItems)->where('modification_requested', 'yes')->count()
-                + $needsActionQuery->count();
+                $needsAction = PublisherNeedsAction::needsYouCount((int) $user->id);
             }
 
             return response()->json([
