@@ -99,6 +99,9 @@ class SensitivePriceCartTest extends TestCase
         $cart = $response->json('cart');
         $this->assertCount(1, $cart);
         $this->assertSame('crypto', $cart[0]['sensitive_type']);
+        $this->assertSame($site->domain, $cart[0]['domain']);
+        $this->assertEquals((int) $site->da, (int) $cart[0]['da']);
+        $this->assertEquals((int) $site->dr, (int) $cart[0]['dr']);
         $this->assertEquals(25.0, (float) $cart[0]['additional_price']);
         $this->assertEquals($expected['total'], (float) $cart[0]['price']);
         $this->assertEquals($expected['total'], (float) $response->json('cart_total'));
@@ -150,6 +153,9 @@ class SensitivePriceCartTest extends TestCase
             ->json();
 
         $this->assertSame('crypto', $payload['cart'][0]['sensitive_type']);
+        $this->assertSame($site->domain, $payload['cart'][0]['domain']);
+        $this->assertEquals((int) $site->da, (int) $payload['cart'][0]['da']);
+        $this->assertEquals((int) $site->dr, (int) $payload['cart'][0]['dr']);
         $this->assertEquals(25.0, (float) $payload['cart'][0]['additional_price']);
         $this->assertEquals($expected['total'], (float) $payload['cart'][0]['price']);
     }

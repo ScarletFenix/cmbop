@@ -64,6 +64,15 @@
   color: var(--brand-ink, #1f2937);
 }
 
+.cart-item-meta {
+  font-size: 0.75rem;
+  color: var(--brand-ink-muted, #697078);
+  margin: -2px 0 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .cart-item-sensitive {
   font-size: 11px;
   color: var(--brand-danger, #dc2626);

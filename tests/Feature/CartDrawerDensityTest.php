@@ -56,6 +56,10 @@ class CartDrawerDensityTest extends TestCase
         $this->assertStringContainsString('Upload article', $layout);
         $this->assertStringContainsString('Decrease placements', $layout);
         $this->assertStringContainsString('Placements — each needs its own article', $layout);
+        $this->assertStringContainsString('cart-item-meta', $layout);
+        $this->assertStringContainsString("metricBits.push('DA '", $layout);
+        $this->assertStringContainsString("€' + unitPrice + ' × '", $layout);
+        $this->assertStringNotContainsString('each</div>', $layout);
         $this->assertStringContainsString('cart-keep-browsing', $layout);
         $this->assertStringContainsString("document.body.classList.add('cart-open')", $layout);
         $this->assertStringContainsString("document.body.classList.remove('cart-open')", $layout);
@@ -72,6 +76,7 @@ class CartDrawerDensityTest extends TestCase
         $this->assertStringContainsString('.cart-checklist', $css);
         $this->assertStringContainsString('#checkoutFromCart:disabled', $css);
         $this->assertStringContainsString('padding: 12px 16px', $css);
+        $this->assertStringContainsString('.cart-item-meta', $css);
         $this->assertStringContainsString('.cart-keep-browsing', $css);
         $this->assertStringContainsString('body.cart-open .slb-toast-stack', $css);
         $this->assertStringContainsString('bottom: auto', $css);

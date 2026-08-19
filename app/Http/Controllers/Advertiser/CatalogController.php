@@ -1007,6 +1007,9 @@ class CatalogController extends Controller
         $line['language'] = $line['language'] ?? $site->language;
         $line['country'] = $line['country'] ?? $site->country;
         $line['link_type'] = $line['link_type'] ?? $site->link_type;
+        $line['da'] = $site->da;
+        $line['dr'] = $site->dr;
+        $line['domain'] = trim((string) ($site->domain ?: ''));
 
         return $this->applyCartLineContentIds($line, $this->cartLineContentIds($line));
     }
