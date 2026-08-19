@@ -2014,8 +2014,18 @@ function promoFormatDate(iso) {
     return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
+function promoListAfterDiscount(list, pct) {
+    const n = Number(list);
+    const p = Number(pct);
+    if (!Number.isFinite(n) || !Number.isFinite(p)) {
+        return '';
+    }
+
+    return (Math.round(n * (1 - p / 100) * 100) / 100).toFixed(2);
+}
+
 function promoBetterOfNote() {
-    return 'Advertisers get the better of a timed sale or bulk — they are not added together.';
+    return 'This percent is off your list price. Advertisers pay your list plus the platform fee, then the same percent. Timed sale and bulk are not added together.';
 }
 
 async function startFeatureStripeCheckout(siteId) {
@@ -2128,6 +2138,11 @@ $(document).on('click', '.btn-discount-site', async function () {
     const id = $btn.data('id');
     const name = promoEscapeHtml($btn.data('name'));
     const current = $btn.attr('data-percent') || $btn.data('percent') || 15;
+    const listPrice = $btn.attr('data-price') || '';
+    const afterList = promoListAfterDiscount(listPrice, current);
+    const listNote = afterList
+        ? `<p class="small text-muted">Off your list: €${promoEscapeHtml(Number(listPrice).toFixed(2))} → €${promoEscapeHtml(afterList)}. Advertisers pay list plus the platform fee, then this percent.</p>`
+        : '';
     const endsAt = $btn.attr('data-ends') || '';
     const remaining = promoDaysLeft(endsAt);
     const isLive = $btn.hasClass('is-on') || remaining > 0;
@@ -2137,6 +2152,7 @@ $(document).on('click', '.btn-discount-site', async function () {
         html: `<p class="small text-muted">${isLive
             ? `Sale on <strong>${name}</strong> has about <strong>${daysPrefill}</strong> day${daysPrefill === 1 ? '' : 's'} left. Change the percent or remaining days, or end it now.`
             : `Discount for <strong>${name}</strong>. Ends automatically; you’ll get an email when it ends.`}</p>
+               ${listNote}
                <p class="small text-muted">${promoEscapeHtml(promoBetterOfNote())}</p>
                <label for="swal-pct" class="small fw-semibold d-block text-start ms-3 mb-0">Discount percent (1–70)</label>
                <input id="swal-pct" type="number" min="1" max="70" class="swal2-input" placeholder="Percent (1–70)" value="${promoEscapeHtml(current)}">
@@ -2181,9 +2197,15 @@ $(document).on('click', '.btn-bulk-site', async function () {
     const bulkMin = Number(cfg.bulkMinPercent ?? cfg.routes?.bulkMinPercent ?? 10);
     const bulkMax = Number(cfg.bulkMaxPercent ?? cfg.routes?.bulkMaxPercent ?? 80);
     const currentPct = Number($btn.attr('data-percent') || bulkMin);
+    const listPrice = $btn.attr('data-price') || '';
+    const afterList = promoListAfterDiscount(listPrice, joined ? currentPct : bulkMin);
+    const listNote = afterList
+        ? `<p class="small text-muted">Off your list: €${promoEscapeHtml(Number(listPrice).toFixed(2))} → €${promoEscapeHtml(afterList)} per article. Advertisers pay list plus the platform fee, then this percent.</p>`
+        : '';
     const result = await Swal.fire({
         title: joined ? `Bulk −${currentPct}% is on` : 'Join bulk discount program',
-        html: `<p class="small text-muted">${promoEscapeHtml(promoBetterOfNote())}</p>
+        html: `${listNote}
+               <p class="small text-muted">${promoEscapeHtml(promoBetterOfNote())}</p>
                <label for="swal-bulk-pct" class="small fw-semibold d-block text-start ms-3 mb-0">Discount % for 3–5 articles (${bulkMin}–${bulkMax})</label>
                <input id="swal-bulk-pct" type="number" min="${bulkMin}" max="${bulkMax}" step="1" class="swal2-input" value="${joined ? currentPct : bulkMin}">`,
         showDenyButton: joined,

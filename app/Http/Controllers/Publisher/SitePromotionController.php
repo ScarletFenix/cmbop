@@ -270,7 +270,7 @@ class SitePromotionController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => $lead.' Exclusive better-of with any timed sale — not stacked; advertisers see the post-fee-floor rate.',
+            'message' => $lead.' Exclusive better-of with any timed sale — not stacked. Off your list; advertisers pay list plus the platform fee, then this same percent.',
             'site' => $site,
         ]);
     }

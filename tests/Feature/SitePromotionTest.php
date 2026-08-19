@@ -192,7 +192,7 @@ class SitePromotionTest extends TestCase
             ->postJson(route('publisher.sites.bulk-join', $site->id), ['percent' => 12])
             ->assertOk()
             ->assertJsonPath('success', true)
-            ->assertJsonFragment(['message' => 'Joined bulk discount programme (12% on 3–5 articles). Exclusive better-of with any timed sale — not stacked; advertisers see the post-fee-floor rate.']);
+            ->assertJsonFragment(['message' => 'Joined bulk discount programme (12% on 3–5 articles). Exclusive better-of with any timed sale — not stacked. Off your list; advertisers pay list plus the platform fee, then this same percent.']);
 
         $this->assertSame(1, ActivityLog::query()->where('action', 'site.bulk_discount_joined')->count());
 
@@ -231,7 +231,7 @@ class SitePromotionTest extends TestCase
             ->postJson(route('publisher.sites.bulk-join', $site->id), ['percent' => 80])
             ->assertOk()
             ->assertJsonPath('success', true)
-            ->assertJsonFragment(['message' => 'Updated bulk discount to 80% on 3–5 articles. Exclusive better-of with any timed sale — not stacked; advertisers see the post-fee-floor rate.']);
+            ->assertJsonFragment(['message' => 'Updated bulk discount to 80% on 3–5 articles. Exclusive better-of with any timed sale — not stacked. Off your list; advertisers pay list plus the platform fee, then this same percent.']);
 
         $this->assertSame(80.0, (float) $site->fresh()->bulk_discount_percent);
         $this->assertSame(1, ActivityLog::query()->where('action', 'site.bulk_discount_joined')->count());

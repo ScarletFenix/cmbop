@@ -116,17 +116,28 @@ class PublisherMySitesPageTest extends TestCase
             ->assertDontSee('Something went wrong');
     }
 
-    public function test_discount_badges_follow_better_of_and_explain_advertiser_rate(): void
+    public function test_discount_badges_show_publisher_list_sale_not_advertiser_fee_floor(): void
     {
         $this->makeSite([
             'verified' => true,
             'active' => true,
             'price' => 100,
-            'custom_discount_percent' => 20,
+            'custom_discount_percent' => 10,
+            'custom_discount_starts_at' => now()->subDay(),
+            'custom_discount_ends_at' => now()->addDays(5),
+        ]);
+        $this->makeSite([
+            'site_name' => 'Sale Floor List',
+            'site_url' => 'https://sale-floor-list.example',
+            'domain' => 'sale-floor-list.example',
+            'verified' => true,
+            'active' => true,
+            'price' => 304,
+            'custom_discount_percent' => 15,
             'custom_discount_starts_at' => now()->subDay(),
             'custom_discount_ends_at' => now()->addDays(5),
             'bulk_discount_enabled' => true,
-            'bulk_discount_percent' => 15,
+            'bulk_discount_percent' => 12,
         ]);
 
         $html = $this->actingAs($this->publisher)
@@ -134,18 +145,27 @@ class PublisherMySitesPageTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        // Configured sale stays on the badge; bulk membership stays visible even
-        // when the timed sale wins packs (better-of, not stacked).
-        $this->assertStringContainsString('−20%', $html);
-        $this->assertStringContainsString('Timed sale −20% (configured)', $html);
-        $this->assertStringContainsString('Advertisers see about −11.5%', $html);
-        $this->assertStringContainsString('exclusive better-of with bulk, not stacked', $html);
-        $this->assertStringContainsString('Bulk −15%', $html);
-        $this->assertStringContainsString('Advertisers from €', $html);
+        $this->assertStringContainsString('€100.00', $html);
+        $this->assertStringContainsString('€90.00', $html);
+        $this->assertStringContainsString('−10%', $html);
+        $this->assertStringContainsString('Timed sale −10% (configured)', $html);
+        $this->assertStringContainsString('Off your list (€100.00 → €90.00)', $html);
+        $this->assertStringContainsString('€304.00', $html);
+        $this->assertStringContainsString('€258.40', $html);
+        $this->assertStringContainsString('−15%', $html);
+        $this->assertStringContainsString('Off your list (€304.00 → €258.40)', $html);
+        $this->assertStringContainsString('Advertisers pay your list plus the platform fee, then this same percent', $html);
+        $this->assertStringContainsString('Exclusive better-of with bulk, not stacked', $html);
         $this->assertStringContainsString('Timed sale is stronger on packs too', $html);
+        $this->assertStringContainsString('Pack of 3 from €775.20', $html);
         $this->assertStringContainsString('site-row-actions__offers', $html);
-        $this->assertStringContainsString('Sale −20%', $html);
+        $this->assertStringContainsString('Sale −10%', $html);
         $this->assertStringContainsString('site-offer-chip', $html);
+        $this->assertStringNotContainsString('Advertisers from €', $html);
+        $this->assertStringNotContainsString('Advertisers see about', $html);
+        $this->assertStringNotContainsString('after the fee floor', $html);
+        $this->assertStringNotContainsString('−10.7%', $html);
+        $this->assertStringNotContainsString('−11.5%', $html);
     }
 
     public function test_offer_chips_are_labeled_and_promo_js_is_single_path(): void
@@ -173,6 +193,8 @@ class PublisherMySitesPageTest extends TestCase
         $this->assertStringNotContainsString('class="btn-icon-quiet btn-feature-site', $html);
         $this->assertStringContainsString('€304.00', $html);
         $this->assertStringNotContainsString('Advertisers from €', $html);
+        $this->assertStringNotContainsString('after the fee floor', $html);
+        $this->assertStringContainsString('Advertisers pay your list plus the platform fee, then this same percent', $html);
 
         $page = $this->actingAs($this->publisher)
             ->get(route('publisher.websites'))
@@ -271,6 +293,9 @@ class PublisherMySitesPageTest extends TestCase
         $js = file_get_contents(public_path('assets/js/publisher-websites.js'));
         $this->assertStringContainsString('Featuring still works; advertisers may trust it less.', $js);
         $this->assertStringContainsString('promoBetterOfNote', $js);
+        $this->assertStringContainsString('promoListAfterDiscount', $js);
+        $this->assertStringContainsString('Off your list:', $js);
+        $this->assertStringContainsString('off your list price', $js);
         $this->assertStringNotContainsString('btn-discount-clear', $js);
     }
 
