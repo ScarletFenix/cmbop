@@ -3,7 +3,7 @@
 @section('content')
 
 @php
-    $wallet = auth()->user()->activeWallet();
+    $wallet = $wallet ?? null;
     $availableBalance = $wallet ? $wallet->withdrawableBalance() : 0;
     $bonusBalance = $wallet ? $wallet->lockedBonusBalance() : 0;
     $reservedBalance = $wallet ? (float) $wallet->reserved_balance : 0;

@@ -39,6 +39,39 @@ class PublisherWithdrawHardeningTest extends TestCase
         return $user->fresh();
     }
 
+    /**
+     * @return array{0: User, 1: Wallet, 2: Wallet}
+     */
+    private function dualRoleWithSeparateWallets(float $publisherBalance = 80, float $advertiserBalance = 50): array
+    {
+        $advertiserRole = Role::firstOrCreate(['name' => 'advertiser']);
+        $publisherRole = Role::firstOrCreate(['name' => 'publisher']);
+        $user = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $advertiserRole->id,
+        ]);
+        $user->roles()->attach([$advertiserRole->id, $publisherRole->id]);
+
+        $advertiserWallet = Wallet::create([
+            'user_id' => $user->id,
+            'role_id' => $advertiserRole->id,
+            'balance' => $advertiserBalance,
+            'bonus_balance' => 0,
+            'reserved_balance' => 0,
+            'currency' => 'EUR',
+        ]);
+        $publisherWallet = Wallet::create([
+            'user_id' => $user->id,
+            'role_id' => $publisherRole->id,
+            'balance' => $publisherBalance,
+            'bonus_balance' => 0,
+            'reserved_balance' => 0,
+            'currency' => 'EUR',
+        ]);
+
+        return [$user->fresh(), $publisherWallet, $advertiserWallet];
+    }
+
     public function test_below_minimum_is_rejected(): void
     {
         $publisher = $this->publisher();
@@ -382,5 +415,52 @@ class PublisherWithdrawHardeningTest extends TestCase
             ->assertSee('Minimum:', false)
             ->assertSee('Below minimum', false)
             ->assertSee('disabled', false);
+    }
+
+    public function test_withdraw_page_shows_publisher_wallet_not_active_advertiser_wallet(): void
+    {
+        [$user] = $this->dualRoleWithSeparateWallets(80, 50);
+        $this->assertSame('advertiser', $user->activeRole());
+
+        $html = $this->actingAs($user)
+            ->get(route('publisher.withdraw'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertMatchesRegularExpression(
+            '/Can Withdraw<\/span>\s*<h3[^>]*>€80\.00<\/h3>/',
+            $html
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/Can Withdraw<\/span>\s*<h3[^>]*>€50\.00<\/h3>/',
+            $html
+        );
+        $this->assertStringContainsString('Available: <strong>€80.00</strong>', $html);
+    }
+
+    public function test_withdraw_request_debits_publisher_wallet_not_active_advertiser_wallet(): void
+    {
+        [$user, $publisherWallet, $advertiserWallet] = $this->dualRoleWithSeparateWallets(80, 50);
+        $this->assertSame('advertiser', $user->activeRole());
+
+        $this->actingAs($user)
+            ->postJson(route('publisher.withdraw.request'), [
+                'amount' => 20,
+                'payment_method' => 'paypal',
+                'paypal_email' => 'pay@example.com',
+                'paypal_email_confirm' => 'pay@example.com',
+                'details_confirmed' => '1',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertDatabaseHas('withdrawals', [
+            'user_id' => $user->id,
+            'wallet_id' => $publisherWallet->id,
+            'amount' => 20,
+            'status' => 'pending',
+        ]);
+        $this->assertSame(60.0, (float) $publisherWallet->fresh()->balance);
+        $this->assertSame(50.0, (float) $advertiserWallet->fresh()->balance);
     }
 }

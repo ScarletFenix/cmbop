@@ -38,6 +38,7 @@ class WithdrawalController extends Controller
         $user = auth()->user();
 
         return view('publisher.withdraw', [
+            'wallet' => Wallet::forPublisher((int) $user->id),
             'platformChargePercent' => $this->platformChargePercent(),
             'minWithdrawalAmount' => $this->minWithdrawalAmount(),
             'payoutProfile' => $user->payoutProfile(),
@@ -51,7 +52,7 @@ class WithdrawalController extends Controller
     {
         try {
             $user = auth()->user();
-            $wallet = $user->activeWallet();
+            $wallet = Wallet::forPublisher((int) $user->id);
 
             if (! $wallet) {
                 return response()->json([
