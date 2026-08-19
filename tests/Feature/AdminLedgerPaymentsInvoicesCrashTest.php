@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\BillingEvent;
 use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\Role;
@@ -384,6 +385,86 @@ class AdminLedgerPaymentsInvoicesCrashTest extends TestCase
             ->assertOk()
             ->assertDontSee('Something went wrong')
             ->assertSee('INV-LEFTOVER-DATE');
+    }
+
+    public function test_invoice_show_survives_leftover_billing_event_dates(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        $invoice = Invoice::create([
+            'invoice_number' => 'INV-LEFTOVER-EVENT',
+            'type' => Invoice::TYPE_TAX_INVOICE,
+            'status' => Invoice::STATUS_PAID,
+            'user_id' => $advertiser->id,
+            'customer_name' => $advertiser->name,
+            'customer_email' => $advertiser->email,
+            'subtotal' => 10,
+            'total_amount' => 10,
+            'invoice_date' => now(),
+            'line_items' => [['description' => 'Test', 'line_total' => 10]],
+            'pdf_disk' => 'local',
+        ]);
+        $event = BillingEvent::create([
+            'event_type' => 'invoice_generated',
+            'invoice_id' => $invoice->id,
+            'user_id' => $advertiser->id,
+        ]);
+        DB::table('billing_events')->where('id', $event->id)->update([
+            'created_at' => 'not-a-date',
+            'updated_at' => 'also-not-a-date',
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.invoices.show', $invoice->id))
+            ->assertOk()
+            ->assertDontSee('Something went wrong')
+            ->assertSee('INV-LEFTOVER-EVENT')
+            ->assertSee('invoice generated');
+    }
+
+    public function test_invoice_cancel_survives_leftover_cancelled_at(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        $invoice = Invoice::create([
+            'invoice_number' => 'INV-LEFTOVER-CANCEL',
+            'type' => Invoice::TYPE_TAX_INVOICE,
+            'status' => Invoice::STATUS_ISSUED,
+            'user_id' => $advertiser->id,
+            'customer_name' => $advertiser->name,
+            'customer_email' => $advertiser->email,
+            'subtotal' => 10,
+            'total_amount' => 10,
+            'invoice_date' => now(),
+            'line_items' => [['description' => 'Test', 'line_total' => 10]],
+            'pdf_disk' => 'local',
+        ]);
+        DB::table('invoices')->where('id', $invoice->id)->update([
+            'cancelled_at' => 'not-a-date',
+            'emailed_at' => 'also-not-a-date',
+            'paid_at' => 'not-a-date',
+        ]);
+
+        $this->actingAs($admin)
+            ->from(route('admin.invoices.show', $invoice))
+            ->post(route('admin.invoices.cancel', $invoice), [
+                'reason' => 'Leftover cancel date.',
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $this->assertSame(Invoice::STATUS_CANCELLED, $invoice->fresh()->status);
+    }
+
+    public function test_invoice_generate_for_missing_order_is_422_not_500(): void
+    {
+        $admin = $this->admin();
+
+        $this->actingAs($admin)
+            ->from(route('admin.invoices.index'))
+            ->post(route('admin.invoices.generate'), ['order_id' => 999999])
+            ->assertRedirect(route('admin.invoices.index'))
+            ->assertSessionHasErrors('order_id');
     }
 
     public function test_invoice_generate_survives_missing_series_column(): void
