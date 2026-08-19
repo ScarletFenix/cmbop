@@ -10,6 +10,7 @@ use App\Models\Site;
 use App\Models\SiteRating;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
@@ -412,6 +413,43 @@ class SiteRatingTest extends TestCase
             ->get(route('admin.site-ratings.index', ['q' => ['oops']]))
             ->assertOk()
             ->assertSee('Publisher Ratings', false);
+    }
+
+    public function test_admin_ratings_index_and_update_survive_leftover_created_at(): void
+    {
+        $publisher = User::factory()->create();
+        $advertiser = $this->advertiser();
+        $admin = $this->admin();
+        $site = $this->site($publisher);
+        $item = $this->completedOrderItem($advertiser, $site, 'completed');
+        $rating = SiteRating::create([
+            'site_id' => $site->id,
+            'user_id' => $advertiser->id,
+            'order_id' => $item->order_id,
+            'order_item_id' => $item->id,
+            'rating' => 4,
+            'comment' => 'Leftover date rating',
+            'status' => SiteRating::STATUS_APPROVED,
+        ]);
+        DB::table('site_ratings')->where('id', $rating->id)->update([
+            'created_at' => 'not-a-date',
+            'updated_at' => 'also-not-a-date',
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.site-ratings.index'))
+            ->assertOk()
+            ->assertSee('Leftover date rating', false)
+            ->assertDontSee('Something went wrong');
+
+        $this->actingAs($admin)
+            ->putJson(route('admin.site-ratings.update', $rating->id), [
+                'status' => 'hidden',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertSame(SiteRating::STATUS_HIDDEN, $rating->fresh()->status);
     }
 
     public function test_admin_store_succeeds_when_activity_log_table_missing(): void

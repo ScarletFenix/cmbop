@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\ToleratesUnparseableDates;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -9,6 +10,8 @@ use Illuminate\Support\Facades\Schema;
 
 class SiteEnrichmentRun extends Model
 {
+    use ToleratesUnparseableDates;
+
     public const ATTENTION_STATUSES = ['failed', 'partial'];
 
     public const STUCK_RUNNING_MINUTES = 15;

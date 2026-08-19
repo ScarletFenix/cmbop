@@ -75,4 +75,15 @@ trait ToleratesUnparseableDates
             return null;
         }
     }
+
+    /**
+     * True when the column still has a stored value, including leftover
+     * strings that asDateTime() maps to null.
+     */
+    public function hasRawDateValue(string $attribute): bool
+    {
+        $raw = $this->getAttributes()[$attribute] ?? null;
+
+        return $raw !== null && $raw !== '';
+    }
 }

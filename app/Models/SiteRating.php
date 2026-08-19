@@ -2,12 +2,15 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\ToleratesUnparseableDates;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\Log;
 
 class SiteRating extends Model
 {
+    use ToleratesUnparseableDates;
+
     public const STATUS_APPROVED = 'approved';
 
     public const STATUS_HIDDEN = 'hidden';
