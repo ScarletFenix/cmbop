@@ -322,15 +322,19 @@
 }
 
 .payment-option-recent {
-    display: inline-block;
-    margin-top: 4px;
-    padding: 2px 8px;
-    border-radius: 999px;
-    background: #c8ebe9;
-    color: var(--brand-primary, #1a585e);
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: #9ca3af;
     font-size: 10px;
-    font-weight: 700;
+    font-weight: 500;
     letter-spacing: 0.02em;
+    line-height: 1;
 }
 
 .payment-option-hint {

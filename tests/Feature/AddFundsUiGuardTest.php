@@ -19,6 +19,11 @@ class AddFundsUiGuardTest extends TestCase
         return (string) file_get_contents(public_path('assets/js/add-funds.js'));
     }
 
+    private function addFundsCss(): string
+    {
+        return (string) file_get_contents(public_path('assets/css/add-funds.css'));
+    }
+
     public function test_custom_amount_does_not_alert_and_clear_while_typing_below_minimum(): void
     {
         $js = $this->addFundsJs();
@@ -80,5 +85,22 @@ class AddFundsUiGuardTest extends TestCase
         $this->assertStringContainsString('assets/css/add-funds.css', $view);
         $this->assertStringNotContainsString('#9333ea', $view);
         $this->assertStringNotContainsString('balance.blade.php', $view);
+    }
+
+    public function test_recently_used_is_quiet_corner_text_not_a_brand_pill(): void
+    {
+        $css = $this->addFundsCss();
+
+        $this->assertStringContainsString('.payment-option-recent', $css);
+        $this->assertStringContainsString('position: absolute', $css);
+        $this->assertStringContainsString('top: 8px', $css);
+        $this->assertStringContainsString('left: 8px', $css);
+        $this->assertStringContainsString('color: #9ca3af', $css);
+        $this->assertStringContainsString('background: transparent', $css);
+        $this->assertStringNotContainsString('#c8ebe9', $css);
+        $this->assertDoesNotMatchRegularExpression(
+            '/\.payment-option-recent\s*\{[^}]*border-radius:\s*999px/',
+            $css
+        );
     }
 }
