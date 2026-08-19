@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\PaypalWebhookLog;
 use App\Services\OrderPaymentService;
+use App\Services\Orders\OrderRefundService;
 use App\Services\PaypalCheckoutService;
 use App\Services\WalletPaypalDepositService;
 use App\Support\UserMessages;
@@ -163,10 +164,28 @@ class PaypalWebhookController extends Controller
             $refunded['paypal_order_id']
         );
 
+        $bonusRestored = 0.0;
+        $refunds = app(OrderRefundService::class);
+        foreach ($updated as $order) {
+            if (($order->payment_status ?? '') !== 'refunded') {
+                continue;
+            }
+
+            try {
+                $bonusRestored += $refunds->restoreCheckoutBonusAfterExternalPaypalRefund($order);
+            } catch (\Throwable $e) {
+                Log::error('PayPal refund webhook could not restore checkout bonus', [
+                    'order_id' => $order->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
         Log::info('PayPal capture refund stamped on orders', [
             'paypal_capture_id' => $refunded['capture_id'],
             'paypal_refund_id' => $refunded['refund_id'],
             'orders_updated' => $updated->count(),
+            'bonus_restored' => $bonusRestored,
         ]);
 
         if ($updated->isEmpty()) {

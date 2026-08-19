@@ -12,12 +12,12 @@ use App\Models\Wallet;
 use App\Services\CheckoutIntentService;
 use App\Services\OrderPaymentService;
 use App\Services\Orders\OrderRefundService;
-use App\Services\StripeCustomerService;
+use App\Services\PaypalCheckoutService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Mockery;
 use Stripe\ApiRequestor;
-use Stripe\Checkout\Session;
 use Stripe\HttpClient\ClientInterface;
 use Tests\TestCase;
 
@@ -98,6 +98,68 @@ class CheckoutCancelBonusGuardTest extends TestCase
         $this->assertNotEquals(500, $response->status());
 
         $this->assertNotNull($payments->getPendingCheckout('REF-PAID-SESSION'));
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_balance, 0.01);
+    }
+
+    public function test_cancel_skips_bonus_release_when_paypal_capture_already_completed(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $wallet = $this->wallet($advertiser, 20);
+        $payments = app(OrderPaymentService::class);
+        $payments->storePendingCheckout('REF-PAID-PAYPAL', [
+            'user_id' => $advertiser->id,
+            'reference_code' => 'REF-PAID-PAYPAL',
+            'order_total' => 80,
+            'amount_due' => 60,
+            'bonus_applied' => 20,
+            'payment_method' => 'paypal',
+            'paypal_order_id' => 'PO-ALREADY-PAID',
+            'lines' => [],
+        ]);
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'REF-PAID-PAYPAL', 20);
+
+        config([
+            'services.paypal.enabled' => true,
+            'services.paypal.mode' => 'sandbox',
+            'services.paypal.client_id' => 'paypal-client-test',
+            'services.paypal.secret' => 'paypal-secret-test',
+            'services.paypal.webhook_id' => 'WH-TEST-1',
+            'services.paypal.base_url' => null,
+        ]);
+        Http::fake([
+            'https://api-m.sandbox.paypal.com/v1/oauth2/token' => Http::response([
+                'access_token' => 'tok_test',
+                'expires_in' => 300,
+                'token_type' => 'Bearer',
+            ], 200),
+            'https://api-m.sandbox.paypal.com/v2/checkout/orders/PO-ALREADY-PAID' => Http::response([
+                'id' => 'PO-ALREADY-PAID',
+                'status' => 'COMPLETED',
+                'purchase_units' => [[
+                    'custom_id' => PaypalCheckoutService::customId(
+                        PaypalCheckoutService::TYPE_ORDER_CHECKOUT,
+                        $advertiser->id,
+                        'REF-PAID-PAYPAL'
+                    ),
+                    'payments' => [
+                        'captures' => [[
+                            'id' => 'CAP-ALREADY-PAID',
+                            'status' => 'COMPLETED',
+                            'amount' => ['currency_code' => 'EUR', 'value' => '60.00'],
+                        ]],
+                    ],
+                ]],
+            ], 200),
+        ]);
+
+        $response = $this->actingAs($advertiser)
+            ->withSession(['cart' => [['id' => 1, 'name' => 'Keep cart', 'quantity' => 1]]])
+            ->get(route('advertiser.checkout', ['canceled' => 1, 'ref' => 'REF-PAID-PAYPAL']));
+        $this->assertNotEquals(500, $response->status());
+
+        $this->assertNotNull($payments->getPendingCheckout('REF-PAID-PAYPAL'));
         $wallet->refresh();
         $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_reserved, 0.01);
         $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_balance, 0.01);

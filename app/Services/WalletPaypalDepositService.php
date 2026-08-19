@@ -197,12 +197,27 @@ class WalletPaypalDepositService
             throw new \RuntimeException('PayPal refund did not return an id. The wallet was not changed.');
         }
 
-        $this->reverseFromRefund(
-            $captureId,
-            $refundId,
-            trim((string) $deposit->paypal_order_id),
-            $amount
-        );
+        try {
+            $this->reverseFromRefund(
+                $captureId,
+                $refundId,
+                trim((string) $deposit->paypal_order_id),
+                $amount
+            );
+        } catch (\Throwable $e) {
+            Log::error('PayPal deposit capture refunded but wallet reverse failed', [
+                'deposit_id' => $deposit->id,
+                'paypal_capture_id' => $captureId,
+                'paypal_refund_id' => $refundId,
+                'error' => $e->getMessage(),
+            ]);
+
+            throw new \RuntimeException(
+                'PayPal refunded the capture, but the wallet debit failed. Contact support before retrying.',
+                0,
+                $e
+            );
+        }
 
         $fresh = $deposit->fresh(['user']);
         if (! $fresh) {
