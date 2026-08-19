@@ -12,6 +12,7 @@ use App\Models\SiteFeaturePurchase;
 use App\Models\StripeWebhookLog;
 use App\Models\User;
 use App\Models\Wallet;
+use App\Support\UserMessages;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
@@ -770,6 +771,6 @@ class StripeWebhookCompletenessTest extends TestCase
 
         $this->postJson('/api/stripe/webhook', ['type' => 'ping'])
             ->assertStatus(503)
-            ->assertJsonPath('error', 'Webhook unavailable');
+            ->assertJsonPath('error', UserMessages::get('payment.webhook_unavailable'));
     }
 }

@@ -21,7 +21,7 @@ class PaypalWebhookController extends Controller
         if (! $paypal->configured() || trim((string) config('services.paypal.webhook_id', '')) === '') {
             Log::error('PayPal webhook is not configured');
 
-            return response()->json(['error' => UserMessages::get('payment.webhook_unavailable')], 500);
+            return response()->json(['error' => UserMessages::get('payment.webhook_unavailable')], 503);
         }
 
         try {

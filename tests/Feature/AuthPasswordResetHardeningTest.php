@@ -22,6 +22,18 @@ class AuthPasswordResetHardeningTest extends TestCase
         $this->seed(RolesTableSeeder::class);
     }
 
+    public function test_forgot_and_reset_forms_ask_for_json(): void
+    {
+        foreach ([
+            resource_path('views/auth/forgot-password.blade.php'),
+            resource_path('views/auth/reset-password.blade.php'),
+        ] as $path) {
+            $this->assertFileExists($path);
+            $markup = file_get_contents($path);
+            $this->assertStringContainsString("'Accept': 'application/json'", $markup);
+        }
+    }
+
     public function test_forgot_and_reset_posts_are_rate_limited(): void
     {
         foreach (['password.email', 'password.update'] as $name) {

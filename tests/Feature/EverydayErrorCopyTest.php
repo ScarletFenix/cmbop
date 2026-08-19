@@ -28,7 +28,7 @@ class EverydayErrorCopyTest extends TestCase
         config(['services.stripe.webhook_secret' => '']);
 
         $this->postJson('/api/stripe/webhook', [])
-            ->assertStatus(500)
+            ->assertStatus(503)
             ->assertJsonPath('error', UserMessages::get('payment.webhook_unavailable'));
     }
 

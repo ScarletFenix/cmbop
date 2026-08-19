@@ -15,6 +15,7 @@ use App\Services\CheckoutIntentService;
 use App\Services\InAppNotificationService;
 use App\Services\OrderPaymentService;
 use App\Services\PaypalCheckoutService;
+use App\Support\UserMessages;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
@@ -228,8 +229,8 @@ class PaypalWebhookTest extends TestCase
     public function test_webhook_rejects_when_not_configured(): void
     {
         $this->postWebhook(['id' => 'WH-OFF', 'event_type' => 'PAYMENT.CAPTURE.COMPLETED'])
-            ->assertStatus(500)
-            ->assertJsonPath('error', 'Webhook not configured');
+            ->assertStatus(503)
+            ->assertJsonPath('error', UserMessages::get('payment.webhook_unavailable'));
     }
 
     public function test_webhook_rejects_invalid_signature(): void
