@@ -17,7 +17,12 @@ Order **#{{ $order->order_number }}** has run through the automated reminder cad
 Open in admin
 @endcomponent
 
-The publisher has had every reminder in the cadence. If they do not respond, refund the advertiser from the order so the funds return to their wallet balance and they can order elsewhere.
+The publisher has had every reminder in the cadence. If they do not respond, refund the advertiser from the order
+@if(($order->payment_method ?? '') === 'paypal')
+so the PayPal capture returns to the buyer (do not credit the wallet again) and they can order elsewhere.
+@else
+so the funds return to their wallet balance and they can order elsewhere.
+@endif
 
 {{ config('app.name') }}
 @endcomponent

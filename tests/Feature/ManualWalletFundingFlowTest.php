@@ -126,6 +126,7 @@ class ManualWalletFundingFlowTest extends TestCase
             ->assertOk()
             ->assertSee('Paying by Bank, Wise, or crypto?', false)
             ->assertSee('Add funds &amp; get invoice', false)
+            ->assertSee('data-method="paypal"', false)
             ->assertDontSee('data-method="wise"', false)
             ->assertDontSee('data-method="bank"', false);
     }

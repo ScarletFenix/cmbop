@@ -229,7 +229,34 @@ class DepositEmailParityTest extends TestCase
         $this->assertStringContainsString('Deposit Approved', $html);
         $this->assertStringContainsString('approved', strtolower(strip_tags($html)));
         $this->assertStringNotContainsString('card payment succeeded', $html);
+        $this->assertStringNotContainsString('PayPal payment succeeded', $html);
         $this->assertStringNotContainsString('Wallet topped up', $html);
+    }
+
+    public function test_paypal_deposit_approved_mail_uses_instant_top_up_copy(): void
+    {
+        $advertiser = $this->advertiser();
+        $deposit = DepositRequest::create([
+            'user_id' => $advertiser->id,
+            'reference_code' => 'DEP-PP-COPY',
+            'amount' => 40,
+            'payment_method' => 'paypal',
+            'status' => 'completed',
+            'approved_at' => now(),
+            'paid_at' => now(),
+        ]);
+
+        $mailable = new DepositApproved($deposit->fresh(['user']));
+        $built = $mailable->build();
+
+        $this->assertStringContainsString('Wallet topped up', $built->subject);
+        $this->assertStringNotContainsString('Deposit Approved', $built->subject);
+        $html = $mailable->render();
+        $this->assertStringContainsString('Wallet topped up', $html);
+        $this->assertStringContainsString('PayPal payment succeeded', $html);
+        $this->assertStringContainsString('PayPal', $html);
+        $this->assertStringNotContainsString('Paypal', $html);
+        $this->assertStringNotContainsString('request has been', $html);
     }
 
     public function test_deposit_email_shows_advertiser_wallet_not_active_role_wallet(): void

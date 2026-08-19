@@ -85,7 +85,7 @@ class ConversionAndTrustTest extends TestCase
             ->assertDontSee('alt="PayPal"', false);
     }
 
-    public function test_checkout_includes_buy_confidence_and_no_paypal(): void
+    public function test_checkout_includes_buy_confidence_and_paypal_tile(): void
     {
         config(['content_moderation.enabled' => false]);
 
@@ -110,7 +110,22 @@ class ConversionAndTrustTest extends TestCase
             ->assertSee('buy-confidence', false)
             ->assertSee('Price shown is what you pay', false)
             ->assertSee('See refund policy', false)
-            ->assertDontSee('alt="PayPal"', false)
-            ->assertDontSee('paypal.svg', false);
+            ->assertSee('data-method="paypal"', false)
+            ->assertSee('assets/img/payments/paypal.svg', false)
+            ->assertDontSee('alt="PayPal"', false);
+    }
+
+    public function test_trust_strip_shows_paypal_when_configured(): void
+    {
+        config([
+            'services.paypal.enabled' => true,
+            'services.paypal.client_id' => 'paypal-client-test',
+            'services.paypal.secret' => 'paypal-secret-test',
+        ]);
+
+        $this->get('/')
+            ->assertOk()
+            ->assertSee('assets/img/payments/paypal.svg', false)
+            ->assertSee('alt="PayPal"', false);
     }
 }

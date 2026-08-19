@@ -52,7 +52,7 @@
     <div class="d-flex flex-wrap gap-2 mb-3">
         <span class="badge text-bg-{{ $statusClass }}">Status: {{ $order->status }}</span>
         <span class="badge text-bg-{{ $payClass }}">Payment: {{ $order->payment_status }}</span>
-        <span class="badge text-bg-light text-dark border">{{ strtoupper((string) $order->payment_method) ?: '—' }}</span>
+        <span class="badge text-bg-light text-dark border">{{ \App\Models\Invoice::paymentMethodLabel($order->payment_method) }}</span>
         <span class="badge text-bg-light text-dark border">€{{ number_format((float) $order->total_amount, 2) }}</span>
     </div>
 
@@ -491,7 +491,7 @@
                 <div class="card-body">
                     <div class="row g-3 mb-3">
                         <div class="col-md-3"><span class="text-muted small">Payment status</span><div class="fw-semibold">{{ $order->payment_status }}</div></div>
-                        <div class="col-md-3"><span class="text-muted small">Method</span><div class="fw-semibold">{{ $order->payment_method ?: '—' }}</div></div>
+                        <div class="col-md-3"><span class="text-muted small">Method</span><div class="fw-semibold">{{ \App\Models\Invoice::paymentMethodLabel($order->payment_method) }}</div></div>
                         <div class="col-md-3"><span class="text-muted small">Total</span><div class="fw-semibold">€{{ number_format((float) $order->total_amount, 2) }}</div></div>
                         <div class="col-md-3"><span class="text-muted small">Paid at</span><div>{{ optional($order->paid_at)->format('M j, Y g:i A') ?: '—' }}</div></div>
                         <div class="col-md-3"><span class="text-muted small">Transfer reference</span><div>{{ $order->payment_reference ?: '—' }}</div></div>

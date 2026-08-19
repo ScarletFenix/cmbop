@@ -18,6 +18,9 @@ class DepositRequest extends Model
         'stripe_session_id',
         'stripe_payment_intent_id',
         'stripe_response',
+        'paypal_order_id',
+        'paypal_capture_id',
+        'paypal_response',
         'amount',
         'payment_method',
         'status',
@@ -31,6 +34,7 @@ class DepositRequest extends Model
 
     protected $casts = [
         'stripe_response' => 'array',
+        'paypal_response' => 'array',
         'approved_at' => 'datetime',
         'rejected_at' => 'datetime',
         'paid_at' => 'datetime',
@@ -111,5 +115,17 @@ class DepositRequest extends Model
         return $this->isPending()
             && ! $this->userHasMarkedPaid()
             && in_array($this->payment_method, ['wise', 'bank', 'crypto'], true);
+    }
+
+    public function paymentMethodLabel(): string
+    {
+        return Invoice::paymentMethodLabel($this->payment_method);
+    }
+
+    public function isPaypalRefundable(): bool
+    {
+        return strtolower((string) $this->payment_method) === 'paypal'
+            && in_array((string) $this->status, ['completed', 'approved'], true)
+            && filled($this->paypal_capture_id);
     }
 }

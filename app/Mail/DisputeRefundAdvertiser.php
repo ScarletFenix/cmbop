@@ -11,6 +11,7 @@ class DisputeRefundAdvertiser extends PlatformMailable
         public OrderItemDispute $dispute,
         public User $advertiser,
         public float $credited,
+        public bool $viaPaypal = false,
     ) {
         parent::__construct();
         $this->notificationType = 'dispute_refund_advertiser';
@@ -22,7 +23,11 @@ class DisputeRefundAdvertiser extends PlatformMailable
     {
         $order = $this->dispute->order;
 
-        return $this->subject('Refund credited for order #'.($order?->order_number ?? $this->dispute->order_id))
+        $subject = $this->viaPaypal
+            ? 'Refund sent to PayPal for order #'
+            : 'Refund credited for order #';
+
+        return $this->subject($subject.($order?->order_number ?? $this->dispute->order_id))
             ->markdown('emails.advertiser.dispute_refund');
     }
 }

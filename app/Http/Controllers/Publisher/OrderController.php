@@ -591,6 +591,32 @@ class OrderController extends Controller
                 ], 403);
             }
 
+            $previewOrder = $orderItem->order;
+            if ($previewOrder instanceof Order
+                && $previewOrder->payment_status === 'paid'
+                && $previewOrder->payment_method === 'paypal'
+            ) {
+                try {
+                    $paypalAmount = app(OrderRefundService::class)
+                        ->resolveOrderCancelRefundAmount($previewOrder);
+                    app(OrderRefundService::class)
+                        ->refundPaypalCaptureIfPossible($previewOrder, $paypalAmount);
+                } catch (\Throwable $e) {
+                    Log::error('Publisher PayPal refund API failed', [
+                        'order_id' => $previewOrder->id,
+                        'error' => $e->getMessage(),
+                    ]);
+
+                    return response()->json([
+                        'success' => false,
+                        'message' => UserFacingError::message(
+                            $e,
+                            'PayPal refund failed. The wallet was not credited.'
+                        ),
+                    ], 422);
+                }
+            }
+
             DB::beginTransaction();
 
             // Lock order to prevent double-reject / double-refund races
@@ -686,9 +712,11 @@ class OrderController extends Controller
 
             $refundMessage = '';
             if ($order->payment_method === 'wallet') {
-                $refundMessage = ' The funds have been returned from reserved balance to your wallet balance.';
+                $refundMessage = ' The funds have been returned from reserved balance to the advertiser wallet.';
+            } elseif ($order->payment_method === 'paypal') {
+                $refundMessage = ' The advertiser was refunded on PayPal.';
             } else {
-                $refundMessage = ' The full amount has been credited back to your wallet balance.';
+                $refundMessage = ' The full amount has been credited back to the advertiser wallet.';
             }
 
             Log::info('Order rejected by publisher and refund processed', [

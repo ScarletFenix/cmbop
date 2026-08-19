@@ -238,6 +238,11 @@ class AdminDepositsWithdrawalsCrashTest extends TestCase
                 ->assertOk()
                 ->assertJsonPath('success', false);
 
+            $this->actingAs($admin)
+                ->postJson(route('admin.deposits.paypal-refund', 1))
+                ->assertOk()
+                ->assertJsonPath('success', false);
+
             $confirm = URL::temporarySignedRoute(
                 'admin.deposits.approve-confirm.show',
                 now()->addHour(),

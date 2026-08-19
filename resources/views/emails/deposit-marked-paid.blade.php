@@ -6,7 +6,7 @@
 ## Deposit details
 
 - **Amount:** €{{ number_format((float) $deposit->amount, 2) }}
-- **Payment method:** {{ ucfirst((string) $deposit->payment_method) }}
+- **Payment method:** {{ \App\Models\Invoice::paymentMethodLabel($deposit->payment_method) }}
 - **Reference code:** REF{{ $deposit->reference_code }}
 - **Requested:** {{ optional($deposit->created_at)->format('M d, Y H:i') }}
 - **Reported paid:** {{ optional($deposit->user_marked_paid_at)->format('M d, Y H:i') }}

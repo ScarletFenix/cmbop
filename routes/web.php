@@ -288,7 +288,9 @@ Route::post('/register', [RegisterController::class, 'register'])
     ->middleware('throttle:register');
 
 // Authentication routes (login, logout)
-Route::post('/login', [LoginController::class, 'login'])->name('login.post');
+Route::post('/login', [LoginController::class, 'login'])
+    ->middleware('throttle:login')
+    ->name('login.post');
 Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
 
 // Forgot Password
@@ -591,6 +593,7 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
         Route::get('/deposits/{id}', [AdminDepositController::class, 'show'])->name('deposits.show');
         Route::post('/deposits/{id}/approve', [AdminDepositController::class, 'approve'])->name('deposits.approve');
         Route::post('/deposits/{id}/reject', [AdminDepositController::class, 'reject'])->name('deposits.reject');
+        Route::post('/deposits/{id}/paypal-refund', [AdminDepositController::class, 'refundPaypal'])->name('deposits.paypal-refund');
         Route::get('/deposits/{deposit}/approve-confirm', [AdminDepositApproveConfirmController::class, 'show'])
             ->middleware('throttle:30,1')
             ->name('deposits.approve-confirm.show')
@@ -897,6 +900,12 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
             ->name('checkout.schedule');
         // IMPORTANT: This route accepts both POST (create order) and GET (Stripe callback)
         Route::match(['get', 'post'], '/checkout/process', [CatalogController::class, 'processOrder'])->name('checkout.process');
+        Route::get('/checkout/paypal/return', [CatalogController::class, 'paypalCheckoutReturn'])
+            ->middleware('throttle:30,1')
+            ->name('checkout.paypal.return');
+        Route::get('/checkout/paypal/cancel', [CatalogController::class, 'paypalCheckoutCancel'])
+            ->middleware('throttle:30,1')
+            ->name('checkout.paypal.cancel');
 
         // Legacy Google Docs scan (kept for admin/tools; checkout uses native uploads)
         Route::post('/content-moderation/scan', [AdvertiserContentModerationController::class, 'scan'])
@@ -1008,6 +1017,13 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
         Route::post('/add-funds/pay-saved-card', [AddFundsController::class, 'payWithSavedCard'])
             ->middleware('throttle:10,1')
             ->name('add-funds.pay-saved-card');
+        Route::post('/add-funds/paypal', [AddFundsController::class, 'createPaypalOrder'])
+            ->middleware('throttle:10,1')
+            ->name('add-funds.paypal.create');
+        Route::get('/add-funds/paypal/return', [AddFundsController::class, 'paypalDepositReturn'])
+            ->name('add-funds.paypal.return');
+        Route::get('/add-funds/paypal/cancel', [AddFundsController::class, 'paypalDepositCancel'])
+            ->name('add-funds.paypal.cancel');
 
         // Order payment with Stripe (legacy alias → same as checkout.process)
         Route::post('/create-order-payment', [CatalogController::class, 'processOrder'])

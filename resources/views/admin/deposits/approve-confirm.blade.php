@@ -22,7 +22,7 @@
                             <dd class="col-sm-8 fw-semibold fs-5">€{{ number_format((float) $incomingAmount, 2) }}</dd>
 
                             <dt class="col-sm-4 text-muted">Method</dt>
-                            <dd class="col-sm-8">{{ ucfirst((string) $deposit->payment_method) }}</dd>
+                            <dd class="col-sm-8">{{ $deposit->paymentMethodLabel() }}</dd>
 
                             <dt class="col-sm-4 text-muted">Reference</dt>
                             <dd class="col-sm-8"><code>REF{{ $deposit->reference_code }}</code></dd>
@@ -63,7 +63,7 @@
                                             on {{ optional($match->approved_at ?? $match->created_at)->format('M d, Y') }}
                                             (<code>REF{{ $match->reference_code }}</code>)
                                             @if($match->payment_method)
-                                                · {{ ucfirst((string) $match->payment_method) }}
+                                                · {{ \App\Models\Invoice::paymentMethodLabel($match->payment_method) }}
                                             @endif
                                         </li>
                                     @endforeach
@@ -104,7 +104,7 @@
                                         <li class="d-flex justify-content-between gap-2 py-1 border-bottom border-light">
                                             <span>
                                                 <strong>€{{ number_format((float) $prior->amount, 2) }}</strong>
-                                                · {{ ucfirst((string) $prior->payment_method) }}
+                                                · {{ \App\Models\Invoice::paymentMethodLabel($prior->payment_method) }}
                                                 · <code class="small">REF{{ $prior->reference_code }}</code>
                                             </span>
                                             <span class="text-muted text-nowrap">
@@ -160,7 +160,7 @@
                                         <li class="d-flex justify-content-between gap-2 py-1 border-bottom border-light">
                                             <span>
                                                 <strong>€{{ number_format((float) $prior->amount, 2) }}</strong>
-                                                · {{ ucfirst((string) $prior->payment_method) }}
+                                                · {{ \App\Models\Invoice::paymentMethodLabel($prior->payment_method) }}
                                             </span>
                                             <span class="text-muted text-nowrap">
                                                 {{ optional($prior->approved_at ?? $prior->created_at)->format('M d, Y') }}

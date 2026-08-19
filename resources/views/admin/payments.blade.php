@@ -66,6 +66,7 @@
                     <select id="paymentMethodFilter" class="form-select form-select-sm">
                         <option value="">All</option>
                         <option value="card">Credit/Debit Card</option>
+                        <option value="paypal">PayPal</option>
                         <option value="wallet">Wallet Balance</option>
                         <option value="wise">Wise Transfer</option>
                         <option value="crypto">Cryptocurrency</option>
@@ -330,6 +331,9 @@ function moneyHint(status, method, current) {
         if (current === 'failed') {
             return 'Relabels this failed payment as refunded. Funds were already returned when it was marked failed — this does not credit the wallet again.';
         }
+        if (method === 'paypal') {
+            return 'Refunds the PayPal capture back to the buyer. It does not credit the advertiser wallet again. Completed placements must use a dispute clawback.';
+        }
         if (method === 'card') {
             return 'Refund credits the advertiser wallet. It does not refund the Stripe charge. Completed placements must use a dispute clawback.';
         }
@@ -338,6 +342,9 @@ function moneyHint(status, method, current) {
     if (status === 'failed') {
         if (method === 'wallet') {
             return 'Failed cancels an in-flight order and releases the wallet hold. Completed orders cannot be failed here.';
+        }
+        if (method === 'paypal') {
+            return 'Failed cancels an in-flight order and refunds the PayPal capture back to the buyer (same money move as Refunded). It does not credit the advertiser wallet. Completed orders cannot be failed here.';
         }
         return 'Failed cancels an in-flight order and credits the advertiser wallet for a settled card / bank / Wise / crypto payment (same money move as Refunded). It does not refund the Stripe charge. Completed orders cannot be failed here.';
     }
@@ -624,6 +631,9 @@ $(document).ready(function() {
             switch(order.payment_method) {
                 case 'card':
                     paymentMethodBadge = '<span class="badge bg-primary bg-opacity-10 text-primary px-3 py-2"><i class="fab fa-cc-visa me-1"></i> Card</span>';
+                    break;
+                case 'paypal':
+                    paymentMethodBadge = '<span class="badge bg-primary bg-opacity-10 text-primary px-3 py-2"><i class="fab fa-paypal me-1"></i> PayPal</span>';
                     break;
                 case 'wallet':
                     paymentMethodBadge = '<span class="badge bg-success bg-opacity-10 text-success px-3 py-2"><i class="fa fa-wallet me-1"></i> Wallet</span>';

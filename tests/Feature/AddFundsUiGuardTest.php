@@ -64,6 +64,9 @@ class AddFundsUiGuardTest extends TestCase
         $this->assertStringContainsString('wiseQr:', $view);
         $this->assertStringContainsString('function syncWiseQr', $js);
         $this->assertStringContainsString('AddFundsBoot', $view);
+        $this->assertStringContainsString('createPaypal', $view);
+        $this->assertStringContainsString('data-method="paypal"', $view);
+        $this->assertStringNotContainsString('PayPal coming soon', $view);
         $this->assertStringContainsString('assets/js/add-funds.js', $view);
         $this->assertStringContainsString('assets/css/add-funds.css', $view);
         $this->assertStringNotContainsString('#9333ea', $view);

@@ -7,6 +7,7 @@ use App\Http\Middleware\HealHostingerProduction;
 use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\SetLocale;
 use App\Services\ContentUpload\ContentUploadService;
+use App\Support\TrustedProxies;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -21,9 +22,9 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
-        // Trust reverse-proxy headers so request scheme/host stay correct
-        // behind Cloudflare/nginx (needed for Google OAuth redirect_uri HTTPS).
-        $middleware->trustProxies(at: '*');
+        // Trust only listed hops. "*" used to honor client X-Forwarded-For
+        // (login limits and some money keys). Hostinger+Cloudflare: TRUSTED_PROXIES=cloudflare.
+        $middleware->trustProxies(at: TrustedProxies::addresses() ?: []);
 
         // Gmail List-Unsubscribe=One-Click POSTs have no CSRF token.
         $middleware->validateCsrfTokens(except: [

@@ -506,6 +506,7 @@ class AdminEmailCenterTest extends TestCase
             ->get(route('admin.emails.index'))
             ->assertOk()
             ->assertSee('Spend Budget Alert', false)
+            ->assertSee('PayPal Deposit Refunded', false)
             ->assertSee('Email Verification', false)
             ->assertSee('Content Evaluation Result', false)
             ->assertSee('Site Discount Ended', false)
@@ -533,6 +534,8 @@ class AdminEmailCenterTest extends TestCase
             'Payment Confirmed for Order #ORD-1' => 'order_payment_confirmed',
             'Payment Successful – Invoice Attached' => 'payment_successful_invoice',
             'Deposit Approved - €100.00' => 'deposit_approved',
+            'Wallet topped up — €40.00' => 'deposit_approved',
+            'PayPal deposit refunded — €25.00' => 'deposit_refunded',
             'New Deposit Request - €100.00' => 'deposit_submitted',
             'Your site discount has ended — Sample Site' => 'site_discount_ended',
             'Your payout details were updated' => 'payout_profile_updated',

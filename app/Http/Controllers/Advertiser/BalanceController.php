@@ -161,6 +161,15 @@ class BalanceController extends Controller
             $available = $wallet->withdrawableBalance();
             $bonus = $wallet->lockedBonusBalance();
 
+            if ($debtReason = $wallet->advertiserSpendBlockedReason()) {
+                return response()->json([
+                    'success' => false,
+                    'code' => 'wallet_debt',
+                    'message' => $debtReason,
+                    'debt_balance' => $wallet->debtBalance(),
+                ], 422);
+            }
+
             if ($available <= 0) {
                 return response()->json([
                     'success' => false,

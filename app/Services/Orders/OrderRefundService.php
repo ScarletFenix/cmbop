@@ -8,6 +8,7 @@ use App\Models\Order;
 use App\Models\OrderItemDispute;
 use App\Models\Wallet;
 use App\Services\CheckoutIntentService;
+use App\Services\PaypalCheckoutService;
 use App\Services\Wallet\WalletLedgerService;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -18,8 +19,9 @@ use Illuminate\Support\Facades\Schema;
  * Returns advertiser funds when an order is cancelled or rejected.
  *
  * Wallet checkouts hold money in reserved_balance, so they are released back to
- * the spendable balance (restoring any promotional portion). Every other payment
- * method was already captured, so the amount is credited to the wallet instead.
+ * the spendable balance (restoring any promotional portion). Card / bank / Wise /
+ * crypto were already captured, so the amount is credited to the wallet instead.
+ * PayPal checkout refunds the capture to the buyer and skips that wallet credit.
  */
 class OrderRefundService
 {
@@ -44,6 +46,9 @@ class OrderRefundService
      */
     public function cancelAndRefundBreakdown(Order $order, ?string $reason = null): array
     {
+        $peekAmount = $this->resolveOrderCancelRefundAmount($order);
+        $this->refundPaypalCaptureIfPossible($order, $peekAmount);
+
         return DB::transaction(function () use ($order, $reason) {
             $none = ['applied' => false, 'cash' => 0.0, 'bonus' => 0.0];
             $locked = Order::whereKey($order->getKey())->lockForUpdate()->first();
@@ -138,7 +143,111 @@ class OrderRefundService
      */
     public function refundToAdvertiser(Order $order, float $amount, ?string $reason = null, ?float $maxBonusShare = null): bool
     {
+        $this->refundPaypalCaptureIfPossible($order, $amount);
+
         return $this->applyAdvertiserRefund($order, $amount, $reason, $maxBonusShare)['applied'];
+    }
+
+    /**
+     * Refund a PayPal capture when one exists. HTTP stays outside the caller's
+     * DB transaction when this is invoked first. Returns null to fall back to
+     * a wallet credit (no capture, or PayPal not configured).
+     *
+     * @return array{id: string, amount: float, status: string}|null
+     */
+    public function refundPaypalCaptureIfPossible(
+        Order $order,
+        float $amount,
+        bool $allowAdditionalPartial = false,
+        ?string $idempotencySuffix = null
+    ): ?array {
+        $amount = round($amount, 2);
+        if (($order->payment_method ?? '') !== 'paypal' || $amount < 0.01) {
+            return null;
+        }
+
+        $existingId = $this->existingPaypalRefundId($order);
+        if ($existingId !== '' && ! $allowAdditionalPartial) {
+            return [
+                'id' => $existingId,
+                'amount' => $amount,
+                'status' => 'COMPLETED',
+            ];
+        }
+
+        $captureId = $this->resolvePaypalCaptureId($order);
+        if ($captureId === '') {
+            return null;
+        }
+
+        $paypal = app(PaypalCheckoutService::class);
+        if (! $paypal->configured()) {
+            return null;
+        }
+
+        if (DB::transactionLevel() > 0) {
+            Log::warning('PayPal refund API called inside a DB transaction', [
+                'order_id' => $order->id,
+                'paypal_capture_id' => $captureId,
+            ]);
+        }
+
+        $requestId = 'refund-'.$captureId.'-'.number_format($amount, 2, '.', '');
+        $suffix = trim((string) $idempotencySuffix);
+        if ($suffix !== '') {
+            $requestId .= '-'.$suffix;
+        }
+
+        $refunded = $paypal->refundCapture($captureId, $amount, $requestId);
+        $prepared = [
+            'id' => (string) ($refunded['id'] ?? ''),
+            'amount' => (float) ($refunded['amount'] ?? $amount),
+            'status' => (string) ($refunded['status'] ?? ''),
+        ];
+        $this->stampPaypalRefundId($order, $prepared['id']);
+
+        Log::info('PayPal capture refunded', [
+            'order_id' => $order->id,
+            'paypal_capture_id' => $captureId,
+            'paypal_refund_id' => $prepared['id'],
+            'amount' => $prepared['amount'],
+        ]);
+
+        return $prepared;
+    }
+
+    /**
+     * Capture id for this row, or the sibling that stored the unique capture.
+     */
+    public function resolvePaypalCaptureId(Order $order): string
+    {
+        $own = trim((string) ($order->paypal_capture_id ?? ''));
+        if ($own !== '') {
+            return $own;
+        }
+
+        $paypalOrderId = trim((string) ($order->paypal_order_id ?? ''));
+        $reference = trim((string) ($order->reference_code ?? ''));
+        $query = Order::query()
+            ->where('payment_method', 'paypal')
+            ->whereNotNull('paypal_capture_id')
+            ->where('paypal_capture_id', '!=', '');
+
+        if ($paypalOrderId !== '') {
+            $found = (clone $query)->where('paypal_order_id', $paypalOrderId)->value('paypal_capture_id');
+            if (filled($found)) {
+                return trim((string) $found);
+            }
+        }
+
+        if ($reference !== '') {
+            $found = (clone $query)->where('reference_code', $reference)->value('paypal_capture_id');
+            if (filled($found)) {
+                return trim((string) $found);
+            }
+        }
+
+        return '';
     }
 
     /**
@@ -156,6 +265,9 @@ class OrderRefundService
         if (! $advertiserRoleId) {
             throw new \RuntimeException('Advertiser role not configured');
         }
+
+        $externalPaypal = $this->externalPaypalRefundFor($order);
+        $skipCashCredit = $externalPaypal !== null;
 
         $wallet = Wallet::lockOrCreateForRole($order->user_id, $advertiserRoleId);
 
@@ -195,12 +307,14 @@ class OrderRefundService
             }
             $cashShare = $ledgerAmount;
         } else {
-            // Card / Wise / bank / crypto may still hold leftover checkout bonus
+            // Card / PayPal / Wise / bank / crypto may still hold leftover checkout bonus
             // in reserved. Restore only this line's share so a sibling reject
             // cannot unlock the whole checkout promo while other paid rows remain.
             // An explicit cap (this reference's leftover) also stops a second
             // in-flight checkout on the same wallet from being stolen.
-            $cashShare = round($amount - $bonusShare, 2);
+            // PayPal Refunds API already returned cash to the buyer — do not
+            // also mint wallet credit (that would be a double refund).
+            $cashShare = $skipCashCredit ? 0.0 : round($amount - $bonusShare, 2);
             if ($bonusShare > 0) {
                 $bonusReservedBefore = (float) $wallet->bonus_reserved;
                 $wallet->refundReserved($bonusShare);
@@ -210,31 +324,107 @@ class OrderRefundService
                 $wallet->credit($cashShare);
             }
             $this->syncCheckoutBonusAfterLeftoverRestore($order, $bonusRestored);
+            if ($skipCashCredit && $externalPaypal !== null) {
+                $this->stampPaypalRefundId($order, (string) $externalPaypal['id']);
+            }
         }
 
-        $this->ledger->recordRefund(
-            $wallet,
-            $ledgerAmount,
-            $bonusRestored,
-            $order,
-            $order->reference_code ?? $order->order_number
-        );
+        if (! $skipCashCredit || $bonusRestored > 0) {
+            $this->ledger->recordRefund(
+                $wallet,
+                $skipCashCredit ? 0.0 : $ledgerAmount,
+                $bonusRestored,
+                $order,
+                $order->reference_code ?? $order->order_number
+            );
+        }
 
-        Log::info('Order refunded to advertiser wallet', [
-            'order_id' => $order->id,
-            'payment_method' => $order->payment_method,
-            'amount' => $amount,
-            'bonus_restored' => $bonusRestored,
-            'new_balance' => $wallet->balance,
-            'new_reserved_balance' => $wallet->reserved_balance,
-            'reason' => $reason,
-        ]);
+        Log::info($skipCashCredit
+            ? 'Order refunded via PayPal (wallet cash skipped)'
+            : 'Order refunded to advertiser wallet', [
+                'order_id' => $order->id,
+                'payment_method' => $order->payment_method,
+                'amount' => $amount,
+                'bonus_restored' => $bonusRestored,
+                'paypal_refund_id' => $externalPaypal['id'] ?? null,
+                'new_balance' => $wallet->balance,
+                'new_reserved_balance' => $wallet->reserved_balance,
+                'reason' => $reason,
+            ]);
 
         return [
             'applied' => true,
             'cash' => round($cashShare, 2),
             'bonus' => round($bonusRestored, 2),
         ];
+    }
+
+    /**
+     * @return array{id: string, amount: float, status: string}|null
+     */
+    private function externalPaypalRefundFor(Order $order): ?array
+    {
+        $refundId = $this->existingPaypalRefundId($order);
+        if ($refundId === '') {
+            return null;
+        }
+
+        return [
+            'id' => $refundId,
+            'amount' => 0.0,
+            'status' => 'COMPLETED',
+        ];
+    }
+
+    /**
+     * Refund id on this row or the capture-holder sibling (multi-line carts).
+     */
+    public function existingPaypalRefundId(Order $order): string
+    {
+        $own = trim((string) ($order->paypal_refund_id ?? ''));
+        if ($own !== '') {
+            return $own;
+        }
+
+        $holder = $this->paypalRefundIdHolder($order);
+        if ($holder && filled($holder->paypal_refund_id)) {
+            return trim((string) $holder->paypal_refund_id);
+        }
+
+        return '';
+    }
+
+    private function stampPaypalRefundId(Order $order, string $refundId): void
+    {
+        $refundId = trim($refundId);
+        if ($refundId === '') {
+            return;
+        }
+
+        $holder = $this->paypalRefundIdHolder($order);
+        if (! $holder || filled($holder->paypal_refund_id)) {
+            return;
+        }
+
+        $holder->update(['paypal_refund_id' => $refundId]);
+        if ((int) $holder->id === (int) $order->id) {
+            $order->paypal_refund_id = $refundId;
+        }
+    }
+
+    private function paypalRefundIdHolder(Order $order): ?Order
+    {
+        $captureId = $this->resolvePaypalCaptureId($order);
+        if ($captureId !== '') {
+            $withCapture = Order::query()
+                ->where('paypal_capture_id', $captureId)
+                ->first();
+            if ($withCapture) {
+                return $withCapture;
+            }
+        }
+
+        return $order;
     }
 
     /**
