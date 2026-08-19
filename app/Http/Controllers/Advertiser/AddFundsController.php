@@ -7,12 +7,14 @@ namespace App\Http\Controllers\Advertiser;
 use App\Http\Controllers\Controller;
 use App\Mail\DepositMarkedPaid;
 use App\Mail\DepositRequestSubmitted;
+use App\Mail\PaypalPaymentNotCompleted;
 use App\Models\DepositRequest;
 use App\Models\Order;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Services\InAppNotificationService;
 use App\Services\PaypalCheckoutService;
+use App\Services\PaypalPaymentNotifier;
 use App\Services\StripeCustomerService;
 use App\Services\StripePaymentService;
 use App\Services\Wallet\PayoutProfileService;
@@ -356,6 +358,7 @@ class AddFundsController extends Controller
                 'paypal_order_id' => $token,
                 'error' => $e->getMessage(),
             ]);
+            $this->notifyPaypalDepositNotCompleted($userId, $ref, PaypalPaymentNotifier::reasonFromCaptureException($e));
 
             return redirect()->route('advertiser.add-funds')
                 ->with('error', 'PayPal payment was not completed.');
@@ -400,10 +403,31 @@ class AddFundsController extends Controller
 
     public function paypalDepositCancel(Request $request)
     {
+        $ref = trim((string) ($request->query('ref') ?: session('pending_paypal_deposit_reference', '')));
+        $userId = (int) auth()->id();
         session()->forget('pending_paypal_deposit_reference');
+
+        if ($ref !== '' && $userId > 0) {
+            $this->notifyPaypalDepositNotCompleted($userId, $ref, PaypalPaymentNotCompleted::REASON_CANCELLED);
+        }
 
         return redirect()->route('advertiser.add-funds')
             ->with('error', 'PayPal payment was cancelled.');
+    }
+
+    private function notifyPaypalDepositNotCompleted(int $userId, string $referenceCode, string $reason): void
+    {
+        $user = $userId > 0 ? User::query()->find($userId) : null;
+        if (! $user) {
+            return;
+        }
+
+        app(PaypalPaymentNotifier::class)->notifyNotCompleted(
+            $user,
+            PaypalPaymentNotCompleted::KIND_DEPOSIT,
+            $referenceCode,
+            $reason
+        );
     }
 
     public function checkoutSuccess(Request $request)

@@ -42,6 +42,7 @@ use App\Mail\PaymentFailedMail;
 use App\Mail\PaymentPendingMail;
 use App\Mail\PaymentSuccessfulInvoiceMail;
 use App\Mail\PayoutProfileUpdatedBySupport;
+use App\Mail\PaypalPaymentNotCompleted;
 use App\Mail\PublisherAcceptNudge;
 use App\Mail\PublisherAddSiteReminderMail;
 use App\Mail\PublisherPublishNudge;
@@ -269,6 +270,13 @@ class EmailCatalog
                 'description' => 'Advertiser notified when a PayPal Add Funds capture is refunded and the wallet credit is reversed.',
                 'category' => 'Billing',
                 'mailable' => DepositRefunded::class,
+                'status' => 'active',
+            ],
+            'paypal_payment_not_completed' => [
+                'name' => 'PayPal Payment Not Completed',
+                'description' => 'Advertiser notified when a PayPal checkout or Add Funds payment is cancelled, declined, denied, or still under review.',
+                'category' => 'Billing',
+                'mailable' => PaypalPaymentNotCompleted::class,
                 'status' => 'active',
             ],
             'deposit_rejected' => [
@@ -605,6 +613,8 @@ class EmailCatalog
             'deposit approved' => 'deposit_approved',
             'wallet topped up' => 'deposit_approved',
             'paypal deposit refunded' => 'deposit_refunded',
+            'paypal payment was not completed' => 'paypal_payment_not_completed',
+            'paypal payment is under review' => 'paypal_payment_not_completed',
             'deposit request update' => 'deposit_rejected',
             'new deposit request' => 'deposit_submitted',
             'payment reported' => 'deposit_marked_paid',
@@ -742,6 +752,12 @@ class EmailCatalog
             'deposit_marked_paid' => new DepositMarkedPaid(self::sampleDeposit()),
             'deposit_approved' => new DepositApproved(self::sampleDeposit()),
             'deposit_refunded' => new DepositRefunded(self::samplePaypalRefundedDeposit()),
+            'paypal_payment_not_completed' => new PaypalPaymentNotCompleted(
+                $user,
+                PaypalPaymentNotCompleted::KIND_CHECKOUT,
+                'PP-PREVIEW',
+                PaypalPaymentNotCompleted::REASON_DECLINED
+            ),
             'deposit_rejected' => new DepositRejected(self::sampleDeposit()),
             'withdrawal_request' => new WithdrawalRequestNotification(self::sampleWithdrawal(), $user),
             'withdrawal_requested_confirmation' => new WithdrawalRequestedConfirmation(self::sampleWithdrawal()),

@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Mail\DepositApproved;
+use App\Mail\PaypalPaymentNotCompleted;
 use App\Models\DepositRequest;
 use App\Models\InAppNotification;
 use App\Models\Role;
@@ -217,5 +218,75 @@ class AddFundsPaypalTest extends TestCase
             ->assertJsonPath('success', false);
 
         Http::assertNothingSent();
+    }
+
+    public function test_paypal_deposit_cancel_emails_advertiser(): void
+    {
+        Mail::fake();
+        $this->enablePaypal();
+        $user = $this->advertiser();
+
+        $this->actingAs($user)
+            ->withSession(['pending_paypal_deposit_reference' => '888888'])
+            ->get(route('advertiser.add-funds.paypal.cancel', ['ref' => '888888']))
+            ->assertRedirect(route('advertiser.add-funds'))
+            ->assertSessionHas('error');
+
+        Mail::assertQueued(PaypalPaymentNotCompleted::class, function (PaypalPaymentNotCompleted $mail) use ($user) {
+            return (int) $mail->user->id === (int) $user->id
+                && $mail->kind === PaypalPaymentNotCompleted::KIND_DEPOSIT
+                && $mail->reason === PaypalPaymentNotCompleted::REASON_CANCELLED
+                && $mail->referenceCode === '888888';
+        });
+        Mail::assertQueued(PaypalPaymentNotCompleted::class, 1);
+        Mail::assertNotQueued(DepositApproved::class);
+    }
+
+    public function test_paypal_deposit_declined_capture_emails_advertiser(): void
+    {
+        Mail::fake();
+        $this->enablePaypal();
+        $user = $this->advertiser();
+        Http::fake(function ($request) {
+            $url = $request->url();
+            if (str_contains($url, '/v1/oauth2/token')) {
+                return Http::response([
+                    'access_token' => 'tok_test',
+                    'expires_in' => 300,
+                    'token_type' => 'Bearer',
+                ], 200);
+            }
+
+            return Http::response([
+                'id' => 'PO-DEP-FAIL',
+                'status' => 'COMPLETED',
+                'purchase_units' => [[
+                    'custom_id' => PaypalCheckoutService::customId(
+                        PaypalCheckoutService::TYPE_WALLET_DEPOSIT,
+                        '0',
+                        '888888'
+                    ),
+                    'payments' => [
+                        'captures' => [[
+                            'id' => 'CAP-DEP-FAIL',
+                            'status' => 'DECLINED',
+                            'amount' => ['currency_code' => 'EUR', 'value' => '25.00'],
+                        ]],
+                    ],
+                ]],
+            ], 201);
+        });
+
+        $this->actingAs($user)
+            ->get(route('advertiser.add-funds.paypal.return', [
+                'ref' => '888888',
+                'token' => 'PO-DEP-FAIL',
+            ]))
+            ->assertRedirect(route('advertiser.add-funds'))
+            ->assertSessionHas('error');
+
+        Mail::assertQueued(PaypalPaymentNotCompleted::class, 1);
+        Mail::assertNotQueued(DepositApproved::class);
+        $this->assertSame(0, DepositRequest::query()->where('reference_code', '888888')->count());
     }
 }
