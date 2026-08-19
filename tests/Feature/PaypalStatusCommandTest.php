@@ -47,6 +47,9 @@ class PaypalStatusCommandTest extends TestCase
             'https://api-m.sandbox.paypal.com/v1/oauth2/token' => Http::response([
                 'error' => 'invalid_client',
             ], 401),
+            'https://api-m.paypal.com/v1/oauth2/token' => Http::response([
+                'error' => 'invalid_client',
+            ], 401),
         ]);
 
         $this->assertSame(1, Artisan::call('paypal:status'));
@@ -54,6 +57,36 @@ class PaypalStatusCommandTest extends TestCase
         $this->assertStringContainsString(UserMessages::get('payment.paypal_auth'), $output);
         $this->assertStringContainsString('Sandbox keys only work with PAYPAL_MODE=sandbox', $output);
         $this->assertStringNotContainsString('paypal-secret-test', $output);
+    }
+
+    public function test_status_points_at_live_when_sandbox_oauth_fails(): void
+    {
+        $this->enablePaypal();
+        Http::fake([
+            'https://api-m.sandbox.paypal.com/v1/oauth2/token' => Http::response([
+                'error' => 'invalid_client',
+            ], 401),
+            'https://api-m.paypal.com/v1/oauth2/token' => Http::response([
+                'access_token' => 'tok_live',
+                'expires_in' => 300,
+                'token_type' => 'Bearer',
+            ], 200),
+        ]);
+
+        $this->assertSame(1, Artisan::call('paypal:status'));
+        $output = Artisan::output();
+        $this->assertStringContainsString('These keys work on https://api-m.paypal.com', $output);
+        $this->assertStringContainsString('PAYPAL_MODE=live', $output);
+        $this->assertStringNotContainsString('paypal-secret-test', $output);
+    }
+
+    public function test_status_rejects_webhook_id_used_as_secret(): void
+    {
+        $this->enablePaypal();
+        config(['services.paypal.secret' => 'WH-2AB12345CD678901E']);
+
+        $this->assertSame(1, Artisan::call('paypal:status'));
+        $this->assertStringContainsString(UserMessages::get('payment.paypal_webhook_as_secret'), Artisan::output());
     }
 
     public function test_status_fails_when_unconfigured(): void

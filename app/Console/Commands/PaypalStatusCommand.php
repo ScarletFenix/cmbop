@@ -50,9 +50,30 @@ class PaypalStatusCommand extends Command
             return self::FAILURE;
         }
 
+        if ($paypal->secretLooksLikeWebhookId()) {
+            $this->newLine();
+            $this->error(UserMessages::get('payment.paypal_webhook_as_secret'));
+
+            return self::FAILURE;
+        }
+
         try {
-            $paypal->accessToken();
+            $paypal->accessToken(allowHostFallback: false);
         } catch (RuntimeException $e) {
+            if ($e->getMessage() === UserMessages::get('payment.paypal_auth')) {
+                try {
+                    $paypal->accessToken(allowHostFallback: true);
+                    $this->newLine();
+                    $this->error('OAuth failed on '.$snap['host'].'.');
+                    $this->line('  These keys work on '.$paypal->baseUrl().'.');
+                    $this->line('  Set PAYPAL_MODE='.($paypal->mode() === 'live' ? 'sandbox' : 'live').' then php artisan config:clear.');
+
+                    return self::FAILURE;
+                } catch (RuntimeException) {
+                    // Both hosts rejected the keys.
+                }
+            }
+
             $this->newLine();
             $this->error($e->getMessage());
             if ($e->getMessage() === UserMessages::get('payment.paypal_auth')) {

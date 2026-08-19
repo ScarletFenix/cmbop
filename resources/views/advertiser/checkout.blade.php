@@ -930,8 +930,9 @@
 }
 
 .payment-option-card.recommended {
-    border-color: var(--brand-primary-tint, #5bc4c7);
-    background: var(--brand-primary-bg, #e6f5f5);
+    /* Recommended is the pill only — do not fill like the selected tile. */
+    border-color: var(--border-subtle, #e2e8f0);
+    background: var(--surface-1, #fff);
 }
 
 .payment-check {
