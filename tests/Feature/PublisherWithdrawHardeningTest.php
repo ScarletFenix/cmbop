@@ -422,11 +422,20 @@ class PublisherWithdrawHardeningTest extends TestCase
         [$user] = $this->dualRoleWithSeparateWallets(80, 50);
         $this->assertSame('advertiser', $user->activeRole());
 
-        $this->actingAs($user)
+        $html = $this->actingAs($user)
             ->get(route('publisher.withdraw'))
             ->assertOk()
-            ->assertSee('€80.00', false)
-            ->assertDontSee('€50.00', false);
+            ->getContent();
+
+        $this->assertMatchesRegularExpression(
+            '/Can Withdraw<\/span>\s*<h3[^>]*>€80\.00<\/h3>/',
+            $html
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/Can Withdraw<\/span>\s*<h3[^>]*>€50\.00<\/h3>/',
+            $html
+        );
+        $this->assertStringContainsString('Available: <strong>€80.00</strong>', $html);
     }
 
     public function test_withdraw_request_debits_publisher_wallet_not_active_advertiser_wallet(): void
