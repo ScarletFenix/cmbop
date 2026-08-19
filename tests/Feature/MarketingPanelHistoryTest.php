@@ -64,10 +64,21 @@ class MarketingPanelHistoryTest extends TestCase
 
         $this->assertStringContainsString(route('marketing.history'), $html);
         $this->assertStringContainsString('role-shell-marketing', $html);
+        $this->assertStringContainsString('mkt-history-table', $html);
+        $this->assertStringContainsString('mkt-history-table__subject-line', $html);
+        $this->assertStringContainsString('See full history', $html);
         $this->assertStringContainsString(ActivityLog::query()->first()->created_at->diffForHumans(), $html);
         $this->assertStringContainsString(ActivityLog::query()->first()->created_at->format('d M Y H:i'), $html);
+        $this->assertStringContainsString('table table-hover mb-0 mkt-history-table', $html);
+        $this->assertStringNotContainsString('mkt-history-table align-middle', $html);
         $this->assertStringNotContainsString('<code class="small text-muted">', $html);
         $this->assertStringNotContainsString('>bulk_request.seeded<', $html);
+
+        $css = (string) file_get_contents(public_path('assets/css/marketing-shell.css'));
+        $this->assertStringContainsString('body.role-shell-marketing .mkt-history-table > :not(caption) > * > *', $css);
+        $this->assertStringContainsString('vertical-align: top', $css);
+        $this->assertStringContainsString('white-space: nowrap', $css);
+        $this->assertStringContainsString('.mkt-history-table__removed', $css);
     }
 
     public function test_marketing_history_lists_only_this_marketers_tasks(): void
