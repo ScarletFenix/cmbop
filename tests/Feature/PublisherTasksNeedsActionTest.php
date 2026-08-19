@@ -136,6 +136,7 @@ class PublisherTasksNeedsActionTest extends TestCase
         $this->assertStringContainsString('/publisher/orders/locate', $blade);
         $this->assertStringNotContainsString('colspan="9"', $blade);
         $this->assertStringContainsString("Showing ' + from", $blade);
+        $this->assertStringContainsString('do not enable macros', $blade);
     }
 
     public function test_tasks_page_exposes_extended_stats_and_extracted_css(): void

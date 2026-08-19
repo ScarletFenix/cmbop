@@ -203,9 +203,10 @@ class ContentLibraryPhases36Test extends TestCase
             'paid_at' => now(),
         ]);
 
-        $this->actingAs($publisher)
-            ->get(route('publisher.content.download', $linked))
-            ->assertOk();
+        $download = $this->actingAs($publisher)
+            ->get(route('publisher.content.download', $linked));
+        $download->assertOk()->assertHeader('content-disposition');
+        $this->assertStringStartsWith('attachment', (string) $download->headers->get('content-disposition'));
 
         $this->actingAs($advertiser)
             ->get(route('advertiser.content-submissions.download', $linked))
