@@ -24,7 +24,7 @@ class ImageOptimizationService
 
         $optimized = $this->toWebp($binary, (int) config('site_enrichment.screenshots.quality', 82));
         if ($optimized === null) {
-            return null;
+            return $this->storeOriginalRaster($binary, $directory, $basename);
         }
 
         $disk->put($path, $optimized);
@@ -189,6 +189,50 @@ class ImageOptimizationService
     }
 
     /**
+     * Persist a captured screenshot as JPEG/PNG/WebP when GD cannot re-encode.
+     *
+     * @return array{path: string, thumb_path: ?string}|null
+     */
+    private function storeOriginalRaster(string $binary, string $directory, string $basename): ?array
+    {
+        $ext = $this->detectRasterExtension($binary);
+        if ($ext === null) {
+            return null;
+        }
+
+        $path = $directory.'/'.$basename.'.'.$ext;
+        try {
+            Storage::disk('public')->put($path, $binary);
+        } catch (\Throwable $e) {
+            Log::warning('Screenshot original-bytes write failed', [
+                'path' => $path,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+
+        return Storage::disk('public')->exists($path)
+            ? ['path' => $path, 'thumb_path' => null]
+            : null;
+    }
+
+    private function detectRasterExtension(string $binary): ?string
+    {
+        if ($this->looksLikeJpeg($binary)) {
+            return 'jpg';
+        }
+        if ($this->looksLikePng($binary)) {
+            return 'png';
+        }
+        if (str_starts_with($binary, 'RIFF') && str_contains(substr($binary, 0, 16), 'WEBP')) {
+            return 'webp';
+        }
+
+        return null;
+    }
+
+    /**
      * True when $binary is a real JPEG/PNG, not JPEG-magic garbage.
      */
     protected function isDecodableRasterImage(string $binary, string $ext): bool
@@ -206,7 +250,7 @@ class ImageOptimizationService
                 && (int) $info[1] > 0;
         }
 
-        return match ($ext) {
+        return match (strtolower($ext)) {
             'jpg', 'jpeg' => $this->looksLikeJpeg($binary),
             'png' => $this->looksLikePng($binary),
             default => false,

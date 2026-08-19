@@ -20,20 +20,49 @@ trait CreatesBlogUploads
 
         return UploadedFile::fake()->createWithContent(
             $name,
-            $ext === 'gif' ? $this->tinyGifBytes() : $this->tinyJpegBytes()
+            match ($ext) {
+                'gif' => $this->tinyGifBytes(),
+                'png' => $this->tinyPngBytes(),
+                default => $this->tinyJpegBytes(),
+            }
         );
     }
 
     protected function tinyJpegBytes(): string
     {
-        return base64_decode(
+        $jpeg = base64_decode(
             '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHR'
             .'ofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgy'
             .'IRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/'
             .'wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAb/xAAUEAEAAAAAAA'
             .'AAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAGf/8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAgB'
             .'AQABPwCf/9k='
-        ) ?: 'not-a-jpeg';
+        ) ?: '';
+
+        if ($jpeg === '' || ! str_starts_with($jpeg, "\xff\xd8\xff") || ! str_ends_with($jpeg, "\xff\xd9")) {
+            return "\xff\xd8\xff\xe0".str_repeat('J', 120)."\xff\xd9";
+        }
+
+        if (strlen($jpeg) < 100) {
+            $jpeg = substr($jpeg, 0, -2).str_repeat("\x00", 100)."\xff\xd9";
+        }
+
+        return $jpeg;
+    }
+
+    protected function tinyPngBytes(): string
+    {
+        return base64_decode(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+        ) ?: "\x89PNG\r\n\x1a\n".str_repeat('P', 80).'IEND';
+    }
+
+    /**
+     * Screenshot providers refuse bodies ≤ 500 bytes.
+     */
+    protected function screenshotRasterBytes(): string
+    {
+        return $this->tinyPngBytes().str_repeat("\x00", 520);
     }
 
     protected function tinyGifBytes(): string

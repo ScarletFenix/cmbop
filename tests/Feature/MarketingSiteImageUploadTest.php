@@ -15,10 +15,12 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
+use Tests\Support\CreatesBlogUploads;
 use Tests\TestCase;
 
 class MarketingSiteImageUploadTest extends TestCase
 {
+    use CreatesBlogUploads;
     use RefreshDatabase;
 
     private User $marketer;
@@ -136,7 +138,7 @@ class MarketingSiteImageUploadTest extends TestCase
             'site_url' => 'https://live-image.example',
             'active' => true,
         ]);
-        $file = UploadedFile::fake()->image('blocked.jpg', 320, 200);
+        $file = $this->fakeBlogUpload('blocked.jpg', 320, 200);
 
         $this->actingAs($this->marketer)
             ->postJson(route('marketing.sites.upload-image', $site->id), [
@@ -151,7 +153,7 @@ class MarketingSiteImageUploadTest extends TestCase
     public function test_marketer_upload_image_endpoint_persists_site_image(): void
     {
         $site = $this->makeSite();
-        $file = UploadedFile::fake()->image('marketer-cover.jpg', 320, 200);
+        $file = $this->fakeBlogUpload('marketer-cover.jpg', 320, 200);
 
         $this->actingAs($this->marketer)
             ->postJson(route('marketing.sites.upload-image', $site->id), [
@@ -176,7 +178,7 @@ class MarketingSiteImageUploadTest extends TestCase
             'dr' => 12,
             'traffic' => 900,
         ]);
-        $file = UploadedFile::fake()->image('from-edit.jpg', 400, 300);
+        $file = $this->fakeBlogUpload('from-edit.jpg', 400, 300);
 
         $this->actingAs($this->marketer)
             ->put(route('marketing.sites.update', $site->id), [
@@ -229,7 +231,7 @@ class MarketingSiteImageUploadTest extends TestCase
     public function test_admin_create_converts_png_cover_to_webp(): void
     {
         Mail::fake();
-        $file = UploadedFile::fake()->image('admin-create-cover.png', 640, 400);
+        $file = $this->fakeBlogUpload('admin-create-cover.png', 640, 400);
 
         $this->actingAs($this->admin)
             ->post(route('admin.sites.store'), $this->staffCreatePayload('admin-create-webp.example', $file))
@@ -243,10 +245,6 @@ class MarketingSiteImageUploadTest extends TestCase
 
     public function test_create_image_save_failure_returns_site_image_error(): void
     {
-        if (! function_exists('imagecreatetruecolor')) {
-            $this->markTestSkipped('GD extension is not installed.');
-        }
-
         Mail::fake();
         $this->mock(ImageOptimizationService::class, function ($mock) {
             $mock->shouldReceive('storeSafePublicImage')->andReturn('sites/missing-cover.webp');
@@ -256,7 +254,7 @@ class MarketingSiteImageUploadTest extends TestCase
             ->from(route('admin.sites.create'))
             ->post(route('admin.sites.store'), $this->staffCreatePayload(
                 'admin-create-image-fail.example',
-                UploadedFile::fake()->image('broken-cover.png', 320, 200)
+                $this->fakeBlogUpload('broken-cover.png', 320, 200)
             ))
             ->assertRedirect(route('admin.sites.create'))
             ->assertSessionHasErrors('site_image')
@@ -268,7 +266,7 @@ class MarketingSiteImageUploadTest extends TestCase
     public function test_marketer_create_converts_jpeg_cover_to_webp(): void
     {
         Mail::fake();
-        $file = UploadedFile::fake()->image('marketer-create-cover.jpg', 640, 400);
+        $file = $this->fakeBlogUpload('marketer-create-cover.jpg', 640, 400);
 
         $this->actingAs($this->marketer)
             ->post(route('marketing.sites.store'), $this->staffCreatePayload('marketer-create-webp.example', $file))
@@ -293,7 +291,7 @@ class MarketingSiteImageUploadTest extends TestCase
             'domain' => 'admin-update-webp.example',
             'site_url' => 'https://admin-update-webp.example',
         ]);
-        $file = UploadedFile::fake()->image('admin-update-cover.png', 480, 300);
+        $file = $this->fakeBlogUpload('admin-update-cover.png', 480, 300);
 
         $this->actingAs($this->admin)
             ->put(route('admin.sites.update', $site->id), [
@@ -335,7 +333,7 @@ class MarketingSiteImageUploadTest extends TestCase
     public function test_admin_upload_image_endpoint_still_persists_site_image(): void
     {
         $site = $this->makeSite(['domain' => 'admin-image.example', 'site_url' => 'https://admin-image.example']);
-        $file = UploadedFile::fake()->image('admin-cover.png', 200, 150);
+        $file = $this->fakeBlogUpload('admin-cover.png', 200, 150);
 
         $response = $this->actingAs($this->admin)
             ->postJson(route('admin.sites.upload-image', $site->id), [
@@ -360,13 +358,13 @@ class MarketingSiteImageUploadTest extends TestCase
 
     public function test_marketer_upload_replaces_previous_image_file(): void
     {
-        $oldPath = UploadedFile::fake()->image('old.jpg')->store('sites', 'public');
+        $oldPath = $this->fakeBlogUpload('old.jpg')->store('sites', 'public');
         $site = $this->makeSite(['site_image' => $oldPath]);
         Storage::disk('public')->assertExists($oldPath);
 
         $this->actingAs($this->marketer)
             ->postJson(route('marketing.sites.upload-image', $site->id), [
-                'site_image' => UploadedFile::fake()->image('new.jpg'),
+                'site_image' => $this->fakeBlogUpload('new.jpg'),
             ])
             ->assertOk();
 
@@ -465,7 +463,7 @@ class MarketingSiteImageUploadTest extends TestCase
     public function test_admin_upload_keeps_image_when_public_storage_probe_fails(): void
     {
         $site = $this->makeSite(['domain' => 'broken-link.example', 'site_url' => 'https://broken-link.example']);
-        $file = UploadedFile::fake()->image('kept.png', 180, 120);
+        $file = $this->fakeBlogUpload('kept.png', 180, 120);
 
         $link = public_path('storage');
         $previous = is_link($link) ? readlink($link) : null;

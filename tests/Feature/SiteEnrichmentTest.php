@@ -24,10 +24,12 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
+use Tests\Support\CreatesBlogUploads;
 use Tests\TestCase;
 
 class SiteEnrichmentTest extends TestCase
 {
+    use CreatesBlogUploads;
     use RefreshDatabase;
 
     private function makeSite(array $overrides = []): Site
@@ -116,10 +118,6 @@ class SiteEnrichmentTest extends TestCase
 
     public function test_none_provider_uses_placeholder_without_warning_log(): void
     {
-        if (! function_exists('imagecreatetruecolor') || ! function_exists('imagewebp')) {
-            $this->markTestSkipped('GD WebP not available');
-        }
-
         Storage::fake('public');
         config([
             'site_enrichment.enabled' => true,
@@ -144,10 +142,6 @@ class SiteEnrichmentTest extends TestCase
 
     public function test_real_provider_failure_still_logs_warning(): void
     {
-        if (! function_exists('imagecreatetruecolor') || ! function_exists('imagewebp')) {
-            $this->markTestSkipped('GD WebP not available');
-        }
-
         Storage::fake('public');
         Http::fake([
             'image.thum.io/*' => Http::response('nope', 500),
@@ -179,10 +173,6 @@ class SiteEnrichmentTest extends TestCase
 
     public function test_failed_refresh_keeps_previous_screenshot_files(): void
     {
-        if (! function_exists('imagecreatetruecolor') || ! function_exists('imagewebp')) {
-            $this->markTestSkipped('GD WebP not available');
-        }
-
         Storage::fake('public');
         Http::fake([
             'image.thum.io/*' => Http::response('nope', 500),
@@ -569,7 +559,34 @@ class SiteEnrichmentTest extends TestCase
     public function test_refresh_screenshot_endpoint_reports_placeholder_as_failure(): void
     {
         if (! function_exists('imagecreatetruecolor') || ! function_exists('imagewebp')) {
-            $this->markTestSkipped('GD WebP not available');
+            Storage::fake('public');
+            config([
+                'site_enrichment.enabled' => true,
+                'site_enrichment.screenshots.provider' => 'none',
+            ]);
+
+            $this->seed(RolesTableSeeder::class);
+            $adminRole = Role::where('name', 'admin')->firstOrFail();
+            $admin = User::factory()->create([
+                'email_verified_at' => now(),
+                'active_role_id' => $adminRole->id,
+            ]);
+            $admin->roles()->attach($adminRole->id);
+
+            $site = $this->makeSite();
+
+            $this->actingAs($admin)
+                ->postJson(route('admin.sites.refresh-screenshot', $site->id), ['sync' => true])
+                ->assertStatus(422)
+                ->assertJsonPath('success', false)
+                ->assertJsonMissing(['debug']);
+
+            $site->refresh();
+            $this->assertNull($site->screenshot_path);
+            $this->assertNotEmpty($site->enrichment_error);
+            $this->assertStringNotContainsString('SQLSTATE', (string) $site->enrichment_error);
+
+            return;
         }
 
         Storage::fake('public');
@@ -627,10 +644,6 @@ class SiteEnrichmentTest extends TestCase
 
     public function test_thum_io_capture_requests_a_desktop_viewport(): void
     {
-        if (! function_exists('imagecreatetruecolor') || ! function_exists('imagewebp') || ! function_exists('imagepng')) {
-            $this->markTestSkipped('GD WebP/PNG not available');
-        }
-
         Storage::fake('public');
         config([
             'site_enrichment.screenshots.provider' => 'thum_io',
@@ -638,14 +651,7 @@ class SiteEnrichmentTest extends TestCase
             'site_enrichment.screenshots.height' => 800,
         ]);
 
-        $img = imagecreatetruecolor(1280, 800);
-        $bg = imagecolorallocate($img, 240, 248, 250);
-        imagefilledrectangle($img, 0, 0, 1280, 800, $bg);
-        ob_start();
-        imagepng($img);
-        $png = ob_get_clean();
-        imagedestroy($img);
-        $this->assertIsString($png);
+        $png = $this->screenshotRasterBytes();
         $this->assertGreaterThan(500, strlen($png));
 
         Http::fake([
