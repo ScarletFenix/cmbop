@@ -166,6 +166,18 @@ or marketing, even if that staff account also has a marketplace role.
 
 Throttle: preview `20/min`, send `6/min`, recipient-count `30/min`.
 
+## Campaign show (recipients)
+
+`GET /admin/campaigns/{campaign}` (`admin.campaigns.show`) lists paginated
+recipients with status and `skip_reason` (preference, unverified, error,
+stale, disabled, staff). Failed rows link to Email Center (`emails.log`
+when `email_log_id` is set, otherwise the filtered recent-log list). There
+is **no** resend-all or send button on this page — retry a single failed
+mailable from Email Center. The recent-campaigns table on compose links
+here. Compose KPI cards include paid customers, deposited / no paid
+orders, and publishers with no active sites (same keys as the audience
+dropdown).
+
 ## HTML and targeting
 
 - Body is sanitized with `CampaignHtml` (allowlist `p, br, strong, b, em, i, u,
@@ -202,7 +214,9 @@ Throttle: preview `20/min`, send `6/min`, recipient-count `30/min`.
   containing `@`), not the verified-only KPI. Tab-only / no-`@` accounts
   must not appear in the picker or they crowd the cap and then fail at send.
 - Inventory search / filters apply to the table and CSV only. **Email this
-  audience** still sends the full segment (verified by default).
+  audience** still sends the full segment (verified by default). When any
+  filter is active the inventory page shows a warning; the Email button
+  still links to compose for the whole tab (no filter query string).
 - Audience CSV is streamed (`chunkById`), UTF-8 BOM, formula-safe cells,
   capped at 10_000 rows, throttled `12/min`, and logged as `audience.exported`.
 
@@ -261,6 +275,7 @@ is missing; campaign delivery status just will not sync until migrate runs.
 ```
 php artisan test tests/Unit/CampaignHtmlTest.php
 php artisan test tests/Feature/AdminCampaignsTest.php
+php artisan test tests/Feature/AdminAudienceInventoryTest.php
 php artisan test tests/Feature/EmailUnsubscribeTest.php
 php artisan test tests/Feature/AdminCampaignsDocsTest.php
 ```

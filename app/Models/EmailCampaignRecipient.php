@@ -57,6 +57,19 @@ class EmailCampaignRecipient extends Model
         return $this->belongsTo(EmailLog::class);
     }
 
+    public function skipReasonLabel(): string
+    {
+        return match ($this->skip_reason) {
+            self::SKIP_PREFERENCE => 'Marketing preference',
+            self::SKIP_UNVERIFIED => 'Unverified email',
+            self::SKIP_ERROR => 'Send error',
+            self::SKIP_STALE => 'Stale / expired',
+            self::SKIP_DISABLED => 'Campaign type disabled',
+            self::SKIP_STAFF => 'Staff account',
+            default => filled($this->skip_reason) ? (string) $this->skip_reason : '—',
+        };
+    }
+
     public static function dedupeKey(int $campaignId, int $userId): string
     {
         return 'audience_campaign:'.$campaignId.':user:'.$userId;

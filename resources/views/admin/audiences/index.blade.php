@@ -151,6 +151,11 @@
                 </a>
                 <span class="small text-muted align-self-center">Showing {{ number_format($users->total()) }} of {{ number_format($statAll(\App\Services\AudienceInventoryService::statKeyForTab($tab))) }} in this census.</span>
             </div>
+            @if($hasActiveFilters)
+                <div class="alert alert-warning mt-3 mb-0" role="alert">
+                    Filters apply to this table and CSV only. <strong>Email this audience</strong> still sends the full segment (verified by default), not the filtered rows.
+                </div>
+            @endif
         </div>
         <div class="card-body p-0">
             <div class="table-responsive">

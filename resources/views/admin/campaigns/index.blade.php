@@ -87,6 +87,30 @@
                 </div>
             </div>
         </div>
+        <div class="col-md-6 col-xl">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Advertisers: paid customers</div>
+                    <h3 class="mb-0">{{ number_format($stats['advertisers_paid_orders'] ?? 0) }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 col-xl">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Advertisers: deposited, no paid orders</div>
+                    <h3 class="mb-0">{{ number_format($stats['advertisers_deposited_no_orders'] ?? 0) }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 col-xl">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Publishers: no active sites</div>
+                    <h3 class="mb-0">{{ number_format($stats['publishers_no_active_sites'] ?? 0) }}</h3>
+                </div>
+            </div>
+        </div>
     </div>
 
     <div class="row g-4">
@@ -289,7 +313,9 @@
                                 @forelse($campaigns as $campaign)
                                     <tr>
                                         <td>
-                                            <div class="fw-semibold small">{{ \Illuminate\Support\Str::limit($campaign->subject, 36) }}</div>
+                                            <div class="fw-semibold small">
+                                                <a href="{{ route('admin.campaigns.show', $campaign) }}" class="link-dark">{{ \Illuminate\Support\Str::limit($campaign->subject, 36) }}</a>
+                                            </div>
                                             <div class="text-muted" style="font-size:.75rem;">
                                                 {{ ucfirst($campaign->status) }}
                                                 ·
