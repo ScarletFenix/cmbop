@@ -277,6 +277,40 @@ class AdminDepositsWithdrawalsCrashTest extends TestCase
             ->assertJsonPath('deposit.reference_code', 'DEP-LEFTOVER-DATE');
     }
 
+    public function test_deposits_search_finds_numeric_id(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->makeUser('advertiser');
+        $deposit = $this->pendingDeposit($advertiser, ['reference_code' => 'DEP-SEARCH-ID']);
+
+        $this->actingAs($admin)
+            ->get(route('admin.deposits', ['search' => (string) $deposit->id]))
+            ->assertOk()
+            ->assertSee('DEP-SEARCH-ID')
+            ->assertDontSee('Something went wrong');
+    }
+
+    public function test_approve_survives_leftover_approved_and_reported_dates(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->makeUser('advertiser');
+        $wallet = $this->advertiserWallet($advertiser, 0);
+        $deposit = $this->pendingDeposit($advertiser, ['amount' => 25, 'reference_code' => 'DEP-LEFTOVER-APPROVE']);
+        DB::table('deposit_requests')->where('id', $deposit->id)->update([
+            'approved_at' => 'not-a-date',
+            'user_marked_paid_at' => 'also-not-a-date',
+            'rejected_at' => 'not-a-date',
+        ]);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.deposits.approve', $deposit->id))
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertSame('completed', $deposit->fresh()->status);
+        $this->assertEqualsWithDelta(25.0, (float) $wallet->fresh()->balance, 0.01);
+    }
+
     public function test_approve_still_credits_without_approved_at_column(): void
     {
         $admin = $this->admin();
@@ -458,6 +492,25 @@ class AdminDepositsWithdrawalsCrashTest extends TestCase
         } finally {
             $this->restoreWithdrawalsTable();
         }
+    }
+
+    public function test_mark_paid_survives_leftover_processed_at(): void
+    {
+        $admin = $this->admin();
+        $publisher = $this->makeUser('publisher');
+        $this->publisherWallet($publisher, 0);
+        $withdrawal = $this->pendingWithdrawal($publisher);
+        DB::table('withdrawals')->where('id', $withdrawal->id)->update([
+            'processed_at' => 'not-a-date',
+            'cancelled_at' => 'also-not-a-date',
+        ]);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.withdrawals.paid', $withdrawal->id))
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertSame('completed', $withdrawal->fresh()->status);
     }
 
     public function test_withdrawals_data_survives_leftover_created_at(): void

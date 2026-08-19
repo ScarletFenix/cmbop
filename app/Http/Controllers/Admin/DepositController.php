@@ -50,13 +50,21 @@ class DepositController extends Controller
 
         $search = search_text($request->input('search'));
         if ($search !== '') {
-            $query->where(function ($q) use ($search) {
-                $q->where('reference_code', 'like', "%{$search}%")
-                    ->orWhereHas('user', function ($sub) use ($search) {
-                        $sub->where('name', 'like', "%{$search}%")
-                            ->orWhere('email', 'like', "%{$search}%");
-                    });
-            });
+            if (preg_match('/^#?DEP-?(\d+)$/i', $search, $matches) === 1) {
+                $query->whereKey((int) $matches[1]);
+            } else {
+                $query->where(function ($q) use ($search) {
+                    if (ctype_digit($search)) {
+                        $q->whereKey((int) $search);
+                    }
+
+                    $q->orWhere('reference_code', 'like', "%{$search}%")
+                        ->orWhereHas('user', function ($sub) use ($search) {
+                            $sub->where('name', 'like', "%{$search}%")
+                                ->orWhere('email', 'like', "%{$search}%");
+                        });
+                });
+            }
         }
 
         try {

@@ -402,6 +402,22 @@ class AdminInvoiceCrossLinksTest extends TestCase
             ->assertSee('INV-ARRAY-1', false);
     }
 
+    public function test_deposit_receipt_without_reference_links_to_html_list(): void
+    {
+        $user = $this->advertiser();
+        $receipt = $this->stubInvoice($user, [
+            'type' => Invoice::TYPE_DEPOSIT_RECEIPT,
+            'reference_code' => null,
+            'meta' => ['deposit_request_id' => 42],
+        ]);
+
+        $this->assertSame(
+            route('admin.deposits', ['search' => '42']),
+            $receipt->relatedAdminUrl()
+        );
+        $this->assertNotSame(route('admin.deposits.show', 42), $receipt->relatedAdminUrl());
+    }
+
     public function test_regenerate_pdf_and_guests_are_blocked(): void
     {
         Mail::fake();

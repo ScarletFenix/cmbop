@@ -216,7 +216,7 @@ class Invoice extends Model
             }
 
             if ($this->depositRequestId()) {
-                return route('admin.deposits.show', $this->depositRequestId());
+                return route('admin.deposits', ['search' => (string) $this->depositRequestId()]);
             }
         }
 
