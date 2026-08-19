@@ -1343,11 +1343,7 @@ document.querySelectorAll('form.bulk-request-cancel').forEach(function (form) {
             }
             reason = String(typed || '').trim();
             if (reason.length < 10 || reason.length > 1000) {
-                if (window.slbAlert) {
-                    await window.slbAlert({ icon: 'error', title: 'Please enter a reason (10–1000 characters).' });
-                } else {
-                    alert('Please enter a reason (10–1000 characters).');
-                }
+                await slbAlert({ icon: 'error', title: 'Please enter a reason (10–1000 characters).' });
                 return;
             }
         }
@@ -1407,11 +1403,7 @@ document.querySelectorAll('.bulk-draft-delete').forEach(function (btn) {
             }
             reason = String(typed || '').trim();
             if (reason.length < 10 || reason.length > 1000) {
-                if (window.slbAlert) {
-                    await window.slbAlert({ icon: 'error', title: 'Please enter a reason (10–1000 characters).' });
-                } else {
-                    alert('Please enter a reason (10–1000 characters).');
-                }
+                await slbAlert({ icon: 'error', title: 'Please enter a reason (10–1000 characters).' });
                 return;
             }
         }
@@ -1434,13 +1426,13 @@ document.querySelectorAll('.bulk-draft-delete').forEach(function (btn) {
                 const reasonErr = data.errors && data.errors.reason
                     ? (Array.isArray(data.errors.reason) ? data.errors.reason[0] : data.errors.reason)
                     : null;
-                if (window.slbAlert) { await window.slbAlert({ icon: 'error', title: reasonErr || data.message || 'Could not delete site.' }); } else { alert(reasonErr || data.message || 'Could not delete site.'); }
+                await slbAlert({ icon: 'error', title: reasonErr || data.message || 'Could not delete site.' });
                 this.disabled = false;
                 return;
             }
             location.reload();
         } catch (e) {
-            if (window.slbAlert) { await window.slbAlert({ icon: 'error', title: 'Could not delete site.' }); } else { alert('Could not delete site.'); }
+            await slbAlert({ icon: 'error', title: 'Could not delete site.' });
             this.disabled = false;
         }
     });
