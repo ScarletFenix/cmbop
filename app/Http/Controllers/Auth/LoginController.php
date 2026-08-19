@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\RateLimiter;
@@ -31,10 +32,16 @@ class LoginController extends Controller
         $ipKey = 'login-ip:'.$request->ip();
 
         if (RateLimiter::tooManyAttempts($key, 5) || RateLimiter::tooManyAttempts($ipKey, 30)) {
+            $retry = max(
+                RateLimiter::availableIn($key),
+                RateLimiter::availableIn($ipKey),
+                1
+            );
+
             return response()->json([
                 'status' => 'error',
-                'message' => 'Too many login attempts. Please try again later.',
-            ]);
+                'message' => 'Too many attempts. Please try again later.',
+            ], 429)->header('Retry-After', (string) $retry);
         }
 
         RateLimiter::hit($key, 60); // 60 seconds
@@ -58,23 +65,18 @@ class LoginController extends Controller
 
         // Attempt login
         if (! Auth::attempt($credentials, $remember)) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Invalid email or password.',
-            ]);
+            return $this->failedLoginResponse();
         }
 
         $user = Auth::user();
 
-        // 🚨 Email verification check
+        // Same wording as a bad password so login cannot confirm the account exists.
         if (! $user->hasVerifiedEmail()) {
             Auth::logout();
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
 
-            return response()->json([
-                'status' => 'unverified',
-                'message' => 'Your email is not verified.',
-                'email' => $user->email,
-            ]);
+            return $this->failedLoginResponse();
         }
 
         // ✅ Relative dashboard path — survives APP_URL=localhost misconfig
@@ -95,10 +97,23 @@ class LoginController extends Controller
     /**
      * Logout
      */
-    public function logout()
+    public function logout(Request $request)
     {
         Auth::logout();
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
 
         return redirect('/');
+    }
+
+    /**
+     * @return JsonResponse
+     */
+    private function failedLoginResponse()
+    {
+        return response()->json([
+            'status' => 'error',
+            'message' => 'Invalid email or password.',
+        ]);
     }
 }

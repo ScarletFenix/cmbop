@@ -88,6 +88,11 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(5)->by('register-http:'.$place);
         });
 
+        // Flood cap on top of LoginController's email+IP / IP buckets.
+        RateLimiter::for('login', function (Request $request) {
+            return Limit::perMinute(60)->by('login-http:'.$request->ip());
+        });
+
         // Authenticated users hitting /login or /register go to their role dashboard.
         RedirectIfAuthenticated::redirectUsing(function () {
             $user = Auth::user();
