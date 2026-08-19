@@ -124,12 +124,12 @@ class CatalogSearchTypeaheadTest extends TestCase
         $this->assertStringNotContainsString('fetchSuggestions', $js);
         $this->assertStringNotContainsString('initCatalogSearchTypeahead', $js);
         $this->assertStringNotContainsString('hideSuggestUi', $js);
-        // Dropdown chrome removed; API route kept for a future quick-jump.
+        $this->assertStringContainsString('initCatalogSuggest', $js);
         $this->assertStringContainsString("route('advertiser.catalog.suggest')", $blade);
         $this->assertStringContainsString('suggest: @json(route(\'advertiser.catalog.suggest\'))', $blade);
-        $this->assertStringNotContainsString('id="catalogSuggestList"', $blade);
+        $this->assertStringContainsString('id="catalogSuggestList"', $blade);
         $this->assertStringNotContainsString('data-catalog-typeahead', $blade);
-        $this->assertStringNotContainsString('.catalog-suggest-list', $css);
+        $this->assertStringContainsString('.catalog-suggest-list', $css);
         $this->assertStringContainsString('Results update as you type', $blade);
         $this->assertStringContainsString('catalog-search-field', $blade);
     }
@@ -156,5 +156,15 @@ class CatalogSearchTypeaheadTest extends TestCase
     {
         $this->getJson(route('advertiser.catalog.suggest', ['q' => 'hello']))
             ->assertStatus(401);
+    }
+
+    public function test_catalog_page_includes_suggest_list_markup(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->assertSee('id="catalogSuggestList"', false);
     }
 }

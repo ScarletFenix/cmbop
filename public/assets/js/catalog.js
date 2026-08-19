@@ -1857,7 +1857,7 @@ function multiDisplayOverflows(container) {
  * - Search debounce: reuse CATALOG_FILTER_LIVE_MS (~350ms).
  * - Min chars before live search: 2 (empty query still clears → full catalog).
  * - Enter / Apply: submit with history entry (same as today).
- * - Suggest endpoint: kept registered but unused by typing UX.
+ * - Suggest endpoint: thin jump list under the search box; typing still drives live /results.
  * - Hide mode: live /results HTML still applies eye/mask rules server-side.
  * - Multi-select: always named tags (no “2 countries” count chip); wrap OK for v1.
  * - Tag ×: keep per-value remove (no compact clear-all chip).
@@ -2433,6 +2433,7 @@ const CatalogLive = (function () {
     let abortController = null;
     let requestSeq = 0;
     let lastAppliedQuery = null;
+    let lastEffectiveParams = null;
 
     function resultsEndpoint(params) {
         const base = (window.CatalogConfig && CatalogConfig.routes && CatalogConfig.routes.results)
@@ -2790,12 +2791,48 @@ const CatalogLive = (function () {
         return next;
     }
 
+    function effectiveParamsFromCard(card, fallback) {
+        if (!card) return fallback;
+        const raw = card.getAttribute('data-effective-query');
+        if (!raw) return fallback;
+        try {
+            const obj = JSON.parse(raw);
+            const next = new URLSearchParams();
+            Object.keys(obj || {}).forEach(function (key) {
+                if (obj[key] == null) return;
+                const value = String(obj[key]).trim();
+                if (value !== '') next.set(key, value);
+            });
+            return CatalogUrl.canonicalize(next);
+        } catch (err) {
+            return fallback;
+        }
+    }
+
     function afterSwap(card, params, options) {
+        const effective = effectiveParamsFromCard(card, params);
+        lastEffectiveParams = effective || params;
+        if (effective && params && effective.toString() !== params.toString()) {
+            const searchEl = document.getElementById('catalogSearchInput');
+            const typedSearch = searchEl ? searchEl.value : '';
+            // Keep in-progress metric tokens (da>=50) only while the user is
+            // still typing a search. Chip-remove / filters must not restore them
+            // or the next apply puts the range back.
+            const keepTypedSearch = !!(options && options.intent === 'search'
+                && searchEl && document.activeElement === searchEl);
+            CatalogUrl.applyToForm(effective);
+            if (keepTypedSearch) {
+                searchEl.value = typedSearch;
+            }
+            CatalogUrl.replaceState(effective);
+            params = effective;
+        }
         syncConfigFlags(params);
         syncHideModeFromCard(card);
         syncResultsCount(card);
         syncFilterChips(params);
         syncMoreFiltersBadge(params);
+        syncTagQuick(params);
         syncSuggestButtons(params);
         if (typeof updateButtonStates === 'function') updateButtonStates();
         if (typeof syncDefaultHomepagePrices === 'function') syncDefaultHomepagePrices();
@@ -2829,6 +2866,8 @@ const CatalogLive = (function () {
                 try { card.focus(); } catch (err2) { /* ignore */ }
             }
         }
+
+        return params;
     }
 
     /**
@@ -2860,6 +2899,7 @@ const CatalogLive = (function () {
             && document.getElementById('catalogResults')) {
             syncFilterChips(params);
             syncMoreFiltersBadge(params);
+            syncTagQuick(params);
             syncSuggestButtons(params);
             return Promise.resolve();
         }
@@ -2914,11 +2954,13 @@ const CatalogLive = (function () {
                 if (seq !== requestSeq) return;
                 const card = applyResultsHtml(html);
                 if (!card) throw new Error('Catalog results markup missing');
-                lastAppliedQuery = queryKey;
-                afterSwap(card, params, options);
+                const applied = afterSwap(card, params, options) || params;
+                // Form may still hold typed search while focused — key the
+                // no-op guard off actual FormData, not only the canonical URL.
+                lastAppliedQuery = CatalogUrl.fromForm({ keepPage: true }).toString();
                 // Option 1: bulk rail follows Catalog country= — refresh after results.
                 // Own AbortController inside refreshBulkDeals (not the results timeout).
-                return refreshBulkDeals(params, seq);
+                return refreshBulkDeals(applied, seq);
             })
             .catch(function (err) {
                 // Newer request aborted us — leave its busy state alone.
@@ -2955,8 +2997,26 @@ const CatalogLive = (function () {
     // Seed so the first identical Filter click is a no-op.
     try {
         lastAppliedQuery = CatalogUrl.fromLocation().toString();
+        lastEffectiveParams = CatalogUrl.fromLocation();
     } catch (err) {
         lastAppliedQuery = null;
+        lastEffectiveParams = null;
+    }
+
+    const liveSearchInput = document.getElementById('catalogSearchInput');
+    if (liveSearchInput) {
+        liveSearchInput.addEventListener('blur', function () {
+            if (!lastEffectiveParams) return;
+            const current = CatalogUrl.fromForm({ keepPage: true }).toString();
+            const effective = lastEffectiveParams.toString();
+            if (current === effective) return;
+            // Only strip already-applied metric tokens. Unapplied typing
+            // (lastAppliedQuery !== form) must stay so blur does not wipe it.
+            if (lastAppliedQuery !== current) return;
+            CatalogUrl.applyToForm(lastEffectiveParams);
+            lastAppliedQuery = effective;
+            CatalogUrl.replaceState(lastEffectiveParams);
+        });
     }
 
     return {
@@ -3128,13 +3188,150 @@ window.scheduleCatalogFilterLive = scheduleCatalogFilterLive;
         });
     });
 
-    // Search: typing updates real catalog rows (live /results), not a suggest dropdown.
-    // Enter / Apply still push a history entry. Suggest endpoint stays unused here.
+    // Search: typing updates real catalog rows (live /results).
+    // Enter / Apply still push a history entry. Suggest is a thin jump list.
     const searchInput = document.getElementById('catalogSearchInput');
     if (searchInput) {
         initCatalogSearchLiveRows(searchInput);
+        initCatalogSuggest(searchInput);
     }
+
+    initCatalogCategoryToggle();
+    initCatalogTagQuick();
 })();
+
+function syncTagQuick(params) {
+    const current = params && params.get
+        ? (params.get('tag') || '')
+        : ((document.getElementById('catalogTagFilter') || {}).value || '');
+    document.querySelectorAll('.catalog-tag-quick__btn').forEach(function (btn) {
+        const on = (btn.getAttribute('data-catalog-tag') || '') === current;
+        btn.classList.toggle('is-active', on);
+        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+}
+
+function initCatalogTagQuick() {
+    const bar = document.querySelector('.catalog-tag-quick');
+    if (!bar) return;
+    bar.addEventListener('click', function (e) {
+        const btn = e.target.closest('[data-catalog-tag]');
+        if (!btn || !bar.contains(btn)) return;
+        const tag = btn.getAttribute('data-catalog-tag') || '';
+        const select = document.getElementById('catalogTagFilter');
+        if (select) {
+            select.value = tag;
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        syncTagQuick({ get: function () { return tag; } });
+    });
+}
+
+function initCatalogCategoryToggle() {
+    document.addEventListener('click', function (e) {
+        const btn = e.target.closest('.toggle-cats-btn');
+        if (!btn || !document.querySelector('.catalog-page')) return;
+        const wrapper = btn.closest('.categories-wrapper');
+        if (!wrapper) return;
+        const hiddenItems = wrapper.querySelectorAll('.extra-category');
+        const expanded = btn.getAttribute('aria-expanded') === 'true';
+        hiddenItems.forEach(function (el) {
+            el.classList.toggle('d-none', expanded);
+        });
+        const more = btn.getAttribute('data-more-count') || '0';
+        btn.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+        btn.textContent = expanded ? ('+' + more + ' more') : 'Show less';
+    });
+}
+
+function initCatalogSuggest(searchInput) {
+    const list = document.getElementById('catalogSuggestList');
+    const endpoint = window.CatalogConfig && CatalogConfig.routes && CatalogConfig.routes.suggest;
+    if (!searchInput || !list || !endpoint || !window.fetch) return;
+
+    let timer = null;
+    let seq = 0;
+
+    function hideList() {
+        list.innerHTML = '';
+        list.hidden = true;
+        list.classList.add('d-none');
+        searchInput.setAttribute('aria-expanded', 'false');
+        searchInput.removeAttribute('aria-controls');
+    }
+
+    function showSuggestions(items) {
+        list.innerHTML = '';
+        if (!items || !items.length) {
+            hideList();
+            return;
+        }
+        items.forEach(function (item) {
+            const li = document.createElement('li');
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'catalog-suggest-list__item';
+            button.setAttribute('role', 'option');
+            button.dataset.href = item.href || '';
+            const name = document.createElement('span');
+            name.textContent = item.name || 'Site';
+            const host = document.createElement('span');
+            host.className = 'catalog-suggest-list__host';
+            host.textContent = item.masked ? '' : (item.host || '');
+            button.appendChild(name);
+            button.appendChild(host);
+            li.appendChild(button);
+            list.appendChild(li);
+        });
+        list.hidden = false;
+        list.classList.remove('d-none');
+        searchInput.setAttribute('aria-expanded', 'true');
+        searchInput.setAttribute('aria-controls', 'catalogSuggestList');
+    }
+
+    function fetchSuggest(q) {
+        const requestId = ++seq;
+        const url = endpoint + (endpoint.indexOf('?') === -1 ? '?' : '&') + 'q=' + encodeURIComponent(q);
+        fetch(url, {
+            credentials: 'same-origin',
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        }).then(function (res) {
+            if (!res.ok) throw new Error('suggest');
+            return res.json();
+        }).then(function (data) {
+            if (requestId !== seq) return;
+            showSuggestions((data && data.suggestions) || []);
+        }).catch(function () {
+            if (requestId === seq) hideList();
+        });
+    }
+
+    searchInput.addEventListener('input', function () {
+        const q = String(searchInput.value || '').trim();
+        clearTimeout(timer);
+        if (q.length < 2) {
+            hideList();
+            return;
+        }
+        timer = setTimeout(function () { fetchSuggest(q); }, 220);
+    });
+
+    list.addEventListener('click', function (e) {
+        const item = e.target.closest('.catalog-suggest-list__item');
+        if (!item || !item.dataset.href) return;
+        hideList();
+        window.location.assign(item.dataset.href);
+    });
+
+    document.addEventListener('click', function (e) {
+        if (e.target === searchInput || list.contains(e.target)) return;
+        hideList();
+    });
+
+    searchInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') hideList();
+    });
+}
 
 /**
  * Debounced live catalog search for #catalogSearchInput.

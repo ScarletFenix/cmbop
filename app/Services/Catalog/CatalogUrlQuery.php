@@ -63,7 +63,29 @@ class CatalogUrlQuery
      */
     public static function fromRequest(Request $request): array
     {
-        return self::canonicalize($request->query());
+        // Use merged request input so metric tokens parsed from search=
+        // (da_min, etc.) appear on chips, pagination, and share URLs.
+        return self::canonicalize($request->all());
+    }
+
+    /**
+     * Canonical listing query when it differs from the browser query string.
+     *
+     * Used to redirect ?search=da>=50 to ?da_min=50 after parse/merge.
+     *
+     * @return array<string, string>|null
+     */
+    public static function canonicalRedirectParams(Request $request, ?array $originalQuery = null): ?array
+    {
+        $effective = self::fromRequest($request);
+        // Snapshot the browser query before merge — on GET, merge() writes
+        // the same bag that query() reads, so "after" query is useless.
+        $query = self::canonicalize($originalQuery ?? $request->query());
+
+        ksort($effective);
+        ksort($query);
+
+        return $effective === $query ? null : $effective;
     }
 
     /**

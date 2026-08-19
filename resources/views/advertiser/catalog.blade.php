@@ -314,6 +314,9 @@
                                        value="{{ $catalogSearchText }}"
                                        autocomplete="off"
                                        enterkeyhint="search"
+                                       aria-autocomplete="list"
+                                       aria-haspopup="listbox"
+                                       aria-expanded="false"
                                        aria-describedby="catalogSearchStatus">
                                 <button type="button"
                                         id="catalogSearchClear"
@@ -322,6 +325,11 @@
                                     <i class="fa-solid fa-xmark" aria-hidden="true"></i>
                                 </button>
                                 <span id="catalogSearchStatus" class="visually-hidden" role="status" aria-live="polite"></span>
+                                <ul id="catalogSuggestList"
+                                    class="catalog-suggest-list d-none"
+                                    role="listbox"
+                                    aria-label="Site suggestions"
+                                    hidden></ul>
                             </div>
                         </div>
 
@@ -451,14 +459,14 @@
                                        class="form-control form-control-sm no-spinner"
                                        placeholder="Min"
                                        min="0" step="0.01"
-                                       value="{{ search_text(request('price_min')) }}">
+                                       value="{{ trim(scalar_text(request('price_min'))) }}">
                                 <input type="number"
                                        name="price_max"
                                        id="priceMaxInput" aria-label="Maximum price in euros"
                                        class="form-control form-control-sm no-spinner"
                                        placeholder="Max"
                                        min="0" step="0.01"
-                                       value="{{ search_text(request('price_max')) }}">
+                                       value="{{ trim(scalar_text(request('price_max'))) }}">
                             </div>
                             <div class="filter-presets" data-preset-group="price">
                                 <button type="button" class="filter-preset" data-min="" data-max="50" data-target-min="priceMinInput" data-target-max="priceMaxInput">Under €50</button>
@@ -488,6 +496,18 @@
                                 </a>
                             </div>
                         </div>
+                    </div>
+
+                    <div class="catalog-tag-quick mt-2" role="group" aria-label="Listing tag">
+                        <span class="small text-muted me-1">Tag</span>
+                        @foreach(\App\Support\SiteTag::catalogFilterOptions() as $value => $label)
+                            <button type="button"
+                                    class="catalog-tag-quick__btn{{ ($catalogTagFilter === $value || ($value === '' && $catalogTagFilter === null)) ? ' is-active' : '' }}"
+                                    data-catalog-tag="{{ $value }}"
+                                    aria-pressed="{{ ($catalogTagFilter === $value || ($value === '' && $catalogTagFilter === null)) ? 'true' : 'false' }}">
+                                {{ $label }}
+                            </button>
+                        @endforeach
                     </div>
 
                     <!-- More filters drawer (teal mist theme) -->
@@ -525,8 +545,8 @@
                                     <abbr class="metric-abbr text-decoration-none" title="Moz Domain Authority — site strength score from 0–100">DA</abbr>
                                 </label>
                                 <div class="d-flex gap-2">
-                                    <input type="number" name="da_min" id="daMinInput" aria-label="Minimum Domain Authority" class="form-control form-control-sm no-spinner" placeholder="Min" min="0" step="1" value="{{ search_text(request('da_min')) }}">
-                                    <input type="number" name="da_max" id="daMaxInput" aria-label="Maximum Domain Authority" class="form-control form-control-sm no-spinner" placeholder="Max" min="0" step="1" value="{{ search_text(request('da_max')) }}">
+                                    <input type="number" name="da_min" id="daMinInput" aria-label="Minimum Domain Authority" class="form-control form-control-sm no-spinner" placeholder="Min" min="0" step="1" value="{{ trim(scalar_text(request('da_min'))) }}">
+                                    <input type="number" name="da_max" id="daMaxInput" aria-label="Maximum Domain Authority" class="form-control form-control-sm no-spinner" placeholder="Max" min="0" step="1" value="{{ trim(scalar_text(request('da_max'))) }}">
                                 </div>
                                 <div class="filter-presets" data-preset-group="da">
                                     <button type="button" class="filter-preset" data-min="20" data-max="" data-target-min="daMinInput" data-target-max="daMaxInput">DA 20+</button>
@@ -539,8 +559,8 @@
                                     <abbr class="metric-abbr text-decoration-none" title="Ahrefs Domain Rating — backlink strength score from 0–100">DR</abbr>
                                 </label>
                                 <div class="d-flex gap-2">
-                                    <input type="number" name="dr_min" id="drMinInput" aria-label="Minimum Domain Rating" class="form-control form-control-sm no-spinner" placeholder="Min" min="0" step="1" value="{{ search_text(request('dr_min')) }}">
-                                    <input type="number" name="dr_max" id="drMaxInput" aria-label="Maximum Domain Rating" class="form-control form-control-sm no-spinner" placeholder="Max" min="0" step="1" value="{{ search_text(request('dr_max')) }}">
+                                    <input type="number" name="dr_min" id="drMinInput" aria-label="Minimum Domain Rating" class="form-control form-control-sm no-spinner" placeholder="Min" min="0" step="1" value="{{ trim(scalar_text(request('dr_min'))) }}">
+                                    <input type="number" name="dr_max" id="drMaxInput" aria-label="Maximum Domain Rating" class="form-control form-control-sm no-spinner" placeholder="Max" min="0" step="1" value="{{ trim(scalar_text(request('dr_max'))) }}">
                                 </div>
                                 <div class="filter-presets" data-preset-group="dr">
                                     <button type="button" class="filter-preset" data-min="30" data-max="" data-target-min="drMinInput" data-target-max="drMaxInput">DR 30+</button>
@@ -551,8 +571,8 @@
                             <div class="col-6 col-md-4 col-lg-3">
                                 <label class="form-label fw-semibold small text-muted mb-1">Monthly Traffic</label>
                                 <div class="d-flex gap-2">
-                                    <input type="number" name="traffic_min" id="trafficMinInput" aria-label="Minimum monthly traffic" class="form-control form-control-sm no-spinner" placeholder="Min" min="0" max="4294967295" step="1" inputmode="numeric" value="{{ search_text(request('traffic_min')) }}">
-                                    <input type="number" name="traffic_max" id="trafficMaxInput" aria-label="Maximum monthly traffic" class="form-control form-control-sm no-spinner" placeholder="Max" min="0" max="4294967295" step="1" inputmode="numeric" value="{{ search_text(request('traffic_max')) }}">
+                                    <input type="number" name="traffic_min" id="trafficMinInput" aria-label="Minimum monthly traffic" class="form-control form-control-sm no-spinner" placeholder="Min" min="0" max="4294967295" step="1" inputmode="numeric" value="{{ trim(scalar_text(request('traffic_min'))) }}">
+                                    <input type="number" name="traffic_max" id="trafficMaxInput" aria-label="Maximum monthly traffic" class="form-control form-control-sm no-spinner" placeholder="Max" min="0" max="4294967295" step="1" inputmode="numeric" value="{{ trim(scalar_text(request('traffic_max'))) }}">
                                 </div>
                                 <div class="filter-presets" data-preset-group="traffic">
                                     <button type="button" class="filter-preset" data-min="10000" data-max="" data-target-min="trafficMinInput" data-target-max="trafficMaxInput">10k+</button>
@@ -632,7 +652,7 @@
                                     $chipRemoveUrl = route(
                                         'advertiser.catalog',
                                         \App\Services\Catalog\CatalogUrlQuery::withoutCategoryNiche(
-                                            request()->query(),
+                                            \App\Services\Catalog\CatalogUrlQuery::fromRequest(request()),
                                             (string) $chip['category_remove']
                                         )
                                     );
@@ -640,7 +660,7 @@
                                     $chipRemoveUrl = route(
                                         'advertiser.catalog',
                                         \App\Services\Catalog\CatalogUrlQuery::except(
-                                            request()->query(),
+                                            \App\Services\Catalog\CatalogUrlQuery::fromRequest(request()),
                                             $chip['params']
                                         )
                                     );
@@ -752,7 +772,6 @@ window.CatalogConfig = {
         revealUrl: @json(route('advertiser.catalog.reveal-url', ['site' => '__SITE__'])),
         hideUrl: @json(route('advertiser.catalog.hide-url', ['site' => '__SITE__'])),
         copyTrack: @json(route('advertiser.catalog.copy-track')),
-        // Kept for a future quick-jump UI; typing search uses live /results rows.
         suggest: @json(route('advertiser.catalog.suggest')),
         catalog: @json(route('advertiser.catalog'))
     }

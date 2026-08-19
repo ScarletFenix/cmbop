@@ -13,16 +13,19 @@
                 'nofollow' => 'NoFollow',
                 default => ucfirst(trim((string) $linkType)),
             })
-            : 'DoFollow');
+            : null);
     $chipTurnaround = $site?->turnaroundLabel()
         ?: trim((string) ($turnaround ?? ''));
 @endphp
 
+@if($chipLinkType || $chipTurnaround !== '')
 <div class="catalog-meta-chips">
+    @if($chipLinkType)
     <span class="catalog-meta-chip" title="{{ $chipLinkType }} links on this placement">
         <i class="fa-solid fa-link" aria-hidden="true"></i>
         <span>{{ $chipLinkType }}</span>
     </span>
+    @endif
     @if($chipTurnaround !== '')
         <span class="catalog-meta-chip" title="Typical turnaround once the publisher accepts">
             <i class="fa-regular fa-clock" aria-hidden="true"></i>
@@ -30,3 +33,4 @@
         </span>
     @endif
 </div>
+@endif

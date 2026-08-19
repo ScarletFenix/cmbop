@@ -35,6 +35,7 @@ use App\Http\Controllers\Advertiser\AnalyticsController;
 use App\Http\Controllers\Advertiser\BillingController as AdvertiserBillingController;
 use App\Http\Controllers\Advertiser\CatalogController;
 use App\Http\Controllers\Advertiser\CatalogCopyTrackController;
+use App\Http\Controllers\Advertiser\CatalogListingController;
 use App\Http\Controllers\Advertiser\ContentLibraryController;
 use App\Http\Controllers\Advertiser\ContentModerationController as AdvertiserContentModerationController;
 use App\Http\Controllers\Advertiser\ContentSubmissionController;
@@ -822,22 +823,22 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
         Route::post('/place-guest-post/exit', [GuestPostWizardController::class, 'exit'])
             ->name('wizard.exit');
 
-        // Catelog routes
-        Route::get('/catalog', [CatalogController::class, 'index'])
+        // Catalog listing (browse / live results / suggest). Cart + checkout stay on CatalogController.
+        Route::get('/catalog', [CatalogListingController::class, 'index'])
             ->name('catalog');
 
         // Typeahead for the main search box — JSON only, never a full page.
-        Route::get('/catalog/suggest', [CatalogController::class, 'suggest'])
+        Route::get('/catalog/suggest', [CatalogListingController::class, 'suggest'])
             ->middleware('throttle:60,1')
             ->name('catalog.suggest');
 
         // Live search / filter results fragment (HTML partial, same query as index).
-        Route::get('/catalog/results', [CatalogController::class, 'results'])
+        Route::get('/catalog/results', [CatalogListingController::class, 'results'])
             ->middleware('throttle:60,1')
             ->name('catalog.results');
 
         // Bulk deals rail fragment — follows country= like the listing (Option 1).
-        Route::get('/catalog/bulk-deals', [CatalogController::class, 'bulkDeals'])
+        Route::get('/catalog/bulk-deals', [CatalogListingController::class, 'bulkDeals'])
             ->middleware('throttle:60,1')
             ->name('catalog.bulk-deals');
 

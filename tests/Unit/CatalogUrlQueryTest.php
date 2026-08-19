@@ -120,4 +120,22 @@ class CatalogUrlQueryTest extends TestCase
             CatalogUrlQuery::fromRequest($request)
         );
     }
+
+    public function test_from_request_uses_merged_input_not_query_only(): void
+    {
+        $request = Request::create('/advertiser/catalog', 'GET', [
+            'search' => 'da>=50',
+        ]);
+        $originalQuery = $request->query();
+        $request->merge(['search' => '', 'da_min' => 50]);
+
+        $this->assertSame(
+            ['da_min' => '50'],
+            CatalogUrlQuery::fromRequest($request)
+        );
+        $this->assertSame(
+            ['da_min' => '50'],
+            CatalogUrlQuery::canonicalRedirectParams($request, $originalQuery)
+        );
+    }
 }

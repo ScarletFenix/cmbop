@@ -85,8 +85,12 @@ class CatalogSearchRelevanceTest extends TestCase
             'price' => 80,
         ]);
 
-        $html = $this->actingAs($advertiser)
+        $this->actingAs($advertiser)
             ->get(route('advertiser.catalog', ['search' => 'da>=50']))
+            ->assertRedirect(route('advertiser.catalog', ['da_min' => '50']));
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog', ['da_min' => '50']))
             ->assertOk()
             ->assertSee('High DA Alpha')
             ->assertDontSee('Low DA Beta')
@@ -95,6 +99,8 @@ class CatalogSearchRelevanceTest extends TestCase
         // Parsed into the range inputs so Filter / chips stay honest.
         $this->assertStringContainsString('name="da_min"', $html);
         $this->assertMatchesRegularExpression('/name="da_min"[^>]*value="50"/', $html);
+        $this->assertStringNotContainsString('search=da', $html);
+        $this->assertStringContainsString('Remove filter: DA (Domain Authority)', $html);
 
         unset($high, $low);
     }
