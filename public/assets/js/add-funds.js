@@ -55,8 +55,17 @@ document.addEventListener('DOMContentLoaded', function() {
             if (prefillMethod === 'crypto' && !cryptoEnabled) {
                 return;
             }
+            if (prefillMethod === 'card' && !stripeReady) {
+                return;
+            }
+            if (prefillMethod === 'paypal' && !paypalReady) {
+                return;
+            }
             const opt = document.querySelector('.payment-option[data-method="' + prefillMethod + '"]');
-            if (opt) opt.click();
+            if (!opt || opt.getAttribute('aria-disabled') === 'true') {
+                return;
+            }
+            opt.click();
         }
     }
     const selectedAmountDisplay = document.getElementById('selectedAmountDisplay');

@@ -122,6 +122,31 @@ class DepositRequest extends Model
         return Invoice::paymentMethodLabel($this->payment_method);
     }
 
+    /**
+     * Latest completed/approved wallet top-up rail for this advertiser, or null.
+     *
+     * @return 'card'|'paypal'|'bank'|'wise'|'crypto'|null
+     */
+    public static function lastUsedMethodForUser(int $userId): ?string
+    {
+        if ($userId <= 0) {
+            return null;
+        }
+
+        try {
+            $method = static::query()
+                ->where('user_id', $userId)
+                ->whereIn('status', ['completed', 'approved'])
+                ->whereIn('payment_method', ['card', 'paypal', 'bank', 'wise', 'crypto'])
+                ->latest('id')
+                ->value('payment_method');
+        } catch (\Throwable) {
+            return null;
+        }
+
+        return is_string($method) && $method !== '' ? $method : null;
+    }
+
     public function isPaypalRefundable(): bool
     {
         return strtolower((string) $this->payment_method) === 'paypal'

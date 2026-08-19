@@ -343,7 +343,7 @@
                                  @if(! $cardNeedsAmount) aria-disabled="true" data-zero-amount="1" @endif>
                                 <div class="payment-option-card">
                                     <div style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: #f3f4f6; border-radius: 8px; flex-shrink:0;">
-                                        <i class="fab fa-stripe" style="font-size: 28px; color: #635bff;" aria-hidden="true"></i>
+                                        @include('partials.payment-card-brands')
                                     </div>
                                     <div class="flex-grow-1">
                                         <span style="font-weight: 700; font-size: 14px; color: #1f2937;">Credit / Debit Card</span>
@@ -376,7 +376,10 @@
                                         <img src="{{ asset('assets/img/payments/paypal.svg') }}" alt="" width="40" height="11" style="width:40px;height:auto;" decoding="async">
                                     </div>
                                     <div class="flex-grow-1">
-                                        <span style="font-weight: 700; font-size: 14px; color: #1f2937;">PayPal</span>
+                                        <span style="display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                                            <span style="font-weight: 700; font-size: 14px; color: #1f2937;">PayPal</span>
+                                            <x-feature-new key="checkout.paypal" />
+                                        </span>
                                         <span style="font-size: 12px; color: #6b7280; display: block; margin-top: 2px;">
                                             @if(! $paypalNeedsAmount)
                                                 Available when amount due is greater than €0
@@ -629,7 +632,7 @@
                             <div class="card-body">
                                 <div style="display: flex; align-items: center; margin-bottom: 16px;">
                                     <div style="width: 40px; height: 40px; background: #f3f4f6; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-right: 12px;">
-                                        <i class="fab fa-stripe" style="font-size: 24px; color: #635bff;"></i>
+                                        @include('partials.payment-card-brands', ['size' => 'header'])
                                     </div>
                                     <div>
                                         <h3 style="font-size: 18px; font-weight: 600; margin: 0;">Card Payment</h3>

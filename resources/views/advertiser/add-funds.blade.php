@@ -211,84 +211,103 @@
                     </div>
 
                     <!-- Payment Methods -->
+                    @php
+                        $depositMethodOrder = $depositMethodOrder ?? ['card', 'bank', 'paypal', 'wise', 'crypto'];
+                        $lastUsedMethod = $lastUsedMethod ?? null;
+                        $depositMethodMeta = [
+                            'card' => [
+                                'label' => 'Credit/Debit Card',
+                                'aria' => 'Pay with credit or debit card',
+                                'ready' => $stripeReady,
+                                'hint_on' => 'Instant — credited immediately',
+                                'icon_bg' => '#f3f4f6',
+                                'new_key' => null,
+                            ],
+                            'bank' => [
+                                'label' => 'Bank Transfer',
+                                'aria' => 'Pay with bank transfer',
+                                'ready' => true,
+                                'hint_on' => 'Invoice → SEPA/wire → wallet credit',
+                                'icon_bg' => '#eff6ff',
+                                'new_key' => null,
+                            ],
+                            'paypal' => [
+                                'label' => 'PayPal',
+                                'aria' => 'Pay with PayPal',
+                                'ready' => $paypalReady,
+                                'hint_on' => 'Instant — credited immediately',
+                                'icon_bg' => '#f3f4f6',
+                                'new_key' => 'add_funds.paypal',
+                            ],
+                            'wise' => [
+                                'label' => 'Wise Transfer',
+                                'aria' => 'Pay with Wise transfer',
+                                'ready' => true,
+                                'hint_on' => 'Invoice → transfer → wallet credit',
+                                'icon_bg' => '#eff6ff',
+                                'new_key' => null,
+                            ],
+                            'crypto' => [
+                                'label' => 'Cryptocurrency',
+                                'aria' => 'Pay with cryptocurrency',
+                                'ready' => true,
+                                'hint_on' => 'USDT TRC20 · invoice → send → credit',
+                                'icon_bg' => '#fef3c7',
+                                'new_key' => null,
+                            ],
+                        ];
+                    @endphp
                     <div class="mb-4">
                         <label class="form-label fw-semibold mb-3">Select Payment Method</label>
                         <div class="row g-3 payment-methods-row">
-<div class="col-12 col-sm-6 col-xl-4">
-                                <div class="payment-option"
-                                     @if($stripeReady) data-method="card" style="cursor: pointer;" role="button" tabindex="0" @else aria-disabled="true" style="cursor: not-allowed; opacity: 0.6;" @endif
-                                     aria-label="Pay with credit or debit card">
-                                    <div class="payment-option-card" style="border: 2px solid #e5e7eb; border-radius: 12px; padding: 16px; text-align: center; background: white; transition: all 0.2s;">
-                                        <div style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: #f3f4f6; border-radius: 8px; margin: 0 auto 8px;">
-                                            <i class="fab fa-stripe" style="font-size: 28px; color: #635bff;"></i>
+                            @foreach($depositMethodOrder as $methodKey)
+                                @if($methodKey === 'crypto' && !($cryptoEnabled ?? false))
+                                    @continue
+                                @endif
+                                @php
+                                    $meta = $depositMethodMeta[$methodKey] ?? null;
+                                @endphp
+                                @continue(! $meta)
+                                @php
+                                    $methodReady = (bool) $meta['ready'];
+                                    $isLastUsed = $lastUsedMethod === $methodKey;
+                                @endphp
+                                <div class="col-12 col-sm-6 col-xl-4">
+                                    <div class="payment-option"
+                                         data-method="{{ $methodKey }}"
+                                         @if($methodReady) style="cursor: pointer;" role="button" tabindex="0" @else aria-disabled="true" style="cursor: not-allowed; opacity: 0.6;" @endif
+                                         aria-label="{{ $meta['aria'] }}">
+                                        <div class="payment-option-card">
+                                            @if(! empty($meta['new_key']))
+                                                <x-feature-new :key="$meta['new_key']" class="payment-option-new" />
+                                            @endif
+                                            <div class="payment-option-icon" style="background: {{ $meta['icon_bg'] }};">
+                                                @if($methodKey === 'card')
+                                                    @include('partials.payment-card-brands')
+                                                @elseif($methodKey === 'bank')
+                                                    <i class="fas fa-university" style="font-size: 28px; color: var(--brand-primary, #1a585e);"></i>
+                                                @elseif($methodKey === 'paypal')
+                                                    <img src="{{ asset('assets/img/payments/paypal.svg') }}" alt="" width="40" height="11" style="width:40px;height:auto;" decoding="async">
+                                                @elseif($methodKey === 'wise')
+                                                    <img src="{{ asset('assets/img/wiseImg-logo.png') }}" alt="Wise Logo" style="width: 32px; height: 32px; object-fit: contain;">
+                                                @else
+                                                    <i class="fab fa-bitcoin" style="font-size: 28px; color: #eab308;"></i>
+                                                @endif
+                                            </div>
+                                            <span class="payment-option-name">{{ $meta['label'] }}</span>
+                                            @if($isLastUsed)
+                                                <span class="payment-option-recent">Recently used</span>
+                                            @endif
+                                            @if($methodReady)
+                                                <span class="payment-option-hint">{{ $meta['hint_on'] }}</span>
+                                            @else
+                                                <span class="payment-option-hint is-off">Temporarily unavailable</span>
+                                            @endif
                                         </div>
-                                        <span style="font-weight: 600; font-size: 12px; color: #1f2937;">Credit/Debit Card</span>
-                                        @if($stripeReady)
-                                            <span style="font-size: 10px; color: #6b7280; display: block; margin-top: 4px;">Instant — credited immediately</span>
-                                        @else
-                                            <span style="font-size: 10px; color: #dc2626; display: block; margin-top: 4px;">Temporarily unavailable</span>
-                                        @endif
                                     </div>
                                 </div>
-                            </div>
-
-<div class="col-12 col-sm-6 col-xl-4">
-                                <div class="payment-option" data-method="bank" style="cursor: pointer;" role="button" tabindex="0" aria-label="Pay with bank transfer">
-                                    <div class="payment-option-card" style="border: 2px solid #e5e7eb; border-radius: 12px; padding: 16px; text-align: center; background: white; transition: all 0.2s;">
-                                        <div style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: #eff6ff; border-radius: 8px; margin: 0 auto 8px;">
-                                            <i class="fas fa-university" style="font-size: 28px; color: var(--brand-primary, #1a585e);"></i>
-                                        </div>
-                                        <span style="font-weight: 600; font-size: 12px; color: #1f2937;">Bank Transfer</span>
-                                        <span style="font-size: 10px; color: #6b7280; display: block; margin-top: 4px;">Invoice → SEPA/wire → wallet credit</span>
-                                    </div>
-                                </div>
-                            </div>
-
-<div class="col-12 col-sm-6 col-xl-4">
-                                <div class="payment-option"
-                                     @if($paypalReady) data-method="paypal" style="cursor: pointer;" role="button" tabindex="0" @else aria-disabled="true" style="cursor: not-allowed; opacity: 0.6;" @endif
-                                     aria-label="Pay with PayPal">
-                                    <div class="payment-option-card" style="border: 2px solid #e5e7eb; border-radius: 12px; padding: 16px; text-align: center; background: white; transition: all 0.2s;">
-                                        <div style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: #f3f4f6; border-radius: 8px; margin: 0 auto 8px;">
-                                            <img src="{{ asset('assets/img/payments/paypal.svg') }}" alt="" width="40" height="11" style="width:40px;height:auto;" decoding="async">
-                                        </div>
-                                        <span style="font-weight: 600; font-size: 12px; color: #1f2937;">PayPal</span>
-                                        @if($paypalReady)
-                                            <span style="font-size: 10px; color: #6b7280; display: block; margin-top: 4px;">Instant — credited immediately</span>
-                                        @else
-                                            <span style="font-size: 10px; color: #dc2626; display: block; margin-top: 4px;">Temporarily unavailable</span>
-                                        @endif
-                                    </div>
-                                </div>
-                            </div>
-
-<div class="col-12 col-sm-6 col-xl-4">
-                                <div class="payment-option" data-method="wise" style="cursor: pointer;" role="button" tabindex="0" aria-label="Pay with Wise transfer">
-                                    <div class="payment-option-card" style="border: 2px solid #e5e7eb; border-radius: 12px; padding: 16px; text-align: center; background: white; transition: all 0.2s;">
-                                        <div style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: #eff6ff; border-radius: 8px; margin: 0 auto 8px;">
-                                            <img src="{{ asset('assets/img/wiseImg-logo.png') }}" alt="Wise Logo" style="width: 32px; height: 32px; object-fit: contain;">
-                                        </div>
-                                        <span style="font-weight: 600; font-size: 12px; color: #1f2937;">Wise Transfer</span>
-                                        <span style="font-size: 10px; color: #6b7280; display: block; margin-top: 4px;">Invoice → transfer → wallet credit</span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            @if($cryptoEnabled ?? false)
-                            <div class="col-12 col-sm-6 col-xl-4">
-                                <div class="payment-option" data-method="crypto" style="cursor: pointer;" role="button" tabindex="0" aria-label="Pay with cryptocurrency">
-                                    <div class="payment-option-card" style="border: 2px solid #e5e7eb; border-radius: 12px; padding: 16px; text-align: center; background: white; transition: all 0.2s;">
-                                        <div style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: #fef3c7; border-radius: 8px; margin: 0 auto 8px;">
-                                            <i class="fab fa-bitcoin" style="font-size: 28px; color: #eab308;"></i>
-                                        </div>
-                                        <span style="font-weight: 600; font-size: 12px; color: #1f2937;">Cryptocurrency</span>
-                                        <span style="font-size: 10px; color: #6b7280; display: block; margin-top: 4px;">USDT TRC20 · invoice → send → credit</span>
-                                    </div>
-                                </div>
-                            </div>
-                            @endif
-
-                                                </div>
+                            @endforeach
+                        </div>
 
                         <div id="depositFeeNote" class="small text-muted mt-2" style="display: none;" aria-live="polite"></div>
 
@@ -481,11 +500,11 @@
                             <div class="card-body">
                                 <div style="display: flex; align-items: center; margin-bottom: 16px;">
                                     <div style="width: 40px; height: 40px; background: #f3f4f6; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-right: 12px;">
-                                        <i class="fab fa-stripe" style="font-size: 24px; color: #635bff;"></i>
+                                        @include('partials.payment-card-brands', ['size' => 'header'])
                                     </div>
                                     <div>
                                         <h3 style="font-size: 18px; font-weight: 600; margin: 0;">Card Payment</h3>
-                                        <p style="font-size: 12px; color: #6b7280; margin: 4px 0 0;">Instant wallet credit via Stripe</p>
+                                        <p style="font-size: 12px; color: #6b7280; margin: 4px 0 0;">Instant wallet credit — Visa or Mastercard</p>
                                     </div>
                                 </div>
 
@@ -1534,6 +1553,7 @@ window.AddFundsBoot = {
     wisePayUrl: @json($wisePayUrl ?? config('billing.deposit_payment.wise_pay_url')),
     prefillAmount: @json($prefillAmount ?? null),
     prefillMethod: @json($prefillMethod ?? null),
+    lastUsedMethod: @json($lastUsedMethod ?? null),
     openCardsTab: @json((bool) ($openCardsTab ?? false)),
     routes: {
         store: @json(route('advertiser.add-funds.store')),
