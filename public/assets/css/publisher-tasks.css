@@ -89,6 +89,8 @@
     padding: 4px 8px;
     font-size: 11px;
     min-width: 0;
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
 .link-cell {
@@ -105,14 +107,18 @@
 .action-buttons {
     display: flex;
     flex-direction: row;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 4px;
     justify-content: flex-end;
+    align-items: center;
 }
 
-.publisher-task-actions-col {
+.publisher-task-actions-col,
+td[data-label="Action"] {
     width: 1%;
+    min-width: 11.5rem;
     white-space: nowrap;
+    vertical-align: middle;
 }
 
 .total-price {
@@ -224,6 +230,11 @@ td a {
         margin-bottom: 4px;
     }
     .action-buttons {
+        flex-wrap: wrap;
         justify-content: flex-end;
+    }
+    td[data-label="Action"] {
+        min-width: 0;
+        white-space: normal;
     }
 }
