@@ -270,6 +270,11 @@ class AdBannerController extends Controller
         }
 
         $info = @getimagesize($path);
+        if ((! is_array($info) || empty($info[0]) || empty($info[1]))
+            && function_exists('getimagesizefromstring')
+            && is_file($path)) {
+            $info = @getimagesizefromstring((string) file_get_contents($path));
+        }
         if (! is_array($info) || empty($info[0]) || empty($info[1])) {
             return;
         }

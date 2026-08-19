@@ -54,10 +54,6 @@ class AdBannerImageValidationTest extends TestCase
 
     public function test_tiny_image_on_leaderboard_is_rejected(): void
     {
-        if (! function_exists('imagecreatetruecolor')) {
-            $this->markTestSkipped('GD is required for dimension checks');
-        }
-
         $this->actingAs($this->admin)
             ->from(route('admin.promotions.banners.create'))
             ->post(route('admin.promotions.banners.store'), [
@@ -74,9 +70,7 @@ class AdBannerImageValidationTest extends TestCase
 
     public function test_matching_leaderboard_image_is_accepted(): void
     {
-        if (! function_exists('imagecreatetruecolor')) {
-            $this->markTestSkipped('GD is required for dimension checks');
-        }
+        Storage::fake('public');
 
         $this->actingAs($this->admin)
             ->post(route('admin.promotions.banners.store'), [
@@ -88,6 +82,17 @@ class AdBannerImageValidationTest extends TestCase
                 'is_active' => 1,
             ])
             ->assertRedirect(route('admin.promotions.banners.index'));
+
+        $banner = AdBanner::query()->where('name', 'Fit')->first();
+        $this->assertNotNull($banner);
+        $this->assertSame(728, (int) $banner->width);
+        $this->assertSame(90, (int) $banner->height);
+        $this->assertNotEmpty($banner->image_path);
+        Storage::disk('public')->assertExists((string) $banner->image_path);
+        if (ImageOptimizationService::canEncodeWebp()) {
+            $this->assertStringEndsWith('.webp', (string) $banner->image_path);
+            $this->assertStringStartsWith('RIFF', Storage::disk('public')->get((string) $banner->image_path));
+        }
     }
 
     public function test_custom_banner_jpeg_is_converted_to_webp_when_encoder_exists(): void
@@ -122,11 +127,12 @@ class AdBannerImageValidationTest extends TestCase
 
     private function png(int $width, int $height): UploadedFile
     {
-        $img = imagecreatetruecolor($width, $height);
-        $path = sys_get_temp_dir().'/promo-'.$width.'x'.$height.'-'.uniqid().'.png';
-        imagepng($img, $path);
-        imagedestroy($img);
+        $png = $this->validPngBytes($width, $height);
+        $info = @getimagesizefromstring($png);
+        $this->assertIsArray($info);
+        $this->assertSame($width, (int) $info[0]);
+        $this->assertSame($height, (int) $info[1]);
 
-        return new UploadedFile($path, 'banner.png', 'image/png', null, true);
+        return UploadedFile::fake()->createWithContent('banner.png', $png);
     }
 }
