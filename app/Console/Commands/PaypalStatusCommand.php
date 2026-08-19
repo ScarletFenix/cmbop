@@ -36,6 +36,9 @@ class PaypalStatusCommand extends Command
             '  Webhook ID  %s',
             $snap['webhook_id_set'] ? 'set' : 'missing (webhooks will 503)'
         ));
+        if ($snap['webhook_id_set'] && ! $snap['webhook_id_ok']) {
+            $this->warn('  PAYPAL_WEBHOOK_ID should start with WH- (Dashboard → Webhooks). This looks like a merchant/app id.');
+        }
         $this->line(sprintf(
             '  Config cache %s',
             file_exists($this->laravel->getCachedConfigPath())
@@ -60,7 +63,11 @@ class PaypalStatusCommand extends Command
         try {
             $paypal->accessToken(allowHostFallback: false);
         } catch (RuntimeException $e) {
-            if ($e->getMessage() === UserMessages::get('payment.paypal_auth')) {
+            $canProbe = in_array($e->getMessage(), [
+                UserMessages::get('payment.paypal_auth'),
+                UserMessages::get('payment.paypal_unreachable'),
+            ], true);
+            if ($canProbe) {
                 try {
                     $paypal->accessToken(allowHostFallback: true);
                     $this->newLine();
@@ -70,7 +77,7 @@ class PaypalStatusCommand extends Command
 
                     return self::FAILURE;
                 } catch (RuntimeException) {
-                    // Both hosts rejected the keys.
+                    // Both hosts rejected the keys or were unreachable.
                 }
             }
 

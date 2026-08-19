@@ -2,8 +2,8 @@
 
 namespace App\Services;
 
+use App\Support\UserFacingError;
 use App\Support\UserMessages;
-use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -56,7 +56,7 @@ class PaypalCheckoutService
     /**
      * Operator snapshot for `paypal:status`. Never includes the secret.
      *
-     * @return array{mode: string, host: string, configured: bool, client_id_set: bool, secret_set: bool, webhook_id_set: bool, client_id_hint: string, secret_length: int}
+     * @return array{mode: string, host: string, configured: bool, client_id_set: bool, secret_set: bool, webhook_id_set: bool, webhook_id_ok: bool, client_id_hint: string, secret_length: int}
      */
     public function connectionSnapshot(): array
     {
@@ -71,6 +71,7 @@ class PaypalCheckoutService
             'client_id_set' => $id !== '',
             'secret_set' => $secret !== '',
             'webhook_id_set' => $webhook !== '',
+            'webhook_id_ok' => $webhook === '' || str_starts_with(strtoupper($webhook), 'WH-'),
             'client_id_hint' => $id === '' ? '' : substr($id, 0, 6).'… ('.strlen($id).' chars)',
             'secret_length' => strlen($secret),
         ];
@@ -492,7 +493,7 @@ class PaypalCheckoutService
 
         $response = $this->fetchAccessToken($this->baseUrl());
 
-        if ($response->successful()) {
+        if ($response?->successful()) {
             if ($this->resolvedBaseUrl !== null) {
                 return $this->tokenFromOAuthResponse($response);
             }
@@ -500,25 +501,26 @@ class PaypalCheckoutService
             return $this->rememberAccessToken($cacheKey, $response);
         }
 
-        if ($allowHostFallback
-            && (int) $response->status() === 401
-            && $this->canProbeAlternateHost()) {
-            try {
-                $altHost = $this->alternateBaseUrl();
-                $alt = $this->fetchAccessToken($altHost);
-                if ($alt->successful()) {
-                    Log::warning('PayPal credentials matched the other environment; using that host for this request', [
-                        'configured_mode' => $this->mode(),
-                        'working_host' => $altHost,
-                    ]);
-                    $this->resolvedBaseUrl = $altHost;
+        $canFallback = $allowHostFallback && $this->canProbeAlternateHost();
+        $primaryMissed = $response === null || (int) $response->status() === 401;
+        if ($canFallback && $primaryMissed) {
+            $altHost = $this->alternateBaseUrl();
+            $alt = $this->fetchAccessToken($altHost);
+            if ($alt?->successful()) {
+                Log::warning('PayPal credentials matched the other environment; using that host for this request', [
+                    'configured_mode' => $this->mode(),
+                    'working_host' => $altHost,
+                    'primary_status' => $response?->status(),
+                ]);
+                $this->resolvedBaseUrl = $altHost;
 
-                    // Do not cache: the next process must re-probe until PAYPAL_MODE matches.
-                    return $this->tokenFromOAuthResponse($alt);
-                }
-            } catch (RuntimeException) {
-                // Alternate host unreachable — keep the original 401.
+                // Do not cache: the next process must re-probe until PAYPAL_MODE matches.
+                return $this->tokenFromOAuthResponse($alt);
             }
+        }
+
+        if ($response === null) {
+            throw new RuntimeException(UserMessages::get('payment.paypal_unreachable'));
         }
 
         $paypalError = $this->safePaypalErrorCode($response);
@@ -557,7 +559,7 @@ class PaypalCheckoutService
                 'host' => $this->baseUrl(),
                 'exception' => $e::class,
             ]);
-            throw new RuntimeException(UserMessages::get('payment.paypal_unavailable'));
+            throw new RuntimeException(UserMessages::get('payment.paypal_unreachable'));
         }
 
         if ($throw && ! $response->successful()) {
@@ -805,7 +807,7 @@ class PaypalCheckoutService
         throw new RuntimeException(match ($issue) {
             'INVALID_RETURN_URL', 'INVALID_CANCEL_URL' => UserMessages::get('payment.paypal_return_url'),
             'DUPLICATE_INVOICE_ID' => UserMessages::get('payment.paypal_duplicate'),
-            default => UserMessages::get('payment.paypal_unavailable'),
+            default => $this->safePaypalUserMessage($response),
         });
     }
 
@@ -829,33 +831,63 @@ class PaypalCheckoutService
         return '';
     }
 
-    private function fetchAccessToken(string $baseUrl): Response
+    private function safePaypalUserMessage(Response $response): string
     {
-        try {
-            return Http::asForm()
-                ->acceptJson()
-                ->timeout(15)
-                ->withBasicAuth($this->clientId(), $this->secret())
-                ->post($baseUrl.'/v1/oauth2/token', [
-                    'grant_type' => 'client_credentials',
-                ]);
-        } catch (ConnectionException) {
-            Log::error('PayPal OAuth connection failed', [
-                'host' => $baseUrl,
-                'mode' => $this->mode(),
-            ]);
-            throw new RuntimeException(UserMessages::get('payment.paypal_unavailable'));
-        } catch (\Throwable $e) {
-            if ($e instanceof RuntimeException) {
-                throw $e;
+        foreach ([$this->firstPaypalDescription($response), trim((string) $response->json('message'))] as $candidate) {
+            $candidate = trim((string) $candidate);
+            if ($candidate === '') {
+                continue;
             }
-            Log::error('PayPal OAuth connection failed', [
-                'host' => $baseUrl,
-                'mode' => $this->mode(),
-                'exception' => $e::class,
-            ]);
-            throw new RuntimeException(UserMessages::get('payment.paypal_unavailable'));
+            if (UserFacingError::isSafe(new RuntimeException($candidate))) {
+                return $candidate;
+            }
         }
+
+        return UserMessages::get('payment.paypal_unavailable');
+    }
+
+    private function firstPaypalDescription(Response $response): string
+    {
+        foreach ($response->json('details') ?? [] as $detail) {
+            if (! is_array($detail)) {
+                continue;
+            }
+            $description = trim((string) ($detail['description'] ?? ''));
+            if ($description !== '') {
+                return $description;
+            }
+        }
+
+        return '';
+    }
+
+    private function fetchAccessToken(string $baseUrl): ?Response
+    {
+        $last = null;
+        for ($attempt = 1; $attempt <= 2; $attempt++) {
+            try {
+                return Http::asForm()
+                    ->acceptJson()
+                    ->timeout(15)
+                    ->withBasicAuth($this->clientId(), $this->secret())
+                    ->post($baseUrl.'/v1/oauth2/token', [
+                        'grant_type' => 'client_credentials',
+                    ]);
+            } catch (\Throwable $e) {
+                $last = $e;
+                if ($attempt < 2) {
+                    usleep(250000);
+                }
+            }
+        }
+
+        Log::error('PayPal OAuth connection failed', [
+            'host' => $baseUrl,
+            'mode' => $this->mode(),
+            'exception' => $last instanceof \Throwable ? $last::class : null,
+        ]);
+
+        return null;
     }
 
     private function rememberAccessToken(string $cacheKey, Response $response): string
