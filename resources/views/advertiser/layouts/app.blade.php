@@ -260,7 +260,7 @@
     <div class="cart-header">
         <div>
             <h5 id="cartTitle" class="mb-0">Your Cart</h5>
-            <div id="cartHeaderMeta" class="small text-muted mt-1">Pay sites that have an article. Others stay in the cart.</div>
+            <div id="cartHeaderMeta" class="small text-muted mt-1">Pay with wallet, card, or PayPal at checkout. Sites without an article stay in the cart.</div>
         </div>
         <button id="closeCart" class="btn btn-sm btn-outline-secondary" type="button" aria-label="Close cart">
             <i class="fa fa-times" aria-hidden="true"></i>

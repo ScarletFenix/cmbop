@@ -56,6 +56,7 @@
 @endphp
             <div class="card border-0 shadow-sm catalog-results-card" id="catalogResults" aria-live="polite"
                  tabindex="-1"
+                 data-effective-query="{{ e(json_encode(\App\Services\Catalog\CatalogUrlQuery::fromRequest(request()))) }}"
                  data-catalog-hide-mode="{{ $inCatalogHideMode ? '1' : '0' }}"
                  data-result-total="{{ (int) $resultTotal }}"
                  data-first-item="{{ (int) ($sites->firstItem() ?: 0) }}"
@@ -417,6 +418,7 @@
                         @include('advertiser.partials.catalog-meta-chips', [
                             'site' => $site,
                         ])
+                        @include('advertiser.partials.catalog-site-trust', ['site' => $site, 'compactClass' => 'catalog-site-trust--row mt-1'])
                         </div>
                     </div>
                 </td>
@@ -449,16 +451,8 @@
         @if($totalCategories > $showLimit)
             <button type="button"
                     class="toggle-cats-btn"
-                    onclick="
-                        const wrapper = this.closest('.categories-wrapper');
-                        const hiddenItems = wrapper.querySelectorAll('.extra-category');
-
-                        hiddenItems.forEach(el => el.classList.toggle('d-none'));
-
-                        this.innerText = this.innerText.includes('more')
-                            ? 'Show less'
-                            : '+{{ $totalCategories - $showLimit }} more';
-                    ">
+                    data-more-count="{{ $totalCategories - $showLimit }}"
+                    aria-expanded="false">
                 +{{ $totalCategories - $showLimit }} more
             </button>
         @endif
@@ -1087,6 +1081,7 @@
                     @include('advertiser.partials.catalog-meta-chips', [
                         'site' => $site,
                     ])
+                    @include('advertiser.partials.catalog-site-trust', ['site' => $site, 'compactClass' => 'catalog-site-trust--row mt-1'])
                     </div>
                 </div>
                 {{-- Eye only in copy-strike hide mode (normals see full identity). --}}

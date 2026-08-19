@@ -152,9 +152,13 @@ class CatalogController extends Controller
         return Category::catalogPickerRows();
     }
 
-    // Update your index method
     public function index(Request $request)
     {
+        $this->mergeCatalogSearchTokens($request);
+        if ($canonical = CatalogUrlQuery::canonicalRedirectParams($request)) {
+            return redirect()->route('advertiser.catalog', $canonical);
+        }
+
         $currentUser = auth()->user();
 
         // Content Library → Catalog: keep the active article in session for cart assign.
@@ -431,6 +435,25 @@ class CatalogController extends Controller
     }
 
     /**
+     * Turn metric tokens in search= into range inputs on the request.
+     */
+    protected function mergeCatalogSearchTokens(Request $request): void
+    {
+        $catalogSearch = app(CatalogSearchQuery::class);
+        $rawSearch = search_text($request->input('search'));
+        $parsedSearch = $catalogSearch->parse($rawSearch);
+        $searchMerge = $catalogSearch->mergeIntoRequestInput(
+            $rawSearch,
+            $parsedSearch['text'],
+            $parsedSearch['ranges'],
+            $request->all()
+        );
+        if ($searchMerge !== []) {
+            $request->merge($searchMerge);
+        }
+    }
+
+    /**
      * Shared listing query for the full catalog page and the results partial.
      *
      * @return array{
@@ -440,7 +463,7 @@ class CatalogController extends Controller
      *     showBlacklistedOnly: bool
      * }
      */
-    private function buildCatalogListing(Request $request): array
+    protected function buildCatalogListing(Request $request): array
     {
         // Hostinger often deploys without migrate — ensure placement JSON columns exist
         // so Site Details can show Homepage promotions + Social when publishers offer them.
@@ -463,18 +486,7 @@ class CatalogController extends Controller
         // Metric tokens (da>40, traffic 10k+) become range filters — not LIKE.
         // Country & language stay on the dedicated multi-selects.
         // Parse before blacklist so a name search can still surface blocked rows.
-        $catalogSearch = app(CatalogSearchQuery::class);
-        $rawSearch = search_text($request->input('search'));
-        $parsedSearch = $catalogSearch->parse($rawSearch);
-        $searchMerge = $catalogSearch->mergeIntoRequestInput(
-            $rawSearch,
-            $parsedSearch['text'],
-            $parsedSearch['ranges'],
-            $request->all()
-        );
-        if ($searchMerge !== []) {
-            $request->merge($searchMerge);
-        }
+        $this->mergeCatalogSearchTokens($request);
         $searchText = search_text($request->input('search'));
 
         // Blacklist filter / browse hide — but free-text search includes matches

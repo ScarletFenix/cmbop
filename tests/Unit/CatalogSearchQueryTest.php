@@ -54,4 +54,16 @@ class CatalogSearchQueryTest extends TestCase
         $this->assertSame(['search' => ''], $merge);
         $this->assertArrayNotHasKey('da_min', $merge);
     }
+
+    public function test_merge_stringifies_parsed_ranges(): void
+    {
+        $merge = $this->search->mergeIntoRequestInput(
+            'da>=50',
+            '',
+            ['da_min' => 50],
+            ['search' => 'da>=50']
+        );
+
+        $this->assertSame(['search' => '', 'da_min' => '50'], $merge);
+    }
 }

@@ -157,4 +157,14 @@ class CatalogSearchTypeaheadTest extends TestCase
         $this->getJson(route('advertiser.catalog.suggest', ['q' => 'hello']))
             ->assertStatus(401);
     }
+
+    public function test_catalog_page_includes_suggest_list_markup(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->assertSee('id="catalogSuggestList"', false);
+    }
 }

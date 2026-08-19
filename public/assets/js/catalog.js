@@ -2790,12 +2790,37 @@ const CatalogLive = (function () {
         return next;
     }
 
+    function effectiveParamsFromCard(card, fallback) {
+        if (!card) return fallback;
+        const raw = card.getAttribute('data-effective-query');
+        if (!raw) return fallback;
+        try {
+            const obj = JSON.parse(raw);
+            const next = new URLSearchParams();
+            Object.keys(obj || {}).forEach(function (key) {
+                if (obj[key] == null) return;
+                const value = String(obj[key]).trim();
+                if (value !== '') next.set(key, value);
+            });
+            return CatalogUrl.canonicalize(next);
+        } catch (err) {
+            return fallback;
+        }
+    }
+
     function afterSwap(card, params, options) {
+        const effective = effectiveParamsFromCard(card, params);
+        if (effective && params && effective.toString() !== params.toString()) {
+            CatalogUrl.applyToForm(effective);
+            CatalogUrl.replaceState(effective);
+            params = effective;
+        }
         syncConfigFlags(params);
         syncHideModeFromCard(card);
         syncResultsCount(card);
         syncFilterChips(params);
         syncMoreFiltersBadge(params);
+        syncTagQuick(params);
         syncSuggestButtons(params);
         if (typeof updateButtonStates === 'function') updateButtonStates();
         if (typeof syncDefaultHomepagePrices === 'function') syncDefaultHomepagePrices();
@@ -3128,13 +3153,150 @@ window.scheduleCatalogFilterLive = scheduleCatalogFilterLive;
         });
     });
 
-    // Search: typing updates real catalog rows (live /results), not a suggest dropdown.
-    // Enter / Apply still push a history entry. Suggest endpoint stays unused here.
+    // Search: typing updates real catalog rows (live /results).
+    // Enter / Apply still push a history entry. Suggest is a thin jump list.
     const searchInput = document.getElementById('catalogSearchInput');
     if (searchInput) {
         initCatalogSearchLiveRows(searchInput);
+        initCatalogSuggest(searchInput);
     }
+
+    initCatalogCategoryToggle();
+    initCatalogTagQuick();
 })();
+
+function syncTagQuick(params) {
+    const current = params && params.get
+        ? (params.get('tag') || '')
+        : ((document.getElementById('catalogTagFilter') || {}).value || '');
+    document.querySelectorAll('.catalog-tag-quick__btn').forEach(function (btn) {
+        const on = (btn.getAttribute('data-catalog-tag') || '') === current;
+        btn.classList.toggle('is-active', on);
+        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+}
+
+function initCatalogTagQuick() {
+    const bar = document.querySelector('.catalog-tag-quick');
+    if (!bar) return;
+    bar.addEventListener('click', function (e) {
+        const btn = e.target.closest('[data-catalog-tag]');
+        if (!btn || !bar.contains(btn)) return;
+        const tag = btn.getAttribute('data-catalog-tag') || '';
+        const select = document.getElementById('catalogTagFilter');
+        if (select) {
+            select.value = tag;
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        syncTagQuick({ get: function () { return tag; } });
+    });
+}
+
+function initCatalogCategoryToggle() {
+    document.addEventListener('click', function (e) {
+        const btn = e.target.closest('.toggle-cats-btn');
+        if (!btn || !document.querySelector('.catalog-page')) return;
+        const wrapper = btn.closest('.categories-wrapper');
+        if (!wrapper) return;
+        const hiddenItems = wrapper.querySelectorAll('.extra-category');
+        const expanded = btn.getAttribute('aria-expanded') === 'true';
+        hiddenItems.forEach(function (el) {
+            el.classList.toggle('d-none', expanded);
+        });
+        const more = btn.getAttribute('data-more-count') || '0';
+        btn.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+        btn.textContent = expanded ? ('+' + more + ' more') : 'Show less';
+    });
+}
+
+function initCatalogSuggest(searchInput) {
+    const list = document.getElementById('catalogSuggestList');
+    const endpoint = window.CatalogConfig && CatalogConfig.routes && CatalogConfig.routes.suggest;
+    if (!searchInput || !list || !endpoint || !window.fetch) return;
+
+    let timer = null;
+    let seq = 0;
+
+    function hideList() {
+        list.innerHTML = '';
+        list.hidden = true;
+        list.classList.add('d-none');
+        searchInput.removeAttribute('aria-expanded');
+        searchInput.removeAttribute('aria-controls');
+    }
+
+    function showSuggestions(items) {
+        list.innerHTML = '';
+        if (!items || !items.length) {
+            hideList();
+            return;
+        }
+        items.forEach(function (item) {
+            const li = document.createElement('li');
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'catalog-suggest-list__item';
+            button.setAttribute('role', 'option');
+            button.dataset.href = item.href || '';
+            const name = document.createElement('span');
+            name.textContent = item.name || 'Site';
+            const host = document.createElement('span');
+            host.className = 'catalog-suggest-list__host';
+            host.textContent = item.masked ? '' : (item.host || '');
+            button.appendChild(name);
+            button.appendChild(host);
+            li.appendChild(button);
+            list.appendChild(li);
+        });
+        list.hidden = false;
+        list.classList.remove('d-none');
+        searchInput.setAttribute('aria-expanded', 'true');
+        searchInput.setAttribute('aria-controls', 'catalogSuggestList');
+    }
+
+    function fetchSuggest(q) {
+        const requestId = ++seq;
+        const url = endpoint + (endpoint.indexOf('?') === -1 ? '?' : '&') + 'q=' + encodeURIComponent(q);
+        fetch(url, {
+            credentials: 'same-origin',
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        }).then(function (res) {
+            if (!res.ok) throw new Error('suggest');
+            return res.json();
+        }).then(function (data) {
+            if (requestId !== seq) return;
+            showSuggestions((data && data.suggestions) || []);
+        }).catch(function () {
+            if (requestId === seq) hideList();
+        });
+    }
+
+    searchInput.addEventListener('input', function () {
+        const q = String(searchInput.value || '').trim();
+        clearTimeout(timer);
+        if (q.length < 2) {
+            hideList();
+            return;
+        }
+        timer = setTimeout(function () { fetchSuggest(q); }, 220);
+    });
+
+    list.addEventListener('click', function (e) {
+        const item = e.target.closest('.catalog-suggest-list__item');
+        if (!item || !item.dataset.href) return;
+        hideList();
+        window.location.assign(item.dataset.href);
+    });
+
+    document.addEventListener('click', function (e) {
+        if (e.target === searchInput || list.contains(e.target)) return;
+        hideList();
+    });
+
+    searchInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') hideList();
+    });
+}
 
 /**
  * Debounced live catalog search for #catalogSearchInput.

@@ -117,7 +117,8 @@ class CatalogSearchQuery
         foreach ($ranges as $key => $value) {
             $existing = $input[$key] ?? null;
             if ($existing === null || $existing === '') {
-                $merge[$key] = $value;
+                // Strings so Blade search_text/scalar_text and query URLs stay honest.
+                $merge[$key] = (string) $value;
             }
         }
 
