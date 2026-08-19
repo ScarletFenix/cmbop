@@ -607,7 +607,8 @@ class PaypalWebhookTest extends TestCase
         $this->assertSame('cancelled', $fresh->status);
         $this->assertSame('RF-PO-RF', $fresh->paypal_refund_id);
         $wallet->refresh();
-        $this->assertEqualsWithDelta(5.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(5.0, $wallet->withdrawableBalance(), 0.01);
+        $this->assertEqualsWithDelta(25.0, (float) $wallet->balance, 0.01);
         $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
         $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_reserved, 0.01);
     }
