@@ -2520,7 +2520,10 @@ class Site extends Model
             $codes[] = strtolower(trim((string) $this->country));
         }
 
-        return array_values(array_unique(array_filter($codes)));
+        $codes = array_values(array_unique(array_filter($codes)));
+        sort($codes, SORT_STRING);
+
+        return $codes;
     }
 
     public function hasMarketplaceCountry(): bool
@@ -2577,7 +2580,10 @@ class Site extends Model
             $codes[] = strtolower(trim((string) $this->language));
         }
 
-        return array_values(array_unique(array_filter($codes)));
+        $codes = array_values(array_unique(array_filter($codes)));
+        sort($codes, SORT_STRING);
+
+        return $codes;
     }
 
     public function acceptsMarket(string $country, string $language): bool

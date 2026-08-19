@@ -463,23 +463,70 @@
         }
     }
 
+    function languagePrimaryTag(code) {
+        const raw = String(code || '').toLowerCase().trim().replace(/_/g, '-');
+        if (!raw) return '';
+        return raw.split('-')[0];
+    }
+
     function siteLanguageCodes(item) {
         const codes = [];
-        const primary = String(item?.language || '').toLowerCase().trim();
+        const primary = languagePrimaryTag(item?.language);
         if (primary) codes.push(primary);
         if (Array.isArray(item?.languages)) {
             item.languages.forEach((c) => {
-                const v = String(c || '').toLowerCase().trim();
+                const v = languagePrimaryTag(c);
                 if (v && !codes.includes(v)) codes.push(v);
             });
         }
-        return codes;
+        return codes.sort();
     }
 
     function articleFitsSiteLanguages(article, siteLangs) {
-        const articleLang = String(article?.language || '').toLowerCase().trim();
-        if (!articleLang || !siteLangs.length) return true;
-        return siteLangs.includes(articleLang);
+        const articleLang = languagePrimaryTag(article?.language);
+        const langs = (siteLangs || []).map(languagePrimaryTag).filter(Boolean);
+        if (!articleLang || !langs.length) return true;
+        return langs.includes(articleLang);
+    }
+
+    function articleId(value) {
+        return parseInt(value, 10) || 0;
+    }
+
+    function articleLocale(article) {
+        const lang = String(article?.language || '').toUpperCase();
+        const country = article?.country ? '/' + String(article.country).toUpperCase() : '';
+        return lang ? (lang + country) : String(article?.country || '').toUpperCase();
+    }
+
+    function articleTitleLooksLikeId(title) {
+        let raw = String(title || '').trim();
+        raw = raw.replace(/\s+\(\d+\)\s*$/, '').replace(/\.(docx?|pdf)$/i, '').trim();
+        if (raw === '' || /^\d+$/.test(raw)) return true;
+        // Storage hashes (mixed case + digit, no spaces). Keep TitleCase+year titles.
+        if (raw.length < 16 || !/^[A-Za-z0-9_-]+$/.test(raw) || !/\d/.test(raw)) return false;
+        if (!/[A-Z]/.test(raw) || !/[a-z]/.test(raw)) return false;
+        let flips = 0;
+        for (let i = 1; i < raw.length; i++) {
+            const prev = raw[i - 1];
+            const next = raw[i];
+            if ((/[a-z]/.test(prev) && /[A-Z]/.test(next)) || (/[A-Z]/.test(prev) && /[a-z]/.test(next))) {
+                flips++;
+            }
+        }
+        return flips >= 4 || raw.length >= 20;
+    }
+
+    function articlePickerLabel(article) {
+        const locale = articleLocale(article);
+        const raw = String(article?.title || '').trim();
+        return articleTitleLooksLikeId(raw)
+            ? ('Article' + (locale ? ' · ' + locale : ''))
+            : (raw + (locale ? ' (' + locale + ')' : ''));
+    }
+
+    function siteLanguageLabel(item) {
+        return siteLanguageCodes(item).map((c) => String(c).toUpperCase()).join('/');
     }
 
     function lineContentIds(item) {
@@ -487,10 +534,10 @@
         const raw = Array.isArray(item.content_submission_ids) ? item.content_submission_ids : [];
         const ids = [];
         for (let i = 0; i < qty; i++) {
-            ids[i] = parseInt(raw[i] || 0, 10) || 0;
+            ids[i] = articleId(raw[i]);
         }
         if (!ids[0] && item.content_submission_id) {
-            ids[0] = parseInt(item.content_submission_id, 10) || 0;
+            ids[0] = articleId(item.content_submission_id);
         }
         return ids;
     }
@@ -517,7 +564,8 @@
         const usedElsewhere = usedSubmissionIds(getCartItemKey(item), copyIndex);
         const siteLangs = siteLanguageCodes(item);
         const options = approvedArticles.filter((article) => {
-            if (usedElsewhere.has(article.id) && article.id !== selectedId) return false;
+            const id = articleId(article.id);
+            if (usedElsewhere.has(id) && id !== selectedId) return false;
             if (requireSameLanguage && !articleFitsSiteLanguages(article, siteLangs)) return false;
             return true;
         });
@@ -722,13 +770,9 @@
                 }
             }
             if (readyNote) {
-                if (readyCount > 0 && missing === 0) {
-                    readyNote.classList.remove('d-none');
-                    readyNote.textContent = 'Articles attached — proceed to pay, or keep browsing.';
-                } else {
-                    readyNote.classList.add('d-none');
-                    readyNote.textContent = '';
-                }
+                // Header already says “N ready to pay”; do not repeat it in the footer.
+                readyNote.classList.add('d-none');
+                readyNote.textContent = '';
             }
             if (proceedBtn) {
                 // Checkout only for sites that are ready and need payment.
@@ -790,8 +834,8 @@
                             return raw.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0];
                         }
                     })();
-                const daLabel = (item.da !== null && item.da !== undefined && item.da !== '') ? String(item.da) : '';
-                const drLabel = (item.dr !== null && item.dr !== undefined && item.dr !== '') ? String(item.dr) : '';
+                const daLabel = (item.da !== null && item.da !== undefined && item.da !== '' && Number(item.da) !== 0) ? String(item.da) : '';
+                const drLabel = (item.dr !== null && item.dr !== undefined && item.dr !== '' && Number(item.dr) !== 0) ? String(item.dr) : '';
                 const metricBits = [];
                 if (daLabel !== '') metricBits.push('DA ' + daLabel);
                 if (drLabel !== '') metricBits.push('DR ' + drLabel);
@@ -829,34 +873,43 @@
                 } else {
                     articleBlock = placementIds.map((selectedId, copyIndex) => {
                         const options = articlesForCartPlacement(item, copyIndex);
+                        const siteLangs = siteLanguageCodes(item);
+                        const siteLangLabel = siteLanguageLabel(item);
+                        const matching = options.filter((article) => articleFitsSiteLanguages(article, siteLangs));
+                        const other = options.filter((article) => !articleFitsSiteLanguages(article, siteLangs));
                         const slotLabel = placementIds.length > 1
                             ? `Article ${copyIndex + 1} of ${placementIds.length}`
-                            : (selectedId ? 'Attached' : 'Add article');
+                            : (selectedId ? 'Article' : 'Add article');
+                        const slotKicker = siteLangLabel ? (slotLabel + ' · site ' + siteLangLabel) : slotLabel;
                         const selectId = 'cart-doc-' + itemKey.replace(/[^a-zA-Z0-9_-]/g, '-') + '-' + copyIndex;
+                        const renderOption = (article) => {
+                            const optionId = articleId(article.id);
+                            return `<option value="${optionId}" ${optionId === Number(selectedId) ? 'selected' : ''}>${escapeHtml(articlePickerLabel(article))}</option>`;
+                        };
                         let opts = `<option value="">— Choose ${placementIds.length > 1 ? 'article ' + (copyIndex + 1) + ' of ' + placementIds.length : 'article'} —</option>`;
-                        options.forEach((article) => {
-                            const fits = articleFitsSiteLanguages(article, siteLanguageCodes(item));
-                            const label = (article.title || 'Document')
-                                + ' (' + String(article.language || '').toUpperCase()
-                                + (article.country ? '/' + String(article.country).toUpperCase() : '')
-                                + ')'
-                                + (fits ? '' : ' · different language');
-                            opts += `<option value="${article.id}" ${article.id === selectedId ? 'selected' : ''}>${escapeHtml(label)}</option>`;
-                        });
-                        if (selectedId && !options.some((a) => a.id === selectedId)) {
-                            opts += `<option value="${selectedId}" selected>Assigned document #${selectedId}</option>`;
+                        if (matching.length > 0 && other.length > 0 && !requireSameLanguage) {
+                            opts += `<optgroup label="Matches this site">${matching.map(renderOption).join('')}</optgroup>`;
+                            opts += `<optgroup label="Other languages">${other.map(renderOption).join('')}</optgroup>`;
+                        } else {
+                            options.forEach((article) => { opts += renderOption(article); });
+                        }
+                        if (selectedId && !options.some((a) => articleId(a.id) === Number(selectedId))) {
+                            opts += `<option value="${selectedId}" selected>Assigned article</option>`;
                         }
                         const emptyHint = options.length === 0 && !selectedId
                             ? `<div class="cart-item-article-empty mt-1">Need another article? <a class="cart-item-upload-link cart-item-upload-link--primary" href="${contentLibraryUploadUrl}">Upload article</a></div>`
                             : '';
-                        const langNote = item.language_note
-                            ? `<div class="cart-item-language-note" title="Preferred match is the same language as the site">${escapeHtml(item.language_note)}</div>`
+                        const noMatchNote = (!requireSameLanguage && !selectedId && matching.length === 0 && other.length > 0)
+                            ? `<div class="cart-item-language-note">This site is ${escapeHtml(siteLangLabel || 'unknown')}. None of your articles match — you can still assign one.</div>`
                             : '';
-                        const uploadLink = `<a class="cart-item-upload-link" href="${contentLibraryUploadUrl}">Upload new</a>`;
+                        const langNote = (selectedId && item.language_note)
+                            ? `<div class="cart-item-language-note" title="Preferred match is the same language as the site">${escapeHtml(item.language_note)}</div>`
+                            : noMatchNote;
+                        const uploadLink = `<a class="cart-item-upload-link" href="${contentLibraryUploadUrl}">${selectedId ? 'Upload another' : 'Upload new'}</a>`;
                         return `
                         <div class="cart-item-article ${selectedId ? 'is-assigned' : 'needs-document'}">
                             <div class="cart-item-order-label">
-                                <span class="cart-item-order-kicker">${escapeHtml(slotLabel)}</span>
+                                <span class="cart-item-order-kicker">${escapeHtml(slotKicker)}</span>
                             </div>
                             <label class="visually-hidden" for="${selectId}">Article for ${escapeHtml(siteName)}</label>
                             <select id="${selectId}"
@@ -893,16 +946,16 @@
                                 ${qtyNote}
                             </div>
                             <div class="cart-item-quantity">
-                                <button type="button" class="decrease-qty" data-id="${item.id}" data-sensitive-type="${sensitiveAttr}" data-homepage-days="${cartHomepageParam(item)}" aria-label="Decrease placements" title="Placements — each needs its own article">
+                                ${qty > 1 ? `<button type="button" class="decrease-qty" data-id="${item.id}" data-sensitive-type="${sensitiveAttr}" data-homepage-days="${cartHomepageParam(item)}" aria-label="Decrease placements" title="Placements — each needs its own article">
                                     <i class="fa fa-minus" aria-hidden="true"></i>
-                                </button>
+                                </button>` : ''}
                                 <span class="quantity-number" aria-label="Placements ${item.quantity}">${item.quantity}</span>
                                 <button type="button" class="increase-qty" data-id="${item.id}" data-sensitive-type="${sensitiveAttr}" data-homepage-days="${cartHomepageParam(item)}" aria-label="Increase placements — each needs its own article" title="Placements — each needs its own article">
                                     <i class="fa fa-plus" aria-hidden="true"></i>
                                 </button>
                             </div>
                             <button type="button" class="cart-item-remove" data-id="${item.id}" data-sensitive-type="${sensitiveAttr}" data-homepage-days="${cartHomepageParam(item)}" aria-label="Remove ${escapeHtml(siteName)} from cart">
-                                <i class="fa fa-times" aria-hidden="true"></i>
+                                Remove
                             </button>
                         </div>
                         ${articleBlock}
@@ -1169,11 +1222,11 @@
         }
 
         const item = cart.find((row) =>
-            row.id === id
+            articleId(row.id) === id
             && (row.sensitive_type || null) === sensitiveType
             && cartHomepageParam(row) === String(homepageDays)
         );
-        const article = approvedArticles.find((row) => row.id === submissionId);
+        const article = approvedArticles.find((row) => articleId(row.id) === submissionId);
         const siteLangs = siteLanguageCodes(item);
         const articleLang = String(article?.language || '').toLowerCase();
         const fits = articleFitsSiteLanguages(article, siteLangs);

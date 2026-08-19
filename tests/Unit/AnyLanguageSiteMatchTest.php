@@ -48,7 +48,14 @@ class AnyLanguageSiteMatchTest extends TestCase
         $this->assertFalse(ContentSubmission::languageFitsSiteLanguages('nl', ['de']));
         $this->assertTrue(ContentSubmission::languageFitsSiteLanguages('de', ['de', 'fr']));
         $this->assertTrue(ContentSubmission::languageFitsSiteLanguages('en', []));
+        $this->assertTrue(ContentSubmission::languageFitsSiteLanguages('en-US', ['en']));
+        $this->assertTrue(ContentSubmission::languageFitsSiteLanguages('en', ['en-us']));
+        $this->assertTrue(ContentSubmission::languageFitsSiteLanguages('en_GB', ['en']));
+        $this->assertFalse(ContentSubmission::languageFitsSiteLanguages('en-US', ['de']));
+        $this->assertSame('en', ContentSubmission::languagePrimaryTag('en-US'));
+        $this->assertSame('en', ContentSubmission::languagePrimaryTag('en_GB'));
         $this->assertSame('Site DE · article NL', ContentSubmission::languageMismatchLabel('nl', ['de']));
         $this->assertNull(ContentSubmission::languageMismatchLabel('de', ['de']));
+        $this->assertNull(ContentSubmission::languageMismatchLabel('en-US', ['en']));
     }
 }

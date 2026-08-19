@@ -134,13 +134,20 @@ class GuestPostWizardController extends Controller
                 ->with('error', 'Add at least one publisher before assigning content.');
         }
 
-        $approvedArticles = ContentSubmission::query()
-            ->forArticlePicker()
-            ->where('user_id', auth()->id())
-            ->availableForPicker()
-            ->latest('id')
-            ->limit(100)
-            ->get();
+        $mustIncludeIds = [];
+        foreach ($cart as $line) {
+            $slotIds = is_array($line['content_submission_ids'] ?? null) ? $line['content_submission_ids'] : [];
+            if (! empty($line['content_submission_id'])) {
+                $slotIds[] = $line['content_submission_id'];
+            }
+            foreach ($slotIds as $id) {
+                if ((int) $id > 0) {
+                    $mustIncludeIds[] = (int) $id;
+                }
+            }
+        }
+
+        $approvedArticles = ContentSubmission::pickerArticlesForUser((int) auth()->id(), $mustIncludeIds);
 
         $marketplaceCountries = Country::marketplace()->orderBy('name')->get(['code', 'name']);
         $marketplaceLanguages = Language::marketplace()->orderBy('name')->get(['code', 'name']);
@@ -329,8 +336,10 @@ class GuestPostWizardController extends Controller
             }
             $line['name'] = $line['name'] ?? $site->site_name;
             $line['url'] = $line['url'] ?? $site->site_url;
-            $line['language'] = $line['language'] ?? $site->language;
-            $line['country'] = $line['country'] ?? $site->country;
+            $line['language'] = $site->language;
+            $line['languages'] = $site->languageCodes();
+            $line['country'] = $site->country;
+            $line['countries'] = $site->countryCodes();
             $line['link_type'] = $line['link_type'] ?? $site->link_type;
             if (! isset($line['price'])) {
                 $line['price'] = $site->price;
