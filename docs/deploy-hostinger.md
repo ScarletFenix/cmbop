@@ -32,7 +32,8 @@ This agent cannot SSH to live Hostinger. `HOSTINGER_WEB_HEAL` (default on) plus
 5b. PayPal checkout + Add Funds: set `PAYPAL_CLIENT_ID`, `PAYPAL_SECRET`, and
    `PAYPAL_WEBHOOK_ID` on Hostinger (Developer Dashboard app + webhook to
    `https://YOUR-DOMAIN/api/paypal/webhook`). `PAYPAL_MODE=live` on production.
-   Omit `PAYPAL_ENABLED` or set it true — credentials turn the rail on. Set
+   Production ignores leftover `PAYPAL_MODE=sandbox` from `.env.example` unless
+   `PAYPAL_ALLOW_SANDBOX=true`. Omit `PAYPAL_ENABLED` or set it true — credentials turn the rail on. Set
    `PAYPAL_ENABLED=false` only to hide PayPal. Then `php artisan config:clear`
    and `php artisan paypal:status` (must print `OAuth: ok`; 401 means sandbox
    keys on live or the reverse).

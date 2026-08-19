@@ -329,7 +329,7 @@ class AddFundsController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => UserFacingError::message($e, UserMessages::get('payment.paypal_unavailable')),
+                'message' => UserFacingError::message($e, UserMessages::get('payment.paypal_rejected', ['code' => 'DEPOSIT'])),
             ]);
         }
     }

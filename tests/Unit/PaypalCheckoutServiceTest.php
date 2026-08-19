@@ -29,6 +29,7 @@ class PaypalCheckoutServiceTest extends TestCase
         config([
             'services.paypal.enabled' => $overrides['enabled'] ?? true,
             'services.paypal.mode' => $overrides['mode'] ?? 'sandbox',
+            'services.paypal.allow_sandbox' => $overrides['allow_sandbox'] ?? false,
             'services.paypal.client_id' => $overrides['client_id'] ?? 'paypal-client-test',
             'services.paypal.secret' => $overrides['secret'] ?? 'paypal-secret-test',
             'services.paypal.webhook_id' => $overrides['webhook_id'] ?? 'WH-TEST-1',
@@ -92,6 +93,26 @@ class PaypalCheckoutServiceTest extends TestCase
         $this->assertSame('https://api-m.sandbox.paypal.com', (new PaypalCheckoutService)->baseUrl());
     }
 
+    public function test_production_uses_live_host_when_env_mode_is_sandbox(): void
+    {
+        $this->app['env'] = 'production';
+        $this->enablePaypal(['mode' => 'sandbox']);
+
+        $this->assertSame('live', (new PaypalCheckoutService)->mode());
+        $this->assertSame('https://api-m.paypal.com', (new PaypalCheckoutService)->baseUrl());
+        $this->assertTrue((new PaypalCheckoutService)->connectionSnapshot()['forced_live']);
+    }
+
+    public function test_production_can_opt_into_sandbox(): void
+    {
+        $this->app['env'] = 'production';
+        $this->enablePaypal(['mode' => 'sandbox', 'allow_sandbox' => true]);
+
+        $this->assertSame('sandbox', (new PaypalCheckoutService)->mode());
+        $this->assertSame('https://api-m.sandbox.paypal.com', (new PaypalCheckoutService)->baseUrl());
+        $this->assertFalse((new PaypalCheckoutService)->connectionSnapshot()['forced_live']);
+    }
+
     public function test_create_order_posts_capture_intent_and_returns_approve_url(): void
     {
         $this->fakePaypal([
@@ -127,8 +148,9 @@ class PaypalCheckoutServiceTest extends TestCase
                 && ($body['purchase_units'][0]['amount']['value'] ?? null) === '19.99'
                 && ($body['purchase_units'][0]['invoice_id'] ?? null) === 'REF-PP-1'
                 && ($body['purchase_units'][0]['custom_id'] ?? null) === 'order_checkout:7:REF-PP-1'
+                && ($body['payment_source']['paypal']['experience_context']['user_action'] ?? null) === 'PAY_NOW'
+                && ($body['payment_source']['paypal']['experience_context']['shipping_preference'] ?? null) === 'NO_SHIPPING'
                 && ($body['application_context']['user_action'] ?? null) === 'PAY_NOW'
-                && ($body['application_context']['shipping_preference'] ?? null) === 'NO_SHIPPING'
                 && str_contains($request->url(), 'api-m.sandbox.paypal.com');
         });
     }
@@ -828,6 +850,7 @@ class PaypalCheckoutServiceTest extends TestCase
         $this->assertTrue($snap['client_id_set']);
         $this->assertTrue($snap['secret_set']);
         $this->assertTrue($snap['webhook_id_ok']);
+        $this->assertFalse($snap['forced_live']);
         $this->assertSame(strlen('paypal-secret-test'), $snap['secret_length']);
         $this->assertStringStartsWith('paypal', $snap['client_id_hint']);
         $this->assertStringNotContainsString('paypal-secret-test', json_encode($snap));

@@ -376,7 +376,7 @@ class CheckoutPaypalProcessTest extends TestCase
             }
             $body = $request->data();
 
-            return str_starts_with((string) ($body['application_context']['return_url'] ?? ''), 'https://checkout.example/');
+            return str_starts_with((string) ($body['payment_source']['paypal']['experience_context']['return_url'] ?? ''), 'https://checkout.example/');
         });
         $this->assertSame(0, Order::where('reference_code', 'PP-LIVE')->count());
     }
@@ -488,8 +488,8 @@ class CheckoutPaypalProcessTest extends TestCase
                     auth()->id(),
                     'PP42'
                 )
-                && str_contains((string) ($body['application_context']['return_url'] ?? ''), '/advertiser/checkout/paypal/return')
-                && str_contains((string) ($body['application_context']['cancel_url'] ?? ''), '/advertiser/checkout/paypal/cancel');
+                && str_contains((string) ($body['payment_source']['paypal']['experience_context']['return_url'] ?? ''), '/advertiser/checkout/paypal/return')
+                && str_contains((string) ($body['payment_source']['paypal']['experience_context']['cancel_url'] ?? ''), '/advertiser/checkout/paypal/cancel');
         });
     }
 

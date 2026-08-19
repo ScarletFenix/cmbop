@@ -50,6 +50,8 @@ return [
     'paypal' => [
         'enabled' => env('PAYPAL_ENABLED'),
         'mode' => env('PAYPAL_MODE', 'sandbox'),
+        // Production always uses the live host unless this is explicitly on.
+        'allow_sandbox' => env('PAYPAL_ALLOW_SANDBOX', false),
         'client_id' => trim((string) env('PAYPAL_CLIENT_ID', '')),
         'secret' => trim((string) (env('PAYPAL_SECRET') ?: env('PAYPAL_CLIENT_SECRET', ''))),
         'webhook_id' => trim((string) env('PAYPAL_WEBHOOK_ID', '')),

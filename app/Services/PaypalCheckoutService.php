@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Support\UserFacingError;
 use App\Support\UserMessages;
+use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -49,20 +50,25 @@ class PaypalCheckoutService
     public function mode(): string
     {
         $mode = strtolower(trim((string) config('services.paypal.mode', 'sandbox')));
+        $live = $mode === 'live';
+        if (! $live && $this->productionMustUseLive()) {
+            return 'live';
+        }
 
-        return $mode === 'live' ? 'live' : 'sandbox';
+        return $live ? 'live' : 'sandbox';
     }
 
     /**
      * Operator snapshot for `paypal:status`. Never includes the secret.
      *
-     * @return array{mode: string, host: string, configured: bool, client_id_set: bool, secret_set: bool, webhook_id_set: bool, webhook_id_ok: bool, client_id_hint: string, secret_length: int}
+     * @return array{mode: string, host: string, configured: bool, client_id_set: bool, secret_set: bool, webhook_id_set: bool, webhook_id_ok: bool, forced_live: bool, client_id_hint: string, secret_length: int}
      */
     public function connectionSnapshot(): array
     {
         $id = $this->clientId();
         $secret = $this->secret();
         $webhook = $this->normalizedCredential((string) config('services.paypal.webhook_id', ''));
+        $configuredMode = strtolower(trim((string) config('services.paypal.mode', 'sandbox')));
 
         return [
             'mode' => $this->mode(),
@@ -72,6 +78,7 @@ class PaypalCheckoutService
             'secret_set' => $secret !== '',
             'webhook_id_set' => $webhook !== '',
             'webhook_id_ok' => $webhook === '' || str_starts_with(strtoupper($webhook), 'WH-'),
+            'forced_live' => $configuredMode !== 'live' && $this->productionMustUseLive(),
             'client_id_hint' => $id === '' ? '' : substr($id, 0, 6).'… ('.strlen($id).' chars)',
             'secret_length' => strlen($secret),
         ];
@@ -162,6 +169,13 @@ class PaypalCheckoutService
             throw new RuntimeException('PayPal order type is not allowed.');
         }
 
+        $experience = [
+            'return_url' => $returnUrl,
+            'cancel_url' => $cancelUrl,
+            'brand_name' => substr((string) config('app.name', 'SEOLinkBuildings'), 0, 127),
+            'user_action' => 'PAY_NOW',
+            'shipping_preference' => 'NO_SHIPPING',
+        ];
         $payload = [
             'intent' => 'CAPTURE',
             'purchase_units' => [[
@@ -172,13 +186,13 @@ class PaypalCheckoutService
                 'custom_id' => self::customId($type, $userId, $reference),
                 'invoice_id' => $reference,
             ]],
-            'application_context' => [
-                'return_url' => $returnUrl,
-                'cancel_url' => $cancelUrl,
-                'user_action' => 'PAY_NOW',
-                'shipping_preference' => 'NO_SHIPPING',
-                'brand_name' => mb_substr((string) config('app.name', 'SEOLinkBuildings'), 0, 127),
+            'payment_source' => [
+                'paypal' => [
+                    'experience_context' => $experience,
+                ],
             ],
+            // Deprecated but still accepted; some live apps 422 without it.
+            'application_context' => $experience,
         ];
 
         $this->accessToken();
@@ -535,8 +549,8 @@ class PaypalCheckoutService
 
     private function paypalRequest(string $method, string $path, mixed $body = null, array $headers = [], bool $throw = true): Response
     {
-        $pending = Http::withToken($this->accessToken())
-            ->acceptJson()
+        $pending = $this->paypalHttp()
+            ->withToken($this->accessToken())
             ->asJson()
             ->timeout(20)
             ->withHeaders($headers);
@@ -746,6 +760,36 @@ class PaypalCheckoutService
             : 'https://api-m.sandbox.paypal.com';
     }
 
+    /**
+     * Hostinger IPv6 to api-m.paypal.com often black-holes. Force v4.
+     */
+    private function paypalHttp(): PendingRequest
+    {
+        return Http::acceptJson()->withOptions([
+            'force_ip_resolve' => 'v4',
+            'connect_timeout' => 8,
+        ]);
+    }
+
+    private function productionMustUseLive(): bool
+    {
+        if ($this->allowSandbox()) {
+            return false;
+        }
+
+        return app()->environment('production');
+    }
+
+    private function allowSandbox(): bool
+    {
+        $allow = config('services.paypal.allow_sandbox');
+        if ($allow === true || $allow === 1) {
+            return true;
+        }
+
+        return is_string($allow) && in_array(strtolower(trim($allow)), ['1', 'true', 'on', 'yes'], true);
+    }
+
     private function alternateBaseUrl(): string
     {
         return $this->mode() === 'live'
@@ -843,7 +887,7 @@ class PaypalCheckoutService
 
         $status = (int) $response->status();
         if ($status >= 500) {
-            return UserMessages::get('payment.paypal_unavailable');
+            return UserMessages::get('payment.paypal_rejected', ['code' => 'HTTP-'.$status]);
         }
 
         return UserMessages::get('payment.paypal_rejected', ['code' => $this->diagnosticCode($response)]);
@@ -869,8 +913,8 @@ class PaypalCheckoutService
         $last = null;
         for ($attempt = 1; $attempt <= 2; $attempt++) {
             try {
-                return Http::asForm()
-                    ->acceptJson()
+                return $this->paypalHttp()
+                    ->asForm()
                     ->timeout(15)
                     ->withBasicAuth($this->clientId(), $this->secret())
                     ->post($baseUrl.'/v1/oauth2/token', [
@@ -971,7 +1015,7 @@ class PaypalCheckoutService
             return UserMessages::get('payment.paypal_unreachable');
         }
         if ($status >= 500) {
-            return UserMessages::get('payment.paypal_unavailable');
+            return UserMessages::get('payment.paypal_rejected', ['code' => 'HTTP-'.$status]);
         }
 
         return UserMessages::get('payment.paypal_rejected', ['code' => $this->diagnosticCode($response)]);
