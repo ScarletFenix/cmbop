@@ -2433,6 +2433,7 @@ const CatalogLive = (function () {
     let abortController = null;
     let requestSeq = 0;
     let lastAppliedQuery = null;
+    let lastEffectiveParams = null;
 
     function resultsEndpoint(params) {
         const base = (window.CatalogConfig && CatalogConfig.routes && CatalogConfig.routes.results)
@@ -2810,12 +2811,17 @@ const CatalogLive = (function () {
 
     function afterSwap(card, params, options) {
         const effective = effectiveParamsFromCard(card, params);
+        lastEffectiveParams = effective || params;
         if (effective && params && effective.toString() !== params.toString()) {
             const searchEl = document.getElementById('catalogSearchInput');
             const typedSearch = searchEl ? searchEl.value : '';
-            const searchFocused = !!(searchEl && document.activeElement === searchEl);
+            // Keep in-progress metric tokens (da>=50) only while the user is
+            // still typing a search. Chip-remove / filters must not restore them
+            // or the next apply puts the range back.
+            const keepTypedSearch = !!(options && options.intent === 'search'
+                && searchEl && document.activeElement === searchEl);
             CatalogUrl.applyToForm(effective);
-            if (searchFocused && searchEl) {
+            if (keepTypedSearch) {
                 searchEl.value = typedSearch;
             }
             CatalogUrl.replaceState(effective);
@@ -2949,7 +2955,9 @@ const CatalogLive = (function () {
                 const card = applyResultsHtml(html);
                 if (!card) throw new Error('Catalog results markup missing');
                 const applied = afterSwap(card, params, options) || params;
-                lastAppliedQuery = applied.toString();
+                // Form may still hold typed search while focused — key the
+                // no-op guard off actual FormData, not only the canonical URL.
+                lastAppliedQuery = CatalogUrl.fromForm({ keepPage: true }).toString();
                 // Option 1: bulk rail follows Catalog country= — refresh after results.
                 // Own AbortController inside refreshBulkDeals (not the results timeout).
                 return refreshBulkDeals(applied, seq);
@@ -2989,8 +2997,20 @@ const CatalogLive = (function () {
     // Seed so the first identical Filter click is a no-op.
     try {
         lastAppliedQuery = CatalogUrl.fromLocation().toString();
+        lastEffectiveParams = CatalogUrl.fromLocation();
     } catch (err) {
         lastAppliedQuery = null;
+        lastEffectiveParams = null;
+    }
+
+    const liveSearchInput = document.getElementById('catalogSearchInput');
+    if (liveSearchInput) {
+        liveSearchInput.addEventListener('blur', function () {
+            if (!lastEffectiveParams) return;
+            CatalogUrl.applyToForm(lastEffectiveParams);
+            lastAppliedQuery = lastEffectiveParams.toString();
+            CatalogUrl.replaceState(lastEffectiveParams);
+        });
     }
 
     return {

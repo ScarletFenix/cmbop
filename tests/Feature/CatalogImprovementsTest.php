@@ -154,8 +154,10 @@ class CatalogImprovementsTest extends TestCase
         $this->assertStringContainsString('function initCatalogCategoryToggle', $js);
         $this->assertStringContainsString('function initCatalogTagQuick', $js);
         $this->assertStringContainsString('data-effective-query', $js);
-        $this->assertStringContainsString('searchFocused', $js);
         $this->assertStringContainsString('typedSearch', $js);
-        $this->assertStringContainsString('lastAppliedQuery = applied.toString()', $js);
+        $this->assertStringContainsString('keepTypedSearch', $js);
+        $this->assertStringContainsString("options.intent === 'search'", $js);
+        $this->assertStringContainsString('lastAppliedQuery = CatalogUrl.fromForm({ keepPage: true }).toString()', $js);
+        $this->assertStringContainsString("addEventListener('blur'", $js);
     }
 }
