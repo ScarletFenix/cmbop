@@ -3,6 +3,13 @@
 @endphp
 <div class="table-responsive">
     <table class="table table-hover mb-0 mkt-history-table">
+        <colgroup>
+            <col class="mkt-history-table__col-when">
+            <col class="mkt-history-table__col-task">
+            <col class="mkt-history-table__col-subject">
+            <col class="mkt-history-table__col-publisher">
+            <col class="mkt-history-table__col-details">
+        </colgroup>
         <thead class="table-light">
             <tr>
                 <th>When</th>
@@ -27,16 +34,18 @@
                         <div class="mkt-history-table__when-rel">{{ $log->created_at?->diffForHumans() }}</div>
                         <span class="mkt-history-table__when-abs">{{ $log->created_at?->format('d M Y H:i') }}</span>
                     </td>
-                    <td>
+                    <td class="mkt-history-table__task">
                         <div class="fw-semibold">{{ marketing_task_label($log->action) }}</div>
                     </td>
                     <td class="small mkt-history-table__subject">
                         <div class="mkt-history-table__subject-line">
-                            @if($subjectUrl)
-                                <a href="{{ $subjectUrl }}">{{ $log->subject_label ?: 'Open' }}</a>
-                            @else
-                                {{ $log->subject_label ?: '—' }}
-                            @endif
+                            <span class="mkt-history-table__subject-name">
+                                @if($subjectUrl)
+                                    <a href="{{ $subjectUrl }}">{{ $log->subject_label ?: 'Open' }}</a>
+                                @else
+                                    {{ $log->subject_label ?: '—' }}
+                                @endif
+                            </span>
                             @if($removed)
                                 <span class="badge bg-secondary mkt-history-table__removed" data-history-removed>Removed</span>
                             @endif
@@ -47,7 +56,7 @@
                             </div>
                         @endif
                     </td>
-                    <td class="small">{{ $publisherLabel ?: '—' }}</td>
+                    <td class="small mkt-history-table__publisher">{{ $publisherLabel ?: '—' }}</td>
                     <td class="small mkt-history-table__details">
                         <div class="mkt-history-table__details-line">{{ $log->description }}</div>
                         @if($reason)
