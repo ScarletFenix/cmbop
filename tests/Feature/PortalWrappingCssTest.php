@@ -43,6 +43,26 @@ class PortalWrappingCssTest extends TestCase
             '/\.app-shell-footer__grid\s*\{[^}]*flex-wrap:\s*wrap/s',
             $css
         );
+        $this->assertMatchesRegularExpression(
+            '/body\.role-shell-advertiser,[\s\S]*body\.role-shell-marketing\s*\{[^}]*min-height:\s*100dvh/s',
+            $css
+        );
+        $this->assertMatchesRegularExpression(
+            '/#content,\s*#main-content\s*\{[^}]*flex:\s*1 0 auto/s',
+            $css
+        );
+        $this->assertMatchesRegularExpression(
+            '/footer\.app-shell-footer,\s*body > footer\s*\{[^}]*margin-top:\s*auto/s',
+            $css
+        );
+        $this->assertMatchesRegularExpression(
+            '/\.app-shell-footer__grid \.payment-trust__methods\s*\{[^}]*flex-wrap:\s*nowrap/s',
+            $css
+        );
+        $this->assertMatchesRegularExpression(
+            '/\.app-shell-footer__grid \.payment-trust__methods\s*\{[^}]*flex:\s*0 0 auto/s',
+            $css
+        );
         // Role switch dropdown lives in .mobile-left — must not be clipped.
         $this->assertMatchesRegularExpression(
             '/\.top-navbar\s+\.mobile-left\s*\{[^}]*overflow:\s*visible/s',

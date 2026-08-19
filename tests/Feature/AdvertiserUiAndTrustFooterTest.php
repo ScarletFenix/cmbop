@@ -67,7 +67,15 @@ class AdvertiserUiAndTrustFooterTest extends TestCase
             $shell
         );
         $this->assertMatchesRegularExpression(
-            '/\.app-shell-footer__grid\s*>\s*\.payment-trust\s*\{[^}]*flex-wrap:\s*wrap/s',
+            '/\.app-shell-footer__grid\s*>\s*\.payment-trust\s*\{[^}]*flex-wrap:\s*nowrap/s',
+            $shell
+        );
+        $this->assertMatchesRegularExpression(
+            '/\.app-shell-footer__grid \.payment-trust__methods\s*\{[^}]*flex-wrap:\s*nowrap/s',
+            $shell
+        );
+        $this->assertMatchesRegularExpression(
+            '/\.app-shell-footer__grid \.payment-trust__methods\s*\{[^}]*flex:\s*0 0 auto/s',
             $shell
         );
         $this->assertStringContainsString('flex-wrap: nowrap', $shell);
