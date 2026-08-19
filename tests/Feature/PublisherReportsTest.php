@@ -120,9 +120,13 @@ class PublisherReportsTest extends TestCase
             ->assertOk()
             ->assertSee('Financial Reports', false)
             ->assertSee(route('publisher.reports.statistics', absolute: false), false)
+            ->assertSee(route('publisher.tasks', absolute: false), false)
             ->assertSee('Available to Withdraw', false)
             ->assertSee('id="ordersPayoutHeading"', false)
             ->assertSee('You earned', false)
+            ->assertSee('Homepage', false)
+            ->assertSee('Open placements:', false)
+            ->assertDontSee('Pending:', false)
             ->assertDontSee('>Total Earned</th>', false);
 
         $this->actingAs($publisher)
@@ -180,6 +184,7 @@ class PublisherReportsTest extends TestCase
             ->assertJsonPath('data.total_earned', 120)
             ->assertJsonPath('data.completed_orders', 1)
             ->assertJsonPath('data.pending_orders', 1)
+            ->assertJsonPath('data.open_orders', 1)
             ->assertJsonPath('data.total_withdrawn', 38)
             ->assertJsonPath('data.total_withdrawn_gross', 40)
             ->assertJsonPath('data.total_withdrawal_fees', 2)
@@ -206,6 +211,8 @@ class PublisherReportsTest extends TestCase
             ->assertJsonPath('data.0.id', $completed->id)
             ->assertJsonPath('data.0.price', 100)
             ->assertJsonPath('data.0.publisher_base_price', 100)
+            ->assertJsonPath('data.0.homepage_price', 0)
+            ->assertJsonPath('data.0.homepage_days', null)
             ->assertJsonPath('data.0.payout_state', 'you_earned')
             ->assertJsonPath('data.0.payout_label', 'You earned')
             ->assertJsonPath('data.0.is_clawed_back', false);
@@ -243,6 +250,76 @@ class PublisherReportsTest extends TestCase
             ->json('data');
         $this->assertCount(1, $pending);
         $this->assertNotSame($scheduled->id, $pending[0]['id']);
+    }
+
+    public function test_statistics_count_scheduled_as_open_not_pending(): void
+    {
+        $publisher = $this->publisher();
+        $advertiser = $this->advertiser();
+        $site = $this->site($publisher);
+
+        $this->createOrderItem($advertiser, $site, ['status' => 'pending']);
+        $this->createOrderItem($advertiser, $site, [
+            'status' => 'pending',
+            'publication_mode' => 'scheduled',
+            'scheduled_publish_at' => now()->addDays(5),
+            'schedule_timezone' => 'Europe/Berlin',
+        ]);
+        $this->createOrderItem($advertiser, $site, ['status' => 'processing']);
+        $this->createOrderItem($advertiser, $site, ['status' => 'review']);
+        $this->createOrderItem($advertiser, $site, ['status' => 'completed']);
+
+        $this->actingAs($publisher)
+            ->getJson(route('publisher.reports.statistics'))
+            ->assertOk()
+            ->assertJsonPath('data.pending_orders', 1)
+            ->assertJsonPath('data.open_orders', 4)
+            ->assertJsonPath('data.completed_orders', 1);
+    }
+
+    public function test_orders_expose_homepage_line_separate_from_base(): void
+    {
+        $publisher = $this->publisher();
+        $advertiser = $this->advertiser();
+        $site = $this->site($publisher);
+
+        $item = $this->createOrderItem($advertiser, $site, [
+            'status' => 'completed',
+            'total_amount' => 150,
+        ], [
+            'price' => 150,
+            'additional_price' => 20,
+            'sensitive_type' => 'crypto',
+            'homepage_price' => 15,
+            'homepage_days' => 7,
+            'publisher_price' => 100,
+        ]);
+
+        $this->assertSame(100.0, $item->publisherBasePrice());
+        $this->assertSame(135.0, $item->publisherPayoutAmount());
+
+        $this->actingAs($publisher)
+            ->getJson(route('publisher.reports.orders', ['status' => 'completed']))
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $item->id)
+            ->assertJsonPath('data.0.publisher_base_price', 100)
+            ->assertJsonPath('data.0.additional_price', 20)
+            ->assertJsonPath('data.0.homepage_price', 15)
+            ->assertJsonPath('data.0.homepage_days', 7)
+            ->assertJsonPath('data.0.price', 135);
+
+        $this->actingAs($publisher)
+            ->getJson(route('publisher.reports.order.details', $item->id))
+            ->assertOk()
+            ->assertJsonPath('data.publisher_base_price', 100)
+            ->assertJsonPath('data.homepage_price', 15)
+            ->assertJsonPath('data.homepage_days', 7)
+            ->assertJsonPath('data.price', 135);
+
+        $this->actingAs($publisher)
+            ->getJson(route('publisher.reports.statistics'))
+            ->assertOk()
+            ->assertJsonPath('data.total_earned', 135);
     }
 
     public function test_order_details_are_scoped_to_owner(): void
@@ -425,8 +502,14 @@ class PublisherReportsTest extends TestCase
         $js = file_get_contents(resource_path('views/publisher/reports.blade.php'));
 
         $this->assertStringContainsString('function payoutCell', $js);
+        $this->assertStringContainsString('function homepageCell', $js);
+        $this->assertStringContainsString('item.homepage_price', $js);
+        $this->assertStringContainsString('item.price - additionalPrice - homepagePrice', $js);
+        $this->assertStringContainsString('d.open_orders', $js);
         $this->assertStringNotContainsString("'+ €' + money(totalPrice)", $js);
         $this->assertStringNotContainsString('Total Earned:</strong>', $js);
+        $this->assertStringNotContainsString('item.price - additionalPrice)', $js);
+        $this->assertStringNotContainsString('Pending:', $js);
     }
 
     private function upholdClawback(OrderItem $item): void

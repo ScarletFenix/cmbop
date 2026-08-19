@@ -8,7 +8,8 @@
      data-orders-url="{{ route('publisher.reports.orders', absolute: false) }}"
      data-order-details-template="{{ route('publisher.reports.order.details', ['orderItemId' => '__ID__'], absolute: false) }}"
      data-withdrawals-url="{{ route('publisher.reports.withdrawals', absolute: false) }}"
-     data-withdraw-url="{{ route('publisher.withdraw', absolute: false) }}">
+     data-withdraw-url="{{ route('publisher.withdraw', absolute: false) }}"
+     data-tasks-url="{{ route('publisher.tasks', absolute: false) }}">
 
     <div class="row mb-4">
         <div class="col-md-12">
@@ -39,7 +40,11 @@
                     <div>
                         <h6 class="text-muted mb-1">Completed Orders</h6>
                         <h3 class="mb-0" id="completedOrders">0</h3>
-                        <div class="text-muted small mt-1">Pending: <span id="pendingOrders">0</span></div>
+                        <div class="text-muted small mt-1">
+                            Open placements: <span id="openOrders">0</span>
+                            ·
+                            <a href="{{ route('publisher.tasks') }}">Tasks</a>
+                        </div>
                     </div>
                     <div class="bg-primary bg-opacity-10 p-3 rounded-circle">
                         <i class="fa fa-check-circle fa-2x text-primary"></i>
@@ -140,6 +145,7 @@
                                     <th>Site</th>
                                     <th>Base Price</th>
                                     <th>Sensitive Price</th>
+                                    <th>Homepage</th>
                                     <th id="ordersPayoutHeading">You earned</th>
                                     <th>Order Status</th>
                                     <th>Action</th>
@@ -147,7 +153,7 @@
                             </thead>
                             <tbody id="ordersTableBody">
                                 <tr>
-                                    <td colspan="8" class="text-center py-5">
+                                    <td colspan="9" class="text-center py-5">
                                         <div class="text-muted">Loading orders...</div>
                                     </td>
                                 </tr>
@@ -397,6 +403,14 @@
         return '<span class="fw-semibold">' + escapeHtml(label) + ' ' + amount + '</span>';
     }
 
+    function homepageCell(homepagePrice, homepageDays) {
+        if (!(homepagePrice > 0)) {
+            return '<span class="text-muted">—</span>';
+        }
+        const daysBit = homepageDays ? ' · ' + homepageDays + 'd' : '';
+        return '<span class="sensitive-badge"><i class="fa fa-plus-circle"></i> +€' + money(homepagePrice) + daysBit + '</span>';
+    }
+
     function linkOrDash(url, label) {
         if (!url) return '<span class="text-muted">—</span>';
         const safe = escapeHtml(url);
@@ -414,7 +428,7 @@
                 const d = response.data || {};
                 $('#totalEarned').html('<span style="color:#10b981;">+ €' + money(d.total_earned) + '</span>');
                 $('#completedOrders').text(d.completed_orders || 0);
-                $('#pendingOrders').text(d.pending_orders || 0);
+                $('#openOrders').text(d.open_orders != null ? d.open_orders : (d.pending_orders || 0));
                 $('#totalWithdrawn').html('<span style="color:#ef4444;">- €' + money(d.total_withdrawn) + '</span>');
                 $('#availableToWithdraw').text('€' + money(d.available_to_withdraw));
                 const fees = parseFloat(d.total_withdrawal_fees || 0);
@@ -455,7 +469,7 @@
         $('#ordersPayoutHeading').text(payoutColumnHeading(params.status));
 
         $('#ordersTableBody').html(
-            '<tr><td colspan="8" class="text-center py-5"><div class="spinner-border text-primary" role="status"></div><p class="mt-2 text-muted mb-0">Loading orders...</p></td></tr>'
+            '<tr><td colspan="9" class="text-center py-5"><div class="spinner-border text-primary" role="status"></div><p class="mt-2 text-muted mb-0">Loading orders...</p></td></tr>'
         );
 
         $.ajax({
@@ -465,7 +479,7 @@
             dataType: 'json',
             success: function (response) {
                 if (!response.success) {
-                    $('#ordersTableBody').html('<tr><td colspan="8" class="text-center text-danger py-5">' + escapeHtml(response.message || 'Failed to load orders') + '</td></tr>');
+                    $('#ordersTableBody').html('<tr><td colspan="9" class="text-center text-danger py-5">' + escapeHtml(response.message || 'Failed to load orders') + '</td></tr>');
                     return;
                 }
                 renderOrdersTable(response.data);
@@ -473,7 +487,7 @@
                 $('#ordersResultsCount').text(resultsCountLabel(response.pagination));
             },
             error: function (xhr) {
-                $('#ordersTableBody').html('<tr><td colspan="8" class="text-center text-danger py-5">Error loading orders. Please refresh the page.</td></tr>');
+                $('#ordersTableBody').html('<tr><td colspan="9" class="text-center text-danger py-5">Error loading orders. Please refresh the page.</td></tr>');
                 if (typeof slbHandleHttpError === 'function') {
                     slbHandleHttpError(xhr, { fallback: 'Could not load orders' });
                 }
@@ -484,7 +498,7 @@
     function renderOrdersTable(orderItems) {
         if (!orderItems || orderItems.length === 0) {
             $('#ordersTableBody').html(
-                '<tr><td colspan="8" class="text-center py-5"><i class="fa fa-inbox fa-3x text-muted"></i><p class="mt-2 mb-0">No orders match this filter</p><p class="text-muted small mb-0">Try another status or date range.</p></td></tr>'
+                '<tr><td colspan="9" class="text-center py-5"><i class="fa fa-inbox fa-3x text-muted"></i><p class="mt-2 mb-0">No orders match this filter</p><p class="text-muted small mb-0">Try another status or date range.</p></td></tr>'
             );
             return;
         }
@@ -497,7 +511,13 @@
                 ? 'scheduled'
                 : (item.order ? item.order.status : 'pending');
             const additionalPrice = parseFloat(item.additional_price || 0);
-            const basePrice = parseFloat(item.publisher_base_price != null ? item.publisher_base_price : (item.price - additionalPrice));
+            const homepagePrice = parseFloat(item.homepage_price || 0);
+            const homepageDays = item.homepage_days != null && item.homepage_days !== ''
+                ? parseInt(item.homepage_days, 10)
+                : null;
+            const basePrice = parseFloat(item.publisher_base_price != null
+                ? item.publisher_base_price
+                : (item.price - additionalPrice - homepagePrice));
             const sensitiveType = item.sensitive_type || null;
             const meta = orderStatusMeta(orderStatus, item.is_clawed_back);
 
@@ -509,6 +529,7 @@
                 '<td>' + (additionalPrice > 0
                     ? '<span class="sensitive-badge"><i class="fa fa-plus-circle"></i> ' + escapeHtml(sensitiveType || 'Extra') + ' (+€' + money(additionalPrice) + ')</span>'
                     : '<span class="text-muted">—</span>') + '</td>' +
+                '<td>' + homepageCell(homepagePrice, homepageDays) + '</td>' +
                 '<td>' + payoutCell(item) + '</td>' +
                 '<td><span class="status-badge ' + meta.cls + '">' + escapeHtml(meta.text) + '</span></td>' +
                 '<td><button type="button" class="btn btn-sm btn-outline-info btn-view-order" data-id="' + item.id + '"><i class="fa fa-eye"></i> View</button></td>' +
@@ -553,7 +574,13 @@
     function renderOrderDetailsModal(orderItem) {
         const order = orderItem.order || {};
         const additionalPrice = parseFloat(orderItem.additional_price || 0);
-        const basePrice = parseFloat(orderItem.publisher_base_price != null ? orderItem.publisher_base_price : (orderItem.price - additionalPrice));
+        const homepagePrice = parseFloat(orderItem.homepage_price || 0);
+        const homepageDays = orderItem.homepage_days != null && orderItem.homepage_days !== ''
+            ? parseInt(orderItem.homepage_days, 10)
+            : null;
+        const basePrice = parseFloat(orderItem.publisher_base_price != null
+            ? orderItem.publisher_base_price
+            : (orderItem.price - additionalPrice - homepagePrice));
         const totalPrice = parseFloat(orderItem.price);
         const sensitiveType = orderItem.sensitive_type || null;
 
@@ -578,6 +605,13 @@
                 '<p class="mb-1"><strong>Base Price:</strong> €' + money(basePrice) + '</p>' +
                 (additionalPrice > 0
                     ? '<p class="mb-1"><strong>Sensitive Price:</strong> <span class="text-warning">+ €' + money(additionalPrice) + ' (' + escapeHtml(sensitiveType || 'Extra') + ')</span></p>'
+                    : '') +
+                (homepagePrice > 0
+                    ? '<p class="mb-1"><strong>Homepage:</strong> <span class="text-warning">+ €' + money(homepagePrice)
+                        + (homepageDays
+                            ? ' (' + homepageDays + ' day' + (homepageDays === 1 ? '' : 's') + ')'
+                            : '')
+                        + '</span></p>'
                     : '') +
                 '<p class="mb-1"><strong>' + escapeHtml((orderItem.payout_label || 'Payout')) + ':</strong> ' +
                     (orderItem.payout_state === 'none'
