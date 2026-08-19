@@ -596,7 +596,7 @@ if (! function_exists('activity_action_labels')) {
             'finance.debt_cleared' => 'Cleared wallet debt',
             'finance.ledger_exported' => 'Exported wallet ledger',
             'finance.period_exported' => 'Exported finance period',
-            'wallet.leftover_card_credited' => 'Credited leftover card payment',
+            'wallet.leftover_card_credited' => 'Credited leftover checkout payment',
             'invoice.generated' => 'Generated invoice',
             'invoice.cancelled' => 'Cancelled invoice',
             'invoice.resent' => 'Resent invoice',

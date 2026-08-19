@@ -53,6 +53,7 @@ use App\Mail\SiteOwnerOrderNotification;
 use App\Mail\SiteStatusNotification;
 use App\Mail\SpendBudgetAlertMail;
 use App\Mail\TrustpilotReviewRequest;
+use App\Mail\UnfulfilledCheckoutCredited;
 use App\Mail\WebsiteSuggestionReviewed;
 use App\Mail\WeeklyActivitySummary;
 use App\Mail\WelcomeEmail;

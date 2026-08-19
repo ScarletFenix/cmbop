@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Mail\SiteOwnerOrderNotification;
+use App\Mail\UnfulfilledCheckoutCredited;
 use App\Models\CheckoutIntent;
 use App\Models\ContentSubmission;
 use App\Models\Order;
@@ -943,7 +944,7 @@ class OrderPaymentService
      *
      * @param  list<string>  $captureIds  Checkout session and PaymentIntent ids for the same capture
      */
-    public function creditUnfulfilledCardCapture(int $userId, string $referenceCode, float $amount, ?string $settlementKey = null, array $captureIds = []): float
+    public function creditUnfulfilledCardCapture(int $userId, string $referenceCode, float $amount, ?string $settlementKey = null, array $captureIds = [], string $paymentMethod = 'card'): float
     {
         $amount = round($amount, 2);
         if ($userId <= 0 || $amount <= 0) {
@@ -975,7 +976,7 @@ class OrderPaymentService
         }
         $aliases = array_values(array_unique($aliases));
 
-        $credited = (float) DB::transaction(function () use ($userId, $roleId, $amount, $reference, $referenceCode, $aliases, $unkeyed, $prefix, $captureIds) {
+        $credited = (float) DB::transaction(function () use ($userId, $roleId, $amount, $reference, $referenceCode, $aliases, $unkeyed, $prefix, $captureIds, $paymentMethod, $settlementKey) {
             if (! User::query()->whereKey($userId)->exists()) {
                 Log::warning('Cannot credit unfulfilled card capture; user missing', [
                     'user_id' => $userId,
@@ -1003,6 +1004,9 @@ class OrderPaymentService
                 return 0.0;
             }
 
+            $method = $this->leftoverPaymentMethod($paymentMethod, $captureIds, $settlementKey);
+            $methodLabel = $method === 'paypal' ? 'PayPal' : 'Card';
+
             $wallet->credit($amount);
             app(WalletLedgerService::class)->recordAdjustment(
                 $wallet,
@@ -1010,24 +1014,28 @@ class OrderPaymentService
                 'credit',
                 null,
                 $reference,
-                'Card payment credited because listing(s) left the catalog',
+                $methodLabel.' payment credited because the checkout could not create the order',
                 [
                     'reference_code' => $referenceCode,
                     'capture_ids' => $captureIds,
+                    'payment_method' => $method,
                 ]
             );
 
-            Log::info('Credited unfulfilled Stripe-first card capture to advertiser wallet', [
+            Log::info('Credited unfulfilled checkout capture to advertiser wallet', [
                 'user_id' => $userId,
                 'reference_code' => $referenceCode,
                 'amount' => $amount,
+                'payment_method' => $method,
             ]);
 
             return $amount;
         });
 
         if ($credited > 0.009) {
-            $this->logLeftoverCardCredit($userId, $roleId, $referenceCode, $credited, $captureIds);
+            $method = $this->leftoverPaymentMethod($paymentMethod, $captureIds, $settlementKey);
+            $this->logLeftoverCardCredit($userId, $roleId, $referenceCode, $credited, $captureIds, $method);
+            $this->notifyUnfulfilledCheckoutCredited($userId, $reference, $credited, $method);
         }
 
         return $credited;
@@ -1036,7 +1044,31 @@ class OrderPaymentService
     /**
      * @param  list<string>  $captureIds
      */
-    private function logLeftoverCardCredit(int $userId, int $roleId, string $referenceCode, float $amount, array $captureIds): void
+    private function leftoverPaymentMethod(string $paymentMethod, array $captureIds, ?string $settlementKey): string
+    {
+        $ids = array_merge(
+            $captureIds,
+            is_string($settlementKey) && $settlementKey !== '' ? [$settlementKey] : []
+        );
+        foreach ($ids as $id) {
+            $id = strtolower((string) $id);
+            if (str_starts_with($id, 'cap-') || str_starts_with($id, 'po-')) {
+                return 'paypal';
+            }
+            if (str_starts_with($id, 'cs_') || str_starts_with($id, 'pi_') || str_starts_with($id, 'ch_')) {
+                return 'card';
+            }
+        }
+
+        $explicit = strtolower(trim($paymentMethod));
+
+        return in_array($explicit, ['paypal', 'card'], true) ? $explicit : 'card';
+    }
+
+    /**
+     * @param  list<string>  $captureIds
+     */
+    private function logLeftoverCardCredit(int $userId, int $roleId, string $referenceCode, float $amount, array $captureIds, string $paymentMethod = 'card'): void
     {
         $user = User::query()->find($userId);
         $wallet = Wallet::query()
@@ -1045,9 +1077,10 @@ class OrderPaymentService
             ->first();
 
         $who = $user?->name ?: $user?->email ?: 'Advertiser';
+        $methodLabel = $paymentMethod === 'paypal' ? 'PayPal' : 'card';
         ActivityLogger::tryLog(
             'wallet.leftover_card_credited',
-            $who.' was credited €'.number_format($amount, 2).' because listing(s) left the catalog',
+            $who.' was credited €'.number_format($amount, 2).' from a '.$methodLabel.' checkout that could not create the order',
             $wallet,
             [
                 'user_id' => $userId,
@@ -1055,10 +1088,52 @@ class OrderPaymentService
                 'reference_code' => $referenceCode,
                 'amount' => $amount,
                 'capture_ids' => $captureIds,
+                'payment_method' => $paymentMethod,
             ],
             $user?->email,
             $user
         );
+    }
+
+    private function notifyUnfulfilledCheckoutCredited(int $userId, string $walletReference, float $amount, string $paymentMethod): void
+    {
+        $user = User::query()->find($userId);
+        if (! $user?->email) {
+            Log::warning('Cannot email leftover checkout credit — user has no email', [
+                'user_id' => $userId,
+                'reference' => $walletReference,
+            ]);
+
+            return;
+        }
+
+        try {
+            Mail::to($user->email)->send(new UnfulfilledCheckoutCredited(
+                $user,
+                $amount,
+                $walletReference,
+                $paymentMethod
+            ));
+        } catch (\Throwable $e) {
+            Log::error('Failed to send leftover checkout credit email: '.$e->getMessage(), [
+                'user_id' => $userId,
+                'reference' => $walletReference,
+            ]);
+        }
+
+        try {
+            app(InAppNotificationService::class)->notifyUnfulfilledCheckoutCredited(
+                $user,
+                $amount,
+                $walletReference,
+                $paymentMethod
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Failed to send leftover checkout credit bell: '.$e->getMessage(), [
+                'user_id' => $userId,
+                'reference' => $walletReference,
+            ]);
+        }
     }
 
     /**
@@ -2061,7 +2136,7 @@ class OrderPaymentService
                 return $already;
             }
             if ($metaUserId > 0 && $capturedAmount > 0.009) {
-                $this->creditUnfulfilledCardCapture($metaUserId, $referenceCode, $capturedAmount, $captureId, [$captureId, $paypalOrderId]);
+                $this->creditUnfulfilledCardCapture($metaUserId, $referenceCode, $capturedAmount, $captureId, [$captureId, $paypalOrderId], 'paypal');
             }
             Log::warning('No pending PayPal checkout package to materialize', [
                 'reference_code' => $referenceCode,
@@ -2089,7 +2164,8 @@ class OrderPaymentService
                 $referenceCode,
                 $capturedAmount,
                 $captureId,
-                [$captureId, $paypalOrderId]
+                [$captureId, $paypalOrderId],
+                'paypal'
             );
 
             return collect();
@@ -2099,7 +2175,7 @@ class OrderPaymentService
         $userId = $packageUserId > 0 ? $packageUserId : $metaUserId;
         if ($capturedAmount > 0 && abs($capturedAmount - $expected) > 0.01) {
             if ($userId > 0) {
-                $this->creditUnfulfilledCardCapture($userId, $referenceCode, $capturedAmount, $captureId, [$captureId, $paypalOrderId]);
+                $this->creditUnfulfilledCardCapture($userId, $referenceCode, $capturedAmount, $captureId, [$captureId, $paypalOrderId], 'paypal');
             }
             Log::warning('PayPal capture amount does not match current checkout package', [
                 'reference_code' => $referenceCode,
@@ -2253,7 +2329,7 @@ class OrderPaymentService
                 return collect();
             }
             if ($userId > 0 && $capturedAmount > 0.009) {
-                $this->creditUnfulfilledCardCapture($userId, $referenceCode, $capturedAmount, $captureId, [$captureId, $paypalOrderId]);
+                $this->creditUnfulfilledCardCapture($userId, $referenceCode, $capturedAmount, $captureId, [$captureId, $paypalOrderId], 'paypal');
             }
             $this->forgetPendingCheckout($referenceCode);
             Log::warning('PayPal checkout paid but no catalog-visible lines to materialize', [
@@ -2269,7 +2345,7 @@ class OrderPaymentService
         $fulfilled = round((float) $created->sum(fn (Order $order) => (float) $order->total_amount), 2);
         $unfulfilled = round(max(0, $expected - $fulfilled), 2);
         if ($userId > 0 && $unfulfilled > 0.009) {
-            $this->creditUnfulfilledCardCapture($userId, $referenceCode, $unfulfilled, $captureId, [$captureId, $paypalOrderId]);
+            $this->creditUnfulfilledCardCapture($userId, $referenceCode, $unfulfilled, $captureId, [$captureId, $paypalOrderId], 'paypal');
         }
 
         $packageBonus = round((float) ($package['bonus_applied'] ?? 0), 2);

@@ -15,6 +15,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 use Tests\Support\CreatesContentSubmissions;
 use Tests\TestCase;
 
@@ -439,6 +440,7 @@ class CheckoutPaypalProcessTest extends TestCase
         config(['content_moderation.enabled' => false]);
         $this->enablePaypal();
         Mail::fake();
+        Storage::fake('local');
 
         $advertiser = $this->advertiser();
         $site = $this->activeSite($this->publisher());
@@ -482,6 +484,8 @@ class CheckoutPaypalProcessTest extends TestCase
         $this->assertSame('CAP-PO-OK', $orders[0]->paypal_capture_id);
         $this->assertTrue($orders[0]->paidViaPaypal());
         $this->assertNull(app(OrderPaymentService::class)->getPendingCheckout('PP-OK'));
+        Mail::assertQueued(PaymentSuccessfulInvoiceMail::class, 1);
+        Mail::assertQueued(SiteOwnerOrderNotification::class, 1);
     }
 
     public function test_paypal_return_is_idempotent_on_duplicate(): void
@@ -741,6 +745,35 @@ class CheckoutPaypalProcessTest extends TestCase
             ->first();
         $this->assertNotNull($wallet);
         $this->assertEqualsWithDelta(50.0, (float) $wallet->balance, 0.01);
+
+        Mail::assertQueued(UnfulfilledCheckoutCredited::class, function (UnfulfilledCheckoutCredited $mail) use ($advertiser) {
+            return (int) $mail->user->id === (int) $advertiser->id
+                && abs($mail->amount - 50.0) < 0.01
+                && $mail->paymentMethod === 'paypal'
+                && $mail->notificationType === 'unfulfilled_checkout_credited';
+        });
+        Mail::assertQueued(UnfulfilledCheckoutCredited::class, 1);
+        Mail::assertNotQueued(PaymentSuccessfulInvoiceMail::class);
+
+        $this->assertTrue(InAppNotification::query()
+            ->where('user_id', $advertiser->id)
+            ->where('title', 'Wallet topped up — €50.00')
+            ->where('meta->reason', 'unfulfilled_checkout')
+            ->exists());
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.checkout.paypal.return', [
+                'ref' => 'PP-AMT',
+                'token' => 'PO-AMT',
+            ]))
+            ->assertRedirect(route('advertiser.checkout'));
+
+        Mail::assertQueued(UnfulfilledCheckoutCredited::class, 1);
+        $this->assertEqualsWithDelta(50.0, (float) $wallet->fresh()->balance, 0.01);
+        $this->assertSame(1, InAppNotification::query()
+            ->where('user_id', $advertiser->id)
+            ->where('meta->reason', 'unfulfilled_checkout')
+            ->count());
     }
 
     public function test_paypal_return_stores_capture_id_on_first_line_only(): void
