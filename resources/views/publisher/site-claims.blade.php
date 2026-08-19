@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'My ownership claims - SEOLinkBuildings')
+@section('title', 'My ownership claims')
 
 @section('content')
 <div class="container py-4">

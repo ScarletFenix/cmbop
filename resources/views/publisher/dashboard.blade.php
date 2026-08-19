@@ -1,5 +1,7 @@
 @extends('publisher.layouts.app')
 
+@section('title', 'Dashboard')
+
 @section('content')
 @php
     $pendingTasks = $pendingTasks ?? 0;
@@ -29,83 +31,10 @@
     $weeklyEarnings = $weeklyEarnings ?? ['labels' => [], 'values' => []];
     $monthlyEarnings = $monthlyEarnings ?? ['labels' => [], 'values' => []];
     $orderStatus = $orderStatus ?? ['labels' => [], 'values' => []];
+    $statusHasOrders = collect($orderStatus['values'] ?? [])->sum() > 0;
 @endphp
 
-<style>
-    .publisher-primary-cta {
-        background: linear-gradient(135deg, #f0fbfb 0%, #ffffff 55%);
-        border-left: 4px solid #4ECDCB !important;
-    }
-    .publisher-secondary-cta .secondary-icon {
-        width: 32px; height: 32px; border-radius: 8px;
-        background: #eef7f7; color: #0b6266;
-        display: inline-flex; align-items: center; justify-content: center;
-    }
-    .publisher-empty-metrics {
-        padding: 1.5rem 1.75rem;
-    }
-    .publisher-onboarding-steps {
-        padding-left: 1.25rem;
-        color: #64748b;
-        font-size: 0.925rem;
-    }
-    .publisher-onboarding-steps li + li {
-        margin-top: 0.35rem;
-    }
-    .kpi-tile {
-        display: flex; align-items: center; gap: 12px; padding: 14px;
-        border: 1px solid #e5eef0; border-radius: 10px; background: #fff; height: 100%;
-    }
-    .kpi-tile .kpi-icon {
-        width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center;
-        justify-content: center; color: #fff; flex-shrink: 0;
-    }
-    .kpi-tile .kpi-label { font-size: 12px; color: #6b7280; display: block; }
-    .kpi-tile .kpi-value { font-size: 1.35rem; font-weight: 700; color: #0b6266; line-height: 1.1; }
-    .kpi-tile .kpi-sub { font-size: 11px; color: #94a3b8; margin-top: 2px; }
-    a.kpi-tile {
-        color: inherit;
-        text-decoration: none;
-        transition: border-color .2s ease, background .2s ease;
-    }
-    a.kpi-tile:hover {
-        border-color: #4ECDCB;
-        background: #f0fbfb;
-        color: inherit;
-        text-decoration: none;
-    }
-    a.kpi-tile:hover .kpi-value { color: #3aaeb2; }
-    .progress {
-        background-color: #e9ecef;
-        border-radius: 10px;
-    }
-    .progress-bar {
-        border-radius: 10px;
-        transition: width 0.6s ease;
-    }
-    .status-badge {
-        padding: 4px 10px;
-        border-radius: 5px;
-        font-size: 11px;
-        font-weight: 600;
-        display: inline-block;
-    }
-    .status-pending { background-color: #fef3c7; color: #282828; }
-    .status-processing { background-color: #dbeafe; color: #282828; }
-    .status-review { background-color: #e0e7ff; color: #282828; }
-    .status-scheduled { background-color: #f3e8ff; color: #282828; }
-    .status-completed { background-color: #dcfce7; color: #282828; }
-    .status-cancelled { background-color: #fee2e2; color: #282828; }
-    .recent-tasks-table td, .recent-tasks-table th {
-        padding: 12px 15px;
-        vertical-align: middle;
-    }
-    .card-header {
-        border-bottom: 1px solid #eee;
-    }
-</style>
-
-<div class="container-fluid dash-page-end">
+<div class="container-fluid dash-page-end publisher-dashboard">
 
     <!-- HEADER -->
     <div class="row mb-4">
@@ -164,7 +93,7 @@
                             <p class="text-muted mb-0">
                                 {{ $siteCount === 0
                                     ? 'List a site to start receiving advertiser orders.'
-                                    : 'You have '.$siteCount.' site'.($siteCount === 1 ? '' : 's').' live — add another niche or market.' }}
+                                    : 'You have '.$siteCount.' site'.($siteCount === 1 ? '' : 's').' listed — add another niche or market.' }}
                             </p>
                         </div>
                         <a href="{{ route('publisher.websites') }}" class="btn btn-lg btn-primary px-4">
@@ -288,9 +217,10 @@
                         <i class="fa fa-chart-line me-2 text-primary"></i> Weekly Earnings
                         <span class="float-end text-muted small">Last 7 days</span>
                     </div>
-                    <div class="card-body">
+                    <div class="card-body pb-2">
                         <canvas id="weeklyEarningsChart" height="200"></canvas>
                     </div>
+                    <p class="small text-muted px-3 pb-3 mb-0">Recognized on completion day; clawbacks appear on the reversal day.</p>
                 </div>
             </div>
             <div class="col-md-4 mb-3">
@@ -311,7 +241,11 @@
                         <span class="float-end text-muted small">All time</span>
                     </div>
                     <div class="card-body">
-                        <canvas id="orderStatusChart" height="200"></canvas>
+                        @if($statusHasOrders)
+                            <canvas id="orderStatusChart" height="200"></canvas>
+                        @else
+                            <div class="publisher-chart-empty text-muted">No orders yet</div>
+                        @endif
                     </div>
                 </div>
             </div>
@@ -425,7 +359,7 @@
 </div>
 
 @if($siteCount > 0)
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
 <script>
 (function () {
     var weeklyData = @json($weeklyEarnings);
