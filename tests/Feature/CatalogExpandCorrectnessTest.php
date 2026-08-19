@@ -299,7 +299,7 @@ class CatalogExpandCorrectnessTest extends TestCase
         $this->assertStringNotContainsString('Homepage placement available in Details.', $html);
     }
 
-    public function test_expand_flags_placeholder_listing_and_preview_caption(): void
+    public function test_expand_does_not_show_homepage_capture_or_placeholder_caption(): void
     {
         $this->makeSite([
             'site_name' => 'Lorem Demo Expand',
@@ -316,10 +316,11 @@ class CatalogExpandCorrectnessTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        $this->assertStringContainsString('catalog-placeholder-listing', $html);
-        $this->assertStringContainsString('Placeholder listing — sample copy, not a live publisher brief.', $html);
-        $this->assertStringContainsString('catalog-preview-caption', $html);
-        $this->assertStringContainsString('Homepage capture', $html);
+        $this->assertStringContainsString('Lorem Ipsum is simply dummy text for testing purposes.', $html);
+        $this->assertStringNotContainsString('catalog-placeholder-listing', $html);
+        $this->assertStringNotContainsString('Placeholder listing — sample copy, not a live publisher brief.', $html);
+        $this->assertStringNotContainsString('catalog-preview-caption', $html);
+        $this->assertStringNotContainsString('Homepage capture', $html);
         $this->assertStringNotContainsString('15 Mar 2026', $html);
         $this->assertStringNotContainsString('10:00', $html);
     }
@@ -337,9 +338,11 @@ class CatalogExpandCorrectnessTest extends TestCase
 
         $this->assertStringNotContainsString('catalog-placeholder-listing', $html);
         $this->assertStringNotContainsString('catalog-preview-caption', $html);
+        $this->assertStringNotContainsString('Homepage capture', $html);
+        $this->assertStringNotContainsString('Placeholder listing — sample copy, not a live publisher brief.', $html);
     }
 
-    public function test_host_only_placeholder_shows_mobile_about_badge(): void
+    public function test_host_only_placeholder_does_not_invent_an_about_badge(): void
     {
         $this->makeSite([
             'site_name' => 'Host Only Demo',
@@ -354,9 +357,10 @@ class CatalogExpandCorrectnessTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        $this->assertStringContainsString('catalog-placeholder-listing', $html);
-        $this->assertStringContainsString('About this site', $html);
-        $this->assertStringContainsString('Placeholder listing — sample copy, not a live publisher brief.', $html);
+        $this->assertStringContainsString('Host Only Demo', $html);
+        $this->assertStringNotContainsString('catalog-placeholder-listing', $html);
+        $this->assertStringNotContainsString('Placeholder listing — sample copy, not a live publisher brief.', $html);
+        $this->assertStringNotContainsString('About this site', $html);
     }
 
     public function test_mobile_card_details_cover_desktop_decision_fields(): void
