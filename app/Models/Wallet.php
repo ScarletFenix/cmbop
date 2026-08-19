@@ -62,6 +62,21 @@ class Wallet extends Model
     }
 
     /**
+     * Publisher-role wallet for a user. Does not fall back to the active role.
+     */
+    public static function forPublisher(int $userId): ?self
+    {
+        $roleId = static::publisherRoleId();
+        if (! $roleId) {
+            return null;
+        }
+
+        return static::where('user_id', $userId)
+            ->where('role_id', $roleId)
+            ->first();
+    }
+
+    /**
      * Create advertiser + publisher wallets for a newly registered user.
      * Welcome credit is applied only when bonus_* columns exist so it cannot
      * become withdrawable cash on an unmigrated Hostinger wallet table.
