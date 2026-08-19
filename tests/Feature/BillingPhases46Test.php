@@ -435,12 +435,18 @@ class BillingPhases46Test extends TestCase
         Storage::fake('local');
 
         $publisher = $this->makeUser('publisher');
+        $this->publisherWallet($publisher);
+        $withdrawal = $this->pendingWithdrawal($publisher, 50);
+        $withdrawal->update([
+            'status' => 'completed',
+            'processed_at' => now(),
+        ]);
         $statement = Invoice::create([
             'invoice_number' => 'PAY-2026-999002',
             'type' => Invoice::TYPE_WITHDRAWAL_PAYOUT,
             'status' => Invoice::STATUS_PAID,
             'user_id' => $publisher->id,
-            'reference_code' => 'WD-999002',
+            'reference_code' => 'WD-'.$withdrawal->id,
             'currency' => 'EUR',
             'subtotal' => 50,
             'tax_amount' => 0,
@@ -458,14 +464,14 @@ class BillingPhases46Test extends TestCase
             'line_items' => [
                 [
                     'description' => 'Publisher withdrawal payout',
-                    'reference' => 'WD-999002',
+                    'reference' => 'WD-'.$withdrawal->id,
                     'quantity' => 1,
                     'unit_price' => 50,
                     'line_total' => 50,
                 ],
                 [
                     'description' => 'Withdrawal fee',
-                    'reference' => 'WD-999002-fee',
+                    'reference' => 'WD-'.$withdrawal->id.'-fee',
                     'quantity' => 1,
                     'unit_price' => -5,
                     'line_total' => -5,
