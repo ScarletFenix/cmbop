@@ -512,7 +512,9 @@
 
                     <!-- More filters drawer (teal mist theme) -->
                     <div id="moreFiltersDrawer" class="mt-3" style="{{ $moreFiltersOpen ? '' : 'display:none;' }}">
-                        <div class="row g-3 align-items-end">
+                        {{-- DA/DR/traffic are taller (min/max + preset chips). Bottom-aligning
+                             this row pulled those cells up so the DA label sat above Tag/Favorites/Blacklist. --}}
+                        <div class="row g-3 align-items-start">
                             <div class="col-6 col-md-4 col-lg-3">
                                 <label class="form-label fw-semibold small text-muted mb-1" for="catalogTagFilter">
                                     <abbr class="metric-abbr text-decoration-none" title="{{ \App\Support\SiteTag::FILTER_TOOLTIP }}">Tag</abbr>
