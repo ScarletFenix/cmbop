@@ -17,6 +17,24 @@ class PortalWrappingCssTest extends TestCase
         $this->assertStringContainsString('.top-navbar .mobile-left', $css);
         $this->assertStringContainsString('min-width: 0', $css);
         $this->assertStringContainsString('overflow-x: clip', $css);
+        // Viewport wrap lives on body/html — not on #content, where one-axis
+        // clip shears page titles (Payout documents, Withdraw, Invoices).
+        $this->assertMatchesRegularExpression(
+            '/body,\s*html\s*\{[^}]*overflow-x:\s*clip/s',
+            $css
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/#content,\s*#main-content\s*\{[^}]*overflow-x:\s*clip/s',
+            $css
+        );
+        $this->assertMatchesRegularExpression(
+            '/#content,\s*#main-content\s*\{[^}]*overflow-x:\s*visible/s',
+            $css
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/#content,\s*#main-content\s*\{[^}]*min-height:\s*calc\(\s*100vh/s',
+            $css
+        );
         // Role switch dropdown lives in .mobile-left — must not be clipped.
         $this->assertMatchesRegularExpression(
             '/\.top-navbar\s+\.mobile-left\s*\{[^}]*overflow:\s*visible/s',
@@ -26,6 +44,22 @@ class PortalWrappingCssTest extends TestCase
         $this->assertStringContainsString('max-width: min(150px, 30vw)', $css);
         $this->assertStringContainsString('.balance-block .balance-label', $css);
         $this->assertStringNotContainsString('#sidebar.collapsed a { font-size: 0', $css);
+    }
+
+    public function test_page_titles_keep_ascenders_inside_the_line_box(): void
+    {
+        $css = file_get_contents(public_path('assets/css/type-system.css'));
+        $this->assertIsString($css);
+
+        $this->assertStringContainsString('--type-line-title: 1.4', $css);
+        $this->assertMatchesRegularExpression(
+            '/#content h2\.fw-semibold,[\s\S]*#main-content h2\s*\{[\s\S]*line-height:\s*var\(--type-line-title\)/',
+            $css
+        );
+        $this->assertMatchesRegularExpression(
+            '/#content h2\.fw-semibold,[\s\S]*#main-content h2\s*\{[\s\S]*overflow:\s*visible/',
+            $css
+        );
     }
 
     public function test_interaction_css_includes_text_break_helpers(): void
