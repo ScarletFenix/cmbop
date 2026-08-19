@@ -8,6 +8,7 @@ use App\Models\SiteFeaturePurchase;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Services\Wallet\WalletLedgerService;
+use App\Support\UserFacingError;
 use Illuminate\Database\QueryException;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
@@ -135,7 +136,7 @@ class SitePromotionService
                 ];
             });
         } catch (\Throwable $e) {
-            return ['success' => false, 'message' => $e->getMessage()];
+            return $this->failedFeature($e, 'Could not feature this site. Please try again.');
         }
     }
 
@@ -237,9 +238,9 @@ class SitePromotionService
                 return $this->alreadyCreditedOrAppliedFeature($stripeSessionId);
             }
 
-            return ['success' => false, 'message' => $e->getMessage()];
+            return $this->failedFeature($e, 'Could not credit this featured-placement payment. Contact support if you were charged.');
         } catch (\Throwable $e) {
-            return ['success' => false, 'message' => $e->getMessage()];
+            return $this->failedFeature($e, 'Could not credit this featured-placement payment. Contact support if you were charged.');
         }
     }
 
@@ -299,9 +300,9 @@ class SitePromotionService
                 return $this->alreadyAppliedStripeFeature($site, $stripeSessionId);
             }
 
-            return ['success' => false, 'message' => $e->getMessage()];
+            return $this->failedFeature($e, 'Could not apply featured placement after payment. Contact support if you were charged.');
         } catch (\Throwable $e) {
-            return ['success' => false, 'message' => $e->getMessage()];
+            return $this->failedFeature($e, 'Could not apply featured placement after payment. Contact support if you were charged.');
         }
     }
 
@@ -392,6 +393,17 @@ class SitePromotionService
             'message' => $credited
                 ? 'This payment was already credited to your wallet.'
                 : 'Feature already applied for this payment.',
+        ];
+    }
+
+    /**
+     * @return array{success: false, message: string}
+     */
+    private function failedFeature(\Throwable $e, string $fallback): array
+    {
+        return [
+            'success' => false,
+            'message' => UserFacingError::message($e, $fallback),
         ];
     }
 

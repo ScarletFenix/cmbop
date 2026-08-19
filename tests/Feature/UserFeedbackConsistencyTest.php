@@ -178,4 +178,29 @@ class UserFeedbackConsistencyTest extends TestCase
         $this->assertStringContainsString('slbHandleHttpError(xhr', $markup);
         $this->assertStringNotContainsString('errorMsg = xhr.responseJSON.message', $markup);
     }
+
+    public function test_services_do_not_return_raw_exception_text_in_user_messages(): void
+    {
+        $offenders = [];
+        $dir = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator(app_path('Services'))
+        );
+        foreach ($dir as $file) {
+            if (! $file->isFile() || $file->getExtension() !== 'php') {
+                continue;
+            }
+            foreach (file($file->getPathname()) as $index => $line) {
+                if (preg_match("/'message'\s*=>\s*\$e->getMessage\(\)/", $line) !== 1) {
+                    continue;
+                }
+                $offenders[] = str_replace(base_path().'/', '', $file->getPathname()).':'.($index + 1);
+            }
+        }
+
+        $this->assertSame(
+            [],
+            $offenders,
+            "Raw exception text must not reach users from services. Wrap with UserFacingError::message():\n".implode("\n", $offenders)
+        );
+    }
 }

@@ -15,6 +15,7 @@ use App\Services\SitePromotionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 class SitePromotionTest extends TestCase
@@ -635,5 +636,19 @@ class SitePromotionTest extends TestCase
             'payment_method' => 'stripe_credit',
             'user_id' => $publisher->id,
         ]);
+    }
+
+    public function test_wallet_feature_failure_does_not_echo_sql(): void
+    {
+        $publisher = $this->publisherWithWallet(50);
+        $site = $this->site($publisher);
+        Schema::drop('wallets');
+
+        $result = app(SitePromotionService::class)->featureWithWallet($site, $publisher);
+
+        $this->assertFalse($result['success']);
+        $this->assertStringNotContainsString('SQLSTATE', $result['message']);
+        $this->assertStringNotContainsString('wallets', strtolower($result['message']));
+        $this->assertSame('Could not feature this site. Please try again.', $result['message']);
     }
 }
