@@ -499,13 +499,16 @@
         return /^[A-Za-z0-9_-]{12,}$/.test(raw);
     }
 
-    function articlePickerLabel(article, fits) {
+    function articlePickerLabel(article) {
         const locale = articleLocale(article);
         const raw = String(article?.title || '').trim();
-        const base = articleTitleLooksLikeId(raw)
+        return articleTitleLooksLikeId(raw)
             ? ('Article' + (locale ? ' · ' + locale : ''))
             : (raw + (locale ? ' (' + locale + ')' : ''));
-        return base + (fits ? '' : ' · different language');
+    }
+
+    function siteLanguageLabel(item) {
+        return siteLanguageCodes(item).map((c) => String(c).toUpperCase()).join('/');
     }
 
     function lineContentIds(item) {
@@ -852,30 +855,43 @@
                 } else {
                     articleBlock = placementIds.map((selectedId, copyIndex) => {
                         const options = articlesForCartPlacement(item, copyIndex);
+                        const siteLangs = siteLanguageCodes(item);
+                        const siteLangLabel = siteLanguageLabel(item);
+                        const matching = options.filter((article) => articleFitsSiteLanguages(article, siteLangs));
+                        const other = options.filter((article) => !articleFitsSiteLanguages(article, siteLangs));
                         const slotLabel = placementIds.length > 1
                             ? `Article ${copyIndex + 1} of ${placementIds.length}`
                             : (selectedId ? 'Article' : 'Add article');
+                        const slotKicker = siteLangLabel ? (slotLabel + ' · site ' + siteLangLabel) : slotLabel;
                         const selectId = 'cart-doc-' + itemKey.replace(/[^a-zA-Z0-9_-]/g, '-') + '-' + copyIndex;
-                        let opts = `<option value="">— Choose ${placementIds.length > 1 ? 'article ' + (copyIndex + 1) + ' of ' + placementIds.length : 'article'} —</option>`;
-                        options.forEach((article) => {
-                            const fits = articleFitsSiteLanguages(article, siteLanguageCodes(item));
+                        const renderOption = (article) => {
                             const optionId = articleId(article.id);
-                            opts += `<option value="${optionId}" ${optionId === Number(selectedId) ? 'selected' : ''}>${escapeHtml(articlePickerLabel(article, fits))}</option>`;
-                        });
+                            return `<option value="${optionId}" ${optionId === Number(selectedId) ? 'selected' : ''}>${escapeHtml(articlePickerLabel(article))}</option>`;
+                        };
+                        let opts = `<option value="">— Choose ${placementIds.length > 1 ? 'article ' + (copyIndex + 1) + ' of ' + placementIds.length : 'article'} —</option>`;
+                        if (matching.length > 0 && other.length > 0 && !requireSameLanguage) {
+                            opts += `<optgroup label="Matches this site">${matching.map(renderOption).join('')}</optgroup>`;
+                            opts += `<optgroup label="Other languages">${other.map(renderOption).join('')}</optgroup>`;
+                        } else {
+                            options.forEach((article) => { opts += renderOption(article); });
+                        }
                         if (selectedId && !options.some((a) => articleId(a.id) === Number(selectedId))) {
                             opts += `<option value="${selectedId}" selected>Assigned article</option>`;
                         }
                         const emptyHint = options.length === 0 && !selectedId
                             ? `<div class="cart-item-article-empty mt-1">Need another article? <a class="cart-item-upload-link cart-item-upload-link--primary" href="${contentLibraryUploadUrl}">Upload article</a></div>`
                             : '';
-                        const langNote = item.language_note
-                            ? `<div class="cart-item-language-note" title="Preferred match is the same language as the site">${escapeHtml(item.language_note)}</div>`
+                        const noMatchNote = (!requireSameLanguage && matching.length === 0 && other.length > 0)
+                            ? `<div class="cart-item-language-note">This site is ${escapeHtml(siteLangLabel || 'unknown')}. None of your articles match — you can still assign one.</div>`
                             : '';
+                        const langNote = noMatchNote || (item.language_note
+                            ? `<div class="cart-item-language-note" title="Preferred match is the same language as the site">${escapeHtml(item.language_note)}</div>`
+                            : '');
                         const uploadLink = `<a class="cart-item-upload-link" href="${contentLibraryUploadUrl}">${selectedId ? 'Upload another' : 'Upload new'}</a>`;
                         return `
                         <div class="cart-item-article ${selectedId ? 'is-assigned' : 'needs-document'}">
                             <div class="cart-item-order-label">
-                                <span class="cart-item-order-kicker">${escapeHtml(slotLabel)}</span>
+                                <span class="cart-item-order-kicker">${escapeHtml(slotKicker)}</span>
                             </div>
                             <label class="visually-hidden" for="${selectId}">Article for ${escapeHtml(siteName)}</label>
                             <select id="${selectId}"
