@@ -65,6 +65,58 @@ class CampaignController extends Controller
         ));
     }
 
+    public function show(Request $request, EmailCampaign $campaign)
+    {
+        try {
+            EmailCampaign::recoverStalled();
+            $campaign->refresh();
+        } catch (\Throwable $e) {
+            Log::warning('Campaign stall recovery failed', ['error' => $e->getMessage()]);
+        }
+
+        $status = search_text($request->get('status'));
+        $allowed = [
+            EmailCampaignRecipient::STATUS_PENDING,
+            EmailCampaignRecipient::STATUS_QUEUED,
+            EmailCampaignRecipient::STATUS_DELIVERED,
+            EmailCampaignRecipient::STATUS_FAILED,
+            EmailCampaignRecipient::STATUS_SKIPPED,
+        ];
+        if (! in_array($status, $allowed, true)) {
+            $status = '';
+        }
+
+        try {
+            $recipients = $campaign->recipients()
+                ->with(['user', 'emailLog'])
+                ->when($status !== '', fn ($query) => $query->where('status', $status))
+                ->orderBy('id')
+                ->paginate(25)
+                ->withQueryString();
+            $counts = $campaign->recipientStatusCounts();
+        } catch (\Throwable $e) {
+            Log::warning('Campaign recipient list failed', [
+                'campaign_id' => $campaign->id,
+                'error' => $e->getMessage(),
+            ]);
+            $recipients = new LengthAwarePaginator([], 0, 25);
+            $counts = [
+                'pending' => 0,
+                'queued' => 0,
+                'delivered' => 0,
+                'failed' => 0,
+                'skipped' => 0,
+            ];
+        }
+
+        return view('admin.campaigns.show', compact(
+            'campaign',
+            'recipients',
+            'counts',
+            'status'
+        ));
+    }
+
     public function preview(Request $request)
     {
         $data = $request->validate([

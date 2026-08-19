@@ -360,6 +360,37 @@ class AdminAudienceInventoryTest extends TestCase
             ->assertSee('No users match these filters', false);
     }
 
+    public function test_filtered_inventory_warns_email_still_sends_full_segment(): void
+    {
+        $admin = $this->makeUser('admin');
+        $this->makeUser('advertiser');
+
+        $warning = 'Filters apply to this table and CSV only.';
+        $emailHref = route('admin.campaigns.index', ['audience' => 'advertisers']);
+
+        $this->actingAs($admin)
+            ->get(route('admin.audiences.index', ['tab' => 'advertisers']))
+            ->assertOk()
+            ->assertDontSee($warning, false)
+            ->assertSee('href="'.$emailHref.'"', false);
+
+        $this->actingAs($admin)
+            ->get(route('admin.audiences.index', [
+                'tab' => 'advertisers',
+                'verified' => 'yes',
+                'country' => 'DE',
+            ]))
+            ->assertOk()
+            ->assertSee($warning, false)
+            ->assertSee('still sends the full segment', false)
+            ->assertSee('href="'.$emailHref.'"', false)
+            ->assertDontSee('href="'.route('admin.campaigns.index', [
+                'audience' => 'advertisers',
+                'verified' => 'yes',
+                'country' => 'DE',
+            ]).'"', false);
+    }
+
     public function test_unknown_audience_key_is_empty_for_count_collect_and_send(): void
     {
         $this->makeUser('advertiser');

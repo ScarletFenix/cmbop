@@ -74,6 +74,8 @@ class AdminCampaignsDocsTest extends TestCase
         $this->assertStringContainsString('must not skip-stale a queued recipient who already has a delivered log', $body);
         $this->assertStringContainsString('Lost transactional pending logs', $body);
         $this->assertStringContainsString('must **not** abort that expire', $body);
+        $this->assertStringContainsString('admin.campaigns.show', $body);
+        $this->assertStringContainsString('no** resend-all', $body);
         $this->assertStringNotContainsString('/advertiser/campaigns', $body);
     }
 

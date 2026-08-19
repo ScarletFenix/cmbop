@@ -161,6 +161,119 @@ class AdminCampaignsTest extends TestCase
             ->assertRedirect(route('marketing.dashboard'));
     }
 
+    public function test_guest_is_redirected_from_campaign_show(): void
+    {
+        $admin = $this->makeUser('admin');
+        $campaign = EmailCampaign::create([
+            'name' => 'Show gate',
+            'subject' => 'Show gate subject',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 0,
+            'status' => EmailCampaign::STATUS_SENT,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+
+        $this->get(route('admin.campaigns.show', $campaign))
+            ->assertRedirect(route('login'));
+    }
+
+    public function test_advertiser_cannot_open_campaign_show(): void
+    {
+        $admin = $this->makeUser('admin');
+        $campaign = EmailCampaign::create([
+            'name' => 'Show gate',
+            'subject' => 'Show gate subject',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 0,
+            'status' => EmailCampaign::STATUS_SENT,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+
+        $this->actingAs($this->makeUser('advertiser'))
+            ->get(route('admin.campaigns.show', $campaign))
+            ->assertForbidden();
+    }
+
+    public function test_admin_campaign_show_lists_failed_and_skipped_reasons(): void
+    {
+        $admin = $this->makeUser('admin');
+        $delivered = $this->makeUser('advertiser');
+        $skipped = $this->makeUser('advertiser');
+        $failed = $this->makeUser('advertiser');
+
+        $campaign = EmailCampaign::create([
+            'name' => 'Spring blast',
+            'subject' => 'Spring blast subject',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 3,
+            'sent_count' => 1,
+            'skipped_count' => 2,
+            'status' => EmailCampaign::STATUS_SENT,
+            'respect_preferences' => true,
+            'created_by' => $admin->id,
+            'sent_at' => now(),
+        ]);
+
+        $log = EmailLog::create([
+            'mailable' => AudienceCampaignMail::class,
+            'template_key' => 'audience_campaign',
+            'notification_type' => 'audience_campaign',
+            'to_email' => $failed->email,
+            'status' => EmailLog::STATUS_FAILED,
+            'error' => 'SMTP timeout',
+        ]);
+
+        EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $delivered->id,
+            'email' => $delivered->email,
+            'status' => EmailCampaignRecipient::STATUS_DELIVERED,
+        ]);
+        EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $skipped->id,
+            'email' => $skipped->email,
+            'status' => EmailCampaignRecipient::STATUS_SKIPPED,
+            'skip_reason' => EmailCampaignRecipient::SKIP_PREFERENCE,
+        ]);
+        EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $failed->id,
+            'email' => $failed->email,
+            'status' => EmailCampaignRecipient::STATUS_FAILED,
+            'skip_reason' => EmailCampaignRecipient::SKIP_ERROR,
+            'email_log_id' => $log->id,
+        ]);
+
+        $html = $this->actingAs($admin)
+            ->get(route('admin.campaigns.show', $campaign))
+            ->assertOk()
+            ->assertSee('Spring blast subject', false)
+            ->assertSee($delivered->email, false)
+            ->assertSee($skipped->email, false)
+            ->assertSee($failed->email, false)
+            ->assertSee('Marketing preference', false)
+            ->assertSee('Send error', false)
+            ->assertSee(route('admin.emails.log', $log), false)
+            ->assertDontSee('Send campaign', false)
+            ->assertDontSee('Resend', false)
+            ->assertDontSee('admin.campaigns.send', false)
+            ->getContent();
+
+        $this->assertStringNotContainsString('route(\'admin.campaigns.send\')', $html);
+        $this->assertStringNotContainsString(route('admin.campaigns.send'), $html);
+
+        $this->actingAs($admin)
+            ->get(route('admin.campaigns.index'))
+            ->assertOk()
+            ->assertSee(route('admin.campaigns.show', $campaign), false);
+    }
+
     public function test_admin_index_loads_and_preselects_audience(): void
     {
         $admin = $this->makeUser('admin');
@@ -181,7 +294,10 @@ class AdminCampaignsTest extends TestCase
             ->assertSee("Accept': 'application/json, text/html'", false)
             ->assertSee('name="include_unverified" value="0"', false)
             ->assertSee('Advertisers: never checked out', false)
-            ->assertSee('value="advertisers_no_paid_orders"', false);
+            ->assertSee('value="advertisers_no_paid_orders"', false)
+            ->assertSee('Advertisers: paid customers', false)
+            ->assertSee('Advertisers: deposited, no paid orders', false)
+            ->assertSee('Publishers: no active sites', false);
 
         $html = $this->actingAs($admin)
             ->get(route('admin.campaigns.index'))
