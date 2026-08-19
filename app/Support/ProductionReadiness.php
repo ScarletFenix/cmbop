@@ -28,6 +28,7 @@ class ProductionReadiness
     {
         return [
             $this->databaseCheck(),
+            $this->debugCheck(),
             $this->appUrlCheck(),
             $this->mediaPathCheck(),
             $this->storageLinkCheck(),
@@ -116,6 +117,30 @@ class ProductionReadiness
             'Database',
             'Using '.$driver.' (allowed outside production).',
             ''
+        );
+    }
+
+    /**
+     * @return array{id: string, severity: string, title: string, detail: string, fix: string}
+     */
+    private function debugCheck(): array
+    {
+        $debug = (bool) config('app.debug');
+
+        if (! $debug) {
+            return $this->item('app_debug', self::SEVERITY_OK, 'APP_DEBUG', 'Off.', '');
+        }
+
+        if (! $this->isProduction()) {
+            return $this->item('app_debug', self::SEVERITY_OK, 'APP_DEBUG', 'On (allowed outside production).', '');
+        }
+
+        return $this->item(
+            'app_debug',
+            self::SEVERITY_FAIL,
+            'APP_DEBUG is on in production',
+            'Stack traces and environment values can leak to visitors.',
+            'Set APP_DEBUG=false in .env and run php artisan config:clear.'
         );
     }
 

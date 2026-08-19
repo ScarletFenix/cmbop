@@ -137,13 +137,13 @@ class SocialiteController extends Controller
                 'email' => $email,
                 'password' => $temporaryPassword,
                 'google_id' => $providerId,
-                'google_token' => $socialUser->token ?? null,
-                'google_refresh_token' => $socialUser->refreshToken ?? null,
                 'avatar' => $this->normalizedAvatarUrl($socialUser->getAvatar()),
-                'active_role_id' => $advertiserRole->id,
             ]);
 
-            // Not mass-assignable: Google already proved ownership of this address.
+            // Not mass-assignable: tokens, role, and verify must be set explicitly.
+            $user->google_token = $socialUser->token ?? null;
+            $user->google_refresh_token = $socialUser->refreshToken ?? null;
+            $user->active_role_id = $advertiserRole->id;
             $user->email_verified_at = now();
             $user->save();
 

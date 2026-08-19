@@ -27,40 +27,26 @@ class User extends Authenticatable implements MustVerifyEmail
         'email',
         'password',
         'google_id',
-        'google_token',
-        'google_refresh_token',
         'avatar',
-        'active_role_id',
-        'stripe_customer_id',
-        'stripe_default_payment_method_id',
-        'payout_business_name',
-        'payout_paypal_email',
-        'payout_wise_email',
-        'payout_bank_holder_name',
-        'payout_bank_name',
-        'payout_bank_account',
-        'payout_bank_swift',
-        'payout_crypto_trx_wallet',
-        'payout_crypto_type',
-        'payout_crypto_trx_verified_at',
-        'payout_profile_locked_at',
-        'payout_preferred_method',
         'new_sites_digest_sent_at',
         'deposit_reminder_day7_sent_at',
         'deposit_reminder_day14_sent_at',
         'add_site_reminder_day3_sent_at',
         'add_site_reminder_day7_sent_at',
-        'catalog_reveal_exempt',
-        'catalog_reveal_exempt_until',
     ];
 
     /**
-     * Never mass-assignable: these bypass email verification and grant staff
-     * powers, so they must be set explicitly by code that checked authorization.
-     * Kept out of $fillable rather than listed here so the intent is obvious.
+     * Never mass-assignable: money, staff, and verify flags must be set
+     * explicitly by the service that checked authorization. Factories still
+     * work (they unguard). Register/Socialite only pass name/email/password.
      *
      * - email_verified_at (see SocialiteController)
      * - can_activate_sites (see Admin\UserController::updateRoles)
+     * - active_role_id (RoleController / registration)
+     * - google_token / google_refresh_token (SocialiteController)
+     * - stripe_customer_id / stripe_default_payment_method_id (StripeCustomerService)
+     * - payout_* (PayoutProfileService)
+     * - catalog_reveal_exempt* (CatalogActivityController)
      */
 
     /**
