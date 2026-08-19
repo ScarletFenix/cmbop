@@ -2,9 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Mail\UnfulfilledCheckoutCredited;
 use App\Models\ActivityLog;
 use App\Models\CheckoutIntent;
 use App\Models\ContentSubmission;
+use App\Models\InAppNotification;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Role;
@@ -2732,6 +2734,12 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
         $this->assertSame($wallet->id, (int) $logs->first()->subject_id);
         $this->assertEqualsWithDelta(40.0, (float) data_get($logs->first()->properties, 'amount'), 0.01);
         $this->assertSame($ref, data_get($logs->first()->properties, 'reference_code'));
-        $this->assertSame('Credited leftover card payment', activity_action_label('wallet.leftover_card_credited'));
+        $this->assertSame('Credited leftover checkout payment', activity_action_label('wallet.leftover_card_credited'));
+        Mail::assertQueued(UnfulfilledCheckoutCredited::class, 1);
+        $this->assertTrue(InAppNotification::query()
+            ->where('user_id', $advertiser->id)
+            ->where('title', 'Wallet topped up — €40.00')
+            ->where('meta->reason', 'unfulfilled_checkout')
+            ->exists());
     }
 }
