@@ -12,6 +12,7 @@ use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
 use App\Models\Wallet;
+use App\Services\ContentModeration\ContentModerationService;
 use App\Services\OrderPaymentService;
 use App\Services\PaypalCheckoutService;
 use App\Support\UserMessages;
@@ -315,6 +316,49 @@ class CheckoutPaypalProcessTest extends TestCase
             ->assertJsonMissing(['message' => UserMessages::get('payment.paypal_unavailable')]);
 
         $this->assertSame(0, Order::where('reference_code', 'PP-400')->count());
+    }
+
+    public function test_process_order_paypal_starts_when_live_policy_crashes(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        $this->enablePaypal();
+        $this->fakePaypalCreateOrder('PO-POLICY-CRASH');
+
+        $advertiser = $this->advertiser();
+        $site = $this->activeSite($this->publisher());
+        $sub = $this->createApprovedSubmission($advertiser, $site->id);
+
+        $this->mock(ContentModerationService::class, function ($mock) {
+            $mock->shouldReceive('assertSubmissionsApproved')
+                ->andThrow(new \TypeError('must be of type string, array given'));
+            $mock->shouldReceive('submissionPassesLivePolicy')
+                ->andThrow(new \TypeError('must be of type string, array given'));
+        });
+
+        $this->actingAs($advertiser)
+            ->withSession([
+                'cart' => [[
+                    'id' => $site->id,
+                    'name' => $site->site_name,
+                    'quantity' => 1,
+                    'content_submission_id' => $sub->id,
+                    'price' => 50,
+                ]],
+            ])
+            ->postJson(route('advertiser.checkout.process'), [
+                'payment_method' => 'paypal',
+                'reference_code' => 'PP-POLICY',
+                'publication_mode' => 'immediate',
+                'content_submissions' => [
+                    $site->id => [$sub->id],
+                ],
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('paypal_order_id', 'PO-POLICY-CRASH')
+            ->assertJsonMissing(['message' => UserMessages::get('payment.paypal_rejected', ['code' => 'CHECKOUT'])]);
+
+        $this->assertSame(0, Order::where('reference_code', 'PP-POLICY')->count());
     }
 
     public function test_process_order_paypal_connection_error_is_not_generic_order_error(): void
