@@ -433,6 +433,9 @@ class PaypalCheckoutServiceTest extends TestCase
                 'error' => 'invalid_client',
                 'error_description' => 'Client Authentication failed',
             ], 401),
+            'https://api-m.paypal.com/v1/oauth2/token' => Http::response([
+                'error' => 'invalid_client',
+            ], 401),
         ]);
 
         try {
@@ -440,6 +443,79 @@ class PaypalCheckoutServiceTest extends TestCase
             $this->fail('Expected a PayPal OAuth exception.');
         } catch (RuntimeException $e) {
             $this->assertSame(UserMessages::get('payment.paypal_auth'), $e->getMessage());
+        }
+    }
+
+    public function test_oauth_uses_live_host_when_sandbox_returns_401(): void
+    {
+        Http::fake(function ($request) {
+            $url = $request->url();
+            if (str_contains($url, 'https://api-m.sandbox.paypal.com/v1/oauth2/token')) {
+                return Http::response(['error' => 'invalid_client'], 401);
+            }
+            if (str_contains($url, 'https://api-m.paypal.com/v1/oauth2/token')) {
+                return Http::response([
+                    'access_token' => 'tok_live',
+                    'expires_in' => 300,
+                    'token_type' => 'Bearer',
+                ], 200);
+            }
+            if (str_contains($url, 'https://api-m.paypal.com/v2/checkout/orders')) {
+                return Http::response([
+                    'id' => 'PO-LIVE',
+                    'status' => 'CREATED',
+                    'links' => [
+                        ['rel' => 'approve', 'href' => 'https://www.paypal.com/checkoutnow?token=PO-LIVE'],
+                    ],
+                ], 201);
+            }
+
+            return Http::response(['name' => 'RESOURCE_NOT_FOUND'], 404);
+        });
+
+        $created = (new PaypalCheckoutService)->createOrder(12.5, [
+            'type' => PaypalCheckoutService::TYPE_ORDER_CHECKOUT,
+            'user_id' => 9,
+            'reference_code' => 'PP-LIVE',
+        ], 'https://example.test/return', 'https://example.test/cancel');
+
+        $this->assertSame('PO-LIVE', $created['id']);
+        Http::assertSent(function ($request) {
+            return str_starts_with($request->url(), 'https://api-m.paypal.com/v2/checkout/orders');
+        });
+    }
+
+    public function test_oauth_strips_interior_whitespace_from_credentials(): void
+    {
+        $this->enablePaypal([
+            'client_id' => "paypal- client\ttest",
+            'secret' => "paypal-secret-\u{00A0}test",
+        ]);
+        Cache::flush();
+        $this->fakePaypal();
+
+        (new PaypalCheckoutService)->accessToken();
+
+        Http::assertSent(function ($request) {
+            if (! str_contains($request->url(), '/v1/oauth2/token')) {
+                return false;
+            }
+            $auth = (string) $request->header('Authorization')[0];
+            $expected = 'Basic '.base64_encode('paypal-clienttest:paypal-secret-test');
+
+            return $auth === $expected;
+        });
+    }
+
+    public function test_oauth_rejects_webhook_id_used_as_secret(): void
+    {
+        $this->enablePaypal(['secret' => 'WH-2AB12345CD678901E']);
+
+        try {
+            (new PaypalCheckoutService)->accessToken();
+            $this->fail('Expected a webhook-as-secret exception.');
+        } catch (RuntimeException $e) {
+            $this->assertSame(UserMessages::get('payment.paypal_webhook_as_secret'), $e->getMessage());
         }
     }
 

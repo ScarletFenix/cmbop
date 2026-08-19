@@ -2351,12 +2351,16 @@ class CatalogController extends Controller
                 is_string($savedCardId) ? $savedCardId : null
             );
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Order processing failed: '.$e->getMessage());
+
+            $fallback = $request->input('payment_method') === 'paypal'
+                ? 'Failed to start PayPal checkout. Please try again.'
+                : 'We could not process your order. Please try again.';
 
             return response()->json([
                 'success' => false,
-                'message' => UserFacingError::message($e, 'We could not process your order. Please try again.'),
+                'message' => UserFacingError::message($e, $fallback),
             ]);
         }
     }
@@ -2383,66 +2387,67 @@ class CatalogController extends Controller
 
         $expandedOrders = array_column($checkoutContent['lines'], 'orderItem');
         $totalAmount = round(array_sum(array_column($expandedOrders, 'price')), 2);
-        $schedule = $checkoutContent['schedule'];
+        $schedule = $checkoutContent['schedule'] ?? [];
         $bonusApplied = 0.0;
         $amountDue = $totalAmount;
         $paymentService = app(OrderPaymentService::class);
-        $paymentService->releaseAbandonedStripeFirstBonus((int) $userId, (string) $referenceCode);
 
         try {
-            if ($useBonus) {
-                $advertiserRoleId = Wallet::advertiserRoleId();
-                if ($advertiserRoleId) {
-                    $wallet = Wallet::lockOrCreateForRole((int) $userId, (int) $advertiserRoleId);
-                    $wallet->repairOrphanedWelcomeBonus();
-                    $wallet->reconcileInflatedBonusBalance();
-                    $wallet->refresh();
-                    $bonusApplied = $wallet->reserveBonusOnly(min($wallet->lockedBonusBalance(), $totalAmount));
-                    $amountDue = round(max(0, $totalAmount - $bonusApplied), 2);
+            $paymentService->releaseAbandonedStripeFirstBonus((int) $userId, (string) $referenceCode);
+
+            try {
+                if ($useBonus) {
+                    $advertiserRoleId = Wallet::advertiserRoleId();
+                    if ($advertiserRoleId) {
+                        $wallet = Wallet::lockOrCreateForRole((int) $userId, (int) $advertiserRoleId);
+                        $wallet->repairOrphanedWelcomeBonus();
+                        $wallet->reconcileInflatedBonusBalance();
+                        $wallet->refresh();
+                        $bonusApplied = $wallet->reserveBonusOnly(min($wallet->lockedBonusBalance(), $totalAmount));
+                        $amountDue = round(max(0, $totalAmount - $bonusApplied), 2);
+                    }
                 }
+            } catch (\Throwable $e) {
+                Log::error('Bonus reserve failed before PayPal checkout', [
+                    'reference_code' => $referenceCode,
+                    'error' => $e->getMessage(),
+                ]);
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unable to apply bonus balance. Please try again without bonus, or contact support.',
+                ]);
             }
-        } catch (\Throwable $e) {
-            Log::error('Bonus reserve failed before PayPal checkout', [
-                'reference_code' => $referenceCode,
-                'error' => $e->getMessage(),
+
+            if ($amountDue <= 0) {
+                if ($bonusApplied > 0) {
+                    $this->refundCheckoutBonus((int) $userId, (string) $referenceCode);
+                }
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'PayPal requires an amount greater than €0. Use wallet if covered by bonus, or select ready sites that need payment.',
+                ], 422);
+            }
+
+            $packageLines = $this->instantCheckoutPackageLines($checkoutContent, (int) $userId);
+
+            $paymentService->storePendingCheckout($referenceCode, [
+                'user_id' => (int) $userId,
+                'reference_code' => (string) $referenceCode,
+                'order_total' => $totalAmount,
+                'amount_due' => $amountDue,
+                'bonus_applied' => $bonusApplied,
+                'schedule' => $schedule,
+                'lines' => $packageLines,
+                'payment_method' => 'paypal',
+                'paypal_order_id' => null,
             ]);
 
-            return response()->json([
-                'success' => false,
-                'message' => 'Unable to apply bonus balance. Please try again without bonus, or contact support.',
-            ]);
-        }
-
-        if ($amountDue <= 0) {
             if ($bonusApplied > 0) {
-                $this->refundCheckoutBonus((int) $userId, (string) $referenceCode);
+                $this->rememberCheckoutBonus((int) $userId, (string) $referenceCode, $bonusApplied);
             }
 
-            return response()->json([
-                'success' => false,
-                'message' => 'PayPal requires an amount greater than €0. Use wallet if covered by bonus, or select ready sites that need payment.',
-            ], 422);
-        }
-
-        $packageLines = $this->instantCheckoutPackageLines($checkoutContent, (int) $userId);
-
-        $paymentService->storePendingCheckout($referenceCode, [
-            'user_id' => (int) $userId,
-            'reference_code' => (string) $referenceCode,
-            'order_total' => $totalAmount,
-            'amount_due' => $amountDue,
-            'bonus_applied' => $bonusApplied,
-            'schedule' => $schedule,
-            'lines' => $packageLines,
-            'payment_method' => 'paypal',
-            'paypal_order_id' => null,
-        ]);
-
-        if ($bonusApplied > 0) {
-            $this->rememberCheckoutBonus((int) $userId, (string) $referenceCode, $bonusApplied);
-        }
-
-        try {
             $created = $paypal->createOrder($amountDue, [
                 'type' => PaypalCheckoutService::TYPE_ORDER_CHECKOUT,
                 'user_id' => $userId,
@@ -2486,7 +2491,7 @@ class CatalogController extends Controller
                 'bonus_applied' => $bonusApplied,
                 'amount_due' => $amountDue,
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             $this->refundCheckoutBonus((int) $userId, (string) $referenceCode);
             $paymentService->forgetPendingCheckout((string) $referenceCode);
 

@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Support\UserMessages;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -24,6 +25,11 @@ class PaypalCheckoutService
     public const TYPE_WALLET_DEPOSIT = 'wallet_deposit';
 
     public const CURRENCY = 'EUR';
+
+    /**
+     * Host that actually authenticated, when PAYPAL_MODE pointed at the other environment.
+     */
+    private ?string $resolvedBaseUrl = null;
 
     public function configured(): bool
     {
@@ -72,14 +78,24 @@ class PaypalCheckoutService
 
     public function baseUrl(): string
     {
+        if (is_string($this->resolvedBaseUrl) && $this->resolvedBaseUrl !== '') {
+            return $this->resolvedBaseUrl;
+        }
+
         $override = rtrim(trim((string) config('services.paypal.base_url', '')), '/');
         if ($override !== '') {
             return $override;
         }
 
-        return $this->mode() === 'live'
-            ? 'https://api-m.paypal.com'
-            : 'https://api-m.sandbox.paypal.com';
+        return $this->configuredModeBaseUrl();
+    }
+
+    /**
+     * Dashboard webhook IDs start with WH- and are not the REST Secret.
+     */
+    public function secretLooksLikeWebhookId(): bool
+    {
+        return str_starts_with(strtoupper($this->secret()), 'WH-');
     }
 
     public static function formatEuros(float|int|string $amount): string
@@ -440,47 +456,62 @@ class PaypalCheckoutService
         ];
     }
 
-    public function accessToken(): string
+    public function accessToken(bool $allowHostFallback = true): string
     {
         $this->assertConfigured();
 
+        if ($this->secretLooksLikeWebhookId()) {
+            throw new RuntimeException(UserMessages::get('payment.paypal_webhook_as_secret'));
+        }
+
         $cacheKey = 'paypal:oauth:'.$this->mode().':'.hash('sha256', $this->clientId()."\0".$this->secret());
         $cached = Cache::get($cacheKey);
-        if (is_string($cached) && $cached !== '') {
+        if (is_string($cached) && $cached !== '' && $this->resolvedBaseUrl === null) {
             return $cached;
         }
 
-        $response = Http::asForm()
-            ->acceptJson()
-            ->timeout(15)
-            ->withBasicAuth($this->clientId(), $this->secret())
-            ->post($this->baseUrl().'/v1/oauth2/token', [
-                'grant_type' => 'client_credentials',
-            ]);
+        $response = $this->fetchAccessToken($this->baseUrl());
 
-        if (! $response->successful()) {
-            $paypalError = $this->safePaypalErrorCode($response);
-            Log::error('PayPal OAuth failed', array_filter([
-                'status' => $response->status(),
-                'mode' => $this->mode(),
-                'error' => $paypalError,
-            ], fn ($value) => $value !== null && $value !== ''));
-            throw new RuntimeException(UserMessages::get(
-                (int) $response->status() === 401
-                    ? 'payment.paypal_auth'
-                    : 'payment.paypal_unavailable'
-            ));
+        if ($response->successful()) {
+            if ($this->resolvedBaseUrl !== null) {
+                return $this->tokenFromOAuthResponse($response);
+            }
+
+            return $this->rememberAccessToken($cacheKey, $response);
         }
 
-        $token = trim((string) $response->json('access_token'));
-        if ($token === '') {
-            throw new RuntimeException(UserMessages::get('payment.paypal_unavailable'));
+        if ($allowHostFallback
+            && (int) $response->status() === 401
+            && $this->canProbeAlternateHost()) {
+            try {
+                $altHost = $this->alternateBaseUrl();
+                $alt = $this->fetchAccessToken($altHost);
+                if ($alt->successful()) {
+                    Log::warning('PayPal credentials matched the other environment; using that host for this request', [
+                        'configured_mode' => $this->mode(),
+                        'working_host' => $altHost,
+                    ]);
+                    $this->resolvedBaseUrl = $altHost;
+
+                    // Do not cache: the next process must re-probe until PAYPAL_MODE matches.
+                    return $this->tokenFromOAuthResponse($alt);
+                }
+            } catch (RuntimeException) {
+                // Alternate host unreachable — keep the original 401.
+            }
         }
 
-        $ttl = max(30, ((int) $response->json('expires_in', 300)) - 60);
-        Cache::put($cacheKey, $token, $ttl);
-
-        return $token;
+        $paypalError = $this->safePaypalErrorCode($response);
+        Log::error('PayPal OAuth failed', array_filter([
+            'status' => $response->status(),
+            'mode' => $this->mode(),
+            'error' => $paypalError,
+        ], fn ($value) => $value !== null && $value !== ''));
+        throw new RuntimeException(UserMessages::get(
+            (int) $response->status() === 401
+                ? 'payment.paypal_auth'
+                : 'payment.paypal_unavailable'
+        ));
     }
 
     private function paypalRequest(string $method, string $path, mixed $body = null, array $headers = [], bool $throw = true): Response
@@ -492,11 +523,19 @@ class PaypalCheckoutService
             ->withHeaders($headers);
 
         $url = $this->baseUrl().$path;
-        $response = match (strtolower($method)) {
-            'post' => $pending->post($url, $body ?? new \stdClass),
-            'get' => $pending->get($url),
-            default => throw new RuntimeException('Unsupported PayPal method.'),
-        };
+        try {
+            $response = match (strtolower($method)) {
+                'post' => $pending->post($url, $body ?? new \stdClass),
+                'get' => $pending->get($url),
+                default => throw new RuntimeException('Unsupported PayPal method.'),
+            };
+        } catch (ConnectionException) {
+            Log::error('PayPal API connection failed', [
+                'path' => $path,
+                'host' => $this->baseUrl(),
+            ]);
+            throw new RuntimeException(UserMessages::get('payment.paypal_unavailable'));
+        }
 
         if ($throw && ! $response->successful()) {
             Log::error('PayPal API error', [
@@ -682,14 +721,72 @@ class PaypalCheckoutService
         return $this->normalizedCredential((string) config('services.paypal.secret', ''));
     }
 
+    private function configuredModeBaseUrl(): string
+    {
+        return $this->mode() === 'live'
+            ? 'https://api-m.paypal.com'
+            : 'https://api-m.sandbox.paypal.com';
+    }
+
+    private function alternateBaseUrl(): string
+    {
+        return $this->mode() === 'live'
+            ? 'https://api-m.sandbox.paypal.com'
+            : 'https://api-m.paypal.com';
+    }
+
+    private function canProbeAlternateHost(): bool
+    {
+        return rtrim(trim((string) config('services.paypal.base_url', '')), '/') === '';
+    }
+
+    private function fetchAccessToken(string $baseUrl): Response
+    {
+        try {
+            return Http::asForm()
+                ->acceptJson()
+                ->timeout(15)
+                ->withBasicAuth($this->clientId(), $this->secret())
+                ->post($baseUrl.'/v1/oauth2/token', [
+                    'grant_type' => 'client_credentials',
+                ]);
+        } catch (ConnectionException) {
+            Log::error('PayPal OAuth connection failed', [
+                'host' => $baseUrl,
+                'mode' => $this->mode(),
+            ]);
+            throw new RuntimeException(UserMessages::get('payment.paypal_unavailable'));
+        }
+    }
+
+    private function rememberAccessToken(string $cacheKey, Response $response): string
+    {
+        $token = $this->tokenFromOAuthResponse($response);
+        $ttl = max(30, ((int) $response->json('expires_in', 300)) - 60);
+        Cache::put($cacheKey, $token, $ttl);
+
+        return $token;
+    }
+
+    private function tokenFromOAuthResponse(Response $response): string
+    {
+        $token = trim((string) $response->json('access_token'));
+        if ($token === '') {
+            throw new RuntimeException(UserMessages::get('payment.paypal_unavailable'));
+        }
+
+        return $token;
+    }
+
     /**
-     * Dashboard copy-paste often wraps keys in quotes or includes a BOM.
-     * Those characters survive trim() and make PayPal return HTTP 401.
+     * Dashboard copy-paste often wraps keys in quotes, includes a BOM, or
+     * inserts spaces / NBSP. Those characters survive trim() and make PayPal
+     * return HTTP 401.
      */
     private function normalizedCredential(string $value): string
     {
         $value = preg_replace('/^\xEF\xBB\xBF/u', '', $value) ?? $value;
-        $value = str_replace(["\r", "\n", "\0", "\u{200B}", "\u{200C}", "\u{200D}", "\u{FEFF}"], '', $value);
+        $value = str_replace(["\r", "\n", "\0", "\u{200B}", "\u{200C}", "\u{200D}", "\u{FEFF}", "\u{00A0}"], '', $value);
         $value = trim($value);
         if (strlen($value) >= 2) {
             $first = $value[0];
@@ -699,7 +796,7 @@ class PaypalCheckoutService
             }
         }
 
-        return trim($value);
+        return preg_replace('/\s+/u', '', trim($value)) ?? trim($value);
     }
 
     private function safePaypalErrorCode(Response $response): string
