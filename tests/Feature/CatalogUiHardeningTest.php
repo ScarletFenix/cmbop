@@ -481,14 +481,23 @@ class CatalogUiHardeningTest extends TestCase
     {
         $blade = $this->catalogBlade();
 
-        $drawer = substr($blade, (int) strpos($blade, '<!-- More filters drawer -->'));
-        $drawer = substr($drawer, 0, (int) strpos($drawer, '</form>'));
+        $drawerStart = strpos($blade, 'id="moreFiltersDrawer"');
+        $this->assertNotFalse($drawerStart);
+        $drawer = substr($blade, $drawerStart);
+        $drawerEnd = strpos($drawer, '</form>');
+        $this->assertNotFalse($drawerEnd);
+        $drawer = substr($drawer, 0, $drawerEnd);
 
         // Old col-md-2/3 cells summed past 12 and wrapped mid-row. Keep the
         // shared 6/4/3 grid: four per lg row (Tag…Quality = 10 cells).
         $this->assertSame(0, substr_count($drawer, 'class="col-md-2"'));
         $this->assertSame(0, substr_count($drawer, 'class="col-md-3"'));
         $this->assertSame(12, substr_count($drawer, 'class="col-6 col-md-4 col-lg-3"'));
+
+        // Preset chips make DA taller than Tag/Favorites/Blacklist. Bottom
+        // alignment floated the DA label above that first row.
+        $this->assertStringContainsString('row g-3 align-items-start', $drawer);
+        $this->assertStringNotContainsString('align-items-end', $drawer);
     }
 
     public function test_catalog_sort_closed_control_matches_filter_select_sizing(): void
