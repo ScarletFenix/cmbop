@@ -14,10 +14,7 @@ class BillingController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Invoice::query()
-            ->where('user_id', auth()->id())
-            ->where('type', Invoice::TYPE_WITHDRAWAL_PAYOUT)
-            ->where('status', '!=', Invoice::STATUS_CANCELLED);
+        $query = Invoice::queryPayoutsForPublisherUser(auth()->user());
 
         $search = search_text($request->input('search'));
         if ($search !== '') {
@@ -54,9 +51,7 @@ class BillingController extends Controller
 
     public function show(Invoice $invoice)
     {
-        $this->authorizeOwner($invoice);
-        abort_unless($invoice->type === Invoice::TYPE_WITHDRAWAL_PAYOUT, 404);
-        abort_if($invoice->status === Invoice::STATUS_CANCELLED, 404);
+        $this->authorizePublisherPayout($invoice);
 
         return view('publisher.billing.show', compact('invoice'));
     }
@@ -67,9 +62,7 @@ class BillingController extends Controller
         BillingDocumentService $billing,
         WithdrawalPayoutStatementService $statements,
     ) {
-        $this->authorizeOwner($invoice);
-        abort_unless($invoice->type === Invoice::TYPE_WITHDRAWAL_PAYOUT, 404);
-        abort_if($invoice->status === Invoice::STATUS_CANCELLED, 404);
+        $this->authorizePublisherPayout($invoice);
 
         // normalizeLegacyFeeLineItems() clears pdf_path when it strips legacy fee lines.
         $invoice = $statements->normalizeLegacyFeeLineItems($invoice);
@@ -95,9 +88,7 @@ class BillingController extends Controller
         BillingDocumentService $billing,
         WithdrawalPayoutStatementService $statements,
     ) {
-        $this->authorizeOwner($invoice);
-        abort_unless($invoice->type === Invoice::TYPE_WITHDRAWAL_PAYOUT, 404);
-        abort_if($invoice->status === Invoice::STATUS_CANCELLED, 404);
+        $this->authorizePublisherPayout($invoice);
 
         $invoice = $statements->normalizeLegacyFeeLineItems($invoice);
 
@@ -121,6 +112,16 @@ class BillingController extends Controller
         if ((int) $invoice->user_id !== (int) auth()->id() && ! auth()->user()?->isAdmin()) {
             abort(403);
         }
+    }
+
+    private function authorizePublisherPayout(Invoice $invoice): void
+    {
+        $this->authorizeOwner($invoice);
+        abort_unless($invoice->type === Invoice::TYPE_WITHDRAWAL_PAYOUT, 404);
+        abort_if($invoice->status === Invoice::STATUS_CANCELLED, 404);
+
+        $owner = $invoice->user;
+        abort_unless($owner && $invoice->isPublisherPayoutFor($owner), 404);
     }
 
     private function parseDate(mixed $value): ?Carbon

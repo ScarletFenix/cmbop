@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\ToleratesUnparseableDates;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -296,6 +297,68 @@ class Invoice extends Model
     public function isWithdrawalPayout(): bool
     {
         return $this->type === self::TYPE_WITHDRAWAL_PAYOUT;
+    }
+
+    /**
+     * Payout statements for the publisher wallet. Dual-role advertiser
+     * cash-outs are excluded. Publisher-only leftover withdrawals with a
+     * null wallet_id stay visible.
+     *
+     * @return Builder<static>
+     */
+    public static function queryPayoutsForPublisherUser(User $user): Builder
+    {
+        $query = static::query()
+            ->where('user_id', $user->id)
+            ->where('type', self::TYPE_WITHDRAWAL_PAYOUT)
+            ->where('status', '!=', self::STATUS_CANCELLED);
+
+        $ids = static::publisherPayoutWithdrawalIds($user);
+        if ($ids === []) {
+            return $query->whereRaw('0 = 1');
+        }
+
+        $refs = array_map(static fn (int $id): string => 'WD-'.$id, $ids);
+
+        return $query->where(function (Builder $inner) use ($refs) {
+            $inner->whereIn('reference_code', $refs)
+                ->orWhereIn('transaction_id', $refs);
+        });
+    }
+
+    public function isPublisherPayoutFor(User $user): bool
+    {
+        if ((int) $this->user_id !== (int) $user->id) {
+            return false;
+        }
+
+        return static::queryPayoutsForPublisherUser($user)
+            ->whereKey($this->id)
+            ->exists();
+    }
+
+    /**
+     * @return list<int>
+     */
+    public static function publisherPayoutWithdrawalIds(User $user): array
+    {
+        $query = Withdrawal::query()->where('user_id', $user->id);
+
+        if (Withdrawal::hasTableColumn('wallet_id')) {
+            $wallet = Wallet::forPublisher((int) $user->id);
+            if (! $wallet) {
+                return [];
+            }
+
+            $query->where(function (Builder $inner) use ($user, $wallet) {
+                $inner->where('wallet_id', $wallet->id);
+                if (! $user->hasRole('advertiser')) {
+                    $inner->orWhereNull('wallet_id');
+                }
+            });
+        }
+
+        return $query->pluck('id')->map(fn ($id) => (int) $id)->all();
     }
 
     public static function paymentMethodLabel(?string $method): string
