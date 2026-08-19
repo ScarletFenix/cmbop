@@ -234,6 +234,7 @@ class GuestPostWizardTest extends TestCase
         $advertiser = $this->advertiser();
         $publisher = $this->publisher();
         $live = $this->activeSite($publisher, 'wizard-live.example');
+        $live->update(['languages' => ['en', 'de']]);
         $unverified = $this->activeSite($publisher, 'wizard-unverified.example');
         $unverified->update(['verified' => false]);
 
@@ -267,6 +268,8 @@ class GuestPostWizardTest extends TestCase
 
         $this->assertCount(1, session('cart'));
         $this->assertSame($live->id, (int) session('cart')[0]['id']);
+        $this->assertSame(['de', 'en'], session('cart')[0]['languages'] ?? null);
+        $this->assertSame(['us'], session('cart')[0]['countries'] ?? null);
     }
 
     public function test_pay_with_only_hidden_assigned_site_redirects_to_publishers(): void

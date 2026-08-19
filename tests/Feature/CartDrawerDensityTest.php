@@ -73,6 +73,8 @@ class CartDrawerDensityTest extends TestCase
         $this->assertStringContainsString('Placements — each needs its own article', $layout);
         $this->assertStringContainsString('cart-item-meta', $layout);
         $this->assertStringContainsString("metricBits.push('DA '", $layout);
+        $this->assertStringContainsString('Number(item.da) !== 0', $layout);
+        $this->assertStringContainsString('function languagePrimaryTag', $layout);
         $this->assertStringContainsString("€' + unitPrice + ' × '", $layout);
         $this->assertStringNotContainsString('each</div>', $layout);
         $this->assertStringContainsString('cart-keep-browsing', $layout);

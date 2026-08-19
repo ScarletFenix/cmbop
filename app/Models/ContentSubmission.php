@@ -1929,13 +1929,26 @@ class ContentSubmission extends Model
     }
 
     /**
+     * Primary subtag so en-US / en_US match a site that lists en.
+     */
+    public static function languagePrimaryTag(string $code): string
+    {
+        $code = strtolower(trim(str_replace('_', '-', $code)));
+        if ($code === '') {
+            return '';
+        }
+
+        return explode('-', $code, 2)[0];
+    }
+
+    /**
      * @param  array<int, string>  $siteLanguages
      */
     public static function languageFitsSiteLanguages(string $articleLanguage, array $siteLanguages): bool
     {
-        $article = strtolower(trim($articleLanguage));
+        $article = self::languagePrimaryTag($articleLanguage);
         $langs = array_values(array_unique(array_filter(array_map(
-            static fn ($c) => strtolower(trim((string) $c)),
+            static fn ($c) => self::languagePrimaryTag((string) $c),
             $siteLanguages
         ))));
 

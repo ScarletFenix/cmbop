@@ -100,7 +100,9 @@ class CartArticlePickerTest extends TestCase
             ->json('cart.0');
 
         $this->assertEqualsCanonicalizing(['de', 'en'], $line['languages']);
+        $this->assertSame(['de', 'en'], $line['languages']);
         $this->assertEqualsCanonicalizing(['de'], $line['countries']);
+        $this->assertTrue(ContentSubmission::languageFitsSiteLanguages('en-US', $line['languages']));
     }
 
     public function test_drawer_js_reads_cart_line_languages_array(): void
@@ -110,12 +112,16 @@ class CartArticlePickerTest extends TestCase
         $this->assertStringContainsString('function siteLanguageCodes', $layout);
         $this->assertStringContainsString('item?.languages', $layout);
         $this->assertStringContainsString('function articleFitsSiteLanguages', $layout);
+        $this->assertStringContainsString('function languagePrimaryTag', $layout);
         $this->assertStringContainsString('function articlePickerLabel', $layout);
         $this->assertStringContainsString('function articleTitleLooksLikeId', $layout);
+        $this->assertStringContainsString('raw.replace(/\\s+\\(\\d+\\)\\s*$/', $layout);
+        $this->assertStringContainsString('flips >= 4 || raw.length >= 20', $layout);
         $this->assertStringContainsString('Assigned article', $layout);
         $this->assertStringContainsString('<optgroup label="Matches this site">', $layout);
         $this->assertStringContainsString('None of your articles match — you can still assign one.', $layout);
         $this->assertStringNotContainsString('Assigned document #', $layout);
         $this->assertStringNotContainsString("' · different language'", $layout);
+        $this->assertStringNotContainsString('/^[A-Za-z0-9_-]{12,}$/', $layout);
     }
 }

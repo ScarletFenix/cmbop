@@ -463,13 +463,19 @@
         }
     }
 
+    function languagePrimaryTag(code) {
+        const raw = String(code || '').toLowerCase().trim().replace(/_/g, '-');
+        if (!raw) return '';
+        return raw.split('-')[0];
+    }
+
     function siteLanguageCodes(item) {
         const codes = [];
-        const primary = String(item?.language || '').toLowerCase().trim();
+        const primary = languagePrimaryTag(item?.language);
         if (primary) codes.push(primary);
         if (Array.isArray(item?.languages)) {
             item.languages.forEach((c) => {
-                const v = String(c || '').toLowerCase().trim();
+                const v = languagePrimaryTag(c);
                 if (v && !codes.includes(v)) codes.push(v);
             });
         }
@@ -477,9 +483,10 @@
     }
 
     function articleFitsSiteLanguages(article, siteLangs) {
-        const articleLang = String(article?.language || '').toLowerCase().trim();
-        if (!articleLang || !siteLangs.length) return true;
-        return siteLangs.includes(articleLang);
+        const articleLang = languagePrimaryTag(article?.language);
+        const langs = (siteLangs || []).map(languagePrimaryTag).filter(Boolean);
+        if (!articleLang || !langs.length) return true;
+        return langs.includes(articleLang);
     }
 
     function articleId(value) {
@@ -493,10 +500,21 @@
     }
 
     function articleTitleLooksLikeId(title) {
-        const raw = String(title || '').trim();
+        let raw = String(title || '').trim();
+        raw = raw.replace(/\s+\(\d+\)\s*$/, '').replace(/\.(docx?|pdf)$/i, '').trim();
         if (raw === '' || /^\d+$/.test(raw)) return true;
-        // Storage hashes / leftover filenames, not a human title.
-        return /^[A-Za-z0-9_-]{12,}$/.test(raw);
+        // Storage hashes (mixed case + digit, no spaces). Keep TitleCase+year titles.
+        if (raw.length < 16 || !/^[A-Za-z0-9_-]+$/.test(raw) || !/\d/.test(raw)) return false;
+        if (!/[A-Z]/.test(raw) || !/[a-z]/.test(raw)) return false;
+        let flips = 0;
+        for (let i = 1; i < raw.length; i++) {
+            const prev = raw[i - 1];
+            const next = raw[i];
+            if ((/[a-z]/.test(prev) && /[A-Z]/.test(next)) || (/[A-Z]/.test(prev) && /[a-z]/.test(next))) {
+                flips++;
+            }
+        }
+        return flips >= 4 || raw.length >= 20;
     }
 
     function articlePickerLabel(article) {
@@ -816,8 +834,8 @@
                             return raw.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0];
                         }
                     })();
-                const daLabel = (item.da !== null && item.da !== undefined && item.da !== '') ? String(item.da) : '';
-                const drLabel = (item.dr !== null && item.dr !== undefined && item.dr !== '') ? String(item.dr) : '';
+                const daLabel = (item.da !== null && item.da !== undefined && item.da !== '' && Number(item.da) !== 0) ? String(item.da) : '';
+                const drLabel = (item.dr !== null && item.dr !== undefined && item.dr !== '' && Number(item.dr) !== 0) ? String(item.dr) : '';
                 const metricBits = [];
                 if (daLabel !== '') metricBits.push('DA ' + daLabel);
                 if (drLabel !== '') metricBits.push('DR ' + drLabel);

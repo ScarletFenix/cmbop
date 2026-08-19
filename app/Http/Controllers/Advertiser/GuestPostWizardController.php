@@ -329,8 +329,10 @@ class GuestPostWizardController extends Controller
             }
             $line['name'] = $line['name'] ?? $site->site_name;
             $line['url'] = $line['url'] ?? $site->site_url;
-            $line['language'] = $line['language'] ?? $site->language;
-            $line['country'] = $line['country'] ?? $site->country;
+            $line['language'] = $site->language;
+            $line['languages'] = $site->languageCodes();
+            $line['country'] = $site->country;
+            $line['countries'] = $site->countryCodes();
             $line['link_type'] = $line['link_type'] ?? $site->link_type;
             if (! isset($line['price'])) {
                 $line['price'] = $site->price;
