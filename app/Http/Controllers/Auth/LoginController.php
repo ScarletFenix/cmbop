@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\JsonResponse;
+use App\Support\UserMessages;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\RateLimiter;
@@ -40,8 +40,8 @@ class LoginController extends Controller
 
             return response()->json([
                 'status' => 'error',
-                'message' => 'Too many attempts. Please try again later.',
-            ], 429)->header('Retry-After', (string) $retry);
+                'message' => UserMessages::get('login.throttled'),
+            ]);
         }
 
         RateLimiter::hit($key, 60); // 60 seconds
@@ -65,7 +65,10 @@ class LoginController extends Controller
 
         // Attempt login
         if (! Auth::attempt($credentials, $remember)) {
-            return $this->failedLoginResponse();
+            return response()->json([
+                'status' => 'error',
+                'message' => UserMessages::get('login.invalid'),
+            ]);
         }
 
         $user = Auth::user();
@@ -76,7 +79,11 @@ class LoginController extends Controller
             $request->session()->invalidate();
             $request->session()->regenerateToken();
 
-            return $this->failedLoginResponse();
+            return response()->json([
+                'status' => 'unverified',
+                'message' => UserMessages::get('login.unverified'),
+                'email' => $user->email,
+            ]);
         }
 
         // ✅ Relative dashboard path — survives APP_URL=localhost misconfig
@@ -89,7 +96,7 @@ class LoginController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'message' => 'Login successful!',
+            'message' => UserMessages::get('login.success'),
             'redirect' => $redirect,
         ]);
     }

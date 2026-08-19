@@ -91,6 +91,7 @@ use App\Services\Marketing\CatalogTeaserService;
 use App\Support\HttpCron;
 use App\Support\PublicI18n;
 use App\Support\RobotsTxt;
+use App\Support\UserMessages;
 use Illuminate\Auth\Events\Verified;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
@@ -246,8 +247,16 @@ Route::post('/promotions/track', PromotionTrackController::class)
 // External cron fallback for hosts without a real scheduler. This completes orders
 // and releases publisher payouts, so it stays closed unless a strong secret is set
 // (the app scheduler already runs orders:auto-approve on its own).
-Route::match(['get', 'post'], '/cron/orders-auto-approve/{key?}', function (?string $key = null) {
-    HttpCron::authorize(request(), (string) $key);
+Route::get('/cron/orders-auto-approve/{key}', function ($key) {
+    $secret = (string) config('app.cron_secret', '');
+
+    if (strlen($secret) < 32) {
+        abort(404, UserMessages::get('cron.disabled'));
+    }
+
+    if (! hash_equals($secret, (string) $key)) {
+        abort(403, UserMessages::get('cron.forbidden'));
+    }
 
     Artisan::call('orders:auto-approve');
 
@@ -261,8 +270,16 @@ Route::match(['get', 'post'], '/cron/orders-auto-approve/{key?}', function (?str
 // minute. Point an external pinger here and everything scheduled runs — mail
 // drain, auto-approve, scheduled publishing, reminders and digests. Same secret
 // gate as above, since these tasks move money and send mail.
-Route::match(['get', 'post'], '/cron/run/{key?}', function (?string $key = null) {
-    HttpCron::authorize(request(), (string) $key);
+Route::get('/cron/run/{key}', function ($key) {
+    $secret = (string) config('app.cron_secret', '');
+
+    if (strlen($secret) < 32) {
+        abort(404, UserMessages::get('cron.disabled'));
+    }
+
+    if (! hash_equals($secret, (string) $key)) {
+        abort(403, UserMessages::get('cron.forbidden'));
+    }
 
     Artisan::call('schedule:run');
 

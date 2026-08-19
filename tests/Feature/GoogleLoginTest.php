@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Mail\GoogleTempPasswordMail;
 use App\Models\Role;
 use App\Models\User;
+use App\Support\UserMessages;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
@@ -73,7 +74,7 @@ class GoogleLoginTest extends TestCase
         $this->followingRedirects()
             ->get(route('auth.google'))
             ->assertOk()
-            ->assertSee('Google sign-in is not configured', false);
+            ->assertSee(UserMessages::get('oauth.unavailable'), false);
     }
 
     public function test_placeholder_google_credentials_are_treated_as_unconfigured(): void
@@ -88,7 +89,7 @@ class GoogleLoginTest extends TestCase
         $this->followingRedirects()
             ->get(route('auth.google'))
             ->assertOk()
-            ->assertSee('Google sign-in is not configured', false);
+            ->assertSee(UserMessages::get('oauth.unavailable'), false);
     }
 
     public function test_login_always_shows_google_button(): void

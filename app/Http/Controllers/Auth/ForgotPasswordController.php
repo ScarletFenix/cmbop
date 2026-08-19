@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Support\UserMessages;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\RateLimiter;
@@ -25,7 +26,7 @@ class ForgotPasswordController extends Controller
         if (RateLimiter::tooManyAttempts($key, 5)) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Too many attempts. Please try again later.',
+                'message' => UserMessages::get('password.throttled'),
             ]);
         }
         RateLimiter::hit($key, 600);
@@ -35,7 +36,7 @@ class ForgotPasswordController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'message' => 'If an account with this email exists, a password reset link has been sent.',
+            'message' => UserMessages::get('password.reset_sent'),
         ]);
     }
 }

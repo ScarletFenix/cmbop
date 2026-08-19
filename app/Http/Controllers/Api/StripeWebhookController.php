@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Services\OrderPaymentService;
 use App\Services\SitePromotionService;
 use App\Services\WalletStripeDepositService;
+use App\Support\UserMessages;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Stripe\Exception\SignatureVerificationException;
@@ -31,7 +32,7 @@ class StripeWebhookController extends Controller
             if (! $endpointSecret) {
                 Log::error('Stripe webhook secret not configured');
 
-                return response()->json(['error' => 'Webhook unavailable'], 503);
+                return response()->json(['error' => UserMessages::get('payment.webhook_unavailable')], 500);
             }
 
             $event = Webhook::constructEvent($payload, $sigHeader, $endpointSecret);
@@ -80,13 +81,13 @@ class StripeWebhookController extends Controller
         } catch (SignatureVerificationException $e) {
             Log::error('Stripe webhook signature verification failed: '.$e->getMessage());
 
-            return response()->json(['error' => 'Invalid signature'], 400);
+            return response()->json(['error' => UserMessages::get('payment.webhook_signature')], 400);
         } catch (\Throwable $e) {
             Log::error('Stripe webhook error: '.$e->getMessage(), [
                 'exception' => $e::class,
             ]);
 
-            return response()->json(['error' => 'Webhook unavailable'], 500);
+            return response()->json(['error' => UserMessages::get('payment.webhook_failed')], 500);
         }
     }
 
