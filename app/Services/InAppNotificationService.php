@@ -363,6 +363,58 @@ class InAppNotificationService
         );
     }
 
+    public function notifyUnfulfilledCheckoutCredited(
+        User $user,
+        float $amount,
+        string $referenceCode,
+        string $paymentMethod = 'card'
+    ): void {
+        if (! $user->id) {
+            return;
+        }
+
+        try {
+            InAppNotification::ensureTable();
+            if (InAppNotification::tableAvailable()) {
+                $recent = InAppNotification::query()
+                    ->where('user_id', $user->id)
+                    ->where('type', self::TYPE_PAYMENT_RECEIVED)
+                    ->where('meta->reference_code', $referenceCode)
+                    ->exists();
+                if ($recent) {
+                    return;
+                }
+            }
+        } catch (\Throwable) {
+            // Fall through and try to create — a failed dedupe must not hide the credit.
+        }
+
+        $formatted = '€'.number_format(round($amount, 2), 2);
+        $method = strtolower(trim($paymentMethod));
+        $methodLabel = $method === 'paypal' ? 'PayPal' : 'card';
+
+        $this->notify(
+            (int) $user->id,
+            self::TYPE_PAYMENT_RECEIVED,
+            "Wallet topped up — {$formatted}",
+            "{$formatted} from your {$methodLabel} checkout was added to your wallet because the order could not be created.",
+            [
+                'category' => self::CATEGORY_PAYMENTS,
+                'icon' => 'wallet',
+                'priority' => InAppNotification::PRIORITY_HIGH,
+                'audience' => InAppNotification::AUDIENCE_ADVERTISER,
+                'action_label' => 'View balance',
+                'action_url' => route('advertiser.balance', [], false),
+                'meta' => [
+                    'amount' => round($amount, 2),
+                    'reference_code' => $referenceCode,
+                    'payment_method' => $method === 'paypal' ? 'paypal' : 'card',
+                    'reason' => 'unfulfilled_checkout',
+                ],
+            ]
+        );
+    }
+
     public function notifyDepositApproved(DepositRequest $deposit): void
     {
         if (! $deposit->user_id) {

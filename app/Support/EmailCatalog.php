@@ -54,6 +54,7 @@ use App\Mail\SiteOwnerOrderNotification;
 use App\Mail\SiteStatusNotification;
 use App\Mail\SpendBudgetAlertMail;
 use App\Mail\TrustpilotReviewRequest;
+use App\Mail\UnfulfilledCheckoutCredited;
 use App\Mail\WebsiteSuggestionReviewed;
 use App\Mail\WeeklyActivitySummary;
 use App\Mail\WelcomeEmail;
@@ -269,6 +270,13 @@ class EmailCatalog
                 'description' => 'Advertiser notified when a PayPal Add Funds capture is refunded and the wallet credit is reversed.',
                 'category' => 'Billing',
                 'mailable' => DepositRefunded::class,
+                'status' => 'active',
+            ],
+            'unfulfilled_checkout_credited' => [
+                'name' => 'Unfulfilled Checkout Credited',
+                'description' => 'Advertiser notified when a card or PayPal capture is credited to the wallet because the checkout could not create the order.',
+                'category' => 'Billing',
+                'mailable' => UnfulfilledCheckoutCredited::class,
                 'status' => 'active',
             ],
             'deposit_rejected' => [
@@ -605,6 +613,7 @@ class EmailCatalog
             'deposit approved' => 'deposit_approved',
             'wallet topped up' => 'deposit_approved',
             'paypal deposit refunded' => 'deposit_refunded',
+            'checkout could not be completed' => 'unfulfilled_checkout_credited',
             'deposit request update' => 'deposit_rejected',
             'new deposit request' => 'deposit_submitted',
             'payment reported' => 'deposit_marked_paid',
@@ -742,6 +751,13 @@ class EmailCatalog
             'deposit_marked_paid' => new DepositMarkedPaid(self::sampleDeposit()),
             'deposit_approved' => new DepositApproved(self::sampleDeposit()),
             'deposit_refunded' => new DepositRefunded(self::samplePaypalRefundedDeposit()),
+            'unfulfilled_checkout_credited' => new UnfulfilledCheckoutCredited(
+                $user,
+                50.0,
+                'PP-PREVIEW',
+                'paypal',
+                50.0
+            ),
             'deposit_rejected' => new DepositRejected(self::sampleDeposit()),
             'withdrawal_request' => new WithdrawalRequestNotification(self::sampleWithdrawal(), $user),
             'withdrawal_requested_confirmation' => new WithdrawalRequestedConfirmation(self::sampleWithdrawal()),

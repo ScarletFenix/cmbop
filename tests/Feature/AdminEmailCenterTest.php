@@ -539,6 +539,7 @@ class AdminEmailCenterTest extends TestCase
             'Deposit Approved - €100.00' => 'deposit_approved',
             'Wallet topped up — €40.00' => 'deposit_approved',
             'PayPal deposit refunded — €25.00' => 'deposit_refunded',
+            '€50.00 added to your wallet — checkout could not be completed' => 'unfulfilled_checkout_credited',
             'New Deposit Request - €100.00' => 'deposit_submitted',
             'Your site discount has ended — Sample Site' => 'site_discount_ended',
             'Your payout details were updated' => 'payout_profile_updated',

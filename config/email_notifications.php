@@ -52,6 +52,7 @@ use App\Mail\SiteOwnerOrderNotification;
 use App\Mail\SiteStatusNotification;
 use App\Mail\SpendBudgetAlertMail;
 use App\Mail\TrustpilotReviewRequest;
+use App\Mail\UnfulfilledCheckoutCredited;
 use App\Mail\WebsiteSuggestionReviewed;
 use App\Mail\WeeklyActivitySummary;
 use App\Mail\WelcomeEmail;
@@ -457,6 +458,13 @@ return [
             'audience' => 'advertiser',
             'preference' => 'payment_emails',
             'mailable' => DepositRefunded::class,
+            'default_enabled' => true,
+        ],
+        'unfulfilled_checkout_credited' => [
+            'name' => 'Unfulfilled Checkout Credited',
+            'audience' => 'advertiser',
+            'preference' => 'payment_emails',
+            'mailable' => UnfulfilledCheckoutCredited::class,
             'default_enabled' => true,
         ],
         'deposit_rejected' => [
