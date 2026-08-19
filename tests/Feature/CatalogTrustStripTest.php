@@ -79,8 +79,8 @@ class CatalogTrustStripTest extends TestCase
             ->getContent();
 
         $this->assertStringContainsString('site-trust-compact', $html);
-        $this->assertStringContainsString('New · No ratings yet', $html);
-        $this->assertStringContainsString('No completion history yet', $html);
+        $this->assertStringContainsString('Awaiting first ratings', $html);
+        $this->assertStringContainsString('No completed orders yet', $html);
         $this->assertStringContainsString('Ratings from advertisers after completed orders', $html);
         $this->assertStringNotContainsString('No completions yet', $html);
         $this->assertStringContainsString('<dt>Trust</dt>', $html);
@@ -102,8 +102,8 @@ class CatalogTrustStripTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        $this->assertStringContainsString('New · No ratings yet', $html);
-        $this->assertStringContainsString('No completion history yet', $html);
+        $this->assertStringContainsString('Awaiting first ratings', $html);
+        $this->assertStringContainsString('No completed orders yet', $html);
         $this->assertStringNotContainsString('site-trust-compact__stars', $html);
         $this->assertStringNotContainsString('5.0', $html);
         $this->assertStringNotContainsString('1 rating', $html);
@@ -145,7 +145,7 @@ class CatalogTrustStripTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        $this->assertStringContainsString('New · No ratings yet', $html);
+        $this->assertStringContainsString('Awaiting first ratings', $html);
         $this->assertStringContainsString('0% completed', $html);
         $this->assertStringNotContainsString('site-trust-compact__stars', $html);
         $this->assertStringNotContainsString('5.0', $html);
@@ -275,7 +275,8 @@ class CatalogTrustStripTest extends TestCase
         );
 
         $this->assertStringContainsString('completionRatePercent()', $partial);
-        $this->assertStringContainsString('No ratings yet', $partial);
+        $this->assertStringContainsString('Awaiting first ratings', $partial);
+        $this->assertStringContainsString('No completed orders yet', $partial);
         $this->assertStringContainsString("@include('advertiser.partials.catalog-site-trust'", $results);
         // Full page shell must not re-inline results/trust — live + SSR share catalog-results.
         $this->assertStringContainsString("@include('advertiser.partials.catalog-results')", $shell);

@@ -247,6 +247,11 @@
     display: inline-flex;
     align-items: center;
     gap: 5px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--brand-ink-muted, #64748b);
 }
 
 /* ------------------------------------------------------------------- metrics */
@@ -777,21 +782,22 @@ body:has(.catalog-page) {
     max-width: 100%;
 }
 
-/* Price and CTA share a line so the card's most-asked question ("how much?") is
-   answered next to the button that acts on it. */
+/* Add to cart is the solid CTA; price sits under it as supporting copy.
+   .list-price-display / .base-price-display stay inside this wrap for cart JS. */
 .catalog-card-buy {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    flex-wrap: wrap;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 8px;
     margin-top: 12px;
     padding-top: 10px;
     border-top: 1px solid var(--border-subtle, #f1f5f9);
 }
 
 .catalog-card-buy .buy-now {
-    flex: 1 1 8rem;
+    flex: 0 0 auto;
+    width: 100%;
 }
 
 .catalog-own-listing {
@@ -1615,6 +1621,17 @@ body:has(.catalog-page) {
     border: 1px solid #e2e8f0;
 }
 
+/* Two chip families: status (listing state) vs descriptors (what the offer is). */
+.site-chip--status {
+    font-weight: 700;
+    letter-spacing: 0.01em;
+}
+
+.site-chip--descriptor {
+    font-weight: 600;
+    border-style: dashed;
+}
+
 .catalog-homepage-hint {
     max-width: 11rem;
     margin-left: auto;
@@ -1827,13 +1844,63 @@ body:has(.catalog-page) {
     margin-top: 2px;
 }
 
+/* Visit lives on the rooted URL (↗ via ::after) so paintHostElements can
+   rewrite textContent without dropping the icon. */
+a.catalog-site-rooted-url.site-open-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35em;
+    max-width: 100%;
+    text-decoration: none;
+    color: var(--brand-ink-muted, #697078);
+    cursor: pointer;
+}
+
+a.catalog-site-rooted-url.site-open-link:hover {
+    color: var(--brand-ink, #0f172a);
+    text-decoration: underline;
+}
+
+a.catalog-site-rooted-url.site-open-link::after {
+    content: "↗";
+    flex: 0 0 auto;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1;
+    color: #64748b;
+}
+
+.catalog-site-identity {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 8px;
+    min-width: 0;
+    width: 100%;
+}
+
+.catalog-site-status-row {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+}
+
+.catalog-site-badges--mobile,
+.catalog-site-deals--mobile {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 6px;
+}
+
 .catalog-site-meta {
     font-size: 12.5px;
 }
 
-/* Host + NEW/Verified/eye/open stay packed on one nowrap row.
-   Deal chips (Featured / sale / bulk) live on .catalog-site-deals below so
-   they never displace status chips. */
+/* Host + NEW/Verified/eye/Details stay packed on one nowrap row.
+   Listing tags wrap with the URL; deal chips live on .catalog-site-deals. */
 .catalog-site-title-row {
     display: flex;
     flex-wrap: nowrap;
@@ -1844,7 +1911,7 @@ body:has(.catalog-page) {
     width: 100%;
 }
 
-/* NEW · Verified · eye · open — snug cluster immediately after the domain. */
+/* NEW · Verified · eye — snug cluster immediately after the name. */
 .catalog-site-controls {
     display: inline-flex;
     flex-wrap: nowrap;
@@ -1864,9 +1931,9 @@ body:has(.catalog-page) {
     flex: 0 0 auto;
 }
 
-/* Compact icons match the 20–22px chip height (not the 36px quiet-button tile). */
-.catalog-site-actions .catalog-url-eye,
-.catalog-site-actions .site-open-link {
+/* Compact eye matches the 20–22px chip height (not the 36px quiet-button tile). */
+.catalog-site-controls .catalog-url-eye,
+.catalog-site-actions .catalog-url-eye {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -1880,9 +1947,6 @@ body:has(.catalog-page) {
     line-height: 1;
     text-decoration: none;
     vertical-align: middle;
-}
-
-.catalog-site-actions .catalog-url-eye {
     font-size: 13px;
     color: #64748b;
     border: 0;
@@ -1890,21 +1954,10 @@ body:has(.catalog-page) {
     border-radius: 4px;
 }
 
+.catalog-site-controls .catalog-url-eye:hover,
 .catalog-site-actions .catalog-url-eye:hover {
     color: #334155;
     background: var(--hover-2, rgba(15, 23, 42, 0.075));
-}
-
-.catalog-site-actions .site-open-link {
-    color: #64748b;
-}
-
-.catalog-site-actions .site-open-link:hover {
-    color: #334155;
-}
-
-.catalog-site-actions .site-open-link i {
-    font-size: 11px;
 }
 
 .catalog-site-actions .catalog-details-toggle {
@@ -1948,12 +2001,10 @@ body:has(.catalog-page) {
 
 .catalog-site-badges--mobile {
     display: inline-flex;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     align-items: center;
     gap: 6px;
     max-width: 100%;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
 }
 
 /* Compact NEW pill — red batch with continuous zoom pulse (no border/ring),

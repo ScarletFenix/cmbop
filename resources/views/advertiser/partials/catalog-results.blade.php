@@ -234,10 +234,9 @@
                         ])
 
                         <div class="catalog-site-stack__body">
-                        <!-- Name + Verified/NEW + actions stay on one row.
-                             Rooted URL sits under the name in muted type.
-                             Deal chips sit below so a sale/bulk message cannot
-                             push status chips down. -->
+                        <!-- Name + NEW/Verified + Details stay on one nowrap row.
+                             Listing tags and visit live on the wrapping identity
+                             row with the rooted URL so the name stays visible. -->
                         <div class="catalog-site-title-row">
                             <span class="text-dark catalog-site-name"
                                   data-site-name-label
@@ -286,7 +285,7 @@
 
                                     @if($site->verified)
                                         <button type="button"
-                                                class="site-chip site-chip--verified"
+                                                class="site-chip site-chip--verified site-chip--status"
                                                 data-glass-tip
                                                 data-glass-tip-title="Verified Publisher"
                                                 data-glass-tip-body="This publisher has successfully completed our verification process and meets our platform's quality standards."
@@ -296,23 +295,9 @@
                                             <span>Verified</span>
                                         </button>
                                     @endif
-                                    @include('advertiser.partials.catalog-tag-chip', ['site' => $site])
                                 </span>
 
                                 <span class="catalog-site-actions">
-                                    {{-- Visit goes through our redirect so outbound
-                                         clicks are logged; the rooted URL is already
-                                         on the row outside hide mode. --}}
-                                    <a href="{{ route('advertiser.catalog.visit', $site->id) }}"
-                                       target="_blank"
-                                       rel="noopener noreferrer"
-                                       class="text-muted site-open-link"
-                                       id="url-open-{{ $site->id }}"
-                                       title="Open site in a new tab"
-                                       aria-label="Open site in a new tab">
-                                        <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>
-                                    </a>
-
                                     <button type="button"
                                             class="btn btn-sm btn-link text-secondary p-0 expand-arrow catalog-details-toggle"
                                             id="arrow-{{ $site->id }}"
@@ -326,17 +311,27 @@
                             </span>
                         </div>
 
-                        <div class="catalog-site-rooted-url catalog-site-url"
-                             id="url-host-{{ $site->id }}"
-                             data-site-host
-                             title="{{ $displayRootedUrl }}"
-                             @if($showsIdentity) data-host="{{ $displayHost }}" @endif
-                             @if($inCatalogHideMode && ! $showsIdentity)
-                                 data-glass-tip
-                                 data-glass-tip-title="Name and URL hidden"
-                                 data-glass-tip-body="Site name and URL are hidden for 24 hours after repeated domain copying. Open the eye to reveal both for this listing — metrics and price stay visible."
-                                 data-glass-tip-placement="top"
-                             @endif>{{ $displayRootedUrl }}</div>
+                        <div class="catalog-site-identity">
+                            <a href="{{ route('advertiser.catalog.visit', $site->id) }}"
+                               target="_blank"
+                               rel="noopener noreferrer"
+                               class="site-open-link catalog-site-rooted-url catalog-site-url"
+                               id="url-host-{{ $site->id }}"
+                               data-url-open="{{ $site->id }}"
+                               data-site-host
+                               title="{{ $displayRootedUrl }} — open in a new tab"
+                               aria-label="Open {{ $displayRootedUrl }} in a new tab"
+                               @if($showsIdentity) data-host="{{ $displayHost }}" @endif
+                               @if($inCatalogHideMode && ! $showsIdentity)
+                                   data-glass-tip
+                                   data-glass-tip-title="Name and URL hidden"
+                                   data-glass-tip-body="Site name and URL are hidden for 24 hours after repeated domain copying. Open the eye to reveal both for this listing — metrics and price stay visible."
+                                   data-glass-tip-placement="top"
+                               @endif>{{ $displayRootedUrl }}</a>
+                            <span class="catalog-site-status-row">
+                                @include('advertiser.partials.catalog-tag-chip', ['site' => $site])
+                            </span>
+                        </div>
 
                         @php
                             // Better-of on pack qty: hide bulk chip when custom is ≥ bulk
@@ -370,7 +365,7 @@
                         @if($site->isFeatured() || $showSaleChip || $showBulkChip || $showPlacementChips)
                         <div class="catalog-site-deals">
                             @if($site->isFeatured())
-                                <span class="site-chip site-chip--featured"
+                                <span class="site-chip site-chip--featured site-chip--descriptor"
                                       title="Featured placement — higher visibility in the catalog">
                                     <i class="fa-solid fa-bolt" aria-hidden="true"></i>
                                     <span>Featured</span>
@@ -378,7 +373,7 @@
                             @endif
 
                             @if($showSaleChip)
-                                <span class="site-chip site-chip--sale"
+                                <span class="site-chip site-chip--sale site-chip--status"
                                       title="Limited-time publisher discount on each article (after fee floor)">
                                     <i class="fa-solid fa-percent" aria-hidden="true"></i>
                                     <span>−{{ rtrim(rtrim(number_format((float) $dealSaleChipPct, 1), '0'), '.') }}%</span>
@@ -386,7 +381,7 @@
                             @endif
 
                             @if($showBulkChip)
-                                <span class="site-chip site-chip--bulk"
+                                <span class="site-chip site-chip--bulk site-chip--status"
                                       title="Better rate when you buy {{ (int) config('site_promotions.bulk.min_qty', 3) }}–{{ (int) config('site_promotions.bulk.max_qty', 5) }} articles — exclusive better-of with a site sale, not stacked">
                                     <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
                                     <span>Bulk −{{ rtrim(rtrim(number_format((float) $dealBulkChipPct, 1), '0'), '.') }}%</span>
@@ -556,9 +551,9 @@
                                     data-site-name="{{ $displayName }}"
                                     data-site-url="{{ $canSeeUrl ? $site->site_url : '' }}"
                                     data-glass-tip-placement="left"
-                                    title="Claim this website if you own it"
+                                    title="Is this your site? Claim it if you own it"
                                     aria-label="Claim website {{ $identityLabel }}">
-                                Claim
+                                Is this your site?
                             </button>
                         @endunless
                         </div>
@@ -1004,69 +999,67 @@
                     ])
 
                     <div class="catalog-mobile-card__main">
-                    <div class="d-flex align-items-center gap-2">
-                        <div class="fw-semibold text-dark text-truncate catalog-site-name"
-                             data-site-name-label
-                             @if($showsIdentity) title="{{ $displayName }}" @endif>{{ $displayName }}</div>
-                        <a href="{{ route('advertiser.catalog.visit', $site->id) }}"
-                           target="_blank" rel="noopener noreferrer"
-                           class="text-muted small"
-                           title="Open site in a new tab" aria-label="Open site in a new tab">
-                            <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>
-                        </a>
-                    </div>
-                    {{-- data-host only when identity is shown. Hide-mode tip only
-                         while the row is still masked. --}}
-                    <div class="catalog-site-rooted-url catalog-site-url text-truncate"
-                         id="url-host-mobile-{{ $site->id }}"
-                         data-site-host
-                         title="{{ $displayRootedUrl }}"
-                         @if($showsIdentity) data-host="{{ $displayHost }}" @endif
-                         @if($inCatalogHideMode && ! $showsIdentity)
-                             data-glass-tip
-                             data-glass-tip-title="Name and URL hidden"
-                             data-glass-tip-body="Site name and URL are hidden for 24 hours after repeated domain copying. Open the eye to reveal both for this listing — metrics and price stay visible."
-                             data-glass-tip-placement="top"
-                         @endif>{{ $displayRootedUrl }}</div>
+                    <div class="fw-semibold text-dark text-truncate catalog-site-name"
+                         data-site-name-label
+                         @if($showsIdentity) title="{{ $displayName }}" @endif>{{ $displayName }}</div>
+                    {{-- Visit sits on the rooted URL, not next to the name. --}}
+                    <a href="{{ route('advertiser.catalog.visit', $site->id) }}"
+                       target="_blank"
+                       rel="noopener noreferrer"
+                       class="site-open-link catalog-site-rooted-url catalog-site-url text-truncate"
+                       id="url-host-mobile-{{ $site->id }}"
+                       data-site-host
+                       title="{{ $displayRootedUrl }} — open in a new tab"
+                       aria-label="Open {{ $displayRootedUrl }} in a new tab"
+                       @if($showsIdentity) data-host="{{ $displayHost }}" @endif
+                       @if($inCatalogHideMode && ! $showsIdentity)
+                           data-glass-tip
+                           data-glass-tip-title="Name and URL hidden"
+                           data-glass-tip-body="Site name and URL are hidden for 24 hours after repeated domain copying. Open the eye to reveal both for this listing — metrics and price stay visible."
+                           data-glass-tip-placement="top"
+                       @endif>{{ $displayRootedUrl }}</a>
                     <div class="catalog-site-badges catalog-site-badges--mobile mt-1">
                         @if($site->verified)
-                            <span class="site-chip site-chip--verified"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>Verified</span></span>
+                            <span class="site-chip site-chip--verified site-chip--status"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>Verified</span></span>
                         @endif
                         @include('advertiser.partials.catalog-tag-chip', ['site' => $site])
                         @if($isNew)
                             <span class="site-badge-new" aria-label="New listing">NEW</span>
                         @endif
-                        @php
-                            $mobileCustomPct = $site->activeCustomDiscountPercent();
-                            $mobileBulkPct = $site->joinsBulkDiscount()
-                                ? (float) $site->bulk_discount_percent
-                                : null;
-                            $showMobileSaleChip = $mobileCustomPct !== null && $catalogSalePctDisplay;
-                            $showMobileBulkChip = $mobileBulkPct !== null
-                                && ($mobileCustomPct === null || $mobileBulkPct > (float) $mobileCustomPct);
-                            $mobileSaleChipPct = $catalogSalePctDisplay;
-                            $mobileBulkChipPct = $mobileBulkPct;
-                            if ($showMobileBulkChip) {
-                                // $site->price is already advertiser-facing; reprice from
-                                // the publisher base so the chip % is not fee-on-fee.
-                                $mobilePackSite = clone $site;
-                                $mobilePackSite->price = $catalogPublisherPrice;
-                                $mobilePackPricing = app(\App\Services\CartPricingService::class)
-                                    ->priceForAdvertiser($mobilePackSite, null, (int) config('site_promotions.bulk.min_qty', 3));
-                                $mobileBulkChipPct = (float) ($mobilePackPricing['discount_percent'] ?? $mobileBulkPct);
-                                if ($mobileBulkChipPct <= 0) {
-                                    $showMobileBulkChip = false;
-                                }
+                    </div>
+                    @php
+                        $mobileCustomPct = $site->activeCustomDiscountPercent();
+                        $mobileBulkPct = $site->joinsBulkDiscount()
+                            ? (float) $site->bulk_discount_percent
+                            : null;
+                        $showMobileSaleChip = $mobileCustomPct !== null && $catalogSalePctDisplay;
+                        $showMobileBulkChip = $mobileBulkPct !== null
+                            && ($mobileCustomPct === null || $mobileBulkPct > (float) $mobileCustomPct);
+                        $mobileSaleChipPct = $catalogSalePctDisplay;
+                        $mobileBulkChipPct = $mobileBulkPct;
+                        if ($showMobileBulkChip) {
+                            // $site->price is already advertiser-facing; reprice from
+                            // the publisher base so the chip % is not fee-on-fee.
+                            $mobilePackSite = clone $site;
+                            $mobilePackSite->price = $catalogPublisherPrice;
+                            $mobilePackPricing = app(\App\Services\CartPricingService::class)
+                                ->priceForAdvertiser($mobilePackSite, null, (int) config('site_promotions.bulk.min_qty', 3));
+                            $mobileBulkChipPct = (float) ($mobilePackPricing['discount_percent'] ?? $mobileBulkPct);
+                            if ($mobileBulkChipPct <= 0) {
+                                $showMobileBulkChip = false;
                             }
-                        @endphp
+                        }
+                    @endphp
+                    @if($showMobileSaleChip || $showMobileBulkChip || $homepageOptions !== [] || $socialChannels !== [])
+                    <div class="catalog-site-deals catalog-site-deals--mobile mt-1">
                         @if($showMobileSaleChip)
-                            <span class="site-chip site-chip--sale" title="Limited-time publisher discount on each article (after fee floor)">
+                            <span class="site-chip site-chip--sale site-chip--status" title="Limited-time publisher discount on each article (after fee floor)">
                                 <i class="fa-solid fa-percent" aria-hidden="true"></i>
                                 <span>−{{ rtrim(rtrim(number_format((float) $mobileSaleChipPct, 1), '0'), '.') }}%</span>
                             </span>
                         @endif
                         @if($showMobileBulkChip)
-                            <span class="site-chip site-chip--bulk"
+                            <span class="site-chip site-chip--bulk site-chip--status"
                                   title="Better rate when you buy {{ (int) config('site_promotions.bulk.min_qty', 3) }}–{{ (int) config('site_promotions.bulk.max_qty', 5) }} articles — exclusive better-of with a site sale, not stacked">
                                 <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
                                 <span>Bulk −{{ rtrim(rtrim(number_format((float) $mobileBulkChipPct, 1), '0'), '.') }}%</span>
@@ -1078,8 +1071,9 @@
                             'socialChannels' => $socialChannels,
                             'socialChannelLabels' => $socialChannelLabels,
                         ])
-                        <span class="category-badge">{{ $mobileCategory }}</span>
                     </div>
+                    @endif
+                    <span class="category-badge mt-1">{{ $mobileCategory }}</span>
                     @include('advertiser.partials.catalog-meta-chips', [
                         'site' => $site,
                     ])
@@ -1260,13 +1254,6 @@
                 </div>
             @endif
             <div class="catalog-card-buy">
-                @include('advertiser.partials.catalog-price', [
-                    'listPrice' => $catalogListPrice,
-                    'salePrice' => $catalogSalePrice,
-                    'salePercent' => $catalogSalePctDisplay,
-                    'align' => 'start',
-                ])
-
                 @if($isOwnedByMe)
                     @include('advertiser.partials.catalog-own-listing', ['align' => 'start'])
                 @else
@@ -1281,6 +1268,13 @@
                     <span>Add to cart</span>
                 </button>
                 @endif
+
+                @include('advertiser.partials.catalog-price', [
+                    'listPrice' => $catalogListPrice,
+                    'salePrice' => $catalogSalePrice,
+                    'salePercent' => $catalogSalePctDisplay,
+                    'align' => 'start',
+                ])
             </div>
 
             <div class="catalog-row-actions mt-2">
@@ -1315,9 +1309,9 @@
                                 data-site-name="{{ $displayName }}"
                                 data-site-url="{{ $canSeeUrl ? $site->site_url : '' }}"
                                 data-glass-tip-placement="left"
-                                title="Claim this website if you own it"
+                                title="Is this your site? Claim it if you own it"
                                 aria-label="Claim website {{ $identityLabel }}">
-                            Claim
+                            Is this your site?
                         </button>
                     @endunless
                 </div>
