@@ -62,7 +62,7 @@
                     <tbody>
                         @forelse($announcements as $item)
                             @php
-                                $campaignAudience = $item->audience === 'publisher' ? 'publishers' : 'advertisers';
+                                $campaignHandoff = \App\Support\PromotionCampaignHandoff::query($item);
                             @endphp
                             <tr>
                                 <td>
@@ -86,13 +86,8 @@
                                             @csrf
                                             <button class="btn btn-sm btn-outline-secondary" type="submit">Duplicate</button>
                                         </form>
-                                        @if(auth()->user()?->isAdmin())
-                                            <a href="{{ route('admin.campaigns.index', [
-                                                'audience' => $campaignAudience,
-                                                'subject' => $item->title,
-                                                'cta_label' => $item->cta_label,
-                                                'cta_url' => $item->cta_url,
-                                            ]) }}" class="btn btn-sm btn-outline-secondary" title="Campaigns email marketplace users, not public visitors">Email</a>
+                                        @if(auth()->user()?->isAdmin() && $campaignHandoff !== [])
+                                            <a href="{{ route('admin.campaigns.index', $campaignHandoff) }}" class="btn btn-sm btn-outline-secondary" title="Campaigns email marketplace users, not public visitors">Email</a>
                                         @endif
                                         <form action="{{ staff_route('promotions.announcements.toggle', $item) }}" method="POST" class="d-inline">
                                             @csrf

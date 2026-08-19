@@ -127,6 +127,9 @@ class AudienceInventoryService
         if ($raw === 'publisher') {
             return self::AUDIENCE_PUBLISHERS;
         }
+        if ($raw === 'all') {
+            return self::AUDIENCE_BOTH;
+        }
 
         $tabs = self::inventoryTabs();
         if (isset($tabs[$raw])) {
@@ -811,19 +814,33 @@ class AudienceInventoryService
     /**
      * @param  array<string, mixed>  $filters
      */
-    public function exportCsv(string $audienceKey, ?string $search = null, array $filters = []): StreamedResponse
+    /**
+     * @param  array<string, mixed>  $filters
+     */
+    public function prepareExportQuery(string $audienceKey, ?string $search = null, array $filters = []): ?Builder
     {
-        $filename = $audienceKey.'-audience-'.now()->format('Y-m-d-His').'.csv';
         try {
             $query = $this->queryForAudienceKey($audienceKey);
             $this->applySearch($query, $search);
             $this->applyInventoryFilters($query, $filters, $audienceKey);
             $this->applyListCounts($query);
             $query->reorder('id');
+
+            return $query;
         } catch (\Throwable $e) {
             report($e);
-            $query = $this->emptyUserQuery();
+
+            return null;
         }
+    }
+
+    /**
+     * @param  array<string, mixed>  $filters
+     */
+    public function exportCsv(string $audienceKey, ?string $search = null, array $filters = [], ?Builder $query = null): StreamedResponse
+    {
+        $filename = $audienceKey.'-audience-'.now()->format('Y-m-d-His').'.csv';
+        $query ??= $this->prepareExportQuery($audienceKey, $search, $filters) ?? $this->emptyUserQuery();
 
         $headers = [
             'Content-Type' => 'text/csv; charset=UTF-8',

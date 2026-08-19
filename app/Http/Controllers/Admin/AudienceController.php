@@ -41,6 +41,11 @@ class AudienceController extends Controller
         $search = search_text($request->get('q'));
         $filters = $this->inventoryFilters($request);
 
+        $query = $inventory->prepareExportQuery($audienceKey, $search !== '' ? $search : null, $filters);
+        if ($query === null) {
+            return $inventory->exportCsv($audienceKey, $search !== '' ? $search : null, $filters);
+        }
+
         try {
             $rowCount = $inventory->exportMatchCount($audienceKey, $search !== '' ? $search : null, $filters);
         } catch (\Throwable) {
@@ -60,7 +65,7 @@ class AudienceController extends Controller
             ]
         );
 
-        return $inventory->exportCsv($audienceKey, $search !== '' ? $search : null, $filters);
+        return $inventory->exportCsv($audienceKey, $search !== '' ? $search : null, $filters, $query);
     }
 
     protected function resolvedAudienceKey(mixed $raw): string

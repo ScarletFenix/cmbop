@@ -54,6 +54,7 @@ class AudienceInventoryKeysTest extends TestCase
     {
         $this->assertSame('advertisers', AudienceInventoryService::normalizeAudienceKey('advertiser'));
         $this->assertSame('publishers', AudienceInventoryService::normalizeAudienceKey('publisher'));
+        $this->assertSame('both', AudienceInventoryService::normalizeAudienceKey('all'));
     }
 
     public function test_campaign_labels_stay_stable(): void

@@ -5,10 +5,13 @@ namespace Tests\Unit;
 use App\Services\SiteEnrichment\ImageOptimizationService;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Tests\Support\CreatesBlogUploads;
 use Tests\TestCase;
 
 class ImageOptimizationUploadTest extends TestCase
 {
+    use CreatesBlogUploads;
+
     public function test_uploaded_png_is_stored_as_webp(): void
     {
         if (! function_exists('imagecreatetruecolor') || ! function_exists('imagepng') || ! function_exists('imagewebp')) {
@@ -56,7 +59,7 @@ class ImageOptimizationUploadTest extends TestCase
         }
     }
 
-    public function test_safe_store_keeps_gif_and_refuses_unconverted_jpeg(): void
+    public function test_safe_store_keeps_gif_stores_valid_jpeg_and_refuses_garbage(): void
     {
         Storage::fake('public');
         $service = app(ImageOptimizationService::class);
@@ -75,17 +78,33 @@ class ImageOptimizationUploadTest extends TestCase
             @unlink($gifTmp);
         }
 
-        if (function_exists('imagewebp')) {
-            return;
+        $junkTmp = tempnam(sys_get_temp_dir(), 'cmbop-safe-junk-');
+        $this->assertIsString($junkTmp);
+        file_put_contents($junkTmp, "\xff\xd8\xff\xdbnot-reencoded");
+        $junk = new UploadedFile($junkTmp, 'raw.jpg', 'image/jpeg', null, true);
+
+        try {
+            $this->assertNull($service->storeSafePublicImage($junk, 'blogs/featured'));
+        } finally {
+            @unlink($junkTmp);
         }
 
         $jpgTmp = tempnam(sys_get_temp_dir(), 'cmbop-safe-jpg-');
         $this->assertIsString($jpgTmp);
-        file_put_contents($jpgTmp, "\xff\xd8\xff\xdbnot-reencoded");
-        $jpg = new UploadedFile($jpgTmp, 'raw.jpg', 'image/jpeg', null, true);
+        file_put_contents($jpgTmp, $this->tinyJpegBytes());
+        $jpg = new UploadedFile($jpgTmp, 'hero.jpg', 'image/jpeg', null, true);
 
         try {
-            $this->assertNull($service->storeSafePublicImage($jpg, 'blogs/featured'));
+            $jpgPath = $service->storeSafePublicImage($jpg, 'blogs/featured');
+            $this->assertIsString($jpgPath);
+            $this->assertStringContainsString('blogs/featured/', $jpgPath);
+            Storage::disk('public')->assertExists($jpgPath);
+            if (function_exists('imagewebp')) {
+                $this->assertStringEndsWith('.webp', $jpgPath);
+                $this->assertStringStartsWith('RIFF', Storage::disk('public')->get($jpgPath));
+            } else {
+                $this->assertMatchesRegularExpression('/\.jpe?g$/i', $jpgPath);
+            }
         } finally {
             @unlink($jpgTmp);
         }

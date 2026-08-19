@@ -50,7 +50,7 @@ class ImageOptimizationService
     public function toWebp(string $binary, int $quality = 82): ?string
     {
         if (! function_exists('imagecreatefromstring') || ! function_exists('imagewebp')) {
-            Log::warning('GD WebP support unavailable; storing original bytes as fallback is disabled.');
+            Log::warning('GD WebP support unavailable; validated JPEG/PNG originals may be stored instead.');
 
             return null;
         }
@@ -151,8 +151,9 @@ class ImageOptimizationService
     }
 
     /**
-     * Store a public-disk image without keeping raw JPEG/PNG bytes.
-     * WebP when GD can convert. GIF stays GIF (animation). Anything else is refused.
+     * Store a public-disk image. WebP when GD can convert. GIF stays GIF
+     * (animation). JPEG/PNG keep original bytes only when they decode as a
+     * real image and WebP conversion is unavailable.
      */
     public function storeSafePublicImage(UploadedFile $file, string $directory): ?string
     {
@@ -162,8 +163,20 @@ class ImageOptimizationService
         }
 
         $ext = strtolower((string) ($file->getClientOriginalExtension() ?: $file->extension() ?: ''));
-        if ($ext !== 'gif') {
+        if (! in_array($ext, ['gif', 'jpg', 'jpeg', 'png'], true)) {
             return null;
+        }
+
+        if ($ext !== 'gif') {
+            $sourcePath = $file->getRealPath() ?: $file->getPathname();
+            if (! is_string($sourcePath) || $sourcePath === '' || ! is_file($sourcePath)) {
+                return null;
+            }
+
+            $binary = (string) file_get_contents($sourcePath);
+            if (! $this->isDecodableRasterImage($binary, $ext)) {
+                return null;
+            }
         }
 
         try {
@@ -176,8 +189,61 @@ class ImageOptimizationService
     }
 
     /**
+     * True when $binary is a real JPEG/PNG, not JPEG-magic garbage.
+     */
+    protected function isDecodableRasterImage(string $binary, string $ext): bool
+    {
+        if ($binary === '') {
+            return false;
+        }
+
+        if (function_exists('getimagesizefromstring')) {
+            $info = @getimagesizefromstring($binary);
+
+            return is_array($info)
+                && isset($info[0], $info[1])
+                && (int) $info[0] > 0
+                && (int) $info[1] > 0;
+        }
+
+        return match ($ext) {
+            'jpg', 'jpeg' => $this->looksLikeJpeg($binary),
+            'png' => $this->looksLikePng($binary),
+            default => false,
+        };
+    }
+
+    protected function looksLikeJpeg(string $binary): bool
+    {
+        if (strlen($binary) < 100) {
+            return false;
+        }
+
+        if (! str_starts_with($binary, "\xff\xd8\xff")) {
+            return false;
+        }
+
+        return str_ends_with($binary, "\xff\xd9");
+    }
+
+    protected function looksLikePng(string $binary): bool
+    {
+        $signature = "\x89PNG\r\n\x1a\n";
+        if (! str_starts_with($binary, $signature) || strlen($binary) < 67) {
+            return false;
+        }
+
+        if (substr($binary, 12, 4) !== 'IHDR') {
+            return false;
+        }
+
+        return str_contains($binary, 'IEND');
+    }
+
+    /**
      * Convert a staff-uploaded cover (JPEG/PNG/WebP) to WebP on the public disk.
      * Returns null for GIF (keep animation) or when GD cannot re-encode.
+     * Callers that must still persist the file use storeSafePublicImage().
      */
     public function storeUploadedImageAsWebp(UploadedFile $file, string $directory = 'sites'): ?string
     {

@@ -37,13 +37,6 @@ class AdminBlogImageTest extends TestCase
                 'image' => $this->fakeBlogUpload('inline.jpg', 640, 360),
             ]);
 
-        if (! function_exists('imagewebp')) {
-            $response->assertStatus(422)
-                ->assertJsonPath('success', false);
-
-            return;
-        }
-
         $response->assertOk()
             ->assertJson([
                 'success' => true,
@@ -56,8 +49,12 @@ class AdminBlogImageTest extends TestCase
         $relative = $this->blogDiskPathFromUrl($url);
         $this->assertNotSame('', $relative);
         Storage::disk('public')->assertExists($relative);
-        $this->assertStringEndsWith('.webp', $relative);
-        $this->assertStringStartsWith('RIFF', Storage::disk('public')->get($relative));
+        if (function_exists('imagewebp')) {
+            $this->assertStringEndsWith('.webp', $relative);
+            $this->assertStringStartsWith('RIFF', Storage::disk('public')->get($relative));
+        } else {
+            $this->assertMatchesRegularExpression('/\.(jpe?g|png)$/i', $relative);
+        }
     }
 
     public function test_editor_gif_upload_stays_gif_and_uses_media_url(): void
@@ -146,14 +143,6 @@ class AdminBlogImageTest extends TestCase
                 'featured_image' => $this->fakeBlogUpload('new-featured.jpg', 800, 450),
             ]);
 
-        if (! function_exists('imagewebp')) {
-            $update->assertSessionHasErrors('featured_image');
-            $this->assertSame($oldPath, $blog->fresh()->featured_image);
-            Storage::disk('public')->assertExists($oldPath);
-
-            return;
-        }
-
         $update->assertRedirect(route('admin.blogs.index'));
 
         $blog->refresh();
@@ -162,8 +151,12 @@ class AdminBlogImageTest extends TestCase
         $this->assertStringStartsWith('blogs/featured/', $blog->featured_image);
         Storage::disk('public')->assertMissing($oldPath);
         Storage::disk('public')->assertExists($blog->featured_image);
-        $this->assertStringEndsWith('.webp', $blog->featured_image);
-        $this->assertStringStartsWith('RIFF', Storage::disk('public')->get($blog->featured_image));
+        if (function_exists('imagewebp')) {
+            $this->assertStringEndsWith('.webp', $blog->featured_image);
+            $this->assertStringStartsWith('RIFF', Storage::disk('public')->get($blog->featured_image));
+        } else {
+            $this->assertMatchesRegularExpression('/\.(jpe?g|png)$/i', $blog->featured_image);
+        }
 
         $this->actingAs($admin)
             ->get(route('admin.blogs.edit', $blog->id))
@@ -488,13 +481,6 @@ class AdminBlogImageTest extends TestCase
                 ],
             ]);
 
-        if (! function_exists('imagewebp')) {
-            $store->assertSessionHasErrors('featured_image');
-            $this->assertNull(Blog::query()->where('slug', 'webp-featured-post')->first());
-
-            return;
-        }
-
         $store->assertRedirect(route('admin.blogs.index'));
 
         $blog = Blog::query()->where('slug', 'webp-featured-post')->first();
@@ -503,8 +489,12 @@ class AdminBlogImageTest extends TestCase
         $this->assertStringStartsWith('blogs/featured/', $blog->featured_image);
         Storage::disk('public')->assertExists($blog->featured_image);
         $this->assertSame('/media/'.$blog->featured_image, $blog->featuredImageUrl());
-        $this->assertStringEndsWith('.webp', $blog->featured_image);
-        $this->assertStringStartsWith('RIFF', Storage::disk('public')->get($blog->featured_image));
+        if (function_exists('imagewebp')) {
+            $this->assertStringEndsWith('.webp', $blog->featured_image);
+            $this->assertStringStartsWith('RIFF', Storage::disk('public')->get($blog->featured_image));
+        } else {
+            $this->assertMatchesRegularExpression('/\.(jpe?g|png)$/i', $blog->featured_image);
+        }
     }
 
     private function blogDiskPathFromUrl(string $url): string
