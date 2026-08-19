@@ -274,7 +274,8 @@
                                 @endphp
                                 <div class="col-12 col-sm-6 col-xl-4">
                                     <div class="payment-option"
-                                         @if($methodReady) data-method="{{ $methodKey }}" style="cursor: pointer;" role="button" tabindex="0" @else aria-disabled="true" style="cursor: not-allowed; opacity: 0.6;" @endif
+                                         data-method="{{ $methodKey }}"
+                                         @if($methodReady) style="cursor: pointer;" role="button" tabindex="0" @else aria-disabled="true" style="cursor: not-allowed; opacity: 0.6;" @endif
                                          aria-label="{{ $meta['aria'] }}">
                                         <div class="payment-option-card">
                                             @if(! empty($meta['new_key']))

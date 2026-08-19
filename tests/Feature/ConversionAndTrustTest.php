@@ -59,7 +59,7 @@ class ConversionAndTrustTest extends TestCase
         ]);
     }
 
-    public function test_homepage_payment_trust_omits_paypal_and_links_refund_policy(): void
+    public function test_homepage_payment_trust_shows_paypal_and_links_refund_policy(): void
     {
         $html = $this->get('/')
             ->assertOk()

@@ -65,7 +65,8 @@ class AddFundsUiGuardTest extends TestCase
         $this->assertStringContainsString('function syncWiseQr', $js);
         $this->assertStringContainsString('AddFundsBoot', $view);
         $this->assertStringContainsString('createPaypal', $view);
-        $this->assertStringContainsString('data-method="paypal"', $view);
+        $this->assertStringContainsString("data-method=\"{{ \$methodKey }}\"", $view);
+        $this->assertStringContainsString("'paypal'", $view);
         $this->assertStringContainsString('payment-card-brands', $view);
         $this->assertStringContainsString('Recently used', $view);
         $this->assertStringContainsString('add_funds.paypal', $view);
