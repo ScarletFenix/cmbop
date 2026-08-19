@@ -5,6 +5,9 @@ namespace Tests\Feature;
 use App\Jobs\SendEmailCampaignJob;
 use App\Listeners\StampEmailLogFailedJobUuid;
 use App\Mail\AudienceCampaignMail;
+use App\Mail\DepositReminderMail;
+use App\Mail\OrderStatusChanged;
+use App\Mail\PublisherAddSiteReminderMail;
 use App\Mail\WelcomeEmail;
 use App\Models\ActivityLog;
 use App\Models\DepositRequest;
@@ -977,14 +980,53 @@ class AdminEmailCenterTest extends TestCase
         ]);
     }
 
-    public function test_retry_production_log_without_job_does_not_rebuild(): void
+    public function test_retry_production_welcome_without_job_rebuilds_for_real_recipient(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $customer = $this->userWithRole('advertiser', [
+            'email' => 'customer@example.com',
+            'name' => 'Retry Customer',
+        ]);
+        $log = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => WelcomeEmail::class,
+            'template_key' => 'welcome',
+            'to_email' => $customer->email,
+            'subject' => 'Welcome to SEOLinkBuildings',
+            'status' => EmailLog::STATUS_FAILED,
+            'error' => 'SMTP down',
+            'attempts' => 1,
+            'meta' => [
+                'source' => 'queue',
+                'user_id' => $customer->id,
+            ],
+        ]);
+
+        $this->actingAs($admin)
+            ->from(route('admin.emails.index'))
+            ->post(route('admin.emails.retry'), ['log_id' => $log->id])
+            ->assertRedirect(route('admin.emails.index'))
+            ->assertSessionHas('success');
+
+        $this->assertSame(1, EmailLog::query()->count());
+        $fresh = $log->fresh();
+        $this->assertSame(EmailLog::STATUS_DELIVERED, $fresh->status);
+        $this->assertSame($customer->email, $fresh->to_email);
+        $this->assertNull($fresh->error);
+        $this->assertDatabaseHas('activity_logs', [
+            'action' => 'email.retried',
+            'user_id' => $admin->id,
+        ]);
+    }
+
+    public function test_retry_production_log_without_job_refuses_unknown_recipient(): void
     {
         $admin = $this->userWithRole('admin');
         $log = EmailLog::create([
             'uuid' => (string) Str::uuid(),
             'mailable' => WelcomeEmail::class,
             'template_key' => 'welcome',
-            'to_email' => 'customer@example.com',
+            'to_email' => 'missing-customer@example.com',
             'subject' => 'Welcome to SEOLinkBuildings',
             'status' => EmailLog::STATUS_FAILED,
             'error' => 'SMTP down',
@@ -1000,6 +1042,104 @@ class AdminEmailCenterTest extends TestCase
 
         $this->assertSame(EmailLog::STATUS_FAILED, $log->fresh()->status);
         $this->assertSame(0, EmailLog::query()->where('status', EmailLog::STATUS_DELIVERED)->count());
+    }
+
+    public function test_retry_production_log_without_job_refuses_order_mail_without_context(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $customer = $this->userWithRole('advertiser', [
+            'email' => 'order-customer@example.com',
+        ]);
+        $log = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => OrderStatusChanged::class,
+            'template_key' => 'order_status_changed',
+            'to_email' => $customer->email,
+            'subject' => 'Order #1001 status changed',
+            'status' => EmailLog::STATUS_FAILED,
+            'error' => 'SMTP down',
+            'attempts' => 1,
+            'meta' => [
+                'source' => 'queue',
+                'user_id' => $customer->id,
+            ],
+        ]);
+
+        $this->actingAs($admin)
+            ->from(route('admin.emails.index'))
+            ->post(route('admin.emails.retry'), ['log_id' => $log->id])
+            ->assertRedirect(route('admin.emails.index'))
+            ->assertSessionHas('error');
+
+        $this->assertSame(EmailLog::STATUS_FAILED, $log->fresh()->status);
+        $this->assertSame(0, EmailLog::query()->where('status', EmailLog::STATUS_DELIVERED)->count());
+    }
+
+    public function test_retry_production_deposit_reminder_without_job_uses_stored_step(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $customer = $this->userWithRole('advertiser', [
+            'email' => 'reminder-customer@example.com',
+        ]);
+        $log = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => DepositReminderMail::class,
+            'template_key' => 'deposit_reminder',
+            'dedupe_key' => 'deposit_reminder:day7:'.$customer->id,
+            'to_email' => $customer->email,
+            'subject' => 'Your €20 credit is waiting — ready when you are',
+            'status' => EmailLog::STATUS_FAILED,
+            'error' => 'SMTP down',
+            'attempts' => 1,
+            'meta' => [
+                'source' => 'queue',
+                'user_id' => $customer->id,
+            ],
+        ]);
+
+        $this->actingAs($admin)
+            ->from(route('admin.emails.index'))
+            ->post(route('admin.emails.retry'), ['log_id' => $log->id])
+            ->assertRedirect(route('admin.emails.index'))
+            ->assertSessionHas('success');
+
+        $fresh = $log->fresh();
+        $this->assertSame(EmailLog::STATUS_DELIVERED, $fresh->status);
+        $this->assertSame($customer->email, $fresh->to_email);
+        $this->assertSame('deposit_reminder:day7:'.$customer->id, $fresh->dedupe_key);
+    }
+
+    public function test_retry_production_publisher_reminder_without_job_rebuilds(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $publisher = $this->userWithRole('publisher', [
+            'email' => 'publisher-reminder@example.com',
+        ]);
+        $log = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => PublisherAddSiteReminderMail::class,
+            'template_key' => 'publisher_add_site_reminder',
+            'dedupe_key' => 'publisher_add_site:day3:'.$publisher->id,
+            'to_email' => $publisher->email,
+            'subject' => 'List your first website to start receiving orders',
+            'status' => EmailLog::STATUS_FAILED,
+            'error' => 'SMTP down',
+            'attempts' => 1,
+            'meta' => [
+                'source' => 'queue',
+                'user_id' => $publisher->id,
+            ],
+        ]);
+
+        $this->actingAs($admin)
+            ->from(route('admin.emails.index'))
+            ->post(route('admin.emails.retry'), ['log_id' => $log->id])
+            ->assertRedirect(route('admin.emails.index'))
+            ->assertSessionHas('success');
+
+        $fresh = $log->fresh();
+        $this->assertSame(EmailLog::STATUS_DELIVERED, $fresh->status);
+        $this->assertSame($publisher->email, $fresh->to_email);
     }
 
     public function test_retry_rebuilds_campaign_log_without_failed_job(): void

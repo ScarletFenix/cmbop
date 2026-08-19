@@ -5,7 +5,10 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Jobs\SendEmailCampaignJob;
 use App\Mail\AudienceCampaignMail;
+use App\Mail\DepositReminderMail;
 use App\Mail\PlatformMailable;
+use App\Mail\PublisherAddSiteReminderMail;
+use App\Mail\WelcomeEmail;
 use App\Models\EmailCampaign;
 use App\Models\EmailCampaignRecipient;
 use App\Models\EmailLog;
@@ -399,6 +402,11 @@ class EmailCenterController extends Controller
 
             if ($this->queueRetryMissedJob(Artisan::output())
                 || $this->actuallyRetriedJobUuids([$uuid]) === []) {
+                $rebuilt = $this->retryRebuildableProductionLogWithoutJob($log);
+                if ($rebuilt !== null) {
+                    return $rebuilt;
+                }
+
                 return back()->with('error', 'Cannot rebuild production payload — retry the queue job.');
             }
 
@@ -419,7 +427,7 @@ class EmailCenterController extends Controller
             return back()->with('success', 'Re-queued the failed mail job for this log.');
         }
 
-        $rebuilt = $this->retryCampaignLogWithoutJob($log);
+        $rebuilt = $this->retryRebuildableProductionLogWithoutJob($log);
         if ($rebuilt !== null) {
             return $rebuilt;
         }
@@ -428,9 +436,22 @@ class EmailCenterController extends Controller
     }
 
     /**
+     * Rebuild a production send from stored campaign + user, or from the
+     * real recipient for user-only templates. Catalog sample users / sample
+     * orders are never used — that would send the wrong letter.
+     */
+    protected function retryRebuildableProductionLogWithoutJob(EmailLog $log): mixed
+    {
+        $campaign = $this->retryCampaignLogWithoutJob($log);
+        if ($campaign !== null) {
+            return $campaign;
+        }
+
+        return $this->retryUserOnlyProductionLogWithoutJob($log);
+    }
+
+    /**
      * Campaign mail can be rebuilt from the stored campaign + user.
-     * Other production templates cannot — retrying those from the catalog
-     * would send the wrong letter.
      */
     protected function retryCampaignLogWithoutJob(EmailLog $log): mixed
     {
@@ -502,6 +523,131 @@ class EmailCenterController extends Controller
         );
 
         return back()->with('success', 'Re-queued this campaign email.');
+    }
+
+    /**
+     * Welcome / add-site / deposit reminders only need the real User.
+     * Order, invoice, password, and Google-temp-password mail stay refused
+     * when the queue job is gone — those need tokens or live IDs we do not store.
+     */
+    protected function retryUserOnlyProductionLogWithoutJob(EmailLog $log): mixed
+    {
+        $user = $this->recipientUserForProductionRebuild($log);
+        if (! $user) {
+            return null;
+        }
+
+        $mailable = $this->rebuildUserOnlyProductionMailable($log, $user);
+        if (! $mailable instanceof PlatformMailable) {
+            return null;
+        }
+
+        $dedupe = trim((string) $log->dedupe_key);
+        if ($dedupe === '') {
+            $dedupe = (string) ($mailable->dedupeKey ?: implode('|', array_filter([
+                (string) ($log->template_key ?: 'mail'),
+                (string) $user->email,
+                class_basename($mailable::class),
+            ])));
+            $log->update(['dedupe_key' => $dedupe]);
+        }
+        $mailable->dedupeKey = $dedupe;
+        $mailable->skipUserPreference = true;
+        $mailable->queuedAt = now()->toIso8601String();
+
+        try {
+            Mail::to($user->email)->sendNow($mailable);
+        } catch (\Throwable $e) {
+            return back()->with('error', UserFacingError::message($e, 'Could not retry this email. Please try again.'));
+        }
+
+        $fresh = $log->fresh();
+        if ($fresh && $fresh->status === EmailLog::STATUS_DELIVERED) {
+            ActivityLogger::tryLog(
+                'email.retried',
+                (auth()->user()?->name ?? 'Admin').' rebuilt production mail log #'.$log->id,
+                null,
+                ['count' => 1, 'log_id' => $log->id, 'template' => $log->template_key]
+            );
+
+            return back()->with('success', 'Re-sent this email to '.$user->email.'.');
+        }
+
+        if (is_string($mailable->suppressReason) && $mailable->suppressReason !== '') {
+            return back()->with('error', 'Could not resend this email ('.$mailable->suppressReason.').');
+        }
+
+        return back()->with('error', 'Could not resend this email. Please try again.');
+    }
+
+    protected function recipientUserForProductionRebuild(EmailLog $log): ?User
+    {
+        $userId = $this->userIdFromLog($log);
+        if ($userId > 0) {
+            $user = User::query()->find($userId);
+            if ($user) {
+                return $user;
+            }
+        }
+
+        $email = trim((string) $log->to_email);
+        if ($email === '' || ! filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return null;
+        }
+
+        return User::query()->where('email', $email)->first();
+    }
+
+    protected function rebuildUserOnlyProductionMailable(EmailLog $log, User $user): ?PlatformMailable
+    {
+        $key = (string) $log->template_key;
+        $class = (string) $log->mailable;
+
+        if ($key === 'welcome' || $class === WelcomeEmail::class) {
+            return new WelcomeEmail($user);
+        }
+
+        if ($key === 'publisher_add_site_reminder' || $class === PublisherAddSiteReminderMail::class) {
+            $step = $this->reminderStepFromLog(
+                $log,
+                [PublisherAddSiteReminderMail::STEP_DAY3, PublisherAddSiteReminderMail::STEP_DAY7],
+                PublisherAddSiteReminderMail::STEP_DAY3
+            );
+
+            return new PublisherAddSiteReminderMail($user, $step);
+        }
+
+        if ($key === 'deposit_reminder' || $class === DepositReminderMail::class) {
+            $step = $this->reminderStepFromLog(
+                $log,
+                [DepositReminderMail::STEP_DAY7, DepositReminderMail::STEP_DAY14],
+                DepositReminderMail::STEP_DAY14
+            );
+
+            return new DepositReminderMail($user, $step);
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  list<string>  $allowed
+     */
+    protected function reminderStepFromLog(EmailLog $log, array $allowed, string $default): string
+    {
+        $haystack = strtolower(implode(' ', array_filter([
+            (string) $log->dedupe_key,
+            (string) $log->subject,
+            (string) data_get($log->meta, 'step'),
+        ])));
+
+        foreach ($allowed as $step) {
+            if (str_contains($haystack, strtolower($step))) {
+                return $step;
+            }
+        }
+
+        return $default;
     }
 
     protected function retryTestLog(EmailLog $log)
