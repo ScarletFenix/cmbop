@@ -2451,9 +2451,13 @@ $('#addSiteForm').submit(function(e){
     }
 });
 
+let sitesStatusExplicit = false;
+let sitesAutoOpenPendingChecked = false;
 let sitesStatusFilter = (function () {
     try {
-        const raw = (new URLSearchParams(window.location.search).get('status') || 'active').toLowerCase();
+        const params = new URLSearchParams(window.location.search);
+        sitesStatusExplicit = params.has('status');
+        const raw = (params.get('status') || 'active').toLowerCase();
         return (raw === 'pending' || raw === 'active' || raw === 'invites') ? raw : 'active';
     } catch (e) {
         return 'active';
@@ -2596,7 +2600,15 @@ function syncSitesFilterUi(pendingCount, activeCount, status, activeIds, inviteC
 
     if (hint) {
         if (status === 'active') {
-            hint.textContent = 'Approved and live sites on your panel.';
+            if (pendingCount > 0) {
+                hint.textContent = (activeCount > 0)
+                    ? 'Approved and live sites on your panel. ' + pendingCount + ' are in Pending.'
+                    : 'No live sites in this tab. ' + pendingCount + ' are in Pending.';
+            } else if ((invites || 0) > 0 && !(activeCount > 0)) {
+                hint.textContent = 'No live sites in this tab. ' + invites + ' are in Invites.';
+            } else {
+                hint.textContent = 'Approved and live sites on your panel.';
+            }
         } else if (status === 'invites') {
             hint.textContent = 'Sites our team added for you — accept to move them into My Sites, or decline to remove them.';
         } else if (bulkWaiting > 0) {
@@ -2754,7 +2766,6 @@ function fetchSites(page = 1, query = '', opts = {}) {
                         '<button type="button" class="btn btn-primary btn-sm" id="emptyAddSiteCta"><i class="fa fa-plus"></i> Add New Website</button>' +
                         '</div>'
                     );
-                    $('#emptyAddSiteCta').on('click', function(){ $('#showFormBtn').trigger('click'); });
                 }
                 syncNewActiveBadges([], !!opts.acknowledgeNewActive);
             } else {
@@ -2762,13 +2773,32 @@ function fetchSites(page = 1, query = '', opts = {}) {
                 const meta = document.getElementById('sitesStatusMeta');
                 const activeIds = parseActiveIds(meta?.getAttribute('data-active-ids') || '');
                 if (meta) {
+                    const pendingFromMeta = parseInt(meta.getAttribute('data-pending') || '0', 10);
+                    const activeFromMeta = parseInt(meta.getAttribute('data-active') || '0', 10);
                     syncSitesFilterUi(
-                        parseInt(meta.getAttribute('data-pending') || '0', 10),
-                        parseInt(meta.getAttribute('data-active') || '0', 10),
+                        pendingFromMeta,
+                        activeFromMeta,
                         meta.getAttribute('data-status') || sitesStatusFilter,
                         activeIds,
                         parseInt(meta.getAttribute('data-invites') || '0', 10)
                     );
+                    // Auto-open Pending when Active is empty and the URL did not set ?status=
+                    if (!sitesAutoOpenPendingChecked) {
+                        sitesAutoOpenPendingChecked = true;
+                        if (
+                            !sitesStatusExplicit
+                            && sitesStatusFilter === 'active'
+                            && activeFromMeta === 0
+                            && pendingFromMeta > 0
+                            && !String(query || '').trim()
+                        ) {
+                            if (typeof window.setSitesStatusFilter === 'function') {
+                                window.setSitesStatusFilter('pending');
+                            }
+                            fetchSites(1, query, opts);
+                            return;
+                        }
+                    }
                 }
                 if (opts.acknowledgeNewActive) {
                     syncNewActiveBadges(activeIds, true);
@@ -2814,9 +2844,23 @@ $(document).ready(function(){
         }
     }
 
+    $(document).on('click', '#emptyAddSiteCta', function () {
+        $('#showFormBtn').trigger('click');
+    });
+
+    $(document).on('click', '[data-switch-status]', function () {
+        const next = this.getAttribute('data-switch-status') || 'active';
+        sitesStatusExplicit = true;
+        if (typeof window.setSitesStatusFilter === 'function') {
+            window.setSitesStatusFilter(next);
+        }
+        fetchSites(1, $('#siteSearch').val());
+    });
+
     $(document).on('click', '.site-status-filter', function () {
         const next = this.getAttribute('data-status') || 'active';
         const acknowledgeNewActive = next === 'active';
+        sitesStatusExplicit = true;
         if (next === sitesStatusFilter) {
             if (acknowledgeNewActive) {
                 const meta = document.getElementById('sitesStatusMeta');
