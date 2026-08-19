@@ -67,9 +67,9 @@ body.role-shell-publisher { --role-accent: #c45c26; }
 body.role-shell-admin { --role-accent: #1a585e; }
 body.role-shell-marketing { --role-accent: #1a585e; }
 
-/* Short pages: grow the content column so the footer sits on the
-   viewport edge. Do not use a 100vh min-height on #content — that
-   stretches the white cards, not just the page mist. */
+/* Short pages: pin the footer to the viewport edge with body flex +
+   footer margin-top:auto. Do not min-height or flex-grow #content —
+   that stretches the white column instead of the page mist. */
 body.role-shell-advertiser,
 body.role-shell-publisher,
 body.role-shell-admin,
@@ -501,9 +501,8 @@ body > footer {
      A one-axis clip on this column turns it into a scrollport and crops
      the first heading. Keep horizontal wrapping on the document body. */
   padding: 28px 28px var(--shell-footer-clearance);
-  min-height: calc(100dvh - var(--shell-topbar-height) - var(--shell-footer-height));
   min-width: 0;
-  flex: 1 0 auto;
+  flex: 0 0 auto;
   overflow-x: visible;
   overflow-y: visible;
 }

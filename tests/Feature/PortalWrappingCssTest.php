@@ -35,7 +35,7 @@ class PortalWrappingCssTest extends TestCase
             '/#content,\s*#main-content\s*\{[^}]*min-height:\s*calc\(\s*100vh\s*-/s',
             $css
         );
-        $this->assertMatchesRegularExpression(
+        $this->assertDoesNotMatchRegularExpression(
             '/#content,\s*#main-content\s*\{[^}]*min-height:\s*calc\(\s*100dvh/s',
             $css
         );
@@ -71,7 +71,7 @@ class PortalWrappingCssTest extends TestCase
             $css
         );
         $this->assertMatchesRegularExpression(
-            '/#content,\s*#main-content\s*\{[^}]*flex:\s*1 0 auto/s',
+            '/#content,\s*#main-content\s*\{[^}]*flex:\s*0 0 auto/s',
             $css
         );
         $this->assertMatchesRegularExpression(
