@@ -453,6 +453,93 @@ class SitePromotionTest extends TestCase
         $this->assertSame(50.0, (float) Wallet::where('user_id', $publisher->id)->value('balance'));
     }
 
+    public function test_active_unverified_site_can_set_timed_sale(): void
+    {
+        $publisher = $this->publisherWithWallet(50);
+        $site = $this->site($publisher);
+        $site->update(['verified' => false, 'active' => true]);
+
+        $this->actingAs($publisher)->postJson(route('publisher.sites.discount', $site->id), [
+            'percent' => 20,
+            'days' => 7,
+        ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertTrue($site->fresh()->hasActiveCustomDiscount());
+        $this->assertSame(20.0, (float) $site->fresh()->custom_discount_percent);
+    }
+
+    public function test_active_unverified_site_can_join_bulk(): void
+    {
+        $publisher = $this->publisherWithWallet(50);
+        $site = $this->site($publisher);
+        $site->update(['verified' => false, 'active' => true]);
+
+        $this->actingAs($publisher)->postJson(route('publisher.sites.bulk-join', $site->id), [
+            'percent' => 12,
+        ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertTrue($site->fresh()->joinsBulkDiscount());
+        $this->assertSame(12.0, (float) $site->fresh()->bulk_discount_percent);
+    }
+
+    public function test_pending_site_cannot_set_timed_sale(): void
+    {
+        $publisher = $this->publisherWithWallet(50);
+        $site = $this->site($publisher);
+        $site->update(['verified' => false, 'active' => false]);
+
+        $this->actingAs($publisher)->postJson(route('publisher.sites.discount', $site->id), [
+            'percent' => 20,
+            'days' => 7,
+        ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'Only verified or active sites can use promotions.');
+
+        $this->assertFalse($site->fresh()->hasActiveCustomDiscount());
+    }
+
+    public function test_sale_rejects_cancelled_bulk_leftover(): void
+    {
+        $publisher = $this->publisherWithWallet(50);
+        $site = $this->site($publisher);
+        $bulk = BulkSiteRequest::create([
+            'publisher_id' => $publisher->id,
+            'status' => BulkSiteRequest::STATUS_CANCELLED,
+            'estimated_count' => 1,
+        ]);
+        $site->forceFill(['bulk_site_request_id' => $bulk->id])->save();
+
+        $this->actingAs($publisher)->postJson(route('publisher.sites.discount', $site->id), [
+            'percent' => 20,
+            'days' => 7,
+        ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'This listing is not in the catalog and cannot be promoted.');
+
+        $this->assertFalse($site->fresh()->hasActiveCustomDiscount());
+    }
+
+    public function test_feature_rejects_active_unverified_site(): void
+    {
+        $publisher = $this->publisherWithWallet(50);
+        $site = $this->site($publisher);
+        $site->update(['verified' => false, 'active' => true]);
+
+        $this->actingAs($publisher)->postJson(route('publisher.sites.feature', $site->id))
+            ->assertStatus(422)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'Verify this site first so advertisers can see it in the catalog.');
+
+        $this->assertFalse($site->fresh()->isFeatured());
+        $this->assertSame(50.0, (float) Wallet::where('user_id', $publisher->id)->value('balance'));
+    }
+
     public function test_wallet_feature_does_not_debit_cancelled_bulk_leftover(): void
     {
         $publisher = $this->publisherWithWallet(50);
