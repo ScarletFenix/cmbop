@@ -6,11 +6,13 @@ use App\Mail\AdminStalledOrderAlert;
 use App\Mail\AdvertiserOrderStalledNotice;
 use App\Mail\DepositReminderMail;
 use App\Models\DepositRequest;
+use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
+use App\Services\Advertiser\AdvertiserSpendService;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -212,6 +214,90 @@ class PaypalCopyFiltersModalTest extends TestCase
         $ids = collect($orders)->pluck('id')->all();
         $this->assertSame([$paypal->id], $ids);
         $this->assertNotContains($card->id, $ids);
+
+        $js = (string) file_get_contents(public_path('assets/js/advertiser-orders.js'));
+        $this->assertStringContainsString("'paypal': 'PayPal'", $js);
+        $this->assertDoesNotMatchRegularExpression("/return methods\[method\] \|\| method;/", $js);
+    }
+
+    public function test_advertiser_invoice_labels_paypal(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $html = view('advertiser.invoice', [
+            'invoiceType' => 'deposit',
+            'referenceCode' => '888990',
+            'amount' => 25,
+            'billingName' => 'Buyer',
+            'companyName' => '',
+            'country' => 'US',
+            'state' => '',
+            'city' => 'NYC',
+            'address' => '',
+            'postalCode' => '',
+            'vatNumber' => '',
+            'userName' => 'Buyer',
+            'userEmail' => 'buyer@example.com',
+            'userId' => $advertiser->id,
+            'status' => 'completed',
+            'paymentMethod' => 'paypal',
+            'orderDate' => now(),
+            'orderItems' => [],
+            'totalBaseAmount' => 0,
+            'totalSensitiveAmount' => 0,
+            'deposit' => null,
+            'canMarkPaid' => false,
+            'userMarkedPaid' => false,
+            'markPaidUrl' => null,
+        ])->render();
+
+        $this->assertStringContainsString('Payment method:', $html);
+        $this->assertStringContainsString('PayPal', $html);
+        $this->assertStringNotContainsString('>Paypal<', $html);
+
+        $deposit = DepositRequest::create([
+            'user_id' => $advertiser->id,
+            'reference_code' => '888991',
+            'amount' => 25,
+            'payment_method' => 'paypal',
+            'status' => 'pending',
+        ]);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.invoice', $deposit->reference_code))
+            ->assertOk()
+            ->assertSee('Payment method:')
+            ->assertSee('PayPal');
+
+        $order = $this->orderFor($advertiser, $this->siteFor($this->userWithRole('publisher')), 'paypal');
+        $document = Invoice::query()
+            ->where('order_id', $order->id)
+            ->where('type', Invoice::TYPE_TAX_INVOICE)
+            ->first();
+
+        if ($document) {
+            $this->actingAs($advertiser)
+                ->get(route('advertiser.invoice', $order->reference_code))
+                ->assertRedirect(route('advertiser.billing.view', $document));
+
+            $this->actingAs($advertiser)
+                ->get(route('advertiser.billing.show', $document))
+                ->assertOk()
+                ->assertSee('Payment method')
+                ->assertSee('PayPal');
+        } else {
+            $this->actingAs($advertiser)
+                ->get(route('advertiser.invoice', $order->reference_code))
+                ->assertOk()
+                ->assertSee('Payment method:')
+                ->assertSee('PayPal');
+        }
+
+        $rows = app(AdvertiserSpendService::class)->exportRows($advertiser->id);
+        $this->assertSame('PayPal', $rows[0]['payment_method'] ?? null);
+
+        $breakdown = collect(app(AdvertiserSpendService::class)->breakdown($advertiser->id, 'payment_method'))
+            ->keyBy('key');
+        $this->assertSame('PayPal', $breakdown['paypal']['label'] ?? null);
     }
 
     public function test_admin_deposit_show_includes_paypal_ids_and_refund_payload(): void

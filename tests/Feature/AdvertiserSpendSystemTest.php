@@ -209,12 +209,17 @@ class AdvertiserSpendSystemTest extends TestCase
         $user = $this->advertiser();
         $this->makeOrder($user, ['payment_method' => 'wallet', 'status' => 'completed', 'total_amount' => 70]);
         $this->makeOrder($user, ['payment_method' => 'card', 'status' => 'completed', 'total_amount' => 30]);
+        $this->makeOrder($user, ['payment_method' => 'paypal', 'status' => 'completed', 'total_amount' => 40]);
 
         $rows = app(AdvertiserSpendService::class)->breakdown($user->id, 'payment_method');
         $byKey = collect($rows)->keyBy('key');
 
         $this->assertSame(70.0, (float) $byKey['wallet']['net']);
         $this->assertSame(30.0, (float) $byKey['card']['net']);
+        $this->assertSame(40.0, (float) $byKey['paypal']['net']);
+        $this->assertSame('PayPal', $byKey['paypal']['label']);
+        $this->assertSame('Wallet', $byKey['wallet']['label']);
+        $this->assertSame('Card', $byKey['card']['label']);
     }
 
     public function test_analytics_page_and_export_routes(): void
