@@ -36,12 +36,16 @@
   /* Space between the last page block and the in-flow shell footer so
      dashboard cards (Recent orders / Recent tasks) do not sit flush on it. */
   --shell-footer-clearance: 56px;
+  --shell-footer-height: 72px;
 
   --bs-backdrop-zindex: var(--shell-z-modal-backdrop);
   --bs-modal-zindex: var(--shell-z-modal);
   --bs-offcanvas-zindex: var(--shell-z-modal);
 }
 
+html {
+  height: 100%;
+}
 body, html {
   min-height: 100%;
   margin: 0;
@@ -66,6 +70,7 @@ body.role-shell-admin,
 body.role-shell-marketing {
   display: flex;
   flex-direction: column;
+  min-height: 100%;
   min-height: 100dvh;
 }
 
@@ -158,9 +163,13 @@ footer,
   background-color: var(--shell-sidebar-bg);
   border-right: 1px solid var(--shell-border);
   height: 100vh;
+  height: 100dvh;
   position: fixed;
   top: 0;
   left: 0;
+  /* Fixed chrome must not count as a flex row on body — that left a
+     white gap under the footer when the sidebar was expanded. */
+  flex: none;
   display: flex;
   flex-direction: column;
   z-index: var(--shell-z-sidebar, 1050);
@@ -477,7 +486,7 @@ footer,
      A one-axis clip on this column turns it into a scrollport and crops
      the first heading. Keep horizontal wrapping on the document body. */
   padding: 28px 28px var(--shell-footer-clearance);
-  min-height: 0;
+  min-height: calc(100dvh - var(--shell-topbar-height) - var(--shell-footer-height));
   min-width: 0;
   max-width: 100%;
   flex: 1 0 auto;
@@ -511,11 +520,11 @@ body > footer {
   border-top: 1px solid var(--shell-border);
 }
 
-/* Grid may stack groups. The logo strip stays one line and never
-   shrinks, so Visa–Bitcoin cannot merge or wrap onto each other. */
+/* One row even with the sidebar open. Stripe copy shrinks first;
+   logos never wrap onto a second line or merge. */
 .app-shell-footer__grid {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: space-between;
   gap: 10px 16px;
@@ -526,18 +535,19 @@ body > footer {
 }
 .app-shell-footer__left {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 12px;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
 }
 .app-shell-footer__legal {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 0 4px;
   flex: 0 1 auto;
+  min-width: 0;
 }
 .app-shell-footer__left > .trustpilot-trust {
   flex: 0 0 auto;
@@ -732,6 +742,11 @@ body > footer.collapsed {
   #content,
   #main-content {
     padding: 20px 12px 48px;
+  }
+  .app-shell-footer__grid,
+  .app-shell-footer__left,
+  .app-shell-footer__legal {
+    flex-wrap: wrap;
   }
   .top-navbar {
     left: 0 !important;
