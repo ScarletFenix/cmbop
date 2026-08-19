@@ -23,6 +23,7 @@ use App\Services\Orders\OrderRefundService;
 use App\Services\Orders\ReviewHandoffService;
 use App\Support\ArticleDownload;
 use App\Support\OrderLifecycleMailSuppressor;
+use App\Support\PublisherNeedsAction;
 use App\Support\SocialPostUrlValidator;
 use App\Support\UserFacingError;
 use Illuminate\Http\Request;
@@ -123,28 +124,7 @@ class OrderController extends Controller
 
             // Needs-action filter (accept / publish / modification) — paid already applied above.
             if ($request->boolean('needs_action')) {
-                $query->where(function ($q) {
-                    $q->whereHas('order', function ($sub) {
-                        $sub->where('status', 'pending')->notAwaitingScheduledRelease();
-                    })->orWhere(function ($sub) {
-                        $sub->where('modification_requested', 'yes');
-                    })->orWhere(function ($sub) {
-                        $sub->whereHas('order', function ($o) {
-                            $o->where('status', 'processing');
-                        })->where(function ($u) {
-                            $u->whereNull('live_url')->orWhere('live_url', '');
-                        })->where(function ($m) {
-                            $m->whereNull('modification_requested')
-                                ->orWhere('modification_requested', '!=', 'yes');
-                        });
-                        if (Schema::hasColumn('order_items', 'content_revision_requested')) {
-                            $sub->where(function ($c) {
-                                $c->whereNull('content_revision_requested')
-                                    ->orWhere('content_revision_requested', '!=', 'yes');
-                            });
-                        }
-                    });
-                });
+                PublisherNeedsAction::applyNeedsYouFilter($query);
             } elseif (($status = search_text($request->input('status'))) !== '') {
                 $query->whereHas('order', function ($sub) use ($status) {
                     if ($status === 'scheduled') {
