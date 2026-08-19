@@ -11,11 +11,14 @@ use App\Models\User;
 use App\Models\Wallet;
 use App\Services\OrderPaymentService;
 use App\Services\PaypalCheckoutService;
+use App\Support\UserMessages;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Testing\TestResponse;
 use Tests\Support\CreatesContentSubmissions;
 use Tests\TestCase;
 
@@ -265,6 +268,115 @@ class CheckoutPaypalProcessTest extends TestCase
             ->assertJsonPath('success', false);
 
         $this->assertSame(0, Order::where('reference_code', 'PP-OFF')->count());
+    }
+
+    public function test_process_order_paypal_oauth_401_is_not_generic_order_error(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        $this->enablePaypal();
+        Http::fake([
+            'https://api-m.sandbox.paypal.com/v1/oauth2/token' => Http::response([
+                'error' => 'invalid_client',
+            ], 401),
+            'https://api-m.paypal.com/v1/oauth2/token' => Http::response([
+                'error' => 'invalid_client',
+            ], 401),
+        ]);
+
+        $this->postPaypalCheckout('PP-401')
+            ->assertOk()
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', UserMessages::get('payment.paypal_auth'))
+            ->assertJsonMissing(['message' => 'We could not process your order. Please try again.']);
+
+        $this->assertSame(0, Order::where('reference_code', 'PP-401')->count());
+    }
+
+    public function test_process_order_paypal_connection_error_is_not_generic_order_error(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        $this->enablePaypal();
+        Http::fake(function () {
+            throw new ConnectionException(
+                'cURL error 7: Failed to connect to api-m.sandbox.paypal.com port 443: Connection refused'
+            );
+        });
+
+        $this->postPaypalCheckout('PP-CONN')
+            ->assertOk()
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', UserMessages::get('payment.paypal_unavailable'))
+            ->assertJsonMissing(['message' => 'We could not process your order. Please try again.']);
+    }
+
+    public function test_process_order_paypal_uses_live_host_when_sandbox_oauth_is_rejected(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        $this->enablePaypal();
+        Http::fake(function ($request) {
+            $url = $request->url();
+            if ($url === 'https://api-m.sandbox.paypal.com/v1/oauth2/token') {
+                return Http::response(['error' => 'invalid_client'], 401);
+            }
+            if ($url === 'https://api-m.paypal.com/v1/oauth2/token') {
+                return Http::response([
+                    'access_token' => 'tok_live',
+                    'expires_in' => 300,
+                    'token_type' => 'Bearer',
+                ], 200);
+            }
+            if (str_starts_with($url, 'https://api-m.paypal.com/v2/checkout/orders')) {
+                return Http::response([
+                    'id' => 'PO-LIVE-FALLBACK',
+                    'status' => 'CREATED',
+                    'links' => [
+                        ['rel' => 'approve', 'href' => 'https://www.paypal.com/checkoutnow?token=PO-LIVE-FALLBACK'],
+                    ],
+                ], 201);
+            }
+
+            return Http::response(['name' => 'RESOURCE_NOT_FOUND'], 404);
+        });
+
+        $this->postPaypalCheckout('PP-LIVE')
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('paypal_order_id', 'PO-LIVE-FALLBACK')
+            ->assertJsonPath('checkout_url', 'https://www.paypal.com/checkoutnow?token=PO-LIVE-FALLBACK');
+
+        Http::assertSent(function ($request) {
+            return str_starts_with($request->url(), 'https://api-m.paypal.com/v2/checkout/orders');
+        });
+        $this->assertSame(0, Order::where('reference_code', 'PP-LIVE')->count());
+    }
+
+    /**
+     * @return TestResponse
+     */
+    private function postPaypalCheckout(string $reference)
+    {
+        $advertiser = $this->advertiser();
+        $site = $this->activeSite($this->publisher(), 'paypal-'.$reference.'.example');
+        $sub = $this->createApprovedSubmission($advertiser, $site->id);
+
+        return $this->actingAs($advertiser)
+            ->withSession([
+                'cart' => [[
+                    'id' => $site->id,
+                    'name' => $site->site_name,
+                    'quantity' => 1,
+                    'content_submission_id' => $sub->id,
+                    'price' => 100,
+                ]],
+            ])
+            ->postJson(route('advertiser.checkout.process'), [
+                'payment_method' => 'paypal',
+                'reference_code' => $reference,
+                'publication_mode' => 'immediate',
+                'content_submissions' => [
+                    $site->id => [$sub->id],
+                ],
+            ]);
     }
 
     public function test_process_order_paypal_creates_approve_url_without_order_rows(): void

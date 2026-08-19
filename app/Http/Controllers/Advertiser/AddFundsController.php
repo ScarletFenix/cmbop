@@ -323,7 +323,7 @@ class AddFundsController extends Controller
             ]);
         } catch (ValidationException $e) {
             throw $e;
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('PayPal wallet deposit create error: '.$e->getMessage());
 
             return response()->json([
