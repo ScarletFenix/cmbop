@@ -25,7 +25,7 @@
     $chipLabel = $isNone ? \App\Support\SiteTag::NONE_LABEL : $tagLabel;
 @endphp
 @if($chipLabel && $tagModifier)
-    <span class="site-chip site-chip--{{ $tagModifier }}"
+    <span class="site-chip site-chip--{{ $tagModifier }} site-chip--descriptor"
           @if($tagTitle) title="{{ $tagTitle }}" @endif>
         @if($tagIcon)
             <i class="fa-solid {{ $tagIcon }}" aria-hidden="true"></i>

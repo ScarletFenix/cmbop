@@ -350,26 +350,27 @@ fieldset:disabled .btn {
   opacity: 1;
 }
 
-/* Quiet ownership claim — logo grey, does not compete with Buy */
+/* Quiet ownership claim — text link, does not compete with Add to cart */
 .btn-claim-site {
   appearance: none;
-  border: 1px solid #cfd2d4;
-  background: #fff;
+  border: 0;
+  background: transparent;
   color: var(--brand-ink-muted, #697078);
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: 0.01em;
-  line-height: 1;
-  padding: 5px 10px;
-  border-radius: 999px;
+  line-height: 1.3;
+  padding: 4px 2px;
+  border-radius: 0;
   cursor: pointer;
-  transition: background-color var(--motion-hover, 140ms ease), border-color var(--motion-hover, 140ms ease), color var(--motion-hover, 140ms ease);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: color var(--motion-hover, 140ms ease);
 }
 
 .btn-claim-site:hover,
 .btn-claim-site:focus-visible {
-  background: #f3f4f4;
-  border-color: #75787B;
-  color: #5f6265;
+  background: transparent;
+  color: #334155;
   outline: none;
 }

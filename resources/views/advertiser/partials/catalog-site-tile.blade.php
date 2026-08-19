@@ -32,4 +32,5 @@
 @endphp
 
 <span class="catalog-tile catalog-tile--{{ $tileSize }} catalog-tile--tone{{ $tileTone }}"
+      title="Initials from the site host — not a country code"
       aria-hidden="true">{{ $initials }}</span>

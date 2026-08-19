@@ -13,12 +13,12 @@
     if ($showStars) {
         $ariaParts[] = number_format($avg, 1).' out of 5 from '.$count.' '.($count === 1 ? 'rating' : 'ratings');
     } else {
-        $ariaParts[] = 'No ratings yet';
+        $ariaParts[] = 'Awaiting first ratings';
     }
     if ($completionRate !== null) {
         $ariaParts[] = $completionRate.' percent completed';
     } else {
-        $ariaParts[] = 'No completion history yet';
+        $ariaParts[] = 'No completed orders yet';
     }
 @endphp
 <div class="site-trust-compact {{ $compactClass ?? 'mt-2' }}"
@@ -49,7 +49,7 @@
             <span class="site-trust-compact__count">· {{ $count }} {{ $count === 1 ? 'rating' : 'ratings' }}</span>
         </span>
     @else
-        <span class="site-trust-compact__empty">New · No ratings yet</span>
+        <span class="site-trust-compact__empty">Awaiting first ratings</span>
     @endif
 
     <span class="site-trust-compact__sep" aria-hidden="true">·</span>
@@ -57,6 +57,6 @@
     @if($completionRate !== null)
         <span class="site-trust-compact__rate">{{ $completionRate }}% completed</span>
     @else
-        <span class="site-trust-compact__rate site-trust-compact__rate--empty">No completion history yet</span>
+        <span class="site-trust-compact__rate site-trust-compact__rate--empty">No completed orders yet</span>
     @endif
 </div>

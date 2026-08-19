@@ -21,13 +21,13 @@
 @endphp
 @if($showHomepagePlacementChip)
     @if($placementFreeHomepageDays !== null)
-        <span class="site-chip site-chip--homepage"
+        <span class="site-chip site-chip--homepage site-chip--descriptor"
               title="Free homepage placement for up to {{ $placementFreeHomepageDays }} day{{ $placementFreeHomepageDays > 1 ? 's' : '' }} — choose duration in Details">
             <i class="fa-solid fa-house" aria-hidden="true"></i>
             <span>Free homepage</span>
         </span>
     @else
-        <span class="site-chip site-chip--homepage"
+        <span class="site-chip site-chip--homepage site-chip--descriptor"
               title="Optional homepage placement available — choose duration in Details">
             <i class="fa-solid fa-house" aria-hidden="true"></i>
             <span>Homepage</span>
@@ -35,7 +35,7 @@
     @endif
 @endif
 @if($showSocialPlacementChip)
-    <span class="site-chip site-chip--social"
+    <span class="site-chip site-chip--social site-chip--descriptor"
           title="{{ $socialTitle }}">
         <i class="fa-solid fa-share-nodes" aria-hidden="true"></i>
         <span>Social</span>

@@ -201,7 +201,7 @@ class CatalogUiRegressionTest extends TestCase
         $this->assertStringContainsString('catalog-site-controls', $hideHtml);
         $this->assertStringContainsString('expand-arrow', $hideHtml);
         $this->assertStringContainsString('fa-eye', $hideHtml);
-        // NEW / Verified / eye / open pack against the name (no flex-grow gap).
+        // NEW / Verified / eye pack against the name (visit lives on the URL).
         $css = file_get_contents(public_path('assets/css/catalog.css'));
         $this->assertStringContainsString('.catalog-site-controls', $css);
         $this->assertMatchesRegularExpression(
@@ -210,9 +210,10 @@ class CatalogUiRegressionTest extends TestCase
         );
         $this->assertStringContainsString('.catalog-site-rooted-url', $css);
         $this->assertMatchesRegularExpression(
-            '/\.catalog-site-actions \.catalog-url-eye,[\s\S]*?\.site-open-link \{[\s\S]*?height:\s*20px;/',
+            '/\.catalog-site-controls \.catalog-url-eye,[\s\S]*?\.catalog-site-actions \.catalog-url-eye \{[\s\S]*?height:\s*20px;/',
             $css
         );
+        $this->assertStringContainsString('a.catalog-site-rooted-url.site-open-link', $css);
         // Order: eye immediately after the domain, then NEW, then Verified chip.
         $this->assertMatchesRegularExpression(
             '/catalog-site-controls[\s\S]*?catalog-url-eye[\s\S]*?site-badge-new[\s\S]*?site-chip--verified/s',
