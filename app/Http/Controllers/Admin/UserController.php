@@ -8,6 +8,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Services\ActivityLogger;
 use App\Services\Wallet\PayoutProfileService;
+use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
@@ -132,10 +133,10 @@ class UserController extends Controller
                 'message' => 'Company updated successfully',
             ]);
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Something went wrong',
+                'message' => UserFacingError::message($e, 'Could not update company name. Please try again.'),
             ], 500);
         }
     }

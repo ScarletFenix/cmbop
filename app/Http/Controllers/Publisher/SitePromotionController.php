@@ -8,9 +8,9 @@ use App\Models\Wallet;
 use App\Services\ActivityLogger;
 use App\Services\SitePromotionService;
 use App\Services\StripePaymentService;
+use App\Support\UserFacingError;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
 use Stripe\Checkout\Session;
 use Stripe\Stripe;
 
@@ -133,11 +133,9 @@ class SitePromotionController extends Controller
                 'session_id' => $session->id,
             ]);
         } catch (\Throwable $e) {
-            Log::error('Feature Stripe checkout failed', ['error' => $e->getMessage(), 'site_id' => $site->id]);
-
             return response()->json([
                 'success' => false,
-                'message' => 'Could not start card checkout. Please try again or use wallet balance.',
+                'message' => UserFacingError::message($e, 'Could not start card checkout. Please try again or use wallet balance.'),
             ], 500);
         }
     }
@@ -203,10 +201,8 @@ class SitePromotionController extends Controller
             return redirect()->route('publisher.websites')
                 ->with('error', $result['message'] ?? 'Could not apply feature after payment.');
         } catch (\Throwable $e) {
-            Log::error('Feature Stripe success handling failed', ['error' => $e->getMessage()]);
-
             return redirect()->route('publisher.websites')
-                ->with('error', 'Could not verify payment. Contact support if you were charged.');
+                ->with('error', UserFacingError::message($e, 'Could not verify payment. Contact support if you were charged.'));
         }
     }
 
