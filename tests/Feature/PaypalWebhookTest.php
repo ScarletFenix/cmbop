@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Mail\DepositRefunded;
+use App\Mail\PaypalPaymentNotCompleted;
 use App\Models\DepositRequest;
 use App\Models\InAppNotification;
 use App\Models\Order;
@@ -832,5 +833,109 @@ class PaypalWebhookTest extends TestCase
         $this->assertSame('paid', $fresh->payment_status);
         $this->assertSame('completed', $fresh->status);
         $this->assertSame('RF-PO-DONE', $fresh->paypal_refund_id);
+    }
+
+    public function test_denied_webhook_emails_advertiser_when_checkout_is_unpaid(): void
+    {
+        $this->enablePaypal();
+        $this->fakePaypal('PO-DENY');
+        Mail::fake();
+
+        $advertiser = $this->advertiser();
+
+        $this->postWebhook([
+            'id' => 'WH-DENY-1',
+            'event_type' => 'PAYMENT.CAPTURE.DENIED',
+            'resource' => [
+                'id' => 'CAP-PO-DENY',
+                'status' => 'DENIED',
+                'custom_id' => PaypalCheckoutService::customId(
+                    PaypalCheckoutService::TYPE_ORDER_CHECKOUT,
+                    $advertiser->id,
+                    'PP-DENY'
+                ),
+            ],
+        ])->assertOk()->assertJsonPath('status', 'success');
+
+        Mail::assertQueued(PaypalPaymentNotCompleted::class, function (PaypalPaymentNotCompleted $mail) use ($advertiser) {
+            return (int) $mail->user->id === (int) $advertiser->id
+                && $mail->reason === PaypalPaymentNotCompleted::REASON_DENIED
+                && $mail->referenceCode === 'PP-DENY';
+        });
+        Mail::assertQueued(PaypalPaymentNotCompleted::class, 1);
+        $this->assertSame(0, Order::query()->where('reference_code', 'PP-DENY')->count());
+    }
+
+    public function test_denied_webhook_is_silent_after_paid_checkout(): void
+    {
+        $this->enablePaypal();
+        $this->fakePaypal('PO-DENY-PAID');
+        Mail::fake();
+
+        $advertiser = $this->advertiser();
+        Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => 'ORD-DENY-PAID',
+            'reference_code' => 'PP-DENY-PAID',
+            'subtotal' => 50,
+            'tax' => 0,
+            'total_amount' => 50,
+            'payment_method' => 'paypal',
+            'payment_status' => 'paid',
+            'status' => 'pending',
+            'paypal_order_id' => 'PO-DENY-PAID',
+            'paypal_capture_id' => 'CAP-PO-DENY-PAID',
+            'paid_at' => now(),
+        ]);
+
+        $this->postWebhook([
+            'id' => 'WH-DENY-PAID-1',
+            'event_type' => 'PAYMENT.CAPTURE.DENIED',
+            'resource' => [
+                'id' => 'CAP-PO-DENY-PAID',
+                'status' => 'DENIED',
+                'custom_id' => PaypalCheckoutService::customId(
+                    PaypalCheckoutService::TYPE_ORDER_CHECKOUT,
+                    $advertiser->id,
+                    'PP-DENY-PAID'
+                ),
+            ],
+        ])->assertOk()->assertJsonPath('status', 'success');
+
+        Mail::assertNotQueued(PaypalPaymentNotCompleted::class);
+    }
+
+    public function test_pending_webhook_emails_advertiser_once(): void
+    {
+        $this->enablePaypal();
+        $this->fakePaypal('PO-PEND');
+        Mail::fake();
+
+        $advertiser = $this->advertiser();
+        $event = [
+            'id' => 'WH-PEND-1',
+            'event_type' => 'PAYMENT.CAPTURE.PENDING',
+            'resource' => [
+                'id' => 'CAP-PO-PEND',
+                'status' => 'PENDING',
+                'custom_id' => PaypalCheckoutService::customId(
+                    PaypalCheckoutService::TYPE_ORDER_CHECKOUT,
+                    $advertiser->id,
+                    'PP-PEND'
+                ),
+            ],
+        ];
+
+        $this->postWebhook($event)->assertOk()->assertJsonPath('status', 'success');
+        $this->postWebhook(array_merge($event, ['id' => 'WH-PEND-2']))
+            ->assertOk()
+            ->assertJsonPath('status', 'success');
+
+        Mail::assertQueued(PaypalPaymentNotCompleted::class, function (PaypalPaymentNotCompleted $mail) use ($advertiser) {
+            return (int) $mail->user->id === (int) $advertiser->id
+                && $mail->reason === PaypalPaymentNotCompleted::REASON_PENDING
+                && $mail->referenceCode === 'PP-PEND';
+        });
+        Mail::assertQueued(PaypalPaymentNotCompleted::class, 1);
     }
 }

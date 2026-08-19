@@ -3,9 +3,7 @@
 namespace Tests\Feature;
 
 use App\Mail\PaymentSuccessfulInvoiceMail;
-use App\Mail\SiteOwnerOrderNotification;
-use App\Mail\UnfulfilledCheckoutCredited;
-use App\Models\InAppNotification;
+use App\Mail\PaypalPaymentNotCompleted;
 use App\Models\Order;
 use App\Models\Role;
 use App\Models\Site;
@@ -368,6 +366,7 @@ class CheckoutPaypalProcessTest extends TestCase
     public function test_paypal_cancel_route_returns_to_checkout(): void
     {
         config(['content_moderation.enabled' => false]);
+        Mail::fake();
 
         $advertiser = $this->advertiser();
         $site = $this->activeSite($this->publisher());
@@ -384,6 +383,56 @@ class CheckoutPaypalProcessTest extends TestCase
             ])
             ->get(route('advertiser.checkout.paypal.cancel', ['ref' => 'PP-CAN']))
             ->assertRedirect(route('advertiser.checkout', ['canceled' => 1, 'ref' => 'PP-CAN']));
+
+        Mail::assertNothingQueued();
+    }
+
+    public function test_paypal_cancel_after_pending_checkout_emails_advertiser(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        $this->enablePaypal();
+        Mail::fake();
+
+        $advertiser = $this->advertiser();
+        $site = $this->activeSite($this->publisher());
+        $sub = $this->createApprovedSubmission($advertiser, $site->id);
+        $this->fakePaypalCheckout('PO-CAN-MAIL', [
+            'user_id' => (string) $advertiser->id,
+            'reference_code' => 'PP-CAN-MAIL',
+        ]);
+
+        $this->actingAs($advertiser)
+            ->withSession([
+                'cart' => [[
+                    'id' => $site->id,
+                    'name' => $site->site_name,
+                    'quantity' => 1,
+                    'content_submission_id' => $sub->id,
+                ]],
+            ])
+            ->postJson(route('advertiser.checkout.process'), [
+                'payment_method' => 'paypal',
+                'reference_code' => 'PP-CAN-MAIL',
+                'publication_mode' => 'immediate',
+                'content_submissions' => [
+                    $site->id => [$sub->id],
+                ],
+            ])
+            ->assertOk();
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.checkout.paypal.cancel', ['ref' => 'PP-CAN-MAIL']))
+            ->assertRedirect(route('advertiser.checkout', ['canceled' => 1, 'ref' => 'PP-CAN-MAIL']));
+
+        Mail::assertQueued(PaypalPaymentNotCompleted::class, function (PaypalPaymentNotCompleted $mail) use ($advertiser) {
+            return (int) $mail->user->id === (int) $advertiser->id
+                && $mail->kind === PaypalPaymentNotCompleted::KIND_CHECKOUT
+                && $mail->reason === PaypalPaymentNotCompleted::REASON_CANCELLED
+                && $mail->referenceCode === 'PP-CAN-MAIL';
+        });
+        Mail::assertQueued(PaypalPaymentNotCompleted::class, 1);
+        Mail::assertNotQueued(PaymentSuccessfulInvoiceMail::class);
+        $this->assertSame(0, Order::where('reference_code', 'PP-CAN-MAIL')->count());
     }
 
     public function test_paypal_return_settles_paid_orders(): void
@@ -493,6 +542,7 @@ class CheckoutPaypalProcessTest extends TestCase
     {
         config(['content_moderation.enabled' => false]);
         $this->enablePaypal();
+        Mail::fake();
 
         $advertiser = $this->advertiser();
         $site = $this->activeSite($this->publisher());
@@ -536,6 +586,13 @@ class CheckoutPaypalProcessTest extends TestCase
             ->assertSessionHas('error');
 
         $this->assertSame(0, Order::where('reference_code', 'PP-FAIL')->count());
+        Mail::assertQueued(PaypalPaymentNotCompleted::class, function (PaypalPaymentNotCompleted $mail) use ($advertiser) {
+            return (int) $mail->user->id === (int) $advertiser->id
+                && $mail->reason === PaypalPaymentNotCompleted::REASON_DECLINED
+                && $mail->referenceCode === 'PP-FAIL';
+        });
+        Mail::assertQueued(PaypalPaymentNotCompleted::class, 1);
+        Mail::assertNotQueued(PaymentSuccessfulInvoiceMail::class);
     }
 
     public function test_paypal_return_rejects_missing_token(): void
@@ -591,6 +648,7 @@ class CheckoutPaypalProcessTest extends TestCase
             ->assertRedirect(route('advertiser.orders'))
             ->assertSessionHas('success');
         $this->assertSame(1, Order::where('reference_code', 'PP-PAID')->where('payment_status', 'paid')->count());
+        Mail::assertNotQueued(PaypalPaymentNotCompleted::class);
     }
 
     public function test_paypal_return_rejects_mismatched_token(): void

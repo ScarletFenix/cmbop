@@ -40,6 +40,7 @@ use App\Mail\PaymentFailedMail;
 use App\Mail\PaymentPendingMail;
 use App\Mail\PaymentSuccessfulInvoiceMail;
 use App\Mail\PayoutProfileUpdatedBySupport;
+use App\Mail\PaypalPaymentNotCompleted;
 use App\Mail\PublisherAcceptNudge;
 use App\Mail\PublisherAddSiteReminderMail;
 use App\Mail\PublisherPublishNudge;
@@ -460,11 +461,11 @@ return [
             'mailable' => DepositRefunded::class,
             'default_enabled' => true,
         ],
-        'unfulfilled_checkout_credited' => [
-            'name' => 'Unfulfilled Checkout Credited',
+        'paypal_payment_not_completed' => [
+            'name' => 'PayPal Payment Not Completed',
             'audience' => 'advertiser',
             'preference' => 'payment_emails',
-            'mailable' => UnfulfilledCheckoutCredited::class,
+            'mailable' => PaypalPaymentNotCompleted::class,
             'default_enabled' => true,
         ],
         'deposit_rejected' => [

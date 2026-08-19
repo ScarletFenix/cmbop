@@ -364,6 +364,24 @@ class PaypalCheckoutService
     }
 
     /**
+     * custom_id from a capture, refund, or denial webhook. Empty user/ref when missing.
+     *
+     * @param  array<string, mixed>  $event
+     * @return array{type: string, user_id: string, reference_code: string}
+     */
+    public function customFromWebhookEvent(array $event): array
+    {
+        $resource = is_array($event['resource'] ?? null) ? $event['resource'] : [];
+        $unit = is_array($resource['purchase_units'][0] ?? null) ? $resource['purchase_units'][0] : [];
+        $customId = $resource['custom_id']
+            ?? $unit['custom_id']
+            ?? $resource['supplementary_data']['related_ids']['custom_id']
+            ?? '';
+
+        return self::parseCustomId(is_string($customId) ? $customId : '');
+    }
+
+    /**
      * @param  array<string, mixed>  $event
      * @return array{refund_id: string, capture_id: string, paypal_order_id: string, amount: float, custom: array{type: string, user_id: string, reference_code: string}}|null
      */

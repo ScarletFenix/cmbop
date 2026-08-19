@@ -3,10 +3,12 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Mail\PaypalPaymentNotCompleted;
 use App\Models\PaypalWebhookLog;
 use App\Services\OrderPaymentService;
 use App\Services\Orders\OrderRefundService;
 use App\Services\PaypalCheckoutService;
+use App\Services\PaypalPaymentNotifier;
 use App\Services\WalletPaypalDepositService;
 use App\Support\UserMessages;
 use App\Support\WebhookPayloadRedactor;
@@ -104,6 +106,19 @@ class PaypalWebhookController extends Controller
                 'event_type' => $type,
                 'event_id' => $event['id'] ?? null,
             ]);
+            app(PaypalPaymentNotifier::class)->notifyFromWebhookCustom(
+                $paypal->customFromWebhookEvent($event),
+                PaypalPaymentNotCompleted::REASON_DENIED
+            );
+
+            return;
+        }
+
+        if ($type === 'PAYMENT.CAPTURE.PENDING') {
+            app(PaypalPaymentNotifier::class)->notifyFromWebhookCustom(
+                $paypal->customFromWebhookEvent($event),
+                PaypalPaymentNotCompleted::REASON_PENDING
+            );
         }
     }
 

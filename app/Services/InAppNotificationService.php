@@ -306,6 +306,72 @@ class InAppNotificationService
      *
      * @param  iterable<Order>  $orders
      */
+    public function notifyPaypalPaymentNotCompleted(
+        User $user,
+        string $kind,
+        string $referenceCode,
+        string $reason
+    ): void {
+        if (! $user->id) {
+            return;
+        }
+
+        $pending = $reason === 'pending';
+        $type = $pending ? self::TYPE_PAYMENT_PENDING : self::TYPE_PAYMENT_FAILED;
+
+        try {
+            InAppNotification::ensureTable();
+            if (InAppNotification::tableAvailable()) {
+                $recent = InAppNotification::query()
+                    ->where('user_id', $user->id)
+                    ->where('type', $type)
+                    ->where('meta->reference_code', $referenceCode)
+                    ->where('meta->reason', $reason)
+                    ->where('created_at', '>=', now()->subMinutes(30))
+                    ->exists();
+                if ($recent) {
+                    return;
+                }
+            }
+        } catch (\Throwable) {
+        }
+
+        $isDeposit = $kind === 'deposit';
+        $title = $pending
+            ? 'PayPal payment is under review'
+            : 'PayPal payment was not completed';
+        $message = $pending
+            ? ($isDeposit
+                ? 'PayPal is reviewing your wallet top-up. We will update you when it completes.'
+                : 'PayPal is reviewing your checkout payment. No order has been created yet.')
+            : ($reason === 'cancelled'
+                ? 'You cancelled the PayPal checkout. No payment was captured.'
+                : 'PayPal did not complete this payment. You can try again.');
+
+        $this->notify(
+            (int) $user->id,
+            $type,
+            $title,
+            $message,
+            [
+                'category' => self::CATEGORY_PAYMENTS,
+                'icon' => $pending ? 'wallet' : 'alert-triangle',
+                'priority' => InAppNotification::PRIORITY_HIGH,
+                'audience' => InAppNotification::AUDIENCE_ADVERTISER,
+                'action_label' => $isDeposit ? 'Add funds' : 'Return to checkout',
+                'action_url' => $isDeposit
+                    ? route('advertiser.add-funds', [], false)
+                    : route('advertiser.checkout', [], false),
+                'meta' => [
+                    'reference_code' => $referenceCode,
+                    'reason' => $reason,
+                    'kind' => $kind,
+                    'payment_method' => 'paypal',
+                ],
+            ]
+        );
+    }
+
     public function notifyPaymentFailed(iterable $orders, ?string $reason = null): void
     {
         $orders = Collection::make($orders)->filter();

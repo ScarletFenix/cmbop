@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Advertiser;
 use App\Http\Controllers\Controller;
 use App\Mail\ModificationRequested;
 use App\Mail\OrderApprovedByAdvertiser;
+use App\Mail\PaypalPaymentNotCompleted;
 use App\Mail\SiteOwnerOrderNotification;
 use App\Models\Category;
 use App\Models\ContentSubmission;
@@ -45,6 +46,7 @@ use App\Services\Orders\ContentRevisionService;
 use App\Services\Orders\OrderClawbackService;
 use App\Services\Orders\OrderRefundService;
 use App\Services\PaypalCheckoutService;
+use App\Services\PaypalPaymentNotifier;
 use App\Services\PlatformFeeService;
 use App\Services\StripeCustomerService;
 use App\Services\StripePaymentService;
@@ -2592,6 +2594,7 @@ class CatalogController extends Controller
                 'paypal_order_id' => $token,
                 'error' => $e->getMessage(),
             ]);
+            $this->notifyPaypalCheckoutNotCompleted($userId, $ref, PaypalPaymentNotifier::reasonFromCaptureException($e));
 
             return redirect()->route('advertiser.checkout')
                 ->with('error', 'PayPal payment was not completed.');
@@ -2644,12 +2647,32 @@ class CatalogController extends Controller
             if ($paid->isNotEmpty()) {
                 return $this->redirectAfterPaidPaypalCheckout($paid, collect());
             }
+
+            $package = app(OrderPaymentService::class)->getPendingCheckout($ref);
+            if (is_array($package) && (int) ($package['user_id'] ?? 0) === $userId) {
+                $this->notifyPaypalCheckoutNotCompleted($userId, $ref, PaypalPaymentNotCompleted::REASON_CANCELLED);
+            }
         }
 
         return redirect()->route('advertiser.checkout', array_filter([
             'canceled' => 1,
             'ref' => $ref !== '' ? $ref : null,
         ]));
+    }
+
+    private function notifyPaypalCheckoutNotCompleted(int $userId, string $referenceCode, string $reason): void
+    {
+        $user = $userId > 0 ? User::query()->find($userId) : null;
+        if (! $user) {
+            return;
+        }
+
+        app(PaypalPaymentNotifier::class)->notifyNotCompleted(
+            $user,
+            PaypalPaymentNotCompleted::KIND_CHECKOUT,
+            $referenceCode,
+            $reason
+        );
     }
 
     /**
