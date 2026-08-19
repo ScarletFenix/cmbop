@@ -140,7 +140,7 @@
                                     <th>Site</th>
                                     <th>Base Price</th>
                                     <th>Sensitive Price</th>
-                                    <th>Total Earned</th>
+                                    <th id="ordersPayoutHeading">You earned</th>
                                     <th>Order Status</th>
                                     <th>Action</th>
                                 </tr>
@@ -265,6 +265,7 @@
 .publisher-reports-container .status-processing { background-color: #eff6ff; color: #1e40af; }
 .publisher-reports-container .status-completed { background-color: #ecfdf5; color: #0f766e; }
 .publisher-reports-container .status-cancelled { background-color: #fef2f2; color: #dc2626; }
+.publisher-reports-container .status-clawed { background-color: #f8fafc; color: #475569; }
 .publisher-reports-container .sensitive-badge {
     background-color: #fef3c7;
     color: #d97706;
@@ -362,7 +363,10 @@
         return '<span class="badge bg-secondary">' + escapeHtml(s) + '</span>';
     }
 
-    function orderStatusMeta(orderStatus) {
+    function orderStatusMeta(orderStatus, clawed) {
+        if (clawed) {
+            return { cls: 'status-clawed', text: 'Clawed back' };
+        }
         switch (orderStatus) {
             case 'pending': return { cls: 'status-pending', text: 'Pending' };
             case 'processing': return { cls: 'status-processing', text: 'Processing' };
@@ -372,6 +376,25 @@
             case 'cancelled': return { cls: 'status-cancelled', text: 'Cancelled' };
             default: return { cls: 'status-pending', text: orderStatus || 'Unknown' };
         }
+    }
+
+    function payoutColumnHeading(status) {
+        if (status === 'completed') return 'You earned';
+        if (status === 'cancelled' || status === 'all') return 'Payout';
+        return 'You earn';
+    }
+
+    function payoutCell(item) {
+        const state = item.payout_state || '';
+        const label = item.payout_label || '';
+        if (state === 'none' || !label) {
+            return '<span class="text-muted">—</span>';
+        }
+        const amount = '€' + money(item.price);
+        if (state === 'you_earned') {
+            return '<span class="earned-amount">' + escapeHtml(label) + ' ' + amount + '</span>';
+        }
+        return '<span class="fw-semibold">' + escapeHtml(label) + ' ' + amount + '</span>';
     }
 
     function linkOrDash(url, label) {
@@ -429,6 +452,7 @@
         const params = ordersFilterParams(page);
         const statusLabel = $('#ordersStatus option:selected').text();
         $('#ordersTabTitle').text(params.status === 'all' ? 'Orders' : (statusLabel + ' Orders'));
+        $('#ordersPayoutHeading').text(payoutColumnHeading(params.status));
 
         $('#ordersTableBody').html(
             '<tr><td colspan="8" class="text-center py-5"><div class="spinner-border text-primary" role="status"></div><p class="mt-2 text-muted mb-0">Loading orders...</p></td></tr>'
@@ -474,9 +498,8 @@
                 : (item.order ? item.order.status : 'pending');
             const additionalPrice = parseFloat(item.additional_price || 0);
             const basePrice = parseFloat(item.publisher_base_price != null ? item.publisher_base_price : (item.price - additionalPrice));
-            const totalPrice = parseFloat(item.price);
             const sensitiveType = item.sensitive_type || null;
-            const meta = orderStatusMeta(orderStatus);
+            const meta = orderStatusMeta(orderStatus, item.is_clawed_back);
 
             html += '<tr>' +
                 '<td class="fw-semibold"><strong>#' + escapeHtml(orderNumber) + '</strong></td>' +
@@ -486,7 +509,7 @@
                 '<td>' + (additionalPrice > 0
                     ? '<span class="sensitive-badge"><i class="fa fa-plus-circle"></i> ' + escapeHtml(sensitiveType || 'Extra') + ' (+€' + money(additionalPrice) + ')</span>'
                     : '<span class="text-muted">—</span>') + '</td>' +
-                '<td class="earned-amount"><strong>+ €' + money(totalPrice) + '</strong></td>' +
+                '<td>' + payoutCell(item) + '</td>' +
                 '<td><span class="status-badge ' + meta.cls + '">' + escapeHtml(meta.text) + '</span></td>' +
                 '<td><button type="button" class="btn btn-sm btn-outline-info btn-view-order" data-id="' + item.id + '"><i class="fa fa-eye"></i> View</button></td>' +
                 '</tr>';
@@ -556,7 +579,12 @@
                 (additionalPrice > 0
                     ? '<p class="mb-1"><strong>Sensitive Price:</strong> <span class="text-warning">+ €' + money(additionalPrice) + ' (' + escapeHtml(sensitiveType || 'Extra') + ')</span></p>'
                     : '') +
-                '<p class="mb-1"><strong>Total Earned:</strong> <span class="earned-amount fs-4">+ €' + money(totalPrice) + '</span></p>' +
+                '<p class="mb-1"><strong>' + escapeHtml((orderItem.payout_label || 'Payout')) + ':</strong> ' +
+                    (orderItem.payout_state === 'none'
+                        ? '<span class="text-muted">—</span>'
+                        : '<span class="' + (orderItem.payout_state === 'you_earned' ? 'earned-amount fs-4' : 'fw-semibold') + '">€' + money(totalPrice) + '</span>') +
+                '</p>' +
+                (orderItem.is_clawed_back ? '<p class="mb-1 text-muted">Clawed back — not counted as earned.</p>' : '') +
             '</div></div></div>' +
             '<h6 class="mb-3">Placement</h6>' +
             '<div class="border rounded p-3"><div class="row">' +

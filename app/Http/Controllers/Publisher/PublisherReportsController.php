@@ -45,14 +45,12 @@ class PublisherReportsController extends Controller
                     $q->where('payment_status', 'paid')->where('status', 'completed');
                 };
 
-                $totalEarned = (float) OrderItem::whereIn('site_id', $siteIds)
-                    ->recognizedForFinance()
-                    ->whereHas('order', $paidCompleted)
-                    ->sum(OrderItem::publisherPayoutSqlExpression());
+                $keptCompleted = OrderItem::whereIn('site_id', $siteIds)
+                    ->withoutClawback()
+                    ->whereHas('order', $paidCompleted);
 
-                $completedOrders = OrderItem::whereIn('site_id', $siteIds)
-                    ->whereHas('order', $paidCompleted)
-                    ->count();
+                $totalEarned = (float) (clone $keptCompleted)->sum(OrderItem::publisherPayoutSqlExpression());
+                $completedOrders = (clone $keptCompleted)->count();
 
                 $pendingOrders = OrderItem::whereIn('site_id', $siteIds)
                     ->whereHas('order', function ($q) {
@@ -138,38 +136,17 @@ class PublisherReportsController extends Controller
                         $q->where('status', $status);
                     }
                 });
+                if ($status === 'completed') {
+                    $query->withoutClawback();
+                }
             }
 
             $perPage = max(1, min(100, (int) $request->get('per_page', 20)));
             $orderItems = $query->paginate($perPage);
 
-            $data = collect($orderItems->items())->map(function (OrderItem $item) {
-                $payout = $item->publisherPayoutAmount();
-                $additional = (float) ($item->additional_price ?? 0);
-
-                return [
-                    'id' => $item->id,
-                    'site_name' => $item->site_name,
-                    'site_url' => $item->site_url,
-                    'content_link' => $item->publisherContentLink(),
-                    'live_url' => $item->live_url,
-                    'sensitive_type' => $item->sensitive_type,
-                    'additional_price' => $additional,
-                    'price' => $payout,
-                    'publisher_base_price' => round($payout - $additional, 2),
-                    'created_at' => $item->created_at,
-                    'order' => $item->order ? [
-                        'id' => $item->order->id,
-                        'order_number' => $item->order->order_number,
-                        'reference_code' => $item->order->reference_code,
-                        'status' => $item->order->status,
-                        'is_awaiting_scheduled_release' => $item->order->isAwaitingScheduledRelease(),
-                        'payment_status' => $item->order->payment_status,
-                        'payment_method' => $item->order->payment_method,
-                        'created_at' => $item->order->created_at,
-                    ] : null,
-                ];
-            })->values();
+            $data = collect($orderItems->items())->map(
+                fn (OrderItem $item) => $this->reportOrderPayload($item)
+            )->values();
 
             return response()->json([
                 'success' => true,
@@ -200,32 +177,9 @@ class PublisherReportsController extends Controller
                 })
                 ->findOrFail($orderItemId);
 
-            $payout = $orderItem->publisherPayoutAmount();
-            $additional = (float) ($orderItem->additional_price ?? 0);
-
             return response()->json([
                 'success' => true,
-                'data' => [
-                    'id' => $orderItem->id,
-                    'site_name' => $orderItem->site_name,
-                    'site_url' => $orderItem->site_url,
-                    'content_link' => $orderItem->publisherContentLink(),
-                    'live_url' => $orderItem->live_url,
-                    'sensitive_type' => $orderItem->sensitive_type,
-                    'additional_price' => $additional,
-                    'price' => $payout,
-                    'publisher_base_price' => round($payout - $additional, 2),
-                    'created_at' => $orderItem->created_at,
-                    'order' => $orderItem->order ? [
-                        'id' => $orderItem->order->id,
-                        'order_number' => $orderItem->order->order_number,
-                        'reference_code' => $orderItem->order->reference_code,
-                        'status' => $orderItem->order->status,
-                        'payment_status' => $orderItem->order->payment_status,
-                        'payment_method' => $orderItem->order->payment_method,
-                        'created_at' => $orderItem->order->created_at,
-                    ] : null,
-                ],
+                'data' => $this->reportOrderPayload($orderItem),
             ]);
         } catch (\Exception $e) {
             Log::error('Error fetching order details: '.$e->getMessage());
@@ -307,6 +261,64 @@ class PublisherReportsController extends Controller
         }
 
         return $query->first();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function reportOrderPayload(OrderItem $item): array
+    {
+        $payout = $item->publisherPayoutAmount();
+        $additional = (float) ($item->additional_price ?? 0);
+        $clawed = $item->isClawedBack();
+        $state = $this->reportPayoutState($item, $clawed);
+
+        return [
+            'id' => $item->id,
+            'site_name' => $item->site_name,
+            'site_url' => $item->site_url,
+            'content_link' => $item->publisherContentLink(),
+            'live_url' => $item->live_url,
+            'sensitive_type' => $item->sensitive_type,
+            'additional_price' => $additional,
+            'price' => $payout,
+            'publisher_base_price' => round($payout - $additional, 2),
+            'created_at' => $item->created_at,
+            'is_clawed_back' => $clawed,
+            'payout_state' => $state,
+            'payout_label' => match ($state) {
+                'you_earn' => 'You earn',
+                'you_earned' => 'You earned',
+                default => null,
+            },
+            'order' => $item->order ? [
+                'id' => $item->order->id,
+                'order_number' => $item->order->order_number,
+                'reference_code' => $item->order->reference_code,
+                'status' => $item->order->status,
+                'is_awaiting_scheduled_release' => $item->order->isAwaitingScheduledRelease(),
+                'payment_status' => $item->order->payment_status,
+                'payment_method' => $item->order->payment_method,
+                'created_at' => $item->order->created_at,
+            ] : null,
+        ];
+    }
+
+    private function reportPayoutState(OrderItem $item, bool $clawed): string
+    {
+        if ($clawed) {
+            return 'none';
+        }
+
+        $status = (string) ($item->order?->status ?? '');
+        if ($status === 'cancelled') {
+            return 'none';
+        }
+        if ($status === 'completed') {
+            return 'you_earned';
+        }
+
+        return 'you_earn';
     }
 
     /**

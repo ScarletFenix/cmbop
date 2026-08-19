@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\OrderItemDispute;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
@@ -119,7 +120,10 @@ class PublisherReportsTest extends TestCase
             ->assertOk()
             ->assertSee('Financial Reports', false)
             ->assertSee(route('publisher.reports.statistics', absolute: false), false)
-            ->assertSee('Available to Withdraw', false);
+            ->assertSee('Available to Withdraw', false)
+            ->assertSee('id="ordersPayoutHeading"', false)
+            ->assertSee('You earned', false)
+            ->assertDontSee('>Total Earned</th>', false);
 
         $this->actingAs($publisher)
             ->getJson(route('publisher.reports.orders', ['date_from' => 'not-a-date', 'status' => 'completed']))
@@ -201,7 +205,10 @@ class PublisherReportsTest extends TestCase
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.id', $completed->id)
             ->assertJsonPath('data.0.price', 100)
-            ->assertJsonPath('data.0.publisher_base_price', 100);
+            ->assertJsonPath('data.0.publisher_base_price', 100)
+            ->assertJsonPath('data.0.payout_state', 'you_earned')
+            ->assertJsonPath('data.0.payout_label', 'You earned')
+            ->assertJsonPath('data.0.is_clawed_back', false);
 
         $this->actingAs($publisher)
             ->getJson(route('publisher.reports.orders', ['status' => 'all']))
@@ -327,5 +334,118 @@ class PublisherReportsTest extends TestCase
             ->assertJsonPath('data.0.id', $withdrawal->id)
             ->assertJsonPath('data.0.processed_at', null)
             ->assertJsonPath('data.0.status_label', 'Paid');
+    }
+
+    public function test_clawed_completed_is_excluded_from_earned_and_completed_list(): void
+    {
+        $publisher = $this->publisher();
+        $advertiser = $this->advertiser();
+        $site = $this->site($publisher);
+
+        $kept = $this->createOrderItem($advertiser, $site, ['status' => 'completed'], [
+            'price' => 115,
+            'additional_price' => 0,
+        ]);
+        $clawed = $this->createOrderItem($advertiser, $site, ['status' => 'completed'], [
+            'price' => 115,
+            'additional_price' => 0,
+        ]);
+        $this->upholdClawback($clawed);
+
+        $this->actingAs($publisher)
+            ->getJson(route('publisher.reports.statistics'))
+            ->assertOk()
+            ->assertJsonPath('data.total_earned', 100)
+            ->assertJsonPath('data.completed_orders', 1);
+
+        $completed = $this->actingAs($publisher)
+            ->getJson(route('publisher.reports.orders', ['status' => 'completed']))
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $kept->id)
+            ->json('data');
+        $this->assertSame('you_earned', $completed[0]['payout_state']);
+
+        $all = $this->actingAs($publisher)
+            ->getJson(route('publisher.reports.orders', ['status' => 'all']))
+            ->assertOk()
+            ->json('data');
+
+        $clawedRow = collect($all)->firstWhere('id', $clawed->id);
+        $this->assertNotNull($clawedRow);
+        $this->assertTrue($clawedRow['is_clawed_back']);
+        $this->assertSame('none', $clawedRow['payout_state']);
+        $this->assertNull($clawedRow['payout_label']);
+    }
+
+    public function test_open_row_uses_you_earn_and_cancelled_has_no_payout(): void
+    {
+        $publisher = $this->publisher();
+        $advertiser = $this->advertiser();
+        $site = $this->site($publisher);
+
+        $open = $this->createOrderItem($advertiser, $site, ['status' => 'processing']);
+        $cancelled = $this->createOrderItem($advertiser, $site, ['status' => 'cancelled']);
+
+        $this->actingAs($publisher)
+            ->getJson(route('publisher.reports.orders', ['status' => 'processing']))
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $open->id)
+            ->assertJsonPath('data.0.payout_state', 'you_earn')
+            ->assertJsonPath('data.0.payout_label', 'You earn');
+
+        $this->actingAs($publisher)
+            ->getJson(route('publisher.reports.orders', ['status' => 'cancelled']))
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $cancelled->id)
+            ->assertJsonPath('data.0.payout_state', 'none')
+            ->assertJsonPath('data.0.payout_label', null);
+    }
+
+    public function test_refunded_clawed_line_is_not_counted_as_earned(): void
+    {
+        $publisher = $this->publisher();
+        $advertiser = $this->advertiser();
+        $site = $this->site($publisher);
+        $item = $this->createOrderItem($advertiser, $site, [
+            'status' => 'completed',
+            'payment_status' => 'refunded',
+        ]);
+        $this->upholdClawback($item);
+
+        $this->actingAs($publisher)
+            ->getJson(route('publisher.reports.statistics'))
+            ->assertOk()
+            ->assertJsonPath('data.total_earned', 0)
+            ->assertJsonPath('data.completed_orders', 0);
+    }
+
+    public function test_reports_row_script_does_not_prefix_plus_euro(): void
+    {
+        $js = file_get_contents(resource_path('views/publisher/reports.blade.php'));
+
+        $this->assertStringContainsString('function payoutCell', $js);
+        $this->assertStringNotContainsString("'+ €' + money(totalPrice)", $js);
+        $this->assertStringNotContainsString('Total Earned:</strong>', $js);
+    }
+
+    private function upholdClawback(OrderItem $item): void
+    {
+        $adminRole = Role::firstOrCreate(['name' => 'admin']);
+        $admin = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $adminRole->id,
+        ]);
+
+        OrderItemDispute::create([
+            'order_id' => $item->order_id,
+            'order_item_id' => $item->id,
+            'opened_by' => $admin->id,
+            'status' => OrderItemDispute::STATUS_UPHELD,
+            'reason' => 'Live URL was removed after completion.',
+            'resolved_at' => now(),
+            'advertiser_credited' => 115,
+            'publisher_debited' => 100,
+        ]);
     }
 }
