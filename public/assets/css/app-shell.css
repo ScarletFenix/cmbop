@@ -461,11 +461,15 @@ footer,
 #content,
 #main-content {
   margin-left: var(--shell-sidebar-width);
-  padding: 20px 28px var(--shell-footer-clearance);
-  min-height: calc(100vh - 120px);
+  /* Extra top padding so Poppins 700 page titles are not sheared.
+     A one-axis clip on this column turns it into a scrollport and crops
+     the first heading. Keep horizontal wrapping on the document body. */
+  padding: 28px 28px var(--shell-footer-clearance);
+  min-height: 0;
   min-width: 0;
   max-width: 100%;
-  overflow-x: clip;
+  overflow-x: visible;
+  overflow-y: visible;
 }
 
 /* Filter rows: prevent date inputs / selects from blowing past the content column */
@@ -703,7 +707,7 @@ body > footer.collapsed {
   }
   #content,
   #main-content {
-    padding: 14px 12px 48px;
+    padding: 20px 12px 48px;
   }
   .top-navbar {
     left: 0 !important;

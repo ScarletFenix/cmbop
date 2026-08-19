@@ -10,6 +10,7 @@
   --type-body: 0.9375rem;
   --type-meta: 0.75rem;
   --type-line-tight: 1.25;
+  --type-line-title: 1.4;
   --type-line-body: 1.55;
   --type-color: #1f2937;
   --type-muted: #6b7280;
@@ -81,12 +82,18 @@ small, .small, .text-muted,
   line-height: 1.4;
 }
 
+#content h1,
 #content h2.fw-semibold,
 #content h2,
+#main-content h1,
 #main-content h2.fw-semibold,
 #main-content h2 {
   font-size: var(--type-h1);
   font-weight: 700;
+  line-height: var(--type-line-title);
+  overflow: visible;
+  /* Keep glyph ink inside the line box so a parent clip cannot crop ascenders. */
+  padding-block: 0.08em;
 }
 
 #content h4,
