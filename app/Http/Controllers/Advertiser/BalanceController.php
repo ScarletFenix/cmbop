@@ -11,6 +11,7 @@ use App\Services\EmailNotificationService;
 use App\Services\Wallet\PayoutProfileService;
 use App\Services\Wallet\WalletLedgerService;
 use App\Services\Wallet\WalletOverviewService;
+use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -264,8 +265,11 @@ class BalanceController extends Controller
                 'user_id' => auth()->id(),
             ]);
 
-            $message = $e->getMessage();
-            if (str_contains($message, 'promotional bonus')) {
+            $message = UserFacingError::message(
+                $e,
+                'We could not process your withdrawal request. Please try again later.'
+            );
+            if (str_contains($e->getMessage(), 'promotional bonus')) {
                 $message = Wallet::PROMOTIONAL_BONUS_MESSAGE;
             }
 

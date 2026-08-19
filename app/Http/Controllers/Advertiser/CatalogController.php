@@ -5279,16 +5279,10 @@ class CatalogController extends Controller
                 'trace' => $e->getTraceAsString(),
             ]);
 
-            $payload = [
+            return response()->json([
                 'success' => false,
                 'message' => UserFacingError::message($e, 'Failed to approve order. Please try again.'),
-            ];
-            // Surface the real exception in local/debug so Swal is actionable.
-            if (config('app.debug')) {
-                $payload['debug'] = $e::class.': '.$e->getMessage();
-            }
-
-            return response()->json($payload, 500);
+            ], 500);
         }
     }
 

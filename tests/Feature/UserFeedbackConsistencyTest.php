@@ -69,6 +69,25 @@ class UserFeedbackConsistencyTest extends TestCase
         );
     }
 
+    public function test_controllers_do_not_point_users_at_sql_files(): void
+    {
+        $offenders = [];
+
+        foreach ($this->controllerFiles() as $path) {
+            foreach (file($path) as $index => $line) {
+                if (str_contains($line, 'database/sql/')) {
+                    $offenders[] = str_replace(base_path().'/', '', $path).':'.($index + 1);
+                }
+            }
+        }
+
+        $this->assertSame(
+            [],
+            $offenders,
+            "SQL file paths must stay in logs, not role-facing copy:\n".implode("\n", $offenders)
+        );
+    }
+
     public function test_shared_flash_partial_exists_and_is_accessible(): void
     {
         $partial = resource_path('views/partials/session-flash.blade.php');

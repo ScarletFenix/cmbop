@@ -63,4 +63,20 @@ class UserFacingErrorTest extends TestCase
             UserFacingError::message(new \RuntimeException('Insufficient balance'), 'Generic fallback.')
         );
     }
+
+    public function test_safe_text_masks_internal_fragments(): void
+    {
+        $this->assertSame(
+            'Metrics refresh failed.',
+            UserFacingError::safeText('SQLSTATE[42S22]: Unknown column "foo"', 'Metrics refresh failed.')
+        );
+        $this->assertSame(
+            'previous preview kept',
+            UserFacingError::safeText('previous preview kept', 'Screenshot capture failed.')
+        );
+        $this->assertSame(
+            'Screenshot capture failed.',
+            UserFacingError::safeText('', 'Screenshot capture failed.')
+        );
+    }
 }

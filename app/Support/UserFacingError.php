@@ -71,6 +71,21 @@ class UserFacingError
     }
 
     /**
+     * Same fragment/length rules as {@see isSafe()}, for stored provider text
+     * that is not wrapped in a Throwable.
+     */
+    public static function safeText(?string $message, string $fallback): string
+    {
+        $message = trim((string) $message);
+
+        if ($message === '') {
+            return $fallback;
+        }
+
+        return self::isSafe(new \RuntimeException($message)) ? $message : $fallback;
+    }
+
+    /**
      * Whether the exception message can be shown verbatim to an end user.
      */
     public static function isSafe(\Throwable $e): bool

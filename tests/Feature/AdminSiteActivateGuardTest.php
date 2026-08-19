@@ -411,6 +411,31 @@ class AdminSiteActivateGuardTest extends TestCase
         $src = (string) file_get_contents(app_path('Http/Controllers/Admin/SiteController.php'));
         $this->assertStringContainsString('Could not update verification.', $src);
         $this->assertStringContainsString('Failed to update site verification', $src);
+        $this->assertStringNotContainsString('database/sql/', $src);
+        $this->assertStringNotContainsString('fix_sites_onboarding_status.sql', $src);
+        $this->assertStringNotContainsString('add_sites_status_reason.sql', $src);
+    }
+
+    public function test_marketer_cannot_activate_unverified_legacy_queue_site(): void
+    {
+        $site = $this->site([
+            'verified' => false,
+            'onboarding_status' => null,
+        ]);
+
+        $this->assertTrue($site->needsAdminReview());
+        $this->assertFalse($site->isSubmittedForAdminReview());
+        $this->assertTrue($site->marketingCanActivate());
+
+        $this->actingAs($this->marketer)
+            ->postJson(route('marketing.sites.active', $site->id), ['active' => 1])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'Verify this site before activating it.');
+
+        $fresh = $site->fresh();
+        $this->assertFalse((bool) $fresh->active);
+        $this->assertFalse((bool) $fresh->verified);
     }
 
     public function test_staff_list_flags_blocked_activate(): void

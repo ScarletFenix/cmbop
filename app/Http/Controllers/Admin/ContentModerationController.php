@@ -9,6 +9,7 @@ use App\Services\ActivityLogger;
 use App\Services\ContentModeration\ContentModerationService;
 use App\Services\ContentUpload\ContentUploadService;
 use App\Support\PhpIniSize;
+use App\Support\UserFacingError;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -210,7 +211,10 @@ class ContentModerationController extends Controller
         try {
             return $this->persistModerationSettings($request, $data, $allCats);
         } catch (\RuntimeException $e) {
-            return back()->withInput()->with('error', $e->getMessage());
+            return back()->withInput()->with('error', UserFacingError::message(
+                $e,
+                'Could not save moderation settings on this database.'
+            ));
         } catch (\Throwable) {
             return back()->withInput()->with('error', 'Could not save moderation settings on this database.');
         }

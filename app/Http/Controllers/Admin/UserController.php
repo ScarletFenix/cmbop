@@ -311,13 +311,9 @@ class UserController extends Controller
         } catch (\Exception $e) {
             report($e);
 
-            $hint = str_contains($e->getMessage(), 'can_activate_sites')
-                ? ' Database may be missing users.can_activate_sites — run database/sql/add_users_can_activate_sites.sql.'
-                : '';
-
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to update marketing access. Please try again.'.$hint,
+                'message' => 'Failed to update marketing access. Please try again.',
             ], 500);
         }
 

@@ -11,6 +11,7 @@ use App\Models\SiteEnrichmentRun;
 use App\Services\ActivityLogger;
 use App\Services\SiteEnrichment\SiteEnrichmentService;
 use App\Services\SiteEnrichment\SiteMetricsAggregator;
+use App\Support\UserFacingError;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -155,7 +156,7 @@ class SiteEnrichmentController extends Controller
         return response()->json([
             'success' => $ok,
             'message' => $sync
-                ? ($ok ? 'Metrics refreshed' : ($providerError !== '' ? $providerError : 'Metrics refresh failed.'))
+                ? ($ok ? 'Metrics refreshed' : UserFacingError::safeText($providerError, 'Metrics refresh failed.'))
                 : 'Metrics refresh queued',
             'run' => $run,
             'site' => $site->fresh(),
@@ -220,7 +221,9 @@ class SiteEnrichmentController extends Controller
         }
 
         $message = $sync
-            ? ($ok ? 'Screenshot refreshed' : ($providerError !== '' ? $providerError : 'Screenshot capture failed. Upload a site image instead.'))
+            ? ($ok
+                ? 'Screenshot refreshed'
+                : UserFacingError::safeText($providerError, 'Screenshot capture failed. Upload a site image instead.'))
             : 'Screenshot refresh queued';
 
         return response()->json([
@@ -254,7 +257,7 @@ class SiteEnrichmentController extends Controller
 
                 return response()->json([
                     'success' => false,
-                    'message' => 'Could not enrich this site. Please try again after migrations are applied.',
+                    'message' => 'Could not enrich this site. Please try again.',
                     'site' => $site->fresh(),
                 ], 422);
             }
