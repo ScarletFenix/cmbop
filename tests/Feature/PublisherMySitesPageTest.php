@@ -757,6 +757,117 @@ class PublisherMySitesPageTest extends TestCase
         $this->assertStringNotContainsString('No pending sites waiting for admin approval', $html);
     }
 
+    public function test_empty_active_with_only_pending_points_to_pending(): void
+    {
+        $this->makeSite([
+            'site_name' => 'Draft Only',
+            'site_url' => 'https://draft-only.example',
+            'domain' => 'draft-only.example',
+        ]);
+
+        $html = $this->actingAs($this->publisher)
+            ->get(route('publisher.sites.ajax', ['status' => 'active']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('No live sites yet.', $html);
+        $this->assertStringContainsString('in Pending', $html);
+        $this->assertStringContainsString('data-switch-status="pending"', $html);
+        $this->assertStringContainsString('data-pending="1"', $html);
+        $this->assertStringContainsString('data-active="0"', $html);
+        $this->assertStringNotContainsString('Draft Only', $html);
+        $this->assertStringNotContainsString('id="emptyAddSiteCta"', $html);
+    }
+
+    public function test_empty_active_with_only_invite_points_to_invites(): void
+    {
+        $this->makeSite([
+            'site_name' => 'Invite Only',
+            'site_url' => 'https://invite-only.example',
+            'domain' => 'invite-only.example',
+            'publisher_accepted_at' => null,
+            'assigned_by_user_id' => User::factory()->create([
+                'email_verified_at' => now(),
+            ])->id,
+        ]);
+
+        $html = $this->actingAs($this->publisher)
+            ->get(route('publisher.sites.ajax', ['status' => 'active']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('No live sites yet.', $html);
+        $this->assertStringContainsString('in Invites', $html);
+        $this->assertStringContainsString('data-switch-status="invites"', $html);
+        $this->assertStringContainsString('data-invites="1"', $html);
+        $this->assertStringContainsString('data-pending="0"', $html);
+        $this->assertStringNotContainsString('Invite Only', $html);
+        $this->assertStringNotContainsString('id="emptyAddSiteCta"', $html);
+    }
+
+    public function test_empty_active_with_no_sites_keeps_add_cta(): void
+    {
+        $html = $this->actingAs($this->publisher)
+            ->get(route('publisher.sites.ajax', ['status' => 'active']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('id="emptyAddSiteCta"', $html);
+        $this->assertStringContainsString('Add your first site', $html);
+        $this->assertStringContainsString('Add New Website', $html);
+        $this->assertStringNotContainsString('in Pending', $html);
+        $this->assertStringNotContainsString('data-switch-status="pending"', $html);
+        $this->assertStringNotContainsString('data-switch-status="invites"', $html);
+        $this->assertStringContainsString('data-pending="0"', $html);
+        $this->assertStringContainsString('data-invites="0"', $html);
+    }
+
+    public function test_explicit_status_active_stays_on_active_when_pending_exist(): void
+    {
+        $this->makeSite([
+            'site_name' => 'Still Pending',
+            'site_url' => 'https://still-pending.example',
+            'domain' => 'still-pending.example',
+        ]);
+
+        $html = $this->actingAs($this->publisher)
+            ->get(route('publisher.sites.ajax', ['status' => 'active']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('data-status="active"', $html);
+        $this->assertStringContainsString('data-switch-status="pending"', $html);
+        $this->assertStringNotContainsString('Still Pending', $html);
+
+        $page = $this->actingAs($this->publisher)
+            ->get(route('publisher.websites', ['status' => 'active']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('sitesStatusExplicit = params.has(\'status\')', $page);
+        $this->assertStringContainsString('!sitesStatusExplicit', $page);
+        $this->assertStringContainsString("window.setSitesStatusFilter('pending')", $page);
+        $this->assertStringContainsString('sitesAutoOpenPendingChecked', $page);
+        $this->assertStringContainsString('sitesStatusFilter === \'active\'', $page);
+    }
+
+    public function test_my_sites_wires_empty_state_switch_and_auto_opens_pending_once(): void
+    {
+        $page = $this->actingAs($this->publisher)
+            ->get(route('publisher.websites'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString("$(document).on('click', '[data-switch-status]'", $page);
+        $this->assertStringContainsString('window.setSitesStatusFilter(next)', $page);
+        $this->assertStringContainsString('Auto-open Pending when Active is empty and the URL did not set ?status=', $page);
+        $this->assertSame(
+            1,
+            preg_match_all('/\blet\s+delayTimer\b/', $page),
+            'Rendered My Sites page must declare delayTimer only once.'
+        );
+    }
+
     public function test_dual_role_advertiser_active_can_load_pending_sites_ajax(): void
     {
         // Typical marketplace account: Advertiser + Publisher, still active as Advertiser.

@@ -1365,7 +1365,35 @@
 @else
 <div class="alert alert-light border text-center mb-0">
     @if(($status ?? 'active') === 'active')
-        <i class="fa fa-circle-check me-2 text-success"></i> No active sites yet. Approved sites will show here.
+        @php
+            $emptyPendingCount = (int) ($pendingCount ?? 0);
+            $emptyInviteCount = (int) ($inviteCount ?? 0);
+        @endphp
+        @if($emptyPendingCount > 0 || $emptyInviteCount > 0)
+            <i class="fa fa-circle-check me-2 text-success"></i>
+            <strong>No live sites yet.</strong>
+            @if($emptyPendingCount > 0)
+                <span>{{ $emptyPendingCount }} are in Pending.</span>
+            @endif
+            @if($emptyInviteCount > 0)
+                <span>{{ $emptyInviteCount }} are in Invites.</span>
+            @endif
+            <div class="mt-3 d-flex flex-wrap justify-content-center gap-2">
+                @if($emptyPendingCount > 0)
+                    <button type="button" class="btn btn-sm btn-primary" data-switch-status="pending">Open Pending</button>
+                @endif
+                @if($emptyInviteCount > 0)
+                    <button type="button" class="btn btn-sm btn-outline-primary" data-switch-status="invites">Open Invites</button>
+                @endif
+            </div>
+        @else
+            <div class="ui-empty-state text-center mx-auto py-2" style="max-width:420px">
+                <div class="mx-auto mb-3 d-flex align-items-center justify-content-center" style="width:52px;height:52px;border-radius:50%;background:var(--brand-primary-bg,#e6f5f5);color:var(--brand-primary,#1a585e)" aria-hidden="true"><i class="fa-solid fa-globe"></i></div>
+                <h5 class="mb-2">No websites listed yet</h5>
+                <p class="text-muted mb-3">Add your first site so advertisers can find and order from you.</p>
+                <button type="button" class="btn btn-primary btn-sm" id="emptyAddSiteCta"><i class="fa fa-plus"></i> Add New Website</button>
+            </div>
+        @endif
     @elseif(($status ?? '') === 'invites')
         <i class="fa fa-inbox me-2 text-muted"></i>
         No site invites waiting. When our team adds a website for you, Accept / Decline appear here.
