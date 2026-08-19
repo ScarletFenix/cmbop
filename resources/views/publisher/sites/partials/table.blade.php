@@ -1073,7 +1073,7 @@
                 @endif
                 @if($pubJoinedBulk && $pubPackUnit !== null && $pubShowSaleBadge)
                     <span class="site-row-price-sale site-row-price-sale--pack">
-                        Pack of {{ $bulkMinQty }} from €{{ $fmtEur($pubPackUnit * $bulkMinQty) }}
+                        Pack of {{ $bulkMinQty }} from €{{ $fmtEur(round($pubPackUnit * $bulkMinQty, 2)) }}
                     </span>
                 @endif
                 <span class="site-row-price-meta">
