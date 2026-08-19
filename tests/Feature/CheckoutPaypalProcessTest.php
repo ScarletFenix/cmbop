@@ -4,6 +4,9 @@ namespace Tests\Feature;
 
 use App\Mail\PaymentSuccessfulInvoiceMail;
 use App\Mail\PaypalPaymentNotCompleted;
+use App\Mail\SiteOwnerOrderNotification;
+use App\Mail\UnfulfilledCheckoutCredited;
+use App\Models\InAppNotification;
 use App\Models\Order;
 use App\Models\Role;
 use App\Models\Site;
