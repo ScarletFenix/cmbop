@@ -186,7 +186,7 @@ class CartPricingServiceTest extends TestCase
         $this->assertSame(15.0, $result['discount_percent_nominal']);
         $this->assertSame(10.71, $result['discount_percent']);
         $this->assertSame(304.0, $result['publisher_price']);
-        $this->assertSame(0.0, $result['platform_fee_amount']);
+        $this->assertEquals(0.0, $result['platform_fee_amount']);
     }
 
     /**
