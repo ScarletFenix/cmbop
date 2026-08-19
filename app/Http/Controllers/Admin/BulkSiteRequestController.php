@@ -22,6 +22,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\ValidationException;
 
 class BulkSiteRequestController extends Controller
 {
@@ -349,6 +350,13 @@ class BulkSiteRequestController extends Controller
             $inputItems = [];
         }
 
+        $maxSites = BulkSiteRequest::MAX_SITES_PER_REQUEST;
+        if (count($inputItems) > $maxSites) {
+            throw ValidationException::withMessages([
+                'items' => "You can Done at most {$maxSites} websites per submission (same limit as publisher bulk).",
+            ]);
+        }
+
         $rejectedItemIds = $this->pendingRejectedItemIds($request, $pendingIds);
 
         // Only validate rows the marketer started or completed. Empty pending rows stay for later.
@@ -377,8 +385,6 @@ class BulkSiteRequestController extends Controller
             'rejected_item_ids' => $rejectedItemIds,
             'rejection_note' => trim((string) $request->input('rejection_note', '')),
         ]);
-
-        $maxSites = BulkSiteRequest::MAX_SITES_PER_REQUEST;
 
         $validator = Validator::make($request->all(), [
             'items' => 'nullable|array|max:'.$maxSites,
@@ -522,9 +528,9 @@ class BulkSiteRequestController extends Controller
         }
 
         if (count($completeItemIds) > $maxSites) {
-            return back()
-                ->withInput()
-                ->with('error', "You can Done at most {$maxSites} websites per submission (same limit as publisher bulk).");
+            throw ValidationException::withMessages([
+                'items' => "You can Done at most {$maxSites} websites per submission (same limit as publisher bulk).",
+            ]);
         }
 
         $rows = [];

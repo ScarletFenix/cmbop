@@ -113,6 +113,17 @@ class MarketingOpsScopeTest extends TestCase
         $this->assertTrue((bool) $site->active);
     }
 
+    public function test_marketer_cannot_open_admin_records_sheet(): void
+    {
+        $this->actingAs($this->marketer)
+            ->get(route('admin.sites.records'))
+            ->assertRedirect(route('marketing.dashboard'));
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.sites.records'))
+            ->assertOk();
+    }
+
     public function test_admin_can_still_verify_and_activate_sites(): void
     {
         $site = $this->makeSite();

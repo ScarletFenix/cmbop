@@ -221,7 +221,10 @@
             <!-- Date -->
             <div style="margin-top: 10px; color: #4b5563;">
                 <span><strong>Date:</strong> {{ \Carbon\Carbon::now()->format('F j, Y') }}</span>
-            </div>   
+                @if(!empty($paymentMethod))
+                    <span style="margin-left: 16px;"><strong>Payment method:</strong> {{ \App\Models\Invoice::paymentMethodLabel($paymentMethod) }}</span>
+                @endif
+            </div> 
         </div>
         
         <div class="invoice-body">

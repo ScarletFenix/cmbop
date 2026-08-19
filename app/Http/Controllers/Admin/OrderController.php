@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Services\Billing\AdminInvoiceLinks;
 use App\Services\Orders\AdminOrderStatusOverride;
 use App\Services\Orders\OrderClawbackService;
+use App\Support\ArticleDownload;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -270,7 +271,7 @@ class OrderController extends Controller
                 return null;
             }
 
-            return $disk->download($path, $filename, ['Content-Type' => $mime]);
+            return $disk->download($path, $filename, ArticleDownload::headers($filename, $mime));
         } catch (HttpException $e) {
             throw $e;
         } catch (\Throwable $e) {

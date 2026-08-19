@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Services\PromotionTrackingService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
@@ -317,6 +318,15 @@ class PromotionTrackingTest extends TestCase
 
         $this->assertSame(1, $tracking->countSince(AdBanner::class, PromotionTrackingService::EVENT_IMPRESSION, $since));
         $this->assertSame(1, $tracking->countForSubjectSince($banner, PromotionTrackingService::EVENT_IMPRESSION, $since));
+    }
+
+    public function test_public_promo_routes_are_throttled(): void
+    {
+        foreach (['promotions.track', 'banners.click', 'announcements.click'] as $name) {
+            $route = Route::getRoutes()->getByName($name);
+            $this->assertNotNull($route, $name);
+            $this->assertContains('throttle:30,1', $route->gatherMiddleware(), $name);
+        }
     }
 
     public function test_preview_page_is_staff_only(): void

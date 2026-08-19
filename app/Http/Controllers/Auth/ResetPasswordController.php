@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Support\UserMessages;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\RateLimiter;
@@ -27,7 +28,7 @@ class ResetPasswordController extends Controller
         if (RateLimiter::tooManyAttempts($key, 5)) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Too many attempts. Try again later.',
+                'message' => UserMessages::get('password.reset_throttled'),
             ]);
         }
         RateLimiter::hit($key, 600);

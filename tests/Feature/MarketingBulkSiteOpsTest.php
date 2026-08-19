@@ -483,6 +483,33 @@ class MarketingBulkSiteOpsTest extends TestCase
         $this->assertSame(BulkSiteRequest::STATUS_AWAITING_PUBLISHER, $bulk->fresh()->status);
     }
 
+    public function test_bulk_done_over_max_rows_is_validation_error_not_500(): void
+    {
+        $bulk = BulkSiteRequest::create([
+            'publisher_id' => $this->publisher->id,
+            'status' => BulkSiteRequest::STATUS_REQUESTED,
+            'estimated_count' => 1,
+        ]);
+        BulkSiteRequestItem::create([
+            'bulk_site_request_id' => $bulk->id,
+            'site_url' => 'https://over-max.example',
+            'domain' => 'over-max.example',
+            'price' => 40,
+        ]);
+
+        $items = [];
+        for ($i = 1; $i <= BulkSiteRequest::MAX_SITES_PER_REQUEST + 1; $i++) {
+            $items[$i] = ['country' => 'us'];
+        }
+
+        $this->actingAs($this->marketer)
+            ->postJson(route('marketing.bulk-site-requests.done', $bulk), [
+                'items' => $items,
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('items');
+    }
+
     public function test_bulk_done_form_supports_partial_block_submit_ui(): void
     {
         $html = file_get_contents(resource_path('views/admin/bulk-site-requests/show.blade.php'));

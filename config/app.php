@@ -29,6 +29,12 @@ return [
     'cron_secret' => (string) env('CRON_SECRET', ''),
 
     /*
+    | Comma-separated proxy IPs/CIDRs, "cloudflare" (uses welcome_bonus.cloudflare_cidrs),
+    | or empty/none. "*" is ignored. Local artisan serve should stay empty.
+    */
+    'trusted_proxies' => (string) env('TRUSTED_PROXIES', ''),
+
+    /*
     | Hostinger often has no SSH cron. When true (default), production web
     | traffic runs pending migrations / MEDIA_PATH / APP_URL repair and
     | schedule:run after the response is flushed.

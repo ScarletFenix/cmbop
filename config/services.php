@@ -63,6 +63,9 @@ return [
         // current request host when it differs (avoids bouncing users to localhost).
         'redirect' => trim((string) (env('GOOGLE_REDIRECT_URI')
             ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/auth/google/callback')),
+        // Production refuses a lost OAuth "state". Set true only for a
+        // documented localhost emergency — it skips CSRF on the callback.
+        'oauth_allow_stateless' => (bool) env('GOOGLE_OAUTH_ALLOW_STATELESS', false),
     ],
 
     'trustpilot' => [

@@ -9,6 +9,7 @@ use App\Models\UserConsent;
 use App\Models\Wallet;
 use App\Services\Wallet\WalletLedgerService;
 use App\Services\Wallet\WelcomeBonusService;
+use App\Support\UserMessages;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -41,7 +42,7 @@ class RegisterController extends Controller
         if (RateLimiter::tooManyAttempts($key, 5)) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Too many registration attempts. Please try again later.',
+                'message' => UserMessages::get('register.throttled'),
             ], 429);
         }
 
@@ -59,7 +60,7 @@ class RegisterController extends Controller
             // Do not burn rate-limit budget on validation mistakes
             return response()->json([
                 'status' => 'validation',
-                'message' => 'Please fix the highlighted fields and try again.',
+                'message' => UserMessages::get('register.validation'),
                 'errors' => $validator->errors(),
             ], 422);
         }
@@ -74,7 +75,7 @@ class RegisterController extends Controller
 
             return response()->json([
                 'status' => 'error',
-                'message' => 'Registration is temporarily unavailable. Please contact support.',
+                'message' => UserMessages::get('register.unavailable'),
             ], 500);
         }
 
@@ -131,7 +132,7 @@ class RegisterController extends Controller
 
             return response()->json([
                 'status' => 'error',
-                'message' => 'Something went wrong. Please try again.',
+                'message' => UserMessages::get('register.failed'),
             ], 500);
         }
 
