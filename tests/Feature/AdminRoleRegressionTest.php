@@ -62,6 +62,54 @@ class AdminRoleRegressionTest extends TestCase
         $this->assertSame('Old Co', $user->fresh()->company_name);
     }
 
+    public function test_company_update_for_missing_user_is_404_not_500(): void
+    {
+        $admin = $this->userWithRole('admin');
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.users.updateCompany', 999999), [
+                'company_name' => 'Ghost Co',
+            ])
+            ->assertNotFound();
+    }
+
+    public function test_role_update_for_missing_user_is_404_not_500(): void
+    {
+        $admin = $this->userWithRole('admin');
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.users.updateRoles', 999999), [
+                'marketing' => false,
+            ])
+            ->assertNotFound();
+    }
+
+    public function test_invalid_payment_status_is_422_not_500(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $order = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => 'ORD-BAD-STATUS',
+            'reference_code' => 'REF-BAD-STATUS',
+            'subtotal' => 20,
+            'tax' => 0,
+            'total_amount' => 20,
+            'payment_method' => 'wallet',
+            'payment_status' => 'pending',
+            'status' => 'pending',
+        ]);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.payments.updateStatus', $order->id), [
+                'payment_status' => 'not-a-status',
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['payment_status']);
+
+        $this->assertSame('pending', $order->fresh()->payment_status);
+    }
+
     public function test_payment_status_update_for_missing_order_is_404_not_500(): void
     {
         $admin = $this->userWithRole('admin');

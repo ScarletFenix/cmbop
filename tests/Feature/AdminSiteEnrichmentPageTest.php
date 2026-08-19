@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Services\SiteEnrichment\SiteEnrichmentService;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
@@ -81,6 +82,28 @@ class AdminSiteEnrichmentPageTest extends TestCase
             'started_at' => now()->subMinutes(5),
             'finished_at' => now()->subMinutes(4),
         ], $overrides));
+    }
+
+    public function test_attention_list_survives_leftover_run_dates(): void
+    {
+        $site = $this->makeSite(['site_name' => 'Leftover Dates', 'domain' => 'leftover-dates.example']);
+        $run = $this->makeRun($site, [
+            'status' => 'failed',
+            'error' => 'Leftover timestamp fixture',
+        ]);
+        DB::table('site_enrichment_runs')->where('id', $run->id)->update([
+            'created_at' => 'not-a-date',
+            'updated_at' => 'also-not-a-date',
+            'started_at' => 'not-a-date',
+            'finished_at' => 'also-not-a-date',
+        ]);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.site-enrichment.index'))
+            ->assertOk()
+            ->assertSee('Leftover Dates', false)
+            ->assertSee('Leftover timestamp fixture', false)
+            ->assertDontSee('Something went wrong');
     }
 
     public function test_partial_screenshot_run_appears_and_links_to_edit(): void

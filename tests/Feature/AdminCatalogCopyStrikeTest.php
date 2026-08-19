@@ -141,6 +141,30 @@ class AdminCatalogCopyStrikeTest extends TestCase
             ->assertDontSee('clean-copy@example.com');
     }
 
+    public function test_catalog_activity_show_survives_leftover_hide_and_exempt_dates(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser', ['email' => 'leftover-show@example.com']);
+        $advertiser->forceFill([
+            'catalog_copy_strike_count' => 2,
+            'catalog_copy_warned_at' => now()->subHour(),
+            'catalog_hide_until' => now()->addDay(),
+            'catalog_reveal_exempt' => true,
+            'catalog_reveal_exempt_until' => now()->addHour(),
+        ])->save();
+        DB::table('users')->where('id', $advertiser->id)->update([
+            'catalog_hide_until' => 'not-a-date',
+            'catalog_reveal_exempt_until' => 'also-not-a-date',
+            'catalog_copy_warned_at' => 'not-a-date',
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.catalog-activity.show', $advertiser->id))
+            ->assertOk()
+            ->assertSee('leftover-show@example.com')
+            ->assertDontSee('Something went wrong');
+    }
+
     public function test_leftover_hide_until_is_not_listed_as_hide_mode(): void
     {
         $admin = $this->userWithRole('admin');
@@ -203,6 +227,31 @@ class AdminCatalogCopyStrikeTest extends TestCase
             (int) CatalogCopyEvent::where('user_id', $advertiser->id)->max('id'),
             (int) $advertiser->catalog_copy_after_id
         );
+    }
+
+    public function test_lift_hide_heals_leftover_unparseable_until(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser', ['email' => 'garbage-lift@example.com']);
+        $advertiser->forceFill([
+            'catalog_copy_strike_count' => 0,
+            'catalog_copy_warned_at' => null,
+            'catalog_hide_until' => now()->addDay(),
+        ])->save();
+        DB::table('users')->where('id', $advertiser->id)->update([
+            'catalog_hide_until' => 'not-a-date',
+        ]);
+
+        $this->assertFalse($advertiser->fresh()->inCatalogHideMode());
+        $this->assertNull($advertiser->fresh()->catalog_hide_until);
+
+        $this->actingAs($admin)
+            ->from(route('admin.catalog-activity.show', $advertiser->id))
+            ->post(route('admin.catalog-activity.lift-hide', $advertiser->id))
+            ->assertRedirect()
+            ->assertSessionHas('success', fn ($msg) => ! str_contains((string) $msg, 'already out'));
+
+        $this->assertNull(DB::table('users')->where('id', $advertiser->id)->value('catalog_hide_until'));
     }
 
     public function test_lift_hide_heals_stale_until_and_logs(): void

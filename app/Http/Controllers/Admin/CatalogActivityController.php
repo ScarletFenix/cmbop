@@ -190,7 +190,7 @@ class CatalogActivityController extends Controller
             $strikesWere = (int) ($model->catalog_copy_strike_count ?? 0);
 
             if (! $wasHidden) {
-                if ($model->catalog_hide_until === null) {
+                if (! $model->hasRawDateValue('catalog_hide_until')) {
                     return ['noop' => true, 'model' => $model];
                 }
 
@@ -325,7 +325,7 @@ class CatalogActivityController extends Controller
             $warnedAtWas = $model->catalog_copy_warned_at;
 
             if (! $wasHidden && $strikesWere === 0 && $warnedAtWas === null) {
-                if ($model->catalog_hide_until === null) {
+                if (! $model->hasRawDateValue('catalog_hide_until')) {
                     return ['noop' => true, 'model' => $model];
                 }
 
