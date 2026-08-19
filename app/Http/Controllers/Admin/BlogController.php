@@ -156,7 +156,7 @@ class BlogController extends Controller
                 $featuredImage = $this->storeBlogImage($request->file('featured_image'), 'blogs/featured');
                 if ($featuredImage === null) {
                     throw ValidationException::withMessages([
-                        'featured_image' => ['Could not save the featured image to storage. Check disk permissions and MEDIA_PATH.'],
+                        'featured_image' => [self::imageConversionFailedMessage()],
                     ]);
                 }
                 Log::info('Featured image uploaded', ['path' => $featuredImage]);
@@ -369,7 +369,7 @@ class BlogController extends Controller
                 $newFeaturedImage = $this->storeBlogImage($request->file('featured_image'), 'blogs/featured');
                 if ($newFeaturedImage === null) {
                     throw ValidationException::withMessages([
-                        'featured_image' => ['Could not save the featured image to storage. Check disk permissions and MEDIA_PATH.'],
+                        'featured_image' => [self::imageConversionFailedMessage()],
                     ]);
                 }
 
@@ -543,8 +543,8 @@ class BlogController extends Controller
             if ($imagePath === null) {
                 return response()->json([
                     'success' => false,
-                    'error' => 'Could not save the image to storage. Check disk permissions and MEDIA_PATH.',
-                ], 500);
+                    'error' => self::imageConversionFailedMessage(),
+                ], 422);
             }
             $imageUrl = Site::publicDiskUrl($imagePath);
             if ($imageUrl === null) {
@@ -727,7 +727,7 @@ class BlogController extends Controller
     }
 
     /**
-     * Persist a blog image as WebP when GD can convert; otherwise keep the original file.
+     * Persist a blog image as WebP (GIF stays GIF). Raw JPEG/PNG is refused.
      */
     private function storeBlogImage(UploadedFile $file, string $directory): ?string
     {
@@ -735,8 +735,7 @@ class BlogController extends Controller
             $disk = Storage::disk('public');
             $disk->makeDirectory($directory);
 
-            $stored = app(ImageOptimizationService::class)->storeUploadedImageAsWebp($file, $directory)
-                ?? $file->store($directory, 'public');
+            $stored = app(ImageOptimizationService::class)->storeSafePublicImage($file, $directory);
 
             if (! is_string($stored) || $stored === '' || ! $disk->exists($stored)) {
                 return null;
@@ -751,6 +750,11 @@ class BlogController extends Controller
 
             return null;
         }
+    }
+
+    private static function imageConversionFailedMessage(): string
+    {
+        return 'Could not convert this image. JPEG and PNG need PHP GD with WebP on the server. GIF uploads still work.';
     }
 
     private function sanitizeTranslations(array $translations, bool $requireEnglish): array

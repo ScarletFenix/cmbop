@@ -28,6 +28,7 @@ class ProductionReadiness
     {
         return [
             $this->databaseCheck(),
+            $this->debugCheck(),
             $this->appUrlCheck(),
             $this->mediaPathCheck(),
             $this->storageLinkCheck(),
@@ -36,6 +37,7 @@ class ProductionReadiness
             $this->migrationsCheck(),
             $this->mailDrainCheck(),
             $this->schedulerCheck(),
+            $this->trustedProxiesCheck(),
         ];
     }
 
@@ -115,6 +117,30 @@ class ProductionReadiness
             'Database',
             'Using '.$driver.' (allowed outside production).',
             ''
+        );
+    }
+
+    /**
+     * @return array{id: string, severity: string, title: string, detail: string, fix: string}
+     */
+    private function debugCheck(): array
+    {
+        $debug = (bool) config('app.debug');
+
+        if (! $debug) {
+            return $this->item('app_debug', self::SEVERITY_OK, 'APP_DEBUG', 'Off.', '');
+        }
+
+        if (! $this->isProduction()) {
+            return $this->item('app_debug', self::SEVERITY_OK, 'APP_DEBUG', 'On (allowed outside production).', '');
+        }
+
+        return $this->item(
+            'app_debug',
+            self::SEVERITY_FAIL,
+            'APP_DEBUG is on in production',
+            'Stack traces and environment values can leak to visitors.',
+            'Set APP_DEBUG=false in .env and run php artisan config:clear.'
         );
     }
 
@@ -391,7 +417,7 @@ class ProductionReadiness
                 'scheduler',
                 self::SEVERITY_OK,
                 'Scheduler',
-                'HTTP cron is enabled (CRON_SECRET ≥ 32). Hit /cron/run/{key} every minute.',
+                'HTTP cron is enabled (CRON_SECRET ≥ 32). Prefer POST /cron/run with X-Cron-Key every minute.',
                 ''
             );
         }
@@ -421,7 +447,42 @@ class ProductionReadiness
             self::SEVERITY_WARN,
             'Confirm the scheduler is running',
             'CRON_SECRET is empty and HOSTINGER_WEB_HEAL is off. Auto-approve, nudges, and mail:drain-queue need `* * * * * php artisan schedule:run`.',
-            'Set HOSTINGER_WEB_HEAL=true, add a system cron for schedule:run, or set CRON_SECRET (≥ 32 chars) and hit /cron/run/{key} every minute. See docs/ops-mail-reminders.md.'
+            'Set HOSTINGER_WEB_HEAL=true, add a system cron for schedule:run, or set CRON_SECRET (≥ 32 chars) and POST /cron/run with X-Cron-Key. See docs/ops-mail-reminders.md.'
+        );
+    }
+
+    /**
+     * @return array{id: string, severity: string, title: string, detail: string, fix: string}
+     */
+    private function trustedProxiesCheck(): array
+    {
+        $proxies = TrustedProxies::addresses();
+        if ($proxies !== []) {
+            return $this->item(
+                'trusted_proxies',
+                self::SEVERITY_OK,
+                'Trusted proxies',
+                'X-Forwarded-* is only accepted from configured hops.',
+                ''
+            );
+        }
+
+        if (! $this->isProduction()) {
+            return $this->item(
+                'trusted_proxies',
+                self::SEVERITY_OK,
+                'Trusted proxies',
+                'None configured — local/dev uses REMOTE_ADDR (do not set TRUSTED_PROXIES=*).',
+                ''
+            );
+        }
+
+        return $this->item(
+            'trusted_proxies',
+            self::SEVERITY_WARN,
+            'Set TRUSTED_PROXIES in production',
+            'Empty TRUSTED_PROXIES is safe against spoofed client IPs, but HTTPS and the real visitor IP may be wrong behind Cloudflare.',
+            'Set TRUSTED_PROXIES=cloudflare on Hostinger, or a comma-separated hop list. Never *.'
         );
     }
 

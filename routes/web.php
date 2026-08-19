@@ -88,6 +88,7 @@ use App\Http\Middleware\RoleMiddleware;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\Marketing\CatalogTeaserService;
+use App\Support\HttpCron;
 use App\Support\PublicI18n;
 use App\Support\RobotsTxt;
 use App\Support\UserMessages;
@@ -234,13 +235,13 @@ Route::get('/css/{path}', function (string $path) {
 
 // Ad banner / announcement click tracking (public)
 Route::get('/banners/{banner}/click', BannerClickController::class)
-    ->middleware('throttle:60,1')
+    ->middleware('throttle:30,1')
     ->name('banners.click');
 Route::get('/announcements/{announcement}/click', AnnouncementClickController::class)
-    ->middleware('throttle:60,1')
+    ->middleware('throttle:30,1')
     ->name('announcements.click');
 Route::post('/promotions/track', PromotionTrackController::class)
-    ->middleware('throttle:60,1')
+    ->middleware('throttle:30,1')
     ->name('promotions.track');
 
 // External cron fallback for hosts without a real scheduler. This completes orders
@@ -294,8 +295,8 @@ Route::middleware('guest')->group(function () {
     Route::get('/login', [LoginController::class, 'show'])->name('login');
 });
 
-// Google OAuth must stay outside `guest`: the callback authenticates the user in-request,
-// and a lost OAuth "state" session should still be able to complete via stateless fallback.
+// Google OAuth must stay outside `guest`: the callback authenticates the user in-request.
+// Local/testing may retry without OAuth "state"; production refuses that fallback.
 Route::get('auth/google', [SocialiteController::class, 'redirectToGoogle'])->name('auth.google');
 Route::get('auth/google/callback', [SocialiteController::class, 'handleGoogleCallback'])->name('auth.google.callback');
 
@@ -304,7 +305,9 @@ Route::post('/register', [RegisterController::class, 'register'])
     ->middleware('throttle:register');
 
 // Authentication routes (login, logout)
-Route::post('/login', [LoginController::class, 'login'])->name('login.post');
+Route::post('/login', [LoginController::class, 'login'])
+    ->middleware('throttle:login')
+    ->name('login.post');
 Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
 
 // Forgot Password
@@ -830,12 +833,12 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
 
         // Live search / filter results fragment (HTML partial, same query as index).
         Route::get('/catalog/results', [CatalogController::class, 'results'])
-            ->middleware('throttle:120,1')
+            ->middleware('throttle:60,1')
             ->name('catalog.results');
 
         // Bulk deals rail fragment — follows country= like the listing (Option 1).
         Route::get('/catalog/bulk-deals', [CatalogController::class, 'bulkDeals'])
-            ->middleware('throttle:120,1')
+            ->middleware('throttle:60,1')
             ->name('catalog.bulk-deals');
 
         // One publisher domain per request. Throttled on top of the daily

@@ -45,7 +45,10 @@ This agent cannot SSH to live Hostinger. `HOSTINGER_WEB_HEAL` (default on) plus
    the same numbers are saved in hPanel. A 5 MB Word file is rejected as
    `UPLOAD_ERR_INI_SIZE` while PHP stays at the default 2M. This cannot be
    self-healed from PHP.
-9. Confirm MySQL, `APP_URL`, `MEDIA_PATH`, uploads, mail drain, and the scheduler:
+9. Blog / staff JPEG and PNG covers are converted to WebP. Hostinger needs
+   `php-gd` with WebP (`extension=gd`). Without it those uploads are refused
+   (GIF still works). Do not keep raw JPEG/PNG as a fallback.
+10. Confirm MySQL, `APP_URL`, `MEDIA_PATH`, uploads, mail drain, and the scheduler:
    `php artisan ops:production-ready --repair --strict`
    Web traffic also runs `schedule:run` about once a minute. Add system cron if
    the site is quiet overnight. Then spot-check register → verify email →

@@ -32,6 +32,12 @@ class LoginController extends Controller
         $ipKey = 'login-ip:'.$request->ip();
 
         if (RateLimiter::tooManyAttempts($key, 5) || RateLimiter::tooManyAttempts($ipKey, 30)) {
+            $retry = max(
+                RateLimiter::availableIn($key),
+                RateLimiter::availableIn($ipKey),
+                1
+            );
+
             return response()->json([
                 'status' => 'error',
                 'message' => UserMessages::get('login.throttled'),
@@ -67,9 +73,11 @@ class LoginController extends Controller
 
         $user = Auth::user();
 
-        // 🚨 Email verification check
+        // Same wording as a bad password so login cannot confirm the account exists.
         if (! $user->hasVerifiedEmail()) {
             Auth::logout();
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
 
             return response()->json([
                 'status' => 'unverified',
@@ -96,10 +104,23 @@ class LoginController extends Controller
     /**
      * Logout
      */
-    public function logout()
+    public function logout(Request $request)
     {
         Auth::logout();
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
 
         return redirect('/');
+    }
+
+    /**
+     * @return JsonResponse
+     */
+    private function failedLoginResponse()
+    {
+        return response()->json([
+            'status' => 'error',
+            'message' => 'Invalid email or password.',
+        ]);
     }
 }

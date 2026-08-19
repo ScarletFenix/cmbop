@@ -130,13 +130,13 @@ class SocialiteController extends Controller
                 'email' => $email,
                 'password' => $temporaryPassword,
                 'google_id' => $providerId,
-                'google_token' => $socialUser->token ?? null,
-                'google_refresh_token' => $socialUser->refreshToken ?? null,
                 'avatar' => $this->normalizedAvatarUrl($socialUser->getAvatar()),
-                'active_role_id' => $advertiserRole->id,
             ]);
 
-            // Not mass-assignable: Google already proved ownership of this address.
+            // Not mass-assignable: tokens, role, and verify must be set explicitly.
+            $user->google_token = $socialUser->token ?? null;
+            $user->google_refresh_token = $socialUser->refreshToken ?? null;
+            $user->active_role_id = $advertiserRole->id;
             $user->email_verified_at = now();
             $user->save();
 
@@ -216,20 +216,38 @@ class SocialiteController extends Controller
     }
 
     /**
-     * Resolve the Google user, falling back to stateless when the OAuth
-     * session "state" cookie/session was lost (common on localhost / SameSite).
+     * Resolve the Google user. Local/testing may retry without the OAuth
+     * "state" cookie (lost on localhost / SameSite). Production does not —
+     * that fallback lets a stolen callback URL finish login as anyone.
      */
     private function resolveGoogleUser(): SocialiteUser
     {
         try {
             return $this->googleDriver()->user();
         } catch (InvalidStateException $e) {
+            if (! $this->allowStatelessGoogle()) {
+                Log::warning('Google OAuth state mismatch; refusing stateless fallback', [
+                    'exception' => $e::class,
+                ]);
+
+                throw $e;
+            }
+
             Log::warning('Google OAuth state mismatch; retrying stateless user resolve', [
                 'exception' => $e::class,
             ]);
 
             return $this->googleDriver()->stateless()->user();
         }
+    }
+
+    private function allowStatelessGoogle(): bool
+    {
+        if (filter_var(config('services.google.oauth_allow_stateless', false), FILTER_VALIDATE_BOOL)) {
+            return true;
+        }
+
+        return ! app()->environment('production');
     }
 
     /**

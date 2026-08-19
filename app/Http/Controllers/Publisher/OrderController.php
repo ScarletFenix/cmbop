@@ -21,6 +21,7 @@ use App\Services\LiveUrlHealthChecker;
 use App\Services\Orders\ContentRevisionService;
 use App\Services\Orders\OrderRefundService;
 use App\Services\Orders\ReviewHandoffService;
+use App\Support\ArticleDownload;
 use App\Support\OrderLifecycleMailSuppressor;
 use App\Support\SocialPostUrlValidator;
 use App\Support\UserFacingError;
@@ -65,7 +66,10 @@ class OrderController extends Controller
         return $disk->download(
             $submission->path,
             $submission->original_filename,
-            ['Content-Type' => $submission->mime ?: 'application/octet-stream']
+            ArticleDownload::headers(
+                (string) $submission->original_filename,
+                (string) ($submission->mime ?: 'application/octet-stream')
+            )
         );
     }
 

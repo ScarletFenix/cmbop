@@ -2283,7 +2283,7 @@ class SiteController extends Controller
     }
 
     /**
-     * Persist a staff cover as WebP when GD can convert; otherwise keep the original file.
+     * Persist a staff cover as WebP (GIF stays GIF). Raw JPEG/PNG is refused.
      */
     private function storeStaffSiteImage(UploadedFile $file): ?string
     {
@@ -2291,8 +2291,7 @@ class SiteController extends Controller
             $disk = Storage::disk('public');
             $disk->makeDirectory('sites');
 
-            $stored = app(ImageOptimizationService::class)->storeUploadedImageAsWebp($file, 'sites')
-                ?? $file->store('sites', 'public');
+            $stored = app(ImageOptimizationService::class)->storeSafePublicImage($file, 'sites');
 
             if (! is_string($stored) || $stored === '' || ! $disk->exists($stored)) {
                 return null;

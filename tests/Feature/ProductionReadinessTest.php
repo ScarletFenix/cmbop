@@ -77,10 +77,32 @@ class ProductionReadinessTest extends TestCase
             ->assertSee('ops:production-ready');
     }
 
+    public function test_production_fails_when_debug_is_on(): void
+    {
+        $this->seed(RolesTableSeeder::class);
+        $this->forceProduction();
+        config(['app.debug' => true]);
+
+        $ids = array_column(app(ProductionReadiness::class)->failures(), 'id');
+        $this->assertContains('app_debug', $ids);
+        $this->assertFalse(app(ProductionReadiness::class)->isHealthy());
+    }
+
+    public function test_production_debug_off_is_not_a_debug_failure(): void
+    {
+        $this->seed(RolesTableSeeder::class);
+        $this->forceProduction();
+        config(['app.debug' => false]);
+
+        $ids = array_column(app(ProductionReadiness::class)->failures(), 'id');
+        $this->assertNotContains('app_debug', $ids);
+    }
+
     public function test_env_example_and_docs_pin_the_production_checklist(): void
     {
         $example = (string) file_get_contents(base_path('.env.example'));
         $this->assertStringContainsString('DB_CONNECTION=mysql', $example);
+        $this->assertStringContainsString('APP_DEBUG=false', $example);
         $this->assertStringContainsString('MAIL_QUEUE_AUTO_DRAIN=true', $example);
         $this->assertStringContainsString('MEDIA_PATH=', $example);
         $this->assertStringContainsString('HOSTINGER_WEB_HEAL=true', $example);

@@ -55,4 +55,39 @@ class ImageOptimizationUploadTest extends TestCase
             @unlink($tmp);
         }
     }
+
+    public function test_safe_store_keeps_gif_and_refuses_unconverted_jpeg(): void
+    {
+        Storage::fake('public');
+        $service = app(ImageOptimizationService::class);
+
+        $gifTmp = tempnam(sys_get_temp_dir(), 'cmbop-safe-gif-');
+        $this->assertIsString($gifTmp);
+        file_put_contents($gifTmp, 'GIF89a'.str_repeat("\x00", 20));
+        $gif = new UploadedFile($gifTmp, 'animated.gif', 'image/gif', null, true);
+
+        try {
+            $gifPath = $service->storeSafePublicImage($gif, 'blogs/content');
+            $this->assertIsString($gifPath);
+            $this->assertStringContainsString('blogs/content/', $gifPath);
+            Storage::disk('public')->assertExists($gifPath);
+        } finally {
+            @unlink($gifTmp);
+        }
+
+        if (function_exists('imagewebp')) {
+            return;
+        }
+
+        $jpgTmp = tempnam(sys_get_temp_dir(), 'cmbop-safe-jpg-');
+        $this->assertIsString($jpgTmp);
+        file_put_contents($jpgTmp, "\xff\xd8\xff\xdbnot-reencoded");
+        $jpg = new UploadedFile($jpgTmp, 'raw.jpg', 'image/jpeg', null, true);
+
+        try {
+            $this->assertNull($service->storeSafePublicImage($jpg, 'blogs/featured'));
+        } finally {
+            @unlink($jpgTmp);
+        }
+    }
 }

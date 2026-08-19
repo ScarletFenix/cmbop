@@ -267,6 +267,24 @@ class GoogleLoginTest extends TestCase
         $this->assertAuthenticatedAs($user->fresh());
     }
 
+    public function test_google_callback_does_not_retry_stateless_in_production(): void
+    {
+        $this->configureGoogle();
+        config(['services.google.oauth_allow_stateless' => false]);
+        $this->app['env'] = 'production';
+
+        $driver = $this->mockGoogleProvider(userException: new InvalidStateException);
+        $driver->shouldReceive('stateless')->never();
+
+        Socialite::shouldReceive('driver')->with('google')->once()->andReturn($driver);
+
+        $this->get(route('auth.google.callback'))
+            ->assertRedirect(route('login'))
+            ->assertSessionHas('error');
+
+        $this->assertGuest();
+    }
+
     public function test_authenticated_user_visiting_login_goes_to_dashboard(): void
     {
         $role = Role::where('name', 'advertiser')->firstOrFail();
