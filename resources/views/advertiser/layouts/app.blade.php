@@ -780,6 +780,32 @@
                 const itemKeyAttr = escapeHtml(itemKey);
                 const sensitiveAttr = escapeHtml(item.sensitive_type || '');
                 const siteName = item.name || 'Website';
+                const siteDomain = String(item.domain || '').trim()
+                    || (function () {
+                        const raw = String(item.url || '').trim();
+                        if (!raw) return '';
+                        try {
+                            return new URL(raw.includes('://') ? raw : ('https://' + raw)).hostname.replace(/^www\./, '');
+                        } catch (_) {
+                            return raw.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0];
+                        }
+                    })();
+                const daLabel = (item.da !== null && item.da !== undefined && item.da !== '') ? String(item.da) : '';
+                const drLabel = (item.dr !== null && item.dr !== undefined && item.dr !== '') ? String(item.dr) : '';
+                const metricBits = [];
+                if (daLabel !== '') metricBits.push('DA ' + daLabel);
+                if (drLabel !== '') metricBits.push('DR ' + drLabel);
+                if (metricBits.length === 0) {
+                    const country = String(item.country || '').trim().toUpperCase();
+                    const language = String(item.language || '').trim().toUpperCase();
+                    if (country) metricBits.push(country);
+                    if (language) metricBits.push(language);
+                }
+                const identityMeta = [siteDomain, metricBits.join(' · ')].filter(Boolean).join(' · ');
+                const placementIds = lineContentIds(item);
+                const qty = Math.max(1, parseInt(item.quantity, 10) || 1);
+                const unitPrice = (parseFloat(item.price) || 0).toFixed(2);
+                const priceLabel = qty > 1 ? ('€' + unitPrice + ' × ' + qty) : ('€' + unitPrice);
                 const sensitiveDisplay = item.sensitive_type ? 
                     `<div class="cart-item-sensitive"><small>+ ${escapeHtml(item.sensitive_type)} (€${(parseFloat(item.additional_price) || 0).toFixed(2)})</small></div>` : '';
                 const homepageDays = item.homepage_days != null && item.homepage_days !== '' ? parseInt(item.homepage_days, 10) : null;
@@ -791,8 +817,6 @@
                 const socialDisplay = socialList.length
                     ? `<div class="cart-item-social"><small>Social: ${escapeHtml(socialList.map((c) => c === 'x' ? 'X' : (c.charAt(0).toUpperCase() + c.slice(1))).join(', '))}</small></div>`
                     : '';
-                const placementIds = lineContentIds(item);
-                const qty = Math.max(1, parseInt(item.quantity, 10) || 1);
                 let articleBlock = '';
                 if (approvedArticles.length === 0 && placementIds.every((id) => !id)) {
                     articleBlock = `
@@ -861,10 +885,11 @@
                         <div class="cart-item-top">
                             <div class="cart-item-info">
                                 <div class="cart-item-name">${escapeHtml(siteName)}</div>
+                                ${identityMeta ? `<div class="cart-item-meta">${escapeHtml(identityMeta)}</div>` : ''}
                                 ${sensitiveDisplay}
                                 ${homepageDisplay}
                                 ${socialDisplay}
-                                <div class="cart-item-price">€${(parseFloat(item.price) || 0).toFixed(2)} each</div>
+                                <div class="cart-item-price">${priceLabel}</div>
                                 ${qtyNote}
                             </div>
                             <div class="cart-item-quantity">
