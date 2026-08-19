@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Services\PaypalCheckoutService;
+use App\Support\UserMessages;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -400,6 +401,46 @@ class PaypalCheckoutServiceTest extends TestCase
             return str_contains($request->url(), 'https://api-m.paypal.com/v1/oauth2/token')
                 && $request->hasHeader('Authorization');
         });
+    }
+
+    public function test_oauth_strips_wrapped_quotes_from_credentials(): void
+    {
+        $this->enablePaypal([
+            'client_id' => '"paypal-client-test"',
+            'secret' => "'paypal-secret-test'",
+        ]);
+        Cache::flush();
+        $this->fakePaypal();
+
+        $this->assertTrue((new PaypalCheckoutService)->configured());
+        (new PaypalCheckoutService)->accessToken();
+
+        Http::assertSent(function ($request) {
+            if (! str_contains($request->url(), '/v1/oauth2/token')) {
+                return false;
+            }
+            $auth = (string) $request->header('Authorization')[0];
+            $expected = 'Basic '.base64_encode('paypal-client-test:paypal-secret-test');
+
+            return $auth === $expected;
+        });
+    }
+
+    public function test_oauth_401_explains_sandbox_versus_live_keys(): void
+    {
+        Http::fake([
+            'https://api-m.sandbox.paypal.com/v1/oauth2/token' => Http::response([
+                'error' => 'invalid_client',
+                'error_description' => 'Client Authentication failed',
+            ], 401),
+        ]);
+
+        try {
+            (new PaypalCheckoutService)->accessToken();
+            $this->fail('Expected a PayPal OAuth exception.');
+        } catch (RuntimeException $e) {
+            $this->assertSame(UserMessages::get('payment.paypal_auth'), $e->getMessage());
+        }
     }
 
     public function test_oauth_cache_does_not_reuse_token_after_secret_rotation(): void

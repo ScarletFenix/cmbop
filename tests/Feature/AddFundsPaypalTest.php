@@ -10,6 +10,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Services\PaypalCheckoutService;
+use App\Support\UserMessages;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
@@ -143,6 +144,25 @@ class AddFundsPaypalTest extends TestCase
                 )
                 && ($body['purchase_units'][0]['amount']['value'] ?? null) === '25.00';
         });
+    }
+
+    public function test_create_paypal_deposit_explains_oauth_401(): void
+    {
+        $this->enablePaypal();
+        Http::fake([
+            'https://api-m.sandbox.paypal.com/v1/oauth2/token' => Http::response([
+                'error' => 'invalid_client',
+            ], 401),
+        ]);
+
+        $this->actingAs($this->advertiser())
+            ->postJson(route('advertiser.add-funds.paypal.create'), [
+                'amount' => 50,
+                'reference_code' => '985241',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', UserMessages::get('payment.paypal_auth'));
     }
 
     public function test_paypal_deposit_return_credits_wallet_once(): void

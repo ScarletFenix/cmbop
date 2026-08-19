@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Support\UserMessages;
 use Illuminate\Http\Client\Response;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -435,13 +436,22 @@ class PaypalCheckoutService
             ]);
 
         if (! $response->successful()) {
-            Log::error('PayPal OAuth failed', ['status' => $response->status()]);
-            throw new RuntimeException('PayPal authentication failed.');
+            $paypalError = $this->safePaypalErrorCode($response);
+            Log::error('PayPal OAuth failed', array_filter([
+                'status' => $response->status(),
+                'mode' => $this->mode(),
+                'error' => $paypalError,
+            ], fn ($value) => $value !== null && $value !== ''));
+            throw new RuntimeException(UserMessages::get(
+                (int) $response->status() === 401
+                    ? 'payment.paypal_auth'
+                    : 'payment.paypal_unavailable'
+            ));
         }
 
         $token = trim((string) $response->json('access_token'));
         if ($token === '') {
-            throw new RuntimeException('PayPal authentication failed.');
+            throw new RuntimeException(UserMessages::get('payment.paypal_unavailable'));
         }
 
         $ttl = max(30, ((int) $response->json('expires_in', 300)) - 60);
@@ -641,11 +651,41 @@ class PaypalCheckoutService
 
     private function clientId(): string
     {
-        return trim((string) config('services.paypal.client_id', ''));
+        return $this->normalizedCredential((string) config('services.paypal.client_id', ''));
     }
 
     private function secret(): string
     {
-        return trim((string) config('services.paypal.secret', ''));
+        return $this->normalizedCredential((string) config('services.paypal.secret', ''));
+    }
+
+    /**
+     * Dashboard copy-paste often wraps keys in quotes or includes a BOM.
+     * Those characters survive trim() and make PayPal return HTTP 401.
+     */
+    private function normalizedCredential(string $value): string
+    {
+        $value = preg_replace('/^\xEF\xBB\xBF/u', '', $value) ?? $value;
+        $value = str_replace(["\r", "\n", "\0", "\u{200B}", "\u{200C}", "\u{200D}", "\u{FEFF}"], '', $value);
+        $value = trim($value);
+        if (strlen($value) >= 2) {
+            $first = $value[0];
+            $last = $value[strlen($value) - 1];
+            if (($first === '"' && $last === '"') || ($first === "'" && $last === "'")) {
+                $value = substr($value, 1, -1);
+            }
+        }
+
+        return trim($value);
+    }
+
+    private function safePaypalErrorCode(Response $response): string
+    {
+        $code = strtolower(trim((string) ($response->json('error') ?? $response->json('name') ?? '')));
+        if ($code === '' || strlen($code) > 64 || preg_match('/[^a-z0-9._-]/', $code)) {
+            return '';
+        }
+
+        return $code;
     }
 }
