@@ -64,6 +64,49 @@
     }
 
     /**
+     * Staff Activate: warn when the listing brief does not look English.
+     * Cancel = go edit; confirm still activates (not a server block).
+     *
+     * @param {object} opts
+     * @param {boolean|number|string} [opts.looksEnglish]
+     * @param {string} [opts.excerpt]
+     * @param {string} [opts.name]
+     * @returns {Promise<boolean>}
+     */
+    function slbConfirmActivate(opts) {
+        opts = opts || {};
+        var looksEnglish = opts.looksEnglish !== false
+            && opts.looksEnglish !== 0
+            && opts.looksEnglish !== '0';
+
+        if (!looksEnglish) {
+            var excerpt = String(opts.excerpt || '').trim();
+            var text = 'Translate the description to English, save, then activate. Or activate anyway if this is already English.';
+            if (excerpt) {
+                text += '\n\n“' + excerpt + '”';
+            }
+            return slbConfirm({
+                title: 'This brief does not look English',
+                text: text,
+                icon: 'warning',
+                confirmText: 'Activate anyway',
+                cancelText: 'Go back',
+                danger: true,
+            });
+        }
+
+        var name = String(opts.name || '').trim();
+        return slbConfirm({
+            title: opts.title || 'Activate Site?',
+            text: opts.text || (name
+                ? 'Make "' + name + '" live in the catalog?'
+                : 'Are you sure you want to activate this site?'),
+            icon: 'question',
+            confirmText: opts.confirmText || 'Yes, activate',
+        });
+    }
+
+    /**
      * @param {object} opts
      * @returns {Promise<void>}
      */
@@ -159,6 +202,7 @@
     }
 
     global.slbConfirm = slbConfirm;
+    global.slbConfirmActivate = slbConfirmActivate;
     global.slbAlert = slbAlert;
 
     if (document.readyState === 'loading') {

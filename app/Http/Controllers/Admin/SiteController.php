@@ -474,6 +474,8 @@ class SiteController extends Controller
             'link_type' => $site->link_type,
             'sponsored' => (bool) $site->sponsored,
             'description' => $site->description,
+            'description_looks_english' => $site->descriptionLooksLikeEnglish(),
+            'description_excerpt' => SiteDescriptionRules::excerpt($site->description, 200),
             'enrichment_status' => $site->enrichment_status,
             'enrichment_error' => $site->enrichment_error,
             'metrics_manual' => Site::hasSitesColumn('metrics_manual') && (bool) $site->metrics_manual,
@@ -2963,6 +2965,7 @@ class SiteController extends Controller
                         'bulk_site_request_id' => $site->bulk_site_request_id,
                         'by_role' => $actor->activeRole(),
                         'reason' => $reason,
+                        'non_english_brief_warned' => $activating && ! $site->descriptionLooksLikeEnglish(),
                     ],
                     $site->site_name
                 );

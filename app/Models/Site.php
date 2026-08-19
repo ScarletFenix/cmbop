@@ -8,6 +8,7 @@ use App\Services\Catalog\CatalogCountryInventory;
 use App\Services\Catalog\CatalogLanguageFilter;
 use App\Services\Catalog\SiteUrlVisibility;
 use App\Services\SiteDescriptionSanitizer;
+use App\Support\SiteDescriptionRules;
 use App\Support\SiteTag;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -1526,6 +1527,14 @@ class Site extends Model
         }
 
         return null;
+    }
+
+    /**
+     * Staff Activate warning only — never blocks verify or activate.
+     */
+    public function descriptionLooksLikeEnglish(): bool
+    {
+        return SiteDescriptionRules::looksLikeEnglish($this->description);
     }
 
     public function assignedBy()

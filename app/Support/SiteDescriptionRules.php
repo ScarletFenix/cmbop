@@ -15,6 +15,32 @@ class SiteDescriptionRules
 
     public const EXCERPT_CHARS = 260;
 
+    public const ENGLISH_LOOKS_MIN_CHARS = 40;
+
+    /**
+     * Function words used to guess whether a brief is already English.
+     * Staff Activate uses this for a warning only — not a hard block.
+     *
+     * @var list<string>
+     */
+    public const ENGLISH_HINT_WORDS = [
+        'the', 'and', 'for', 'with', 'this', 'that', 'your', 'from', 'are',
+        'not', 'have', 'will', 'their', 'our', 'you', 'can', 'about', 'when',
+        'guest', 'publishers', 'advertisers', 'audience', 'website',
+    ];
+
+    /**
+     * @var list<string>
+     */
+    public const NON_ENGLISH_HINT_WORDS = [
+        'und', 'für', 'die', 'der', 'das', 'mit', 'eine', 'einen',
+        'les', 'des', 'une', 'pour', 'avec', 'est',
+        'el', 'los', 'las', 'para', 'con', 'una', 'este',
+        'per', 'della', 'che', 'questo',
+        'het', 'een', 'van', 'niet',
+        'och', 'att', 'som',
+    ];
+
     public static function plainText(string $html): string
     {
         $text = html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8');
@@ -73,6 +99,39 @@ class SiteDescriptionRules
         }
 
         return Str::limit($plain, $limit ?? self::EXCERPT_CHARS);
+    }
+
+    /**
+     * Conservative guess for staff Activate: warn when the brief does not
+     * look English. Listing language (de) is ignored — only the text counts.
+     */
+    public static function looksLikeEnglish(?string $html): bool
+    {
+        $plain = self::plainText((string) $html);
+        if (mb_strlen($plain) < self::ENGLISH_LOOKS_MIN_CHARS) {
+            return false;
+        }
+
+        $englishHits = self::countHintWords($plain, self::ENGLISH_HINT_WORDS);
+        $otherHits = self::countHintWords($plain, self::NON_ENGLISH_HINT_WORDS);
+
+        return $englishHits >= 2 && $englishHits > $otherHits;
+    }
+
+    /**
+     * @param  list<string>  $words
+     */
+    private static function countHintWords(string $plain, array $words): int
+    {
+        $count = 0;
+        foreach ($words as $word) {
+            $matched = preg_match_all('/\b'.preg_quote($word, '/').'\b/iu', $plain);
+            if (is_int($matched) && $matched > 0) {
+                $count += $matched;
+            }
+        }
+
+        return $count;
     }
 
     public static function helpText(): string

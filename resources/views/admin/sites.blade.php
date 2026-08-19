@@ -140,7 +140,7 @@
                                 <a href="{{ $openUrl }}" class="btn btn-sm btn-outline-secondary">Open</a>
                                 <a href="{{ staff_route('sites.edit', $site->id) }}" class="btn btn-sm btn-outline-primary">{{ $site->isLockedForMarketingEdits() ? 'View' : 'Edit' }}</a>
                                 @if(auth()->user()?->canActivateSites() && $site->marketingCanActivate())
-                                    <button type="button" class="btn btn-sm btn-success js-mkt-activate" data-id="{{ $site->id }}" data-name="{{ $site->site_name }}">Activate</button>
+                                    <button type="button" class="btn btn-sm btn-success js-mkt-activate" data-id="{{ $site->id }}" data-name="{{ $site->site_name }}" data-description-english="{{ $site->descriptionLooksLikeEnglish() ? '1' : '0' }}" data-description-excerpt="{{ \App\Support\SiteDescriptionRules::excerpt($site->description, 200) }}">Activate</button>
                                 @endif
                             </div>
                         </td>
@@ -998,44 +998,7 @@ document.addEventListener('click', function(e){
         let newStatus = activating ? 'activate' : 'deactivate';
         let needsReason = !activating;
 
-        Swal.fire({
-            title: activating ? 'Activate Site?' : 'Deactivate Site?',
-            text: needsReason
-                ? 'Explain why this listing is being deactivated. The publisher will see this reason in email and notifications.'
-                : 'Are you sure you want to activate this site?',
-            icon: 'question',
-            input: needsReason ? 'textarea' : undefined,
-            inputLabel: needsReason ? 'Reason for the publisher' : undefined,
-            inputPlaceholder: needsReason ? 'Reason (min. 10 characters)' : undefined,
-            inputAttributes: needsReason ? { 'aria-label': 'Deactivation reason', maxlength: '1000' } : undefined,
-            showCancelButton: true,
-            confirmButtonText: activating ? 'Yes, activate' : 'Yes, deactivate',
-            preConfirm: (value) => {
-                if (!needsReason) return null;
-                const reason = String(value || '').trim();
-                if (reason.length < 10) {
-                    Swal.showValidationMessage('Please enter a reason (at least 10 characters).');
-                    return false;
-                }
-                if (reason.length > 1000) {
-                    Swal.showValidationMessage('Reason must be 1000 characters or fewer.');
-                    return false;
-                }
-                return reason;
-            },
-        }).then(result => {
-            if(!result.isConfirmed) return;
-
-            const payload = { active: activating ? 1 : 0 };
-            if (needsReason) {
-                const reason = String(result.value || '').trim();
-                if (reason.length < 10) {
-                    toast('A deactivation reason is required (min. 10 characters).', 'error');
-                    return;
-                }
-                payload.reason = reason;
-            }
-
+        const postActive = (payload) => {
             fetch(`${STAFF_BASE}/sites/${id}/active`, {
                 method:'POST',
                 headers:{
@@ -1073,6 +1036,54 @@ document.addEventListener('click', function(e){
             .catch((error) => {
                 toast(error.message || `Failed to ${newStatus} site`, 'error');
             });
+        };
+
+        if (activating) {
+            const site = allSites.find((s) => String(s.id) === String(id)) || {};
+            const confirmActivate = (typeof window.slbConfirmActivate === 'function')
+                ? window.slbConfirmActivate({
+                    looksEnglish: site.description_looks_english !== false,
+                    excerpt: site.description_excerpt || '',
+                    name: site.site_name || '',
+                })
+                : Promise.resolve(true);
+            confirmActivate.then((ok) => {
+                if (!ok) return;
+                postActive({ active: 1 });
+            });
+            return;
+        }
+
+        Swal.fire({
+            title: 'Deactivate Site?',
+            text: 'Explain why this listing is being deactivated. The publisher will see this reason in email and notifications.',
+            icon: 'question',
+            input: 'textarea',
+            inputLabel: 'Reason for the publisher',
+            inputPlaceholder: 'Reason (min. 10 characters)',
+            inputAttributes: { 'aria-label': 'Deactivation reason', maxlength: '1000' },
+            showCancelButton: true,
+            confirmButtonText: 'Yes, deactivate',
+            preConfirm: (value) => {
+                const reason = String(value || '').trim();
+                if (reason.length < 10) {
+                    Swal.showValidationMessage('Please enter a reason (at least 10 characters).');
+                    return false;
+                }
+                if (reason.length > 1000) {
+                    Swal.showValidationMessage('Reason must be 1000 characters or fewer.');
+                    return false;
+                }
+                return reason;
+            },
+        }).then(result => {
+            if(!result.isConfirmed) return;
+            const reason = String(result.value || '').trim();
+            if (reason.length < 10) {
+                toast('A deactivation reason is required (min. 10 characters).', 'error');
+                return;
+            }
+            postActive({ active: 0, reason: reason });
         });
     }
 
@@ -1773,12 +1784,19 @@ document.addEventListener('click', function (e) {
     e.preventDefault();
     const id = btn.dataset.id;
     const name = btn.dataset.name || 'this site';
-    const go = window.slbConfirm({
-        title: 'Activate Site?',
-        text: 'Make "' + name + '" live in the catalog?',
-        icon: 'question',
-        confirmText: 'Activate',
-    });
+    const go = (typeof window.slbConfirmActivate === 'function')
+        ? window.slbConfirmActivate({
+            looksEnglish: btn.dataset.descriptionEnglish !== '0',
+            excerpt: btn.dataset.descriptionExcerpt || '',
+            name: name,
+            confirmText: 'Activate',
+        })
+        : window.slbConfirm({
+            title: 'Activate Site?',
+            text: 'Make "' + name + '" live in the catalog?',
+            icon: 'question',
+            confirmText: 'Activate',
+        });
     go.then((ok) => {
         if (!ok) return;
         fetch(`${STAFF_BASE}/sites/${id}/active`, {
