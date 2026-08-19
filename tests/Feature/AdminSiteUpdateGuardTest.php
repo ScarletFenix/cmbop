@@ -13,13 +13,14 @@ use Database\Seeders\CountriesTableSeeder;
 use Database\Seeders\LanguagesTableSeeder;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
+use Tests\Support\CreatesBlogUploads;
 use Tests\TestCase;
 
 class AdminSiteUpdateGuardTest extends TestCase
 {
+    use CreatesBlogUploads;
     use RefreshDatabase;
 
     private User $admin;
@@ -693,7 +694,7 @@ class AdminSiteUpdateGuardTest extends TestCase
             ->put(route('admin.sites.update', $site->id), [
                 'site_name' => $site->site_name,
                 'site_url' => $site->site_url,
-                'site_image' => UploadedFile::fake()->image('new-cover.jpg', 40, 40),
+                'site_image' => $this->fakeBlogUpload('new-cover.jpg', 40, 40),
             ])
             ->assertRedirect();
 
