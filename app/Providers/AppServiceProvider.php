@@ -19,6 +19,7 @@ use App\Support\BillingCustomerMailSuppressor;
 use App\Support\MarketingOpsQueues;
 use App\Support\OrderLifecycleMailSuppressor;
 use App\Support\PublicStorageLink;
+use App\Support\UserMessages;
 use Illuminate\Auth\Middleware\RedirectIfAuthenticated;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -33,6 +34,7 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Validation\Rules\Password;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -91,6 +93,32 @@ class AppServiceProvider extends ServiceProvider
         // Flood cap on top of LoginController's email+IP / IP buckets.
         RateLimiter::for('login', function (Request $request) {
             return Limit::perMinute(60)->by('login-http:'.$request->ip());
+        });
+
+        // Shared with register / profile / reset. Keep min 8 only — mixedCase
+        // or numbers would reject the password123 fixtures used in register tests.
+        Password::defaults(static fn () => Password::min(8));
+
+        RateLimiter::for('password-email', function (Request $request) {
+            return Limit::perMinutes(10, 5)
+                ->by('forgot-http:'.$request->ip())
+                ->response(function (Request $request, array $headers) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => UserMessages::get('password.throttled'),
+                    ], 429, $headers);
+                });
+        });
+
+        RateLimiter::for('password-update', function (Request $request) {
+            return Limit::perMinutes(10, 5)
+                ->by('reset-http:'.$request->ip())
+                ->response(function (Request $request, array $headers) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => UserMessages::get('password.reset_throttled'),
+                    ], 429, $headers);
+                });
         });
 
         // Authenticated users hitting /login or /register go to their role dashboard.

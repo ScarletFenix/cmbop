@@ -633,6 +633,8 @@ return [
     'about_page_email_label' => 'Support-e-mail',
     'about_page_markets_label' => 'Markten',
     'about_page_markets_body' => 'Europa (publieke site EN/DE/FR/NL) plus andere ondersteunde publisher-markten in de catalogus.',
+    'about_page_security_title' => 'Betalingen en gegevensbescherming',
+    'about_page_security_body' => 'Kaartbetalingen worden verwerkt door Stripe. We slaan uw volledige kaartnummer niet op onze servers op. Wallet-stortingen en bestellingen worden bevestigd nadat de betaaldienst succes meldt. Hoe we persoonsgegevens verwerken, staat in ons privacybeleid.',
     'home' => 'Home',
     'faq_kicker' => 'Helpcentrum',
     'faq_title' => 'Veelgestelde vragen',

@@ -13,6 +13,7 @@ use App\Services\OrderPaymentService;
 use App\Services\SitePromotionService;
 use App\Services\WalletStripeDepositService;
 use App\Support\UserMessages;
+use App\Support\WebhookPayloadRedactor;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Stripe\Exception\SignatureVerificationException;
@@ -32,7 +33,7 @@ class StripeWebhookController extends Controller
             if (! $endpointSecret) {
                 Log::error('Stripe webhook secret not configured');
 
-                return response()->json(['error' => UserMessages::get('payment.webhook_unavailable')], 500);
+                return response()->json(['error' => UserMessages::get('payment.webhook_unavailable')], 503);
             }
 
             $event = Webhook::constructEvent($payload, $sigHeader, $endpointSecret);
@@ -56,7 +57,7 @@ class StripeWebhookController extends Controller
                 StripeWebhookLog::create([
                     'event_id' => $eventId,
                     'event_type' => $eventType,
-                    'payload' => json_encode($event),
+                    'payload' => WebhookPayloadRedactor::stripe($event),
                     'processed' => false,
                 ]);
             }

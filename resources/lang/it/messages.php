@@ -161,6 +161,8 @@ return [
     'about_page_email_label' => 'Email di supporto',
     'about_page_markets_label' => 'Mercati',
     'about_page_markets_body' => 'Europa (sito pubblico in inglese UK/US, tedesco, francese, olandese, spagnolo e italiano) più mercati anglofoni e altri mercati publisher supportati nel catalogo.',
+    'about_page_security_title' => 'Pagamenti e protezione dei dati',
+    'about_page_security_body' => 'I pagamenti con carta sono elaborati da Stripe. Non memorizziamo il numero completo della carta sui nostri server. I versamenti nel wallet e gli ordini vengono confermati dopo che il fornitore di pagamento segnala il successo. Come trattiamo i dati personali è descritto nell’Informativa sulla privacy.',
     'home' => 'Home',
 
     // FAQ

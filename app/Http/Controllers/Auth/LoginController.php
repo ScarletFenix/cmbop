@@ -41,7 +41,7 @@ class LoginController extends Controller
             return response()->json([
                 'status' => 'error',
                 'message' => UserMessages::get('login.throttled'),
-            ]);
+            ], 429)->header('Retry-After', (string) $retry);
         }
 
         RateLimiter::hit($key, 60); // 60 seconds
@@ -65,32 +65,26 @@ class LoginController extends Controller
 
         // Attempt login
         if (! Auth::attempt($credentials, $remember)) {
-            return response()->json([
-                'status' => 'error',
-                'message' => UserMessages::get('login.invalid'),
-            ]);
+            return $this->invalidCredentialsResponse();
         }
 
         $user = Auth::user();
 
-        // Same wording as a bad password so login cannot confirm the account exists.
+        // Same JSON as a bad password so login cannot confirm the account exists.
         if (! $user->hasVerifiedEmail()) {
             Auth::logout();
             $request->session()->invalidate();
             $request->session()->regenerateToken();
 
-            return response()->json([
-                'status' => 'unverified',
-                'message' => UserMessages::get('login.unverified'),
-                'email' => $user->email,
-            ]);
+            return $this->invalidCredentialsResponse();
         }
 
-        // ✅ Relative dashboard path — survives APP_URL=localhost misconfig
+        $request->session()->regenerate();
+
+        // Relative dashboard path — survives APP_URL=localhost misconfig
         $user->load('activeRoleRelation', 'roles');
         $redirect = $user->getDashboardRoute();
 
-        // ✅ Clear rate limiter on successful login
         RateLimiter::clear($key);
         RateLimiter::clear($ipKey);
 
@@ -113,14 +107,11 @@ class LoginController extends Controller
         return redirect('/');
     }
 
-    /**
-     * @return JsonResponse
-     */
-    private function failedLoginResponse()
+    private function invalidCredentialsResponse()
     {
         return response()->json([
             'status' => 'error',
-            'message' => 'Invalid email or password.',
+            'message' => UserMessages::get('login.invalid'),
         ]);
     }
 }

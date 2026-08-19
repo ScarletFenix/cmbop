@@ -89,7 +89,6 @@ use App\Http\Middleware\RoleMiddleware;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\Marketing\CatalogTeaserService;
-use App\Support\HttpCron;
 use App\Support\PublicI18n;
 use App\Support\RobotsTxt;
 use App\Support\UserMessages;
@@ -313,11 +312,15 @@ Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
 
 // Forgot Password
 Route::get('/forgot-password', [ForgotPasswordController::class, 'show'])->name('password.request');
-Route::post('/forgot-password', [ForgotPasswordController::class, 'send'])->name('password.email');
+Route::post('/forgot-password', [ForgotPasswordController::class, 'send'])
+    ->middleware('throttle:password-email')
+    ->name('password.email');
 
 // Reset Password
 Route::get('/reset-password/{token}', [ResetPasswordController::class, 'show'])->name('password.reset');
-Route::post('/reset-password', [ResetPasswordController::class, 'update'])->name('password.update');
+Route::post('/reset-password', [ResetPasswordController::class, 'update'])
+    ->middleware('throttle:password-update')
+    ->name('password.update');
 
 // Email Verification Notice (user can see this page if they are logged in)
 Route::get('/email/verify', function () {

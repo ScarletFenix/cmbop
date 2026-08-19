@@ -9,6 +9,7 @@ use App\Services\Orders\OrderRefundService;
 use App\Services\PaypalCheckoutService;
 use App\Services\WalletPaypalDepositService;
 use App\Support\UserMessages;
+use App\Support\WebhookPayloadRedactor;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -20,7 +21,7 @@ class PaypalWebhookController extends Controller
         if (! $paypal->configured() || trim((string) config('services.paypal.webhook_id', '')) === '') {
             Log::error('PayPal webhook is not configured');
 
-            return response()->json(['error' => UserMessages::get('payment.webhook_unavailable')], 500);
+            return response()->json(['error' => UserMessages::get('payment.webhook_unavailable')], 503);
         }
 
         try {
@@ -53,7 +54,7 @@ class PaypalWebhookController extends Controller
                 PaypalWebhookLog::create([
                     'event_id' => $eventId,
                     'event_type' => $eventType !== '' ? $eventType : 'unknown',
-                    'payload' => $event,
+                    'payload' => WebhookPayloadRedactor::paypal($event),
                     'processed' => false,
                 ]);
             }

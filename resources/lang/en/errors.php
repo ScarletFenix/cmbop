@@ -20,6 +20,8 @@ return [
         'throttled' => 'Too many attempts. Please try again later.',
         'reset_throttled' => 'Too many attempts. Try again later.',
         'reset_sent' => 'If an account with this email exists, a password reset link has been sent.',
+        'reset_success' => 'Password has been reset successfully.',
+        'reset_invalid' => 'Invalid token or email.',
     ],
 
     'session' => [

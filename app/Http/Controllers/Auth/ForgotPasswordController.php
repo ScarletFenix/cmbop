@@ -24,10 +24,12 @@ class ForgotPasswordController extends Controller
         // Rate limiting: max 5 attempts per 10 minutes per IP
         $key = 'forgot:'.$request->ip();
         if (RateLimiter::tooManyAttempts($key, 5)) {
+            $retry = max(RateLimiter::availableIn($key), 1);
+
             return response()->json([
                 'status' => 'error',
                 'message' => UserMessages::get('password.throttled'),
-            ]);
+            ], 429)->header('Retry-After', (string) $retry);
         }
         RateLimiter::hit($key, 600);
 

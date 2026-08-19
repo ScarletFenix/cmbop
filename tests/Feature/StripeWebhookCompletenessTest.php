@@ -12,6 +12,7 @@ use App\Models\SiteFeaturePurchase;
 use App\Models\StripeWebhookLog;
 use App\Models\User;
 use App\Models\Wallet;
+use App\Support\UserMessages;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
@@ -191,6 +192,57 @@ class StripeWebhookCompletenessTest extends TestCase
         $this->signedWebhook($event)->assertOk()->assertJsonPath('status', 'duplicate');
         $this->assertEquals(50.0, (float) $wallet->fresh()->balance);
         $this->assertDatabaseCount('deposit_requests', 1);
+    }
+
+    public function test_webhook_log_stores_redacted_payload_only(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        Wallet::create([
+            'user_id' => $advertiser->id,
+            'role_id' => Wallet::advertiserRoleId(),
+            'balance' => 0,
+            'reserved_balance' => 0,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 0,
+            'currency' => 'EUR',
+        ]);
+
+        $eventId = 'evt_redact_'.uniqid();
+        $event = [
+            'id' => $eventId,
+            'object' => 'event',
+            'type' => 'payment_intent.succeeded',
+            'data' => [
+                'object' => [
+                    'id' => 'pi_redact',
+                    'object' => 'payment_intent',
+                    'status' => 'succeeded',
+                    'amount' => 5000,
+                    'amount_received' => 5000,
+                    'currency' => 'eur',
+                    'customer_email' => 'cardholder@example.com',
+                    'metadata' => [
+                        'type' => 'wallet_deposit',
+                        'user_id' => (string) $advertiser->id,
+                        'amount' => '50.00',
+                        'reference_code' => 'DEP-REDACT',
+                    ],
+                ],
+            ],
+        ];
+
+        $this->signedWebhook($event)->assertOk();
+
+        $log = StripeWebhookLog::where('event_id', $eventId)->first();
+        $this->assertNotNull($log);
+        $payload = $log->payload;
+        $this->assertIsArray($payload);
+        $this->assertSame($eventId, $payload['id'] ?? null);
+        $this->assertSame('pi_redact', $payload['object_id'] ?? null);
+        $this->assertSame('wallet_deposit', $payload['metadata']['type'] ?? null);
+        $this->assertArrayNotHasKey('data', $payload);
+        $this->assertStringNotContainsString('cardholder@example.com', json_encode($payload));
+        $this->assertStringNotContainsString('50.00', json_encode($payload));
     }
 
     public function test_payment_intent_succeeded_marks_orders_paid(): void
@@ -719,6 +771,6 @@ class StripeWebhookCompletenessTest extends TestCase
 
         $this->postJson('/api/stripe/webhook', ['type' => 'ping'])
             ->assertStatus(503)
-            ->assertJsonPath('error', 'Webhook unavailable');
+            ->assertJsonPath('error', UserMessages::get('payment.webhook_unavailable'));
     }
 }

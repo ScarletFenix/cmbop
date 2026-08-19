@@ -43,7 +43,10 @@ document.getElementById('forgotForm').addEventListener('submit', async function(
     try {
         const res = await fetch("{{ route('password.email') }}", {
             method:'POST',
-            headers:{ 'X-CSRF-TOKEN':'{{ csrf_token() }}' },
+            headers:{
+                'X-CSRF-TOKEN':'{{ csrf_token() }}',
+                'Accept': 'application/json',
+            },
             body: formData
         });
         data = await res.json();

@@ -161,6 +161,8 @@ return [
     'about_page_email_label' => 'Correo de soporte',
     'about_page_markets_label' => 'Mercados',
     'about_page_markets_body' => 'Europa (sitio público en inglés UK/US, alemán, francés, neerlandés, español e italiano) más mercados de habla inglesa y otros mercados de editores compatibles en el catálogo.',
+    'about_page_security_title' => 'Pagos y protección de datos',
+    'about_page_security_body' => 'Los pagos con tarjeta los procesa Stripe. No almacenamos el número completo de su tarjeta en nuestros servidores. Los ingresos a la cartera y los pedidos se confirman cuando el proveedor de pagos informa el éxito. Cómo tratamos los datos personales está en nuestra Política de privacidad.',
     'home' => 'Inicio',
 
     // FAQ
