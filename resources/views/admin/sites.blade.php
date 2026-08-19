@@ -140,7 +140,7 @@
                                 <a href="{{ $openUrl }}" class="btn btn-sm btn-outline-secondary">Open</a>
                                 <a href="{{ staff_route('sites.edit', $site->id) }}" class="btn btn-sm btn-outline-primary">{{ $site->isLockedForMarketingEdits() ? 'View' : 'Edit' }}</a>
                                 @if(auth()->user()?->canActivateSites() && $site->marketingCanActivate())
-                                    <button type="button" class="btn btn-sm btn-success js-mkt-activate" data-id="{{ $site->id }}" data-name="{{ $site->site_name }}" data-description-english="{{ $site->descriptionLooksLikeEnglish() ? '1' : '0' }}" data-description-excerpt="{{ \App\Support\SiteDescriptionRules::excerpt($site->description, 200) }}">Activate</button>
+                                    <button type="button" class="btn btn-sm btn-success js-mkt-activate" data-id="{{ $site->id }}" data-name="{{ $site->site_name }}" data-description-english="{{ $site->descriptionLooksLikeEnglish() ? '1' : '0' }}" data-description-excerpt="{{ site_description_excerpt($site->description, 200) }}">Activate</button>
                                 @endif
                             </div>
                         </td>
@@ -1040,13 +1040,30 @@ document.addEventListener('click', function(e){
 
         if (activating) {
             const site = allSites.find((s) => String(s.id) === String(id)) || {};
+            const activateOpts = {
+                looksEnglish: site.description_looks_english,
+                excerpt: site.description_excerpt || '',
+                name: site.site_name || '',
+            };
+            const fallbackActivateText = activateOpts.name
+                ? 'Make "' + activateOpts.name + '" live in the catalog?'
+                : 'Are you sure you want to activate this site?';
             const confirmActivate = (typeof window.slbConfirmActivate === 'function')
-                ? window.slbConfirmActivate({
-                    looksEnglish: site.description_looks_english !== false,
-                    excerpt: site.description_excerpt || '',
-                    name: site.site_name || '',
-                })
-                : Promise.resolve(true);
+                ? window.slbConfirmActivate(activateOpts)
+                : (typeof window.slbConfirm === 'function')
+                    ? window.slbConfirm({
+                        title: 'Activate Site?',
+                        text: fallbackActivateText,
+                        icon: 'question',
+                        confirmText: 'Yes, activate',
+                    })
+                    : Swal.fire({
+                        title: 'Activate Site?',
+                        text: fallbackActivateText,
+                        icon: 'question',
+                        showCancelButton: true,
+                        confirmButtonText: 'Yes, activate',
+                    }).then((result) => !!(result && result.isConfirmed));
             confirmActivate.then((ok) => {
                 if (!ok) return;
                 postActive({ active: 1 });
@@ -1058,10 +1075,10 @@ document.addEventListener('click', function(e){
             title: 'Deactivate Site?',
             text: 'Explain why this listing is being deactivated. The publisher will see this reason in email and notifications.',
             icon: 'question',
-            input: 'textarea',
-            inputLabel: 'Reason for the publisher',
-            inputPlaceholder: 'Reason (min. 10 characters)',
-            inputAttributes: { 'aria-label': 'Deactivation reason', maxlength: '1000' },
+            input: needsReason ? 'textarea' : undefined,
+            inputLabel: needsReason ? 'Reason for the publisher' : undefined,
+            inputPlaceholder: needsReason ? 'Reason (min. 10 characters)' : undefined,
+            inputAttributes: needsReason ? { 'aria-label': 'Deactivation reason', maxlength: '1000' } : undefined,
             showCancelButton: true,
             confirmButtonText: 'Yes, deactivate',
             preConfirm: (value) => {

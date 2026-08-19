@@ -77,7 +77,8 @@
         opts = opts || {};
         var looksEnglish = opts.looksEnglish !== false
             && opts.looksEnglish !== 0
-            && opts.looksEnglish !== '0';
+            && opts.looksEnglish !== '0'
+            && opts.looksEnglish !== 'false';
 
         if (!looksEnglish) {
             var excerpt = String(opts.excerpt || '').trim();

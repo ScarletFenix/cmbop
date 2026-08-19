@@ -20,6 +20,7 @@ class ActionConfirmDialogsTest extends TestCase
         $this->assertStringContainsString('global.slbConfirmActivate', $js);
         $this->assertStringContainsString('This brief does not look English', $js);
         $this->assertStringContainsString('Activate anyway', $js);
+        $this->assertStringContainsString("opts.looksEnglish !== 'false'", $js);
 
         // Capture-phase listener must only consume slbAllowSubmit for declarative confirms.
         // Otherwise imperative callers (bulk Done "Add drafts") lose their allow flag.
