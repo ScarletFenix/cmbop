@@ -245,6 +245,7 @@ class BulkDoneDraftAndNicheUiTest extends TestCase
 
         $appShell = file_get_contents(public_path('assets/css/app-shell.css'));
         $this->assertStringContainsString('max-width: var(--shell-sidebar-collapsed)', $appShell);
+        $this->assertStringContainsString('--shell-rail', $appShell);
     }
 
     public function test_done_row_error_prefix_does_not_open_sibling_item_ids(): void

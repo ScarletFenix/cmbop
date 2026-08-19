@@ -2,6 +2,12 @@
  * Shared app shell — advertiser / publisher / admin
  * Quiet teal chrome (no loud cyan fills on hover).
  */
+@property --shell-rail {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 220px;
+}
+
 :root {
   --shell-sidebar-width: 220px;
   --shell-sidebar-collapsed: 70px;
@@ -72,6 +78,14 @@ body.role-shell-marketing {
   flex-direction: column;
   min-height: 100%;
   min-height: 100dvh;
+  --shell-rail: var(--shell-sidebar-width);
+  transition: --shell-rail var(--motion-base, 180ms ease);
+}
+body.role-shell-advertiser:has(#sidebar.collapsed),
+body.role-shell-publisher:has(#sidebar.collapsed),
+body.role-shell-admin:has(#sidebar.collapsed),
+body.role-shell-marketing:has(#sidebar.collapsed) {
+  --shell-rail: var(--shell-sidebar-collapsed);
 }
 
 body.role-shell-advertiser .top-navbar,
@@ -143,23 +157,15 @@ body.role-shell-marketing #sidebar {
   min-width: 0;
 }
 
-#sidebar,
-#content,
-#main-content,
-.top-navbar,
-footer,
 #toggleSidebar span.arrow {
-  transition: width var(--motion-base, 180ms ease),
-              margin var(--motion-base, 180ms ease),
-              left var(--motion-base, 180ms ease),
-              transform var(--motion-base, 180ms ease);
+  transition: transform var(--motion-base, 180ms ease);
 }
 
 /* ——— Sidebar ——— */
 #sidebar {
-  width: var(--shell-sidebar-width);
-  min-width: var(--shell-sidebar-width);
-  max-width: var(--shell-sidebar-width);
+  width: var(--shell-rail);
+  min-width: var(--shell-rail);
+  max-width: var(--shell-rail);
   background-color: var(--shell-sidebar-bg);
   border-right: 1px solid var(--shell-border);
   height: 100vh;
@@ -303,7 +309,9 @@ footer,
   white-space: nowrap;
 }
 
-#sidebar.collapsed { width: var(--shell-sidebar-collapsed); min-width: var(--shell-sidebar-collapsed); max-width: var(--shell-sidebar-collapsed); }
+#sidebar.collapsed {
+  max-width: var(--shell-sidebar-collapsed);
+}
 #sidebar.collapsed a { justify-content: center; margin: 2px 6px; padding: 10px; gap: 0; position: relative; }
 #sidebar.collapsed a i { font-size: 18px; width: auto; }
 /* Prefer clip over font-size:0 so labels stay in the accessibility tree */
@@ -386,7 +394,7 @@ footer,
   height: var(--shell-topbar-height);
   position: sticky;
   top: 0;
-  left: var(--shell-sidebar-width);
+  left: var(--shell-rail);
   right: 0;
   background: var(--shell-topbar-bg);
   border-bottom: 1px solid var(--shell-border);
@@ -399,7 +407,6 @@ footer,
   overflow: visible;
   min-width: 0;
 }
-.top-navbar.collapsed { left: var(--shell-sidebar-collapsed); }
 
 /* Sticky panels inside page content must clear the sticky topbar, otherwise
    they scroll underneath it. */
@@ -483,13 +490,13 @@ footer,
 #main-content,
 footer.app-shell-footer,
 body > footer {
-  width: calc(100% - var(--shell-sidebar-width));
-  max-width: calc(100% - var(--shell-sidebar-width));
+  width: calc(100% - var(--shell-rail));
+  max-width: calc(100% - var(--shell-rail));
   box-sizing: border-box;
 }
 #content,
 #main-content {
-  margin-left: var(--shell-sidebar-width);
+  margin-left: var(--shell-rail);
   /* Extra top padding so Poppins 700 page titles are not sheared.
      A one-axis clip on this column turns it into a scrollport and crops
      the first heading. Keep horizontal wrapping on the document body. */
@@ -513,18 +520,9 @@ body > footer {
   min-width: 0;
   flex: 1 1 auto;
 }
-#content.collapsed,
-#main-content.collapsed,
-footer.collapsed,
-body > footer.collapsed {
-  margin-left: var(--shell-sidebar-collapsed);
-  width: calc(100% - var(--shell-sidebar-collapsed));
-  max-width: calc(100% - var(--shell-sidebar-collapsed));
-}
-
 footer.app-shell-footer,
 body > footer {
-  margin-left: var(--shell-sidebar-width);
+  margin-left: var(--shell-rail);
   margin-top: auto;
   flex-shrink: 0;
   padding: 15px;
@@ -545,6 +543,7 @@ body > footer {
   min-width: 0;
   text-align: left;
   padding-right: 72px;
+  overflow: hidden;
 }
 .app-shell-footer__left {
   display: flex;
@@ -751,6 +750,17 @@ body > footer {
 }
 
 @media (max-width: 768px) {
+  body.role-shell-advertiser,
+  body.role-shell-publisher,
+  body.role-shell-admin,
+  body.role-shell-marketing,
+  body.role-shell-advertiser:has(#sidebar.collapsed),
+  body.role-shell-publisher:has(#sidebar.collapsed),
+  body.role-shell-admin:has(#sidebar.collapsed),
+  body.role-shell-marketing:has(#sidebar.collapsed) {
+    --shell-rail: 0px;
+    transition: none;
+  }
   #sidebar {
     top: var(--shell-topbar-height);
     height: calc(100vh - var(--shell-topbar-height));

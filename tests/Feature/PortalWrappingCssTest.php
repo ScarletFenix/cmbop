@@ -60,6 +60,12 @@ class PortalWrappingCssTest extends TestCase
             '/#sidebar\s*\{[^}]*flex:\s*none/s',
             $css
         );
+        $this->assertStringContainsString('@property --shell-rail', $css);
+        $this->assertStringContainsString('body.role-shell-publisher:has(#sidebar.collapsed)', $css);
+        $this->assertMatchesRegularExpression(
+            '/#content,\s*#main-content,\s*footer\.app-shell-footer,\s*body > footer\s*\{[^}]*width:\s*calc\(\s*100%\s*-\s*var\(--shell-rail\)/s',
+            $css
+        );
         $this->assertMatchesRegularExpression(
             '/body\.role-shell-advertiser,[\s\S]*body\.role-shell-marketing\s*\{[^}]*min-height:\s*100dvh/s',
             $css
