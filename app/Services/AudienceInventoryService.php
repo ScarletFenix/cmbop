@@ -127,6 +127,9 @@ class AudienceInventoryService
         if ($raw === 'publisher') {
             return self::AUDIENCE_PUBLISHERS;
         }
+        if ($raw === 'all') {
+            return self::AUDIENCE_BOTH;
+        }
 
         $tabs = self::inventoryTabs();
         if (isset($tabs[$raw])) {
