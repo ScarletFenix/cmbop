@@ -9,7 +9,7 @@
 --}}
 @php
     $descName = $name ?? 'description';
-    $descValue = (string) ($value ?? '');
+    $descValue = scalar_text($value ?? '');
     $descRequired = (bool) ($required ?? false);
     $descLabel = $label ?? 'Description';
     $descEditorId = $editorId ?? 'quillEditor';

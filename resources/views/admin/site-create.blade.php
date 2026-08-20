@@ -270,7 +270,7 @@
 
                     <div class="col-12">
                         @include('partials.site-description-editor', [
-                            'value' => old('description', ''),
+                            'value' => old_text('description', ''),
                             'required' => true,
                         ])
                     </div>

@@ -29,6 +29,16 @@ class SiteDescriptionRulesTest extends TestCase
         $this->assertSame([], SiteDescriptionRules::errors('<p>'.str_repeat('a', 50).'</p>'));
     }
 
+    public function test_is_blank_html_treats_quill_empty_paragraph_as_empty(): void
+    {
+        $this->assertTrue(SiteDescriptionRules::isBlankHtml(''));
+        $this->assertTrue(SiteDescriptionRules::isBlankHtml('   '));
+        $this->assertTrue(SiteDescriptionRules::isBlankHtml('<p><br></p>'));
+        $this->assertTrue(SiteDescriptionRules::isBlankHtml('<p></p>'));
+        $this->assertFalse(SiteDescriptionRules::isBlankHtml('<p>Visible text</p>'));
+        $this->assertFalse(SiteDescriptionRules::isBlankHtml(['<p><br></p>']));
+    }
+
     public function test_min_chars_ignores_html_padding(): void
     {
         // Lots of tags, short visible text — must still fail min chars.

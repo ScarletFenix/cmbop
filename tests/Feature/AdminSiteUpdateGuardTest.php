@@ -474,6 +474,40 @@ class AdminSiteUpdateGuardTest extends TestCase
         $this->assertEmpty($site->languages);
     }
 
+    public function test_update_treats_quill_empty_paragraph_as_cleared_description(): void
+    {
+        $site = $this->site([
+            'description' => str_repeat('Admin update guard listing description. ', 3),
+        ]);
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'site_name' => $site->site_name,
+                'site_url' => $site->site_url,
+                'description' => '<p><br></p>',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertTrue(blank($site->fresh()->description));
+    }
+
+    public function test_update_saves_quill_html_description(): void
+    {
+        $site = $this->site();
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'description' => '<p>This listing is for your audience and the <strong>publishers</strong> who write guest posts here.</p>',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $saved = (string) $site->fresh()->description;
+        $this->assertStringContainsString('publishers', $saved);
+        $this->assertStringContainsString('<strong>', $saved);
+    }
+
     public function test_update_clears_empty_description_and_example_url(): void
     {
         $site = $this->site([

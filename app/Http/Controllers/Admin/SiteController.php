@@ -1570,7 +1570,7 @@ class SiteController extends Controller
         } elseif ($request->has('language') && trim(scalar_text($request->input('language'))) === '') {
             $request->merge(['language' => null]);
         }
-        if ($request->has('description') && trim(scalar_text($request->input('description'))) === '') {
+        if ($request->has('description') && SiteDescriptionRules::isBlankHtml($request->input('description'))) {
             $request->merge(['description' => null]);
         }
         if ($request->has('link_type') && trim(scalar_text($request->input('link_type'))) === '') {
@@ -1917,6 +1917,22 @@ class SiteController extends Controller
             $request->merge(['site_name' => $this->normalizeSiteName($request->input('site_name'))]);
         }
 
+        $incomingDescription = null;
+        $validateIncomingDescription = false;
+        if ($canFixListing && $request->exists('description') && is_string($request->input('description'))) {
+            $incomingDescription = app(SiteDescriptionSanitizer::class)
+                ->sanitize(scalar_text($request->input('description', '')));
+            $incomingPlain = SiteDescriptionRules::plainText($incomingDescription);
+            $existingPlain = SiteDescriptionRules::plainText((string) $site->description);
+
+            if ($incomingPlain === '') {
+                // Quill empty HTML — keep the current brief so metric-only saves work.
+                $incomingDescription = null;
+            } elseif ($incomingPlain !== $existingPlain) {
+                $validateIncomingDescription = true;
+            }
+        }
+
         $validator = Validator::make($request->all(), $rules, array_merge($this->siteImageValidationMessages(), [
             'price.max' => 'Price must be at most €999,999.99.',
             'description.max' => 'Description must be at most 5000 characters.',
@@ -1930,7 +1946,7 @@ class SiteController extends Controller
             ]);
         }
 
-        $validator->after(function ($validator) use ($request, $allowedCountries, $allowedLanguages, $unknownNiches, $canFixListing, $site) {
+        $validator->after(function ($validator) use ($request, $allowedCountries, $allowedLanguages, $unknownNiches, $canFixListing, $site, $validateIncomingDescription, $incomingDescription) {
             $language = strtolower(trim(scalar_text($request->input('language', ''))));
             $country = strtolower(trim(scalar_text($request->input('country', ''))));
 
@@ -1985,10 +2001,8 @@ class SiteController extends Controller
                 }
             }
 
-            if ($canFixListing && $request->exists('description')) {
-                $rawDescription = scalar_text($request->input('description', ''));
-                $clean = app(SiteDescriptionSanitizer::class)->sanitize($rawDescription);
-                foreach (SiteDescriptionRules::errors($clean) as $message) {
+            if ($validateIncomingDescription && is_string($incomingDescription)) {
+                foreach (SiteDescriptionRules::errors($incomingDescription) as $message) {
                     $validator->errors()->add('description', $message);
                 }
             }
@@ -2044,9 +2058,8 @@ class SiteController extends Controller
             if ($request->exists('price')) {
                 $payload['price'] = $request->input('price');
             }
-            if ($request->exists('description')) {
-                $payload['description'] = app(SiteDescriptionSanitizer::class)
-                    ->sanitize(scalar_text($request->input('description', '')));
+            if ($incomingDescription !== null) {
+                $payload['description'] = $incomingDescription;
             }
         }
 

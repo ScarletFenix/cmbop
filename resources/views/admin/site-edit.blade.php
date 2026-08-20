@@ -286,7 +286,7 @@
 
                         <div class="col-12">
                             @include('partials.site-description-editor', [
-                                'value' => old('description', $site->description),
+                                'value' => old_text('description', $site->description),
                                 'required' => true,
                             ])
                         </div>
@@ -450,7 +450,7 @@
 
                             <div class="col-12">
                             @include('partials.site-description-editor', [
-                                'value' => old('description', $site->description),
+                                'value' => old_text('description', $site->description),
                                 'required' => false,
                             ])
                         </div>

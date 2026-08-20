@@ -8,6 +8,7 @@ use App\Models\Category;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
+use App\Support\SiteDescriptionRules;
 use Database\Seeders\CategoriesTableSeeder;
 use Database\Seeders\CountriesTableSeeder;
 use Database\Seeders\LanguagesTableSeeder;
@@ -398,6 +399,99 @@ class MarketingOpsScopeTest extends TestCase
         $this->assertSame(['de'], $site->languages);
         $this->assertSame(['de'], $site->countries);
         $this->assertContains($category->name, $site->categories ?? []);
+    }
+
+    public function test_marketer_pending_update_keeps_brief_when_quill_posts_empty_html(): void
+    {
+        $site = $this->makeSite([
+            'site_name' => 'Quill Empty Target',
+            'site_url' => 'https://quill-empty.example',
+            'domain' => 'quill-empty.example',
+            'description' => 'Publisher will replace this later with enough characters',
+        ]);
+        $category = Category::query()->where('name', 'Business & Finance')->first()
+            ?? Category::query()->firstOrFail();
+
+        $this->actingAs($this->marketer)
+            ->put(route('marketing.sites.update', $site->id), [
+                'site_name' => $site->site_name,
+                'site_url' => $site->site_url,
+                'price' => $site->price,
+                'description' => '<p><br></p>',
+                'da' => 41,
+                'dr' => 42,
+                'traffic' => 6000,
+                'language' => 'de',
+                'country' => 'de',
+                'categories' => $category->name,
+            ])
+            ->assertRedirect(route('marketing.sites.index', [
+                'publisher' => $site->publisher_id,
+                'site' => $site->id,
+            ]));
+
+        $site->refresh();
+        $this->assertSame('Publisher will replace this later with enough characters', $site->description);
+        $this->assertSame(41, (int) $site->da);
+        $this->assertSame(42, (int) $site->dr);
+        $this->assertSame(6000, (int) $site->traffic);
+    }
+
+    public function test_marketer_pending_update_allows_unchanged_short_brief(): void
+    {
+        $short = 'Too short to pass min chars';
+        $site = $this->makeSite([
+            'site_name' => 'Short Unchanged Target',
+            'site_url' => 'https://short-unchanged.example',
+            'domain' => 'short-unchanged.example',
+            'description' => $short,
+        ]);
+        $category = Category::query()->where('name', 'Business & Finance')->first()
+            ?? Category::query()->firstOrFail();
+
+        $this->actingAs($this->marketer)
+            ->put(route('marketing.sites.update', $site->id), [
+                'site_name' => $site->site_name,
+                'site_url' => $site->site_url,
+                'price' => $site->price,
+                'description' => '<p>'.$short.'</p>',
+                'da' => 36,
+                'dr' => 37,
+                'traffic' => 4000,
+                'language' => 'de',
+                'country' => 'de',
+                'categories' => $category->name,
+            ])
+            ->assertRedirect(route('marketing.sites.index', [
+                'publisher' => $site->publisher_id,
+                'site' => $site->id,
+            ]));
+
+        $site->refresh();
+        $this->assertSame($short, SiteDescriptionRules::plainText((string) $site->description));
+        $this->assertSame(36, (int) $site->da);
+    }
+
+    public function test_pending_edit_page_survives_array_old_description(): void
+    {
+        $site = $this->makeSite([
+            'site_name' => 'Old Input Target',
+            'site_url' => 'https://old-input-brief.example',
+            'domain' => 'old-input-brief.example',
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->withSession([
+                '_old_input' => [
+                    'description' => ['<p>Poisoned description</p>'],
+                    'site_name' => ['Poisoned Name'],
+                ],
+            ])
+            ->get(route('marketing.sites.edit', $site->id))
+            ->assertOk()
+            ->assertSee('data-site-description-editor', false)
+            ->assertDontSee('htmlspecialchars(): Argument #1', false)
+            ->assertDontSee('TypeError', false);
     }
 
     public function test_marketer_pending_update_rejects_short_description(): void

@@ -888,6 +888,22 @@ class AdminAssignSiteForPublisherTest extends TestCase
         $this->assertDoesNotMatchRegularExpression('/<select[^>]+id="language"[^>]*disabled/', $html);
     }
 
+    public function test_admin_create_page_survives_array_old_description(): void
+    {
+        $this->actingAs($this->admin)
+            ->withSession([
+                '_old_input' => [
+                    'description' => ['<p>Poisoned description</p>'],
+                    'site_name' => ['Poisoned Name'],
+                ],
+            ])
+            ->get(route('admin.sites.create'))
+            ->assertOk()
+            ->assertSee('data-site-description-editor', false)
+            ->assertDontSee('htmlspecialchars(): Argument #1', false)
+            ->assertDontSee('TypeError', false);
+    }
+
     public function test_admin_create_picker_excludes_leftover_unverified_publishers(): void
     {
         $publisherRole = Role::where('name', 'publisher')->firstOrFail();

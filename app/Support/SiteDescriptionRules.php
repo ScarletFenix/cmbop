@@ -49,6 +49,16 @@ class SiteDescriptionRules
         return trim($text);
     }
 
+    /**
+     * Quill Snow posts <p><br></p> (or similar) when the editor is empty.
+     * Treat that as no description so staff saves are not blocked by min:50
+     * on the raw HTML wrapper. Non-strings stay with the validator.
+     */
+    public static function isBlankHtml(mixed $html): bool
+    {
+        return is_string($html) && self::plainText($html) === '';
+    }
+
     public static function wordCount(string $plain): int
     {
         $plain = trim($plain);
