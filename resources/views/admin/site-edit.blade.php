@@ -74,7 +74,7 @@
                     </div>
                 @else
                     <div class="alert alert-info border-0 mb-4">
-                        Fix the URL, price, or metrics if needed. Description stays with the publisher.
+                        Fix the URL, price, description, or metrics if needed.
                         Metrics, geo, and niche-only saves do not email the publisher.
                     </div>
                     @if(! $site->hasMarketplaceCountry())
@@ -129,6 +129,16 @@
                         <div class="col-md-4">
                             <div class="text-muted small">Traffic</div>
                             <div class="fw-semibold">{{ number_format((int) $site->traffic) }}</div>
+                        </div>
+                        <div class="col-12" id="description">
+                            <div class="text-muted small">Description</div>
+                            <div class="site-description-readonly border rounded p-3 bg-white mt-1">
+                                @if($site->safeDescriptionHtml() !== '')
+                                    {!! $site->safeDescriptionHtml() !!}
+                                @else
+                                    <span class="text-muted">No description yet</span>
+                                @endif
+                            </div>
                         </div>
                     </div>
                 @else
@@ -272,6 +282,13 @@
                                     <span>No image yet — choose a desktop-size screenshot (16:10)</span>
                                 @endif
                             </div>
+                        </div>
+
+                        <div class="col-12">
+                            @include('partials.site-description-editor', [
+                                'value' => old_text('description', $site->description),
+                                'required' => true,
+                            ])
                         </div>
                     </div>
 
@@ -432,8 +449,10 @@
                         </div>
 
                             <div class="col-12">
-                            <label class="form-label fw-semibold" for="description">Description</label>
-                            <textarea id="description" name="description" class="form-control" rows="4">{{ old_text('description', $site->description) }}</textarea>
+                            @include('partials.site-description-editor', [
+                                'value' => old_text('description', $site->description),
+                                'required' => false,
+                            ])
                         </div>
 
                         @php

@@ -11,6 +11,8 @@ class SiteDescriptionRules
 {
     public const MIN_CHARS = 50;
 
+    public const MAX_CHARS = 5000;
+
     public const MAX_WORDS = 500;
 
     public const EXCERPT_CHARS = 260;
@@ -49,6 +51,16 @@ class SiteDescriptionRules
         return trim($text);
     }
 
+    /**
+     * Quill Snow posts <p><br></p> (or similar) when the editor is empty.
+     * Treat that as no description so staff saves are not blocked by min:50
+     * on the raw HTML wrapper. Non-strings stay with the validator.
+     */
+    public static function isBlankHtml(mixed $html): bool
+    {
+        return is_string($html) && self::plainText($html) === '';
+    }
+
     public static function wordCount(string $plain): int
     {
         $plain = trim($plain);
@@ -77,6 +89,10 @@ class SiteDescriptionRules
 
         if (mb_strlen($plain) < self::MIN_CHARS) {
             $errors[] = 'Description must be at least '.self::MIN_CHARS.' characters (visible text).';
+        }
+
+        if (mb_strlen($plain) > self::MAX_CHARS) {
+            $errors[] = 'Description must be at most '.self::MAX_CHARS.' characters.';
         }
 
         if (self::wordCount($plain) > self::MAX_WORDS) {

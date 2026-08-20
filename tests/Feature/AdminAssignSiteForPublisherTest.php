@@ -875,7 +875,8 @@ class AdminAssignSiteForPublisherTest extends TestCase
             ->assertSee('written_request', false)
             ->assertSee('This emails and bells the publisher', false)
             ->assertSee('Click to toggle; type to search; Enter adds the highlighted match. Max 7.', false)
-            ->assertSee('maxlength="5000"', false)
+            ->assertSee('data-site-description-editor', false)
+            ->assertSee('name="description"', false)
             ->assertSee('name="price_homepage[7]"', false)
             ->assertSee('name="sensitive[crypto]"', false)
             ->assertSee('optional homepage, social, and sensitive-topic prices', false)
@@ -885,6 +886,22 @@ class AdminAssignSiteForPublisherTest extends TestCase
         $this->assertStringNotContainsString('required disabled', $html);
         $this->assertMatchesRegularExpression('/<select[^>]+id="language"[^>]*required/', $html);
         $this->assertDoesNotMatchRegularExpression('/<select[^>]+id="language"[^>]*disabled/', $html);
+    }
+
+    public function test_admin_create_page_survives_array_old_description(): void
+    {
+        $this->actingAs($this->admin)
+            ->withSession([
+                '_old_input' => [
+                    'description' => ['<p>Poisoned description</p>'],
+                    'site_name' => ['Poisoned Name'],
+                ],
+            ])
+            ->get(route('admin.sites.create'))
+            ->assertOk()
+            ->assertSee('data-site-description-editor', false)
+            ->assertDontSee('htmlspecialchars(): Argument #1', false)
+            ->assertDontSee('TypeError', false);
     }
 
     public function test_admin_create_picker_excludes_leftover_unverified_publishers(): void

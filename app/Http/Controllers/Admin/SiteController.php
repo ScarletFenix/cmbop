@@ -825,14 +825,13 @@ class SiteController extends Controller
             'turnaround_time' => 'required|string|in:24h,48h,3days,5days,7days',
             'publication_time' => 'required|string|max:20|in:6months,1year,permanent',
             'link_type' => 'required|in:dofollow,nofollow',
-            'description' => 'nullable|string|max:5000',
+            'description' => 'nullable|string|max:20000',
             'site_image' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
             'site_tag' => 'nullable|in:sponsored,partner_material,as_you_prefer',
             'written_request' => 'accepted',
             'suggestion_id' => 'nullable|integer',
         ] + $this->placementOfferValidationRules(), array_merge($this->siteImageValidationMessages(), [
             'written_request.accepted' => 'Confirm you have a written request from this publisher’s account email.',
-            'description.max' => 'Description must be at most 5000 characters.',
             'price.max' => 'Price must be at most €999,999.99.',
         ]), $this->placementOfferValidationAttributes());
 
@@ -1570,7 +1569,7 @@ class SiteController extends Controller
         } elseif ($request->has('language') && trim(scalar_text($request->input('language'))) === '') {
             $request->merge(['language' => null]);
         }
-        if ($request->has('description') && trim(scalar_text($request->input('description'))) === '') {
+        if ($request->has('description') && SiteDescriptionRules::isBlankHtml($request->input('description'))) {
             $request->merge(['description' => null]);
         }
         if ($request->has('link_type') && trim(scalar_text($request->input('link_type'))) === '') {
@@ -1607,7 +1606,7 @@ class SiteController extends Controller
             'country' => 'sometimes|nullable|string|size:2|in:'.implode(',', $allowedCountries),
             'language' => 'sometimes|nullable|string|size:2|in:'.implode(',', $allowedLanguages),
             'price' => 'sometimes|required|numeric|min:0|max:999999.99',
-            'description' => 'sometimes|nullable|string|min:50|max:5000',
+            'description' => 'sometimes|nullable|string|max:20000',
             'category' => 'sometimes|nullable|string|max:255',
             'publication_time' => 'sometimes|nullable|string|max:20',
             // Dedicated editor is free text; modal may send dofollow/nofollow.
@@ -1628,7 +1627,6 @@ class SiteController extends Controller
             $request->all(),
             $rules,
             array_merge($this->siteImageValidationMessages(), [
-                'description.max' => 'Description must be at most 5000 characters.',
                 'price.max' => 'Price must be at most €999,999.99.',
             ]),
             $this->placementOfferValidationAttributes()
@@ -1674,7 +1672,7 @@ class SiteController extends Controller
             }
 
             $rawDescription = $request->input('description');
-            if (is_string($rawDescription) && trim($rawDescription) !== '' && mb_strlen($rawDescription) <= 5000) {
+            if (is_string($rawDescription) && ! SiteDescriptionRules::isBlankHtml($rawDescription)) {
                 $clean = app(SiteDescriptionSanitizer::class)->sanitize($rawDescription);
                 foreach (SiteDescriptionRules::errors($clean) as $message) {
                     $validator->errors()->add('description', $message);
@@ -1910,10 +1908,27 @@ class SiteController extends Controller
             $rules['site_url'] = 'sometimes|required|url|max:255';
             $rules['example_url'] = 'nullable|url|max:255';
             $rules['price'] = 'sometimes|required|numeric|min:0|max:999999.99';
+            $rules['description'] = 'sometimes|nullable|string|max:20000';
         }
 
         if ($request->exists('site_name') && is_string($request->input('site_name'))) {
             $request->merge(['site_name' => $this->normalizeSiteName($request->input('site_name'))]);
+        }
+
+        $incomingDescription = null;
+        $validateIncomingDescription = false;
+        if ($canFixListing && $request->exists('description') && is_string($request->input('description'))) {
+            $incomingDescription = app(SiteDescriptionSanitizer::class)
+                ->sanitize(scalar_text($request->input('description', '')));
+            $incomingPlain = SiteDescriptionRules::plainText($incomingDescription);
+            $existingPlain = SiteDescriptionRules::plainText((string) $site->description);
+
+            if ($incomingPlain === '') {
+                // Quill empty HTML — keep the current brief so metric-only saves work.
+                $incomingDescription = null;
+            } elseif ($incomingPlain !== $existingPlain) {
+                $validateIncomingDescription = true;
+            }
         }
 
         $validator = Validator::make($request->all(), $rules, array_merge($this->siteImageValidationMessages(), [
@@ -1928,7 +1943,7 @@ class SiteController extends Controller
             ]);
         }
 
-        $validator->after(function ($validator) use ($request, $allowedCountries, $allowedLanguages, $unknownNiches, $canFixListing, $site) {
+        $validator->after(function ($validator) use ($request, $allowedCountries, $allowedLanguages, $unknownNiches, $canFixListing, $site, $validateIncomingDescription, $incomingDescription) {
             $language = strtolower(trim(scalar_text($request->input('language', ''))));
             $country = strtolower(trim(scalar_text($request->input('country', ''))));
 
@@ -1982,6 +1997,12 @@ class SiteController extends Controller
                     $validator->errors()->add('example_url', 'Example URL must be on the same website domain.');
                 }
             }
+
+            if ($validateIncomingDescription && is_string($incomingDescription)) {
+                foreach (SiteDescriptionRules::errors($incomingDescription) as $message) {
+                    $validator->errors()->add('description', $message);
+                }
+            }
         });
 
         if ($validator->fails()) {
@@ -2033,6 +2054,9 @@ class SiteController extends Controller
             }
             if ($request->exists('price')) {
                 $payload['price'] = $request->input('price');
+            }
+            if ($incomingDescription !== null) {
+                $payload['description'] = $incomingDescription;
             }
         }
 

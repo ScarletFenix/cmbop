@@ -14,12 +14,13 @@ use Database\Seeders\CountriesTableSeeder;
 use Database\Seeders\LanguagesTableSeeder;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Tests\Support\CreatesBlogUploads;
 use Tests\TestCase;
 
 class MarketingNicheGroupAndImageFixTest extends TestCase
 {
+    use CreatesBlogUploads;
     use RefreshDatabase;
 
     private User $marketer;
@@ -87,7 +88,7 @@ class MarketingNicheGroupAndImageFixTest extends TestCase
     public function test_marketer_can_save_technology_group_as_niche(): void
     {
         $site = $this->makeSite();
-        $file = UploadedFile::fake()->image('cover.jpg', 800, 500);
+        $file = $this->fakeBlogUpload('cover.jpg', 800, 500);
 
         $this->actingAs($this->marketer)
             ->put(route('marketing.sites.update', $site->id), [
@@ -118,7 +119,7 @@ class MarketingNicheGroupAndImageFixTest extends TestCase
             'domain' => 'amp-niche.example',
             'site_url' => 'https://amp-niche.example',
         ]);
-        $file = UploadedFile::fake()->image('amp-cover.png', 640, 400);
+        $file = $this->fakeBlogUpload('amp-cover.png', 640, 400);
 
         $this->actingAs($this->marketer)
             ->put(route('marketing.sites.update', $site->id), [

@@ -534,6 +534,8 @@ class AdminSiteActivateGuardTest extends TestCase
         $this->assertStringContainsString('slbConfirmActivate', $mktBlade);
         $this->assertStringContainsString('data-description-english', $adminBlade);
         $this->assertStringContainsString('data-description-english', $mktBlade);
+        $this->assertStringContainsString('/edit#description', $adminBlade);
+        $this->assertStringContainsString('/edit#description', $mktBlade);
         $this->assertStringNotContainsString('Promise.resolve(true)', $adminBlade);
     }
 }

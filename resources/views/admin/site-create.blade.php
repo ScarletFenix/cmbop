@@ -269,12 +269,10 @@
                     </div>
 
                     <div class="col-12">
-                        <label class="form-label fw-semibold" for="description">Description <span class="text-danger">*</span></label>
-                        <textarea id="description" name="description" rows="5"
-                                  class="form-control @error('description') is-invalid @enderror"
-                                  required minlength="50" maxlength="5000">{{ old_text('description') }}</textarea>
-                        <div class="form-text">Shown to advertisers on the listing. Min {{ \App\Support\SiteDescriptionRules::MIN_CHARS }} characters, max {{ \App\Support\SiteDescriptionRules::MAX_WORDS }} words (5000 characters).</div>
-                        @error('description')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                        @include('partials.site-description-editor', [
+                            'value' => old_text('description', ''),
+                            'required' => true,
+                        ])
                     </div>
 
                     @php

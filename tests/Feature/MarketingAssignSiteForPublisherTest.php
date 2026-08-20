@@ -11,18 +11,20 @@ use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\InAppNotificationService;
+use App\Support\SiteDescriptionRules;
 use Database\Seeders\CategoriesTableSeeder;
 use Database\Seeders\CountriesTableSeeder;
 use Database\Seeders\LanguagesTableSeeder;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
+use Tests\Support\CreatesBlogUploads;
 use Tests\TestCase;
 
 class MarketingAssignSiteForPublisherTest extends TestCase
 {
+    use CreatesBlogUploads;
     use RefreshDatabase;
 
     private User $marketer;
@@ -105,8 +107,11 @@ class MarketingAssignSiteForPublisherTest extends TestCase
             ->assertSee('This emails and bells the publisher', false)
             ->assertSee('Click to toggle; type to search; Enter adds the highlighted match. Max 7.', false)
             ->assertDontSee('Click niches one by one', false)
-            ->assertSee('maxlength="5000"', false)
-            ->assertSee('max 500 words (5000 characters)', false)
+            ->assertSee('data-site-description-editor', false)
+            ->assertSee('name="description"', false)
+            ->assertSee('data-max-chars="'.\App\Support\SiteDescriptionRules::MAX_CHARS.'"', false)
+            ->assertSee('max 500 words', false)
+            ->assertSee('Shown to advertisers on the listing', false)
             ->assertSee('name="price_homepage[7]"', false)
             ->assertSee('name="social[facebook]"', false)
             ->assertSee('name="sensitive[crypto]"', false)
@@ -437,6 +442,23 @@ class MarketingAssignSiteForPublisherTest extends TestCase
         $this->assertCount(1, $messages);
         $this->assertStringContainsString('at most 5000 characters', $messages[0]);
         $this->assertNull(Site::where('domain', 'long-desc.example')->first());
+    }
+
+    public function test_marketing_store_accepts_quill_wrapped_max_length_description(): void
+    {
+        $plain = str_repeat('a', SiteDescriptionRules::MAX_CHARS);
+
+        $this->actingAs($this->marketer)
+            ->post(route('marketing.sites.store'), $this->validPayload([
+                'site_url' => 'https://quill-max-desc.example',
+                'example_url' => 'https://quill-max-desc.example/sample',
+                'description' => '<p>'.$plain.'</p>',
+            ]))
+            ->assertRedirect();
+
+        $site = Site::where('domain', 'quill-max-desc.example')->first();
+        $this->assertNotNull($site);
+        $this->assertSame($plain, SiteDescriptionRules::plainText((string) $site->description));
     }
 
     public function test_marketing_store_rejects_short_description_once(): void
@@ -1070,7 +1092,7 @@ class MarketingAssignSiteForPublisherTest extends TestCase
             ->post(route('marketing.sites.store'), $this->validPayload([
                 'site_url' => 'https://img-fail.example',
                 'example_url' => 'https://img-fail.example/sample',
-                'site_image' => UploadedFile::fake()->image('cover.jpg', 20, 20),
+                'site_image' => $this->fakeBlogUpload('cover.jpg', 20, 20),
             ]))
             ->assertRedirect(route('marketing.sites.create'))
             ->assertSessionHasErrors('site_image')

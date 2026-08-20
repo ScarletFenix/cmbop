@@ -1044,6 +1044,7 @@ document.addEventListener('click', function(e){
                 looksEnglish: site.description_looks_english,
                 excerpt: site.description_excerpt || '',
                 name: site.site_name || '',
+                editUrl: `${STAFF_BASE}/sites/${id}/edit#description`,
             };
             const fallbackActivateText = activateOpts.name
                 ? 'Make "' + activateOpts.name + '" live in the catalog?'
@@ -1807,6 +1808,7 @@ document.addEventListener('click', function (e) {
             excerpt: btn.dataset.descriptionExcerpt || '',
             name: name,
             confirmText: 'Activate',
+            editUrl: `${STAFF_BASE}/sites/${id}/edit#description`,
         })
         : window.slbConfirm({
             title: 'Activate Site?',

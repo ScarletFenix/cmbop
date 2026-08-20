@@ -263,6 +263,7 @@
 (function () {
     const csrf = @json(csrf_token());
     const activateUrl = @json(staff_route('sites.active', '__ID__'));
+    const staffBase = @json(staff_base_path());
     document.querySelectorAll('.js-mkt-activate').forEach((btn) => {
         btn.addEventListener('click', function () {
             const id = this.dataset.id;
@@ -273,6 +274,7 @@
                     excerpt: this.dataset.descriptionExcerpt || '',
                     name: name,
                     confirmText: 'Activate',
+                    editUrl: staffBase + '/sites/' + encodeURIComponent(id) + '/edit#description',
                 })
                 : window.slbConfirm({
                     title: 'Activate Site?',

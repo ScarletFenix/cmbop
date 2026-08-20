@@ -71,6 +71,7 @@
      * @param {boolean|number|string} [opts.looksEnglish]
      * @param {string} [opts.excerpt]
      * @param {string} [opts.name]
+     * @param {string} [opts.editUrl]  Cancel (“Go back”) opens the staff editor
      * @returns {Promise<boolean>}
      */
     function slbConfirmActivate(opts) {
@@ -93,6 +94,12 @@
                 confirmText: 'Activate anyway',
                 cancelText: 'Go back',
                 danger: true,
+            }).then(function (ok) {
+                var editUrl = String(opts.editUrl || '').trim();
+                if (!ok && editUrl) {
+                    global.location.href = editUrl;
+                }
+                return ok;
             });
         }
 

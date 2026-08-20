@@ -8,6 +8,7 @@ use App\Models\Category;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
+use App\Support\SiteDescriptionRules;
 use Database\Seeders\CategoriesTableSeeder;
 use Database\Seeders\CountriesTableSeeder;
 use Database\Seeders\LanguagesTableSeeder;
@@ -322,11 +323,13 @@ class MarketingOpsScopeTest extends TestCase
             ->get(route('marketing.sites.edit', $site->id))
             ->assertOk()
             ->assertSee('Fill metrics, geo & niches')
-            ->assertSee('Fix the URL, price, or metrics if needed', false)
+            ->assertSee('Fix the URL, price, description, or metrics if needed', false)
             ->assertSee('Metrics, geo, and niche-only saves do not email the publisher.', false)
             ->assertSee('Below the quality bar', false)
             ->assertSee('https://pending-edit.example', false)
-            ->assertDontSee('name="description"', false)
+            ->assertSee('name="description"', false)
+            ->assertSee('data-site-description-editor', false)
+            ->assertDontSee('Description stays with the publisher', false)
             ->assertSee('name="site_name"', false)
             ->assertSee('name="site_url"', false)
             ->assertSee('name="example_url"', false)
@@ -346,6 +349,7 @@ class MarketingOpsScopeTest extends TestCase
             ->getContent();
         $this->assertStringContainsString('IS_MARKETING_EDITOR = true', $sitesHtml);
         $this->assertStringContainsString('${STAFF_BASE}/sites/${site.id}/edit', $sitesHtml);
+        $this->assertStringContainsString('/edit#description', $sitesHtml);
         $this->assertStringContainsString('site-row-preview', $sitesHtml);
         $this->assertStringContainsString('sitePreviewPaths', $sitesHtml);
         $this->assertStringContainsString('initSitePreviewZoom', $sitesHtml);
@@ -364,7 +368,7 @@ class MarketingOpsScopeTest extends TestCase
                 'site_url' => 'https://corrected-edit.example',
                 'example_url' => 'https://corrected-edit.example/sample',
                 'price' => 120,
-                'description' => 'Hacked description that marketers must not set',
+                'description' => 'This listing is for your audience and the publishers who write guest posts here.',
                 'da' => 33,
                 'dr' => 44,
                 'traffic' => 5000,
@@ -383,7 +387,10 @@ class MarketingOpsScopeTest extends TestCase
         $this->assertSame('corrected-edit.example', $site->domain);
         $this->assertSame('https://corrected-edit.example/sample', $site->example_url);
         $this->assertEquals(120, (float) $site->price);
-        $this->assertSame('Publisher will replace this later with enough characters', $site->description);
+        $this->assertSame(
+            'This listing is for your audience and the publishers who write guest posts here.',
+            $site->description
+        );
         $this->assertSame(33, (int) $site->da);
         $this->assertSame(44, (int) $site->dr);
         $this->assertSame(5000, (int) $site->traffic);
@@ -392,6 +399,133 @@ class MarketingOpsScopeTest extends TestCase
         $this->assertSame(['de'], $site->languages);
         $this->assertSame(['de'], $site->countries);
         $this->assertContains($category->name, $site->categories ?? []);
+    }
+
+    public function test_marketer_pending_update_keeps_brief_when_quill_posts_empty_html(): void
+    {
+        $site = $this->makeSite([
+            'site_name' => 'Quill Empty Target',
+            'site_url' => 'https://quill-empty.example',
+            'domain' => 'quill-empty.example',
+            'description' => 'Publisher will replace this later with enough characters',
+        ]);
+        $category = Category::query()->where('name', 'Business & Finance')->first()
+            ?? Category::query()->firstOrFail();
+
+        $this->actingAs($this->marketer)
+            ->put(route('marketing.sites.update', $site->id), [
+                'site_name' => $site->site_name,
+                'site_url' => $site->site_url,
+                'price' => $site->price,
+                'description' => '<p><br></p>',
+                'da' => 41,
+                'dr' => 42,
+                'traffic' => 6000,
+                'language' => 'de',
+                'country' => 'de',
+                'categories' => $category->name,
+            ])
+            ->assertRedirect(route('marketing.sites.index', [
+                'publisher' => $site->publisher_id,
+                'site' => $site->id,
+            ]));
+
+        $site->refresh();
+        $this->assertSame('Publisher will replace this later with enough characters', $site->description);
+        $this->assertSame(41, (int) $site->da);
+        $this->assertSame(42, (int) $site->dr);
+        $this->assertSame(6000, (int) $site->traffic);
+    }
+
+    public function test_marketer_pending_update_allows_unchanged_short_brief(): void
+    {
+        $short = 'Too short to pass min chars';
+        $site = $this->makeSite([
+            'site_name' => 'Short Unchanged Target',
+            'site_url' => 'https://short-unchanged.example',
+            'domain' => 'short-unchanged.example',
+            'description' => $short,
+        ]);
+        $category = Category::query()->where('name', 'Business & Finance')->first()
+            ?? Category::query()->firstOrFail();
+
+        $this->actingAs($this->marketer)
+            ->put(route('marketing.sites.update', $site->id), [
+                'site_name' => $site->site_name,
+                'site_url' => $site->site_url,
+                'price' => $site->price,
+                'description' => '<p>'.$short.'</p>',
+                'da' => 36,
+                'dr' => 37,
+                'traffic' => 4000,
+                'language' => 'de',
+                'country' => 'de',
+                'categories' => $category->name,
+            ])
+            ->assertRedirect(route('marketing.sites.index', [
+                'publisher' => $site->publisher_id,
+                'site' => $site->id,
+            ]));
+
+        $site->refresh();
+        $this->assertSame($short, SiteDescriptionRules::plainText((string) $site->description));
+        $this->assertSame(36, (int) $site->da);
+    }
+
+    public function test_pending_edit_page_survives_array_old_description(): void
+    {
+        $site = $this->makeSite([
+            'site_name' => 'Old Input Target',
+            'site_url' => 'https://old-input-brief.example',
+            'domain' => 'old-input-brief.example',
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->withSession([
+                '_old_input' => [
+                    'description' => ['<p>Poisoned description</p>'],
+                    'site_name' => ['Poisoned Name'],
+                ],
+            ])
+            ->get(route('marketing.sites.edit', $site->id))
+            ->assertOk()
+            ->assertSee('data-site-description-editor', false)
+            ->assertDontSee('htmlspecialchars(): Argument #1', false)
+            ->assertDontSee('TypeError', false);
+    }
+
+    public function test_marketer_pending_update_rejects_short_description(): void
+    {
+        $site = $this->makeSite([
+            'site_name' => 'Short Brief Target',
+            'site_url' => 'https://short-brief.example',
+            'domain' => 'short-brief.example',
+            'description' => 'Publisher will replace this later with enough characters',
+        ]);
+        $category = Category::query()->where('name', 'Business & Finance')->first()
+            ?? Category::query()->firstOrFail();
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.sites.edit', $site->id))
+            ->put(route('marketing.sites.update', $site->id), [
+                'site_name' => $site->site_name,
+                'site_url' => $site->site_url,
+                'price' => $site->price,
+                'description' => 'Too short',
+                'da' => 33,
+                'dr' => 44,
+                'traffic' => 5000,
+                'language' => 'de',
+                'country' => 'de',
+                'categories' => $category->name,
+            ])
+            ->assertRedirect(route('marketing.sites.edit', $site->id))
+            ->assertSessionHasErrors('description');
+
+        $this->assertSame(
+            'Publisher will replace this later with enough characters',
+            $site->fresh()->description
+        );
     }
 
     public function test_admin_edit_page_still_shows_full_form(): void
@@ -409,9 +543,10 @@ class MarketingOpsScopeTest extends TestCase
             ->assertSee('name="site_name"', false)
             ->assertSee('name="site_url"', false)
             ->assertSee('name="description"', false)
+            ->assertSee('data-site-description-editor', false)
             ->assertSee('name="example_url"', false)
             ->assertDontSee('Publisher already provided URL and price', false)
-            ->assertDontSee('Fix the URL, price, or metrics if needed', false)
+            ->assertDontSee('Fix the URL, price, description, or metrics if needed', false)
             ->assertDontSee('Marketing cannot change it', false);
     }
 
@@ -424,6 +559,7 @@ class MarketingOpsScopeTest extends TestCase
             'da' => 55,
             'verified' => true,
             'active' => true,
+            'description' => 'Publisher brief stays visible on the locked marketing view.',
         ]);
 
         $this->actingAs($this->marketer)
@@ -432,9 +568,12 @@ class MarketingOpsScopeTest extends TestCase
             ->assertSee('View site', false)
             ->assertSee('This listing is live, verified, or archived. Marketing cannot change it.', false)
             ->assertSee('https://live-locked.example', false)
+            ->assertSee('Publisher brief stays visible on the locked marketing view.', false)
             ->assertDontSee('name="site_url"', false)
             ->assertDontSee('name="price"', false)
             ->assertDontSee('name="da"', false)
+            ->assertDontSee('name="description"', false)
+            ->assertDontSee('data-site-description-editor', false)
             ->assertDontSee('Save listing', false);
     }
 
@@ -451,6 +590,7 @@ class MarketingOpsScopeTest extends TestCase
             'price' => 200,
             'verified' => false,
             'active' => true,
+            'description' => 'Original live listing brief that marketers cannot replace.',
         ]);
         $verified = $this->makeSite([
             'site_name' => 'Already Verified',
@@ -466,11 +606,14 @@ class MarketingOpsScopeTest extends TestCase
             $originalDa = (int) $site->da;
             $originalUrl = $site->site_url;
 
+            $originalDescription = $site->description;
+
             $this->actingAs($this->marketer)
                 ->put(route('marketing.sites.update', $site->id), [
                     'site_name' => 'Should Not Stick',
                     'site_url' => 'https://should-not-stick.example',
                     'price' => 1,
+                    'description' => 'This listing is for your audience and the publishers who write guest posts here.',
                     'da' => 11,
                     'dr' => 12,
                     'traffic' => 100,
@@ -499,6 +642,7 @@ class MarketingOpsScopeTest extends TestCase
             $site->refresh();
             $this->assertSame($originalUrl, $site->site_url);
             $this->assertSame($originalDa, (int) $site->da);
+            $this->assertSame($originalDescription, $site->description);
         }
     }
 
@@ -627,6 +771,8 @@ class MarketingOpsScopeTest extends TestCase
             ->assertDontSee('Activate / Deactivate as usual', false)
             ->assertSee('id="selectedLanguage"', false)
             ->assertSee('Site image must be under', false)
+            ->assertSee('data-site-description-editor', false)
+            ->assertSee('name="description"', false)
             ->getContent();
 
         $this->assertDoesNotMatchRegularExpression('/<select[^>]+id="language"[^>]*disabled/', $html);
