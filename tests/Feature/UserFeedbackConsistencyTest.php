@@ -88,6 +88,81 @@ class UserFeedbackConsistencyTest extends TestCase
         );
     }
 
+    public function test_controllers_do_not_tell_users_to_edit_payment_env(): void
+    {
+        $needles = ['STRIPE_SECRET', 'STRIPE_KEY', 'PAYPAL_CLIENT_ID', 'PAYPAL_SECRET'];
+        $offenders = [];
+
+        foreach ($this->controllerFiles() as $path) {
+            foreach (file($path) as $index => $line) {
+                if (str_contains($line, 'Log::')) {
+                    continue;
+                }
+                foreach ($needles as $needle) {
+                    if (str_contains($line, $needle)) {
+                        $offenders[] = str_replace(base_path().'/', '', $path).':'.($index + 1);
+                    }
+                }
+            }
+        }
+
+        $this->assertSame(
+            [],
+            $offenders,
+            "Payment env knobs belong in ops docs, not user popups:\n".implode("\n", $offenders)
+        );
+    }
+
+    /**
+     * @return string[]
+     */
+    private function marketplaceViewFiles(): array
+    {
+        $files = [];
+        foreach (['advertiser', 'publisher'] as $role) {
+            $dir = new \RecursiveIteratorIterator(
+                new \RecursiveDirectoryIterator(resource_path('views/'.$role))
+            );
+            foreach ($dir as $file) {
+                if ($file->isFile() && str_ends_with($file->getFilename(), '.blade.php')) {
+                    $files[] = $file->getPathname();
+                }
+            }
+        }
+
+        return $files;
+    }
+
+    public function test_marketplace_views_do_not_leak_payment_ops_instructions(): void
+    {
+        $needles = [
+            'STRIPE_SECRET',
+            'STRIPE_KEY',
+            'PAYPAL_CLIENT_ID',
+            'PAYPAL_SECRET',
+            'database/sql/',
+            'php artisan config:clear',
+            'phpMyAdmin',
+        ];
+        $offenders = [];
+
+        foreach ($this->marketplaceViewFiles() as $path) {
+            foreach (file($path) as $index => $line) {
+                foreach ($needles as $needle) {
+                    if (str_contains($line, $needle)) {
+                        $offenders[] = str_replace(resource_path('views').'/', '', $path).':'.($index + 1);
+                    }
+                }
+            }
+        }
+
+        $this->assertSame(
+            [],
+            $offenders,
+            "Advertiser and publisher views must not tell users to edit .env, SQL, or artisan:\n".implode("\n", $offenders)
+        );
+    }
+
     public function test_shared_flash_partial_exists_and_is_accessible(): void
     {
         $partial = resource_path('views/partials/session-flash.blade.php');

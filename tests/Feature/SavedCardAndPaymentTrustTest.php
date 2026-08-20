@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\StripeCustomerService;
+use App\Support\UserMessages;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
 use Mockery;
@@ -143,7 +144,9 @@ class SavedCardAndPaymentTrustTest extends TestCase
         $this->actingAs($user)
             ->postJson(route('advertiser.payment-methods.setup'))
             ->assertStatus(503)
-            ->assertJsonPath('success', false);
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', UserMessages::get('payment.cards_not_configured'))
+            ->assertJsonMissing(['message' => 'Set STRIPE_SECRET']);
     }
 
     public function test_ensure_user_stripe_columns_is_idempotent(): void

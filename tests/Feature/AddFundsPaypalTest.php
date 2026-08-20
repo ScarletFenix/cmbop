@@ -12,6 +12,7 @@ use App\Models\Wallet;
 use App\Services\PaypalCheckoutService;
 use App\Support\UserMessages;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
@@ -166,6 +167,27 @@ class AddFundsPaypalTest extends TestCase
             ->assertOk()
             ->assertJsonPath('success', false)
             ->assertJsonPath('message', UserMessages::get('payment.paypal_auth'));
+    }
+
+    public function test_create_paypal_deposit_connection_error_is_unreachable(): void
+    {
+        $this->enablePaypal();
+        Http::fake(function () {
+            throw new ConnectionException(
+                'cURL error 7: Failed to connect to api-m.sandbox.paypal.com port 443: Connection refused'
+            );
+        });
+
+        $this->actingAs($this->advertiser())
+            ->postJson(route('advertiser.add-funds.paypal.create'), [
+                'amount' => 25,
+                'reference_code' => '888888',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', UserMessages::get('payment.paypal_unreachable'))
+            ->assertJsonMissing(['message' => UserMessages::get('payment.paypal_rejected', ['code' => 'DEPOSIT'])])
+            ->assertDontSee('cURL error', false);
     }
 
     public function test_paypal_deposit_return_credits_wallet_once(): void

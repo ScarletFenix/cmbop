@@ -43,6 +43,7 @@ class UserFacingError
         'Class "',
         'syntax error',
         'Connection refused',
+        'cURL',
         'No such file',
         'Trying to access',
         'must be of type',

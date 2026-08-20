@@ -22,6 +22,7 @@ use App\Services\Wallet\WalletOverviewService;
 use App\Services\WalletPaypalDepositService;
 use App\Services\WalletStripeDepositService;
 use App\Support\DepositPaymentConfig;
+use App\Support\PaypalPaymentError;
 use App\Support\UserFacingError;
 use App\Support\UserMessages;
 use Endroid\QrCode\Builder\Builder;
@@ -228,7 +229,7 @@ class AddFundsController extends Controller
             if (! config('services.stripe.secret') || config('services.stripe.secret') === '') {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Stripe is not configured. Please contact support.',
+                    'message' => UserMessages::get('payment.stripe_not_configured'),
                 ]);
             }
 
@@ -283,7 +284,7 @@ class AddFundsController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => UserFacingError::message($e, 'Failed to create checkout session. Please try again.'),
+                'message' => UserFacingError::message($e, UserMessages::get('payment.stripe_checkout_failed')),
             ]);
         }
     }
@@ -300,7 +301,7 @@ class AddFundsController extends Controller
             if (! $paypal->configured()) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'PayPal is not configured. Please contact support.',
+                    'message' => UserMessages::get('payment.paypal_not_configured_deposit'),
                 ], 503);
             }
 
@@ -329,7 +330,7 @@ class AddFundsController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => UserFacingError::message($e, UserMessages::get('payment.paypal_rejected', ['code' => 'DEPOSIT'])),
+                'message' => PaypalPaymentError::startFailure($e),
             ]);
         }
     }
@@ -342,13 +343,13 @@ class AddFundsController extends Controller
 
         if ($ref === '' || $token === '') {
             return redirect()->route('advertiser.add-funds')
-                ->with('error', 'Invalid PayPal return.');
+                ->with('error', UserMessages::get('payment.paypal_invalid_return'));
         }
 
         $paypal = app(PaypalCheckoutService::class);
         if (! $paypal->configured()) {
             return redirect()->route('advertiser.add-funds')
-                ->with('error', 'PayPal is not configured.');
+                ->with('error', UserMessages::get('payment.paypal_not_configured'));
         }
 
         try {
@@ -362,21 +363,21 @@ class AddFundsController extends Controller
             $this->notifyPaypalDepositNotCompleted($userId, $ref, PaypalPaymentNotifier::reasonFromCaptureException($e));
 
             return redirect()->route('advertiser.add-funds')
-                ->with('error', 'PayPal payment was not completed.');
+                ->with('error', UserMessages::get('payment.paypal_not_completed'));
         }
 
         $custom = is_array($captured['custom'] ?? null) ? $captured['custom'] : [];
         if ((string) ($custom['user_id'] ?? '') !== (string) $userId) {
             return redirect()->route('advertiser.add-funds')
-                ->with('error', 'Payment does not belong to this account.');
+                ->with('error', UserMessages::get('payment.paypal_wrong_account'));
         }
         if (($custom['type'] ?? '') !== PaypalCheckoutService::TYPE_WALLET_DEPOSIT) {
             return redirect()->route('advertiser.add-funds')
-                ->with('error', 'This payment is not a wallet top-up.');
+                ->with('error', UserMessages::get('payment.paypal_not_deposit'));
         }
         if (($custom['reference_code'] ?? '') !== $ref) {
             return redirect()->route('advertiser.add-funds')
-                ->with('error', 'Payment reference mismatch.');
+                ->with('error', UserMessages::get('payment.paypal_reference_mismatch'));
         }
 
         try {
@@ -388,14 +389,14 @@ class AddFundsController extends Controller
             ]);
 
             return redirect()->route('advertiser.add-funds')
-                ->with('error', UserFacingError::message($e, 'Payment verification failed. Please contact support.'));
+                ->with('error', UserFacingError::message($e, UserMessages::get('payment.verification_failed_support')));
         }
 
         session()->forget('pending_paypal_deposit_reference');
 
         if ($credited <= 0) {
             return redirect()->route('advertiser.add-funds')
-                ->with('error', 'Payment verification failed. Please contact support.');
+                ->with('error', UserMessages::get('payment.verification_failed_support'));
         }
 
         return redirect()->route('advertiser.add-funds')
@@ -413,7 +414,7 @@ class AddFundsController extends Controller
         }
 
         return redirect()->route('advertiser.add-funds')
-            ->with('error', 'PayPal payment was cancelled.');
+            ->with('error', UserMessages::get('payment.paypal_cancelled'));
     }
 
     private function notifyPaypalDepositNotCompleted(int $userId, string $referenceCode, string $reason): void
@@ -444,16 +445,16 @@ class AddFundsController extends Controller
                 $intent = PaymentIntent::retrieve($paymentIntentId);
                 if ($intent->status !== 'succeeded') {
                     return redirect()->route('advertiser.add-funds')
-                        ->with('error', 'Card payment was not completed.');
+                        ->with('error', UserMessages::get('payment.stripe_not_completed'));
                 }
                 if ((string) ($intent->metadata->user_id ?? '') !== (string) auth()->id()) {
                     return redirect()->route('advertiser.add-funds')
-                        ->with('error', 'Payment does not belong to this account.');
+                        ->with('error', UserMessages::get('payment.paypal_wrong_account'));
                 }
                 $intentType = (string) ($intent->metadata->type ?? '');
                 if (! in_array($intentType, ['wallet_deposit', 'deposit'], true)) {
                     return redirect()->route('advertiser.add-funds')
-                        ->with('error', 'This payment is not a wallet top-up.');
+                        ->with('error', UserMessages::get('payment.paypal_not_deposit'));
                 }
                 // Always credit Stripe's charged amount — never trust client ?amount=
                 $amountEuros = StripePaymentService::fromCents(
@@ -469,13 +470,13 @@ class AddFundsController extends Controller
                 Log::error('Saved-card deposit success error: '.$e->getMessage());
 
                 return redirect()->route('advertiser.add-funds')
-                    ->with('error', 'Failed to verify payment. Please contact support.');
+                    ->with('error', UserMessages::get('payment.verify_failed_support'));
             }
         }
 
         if (! $sessionId) {
             return redirect()->route('advertiser.add-funds')
-                ->with('error', 'Invalid payment session.');
+                ->with('error', UserMessages::get('payment.invalid_session'));
         }
 
         try {
@@ -499,13 +500,13 @@ class AddFundsController extends Controller
                     ]);
 
                     return redirect()->route('advertiser.add-funds')
-                        ->with('error', 'This payment is not a wallet top-up. Order payments are confirmed on the order page.');
+                        ->with('error', UserMessages::get('payment.wallet_session_is_order'));
                 }
 
                 $sessionUserId = (string) ($meta['user_id'] ?? '');
                 if ($sessionUserId !== '' && $sessionUserId !== (string) auth()->id()) {
                     return redirect()->route('advertiser.add-funds')
-                        ->with('error', 'Payment does not belong to this account.');
+                        ->with('error', UserMessages::get('payment.paypal_wrong_account'));
                 }
 
                 $creditedAmount = app(WalletStripeDepositService::class)->creditFromCheckoutSession($session);
@@ -519,12 +520,12 @@ class AddFundsController extends Controller
                     ]);
 
                     return redirect()->route('advertiser.add-funds')
-                        ->with('error', 'Payment verification failed. Please contact support.');
+                        ->with('error', UserMessages::get('payment.verification_failed_support'));
                 }
 
                 if ($creditedAmount <= 0) {
                     return redirect()->route('advertiser.add-funds')
-                        ->with('error', 'Payment verification failed. Please contact support.');
+                        ->with('error', UserMessages::get('payment.verification_failed_support'));
                 }
 
                 return redirect()->route('advertiser.add-funds')
@@ -532,13 +533,13 @@ class AddFundsController extends Controller
             }
 
             return redirect()->route('advertiser.add-funds')
-                ->with('error', 'Payment verification failed. Please contact support.');
+                ->with('error', UserMessages::get('payment.verification_failed_support'));
 
         } catch (\Exception $e) {
             Log::error('Checkout success error: '.$e->getMessage());
 
             return redirect()->route('advertiser.add-funds')
-                ->with('error', 'Failed to verify payment. Please contact support.');
+                ->with('error', UserMessages::get('payment.verify_failed_support'));
         }
     }
 
@@ -556,7 +557,7 @@ class AddFundsController extends Controller
         if (! app(StripeCustomerService::class)->configured()) {
             return response()->json([
                 'success' => false,
-                'message' => 'Card payments are not configured.',
+                'message' => UserMessages::get('payment.cards_not_configured_short'),
             ], 503);
         }
 
@@ -617,14 +618,14 @@ class AddFundsController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Could not charge this card. Try another card or Stripe Checkout.',
+                'message' => UserMessages::get('payment.saved_card_deposit_declined'),
             ], 422);
         } catch (\Throwable $e) {
             Log::error('Saved card wallet deposit failed: '.$e->getMessage());
 
             return response()->json([
                 'success' => false,
-                'message' => UserFacingError::message($e, 'Saved card payment failed. Please try again or use a new card.'),
+                'message' => UserFacingError::message($e, UserMessages::get('payment.stripe_saved_card_failed')),
             ], 422);
         }
     }
@@ -935,7 +936,7 @@ class AddFundsController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to fetch billing information',
+                'message' => UserFacingError::message($e, UserMessages::get('payment.billing_fetch_failed')),
             ], 500);
         }
     }

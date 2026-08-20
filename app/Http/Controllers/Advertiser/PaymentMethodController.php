@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Advertiser;
 use App\Http\Controllers\Controller;
 use App\Services\StripeCustomerService;
 use App\Support\UserFacingError;
+use App\Support\UserMessages;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -28,7 +29,7 @@ class PaymentMethodController extends Controller
         if (! $this->stripe->configured()) {
             return response()->json([
                 'success' => false,
-                'message' => 'Card payments are not configured. Please contact support.',
+                'message' => UserMessages::get('payment.cards_not_configured'),
             ], 503);
         }
 
@@ -49,7 +50,7 @@ class PaymentMethodController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Unable to start card setup. Please try again.',
+                'message' => UserFacingError::message($e, UserMessages::get('payment.card_setup_failed')),
             ], 500);
         }
     }
@@ -85,7 +86,7 @@ class PaymentMethodController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => UserFacingError::message($e, 'Unable to remove this card.'),
+                'message' => UserFacingError::message($e, UserMessages::get('payment.card_remove_failed')),
             ], 422);
         }
     }
@@ -103,7 +104,7 @@ class PaymentMethodController extends Controller
         } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,
-                'message' => UserFacingError::message($e, 'Unable to set default card.'),
+                'message' => UserFacingError::message($e, UserMessages::get('payment.card_default_failed')),
             ], 422);
         }
     }

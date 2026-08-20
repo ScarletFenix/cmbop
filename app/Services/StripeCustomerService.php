@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\User;
+use App\Support\UserMessages;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -211,9 +212,7 @@ class StripeCustomerService
     public function createCheckoutSession(array $basePayload, ?User $user = null, bool $offerSave = true): Session
     {
         if (! $this->configured()) {
-            throw new \RuntimeException(
-                'Stripe is not configured. Set STRIPE_SECRET (sk_...) and STRIPE_KEY (pk_...) in .env, then run: php artisan config:clear'
-            );
+            throw new \RuntimeException(UserMessages::get('payment.stripe_not_configured'));
         }
 
         Stripe::setApiKey($this->secret());

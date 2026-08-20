@@ -17,6 +17,7 @@ use App\Services\InAppNotificationService;
 use App\Services\OrderPaymentService;
 use App\Services\Wallet\WalletLedgerService;
 use App\Support\UserFacingError;
+use App\Support\UserMessages;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -478,7 +479,7 @@ class OrderClawbackService
             ]);
 
             throw ValidationException::withMessages([
-                'dispute' => UserFacingError::message($e, 'PayPal refund failed. The wallet was not credited.'),
+                'dispute' => UserFacingError::message($e, UserMessages::get('payment.paypal_refund_failed_credit')),
             ]);
         }
 

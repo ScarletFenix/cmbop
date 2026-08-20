@@ -53,13 +53,12 @@ use App\Services\StripePaymentService;
 use App\Services\Wallet\WalletLedgerService;
 use App\Support\AdvertiserOrderStatus;
 use App\Support\CatalogVisitUrl;
+use App\Support\PaypalPaymentError;
 use App\Support\SiteTag;
 use App\Support\UserFacingError;
 use App\Support\UserMessages;
 use Carbon\CarbonInterface;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
-use Illuminate\Database\QueryException;
-use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -2229,7 +2228,7 @@ class CatalogController extends Controller
             if (! in_array($paymentMethod, ['wallet', 'card', 'paypal'], true)) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Invalid payment method',
+                    'message' => UserMessages::get('payment.payment_method_invalid'),
                 ]);
             }
 
@@ -2237,14 +2236,14 @@ class CatalogController extends Controller
                 && (! config('services.stripe.secret') || config('services.stripe.secret') === '')) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Stripe is not configured. Please contact support.',
+                    'message' => UserMessages::get('payment.stripe_not_configured'),
                 ], 503);
             }
 
             if ($paymentMethod === 'paypal' && ! app(PaypalCheckoutService::class)->configured()) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'PayPal is not configured. Please pay with wallet or card.',
+                    'message' => UserMessages::get('payment.paypal_not_configured_checkout'),
                 ], 503);
             }
 
@@ -2358,7 +2357,7 @@ class CatalogController extends Controller
 
             $message = $request->input('payment_method') === 'paypal'
                 ? $this->paypalCheckoutFailureMessage($e)
-                : UserFacingError::message($e, 'We could not process your order. Please try again.');
+                : UserFacingError::message($e, UserMessages::get('payment.order_failed'));
 
             return response()->json([
                 'success' => false,
@@ -2379,7 +2378,7 @@ class CatalogController extends Controller
         if (! $paypal->configured()) {
             return response()->json([
                 'success' => false,
-                'message' => 'PayPal is not configured. Please pay with wallet or card.',
+                'message' => UserMessages::get('payment.paypal_not_configured_checkout'),
             ], 503);
         }
 
@@ -2421,7 +2420,7 @@ class CatalogController extends Controller
 
                 return response()->json([
                     'success' => false,
-                    'message' => 'Unable to apply bonus balance. Please try again without bonus, or contact support.',
+                    'message' => UserMessages::get('payment.bonus_reserve_failed'),
                 ]);
             }
 
@@ -2565,30 +2564,7 @@ class CatalogController extends Controller
      */
     private function paypalCheckoutFailureMessage(\Throwable $e): string
     {
-        if (UserFacingError::isSafe($e)) {
-            return trim($e->getMessage());
-        }
-
-        if ($e instanceof ConnectionException
-            || str_contains($e->getMessage(), 'cURL')
-            || str_contains(strtolower($e->getMessage()), 'connection refused')) {
-            Log::error('PayPal connection failed at checkout', [
-                'exception' => $e::class,
-                'error' => $e->getMessage(),
-            ]);
-
-            return UserMessages::get('payment.paypal_unreachable');
-        }
-
-        $code = match (true) {
-            $e instanceof QueryException, $e instanceof \PDOException => 'SQL',
-            $e instanceof \TypeError => 'TYPE',
-            $e instanceof \ErrorException => 'PHP',
-            $e instanceof \Error => 'ERR',
-            default => 'START',
-        };
-
-        return UserFacingError::message($e, UserMessages::get('payment.paypal_rejected', ['code' => $code]));
+        return PaypalPaymentError::startFailure($e);
     }
 
     /**
@@ -2603,13 +2579,13 @@ class CatalogController extends Controller
 
         if ($ref === '' || $token === '') {
             return redirect()->route('advertiser.checkout')
-                ->with('error', 'Invalid PayPal return.');
+                ->with('error', UserMessages::get('payment.paypal_invalid_return'));
         }
 
         $paypal = app(PaypalCheckoutService::class);
         if (! $paypal->configured()) {
             return redirect()->route('advertiser.checkout')
-                ->with('error', 'PayPal is not configured.');
+                ->with('error', UserMessages::get('payment.paypal_not_configured'));
         }
 
         $paymentService = app(OrderPaymentService::class);
@@ -2623,12 +2599,12 @@ class CatalogController extends Controller
             $packageUser = (int) ($package['user_id'] ?? 0);
             if ($packageUser > 0 && $packageUser !== $userId) {
                 return redirect()->route('advertiser.checkout')
-                    ->with('error', 'Payment does not belong to this account.');
+                    ->with('error', UserMessages::get('payment.paypal_wrong_account'));
             }
             $packageOrderId = search_text((string) ($package['paypal_order_id'] ?? ''));
             if ($packageOrderId !== '' && $packageOrderId !== $token) {
                 return redirect()->route('advertiser.checkout')
-                    ->with('error', 'PayPal order does not match this checkout.');
+                    ->with('error', UserMessages::get('payment.paypal_order_mismatch'));
             }
         }
 
@@ -2643,21 +2619,21 @@ class CatalogController extends Controller
             $this->notifyPaypalCheckoutNotCompleted($userId, $ref, PaypalPaymentNotifier::reasonFromCaptureException($e));
 
             return redirect()->route('advertiser.checkout')
-                ->with('error', 'PayPal payment was not completed.');
+                ->with('error', UserMessages::get('payment.paypal_not_completed'));
         }
 
         $custom = is_array($captured['custom'] ?? null) ? $captured['custom'] : [];
         if ((string) ($custom['user_id'] ?? '') !== (string) $userId) {
             return redirect()->route('advertiser.checkout')
-                ->with('error', 'Payment does not belong to this account.');
+                ->with('error', UserMessages::get('payment.paypal_wrong_account'));
         }
         if (($custom['type'] ?? '') !== PaypalCheckoutService::TYPE_ORDER_CHECKOUT) {
             return redirect()->route('advertiser.checkout')
-                ->with('error', 'This payment is not an order checkout.');
+                ->with('error', UserMessages::get('payment.paypal_not_order'));
         }
         if (($custom['reference_code'] ?? '') !== $ref) {
             return redirect()->route('advertiser.checkout')
-                ->with('error', 'Payment reference mismatch.');
+                ->with('error', UserMessages::get('payment.paypal_reference_mismatch'));
         }
 
         try {
@@ -2669,13 +2645,13 @@ class CatalogController extends Controller
             ]);
 
             return redirect()->route('advertiser.checkout')
-                ->with('error', UserFacingError::message($e, 'Payment verification failed. Please try again.'));
+                ->with('error', UserFacingError::message($e, UserMessages::get('payment.verification_failed')));
         }
 
         $paidOrders = $this->paidOrdersForCheckout($ref, $userId, 'paypal');
         if ($paidOrders->isEmpty()) {
             return redirect()->route('advertiser.checkout')
-                ->with('error', 'Payment was received but the listing(s) are no longer available. Contact support with your payment reference.');
+                ->with('error', UserMessages::get('payment.listings_gone_after_pay'));
         }
 
         return $this->redirectAfterPaidPaypalCheckout($paidOrders, $newlyPaid);
@@ -2781,7 +2757,7 @@ class CatalogController extends Controller
         if (! config('services.stripe.secret') || config('services.stripe.secret') === '') {
             return response()->json([
                 'success' => false,
-                'message' => 'Stripe is not configured. Please contact support.',
+                'message' => UserMessages::get('payment.stripe_not_configured'),
             ], 503);
         }
 
@@ -2817,7 +2793,7 @@ class CatalogController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Unable to apply bonus balance. Please try again without bonus, or contact support.',
+                'message' => UserMessages::get('payment.bonus_reserve_failed'),
             ]);
         }
 
@@ -2954,7 +2930,7 @@ class CatalogController extends Controller
 
                 return response()->json([
                     'success' => false,
-                    'message' => 'Unable to place bonus order. Please try again.',
+                    'message' => UserMessages::get('payment.bonus_order_failed'),
                 ]);
             }
         }
@@ -3096,7 +3072,7 @@ class CatalogController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => UserFacingError::message($e, 'Failed to create checkout session. Please try again.'),
+                'message' => UserFacingError::message($e, UserMessages::get('payment.stripe_checkout_failed')),
             ]);
         }
     }
@@ -3126,7 +3102,7 @@ class CatalogController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Unable to charge this saved card. Please try again.',
+                'message' => UserMessages::get('payment.saved_card_charge_failed'),
             ], 422);
         }
 
@@ -3241,7 +3217,7 @@ class CatalogController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Could not charge this card. Try another card or pay with a new card.',
+                'message' => UserMessages::get('payment.saved_card_declined'),
             ], 422);
         } catch (\Throwable $e) {
             $paid = $this->paidCardOrdersForCheckout($referenceCode, $userId);
@@ -3274,7 +3250,7 @@ class CatalogController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => UserFacingError::message($e, 'Saved card payment failed. Please try again or use a new card.'),
+                'message' => UserFacingError::message($e, UserMessages::get('payment.stripe_saved_card_failed')),
             ], 422);
         }
     }
@@ -3448,7 +3424,7 @@ class CatalogController extends Controller
             if (! $advertiserRoleId) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Advertiser role not configured.',
+                    'message' => UserMessages::get('payment.wallet_unavailable'),
                 ]);
             }
 
@@ -3650,10 +3626,10 @@ class CatalogController extends Controller
             ]);
 
             $message = $e->getMessage() === 'Insufficient balance to reserve'
-                ? 'Insufficient wallet balance for this order.'
+                ? UserMessages::get('payment.wallet_insufficient')
                 : ($e->getMessage() === ContentSubmission::UNAVAILABLE_MESSAGE
                     ? 'That Content Library article was already purchased. Please choose another article.'
-                    : 'Unable to process wallet payment. Please try again.');
+                    : UserMessages::get('payment.wallet_failed'));
 
             return response()->json([
                 'success' => false,
@@ -3770,7 +3746,7 @@ class CatalogController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Unable to place order. Please try again.',
+                'message' => UserFacingError::message($e, UserMessages::get('payment.place_order_failed')),
             ]);
         }
     }
@@ -3794,7 +3770,7 @@ class CatalogController extends Controller
 
             if (! $referenceCode) {
                 return redirect()->route('advertiser.checkout')
-                    ->with('error', 'Invalid payment callback.');
+                    ->with('error', UserMessages::get('payment.invalid_callback'));
             }
 
             Stripe::setApiKey(config('services.stripe.secret'));
@@ -3807,35 +3783,35 @@ class CatalogController extends Controller
                     $intent = PaymentIntent::retrieve($paymentIntentId);
                 } catch (\Exception $e) {
                     return redirect()->route('advertiser.checkout')
-                        ->with('error', 'Unable to verify card payment. Please contact support.');
+                        ->with('error', UserMessages::get('payment.stripe_verify_card_failed'));
                 }
 
                 if (($intent->metadata->reference_code ?? null) && $intent->metadata->reference_code !== $referenceCode) {
                     return redirect()->route('advertiser.checkout')
-                        ->with('error', 'Payment reference mismatch.');
+                        ->with('error', UserMessages::get('payment.paypal_reference_mismatch'));
                 }
 
                 if ((string) ($intent->metadata->user_id ?? '') !== (string) auth()->id()) {
                     return redirect()->route('advertiser.checkout')
-                        ->with('error', 'Payment does not belong to this account.');
+                        ->with('error', UserMessages::get('payment.paypal_wrong_account'));
                 }
 
                 $intentType = (string) ($intent->metadata->type ?? '');
                 if ($intentType !== '' && ! in_array($intentType, ['order_payment', 'order'], true)) {
                     return redirect()->route('advertiser.checkout')
-                        ->with('error', 'This payment is not an order checkout.');
+                        ->with('error', UserMessages::get('payment.paypal_not_order'));
                 }
 
                 if ($intent->status !== 'succeeded') {
                     return redirect()->route('advertiser.orders', ['payment_status' => 'failed'])
-                        ->with('error', 'Card payment was not completed.');
+                        ->with('error', UserMessages::get('payment.stripe_not_completed'));
                 }
 
                 $newlyPaid = $paymentService->finalizeStripeFirstCheckout($referenceCode, $intent);
             } else {
                 if (! $sessionId || $sessionId === '{CHECKOUT_SESSION_ID}') {
                     return redirect()->route('advertiser.checkout')
-                        ->with('error', 'Invalid payment session.');
+                        ->with('error', UserMessages::get('payment.invalid_session'));
                 }
 
                 try {
@@ -3847,29 +3823,29 @@ class CatalogController extends Controller
                     ]);
 
                     return redirect()->route('advertiser.checkout')
-                        ->with('error', 'Unable to verify payment. Please contact support.');
+                        ->with('error', UserMessages::get('payment.stripe_verify_failed'));
                 }
 
                 if ($stripeSession->payment_status !== 'paid') {
                     return redirect()->route('advertiser.checkout')
-                        ->with('error', 'Payment not completed.');
+                        ->with('error', UserMessages::get('payment.stripe_session_unpaid'));
                 }
 
                 $sessionRef = $stripeSession->metadata->reference_code ?? null;
                 if ($sessionRef && $sessionRef !== $referenceCode) {
                     return redirect()->route('advertiser.checkout')
-                        ->with('error', 'Payment reference mismatch.');
+                        ->with('error', UserMessages::get('payment.paypal_reference_mismatch'));
                 }
 
                 if ((string) ($stripeSession->metadata->user_id ?? '') !== (string) auth()->id()) {
                     return redirect()->route('advertiser.checkout')
-                        ->with('error', 'Payment does not belong to this account.');
+                        ->with('error', UserMessages::get('payment.paypal_wrong_account'));
                 }
 
                 $sessionType = (string) ($stripeSession->metadata->type ?? '');
                 if ($sessionType !== '' && ! in_array($sessionType, ['order_payment', 'order'], true)) {
                     return redirect()->route('advertiser.checkout')
-                        ->with('error', 'This payment is not an order checkout.');
+                        ->with('error', UserMessages::get('payment.paypal_not_order'));
                 }
 
                 $newlyPaid = $paymentService->finalizeStripeFirstCheckout($referenceCode, $stripeSession);
@@ -3900,7 +3876,7 @@ class CatalogController extends Controller
                 ]);
 
                 return redirect()->route('advertiser.checkout')
-                    ->with('error', 'Order not found. Please contact support with your payment reference.');
+                    ->with('error', UserMessages::get('payment.order_missing_after_pay'));
             }
 
             $paidOrders = $orders->filter(fn (Order $order) => $order->payment_status === 'paid');
@@ -3917,7 +3893,7 @@ class CatalogController extends Controller
                 }
 
                 return redirect()->route('advertiser.checkout')
-                    ->with('error', 'Payment was received but the listing(s) are no longer available. Contact support with your payment reference.');
+                    ->with('error', UserMessages::get('payment.listings_gone_after_pay'));
             }
 
             if ($newlyPaid->isNotEmpty()) {
@@ -3968,7 +3944,7 @@ class CatalogController extends Controller
             Log::error('Stack trace: '.$e->getTraceAsString());
 
             return redirect()->route('advertiser.checkout')
-                ->with('error', UserFacingError::message($e, 'Payment verification failed. Please try again.'));
+                ->with('error', UserFacingError::message($e, UserMessages::get('payment.verification_failed')));
         }
     }
 
@@ -4499,7 +4475,7 @@ class CatalogController extends Controller
             if (! app(StripeCustomerService::class)->configured()) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Card payments are not configured. Set STRIPE_SECRET and STRIPE_KEY, or choose another payment method.',
+                    'message' => UserMessages::get('payment.cards_not_configured'),
                 ], 503);
             }
 
@@ -4592,7 +4568,7 @@ class CatalogController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Unable to start payment retry. Please try again or contact support.',
+                'message' => UserFacingError::message($e, UserMessages::get('payment.pay_again_failed')),
             ], 500);
         }
     }
@@ -6630,7 +6606,7 @@ class CatalogController extends Controller
         if (! $advertiserRoleId) {
             return response()->json([
                 'success' => false,
-                'message' => 'Advertiser role not configured.',
+                'message' => UserMessages::get('payment.wallet_unavailable'),
             ]);
         }
 

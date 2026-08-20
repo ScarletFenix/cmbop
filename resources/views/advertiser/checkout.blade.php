@@ -395,17 +395,16 @@
                             </div>
                             @if(empty($stripeConfigured))
                                 <div class="alert alert-warning py-2 px-3 mb-3 small" id="stripeNotConfiguredAlert">
-                                    Card payments are not configured on this server. Set <code>STRIPE_KEY</code> and <code>STRIPE_SECRET</code> in <code>.env</code>, then run <code>php artisan config:clear</code>, or pay with wallet.
+                                    {{ \App\Support\UserMessages::get('payment.cards_not_configured') }}
                                 </div>
                             @elseif(!app(\App\Services\StripeCustomerService::class)->usersTableReady())
                                 <div class="alert alert-warning py-2 px-3 mb-3 small" id="stripeSchemaAlert">
-                                    Stripe keys are present, but the database is missing <code>users.stripe_customer_id</code>.
-                                    Run <code>database/sql/fix_users_stripe_customer_columns.sql</code> in phpMyAdmin (Hostinger), then retry card checkout.
+                                    {{ \App\Support\UserMessages::get('payment.stripe_schema_missing') }}
                                 </div>
                             @endif
                             @if(empty($paypalConfigured))
                                 <div class="alert alert-warning py-2 px-3 mb-3 small" id="paypalNotConfiguredAlert">
-                                    PayPal is not configured on this server. Set <code>PAYPAL_CLIENT_ID</code> and <code>PAYPAL_SECRET</code> in <code>.env</code>, then run <code>php artisan config:clear</code>, or pay with wallet or card.
+                                    {{ \App\Support\UserMessages::get('payment.paypal_not_configured_checkout') }}
                                 </div>
                             @endif
 
@@ -1395,7 +1394,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 Swal.fire({
                     icon: 'warning',
                     title: 'Card payments unavailable',
-                    html: 'Stripe is not configured on this server. Set <code>STRIPE_KEY</code> and <code>STRIPE_SECRET</code> in <code>.env</code>, then run <code>php artisan config:clear</code> — or pay with wallet.'
+                    text: @json(\App\Support\UserMessages::get('payment.cards_not_configured'))
                 });
                 return;
             }
@@ -1403,7 +1402,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 Swal.fire({
                     icon: 'warning',
                     title: 'PayPal unavailable',
-                    html: 'PayPal is not configured on this server. Set <code>PAYPAL_CLIENT_ID</code> and <code>PAYPAL_SECRET</code> in <code>.env</code>, then run <code>php artisan config:clear</code> — or pay with wallet or card.'
+                    text: @json(\App\Support\UserMessages::get('payment.paypal_not_configured_checkout'))
                 });
                 return;
             }
@@ -1671,7 +1670,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 syncPlaceOrderForModeration();
             } else {
                 const modTitle = data.moderation?.title || (response.status === 503 ? 'Card payments unavailable' : 'Error');
-                const modMsg = data.moderation?.failures?.[0]?.message || data.message || 'Failed to process order';
+                const modMsg = data.moderation?.failures?.[0]?.message || data.message || @json(\App\Support\UserMessages::get('payment.order_failed'));
                 Swal.fire({
                     icon: 'error',
                     title: modTitle,

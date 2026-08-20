@@ -42,6 +42,7 @@ class UserFacingErrorTest extends TestCase
         $this->assertFalse(UserFacingError::isSafe(new \Exception('Undefined variable $wallet')));
         $this->assertFalse(UserFacingError::isSafe(new \Exception('Class "App\\Foo" not found')));
         $this->assertFalse(UserFacingError::isSafe(new \Exception('/var/www/vendor/laravel/framework/src/x.php line 12')));
+        $this->assertFalse(UserFacingError::isSafe(new \Exception('cURL error 28: Operation timed out')));
         $this->assertFalse(UserFacingError::isSafe(new \Exception('')));
         $this->assertFalse(UserFacingError::isSafe(new \Exception(str_repeat('a', 250))));
     }
