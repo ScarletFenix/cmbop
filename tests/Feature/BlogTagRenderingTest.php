@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Blog;
+use App\Models\BlogTranslation;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -17,7 +18,7 @@ class BlogTagRenderingTest extends TestCase
 
     private function makePost(string $slug, mixed $tags): Blog
     {
-        return Blog::create([
+        $blog = Blog::create([
             'title' => 'Post '.$slug,
             'slug' => $slug,
             'content' => '<p>Body copy for the post.</p>',
@@ -26,6 +27,18 @@ class BlogTagRenderingTest extends TestCase
             'published_at' => now(),
             'tags' => $tags,
         ]);
+
+        BlogTranslation::create([
+            'blog_id' => $blog->id,
+            'locale' => 'en',
+            'title' => $blog->title,
+            'slug' => $blog->slug,
+            'excerpt' => $blog->excerpt,
+            'content' => $blog->content,
+            'is_published' => true,
+        ]);
+
+        return $blog;
     }
 
     public function test_a_row_with_nested_tags_no_longer_takes_down_the_blog(): void

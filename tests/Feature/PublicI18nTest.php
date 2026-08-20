@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Support\PublicI18n;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -46,12 +47,12 @@ class PublicI18nTest extends TestCase
     public function test_public_marketing_pages_exist_for_each_locale(): void
     {
         $prefixes = [''];
-        foreach (\App\Support\PublicI18n::prefixed() as $locale) {
+        foreach (PublicI18n::prefixed() as $locale) {
             $prefixes[] = '/'.$locale;
         }
 
         foreach ($prefixes as $prefix) {
-            foreach (['/pricing', '/marketplace', '/faq', '/about', '/cookie-policy', '/refund-policy'] as $path) {
+            foreach (['/pricing', '/marketplace', '/faq', '/about', '/blog', '/cookie-policy', '/refund-policy'] as $path) {
                 $this->get($prefix.$path)->assertOk();
             }
         }

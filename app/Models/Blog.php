@@ -182,6 +182,47 @@ class Blog extends Model
             ->where('published_at', '<=', static::PLAUSIBLE_SQL_DATETIME_CEIL);
     }
 
+    /**
+     * Public listings (index, footer, related, marketing cards): only posts
+     * with a published translation for this locale. Does not fall back to
+     * English or primary_locale — that belongs on show() / canonical only.
+     */
+    public function scopeWithPublishedLocale($query, string $locale)
+    {
+        return $query
+            ->whereHas('translations', function ($translations) use ($locale) {
+                $translations->where('locale', $locale)->where('is_published', true);
+            })
+            ->with(['translations' => function ($translations) use ($locale) {
+                $translations->where('locale', $locale)->where('is_published', true);
+            }]);
+    }
+
+    /**
+     * Overlay listing fields from the published row for $locale.
+     * No English / primary fallback — callers must have filtered first.
+     */
+    public function applyPublishedLocale(string $locale): static
+    {
+        $translation = $this->translationFor($locale, null);
+        if (! $translation) {
+            return $this;
+        }
+
+        $this->setAttribute('title', $translation->title);
+        $this->setAttribute('slug', $translation->slug);
+        if (filled($translation->excerpt)) {
+            $this->setAttribute('excerpt', $translation->excerpt);
+        }
+        if (filled($translation->content)) {
+            $this->setAttribute('content', $translation->content);
+        }
+        $this->setAttribute('resolved_locale', $translation->locale);
+        $this->setAttribute('fallback_notice', false);
+
+        return $this;
+    }
+
     public function getFormattedTagsAttribute()
     {
         if ($this->tags && is_array($this->tags)) {

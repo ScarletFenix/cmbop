@@ -681,26 +681,160 @@ class BlogTranslationFeatureTest extends TestCase
             ->assertDontSee('/de/blog/localized-post', false);
     }
 
-    public function test_english_sitemap_includes_de_primary_post_without_en_translation(): void
+    public function test_public_index_lists_only_published_translation_for_selected_locale(): void
+    {
+        CuratedBlogSync::ensurePresent();
+        Blog::query()->update(['published_at' => now()->subDay()]);
+
+        $english = Blog::factory()->published()->create([
+            'title' => 'English Index Only Title',
+            'slug' => 'english-index-only',
+            'published_at' => now(),
+        ]);
+        BlogTranslation::create([
+            'blog_id' => $english->id,
+            'locale' => 'en',
+            'title' => 'English Index Only Title',
+            'slug' => 'english-index-only',
+            'excerpt' => 'English excerpt',
+            'content' => '<p>English body</p>',
+            'is_published' => true,
+        ]);
+
+        $german = Blog::factory()->published()->create([
+            'title' => 'German leftover index title',
+            'slug' => 'german-index-only',
+            'primary_locale' => 'de',
+            'published_at' => now(),
+        ]);
+        BlogTranslation::create([
+            'blog_id' => $german->id,
+            'locale' => 'de',
+            'title' => 'Deutscher Index Only Titel',
+            'slug' => 'deutscher-index-only',
+            'excerpt' => 'Deutscher Auszug',
+            'content' => '<p>Deutscher Inhalt</p>',
+            'is_published' => true,
+        ]);
+
+        $bilingual = Blog::factory()->published()->create([
+            'title' => 'Bilingual English Index Title',
+            'slug' => 'bilingual-index-post',
+            'published_at' => now(),
+        ]);
+        BlogTranslation::create([
+            'blog_id' => $bilingual->id,
+            'locale' => 'en',
+            'title' => 'Bilingual English Index Title',
+            'slug' => 'bilingual-index-post',
+            'excerpt' => 'English excerpt',
+            'content' => '<p>English body</p>',
+            'is_published' => true,
+        ]);
+        BlogTranslation::create([
+            'blog_id' => $bilingual->id,
+            'locale' => 'de',
+            'title' => 'Zweisprachiger Index Titel',
+            'slug' => 'zweisprachiger-index-beitrag',
+            'excerpt' => 'Deutscher Auszug',
+            'content' => '<p>Deutscher Inhalt</p>',
+            'is_published' => true,
+        ]);
+
+        $this->get('/blog')
+            ->assertOk()
+            ->assertSee('English Index Only Title', false)
+            ->assertSee('Bilingual English Index Title', false)
+            ->assertDontSee('Deutscher Index Only Titel', false)
+            ->assertDontSee('German leftover index title', false)
+            ->assertDontSee('Zweisprachiger Index Titel', false);
+
+        $this->get('/de/blog')
+            ->assertOk()
+            ->assertSee('Deutscher Index Only Titel', false)
+            ->assertSee('Zweisprachiger Index Titel', false)
+            ->assertDontSee('English Index Only Title', false)
+            ->assertDontSee('Bilingual English Index Title', false);
+    }
+
+    public function test_related_posts_list_only_the_requested_locale(): void
+    {
+        CuratedBlogSync::ensurePresent();
+        Blog::query()->update(['published_at' => now()->subDay()]);
+
+        $shown = Blog::factory()->published()->create([
+            'title' => 'English Shown Related Host',
+            'slug' => 'english-shown-related-host',
+            'published_at' => now(),
+        ]);
+        BlogTranslation::create([
+            'blog_id' => $shown->id,
+            'locale' => 'en',
+            'title' => 'English Shown Related Host',
+            'slug' => 'english-shown-related-host',
+            'excerpt' => 'Excerpt',
+            'content' => '<p>English body</p>',
+            'is_published' => true,
+        ]);
+
+        $german = Blog::factory()->published()->create([
+            'title' => 'German leftover related title',
+            'slug' => 'german-related-only',
+            'primary_locale' => 'de',
+            'published_at' => now()->subSecond(),
+        ]);
+        BlogTranslation::create([
+            'blog_id' => $german->id,
+            'locale' => 'de',
+            'title' => 'Deutscher Related Hidden Titel',
+            'slug' => 'deutscher-related-hidden',
+            'excerpt' => 'Auszug',
+            'content' => '<p>Deutscher Inhalt</p>',
+            'is_published' => true,
+        ]);
+
+        $related = Blog::factory()->published()->create([
+            'title' => 'English Related Visible Title',
+            'slug' => 'english-related-visible',
+            'published_at' => now()->subSeconds(2),
+        ]);
+        BlogTranslation::create([
+            'blog_id' => $related->id,
+            'locale' => 'en',
+            'title' => 'English Related Visible Title',
+            'slug' => 'english-related-visible',
+            'excerpt' => 'Excerpt',
+            'content' => '<p>Related body</p>',
+            'is_published' => true,
+        ]);
+
+        $this->get('/blog/english-shown-related-host')
+            ->assertOk()
+            ->assertSee('English Related Visible Title', false)
+            ->assertDontSee('Deutscher Related Hidden Titel', false)
+            ->assertDontSee('German leftover related title', false);
+    }
+
+    public function test_english_sitemap_excludes_de_primary_post_without_en_translation(): void
     {
         $this->artisan('blog:upsert-gastbeitraege-europa')->assertSuccessful();
 
         $blog = Blog::query()->where('slug', GastbeitraegeEuropaBlogPost::SLUG)->firstOrFail();
         $this->assertFalse(
             $blog->translations()->where('locale', 'en')->exists(),
-            'Fixture must stay DE-only so the sitemap fallback is actually tested.'
+            'Fixture must stay DE-only so the locale sitemap filter is actually tested.'
         );
 
         $this->get('/sitemap-en.xml')
             ->assertOk()
-            ->assertSee('/blog/'.GastbeitraegeEuropaBlogPost::SLUG, false);
+            ->assertDontSee('/blog/'.GastbeitraegeEuropaBlogPost::SLUG, false);
 
         $this->get('/sitemap-de.xml')
             ->assertOk()
             ->assertSee('/de/blog/'.GastbeitraegeEuropaBlogPost::SLUG, false);
     }
 
-    public function test_sitemap_fallback_does_not_reuse_another_posts_translation_slug(): void
+    public function test_english_sitemap_does_not_list_de_only_posts(): void
     {
         $listed = Blog::factory()->published()->create([
             'title' => 'Listed English Post',
@@ -735,7 +869,8 @@ class BlogTranslationFeatureTest extends TestCase
 
         $enSitemap = $this->get('/sitemap-en.xml')->assertOk()->getContent();
         $this->assertSame(1, substr_count($enSitemap, '<loc>'.url('/blog/shared-fallback-slug').'</loc>'));
-        $this->assertSame(1, substr_count($enSitemap, '<loc>'.url('/blog/nur-deutscher-beitrag').'</loc>'));
+        $this->assertSame(0, substr_count($enSitemap, '<loc>'.url('/blog/nur-deutscher-beitrag').'</loc>'));
+        $this->assertSame(0, substr_count($enSitemap, '<loc>'.url('/de/blog/nur-deutscher-beitrag').'</loc>'));
 
         $html = $this->get('/blog/shared-fallback-slug')
             ->assertOk()
@@ -744,7 +879,7 @@ class BlogTranslationFeatureTest extends TestCase
         $this->assertDoesNotMatchRegularExpression('/<h1[^>]*>\s*Nur Deutscher Beitrag\s*<\/h1>/', $html);
     }
 
-    public function test_sitemap_fallback_skips_slug_owned_by_another_locale_translation(): void
+    public function test_english_sitemap_skips_slug_owned_by_another_locale_translation(): void
     {
         $owner = Blog::factory()->published()->create([
             'title' => 'Owner English Title',
@@ -821,5 +956,72 @@ class BlogTranslationFeatureTest extends TestCase
         $this->assertDoesNotMatchRegularExpression('/<h1[^>]*>\s*Draft Hijack Title\s*<\/h1>/', $html);
         $this->assertStringContainsString('Live published body', $html);
         $this->assertStringNotContainsString('Draft hijack body', $html);
+    }
+
+    public function test_sitemap_excludes_posts_outside_the_published_scope(): void
+    {
+        $blog = Blog::factory()->published()->create([
+            'title' => 'Ancient Leftover Post',
+            'slug' => 'ancient-leftover-post',
+            'published_at' => '1969-06-01 00:00:00',
+        ]);
+        BlogTranslation::create([
+            'blog_id' => $blog->id,
+            'locale' => 'en',
+            'title' => 'Ancient Leftover Post',
+            'slug' => 'ancient-leftover-post',
+            'excerpt' => 'Excerpt',
+            'content' => '<p>Body</p>',
+            'is_published' => true,
+        ]);
+
+        $this->assertFalse(Blog::published()->whereKey($blog->id)->exists());
+
+        $this->get('/blog')
+            ->assertOk()
+            ->assertDontSee('Ancient Leftover Post', false);
+        $this->get('/sitemap-en.xml')
+            ->assertOk()
+            ->assertDontSee('/blog/ancient-leftover-post', false);
+    }
+
+    public function test_unpublished_translation_is_hidden_from_that_locale_index(): void
+    {
+        CuratedBlogSync::ensurePresent();
+        Blog::query()->update(['published_at' => now()->subDay()]);
+
+        $blog = Blog::factory()->published()->create([
+            'title' => 'English Published Locale',
+            'slug' => 'english-published-locale',
+            'published_at' => now(),
+        ]);
+        BlogTranslation::create([
+            'blog_id' => $blog->id,
+            'locale' => 'en',
+            'title' => 'English Published Locale',
+            'slug' => 'english-published-locale',
+            'excerpt' => 'Excerpt',
+            'content' => '<p>English body</p>',
+            'is_published' => true,
+        ]);
+        BlogTranslation::create([
+            'blog_id' => $blog->id,
+            'locale' => 'de',
+            'title' => 'Unpublished German Index Title',
+            'slug' => 'unpublished-german-index',
+            'excerpt' => 'Auszug',
+            'content' => '<p>Deutscher Inhalt</p>',
+            'is_published' => false,
+        ]);
+
+        $this->get('/blog')
+            ->assertOk()
+            ->assertSee('English Published Locale', false);
+        $this->get('/de/blog')
+            ->assertOk()
+            ->assertDontSee('Unpublished German Index Title', false);
+        $this->get('/sitemap-de.xml')
+            ->assertOk()
+            ->assertDontSee('/de/blog/unpublished-german-index', false);
     }
 }

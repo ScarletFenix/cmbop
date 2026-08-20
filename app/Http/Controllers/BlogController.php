@@ -18,28 +18,13 @@ class BlogController extends Controller
         $requestedLocale = public_locale();
 
         $blog = Blog::published()
-            ->with(['translations' => function ($query) {
-                $query->where('is_published', true);
-            }])
+            ->withPublishedLocale($requestedLocale)
             ->orderByDesc('published_at')
             ->paginate(12);
 
-        $blog->getCollection()->transform(function (Blog $post) use ($requestedLocale) {
-            $translation = $post->displayTranslation($requestedLocale, 'en');
-            if ($translation) {
-                $post->setAttribute('title', $translation->title);
-                $post->setAttribute('slug', $translation->slug);
-                $post->setAttribute('excerpt', $translation->excerpt ?: $post->excerpt);
-                $post->setAttribute('content', $translation->content ?: $post->content);
-                $post->setAttribute('resolved_locale', $translation->locale);
-                $post->setAttribute('fallback_notice', $translation->locale !== $requestedLocale);
-            } else {
-                $post->setAttribute('resolved_locale', $post->primary_locale ?: 'en');
-                $post->setAttribute('fallback_notice', false);
-            }
-
-            return $post;
-        });
+        $blog->getCollection()->transform(
+            fn (Blog $post) => $post->applyPublishedLocale($requestedLocale)
+        );
 
         return view('pages.blog', compact('blog'));
     }
@@ -130,24 +115,15 @@ class BlogController extends Controller
         $hreflangPath = 'blog/'.$translation->slug;
 
         $related = Blog::published()
-            ->with(['translations' => function ($query) {
-                $query->where('is_published', true);
-            }])
+            ->withPublishedLocale($requestedLocale)
             ->where('id', '!=', $blog->id)
             ->orderByDesc('published_at')
             ->limit(3)
             ->get();
 
-        $related->transform(function (Blog $post) use ($requestedLocale) {
-            $resolved = $post->displayTranslation($requestedLocale, 'en');
-            if ($resolved) {
-                $post->setAttribute('title', $resolved->title);
-                $post->setAttribute('slug', $resolved->slug);
-                $post->setAttribute('content', $resolved->content ?: $post->content);
-            }
-
-            return $post;
-        });
+        $related->transform(
+            fn (Blog $post) => $post->applyPublishedLocale($requestedLocale)
+        );
 
         return view('pages.blog-single', compact(
             'blog',

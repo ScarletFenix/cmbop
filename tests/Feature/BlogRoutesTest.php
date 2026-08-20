@@ -47,7 +47,7 @@ class BlogRoutesTest extends TestCase
             ->whereIn('slug', CuratedBlogSync::curatedSlugs())
             ->update(['published_at' => now()->subDay()]);
 
-        Blog::create([
+        $footerPost = Blog::create([
             'title' => 'Footer Update Post',
             'slug' => 'footer-update-post',
             'excerpt' => 'Daily SEO update for the footer.',
@@ -56,6 +56,15 @@ class BlogRoutesTest extends TestCase
             'status' => 'published',
             'published_at' => now(),
             'created_by' => $author->id,
+        ]);
+        BlogTranslation::create([
+            'blog_id' => $footerPost->id,
+            'locale' => 'en',
+            'title' => 'Footer Update Post',
+            'slug' => 'footer-update-post',
+            'excerpt' => 'Daily SEO update for the footer.',
+            'content' => '<p>Footer recent updates content.</p>',
+            'is_published' => true,
         ]);
 
         $this->get(route('blog.index'))
@@ -91,6 +100,11 @@ class BlogRoutesTest extends TestCase
             ->assertSee('Deutscher Footer Titel', false)
             ->assertSee('/de/blog/deutscher-footer-titel', false)
             ->assertDontSee('English leftover title', false);
+
+        $this->get('/about')
+            ->assertOk()
+            ->assertDontSee('Deutscher Footer Titel', false)
+            ->assertDontSee('/de/blog/deutscher-footer-titel', false);
     }
 
     public function test_future_published_at_posts_are_hidden_from_public_blog(): void

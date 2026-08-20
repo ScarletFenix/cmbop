@@ -80,18 +80,13 @@ class SitemapController extends Controller
         $translations = BlogTranslation::query()
             ->select('blog_translations.*')
             ->join('blogs', 'blogs.id', '=', 'blog_translations.blog_id')
+            ->whereIn('blogs.id', Blog::published()->select('blogs.id'))
             ->where('blog_translations.locale', $locale)
             ->where('blog_translations.is_published', true)
-            ->where('blogs.status', 'published')
-            ->where('blogs.published_at', '<=', now())
             ->orderByDesc('blogs.published_at')
             ->get();
 
-        $listedIds = [];
-        $listedSlugs = [];
         foreach ($translations as $translation) {
-            $listedIds[] = (int) $translation->blog_id;
-            $listedSlugs[] = $translation->slug;
             $path = 'blog/'.$translation->slug;
             $slugsByLocale = BlogTranslation::query()
                 ->where('blog_id', $translation->blog_id)
@@ -106,42 +101,6 @@ class SitemapController extends Controller
 
             $entry = $this->urlEntry($path, $locale, 'monthly', '0.6', $availableLocales, $pathByLocale);
             $entry['lastmod'] = optional($translation->updated_at)?->toAtomString();
-            $urls[] = $entry;
-        }
-
-        // DE-primary pillars (and legacy rows) are public even without a row
-        // for this sitemap locale. Use the display translation slug so a
-        // colliding blogs.slug cannot duplicate another post's URL.
-        $fallbackBlogs = Blog::published()
-            ->with(['translations' => function ($query) {
-                $query->where('is_published', true);
-            }])
-            ->when($listedIds !== [], fn ($query) => $query->whereNotIn('id', $listedIds))
-            ->get();
-
-        foreach ($fallbackBlogs as $blog) {
-            $resolved = $blog->displayTranslation($locale, 'en');
-            $pathSlug = $resolved?->slug ?: $blog->slug;
-            if ($pathSlug === '' || in_array($pathSlug, $listedSlugs, true)) {
-                continue;
-            }
-            // listedSlugs is this locale only. show() resolves any published
-            // translation slug, so a FR-owned slug must not appear as this
-            // post's EN fallback URL.
-            if ($this->publicSlugOwnedByAnotherBlog($pathSlug, (int) $blog->id)) {
-                continue;
-            }
-            $listedSlugs[] = $pathSlug;
-            $path = 'blog/'.$pathSlug;
-            $slugsByLocale = $blog->translations->pluck('slug', 'locale')->all();
-            $slugsByLocale[$locale] = $pathSlug;
-            $pathByLocale = [];
-            foreach ($slugsByLocale as $altLocale => $slug) {
-                $pathByLocale[$altLocale] = 'blog/'.$slug;
-            }
-
-            $entry = $this->urlEntry($path, $locale, 'monthly', '0.6', array_keys($slugsByLocale), $pathByLocale);
-            $entry['lastmod'] = optional($blog->updated_at)?->toAtomString();
             $urls[] = $entry;
         }
 
@@ -177,17 +136,5 @@ class SitemapController extends Controller
             'priority' => $priority,
             'alternates' => $alternates,
         ];
-    }
-
-    private function publicSlugOwnedByAnotherBlog(string $slug, int $blogId): bool
-    {
-        if (Blog::query()->where('slug', $slug)->where('id', '!=', $blogId)->exists()) {
-            return true;
-        }
-
-        return BlogTranslation::query()
-            ->where('slug', $slug)
-            ->where('blog_id', '!=', $blogId)
-            ->exists();
     }
 }

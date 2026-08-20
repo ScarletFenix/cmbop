@@ -260,22 +260,14 @@ class AppServiceProvider extends ServiceProvider
                 if (Schema::hasTable('blogs')) {
                     $locale = public_locale();
                     $posts = Blog::published()
-                        ->with(['translations' => function ($query) {
-                            $query->where('is_published', true);
-                        }])
+                        ->withPublishedLocale($locale)
                         ->orderByDesc('published_at')
                         ->limit(4)
                         ->get();
 
-                    $posts->transform(function (Blog $post) use ($locale) {
-                        $translation = $post->displayTranslation($locale, 'en');
-                        if ($translation) {
-                            $post->setAttribute('title', $translation->title);
-                            $post->setAttribute('slug', $translation->slug);
-                        }
-
-                        return $post;
-                    });
+                    $posts->transform(
+                        fn (Blog $post) => $post->applyPublishedLocale($locale)
+                    );
                 }
             } catch (\Throwable) {
                 $posts = collect();
