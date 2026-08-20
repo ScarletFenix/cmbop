@@ -10,6 +10,7 @@ use App\Services\ActivityLogger;
 use App\Services\ContentUpload\ArticleHtmlSanitizer;
 use App\Services\ContentUpload\ContentUploadService;
 use App\Services\ContentUpload\DocumentTextExtractor;
+use App\Services\OrderChatContactGuard;
 use App\Support\UserMessages;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\Cache;
@@ -258,6 +259,39 @@ class ContentModerationService
             ];
         }
 
+        $contactHaystack = trim($title."\n".$text."\n".$html);
+        if (app(OrderChatContactGuard::class)->isBlocked($contactHaystack, OrderChatContactGuard::MODE_CONTENT)) {
+            $message = UserMessages::get('moderation.contact_article');
+            $token = Str::random(40);
+            $log = ContentModerationLog::create([
+                'user_id' => $user?->id,
+                'content_submission_id' => $contentSubmissionId,
+                'document_url' => $sourceLabel,
+                'document_id' => $documentId,
+                'status' => ContentModerationLog::STATUS_REJECTED,
+                'passed' => false,
+                'error_code' => 'off_platform_contact',
+                'error_message' => $message,
+                'scan_token' => $token,
+                'word_count' => str_word_count($text),
+                'signals' => ['off_platform_contact' => true, 'source' => 'upload'],
+                'quality_report' => ['blocking_issues' => ['off_platform_contact'], 'word_count' => str_word_count($text)],
+            ]);
+
+            return [
+                'passed' => false,
+                'status' => 'rejected',
+                'user_title' => 'Article needs changes',
+                'user_message' => $message,
+                'loading_done' => true,
+                'log' => $log,
+                'report' => ['summary' => $message, 'fix_hints' => [$message]],
+                'scan_token' => $token,
+                'matched_terms' => [],
+                'blocked_urls' => [],
+            ];
+        }
+
         if (! $this->isEnabled()) {
             $token = Str::random(40);
             $log = ContentModerationLog::create([
@@ -302,9 +336,10 @@ class ContentModerationService
 
         $threshold = $this->threshold();
         $restrictedFail = $score['max_confidence'] >= $threshold;
-        // Quality is advisory unless explicitly configured to block.
-        $qualityBlocks = (bool) (($cfg['quality']['block_on_quality_failure'] ?? false)
-            && ! empty($quality['blocking_issues']));
+        $blocking = $quality['blocking_issues'] ?? [];
+        $alwaysBlock = array_intersect($blocking, ['url_shortener', 'placeholder']);
+        $qualityBlocks = $alwaysBlock !== []
+            || ((bool) ($cfg['quality']['block_on_quality_failure'] ?? false) && $blocking !== []);
         $passed = ! $restrictedFail && ! $qualityBlocks;
 
         $matchedTerms = $score['matched_terms'] ?? [];
@@ -454,8 +489,9 @@ class ContentModerationService
                 $failures[] = [
                     'url' => 'upload:'.$submission->id,
                     'title' => $result['user_title'] ?? 'Article needs changes',
-                    'message' => config('content_upload.help.compliance_reject')
-                        ?: ($result['user_message'] ?? 'Please revise restricted content before ordering.'),
+                    'message' => $result['user_message']
+                        ?? (config('content_upload.help.compliance_reject')
+                            ?: 'Please revise this article before ordering.'),
                     'report' => $result['report'] ?? [],
                 ];
             }
@@ -567,6 +603,10 @@ class ContentModerationService
         $quality = is_array($log?->quality_report) ? $log->quality_report : [];
         $blocking = $quality['blocking_issues'] ?? [];
         if (is_array($blocking) && $blocking !== [] && ! $log?->detected_category) {
+            if (in_array('off_platform_contact', $blocking, true)
+                || ($log?->error_code === 'off_platform_contact')) {
+                return UserMessages::get('moderation.contact_article');
+            }
             if (in_array('url_shortener', $blocking, true)) {
                 return UserMessages::get('moderation.quality_shortener');
             }

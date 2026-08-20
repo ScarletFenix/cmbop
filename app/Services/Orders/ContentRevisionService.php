@@ -627,7 +627,7 @@ class ContentRevisionService
 
     private function assertNoOffPlatformContact(string $text, string $field): void
     {
-        if ($this->chatGuard->isBlocked($text)) {
+        if ($this->chatGuard->isBlocked($text, OrderChatContactGuard::MODE_CONTENT)) {
             throw ValidationException::withMessages([
                 $field => OrderChatContactGuard::messageFor('revision'),
             ]);

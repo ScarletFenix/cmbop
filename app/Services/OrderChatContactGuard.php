@@ -11,17 +11,21 @@ class OrderChatContactGuard
 
     public const REASON_ASK = 'contact_ask';
 
+    public const MODE_CHAT = 'chat';
+
+    public const MODE_CONTENT = 'content';
+
     /**
      * @return array{blocked: bool, reason: ?string}
      */
-    public function inspect(string $message): array
+    public function inspect(string $message, string $mode = self::MODE_CHAT): array
     {
         $normalized = $this->normalize($message);
         if ($normalized === '') {
             return ['blocked' => false, 'reason' => null];
         }
 
-        if ($this->detectsShare($normalized, $message)) {
+        if ($this->detectsShare($normalized, $message, $mode)) {
             return ['blocked' => true, 'reason' => self::REASON_SHARE];
         }
 
@@ -32,9 +36,9 @@ class OrderChatContactGuard
         return ['blocked' => false, 'reason' => null];
     }
 
-    public function isBlocked(string $message): bool
+    public function isBlocked(string $message, string $mode = self::MODE_CHAT): bool
     {
-        return $this->inspect($message)['blocked'];
+        return $this->inspect($message, $mode)['blocked'];
     }
 
     /**
@@ -77,7 +81,7 @@ class OrderChatContactGuard
         return trim($text);
     }
 
-    private function detectsShare(string $normalized, string $original): bool
+    private function detectsShare(string $normalized, string $original, string $mode = self::MODE_CHAT): bool
     {
         if (preg_match('/mailto:\s*[^\s]+/i', $original)) {
             return true;
@@ -115,8 +119,18 @@ class OrderChatContactGuard
         if (preg_match('/\b(?:whatsapp|telegram|signal|skype|discord|viber)\b/i', $normalized)
             && preg_match('/[@+]?\w{3,}|\d{6,}/', $normalized)
         ) {
-            // Avoid blocking "please check WhatsApp web article" style without a handle/number.
-            if (preg_match('/\b(?:whatsapp|telegram|signal|skype|discord|viber)\s*[:\-]?\s*[@+]?\w{3,}/i', $normalized)
+            // Articles/descriptions may mention "Telegram marketing" — only treat
+            // an explicit @handle or +number as a share. Chat stays stricter.
+            $explicitHandle = (bool) preg_match(
+                '/\b(?:whatsapp|telegram|signal|skype|discord|viber)\s*[:\-]?\s*[@+]\S+/i',
+                $normalized
+            );
+            if ($mode === self::MODE_CONTENT) {
+                return $explicitHandle;
+            }
+
+            if ($explicitHandle
+                || preg_match('/\b(?:whatsapp|telegram|signal|skype|discord|viber)\s*[:\-]?\s*[@+]?\w{3,}/i', $normalized)
                 || preg_match('/\b(?:add|message|msg|dm|contact|reach|ping|call)\b.{0,40}\b(?:whatsapp|telegram|signal|skype|discord)\b/i', $normalized)
                 || preg_match('/\b(?:whatsapp|telegram|signal|skype|discord)\b.{0,40}\b(?:me|us|number|handle|id)\b/i', $normalized)
             ) {

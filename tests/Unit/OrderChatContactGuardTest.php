@@ -51,6 +51,22 @@ class OrderChatContactGuardTest extends TestCase
         }
     }
 
+    public function test_content_mode_allows_product_mentions_without_handles(): void
+    {
+        $this->assertFalse($this->guard->isBlocked(
+            'This guide covers Telegram marketing and WhatsApp Business tips for brands.',
+            OrderChatContactGuard::MODE_CONTENT
+        ));
+        $this->assertTrue($this->guard->isBlocked(
+            'Telegram me @brandhelp after you publish.',
+            OrderChatContactGuard::MODE_CONTENT
+        ));
+        $this->assertTrue($this->guard->isBlocked(
+            'Reach us on telegram: @publisherhelp',
+            OrderChatContactGuard::MODE_CONTENT
+        ));
+    }
+
     public function test_blocks_phone_share_with_context(): void
     {
         $this->assertTrue($this->guard->isBlocked('My phone is +1 555 123 4567'));

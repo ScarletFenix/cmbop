@@ -4070,7 +4070,7 @@ class CatalogController extends Controller
             ]);
 
             $reason = (string) $request->reason;
-            if (app(OrderChatContactGuard::class)->isBlocked($reason)) {
+            if (app(OrderChatContactGuard::class)->isBlocked($reason, OrderChatContactGuard::MODE_CONTENT)) {
                 return response()->json([
                     'success' => false,
                     'message' => OrderChatContactGuard::messageFor('revision'),

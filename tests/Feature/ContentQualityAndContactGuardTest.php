@@ -106,6 +106,25 @@ class ContentQualityAndContactGuardTest extends TestCase
         $this->assertSame(OrderChatContactGuard::messageFor('article'), $result['message']);
     }
 
+    public function test_evaluation_allows_telegram_as_a_topic_without_a_handle(): void
+    {
+        config(['content_moderation.enabled' => true]);
+
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $body = $this->englishBody().' The piece also covers Telegram marketing for community managers.';
+        $submission->update([
+            'language' => 'en',
+            'extracted_text' => $body,
+            'preview_html' => '<p>'.$body.'</p>',
+            'target_url' => null,
+        ]);
+
+        $result = app(ArticleEvaluationService::class)->evaluate($submission->fresh(), $advertiser);
+
+        $this->assertTrue($result['approved'], (string) ($result['message'] ?? ''));
+    }
+
     public function test_evaluation_approves_a_clean_article(): void
     {
         config([

@@ -101,7 +101,8 @@ class SiteDescriptionRules
         }
 
         $guard = new OrderChatContactGuard;
-        if ($guard->isBlocked($plain) || $guard->isBlocked($html)) {
+        if ($guard->isBlocked($plain, OrderChatContactGuard::MODE_CONTENT)
+            || $guard->isBlocked($html, OrderChatContactGuard::MODE_CONTENT)) {
             $errors[] = OrderChatContactGuard::messageFor('description');
         }
 

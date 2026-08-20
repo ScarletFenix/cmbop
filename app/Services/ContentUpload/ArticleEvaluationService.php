@@ -239,7 +239,7 @@ class ArticleEvaluationService
 
         $contactGuard = app(OrderChatContactGuard::class);
         $contactHaystack = trim($title."\n".$text."\n".$html);
-        if ($contactGuard->isBlocked($contactHaystack)) {
+        if ($contactGuard->isBlocked($contactHaystack, OrderChatContactGuard::MODE_CONTENT)) {
             $message = UserMessages::get('moderation.contact_article');
             $report = [
                 'word_count' => str_word_count($text),
@@ -374,17 +374,29 @@ class ArticleEvaluationService
                 ?: ($cfg['help']['compliance_reject'] ?? 'Please revise restricted content and resubmit.');
             $report['summary'] = $message;
             $category = $scan['log']?->detected_category;
-            $policyLabel = 'Restricted content ('.$this->moderation->categoryTopic($category).')';
-            $report['checks'][] = [
-                'key' => 'restricted_content',
-                'label' => $policyLabel,
-                'status' => 'fail',
-                'detail' => $blockedUrls !== []
-                    ? 'Blocked links: '.implode(', ', array_slice($blockedUrls, 0, 5))
-                    : ($matchedTerms !== []
-                        ? 'Found: '.implode(', ', array_slice($matchedTerms, 0, 10))
-                        : 'Restricted content detected'),
-            ];
+            if (! $category && ! empty($quality['blocking_issues'])) {
+                $message = $this->qualityRejectionMessage($quality);
+                $report['summary'] = $message;
+                $report['passed_quality'] = false;
+                $report['checks'][] = [
+                    'key' => 'quality_policy',
+                    'label' => 'Quality policy',
+                    'status' => 'fail',
+                    'detail' => $message,
+                ];
+            } else {
+                $policyLabel = 'Restricted content ('.$this->moderation->categoryTopic($category).')';
+                $report['checks'][] = [
+                    'key' => 'restricted_content',
+                    'label' => $policyLabel,
+                    'status' => 'fail',
+                    'detail' => $blockedUrls !== []
+                        ? 'Blocked links: '.implode(', ', array_slice($blockedUrls, 0, 5))
+                        : ($matchedTerms !== []
+                            ? 'Found: '.implode(', ', array_slice($matchedTerms, 0, 10))
+                            : 'Restricted content detected'),
+                ];
+            }
 
             $highlighted = $html;
             $canHighlight = mb_strlen($html) <= 200000;
