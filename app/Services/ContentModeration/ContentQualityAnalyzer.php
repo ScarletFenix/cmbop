@@ -89,20 +89,27 @@ class ContentQualityAnalyzer
             $stuffing > 0.12 ? 'Possible keyword stuffing' : 'Looks balanced'
         );
 
-        // Links
+        // Links — shorteners are always reported, even when the article also
+        // exceeds the outbound-link cap, so the author can fix both at once.
         $external = array_values(array_filter($links, fn ($l) => ! str_contains(strtolower($l), 'google.com')));
         $shorteners = array_values(array_filter($external, fn ($l) => $this->isShortener($l, $qualityConfig)));
         $blockQuality = ! empty($qualityConfig['block_on_quality_failure']);
-        if (count($external) > $maxLinks) {
+        $tooManyLinks = count($external) > $maxLinks;
+        if ($tooManyLinks) {
             $checks[] = $this->check('external_links', 'External Links', 'fail', count($external)." found (maximum {$maxLinks})");
             if ($blockQuality) {
                 $blocking[] = 'external_links';
             }
         } elseif ($shorteners !== []) {
             $checks[] = $this->check('external_links', 'External Links', 'fail', count($shorteners).' URL shortener(s) are not allowed');
-            $blocking[] = 'url_shortener';
         } else {
             $checks[] = $this->check('external_links', 'External Links', 'pass', count($external).' found');
+        }
+        if ($shorteners !== []) {
+            $blocking[] = 'url_shortener';
+            if ($tooManyLinks) {
+                $checks[] = $this->check('url_shortener', 'URL shorteners', 'fail', count($shorteners).' URL shortener(s) are not allowed');
+            }
         }
 
         $pass = count(array_filter($checks, fn ($c) => $c['status'] === 'pass'));

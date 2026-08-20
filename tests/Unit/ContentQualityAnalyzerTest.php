@@ -48,6 +48,21 @@ class ContentQualityAnalyzerTest extends TestCase
         $this->assertContains('https://bit.ly/abc123', $result['shortener_urls']);
     }
 
+    public function test_too_many_links_and_a_shortener_are_both_reported(): void
+    {
+        $links = ['https://bit.ly/abc123'];
+        for ($i = 1; $i <= 16; $i++) {
+            $links[] = 'https://example.com/page-'.$i;
+        }
+
+        $result = $this->analyzer->analyze($this->body(), '<p>'.$this->body().'</p>', $links, $this->config);
+
+        $this->assertContains('external_links', $result['blocking_issues']);
+        $this->assertContains('url_shortener', $result['blocking_issues']);
+        $this->assertSame('fail', $this->checkStatus($result, 'external_links'));
+        $this->assertSame('fail', $this->checkStatus($result, 'url_shortener'));
+    }
+
     public function test_placeholder_text_is_a_blocking_failure(): void
     {
         $result = $this->analyzer->analyze(

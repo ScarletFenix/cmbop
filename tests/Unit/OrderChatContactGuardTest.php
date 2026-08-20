@@ -67,6 +67,35 @@ class OrderChatContactGuardTest extends TestCase
         ));
     }
 
+    public function test_content_mode_allows_seo_copy_about_the_site_and_dates(): void
+    {
+        $article = 'Published 2024-12-15. A number of brands should contact their audience '
+            .'and keep conversations outside the site homepage when they build personal contact with readers.';
+
+        $this->assertFalse($this->guard->isBlocked($article, OrderChatContactGuard::MODE_CONTENT));
+        $this->assertTrue($this->guard->isBlocked($article));
+    }
+
+    public function test_content_mode_blocks_messenger_links_and_local_phone_cues(): void
+    {
+        $this->assertTrue($this->guard->isBlocked(
+            'Read more at https://t.me/brandhelp after you publish.',
+            OrderChatContactGuard::MODE_CONTENT
+        ));
+        $this->assertTrue($this->guard->isBlocked(
+            'Message the editor on https://wa.me/441234567890',
+            OrderChatContactGuard::MODE_CONTENT
+        ));
+        $this->assertTrue($this->guard->isBlocked(
+            'Phone 415-555-1234 if the draft needs a change.',
+            OrderChatContactGuard::MODE_CONTENT
+        ));
+        $this->assertFalse($this->guard->isBlocked(
+            'Use a contact form and keep a number of follow-ups in 2024-12-15.',
+            OrderChatContactGuard::MODE_CONTENT
+        ));
+    }
+
     public function test_blocks_phone_share_with_context(): void
     {
         $this->assertTrue($this->guard->isBlocked('My phone is +1 555 123 4567'));

@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Role;
 use App\Models\User;
+use App\Services\ContentModeration\ContentModerationService;
 use App\Services\ContentUpload\ArticleEvaluationService;
 use App\Services\OrderChatContactGuard;
 use App\Support\SiteDescriptionRules;
@@ -152,5 +153,81 @@ class ContentQualityAndContactGuardTest extends TestCase
         $html = '<p>This listing is for your audience and the publishers who write guest posts here. WhatsApp me +441234567890.</p>';
 
         $this->assertNotEmpty(SiteDescriptionRules::errors($html));
+    }
+
+    public function test_evaluation_allows_dates_and_outside_the_site_copy(): void
+    {
+        config(['content_moderation.enabled' => true]);
+
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $body = $this->englishBody()
+            .' Published 2024-12-15. A number of brands should contact their audience'
+            .' and keep conversations outside the site homepage.';
+        $submission->update([
+            'language' => 'en',
+            'extracted_text' => $body,
+            'preview_html' => '<p>'.$body.'</p>',
+            'target_url' => null,
+        ]);
+
+        $result = app(ArticleEvaluationService::class)->evaluate($submission->fresh(), $advertiser);
+
+        $this->assertTrue($result['approved'], (string) ($result['message'] ?? ''));
+    }
+
+    public function test_checkout_still_blocks_contact_when_keyword_moderation_is_off(): void
+    {
+        config(['content_moderation.enabled' => false]);
+
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $body = $this->englishBody().' Telegram me @brandhelp after you publish.';
+        $submission->update([
+            'language' => 'en',
+            'extracted_text' => $body,
+            'preview_html' => '<p>'.$body.'</p><p><a href="https://t.me/brandhelp">chat</a></p>',
+            'target_url' => null,
+        ]);
+
+        $check = app(ContentModerationService::class)->assertSubmissionsApproved(
+            [$submission->fresh()],
+            $advertiser
+        );
+
+        $this->assertFalse($check['ok']);
+        $this->assertStringContainsString(
+            'messaging-app',
+            strtolower((string) ($check['failures'][0]['message'] ?? ''))
+        );
+    }
+
+    public function test_checkout_still_blocks_shorteners_when_keyword_moderation_is_off(): void
+    {
+        config([
+            'content_moderation.enabled' => false,
+            'content_moderation.quality.block_on_quality_failure' => true,
+        ]);
+
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $body = $this->englishBody();
+        $submission->update([
+            'language' => 'en',
+            'extracted_text' => $body,
+            'preview_html' => '<p>'.$body.'</p><p><a href="https://bit.ly/guestpost">read more</a></p>',
+            'target_url' => null,
+        ]);
+
+        $check = app(ContentModerationService::class)->assertSubmissionsApproved(
+            [$submission->fresh()],
+            $advertiser
+        );
+
+        $this->assertFalse($check['ok']);
+        $this->assertStringContainsString(
+            'shortener',
+            strtolower((string) ($check['failures'][0]['message'] ?? ''))
+        );
     }
 }
