@@ -162,12 +162,47 @@ class CatalogExpandCorrectnessTest extends TestCase
         $this->assertStringContainsString('catalog-expand-pricing', $html);
         $this->assertStringContainsString('Sensitive topics', $html);
         $this->assertStringContainsString('+€23.00', $html);
-        $this->assertMatchesRegularExpression('/→\s*€\d+\.\d{2}/u', $html);
+        $this->assertMatchesRegularExpression('/→\s*you pay €\d+\.\d{2}/u', $html);
         $this->assertStringContainsString('Screenshot not available yet', $html);
         $this->assertStringContainsString('No sample article yet', $html);
         $this->assertStringNotContainsString('Not available</a>', $html);
         $this->assertStringNotContainsString('No extra pricing options for this listing.', $html);
         $this->assertStringNotContainsString('Base guest post only', $html);
+    }
+
+    public function test_homepage_only_details_shows_advertiser_you_pay_not_publisher_base(): void
+    {
+        $site = $this->makeSite([
+            'price' => 100,
+            'sensitive_prices' => null,
+            'homepage_placement_prices' => ['7' => 25, '30' => 40],
+        ]);
+
+        $html = $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('base-price-display">€113.00', $html);
+        $this->assertStringContainsString('data-base-price="113"', $html);
+
+        // No sensitive add-ons used to hide the Details pay line entirely, so
+        // advertisers only saw publisher homepage +€ amounts.
+        $this->assertGreaterThanOrEqual(2, substr_count($html, 'You pay:'));
+        $this->assertMatchesRegularExpression('/You pay:\s*<strong>€113\.00<\/strong>/', $html);
+        $this->assertDoesNotMatchRegularExpression('/You pay:\s*<strong>€100\.00<\/strong>/', $html);
+
+        $this->assertStringContainsString('+€25.00', $html);
+        $this->assertStringContainsString('→ you pay €138.00', $html);
+        $this->assertStringContainsString('+€40.00', $html);
+        $this->assertStringContainsString('→ you pay €153.00', $html);
+
+        $payload = $this->actingAs($this->advertiser)
+            ->postJson(route('advertiser.cart.add'), ['id' => $site->id])
+            ->assertOk()
+            ->json();
+
+        $this->assertEquals(113.0, (float) $payload['cart'][0]['price']);
     }
 
     public function test_expand_shows_homepage_and_social_in_site_details_meta(): void
@@ -192,8 +227,10 @@ class CatalogExpandCorrectnessTest extends TestCase
         );
         $this->assertStringContainsString('Facebook', $html);
         $this->assertStringContainsString('Instagram', $html);
-        // No sensitive add-ons → pricing column stays collapsed.
-        $this->assertStringNotContainsString('catalog-expand-pricing', $html);
+        // No sensitive add-ons: pricing column still shows advertiser You pay.
+        $this->assertStringContainsString('catalog-expand-pricing', $html);
+        $this->assertStringContainsString('You pay:', $html);
+        $this->assertStringNotContainsString('Sensitive topics', $html);
         $this->assertStringNotContainsString('Base guest post only', $html);
         // Mobile Details also lists the offers.
         $this->assertStringContainsString('<dt>Homepage promotions</dt>', $html);
@@ -214,7 +251,9 @@ class CatalogExpandCorrectnessTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        $this->assertStringNotContainsString('catalog-expand-pricing', $html);
+        $this->assertStringContainsString('catalog-expand-pricing', $html);
+        $this->assertStringContainsString('You pay:', $html);
+        $this->assertStringNotContainsString('Sensitive topics', $html);
         $this->assertStringNotContainsString('No extra pricing options for this listing.', $html);
         $this->assertStringContainsString('Base guest post only — no homepage, social, or sensitive add-ons.', $html);
         // Site Details always lists Homepage / Social (empty state when not offered).
@@ -262,6 +301,7 @@ class CatalogExpandCorrectnessTest extends TestCase
         $js = file_get_contents(public_path('assets/js/catalog.js'));
         $this->assertIsString($js);
         $this->assertStringContainsString("You pay: <strong>€'", $js);
+        $this->assertStringContainsString('function catalogAdvertiserBasePrice', $js);
         $this->assertStringNotContainsString('Current price:', $js);
     }
 

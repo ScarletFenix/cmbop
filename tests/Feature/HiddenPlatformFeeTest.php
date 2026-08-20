@@ -91,11 +91,16 @@ class HiddenPlatformFeeTest extends TestCase
         $pricing = app(CartPricingService::class)->priceForAdvertiser($site);
         $this->assertSame(113.0, $pricing['total']);
 
-        $this->actingAs($advertiser)
+        $html = $this->actingAs($advertiser)
             ->get(route('advertiser.catalog'))
             ->assertOk()
             ->assertDontSee('platform fee', false)
-            ->assertDontSee('commission', false);
+            ->assertDontSee('commission', false)
+            ->getContent();
+
+        $this->assertStringContainsString('base-price-display">€113.00', $html);
+        $this->assertMatchesRegularExpression('/You pay:\s*<strong>€113\.00<\/strong>/', $html);
+        $this->assertDoesNotMatchRegularExpression('/You pay:\s*<strong>€100\.00<\/strong>/', $html);
     }
 
     public function test_owner_sees_entered_price_and_cannot_add_own_listing_to_cart(): void
@@ -124,6 +129,7 @@ class HiddenPlatformFeeTest extends TestCase
         $this->assertStringContainsString('Your listing', $html);
         $this->assertStringContainsString(Site::cannotOrderOwnListingMessage(), $html);
         $this->assertStringNotContainsString('buy-now', $html);
+        $this->assertStringNotContainsString('You pay:', $html);
         $this->assertStringNotContainsString('platform fee', $html);
         $this->assertStringNotContainsString('commission', $html);
 
@@ -150,6 +156,8 @@ class HiddenPlatformFeeTest extends TestCase
         $this->assertStringContainsString('data-base-price="103.5"', $html);
         $this->assertStringContainsString('base-price-display">€103.50', $html);
         $this->assertStringNotContainsString('base-price-display">€90.00', $html);
+        $this->assertMatchesRegularExpression('/You pay:\s*<strong>€103\.50<\/strong>/', $html);
+        $this->assertDoesNotMatchRegularExpression('/You pay:\s*<strong>€90\.00<\/strong>/', $html);
 
         $payload = $this->actingAs($advertiser)
             ->postJson(route('advertiser.cart.add'), ['id' => $site->id])
@@ -177,6 +185,8 @@ class HiddenPlatformFeeTest extends TestCase
         $this->assertStringContainsString('base-price-display">€46.00', $html);
         $this->assertStringNotContainsString('base-price-display">€40.00', $html);
         $this->assertStringContainsString('data-publisher-price="40"', $html);
+        $this->assertMatchesRegularExpression('/You pay:\s*<strong>€46\.00<\/strong>/', $html);
+        $this->assertDoesNotMatchRegularExpression('/You pay:\s*<strong>€40\.00<\/strong>/', $html);
 
         $payload = $this->actingAs($advertiser)
             ->postJson(route('advertiser.cart.add'), ['id' => $site->id])
@@ -185,6 +195,33 @@ class HiddenPlatformFeeTest extends TestCase
 
         $this->assertEquals(46.0, (float) $payload['cart'][0]['price']);
         $this->assertEquals(46.0, (float) $payload['cart_total']);
+    }
+
+    public function test_details_homepage_addon_pairs_with_advertiser_total(): void
+    {
+        $publisher = $this->userWithRole('publisher');
+        $advertiser = $this->userWithRole('advertiser');
+        $site = $this->siteFor($publisher, 100);
+        $site->forceFill([
+            'homepage_placement_prices' => ['7' => 25],
+        ])->save();
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertMatchesRegularExpression('/You pay:\s*<strong>€113\.00<\/strong>/', $html);
+        $this->assertDoesNotMatchRegularExpression('/You pay:\s*<strong>€100\.00<\/strong>/', $html);
+        $this->assertStringContainsString('add-on +€25.00', $html);
+        $this->assertStringContainsString('→ you pay €138.00', $html);
+
+        $payload = $this->actingAs($advertiser)
+            ->postJson(route('advertiser.cart.add'), ['id' => $site->id])
+            ->assertOk()
+            ->json();
+
+        $this->assertEquals(113.0, (float) $payload['cart'][0]['price']);
     }
 
     public function test_catalog_row_stays_fee_inclusive_if_in_memory_price_was_not_marked_up(): void
