@@ -68,7 +68,10 @@ class AdminPromotionsSchemaDriftResilienceTest extends TestCase
     {
         $this->actingAs($this->admin)
             ->get(route('admin.promotions.index'))
-            ->assertOk();
+            ->assertOk()
+            ->assertSee('Enabled', false)
+            ->assertDontSee('>Unknown<', false)
+            ->assertDontSee('Promotions storage is incomplete', false);
     }
 
     public function test_admin_promotions_hub_ok_when_welcome_bonus_settings_table_missing(): void

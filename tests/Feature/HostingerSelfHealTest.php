@@ -10,6 +10,7 @@ use App\Support\ProductionRepair;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Contracts\Http\Kernel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 /**
@@ -179,6 +180,27 @@ class HostingerSelfHealTest extends TestCase
             'migrate --force completed',
             'roles seeded (advertiser, publisher, admin, marketing)',
         ]));
+    }
+
+    public function test_force_production_still_counts_as_an_automated_test(): void
+    {
+        $this->assertTrue(ProductionRepair::runningAutomatedTest());
+
+        $this->forceProduction();
+        config(['app.web_heal' => true]);
+
+        $this->assertTrue(ProductionRepair::runningAutomatedTest());
+        $this->assertFalse(app()->runningUnitTests());
+        $this->assertTrue(ProductionRepair::promotionsStorageReady());
+    }
+
+    public function test_promotions_storage_ready_is_false_when_welcome_settings_missing(): void
+    {
+        $this->assertTrue(ProductionRepair::promotionsStorageReady());
+
+        Schema::dropIfExists('welcome_bonus_settings');
+
+        $this->assertFalse(ProductionRepair::promotionsStorageReady());
     }
 
     public function test_web_heal_defaults_on_and_docs_name_the_self_heal(): void

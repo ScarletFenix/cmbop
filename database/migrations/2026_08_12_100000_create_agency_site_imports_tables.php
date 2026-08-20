@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\AgencySiteImportFailure;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -42,30 +43,10 @@ return new class extends Migration
                 $table->timestamps();
 
                 // Named: Laravel's default is 65 chars and MySQL/MariaDB reject it (1059).
-                $table->index(['agency_site_import_id', 'row_number'], 'asif_import_row_idx');
+                $table->index(['agency_site_import_id', 'row_number'], AgencySiteImportFailure::ROW_INDEX);
             });
         } else {
-            $hasCompositeIndex = false;
-            try {
-                $indexNames = collect(Schema::getIndexes('agency_site_import_failures'))
-                    ->pluck('name')
-                    ->all();
-                $hasCompositeIndex = in_array('asif_import_row_idx', $indexNames, true)
-                    || in_array('agency_site_import_failures_agency_site_import_id_row_number_index', $indexNames, true);
-            } catch (Throwable) {
-                // Locked-down hosts may not list indexes; try to add anyway.
-            }
-
-            if (! $hasCompositeIndex) {
-                try {
-                    Schema::table('agency_site_import_failures', function (Blueprint $table) {
-                        $table->index(['agency_site_import_id', 'row_number'], 'asif_import_row_idx');
-                    });
-                } catch (Throwable) {
-                    // Leftover table already has this index, or we cannot add it.
-                    // Do not block later migrations (welcome_bonus_settings).
-                }
-            }
+            AgencySiteImportFailure::ensureRowIndex();
         }
 
         if (! Schema::hasColumn('sites', 'agency_site_import_id')) {

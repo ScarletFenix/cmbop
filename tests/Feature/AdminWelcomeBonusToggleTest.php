@@ -109,6 +109,7 @@ class AdminWelcomeBonusToggleTest extends TestCase
             ->assertOk()
             ->assertSee('€20 welcome credit', false)
             ->assertSee('Enabled', false)
+            ->assertDontSee('>Unknown<', false)
             ->assertSee('Disable', false)
             ->assertSee(route('admin.promotions.welcome-bonus.toggle'), false)
             ->assertSee('name="enabled"', false)

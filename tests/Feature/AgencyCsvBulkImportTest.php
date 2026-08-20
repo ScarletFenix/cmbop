@@ -324,7 +324,7 @@ class AgencyCsvBulkImportTest extends TestCase
             ->pluck('name')
             ->all();
 
-        $this->assertContains('asif_import_row_idx', $names);
+        $this->assertContains(AgencySiteImportFailure::ROW_INDEX, $names);
         foreach ($names as $name) {
             $this->assertLessThanOrEqual(64, strlen((string) $name), (string) $name);
         }
@@ -335,24 +335,20 @@ class AgencyCsvBulkImportTest extends TestCase
         $this->assertTrue(Schema::hasTable('agency_site_import_failures'));
 
         Schema::table('agency_site_import_failures', function ($table) {
-            $table->dropIndex('asif_import_row_idx');
+            $table->dropIndex(AgencySiteImportFailure::ROW_INDEX);
         });
 
         $names = collect(Schema::getIndexes('agency_site_import_failures'))
             ->pluck('name')
             ->all();
-        $this->assertNotContains('asif_import_row_idx', $names);
+        $this->assertNotContains(AgencySiteImportFailure::ROW_INDEX, $names);
 
-        $migration = eval('?>'.file_get_contents(database_path(
-            'migrations/2026_08_12_100000_create_agency_site_imports_tables.php'
-        )));
-        $this->assertIsObject($migration);
-        $migration->up();
+        AgencySiteImportFailure::ensureRowIndex();
 
         $names = collect(Schema::getIndexes('agency_site_import_failures'))
             ->pluck('name')
             ->all();
-        $this->assertContains('asif_import_row_idx', $names);
+        $this->assertContains(AgencySiteImportFailure::ROW_INDEX, $names);
         foreach ($names as $name) {
             $this->assertLessThanOrEqual(64, strlen((string) $name), (string) $name);
         }

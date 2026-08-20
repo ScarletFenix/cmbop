@@ -13,9 +13,10 @@ use Illuminate\Support\Facades\Log;
 
 /**
  * Hostinger has no SSH from this agent and often no per-minute cron.
- * After the response is flushed: repair migrate / MEDIA_PATH / APP_URL /
- * storage link (at most every few hours) and run due schedule events
- * (at most once a minute). Mail still drains via DrainQueuedMail.
+ * Before the response when promotions tables are missing, then after
+ * flush: repair migrate / MEDIA_PATH / APP_URL / storage link (at most
+ * every few hours) and run due schedule events (at most once a minute).
+ * Mail still drains via DrainQueuedMail.
  */
 class HealHostingerProduction
 {
@@ -30,6 +31,12 @@ class HealHostingerProduction
 
     public function handle(Request $request, Closure $next)
     {
+        // terminate() is too late for Promotions: the hub already rendered
+        // Unknown / the red banner. Heal first when storage is incomplete.
+        if ($this->enabled() && ! ProductionRepair::promotionsStorageReady()) {
+            $this->healOnce();
+        }
+
         return $next($request);
     }
 
@@ -45,7 +52,7 @@ class HealHostingerProduction
 
     private function enabled(): bool
     {
-        if (app()->runningInConsole() || app()->runningUnitTests()) {
+        if (app()->runningInConsole() || ProductionRepair::runningAutomatedTest()) {
             return false;
         }
 
@@ -64,7 +71,7 @@ class HealHostingerProduction
                 return;
             }
         } catch (\Throwable) {
-            return;
+            // Cache down / no cache table: still migrate so Promotions can load.
         }
 
         $lock = $this->lock(self::HEAL_LOCK, 120);

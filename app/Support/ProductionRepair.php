@@ -229,7 +229,7 @@ class ProductionRepair
 
     private function persistKey(string $key, string $value, bool $persistEnv): bool
     {
-        if (! $persistEnv || $this->runningAutomatedTest()) {
+        if (! $persistEnv || static::runningAutomatedTest()) {
             return false;
         }
 
@@ -246,9 +246,10 @@ class ProductionRepair
 
     /**
      * runningUnitTests() is false after tests set app.env to production
-     * (Hostinger repair coverage). Still never write the real .env.
+     * (Hostinger repair coverage). Still never write the real .env or
+     * run web heal inside PHPUnit.
      */
-    private function runningAutomatedTest(): bool
+    public static function runningAutomatedTest(): bool
     {
         if (app()->runningUnitTests()) {
             return true;
@@ -257,6 +258,18 @@ class ProductionRepair
         $env = $_ENV['APP_ENV'] ?? $_SERVER['APP_ENV'] ?? getenv('APP_ENV');
 
         return is_string($env) && strtolower($env) === 'testing';
+    }
+
+    public static function promotionsStorageReady(): bool
+    {
+        try {
+            return Schema::hasTable('welcome_bonus_settings')
+                && Schema::hasTable('welcome_bonus_claims')
+                && Schema::hasTable('site_announcements')
+                && Schema::hasTable('ad_banners');
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     private function refreshCachedConfig(): void
