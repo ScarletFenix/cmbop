@@ -41,8 +41,19 @@ return new class extends Migration
                 $table->json('errors');
                 $table->timestamps();
 
-                $table->index(['agency_site_import_id', 'row_number']);
+                // Named: Laravel's default is 65 chars and MySQL/MariaDB reject it (1059).
+                $table->index(['agency_site_import_id', 'row_number'], 'asif_import_row_idx');
             });
+        } else {
+            $indexNames = collect(Schema::getIndexes('agency_site_import_failures'))
+                ->pluck('name')
+                ->all();
+            if (! in_array('asif_import_row_idx', $indexNames, true)
+                && ! in_array('agency_site_import_failures_agency_site_import_id_row_number_index', $indexNames, true)) {
+                Schema::table('agency_site_import_failures', function (Blueprint $table) {
+                    $table->index(['agency_site_import_id', 'row_number'], 'asif_import_row_idx');
+                });
+            }
         }
 
         if (! Schema::hasColumn('sites', 'agency_site_import_id')) {
