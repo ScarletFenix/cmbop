@@ -37,6 +37,19 @@ class OrderChatContactGuard
         return $this->inspect($message)['blocked'];
     }
 
+    /**
+     * User-facing copy when contact details are blocked on a given surface.
+     */
+    public static function messageFor(string $surface): string
+    {
+        return match ($surface) {
+            'article' => 'Remove email, phone, or messaging-app contact details from this article. Keep communication on the platform.',
+            'description' => 'Remove email, phone, or messaging-app contact details from the site description.',
+            'revision' => 'Remove email, phone, or messaging-app contact details from these notes. Keep communication on the platform.',
+            default => 'Do not share or ask for email, phone, or messaging-app details. Keep communication on the platform.',
+        };
+    }
+
     private function normalize(string $message): string
     {
         $text = mb_strtolower($message);

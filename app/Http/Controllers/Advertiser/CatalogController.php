@@ -4069,6 +4069,14 @@ class CatalogController extends Controller
                 'reason' => 'required|string|min:10',
             ]);
 
+            $reason = (string) $request->reason;
+            if (app(OrderChatContactGuard::class)->isBlocked($reason)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => OrderChatContactGuard::messageFor('revision'),
+                ], 422);
+            }
+
             $order = Order::with(['items.site.publisher'])->findOrFail($id);
 
             if ($order->user_id !== auth()->id()) {

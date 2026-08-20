@@ -65,6 +65,15 @@ class SiteDescriptionRulesTest extends TestCase
         $this->assertSame([], SiteDescriptionRules::errors($ok));
     }
 
+    public function test_errors_reject_off_platform_contact_details(): void
+    {
+        $html = '<p>'.str_repeat('Quality editorial site for guest posts. ', 3).' Telegram me @publisherhelp for rates.</p>';
+        $errors = SiteDescriptionRules::errors($html);
+
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('messaging-app', implode(' ', $errors));
+    }
+
     public function test_excerpt_strips_tags(): void
     {
         $excerpt = SiteDescriptionRules::excerpt('<p>Hello <b>world</b> and more text about the site.</p>', 20);

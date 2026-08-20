@@ -42,6 +42,15 @@ class OrderChatContactGuardTest extends TestCase
         $this->assertTrue($this->guard->isBlocked('whatsapp me'));
     }
 
+    public function test_message_for_surfaces_are_everyday_english(): void
+    {
+        foreach (['article', 'description', 'revision', 'generic'] as $surface) {
+            $line = OrderChatContactGuard::messageFor($surface);
+            $this->assertNotSame('', $line);
+            $this->assertDoesNotMatchRegularExpression('/SQLSTATE|Exception|\.env/i', $line);
+        }
+    }
+
     public function test_blocks_phone_share_with_context(): void
     {
         $this->assertTrue($this->guard->isBlocked('My phone is +1 555 123 4567'));

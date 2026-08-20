@@ -10,6 +10,7 @@ use App\Services\ActivityLogger;
 use App\Services\ContentUpload\ArticleHtmlSanitizer;
 use App\Services\ContentUpload\ContentUploadService;
 use App\Services\ContentUpload\DocumentTextExtractor;
+use App\Support\UserMessages;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -563,6 +564,24 @@ class ContentModerationService
 
     public function rejectionMessage(?ContentModerationLog $log = null): string
     {
+        $quality = is_array($log?->quality_report) ? $log->quality_report : [];
+        $blocking = $quality['blocking_issues'] ?? [];
+        if (is_array($blocking) && $blocking !== [] && ! $log?->detected_category) {
+            if (in_array('url_shortener', $blocking, true)) {
+                return UserMessages::get('moderation.quality_shortener');
+            }
+            if (in_array('external_links', $blocking, true)) {
+                $max = (int) (($this->effectiveConfig()['quality']['max_external_links'] ?? 15));
+
+                return UserMessages::get('moderation.quality_links', ['max' => $max]);
+            }
+            if (in_array('placeholder', $blocking, true)) {
+                return UserMessages::get('moderation.quality_placeholder');
+            }
+
+            return UserMessages::get('moderation.quality');
+        }
+
         $category = $log?->detected_category;
         $topic = $this->categoryTopic($category);
         $blockedUrls = $log ? $this->blockedUrlsFromLog($log) : [];

@@ -133,6 +133,40 @@ class PublisherContentRevisionRequestTest extends TestCase
         );
     }
 
+    public function test_publisher_revision_reason_rejects_off_platform_contact(): void
+    {
+        $item = $this->makeProcessingItem();
+
+        $this->actingAs($this->publisher)
+            ->postJson(route('publisher.orders.request-content-revision', $item->id), [
+                'reason' => 'Please telegram me @publisherhelp so we can finish this faster.',
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('reason');
+
+        $this->assertFalse($item->fresh()->isContentRevisionRequested());
+    }
+
+    public function test_advertiser_revision_note_rejects_off_platform_contact(): void
+    {
+        $item = $this->makeProcessingItem();
+        $item->update([
+            'content_revision_requested' => 'yes',
+            'content_revision_requested_at' => now(),
+            'content_revision_reason' => 'Please send a cleaner draft with correct links.',
+        ]);
+
+        $this->actingAs($this->advertiser)
+            ->postJson(route('advertiser.orders.fulfill-content-revision', $item->order_id), [
+                'content_link' => 'https://docs.example/new-article',
+                'note' => 'WhatsApp me +441234567890 when you publish.',
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('note');
+
+        $this->assertTrue($item->fresh()->isContentRevisionRequested());
+    }
+
     public function test_publisher_can_update_reason_while_revision_open(): void
     {
         $item = $this->makeProcessingItem();
