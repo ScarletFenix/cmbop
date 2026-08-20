@@ -216,10 +216,12 @@
     $recommendedPosts = isset($related)
         ? $related
         : \App\Models\Blog::published()
+            ->withPublishedLocale(public_locale())
             ->where('id', '!=', $blog->id)
             ->orderByDesc('published_at')
             ->limit(3)
-            ->get();
+            ->get()
+            ->each(fn ($post) => $post->applyPublishedLocale(public_locale()));
 @endphp
 
 @if($recommendedPosts->count() > 0)

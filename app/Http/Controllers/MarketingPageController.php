@@ -181,9 +181,7 @@ class MarketingPageController extends Controller
                 $match = CuratedBlogWriter::findExisting($slug);
                 $blog = $match
                     ? Blog::published()
-                        ->with(['translations' => function ($query) {
-                            $query->where('is_published', true);
-                        }])
+                        ->withPublishedLocale($locale)
                         ->where('id', $match->id)
                         ->first()
                     : null;
@@ -192,10 +190,14 @@ class MarketingPageController extends Controller
                     continue;
                 }
 
-                $translation = $blog->displayTranslation($locale, 'en');
+                $translation = $blog->translationFor($locale, null);
+                if (! $translation) {
+                    continue;
+                }
+
                 $links[] = [
-                    'title' => (string) ($translation?->title ?: $blog->title),
-                    'url' => localized_url('blog/'.($translation?->slug ?: $blog->slug)),
+                    'title' => (string) $translation->title,
+                    'url' => localized_url('blog/'.$translation->slug),
                 ];
             } catch (Throwable) {
                 continue;
