@@ -31,7 +31,7 @@ class ContentQualityAnalyzerTest extends TestCase
         $result = $this->analyzer->analyze($this->body(), '<p>'.$this->body().'</p>', $links, $this->config);
 
         $this->assertContains('external_links', $result['blocking_issues']);
-        $this->assertSame('fail', $this->status($result, 'external_links'));
+        $this->assertSame('fail', $this->checkStatus($result, 'external_links'));
     }
 
     public function test_url_shortener_is_always_a_blocking_failure(): void
@@ -44,7 +44,7 @@ class ContentQualityAnalyzerTest extends TestCase
         );
 
         $this->assertContains('url_shortener', $result['blocking_issues']);
-        $this->assertSame('fail', $this->status($result, 'external_links'));
+        $this->assertSame('fail', $this->checkStatus($result, 'external_links'));
         $this->assertContains('https://bit.ly/abc123', $result['shortener_urls']);
     }
 
@@ -64,7 +64,7 @@ class ContentQualityAnalyzerTest extends TestCase
     {
         $result = $this->analyzer->analyze('Short piece.', '<p>Short piece.</p>', [], $this->config);
 
-        $this->assertSame('fail', $this->status($result, 'word_count'));
+        $this->assertSame('fail', $this->checkStatus($result, 'word_count'));
         $this->assertNotContains('word_count', $result['blocking_issues']);
     }
 
@@ -78,8 +78,8 @@ class ContentQualityAnalyzerTest extends TestCase
         );
 
         $this->assertSame([], $result['blocking_issues']);
-        $this->assertSame('pass', $this->status($result, 'external_links'));
-        $this->assertSame('pass', $this->status($result, 'placeholder'));
+        $this->assertSame('pass', $this->checkStatus($result, 'external_links'));
+        $this->assertSame('pass', $this->checkStatus($result, 'placeholder'));
     }
 
     public function test_is_shortener_matches_known_hosts(): void
@@ -92,7 +92,7 @@ class ContentQualityAnalyzerTest extends TestCase
     /**
      * @param  array<string, mixed>  $result
      */
-    private function status(array $result, string $key): ?string
+    private function checkStatus(array $result, string $key): ?string
     {
         foreach ($result['checks'] as $check) {
             if (($check['key'] ?? '') === $key) {
