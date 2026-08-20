@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Models\WelcomeBonusSetting;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Log;
@@ -311,7 +312,11 @@ class ProductionRepair
             }
         }
 
-        if (static::welcomeBonusStorageReady()) {
+        if (! Schema::hasTable('welcome_bonus_settings')) {
+            WelcomeBonusSetting::ensureTable();
+        }
+
+        if (Schema::hasTable('welcome_bonus_settings')) {
             $notes[] = 'welcome bonus tables ready';
         }
     }

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\AdBanner;
 use App\Models\SiteAnnouncement;
+use App\Models\WelcomeBonusSetting;
 use App\Services\PromotionService;
 use App\Services\Wallet\WelcomeBonusService;
 use Illuminate\Http\Request;
@@ -67,6 +68,7 @@ class PromotionController extends Controller
         }
 
         try {
+            WelcomeBonusSetting::ensureTable();
             $welcomeBonusTableReady = Schema::hasTable('welcome_bonus_settings');
         } catch (\Throwable) {
             $welcomeBonusTableReady = false;

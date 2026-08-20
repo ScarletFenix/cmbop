@@ -83,8 +83,13 @@ class AdminPromotionsSchemaDriftResilienceTest extends TestCase
             ->get(route('admin.promotions.index'))
             ->assertOk()
             ->assertSee('€20 welcome credit', false)
-            ->assertSee('Unknown', false)
+            ->assertSee('Enabled', false)
+            ->assertDontSee('>Unknown<', false)
+            ->assertSee('Disable', false)
+            ->assertSee('Set amount', false)
             ->assertDontSee('Something went wrong');
+
+        $this->assertTrue(Schema::hasTable('welcome_bonus_settings'));
     }
 
     public function test_restore_is_not_500_when_announcement_table_is_missing(): void

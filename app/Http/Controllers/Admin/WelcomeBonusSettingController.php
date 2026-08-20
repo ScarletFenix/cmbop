@@ -16,6 +16,7 @@ class WelcomeBonusSettingController extends Controller
     public function toggle(Request $request, WelcomeBonusService $welcomeBonus): RedirectResponse
     {
         try {
+            WelcomeBonusSetting::ensureTable();
             if (! Schema::hasTable('welcome_bonus_settings')) {
                 return back()->with('error', 'Welcome bonus settings are not available yet. Run migrations.');
             }
@@ -68,6 +69,7 @@ class WelcomeBonusSettingController extends Controller
     public function updateAmount(Request $request, WelcomeBonusService $welcomeBonus): RedirectResponse
     {
         try {
+            WelcomeBonusSetting::ensureTable();
             if (! Schema::hasTable('welcome_bonus_settings')) {
                 return back()->with('error', 'Welcome bonus settings are not available yet. Run migrations.');
             }
