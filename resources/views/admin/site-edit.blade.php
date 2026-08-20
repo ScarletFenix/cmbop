@@ -432,8 +432,10 @@
                         </div>
 
                             <div class="col-12">
-                            <label class="form-label fw-semibold" for="description">Description</label>
-                            <textarea id="description" name="description" class="form-control" rows="4">{{ old_text('description', $site->description) }}</textarea>
+                            @include('partials.site-description-editor', [
+                                'value' => old('description', $site->description),
+                                'required' => false,
+                            ])
                         </div>
 
                         @php
