@@ -61,6 +61,8 @@ class ProductionRepair
             $notes[] = 'migrate failed: '.$e->getMessage();
             Log::error('Production repair migrate failed', ['error' => $e->getMessage()]);
         }
+
+        $this->ensureWelcomeBonusMigrations($notes);
     }
 
     /**
@@ -263,13 +265,69 @@ class ProductionRepair
     public static function promotionsStorageReady(): bool
     {
         try {
-            return Schema::hasTable('welcome_bonus_settings')
-                && Schema::hasTable('welcome_bonus_claims')
+            return static::welcomeBonusStorageReady()
                 && Schema::hasTable('site_announcements')
                 && Schema::hasTable('ad_banners');
         } catch (\Throwable) {
             return false;
         }
+    }
+
+    public static function welcomeBonusStorageReady(): bool
+    {
+        try {
+            return Schema::hasTable('welcome_bonus_settings')
+                && Schema::hasTable('welcome_bonus_claims');
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * A later unrelated migrate (FK replace, unique on dirty data) can abort
+     * the batch before 2026_08_14_180000. `--path` can still create the
+     * welcome-bonus tables so Promotions is not stuck on Unknown.
+     *
+     * @param  list<string>  $notes
+     */
+    public function ensureWelcomeBonusMigrations(array &$notes): void
+    {
+        if (static::welcomeBonusStorageReady()) {
+            return;
+        }
+
+        foreach ($this->welcomeBonusMigrationFiles() as $file) {
+            try {
+                Artisan::call('migrate', [
+                    '--force' => true,
+                    '--path' => 'database/migrations/'.$file,
+                ]);
+            } catch (\Throwable $e) {
+                $notes[] = 'welcome bonus migrate '.$file.' failed: '.$e->getMessage();
+                Log::error('Welcome bonus migrate failed', [
+                    'file' => $file,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        if (static::welcomeBonusStorageReady()) {
+            $notes[] = 'welcome bonus tables ready';
+        }
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function welcomeBonusMigrationFiles(): array
+    {
+        return [
+            '2026_08_14_180000_create_welcome_bonus_settings_table.php',
+            '2026_08_14_180100_create_welcome_bonus_claims_table.php',
+            '2026_08_15_103800_keep_welcome_bonus_claims_after_user_delete.php',
+            '2026_08_15_110800_unique_welcome_bonus_claim_place.php',
+            '2026_08_15_112000_unique_welcome_bonus_settings_key.php',
+        ];
     }
 
     private function refreshCachedConfig(): void

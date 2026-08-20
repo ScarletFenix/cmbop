@@ -10,6 +10,7 @@ use App\Support\ProductionRepair;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Contracts\Http\Kernel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
@@ -201,6 +202,29 @@ class HostingerSelfHealTest extends TestCase
         Schema::dropIfExists('welcome_bonus_settings');
 
         $this->assertFalse(ProductionRepair::promotionsStorageReady());
+        $this->assertFalse(ProductionRepair::welcomeBonusStorageReady());
+    }
+
+    public function test_welcome_bonus_tables_can_be_created_when_batch_migrate_did_not(): void
+    {
+        Schema::dropIfExists('welcome_bonus_claims');
+        Schema::dropIfExists('welcome_bonus_settings');
+        DB::table('migrations')->whereIn('migration', [
+            '2026_08_14_180000_create_welcome_bonus_settings_table',
+            '2026_08_14_180100_create_welcome_bonus_claims_table',
+            '2026_08_15_103800_keep_welcome_bonus_claims_after_user_delete',
+            '2026_08_15_110800_unique_welcome_bonus_claim_place',
+            '2026_08_15_112000_unique_welcome_bonus_settings_key',
+        ])->delete();
+        $this->assertFalse(ProductionRepair::welcomeBonusStorageReady());
+
+        $notes = [];
+        app(ProductionRepair::class)->ensureWelcomeBonusMigrations($notes);
+
+        $this->assertTrue(Schema::hasTable('welcome_bonus_settings'));
+        $this->assertTrue(Schema::hasTable('welcome_bonus_claims'));
+        $this->assertTrue(ProductionRepair::welcomeBonusStorageReady());
+        $this->assertTrue(collect($notes)->contains('welcome bonus tables ready'));
     }
 
     public function test_web_heal_defaults_on_and_docs_name_the_self_heal(): void
@@ -222,6 +246,8 @@ class HostingerSelfHealTest extends TestCase
             '2026_04_06_094704_create_sites_table.php',
             '2026_04_21_070134_create_orders_table.php',
             '2026_04_21_070217_create_order_items_table.php',
+            '2026_08_14_180000_create_welcome_bonus_settings_table.php',
+            '2026_08_14_180100_create_welcome_bonus_claims_table.php',
         ] as $file) {
             $this->assertFileExists(database_path('migrations/'.$file));
         }

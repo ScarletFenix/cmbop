@@ -25,15 +25,19 @@ class HealHostingerProduction
     // v2: bust the 6-hour skip left by a failed migrate (flag was set anyway).
     private const HEAL_FLAG = 'ops:hostinger-healed-v2';
 
+    private const HEAL_RETRY = 'ops:hostinger-heal-retry';
+
     private const SCHEDULE_LOCK = 'ops:web-schedule';
 
     private const SCHEDULE_FLAG = 'ops:web-schedule-ran';
+
+    private bool $healedThisRequest = false;
 
     public function handle(Request $request, Closure $next)
     {
         // terminate() is too late for Promotions: the hub already rendered
         // Unknown / the red banner. Heal first when storage is incomplete.
-        if ($this->enabled() && ! ProductionRepair::promotionsStorageReady()) {
+        if ($this->enabled() && ! $this->fullHealCached() && ! ProductionRepair::promotionsStorageReady()) {
             $this->healOnce();
         }
 
@@ -66,8 +70,15 @@ class HealHostingerProduction
 
     private function healOnce(): void
     {
+        if ($this->healedThisRequest) {
+            return;
+        }
+
         try {
             if (Cache::get(self::HEAL_FLAG)) {
+                return;
+            }
+            if (Cache::get(self::HEAL_RETRY) && ProductionRepair::promotionsStorageReady()) {
                 return;
             }
         } catch (\Throwable) {
@@ -79,11 +90,16 @@ class HealHostingerProduction
             return;
         }
 
+        $this->healedThisRequest = true;
+
         try {
             $notes = app(ProductionRepair::class)->run();
             if (ProductionRepair::migrateCompleted($notes)) {
                 Cache::put(self::HEAL_FLAG, true, now()->addHours(6));
             } else {
+                if (ProductionRepair::promotionsStorageReady()) {
+                    Cache::put(self::HEAL_RETRY, true, now()->addMinutes(5));
+                }
                 Log::warning('Hostinger production heal did not cache skip; migrate incomplete', [
                     'notes' => $notes,
                 ]);
@@ -93,6 +109,15 @@ class HealHostingerProduction
             Log::warning('Hostinger production heal failed', ['error' => $e->getMessage()]);
         } finally {
             $lock?->release();
+        }
+    }
+
+    private function fullHealCached(): bool
+    {
+        try {
+            return (bool) Cache::get(self::HEAL_FLAG);
+        } catch (\Throwable) {
+            return false;
         }
     }
 
