@@ -185,6 +185,7 @@
 function togglePassword(id, el){
     const input = document.getElementById(id);
     const icon = el.querySelector('i');
+    if(!input || !icon) return;
 
     if(input.type === 'password'){
         input.type = 'text';
@@ -208,6 +209,7 @@ document.getElementById('loginForm').addEventListener('submit', async function(e
 
     const res = await fetch("{{ route('login.post', absolute: false) }}", {
         method: 'POST',
+        credentials: 'same-origin',
         headers: {
             'X-CSRF-TOKEN': '{{ csrf_token() }}',
             'Accept': 'application/json',

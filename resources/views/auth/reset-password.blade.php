@@ -69,6 +69,7 @@ document.getElementById('resetForm').addEventListener('submit', async function(e
     try {
         const res = await fetch("{{ route('password.update') }}", {
             method:'POST',
+            credentials: 'same-origin',
             headers:{
                 'X-CSRF-TOKEN':'{{ csrf_token() }}',
                 'Accept': 'application/json',

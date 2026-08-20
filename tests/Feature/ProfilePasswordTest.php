@@ -58,6 +58,11 @@ class ProfilePasswordTest extends TestCase
             ->assertRedirect(route('profile'))
             ->assertSessionHas('success');
 
+        $this->assertAuthenticatedAs($this->user);
+        $this->get(route('profile'))
+            ->assertOk()
+            ->assertSee('Password changed successfully', false);
+
         $this->assertTrue(Hash::check('newpass99', $this->user->fresh()->password));
         Mail::assertQueued(PasswordChangedMail::class, 1);
 

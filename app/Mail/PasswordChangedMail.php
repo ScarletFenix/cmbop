@@ -19,6 +19,15 @@ class PasswordChangedMail extends PlatformMailable
         $this->dedupeKey = 'password_changed:'.$user->id.':'.Str::uuid();
     }
 
+    /**
+     * Security mail must still go out after a backed-up queue. Dropping
+     * "your password was changed" a day late is worse than a late notice.
+     */
+    protected function isStale(): bool
+    {
+        return false;
+    }
+
     public function build()
     {
         $resetUrl = $this->publicRoute('password.request');

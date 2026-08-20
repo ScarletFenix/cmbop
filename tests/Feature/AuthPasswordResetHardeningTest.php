@@ -108,7 +108,8 @@ class AuthPasswordResetHardeningTest extends TestCase
             ->assertSee('togglePassword', false)
             ->assertSee('id="password"', false)
             ->assertSee('id="password_confirmation"', false)
-            ->assertSee('Show or hide new password', false);
+            ->assertSee('Show or hide new password', false)
+            ->assertSee("credentials: 'same-origin'", false);
     }
 
     public function test_successful_reset_queues_password_changed_mail(): void
