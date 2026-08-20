@@ -81,6 +81,7 @@ class StaleQueuedMailTest extends TestCase
 
         $user = User::factory()->create();
         $mailable = new PasswordChangedMail($user);
+        $mailable->to($user->email);
         $mailable->queuedAt = Carbon::now()->subHours(30)->toIso8601String();
 
         $this->assertNotNull($mailable->send(app('mailer')));
