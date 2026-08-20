@@ -109,6 +109,7 @@ class AdminWelcomeBonusToggleTest extends TestCase
             ->assertOk()
             ->assertSee('€20 welcome credit', false)
             ->assertSee('Enabled', false)
+            ->assertDontSee('>Unknown<', false)
             ->assertSee('Disable', false)
             ->assertSee(route('admin.promotions.welcome-bonus.toggle'), false)
             ->assertSee('name="enabled"', false)
@@ -132,18 +133,34 @@ class AdminWelcomeBonusToggleTest extends TestCase
         $this->assertStringContainsString('value="1"', $html);
     }
 
-    public function test_toggle_fails_gracefully_when_settings_table_is_missing(): void
+    public function test_toggle_creates_settings_table_when_missing_then_disables(): void
     {
         Schema::dropIfExists('welcome_bonus_settings');
         $this->assertFalse(Schema::hasTable('welcome_bonus_settings'));
 
         $this->actingAs($this->admin)
             ->from(route('admin.promotions.index'))
-            ->post(route('admin.promotions.welcome-bonus.toggle'))
+            ->post(route('admin.promotions.welcome-bonus.toggle'), ['enabled' => 0])
             ->assertRedirect(route('admin.promotions.index'))
-            ->assertSessionHas('error');
+            ->assertSessionHas('success');
 
-        $this->assertTrue(app(WelcomeBonusService::class)->isEnabled());
+        $this->assertTrue(Schema::hasTable('welcome_bonus_settings'));
+        $this->assertFalse(app(WelcomeBonusService::class)->isEnabled());
+    }
+
+    public function test_set_amount_creates_settings_table_when_missing(): void
+    {
+        Schema::dropIfExists('welcome_bonus_settings');
+        $this->assertFalse(Schema::hasTable('welcome_bonus_settings'));
+
+        $this->actingAs($this->admin)
+            ->from(route('admin.promotions.index'))
+            ->post(route('admin.promotions.welcome-bonus.amount'), ['amount' => 25])
+            ->assertRedirect(route('admin.promotions.index'))
+            ->assertSessionHas('success');
+
+        $this->assertTrue(Schema::hasTable('welcome_bonus_settings'));
+        $this->assertSame(25.0, app(WelcomeBonusService::class)->amount());
     }
 
     public function test_admin_can_update_welcome_bonus_amount(): void

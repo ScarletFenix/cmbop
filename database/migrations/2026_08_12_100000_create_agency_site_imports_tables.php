@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\AgencySiteImportFailure;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -41,8 +42,11 @@ return new class extends Migration
                 $table->json('errors');
                 $table->timestamps();
 
-                $table->index(['agency_site_import_id', 'row_number']);
+                // Named: Laravel's default is 65 chars and MySQL/MariaDB reject it (1059).
+                $table->index(['agency_site_import_id', 'row_number'], AgencySiteImportFailure::ROW_INDEX);
             });
+        } else {
+            AgencySiteImportFailure::ensureRowIndex();
         }
 
         if (! Schema::hasColumn('sites', 'agency_site_import_id')) {

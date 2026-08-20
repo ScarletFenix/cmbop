@@ -24,8 +24,12 @@ class ProductionReadyCommand extends Command
     {
         if ($this->option('repair')) {
             $this->info('Repairing Hostinger production path…');
-            foreach ($repair->run() as $note) {
+            $notes = $repair->run();
+            foreach ($notes as $note) {
                 $this->line('  '.$note);
+            }
+            if (! ProductionRepair::migrateCompleted($notes)) {
+                $this->error('Migrate did not complete. Promotions welcome-credit storage may still be missing.');
             }
         }
 

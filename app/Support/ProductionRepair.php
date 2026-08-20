@@ -2,6 +2,8 @@
 
 namespace App\Support;
 
+use App\Models\WelcomeBonusClaim;
+use App\Models\WelcomeBonusSetting;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Log;
@@ -61,6 +63,37 @@ class ProductionRepair
             $notes[] = 'migrate failed: '.$e->getMessage();
             Log::error('Production repair migrate failed', ['error' => $e->getMessage()]);
         }
+
+        $this->ensureWelcomeBonusMigrations($notes);
+    }
+
+    /**
+     * Web heal must not cache a 6-hour skip when migrate did not finish.
+     * A 1059 (or any later) failure is swallowed above so MEDIA_PATH still
+     * runs — the flag has to look at notes, not whether run() threw.
+     *
+     * @param  list<string>  $notes
+     */
+    public static function migrateCompleted(array $notes): bool
+    {
+        $sawCompleted = false;
+
+        foreach ($notes as $note) {
+            if (! is_string($note)) {
+                continue;
+            }
+
+            if (str_starts_with($note, 'migrate failed:')
+                || str_starts_with($note, 'migrate --force exited')) {
+                return false;
+            }
+
+            if ($note === 'migrate --force completed') {
+                $sawCompleted = true;
+            }
+        }
+
+        return $sawCompleted;
     }
 
     /**
@@ -200,7 +233,7 @@ class ProductionRepair
 
     private function persistKey(string $key, string $value, bool $persistEnv): bool
     {
-        if (! $persistEnv || app()->runningUnitTests()) {
+        if (! $persistEnv || static::runningAutomatedTest()) {
             return false;
         }
 
@@ -213,6 +246,98 @@ class ProductionRepair
         $_SERVER[$key] = $value;
 
         return true;
+    }
+
+    /**
+     * runningUnitTests() is false after tests set app.env to production
+     * (Hostinger repair coverage). Still never write the real .env or
+     * run web heal inside PHPUnit.
+     */
+    public static function runningAutomatedTest(): bool
+    {
+        if (app()->runningUnitTests()) {
+            return true;
+        }
+
+        $env = $_ENV['APP_ENV'] ?? $_SERVER['APP_ENV'] ?? getenv('APP_ENV');
+
+        return is_string($env) && strtolower($env) === 'testing';
+    }
+
+    public static function promotionsStorageReady(): bool
+    {
+        try {
+            return static::welcomeBonusStorageReady()
+                && Schema::hasTable('site_announcements')
+                && Schema::hasTable('ad_banners');
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    public static function welcomeBonusStorageReady(): bool
+    {
+        try {
+            return Schema::hasTable('welcome_bonus_settings')
+                && Schema::hasTable('welcome_bonus_claims');
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * A later unrelated migrate (FK replace, unique on dirty data) can abort
+     * the batch before 2026_08_14_180000. `--path` can still create the
+     * welcome-bonus tables so Promotions is not stuck on Unknown.
+     *
+     * @param  list<string>  $notes
+     */
+    public function ensureWelcomeBonusMigrations(array &$notes): void
+    {
+        if (static::welcomeBonusStorageReady()) {
+            return;
+        }
+
+        foreach ($this->welcomeBonusMigrationFiles() as $file) {
+            try {
+                Artisan::call('migrate', [
+                    '--force' => true,
+                    '--path' => 'database/migrations/'.$file,
+                ]);
+            } catch (\Throwable $e) {
+                $notes[] = 'welcome bonus migrate '.$file.' failed: '.$e->getMessage();
+                Log::error('Welcome bonus migrate failed', [
+                    'file' => $file,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        if (! Schema::hasTable('welcome_bonus_settings')) {
+            WelcomeBonusSetting::ensureTable();
+        }
+
+        if (! Schema::hasTable('welcome_bonus_claims')) {
+            WelcomeBonusClaim::ensureTable();
+        }
+
+        if (static::welcomeBonusStorageReady()) {
+            $notes[] = 'welcome bonus tables ready';
+        }
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function welcomeBonusMigrationFiles(): array
+    {
+        return [
+            '2026_08_14_180000_create_welcome_bonus_settings_table.php',
+            '2026_08_14_180100_create_welcome_bonus_claims_table.php',
+            '2026_08_15_103800_keep_welcome_bonus_claims_after_user_delete.php',
+            '2026_08_15_110800_unique_welcome_bonus_claim_place.php',
+            '2026_08_15_112000_unique_welcome_bonus_settings_key.php',
+        ];
     }
 
     private function refreshCachedConfig(): void

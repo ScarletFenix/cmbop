@@ -68,7 +68,10 @@ class AdminPromotionsSchemaDriftResilienceTest extends TestCase
     {
         $this->actingAs($this->admin)
             ->get(route('admin.promotions.index'))
-            ->assertOk();
+            ->assertOk()
+            ->assertSee('Enabled', false)
+            ->assertDontSee('>Unknown<', false)
+            ->assertDontSee('Promotions storage is incomplete', false);
     }
 
     public function test_admin_promotions_hub_ok_when_welcome_bonus_settings_table_missing(): void
@@ -80,8 +83,30 @@ class AdminPromotionsSchemaDriftResilienceTest extends TestCase
             ->get(route('admin.promotions.index'))
             ->assertOk()
             ->assertSee('€20 welcome credit', false)
-            ->assertSee('Unknown', false)
+            ->assertSee('Enabled', false)
+            ->assertDontSee('>Unknown<', false)
+            ->assertSee('Disable', false)
+            ->assertSee('Set amount', false)
             ->assertDontSee('Something went wrong');
+
+        $this->assertTrue(Schema::hasTable('welcome_bonus_settings'));
+    }
+
+    public function test_admin_promotions_hub_creates_claims_table_when_missing(): void
+    {
+        Schema::dropIfExists('welcome_bonus_claims');
+        $this->assertFalse(Schema::hasTable('welcome_bonus_claims'));
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.promotions.index'))
+            ->assertOk()
+            ->assertSee('Enabled', false)
+            ->assertDontSee('>Unknown<', false)
+            ->assertSee('Disable', false)
+            ->assertSee('0 claims this week', false)
+            ->assertDontSee('Something went wrong');
+
+        $this->assertTrue(Schema::hasTable('welcome_bonus_claims'));
     }
 
     public function test_restore_is_not_500_when_announcement_table_is_missing(): void

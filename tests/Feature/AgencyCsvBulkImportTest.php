@@ -18,6 +18,7 @@ use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -313,5 +314,43 @@ class AgencyCsvBulkImportTest extends TestCase
                 'csv_metrics_spot_check' => true,
                 'agency_site_import_id' => (int) $site->agency_site_import_id,
             ]);
+    }
+
+    public function test_import_failure_index_name_fits_mysql_identifier_limit(): void
+    {
+        $this->assertTrue(Schema::hasTable('agency_site_import_failures'));
+
+        $names = collect(Schema::getIndexes('agency_site_import_failures'))
+            ->pluck('name')
+            ->all();
+
+        $this->assertContains(AgencySiteImportFailure::ROW_INDEX, $names);
+        foreach ($names as $name) {
+            $this->assertLessThanOrEqual(64, strlen((string) $name), (string) $name);
+        }
+    }
+
+    public function test_import_failure_index_is_added_when_table_already_exists(): void
+    {
+        $this->assertTrue(Schema::hasTable('agency_site_import_failures'));
+
+        Schema::table('agency_site_import_failures', function ($table) {
+            $table->dropIndex(AgencySiteImportFailure::ROW_INDEX);
+        });
+
+        $names = collect(Schema::getIndexes('agency_site_import_failures'))
+            ->pluck('name')
+            ->all();
+        $this->assertNotContains(AgencySiteImportFailure::ROW_INDEX, $names);
+
+        AgencySiteImportFailure::ensureRowIndex();
+
+        $names = collect(Schema::getIndexes('agency_site_import_failures'))
+            ->pluck('name')
+            ->all();
+        $this->assertContains(AgencySiteImportFailure::ROW_INDEX, $names);
+        foreach ($names as $name) {
+            $this->assertLessThanOrEqual(64, strlen((string) $name), (string) $name);
+        }
     }
 }

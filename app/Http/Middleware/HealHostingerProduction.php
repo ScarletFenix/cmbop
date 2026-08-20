@@ -13,22 +13,34 @@ use Illuminate\Support\Facades\Log;
 
 /**
  * Hostinger has no SSH from this agent and often no per-minute cron.
- * After the response is flushed: repair migrate / MEDIA_PATH / APP_URL /
- * storage link (at most every few hours) and run due schedule events
- * (at most once a minute). Mail still drains via DrainQueuedMail.
+ * Before the response when promotions tables are missing, then after
+ * flush: repair migrate / MEDIA_PATH / APP_URL / storage link (at most
+ * every few hours) and run due schedule events (at most once a minute).
+ * Mail still drains via DrainQueuedMail.
  */
 class HealHostingerProduction
 {
     private const HEAL_LOCK = 'ops:hostinger-heal';
 
-    private const HEAL_FLAG = 'ops:hostinger-healed';
+    // v2: bust the 6-hour skip left by a failed migrate (flag was set anyway).
+    public const HEAL_FLAG = 'ops:hostinger-healed-v2';
+
+    public const HEAL_RETRY = 'ops:hostinger-heal-retry';
 
     private const SCHEDULE_LOCK = 'ops:web-schedule';
 
     private const SCHEDULE_FLAG = 'ops:web-schedule-ran';
 
+    private bool $healedThisRequest = false;
+
     public function handle(Request $request, Closure $next)
     {
+        // terminate() is too late for Promotions: the hub already rendered
+        // Unknown / the red banner. Heal first when storage is incomplete.
+        if ($this->enabled() && ! $this->healCooldownCached() && ! ProductionRepair::promotionsStorageReady()) {
+            $this->healOnce();
+        }
+
         return $next($request);
     }
 
@@ -44,7 +56,7 @@ class HealHostingerProduction
 
     private function enabled(): bool
     {
-        if (app()->runningInConsole() || app()->runningUnitTests()) {
+        if (app()->runningInConsole() || ProductionRepair::runningAutomatedTest()) {
             return false;
         }
 
@@ -58,11 +70,11 @@ class HealHostingerProduction
 
     private function healOnce(): void
     {
-        try {
-            if (Cache::get(self::HEAL_FLAG)) {
-                return;
-            }
-        } catch (\Throwable) {
+        if ($this->healedThisRequest) {
+            return;
+        }
+
+        if ($this->healCooldownCached()) {
             return;
         }
 
@@ -71,14 +83,36 @@ class HealHostingerProduction
             return;
         }
 
+        $this->healedThisRequest = true;
+
         try {
             $notes = app(ProductionRepair::class)->run();
-            Cache::put(self::HEAL_FLAG, true, now()->addHours(6));
+            if (ProductionRepair::migrateCompleted($notes)) {
+                Cache::put(self::HEAL_FLAG, true, now()->addHours(6));
+            } else {
+                // Always throttle. A leftover claims table (or settings-only
+                // ensureTable) used to leave promotionsStorageReady false and
+                // re-run full migrate on every request.
+                Cache::put(self::HEAL_RETRY, true, now()->addMinutes(5));
+                Log::warning('Hostinger production heal did not cache skip; migrate incomplete', [
+                    'notes' => $notes,
+                ]);
+            }
             Log::info('Hostinger production heal ran', ['notes' => $notes]);
         } catch (\Throwable $e) {
             Log::warning('Hostinger production heal failed', ['error' => $e->getMessage()]);
         } finally {
             $lock?->release();
+        }
+    }
+
+    private function healCooldownCached(): bool
+    {
+        try {
+            return (bool) Cache::get(self::HEAL_FLAG) || (bool) Cache::get(self::HEAL_RETRY);
+        } catch (\Throwable) {
+            // Cache down / no cache table: still migrate so Promotions can load.
+            return false;
         }
     }
 

@@ -3,10 +3,12 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 class WelcomeBonusSetting extends Model
@@ -16,6 +18,31 @@ class WelcomeBonusSetting extends Model
     protected $casts = [
         'value' => 'array',
     ];
+
+    /**
+     * Same schema as 2026_08_14_180000. Used by the Promotions hub and
+     * Enable / Set amount when migrate never created the table (or the
+     * row is recorded but the table was dropped). Not called from signup.
+     */
+    public static function ensureTable(): void
+    {
+        try {
+            if (Schema::hasTable((new static)->getTable())) {
+                return;
+            }
+
+            Schema::create((new static)->getTable(), function (Blueprint $table) {
+                $table->id();
+                $table->string('key')->unique();
+                $table->json('value')->nullable();
+                $table->timestamps();
+            });
+        } catch (\Throwable $e) {
+            Log::warning('Could not create welcome_bonus_settings at runtime', [
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
 
     public static function getValue(string $key, mixed $default = null): mixed
     {
