@@ -36,6 +36,7 @@ use App\Mail\OrderApprovedByAdvertiser;
 use App\Mail\OrderPaymentConfirmed;
 use App\Mail\OrderRejected;
 use App\Mail\OrderStatusChanged;
+use App\Mail\PasswordChangedMail;
 use App\Mail\PaymentFailedMail;
 use App\Mail\PaymentPendingMail;
 use App\Mail\PaymentSuccessfulInvoiceMail;
@@ -53,7 +54,6 @@ use App\Mail\SiteOwnerOrderNotification;
 use App\Mail\SiteStatusNotification;
 use App\Mail\SpendBudgetAlertMail;
 use App\Mail\TrustpilotReviewRequest;
-use App\Mail\UnfulfilledCheckoutCredited;
 use App\Mail\WebsiteSuggestionReviewed;
 use App\Mail\WeeklyActivitySummary;
 use App\Mail\WelcomeEmail;
@@ -158,6 +158,13 @@ return [
             'audience' => 'user',
             'preference' => 'security_alerts',
             'mailable' => GoogleTempPasswordMail::class,
+            'default_enabled' => true,
+        ],
+        'password_changed' => [
+            'name' => 'Password Changed',
+            'audience' => 'user',
+            'preference' => 'security_alerts',
+            'mailable' => PasswordChangedMail::class,
             'default_enabled' => true,
         ],
         'password_reset' => [

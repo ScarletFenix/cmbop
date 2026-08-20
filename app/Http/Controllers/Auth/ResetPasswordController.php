@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Mail\PasswordChangedMail;
 use App\Support\UserMessages;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -44,6 +45,7 @@ class ResetPasswordController extends Controller
                 // Hashed cast hashes once — do not bcrypt here or login breaks.
                 $user->password = $password;
                 $user->save();
+                PasswordChangedMail::notify($user);
 
                 if (Auth::check() && (int) Auth::id() === (int) $user->id) {
                     Auth::logoutOtherDevices($password);

@@ -108,21 +108,31 @@
                         <div class="row g-2 mt-1">
                             <div class="col-md-6 form-group">
                                 <label>New Password</label>
-                                <input type="password" name="password"
-                                       class="form-control form-control-sm" autocomplete="new-password"
-                                       required minlength="8" placeholder="Min. 8 characters">
+                                <div class="input-group input-group-sm">
+                                    <input type="password" name="password"
+                                           class="form-control" autocomplete="new-password"
+                                           required minlength="8" placeholder="Min. 8 characters">
+                                    <button type="button" class="btn btn-outline-secondary toggle-password"
+                                            tabindex="-1" aria-label="Show or hide new password">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                </div>
                                 @error('password')
                                     <div class="text-danger fs-xs mt-1">{{ $message }}</div>
                                 @enderror
-                                <div class="validation-feedback text-danger">
-                                    Must be at least 8 characters
-                                </div>
+                                <div class="form-text text-muted fs-xs">At least 8 characters.</div>
                             </div>
                             <div class="col-md-6 form-group">
                                 <label>Confirm New Password</label>
-                                <input type="password" name="password_confirmation"
-                                       class="form-control form-control-sm" autocomplete="new-password"
-                                       required placeholder="Re-enter new password">
+                                <div class="input-group input-group-sm">
+                                    <input type="password" name="password_confirmation"
+                                           class="form-control" autocomplete="new-password"
+                                           required placeholder="Re-enter new password">
+                                    <button type="button" class="btn btn-outline-secondary toggle-password"
+                                            tabindex="-1" aria-label="Show or hide password confirmation">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                </div>
                             </div>
                         </div>
 

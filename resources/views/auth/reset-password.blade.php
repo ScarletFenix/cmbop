@@ -13,9 +13,19 @@
                 <form id="resetForm">
                     @csrf
                     <input type="hidden" name="token" value="{{ $token }}">
-                    <input type="email" name="email" class="form-control mb-3" placeholder="Your email" required>
-                    <input type="password" name="password" class="form-control mb-3" placeholder="New password" required>
-                    <input type="password" name="password_confirmation" class="form-control mb-3" placeholder="Confirm password" required>
+                    <input type="email" name="email" class="form-control mb-3" placeholder="Your email" autocomplete="email" required>
+                    <div class="input-group mb-3">
+                        <input type="password" name="password" id="password" class="form-control" placeholder="New password" autocomplete="new-password" required minlength="8">
+                        <button type="button" class="input-group-text" style="cursor:pointer" onclick="togglePassword('password', this)" aria-label="Show or hide new password">
+                            <i class="fa-solid fa-eye" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                    <div class="input-group mb-3">
+                        <input type="password" name="password_confirmation" id="password_confirmation" class="form-control" placeholder="Confirm password" autocomplete="new-password" required>
+                        <button type="button" class="input-group-text" style="cursor:pointer" onclick="togglePassword('password_confirmation', this)" aria-label="Show or hide password confirmation">
+                            <i class="fa-solid fa-eye" aria-hidden="true"></i>
+                        </button>
+                    </div>
 
                     <button type="submit" class="btn btn-primary w-100" id="resetBtn">Reset Password</button>
                 </form>
@@ -32,6 +42,19 @@
 <div class="slb-toast-stack" id="toastContainer"></div>
 
 <script>
+function togglePassword(id, el){
+    const input = document.getElementById(id);
+    const icon = el.querySelector('i');
+
+    if(input.type === 'password'){
+        input.type = 'text';
+        icon.classList.replace('fa-eye','fa-eye-slash');
+    } else {
+        input.type = 'password';
+        icon.classList.replace('fa-eye-slash','fa-eye');
+    }
+}
+
 document.getElementById('resetForm').addEventListener('submit', async function(e){
     e.preventDefault();
     const resetBtn = document.getElementById('resetBtn');

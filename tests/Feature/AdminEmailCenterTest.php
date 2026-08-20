@@ -556,6 +556,7 @@ class AdminEmailCenterTest extends TestCase
             'Low wallet balance alert' => 'spend_budget_alert',
             'Verify your email (Test Preview)' => 'email_verification',
             'Password Reset (Test Preview)' => 'password_reset',
+            'Your password was changed on SEOLinkBuildings' => 'password_changed',
         ];
 
         foreach ($cases as $subject => $expected) {

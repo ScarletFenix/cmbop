@@ -2,12 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Mail\PasswordChangedMail;
 use App\Models\Role;
 use App\Models\User;
 use App\Support\UserMessages;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
@@ -97,5 +99,54 @@ class AuthPasswordResetHardeningTest extends TestCase
         $fresh = $user->fresh();
         $this->assertTrue(Hash::check('newpass99', $fresh->password));
         $this->assertFalse(Hash::check('old-password', $fresh->password));
+    }
+
+    public function test_reset_form_has_show_hide_toggles(): void
+    {
+        $this->get(route('password.reset', ['token' => 'preview-token']))
+            ->assertOk()
+            ->assertSee('togglePassword', false)
+            ->assertSee('id="password"', false)
+            ->assertSee('id="password_confirmation"', false)
+            ->assertSee('Show or hide new password', false);
+    }
+
+    public function test_successful_reset_queues_password_changed_mail(): void
+    {
+        Mail::fake();
+
+        $role = Role::where('name', 'advertiser')->firstOrFail();
+        $user = User::factory()->create([
+            'email' => 'reset-mail@example.com',
+            'email_verified_at' => now(),
+            'password' => 'old-password',
+            'active_role_id' => $role->id,
+        ]);
+        $user->roles()->attach($role->id);
+
+        $token = Password::broker()->createToken($user);
+
+        $this->postJson(route('password.update'), [
+            'token' => $token,
+            'email' => $user->email,
+            'password' => 'newpass99',
+            'password_confirmation' => 'newpass99',
+        ])->assertOk()->assertJsonPath('status', 'success');
+
+        Mail::assertQueued(PasswordChangedMail::class, 1);
+    }
+
+    public function test_invalid_reset_does_not_queue_password_changed_mail(): void
+    {
+        Mail::fake();
+
+        $this->postJson(route('password.update'), [
+            'token' => 'not-a-real-token',
+            'email' => 'nobody@example.com',
+            'password' => 'newpass99',
+            'password_confirmation' => 'newpass99',
+        ])->assertOk()->assertJsonPath('status', 'error');
+
+        Mail::assertNothingQueued();
     }
 }

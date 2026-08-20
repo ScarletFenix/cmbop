@@ -38,6 +38,7 @@ use App\Mail\OrderApprovedByAdvertiser;
 use App\Mail\OrderPaymentConfirmed;
 use App\Mail\OrderRejected;
 use App\Mail\OrderStatusChanged;
+use App\Mail\PasswordChangedMail;
 use App\Mail\PaymentFailedMail;
 use App\Mail\PaymentPendingMail;
 use App\Mail\PaymentSuccessfulInvoiceMail;
@@ -55,7 +56,6 @@ use App\Mail\SiteOwnerOrderNotification;
 use App\Mail\SiteStatusNotification;
 use App\Mail\SpendBudgetAlertMail;
 use App\Mail\TrustpilotReviewRequest;
-use App\Mail\UnfulfilledCheckoutCredited;
 use App\Mail\WebsiteSuggestionReviewed;
 use App\Mail\WeeklyActivitySummary;
 use App\Mail\WelcomeEmail;
@@ -124,6 +124,13 @@ class EmailCatalog
                 'description' => 'Sent once when a new account is created via Google sign-in, with a temporary password for Profile → Change Password.',
                 'category' => 'Users',
                 'mailable' => GoogleTempPasswordMail::class,
+                'status' => 'active',
+            ],
+            'password_changed' => [
+                'name' => 'Password Changed',
+                'description' => 'Sent after a successful Profile → Change Password or forgot-password reset. Never includes the password.',
+                'category' => 'Auth',
+                'mailable' => PasswordChangedMail::class,
                 'status' => 'active',
             ],
             'order_status_changed' => [
@@ -608,6 +615,7 @@ class EmailCatalog
             'welcome to' => 'welcome',
             'temporary password' => 'google_temp_password',
             'how was your experience' => 'trustpilot_review',
+            'password was changed' => 'password_changed',
             'reset password' => 'password_reset',
             'password reset' => 'password_reset',
             'verify your email' => 'email_verification',
@@ -715,6 +723,7 @@ class EmailCatalog
         return match ($key) {
             'welcome' => new WelcomeEmail($user),
             'google_temp_password' => new GoogleTempPasswordMail($user, 'SampleTemp-Pass1'),
+            'password_changed' => new PasswordChangedMail($user),
             'order_status_changed' => new OrderStatusChanged(
                 order: $order,
                 recipient: $user,

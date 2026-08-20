@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Mail\PasswordChangedMail;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rules\Password;
 
@@ -50,6 +52,11 @@ class ProfileController extends Controller
         // Hashed cast hashes once — do not Hash::make here or login breaks.
         $user->password = $request->password;
         $user->save();
+
+        Auth::logoutOtherDevices($request->password);
+        $request->session()->regenerate();
+
+        PasswordChangedMail::notify($user);
 
         return back()->with('success', 'Password changed successfully.');
     }
