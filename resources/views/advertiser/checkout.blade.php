@@ -1671,7 +1671,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 syncPlaceOrderForModeration();
             } else {
                 const modTitle = data.moderation?.title || (response.status === 503 ? 'Card payments unavailable' : 'Error');
-                const modMsg = data.moderation?.failures?.[0]?.message || data.message || 'Failed to process order';
+                const modMsg = data.moderation?.failures?.[0]?.message || data.message || @json(\App\Support\UserMessages::get('payment.order_failed'));
                 Swal.fire({
                     icon: 'error',
                     title: modTitle,

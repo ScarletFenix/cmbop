@@ -9,6 +9,7 @@ use App\Services\ActivityLogger;
 use App\Services\SitePromotionService;
 use App\Services\StripePaymentService;
 use App\Support\UserFacingError;
+use App\Support\UserMessages;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Stripe\Checkout\Session;
@@ -135,7 +136,7 @@ class SitePromotionController extends Controller
         } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,
-                'message' => UserFacingError::message($e, 'Could not start card checkout. Please try again or use wallet balance.'),
+                'message' => UserFacingError::message($e, UserMessages::get('payment.feature_stripe_failed')),
             ], 500);
         }
     }
@@ -147,7 +148,7 @@ class SitePromotionController extends Controller
 
         if ($sessionId === '' || ! config('services.stripe.secret')) {
             return redirect()->route('publisher.websites')
-                ->with('error', 'Invalid feature payment session.');
+                ->with('error', UserMessages::get('payment.feature_invalid_session'));
         }
 
         try {
@@ -156,14 +157,14 @@ class SitePromotionController extends Controller
 
             if ($session->payment_status !== 'paid') {
                 return redirect()->route('publisher.websites')
-                    ->with('error', 'Payment was not completed.');
+                    ->with('error', UserMessages::get('payment.feature_not_completed'));
             }
 
             if ((string) ($session->metadata->user_id ?? '') !== (string) auth()->id()
                 || (string) ($session->metadata->site_id ?? '') !== (string) $site->id
                 || ($session->metadata->type ?? '') !== 'site_feature') {
                 return redirect()->route('publisher.websites')
-                    ->with('error', 'Payment session does not match this website.');
+                    ->with('error', UserMessages::get('payment.feature_mismatch'));
             }
 
             $this->promotions->assertStripeChargeMatchesFeaturePrice($session);
@@ -202,7 +203,7 @@ class SitePromotionController extends Controller
                 ->with('error', $result['message'] ?? 'Could not apply feature after payment.');
         } catch (\Throwable $e) {
             return redirect()->route('publisher.websites')
-                ->with('error', UserFacingError::message($e, 'Could not verify payment. Contact support if you were charged.'));
+                ->with('error', UserFacingError::message($e, UserMessages::get('payment.feature_verify_failed')));
         }
     }
 
