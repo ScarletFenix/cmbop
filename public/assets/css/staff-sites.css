@@ -638,6 +638,10 @@
   min-height: 140px;
 }
 
+.site-description-editor__input[hidden] {
+  display: none !important;
+}
+
 .site-description-readonly {
   min-height: 4rem;
   scroll-margin-top: 88px;

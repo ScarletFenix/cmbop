@@ -11,8 +11,8 @@ use Database\Seeders\CountriesTableSeeder;
 use Database\Seeders\LanguagesTableSeeder;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Tests\Support\CreatesBlogUploads;
 use Tests\TestCase;
 
 /**
@@ -22,6 +22,7 @@ use Tests\TestCase;
  */
 class MarketingNicheHtmlEntityTest extends TestCase
 {
+    use CreatesBlogUploads;
     use RefreshDatabase;
 
     private User $marketer;
@@ -84,7 +85,7 @@ class MarketingNicheHtmlEntityTest extends TestCase
         $niche = Category::where('name', 'Business & Finance')->value('name');
         $this->assertSame('Business & Finance', $niche);
 
-        $file = UploadedFile::fake()->image('marketer-shot.jpg', 640, 400);
+        $file = $this->fakeBlogUpload('marketer-shot.jpg', 640, 400);
 
         $this->actingAs($this->marketer)
             ->put(route('marketing.sites.update', $site->id), [

@@ -20,13 +20,14 @@
         var el = root.querySelector('[data-site-desc-counter]');
         if (!el) return;
         var min = parseInt(root.getAttribute('data-min-chars') || '50', 10);
+        var maxChars = parseInt(root.getAttribute('data-max-chars') || '5000', 10);
         var maxWords = parseInt(root.getAttribute('data-max-words') || '500', 10);
         var text = plainText(html);
         var words = wordCount(text);
         var chars = text.length;
         el.textContent = chars + ' characters · ' + words + ' words';
-        el.classList.toggle('is-invalid', chars > 0 && (chars < min || words > maxWords));
-        el.classList.toggle('is-ok', chars >= min && words <= maxWords);
+        el.classList.toggle('is-invalid', chars > 0 && (chars < min || chars > maxChars || words > maxWords));
+        el.classList.toggle('is-ok', chars >= min && chars <= maxChars && words <= maxWords);
     }
 
     function toolbar() {

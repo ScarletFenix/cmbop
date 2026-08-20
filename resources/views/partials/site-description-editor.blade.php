@@ -14,12 +14,16 @@
     $descLabel = $label ?? 'Description';
     $descEditorId = $editorId ?? 'quillEditor';
     $descMin = (int) \App\Support\SiteDescriptionRules::MIN_CHARS;
+    $descMaxChars = (int) \App\Support\SiteDescriptionRules::MAX_CHARS;
     $descMaxWords = (int) \App\Support\SiteDescriptionRules::MAX_WORDS;
+    $descValue = app(\App\Services\SiteDescriptionSanitizer::class)->sanitize($descValue);
+    $descHelp = $help ?? ('Shown to advertisers on the listing. Min '.$descMin.' characters, max '.$descMaxWords.' words.');
 @endphp
 <div class="site-description-editor"
      id="description"
      data-site-description-editor
      data-min-chars="{{ $descMin }}"
+     data-max-chars="{{ $descMaxChars }}"
      data-max-words="{{ $descMaxWords }}"
      data-placeholder="{{ \App\Support\SiteDescriptionRules::placeholder() }}">
     <label class="form-label fw-semibold" for="{{ $descEditorId }}">
@@ -37,7 +41,7 @@
               hidden>{{ $descValue }}</textarea>
     <div class="site-desc-meta">
         <span class="site-desc-counter" data-site-desc-counter></span>
-        <span class="form-text mb-0">{{ \App\Support\SiteDescriptionRules::helpText() }}</span>
+        <span class="form-text mb-0">{{ $descHelp }}</span>
     </div>
     @error($descName)
         <div class="invalid-feedback d-block">{{ $message }}</div>
