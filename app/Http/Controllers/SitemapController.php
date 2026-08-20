@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Blog;
 use App\Models\BlogTranslation;
 use App\Services\CuratedBlogSync;
 use App\Support\PublicI18n;
@@ -79,10 +80,9 @@ class SitemapController extends Controller
         $translations = BlogTranslation::query()
             ->select('blog_translations.*')
             ->join('blogs', 'blogs.id', '=', 'blog_translations.blog_id')
+            ->whereIn('blogs.id', Blog::published()->select('blogs.id'))
             ->where('blog_translations.locale', $locale)
             ->where('blog_translations.is_published', true)
-            ->where('blogs.status', 'published')
-            ->where('blogs.published_at', '<=', now())
             ->orderByDesc('blogs.published_at')
             ->get();
 

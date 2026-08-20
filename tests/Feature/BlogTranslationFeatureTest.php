@@ -683,6 +683,9 @@ class BlogTranslationFeatureTest extends TestCase
 
     public function test_public_index_lists_only_published_translation_for_selected_locale(): void
     {
+        CuratedBlogSync::ensurePresent();
+        Blog::query()->update(['published_at' => now()->subDay()]);
+
         $english = Blog::factory()->published()->create([
             'title' => 'English Index Only Title',
             'slug' => 'english-index-only',
@@ -953,5 +956,72 @@ class BlogTranslationFeatureTest extends TestCase
         $this->assertDoesNotMatchRegularExpression('/<h1[^>]*>\s*Draft Hijack Title\s*<\/h1>/', $html);
         $this->assertStringContainsString('Live published body', $html);
         $this->assertStringNotContainsString('Draft hijack body', $html);
+    }
+
+    public function test_sitemap_excludes_posts_outside_the_published_scope(): void
+    {
+        $blog = Blog::factory()->published()->create([
+            'title' => 'Ancient Leftover Post',
+            'slug' => 'ancient-leftover-post',
+            'published_at' => '1969-06-01 00:00:00',
+        ]);
+        BlogTranslation::create([
+            'blog_id' => $blog->id,
+            'locale' => 'en',
+            'title' => 'Ancient Leftover Post',
+            'slug' => 'ancient-leftover-post',
+            'excerpt' => 'Excerpt',
+            'content' => '<p>Body</p>',
+            'is_published' => true,
+        ]);
+
+        $this->assertFalse(Blog::published()->whereKey($blog->id)->exists());
+
+        $this->get('/blog')
+            ->assertOk()
+            ->assertDontSee('Ancient Leftover Post', false);
+        $this->get('/sitemap-en.xml')
+            ->assertOk()
+            ->assertDontSee('/blog/ancient-leftover-post', false);
+    }
+
+    public function test_unpublished_translation_is_hidden_from_that_locale_index(): void
+    {
+        CuratedBlogSync::ensurePresent();
+        Blog::query()->update(['published_at' => now()->subDay()]);
+
+        $blog = Blog::factory()->published()->create([
+            'title' => 'English Published Locale',
+            'slug' => 'english-published-locale',
+            'published_at' => now(),
+        ]);
+        BlogTranslation::create([
+            'blog_id' => $blog->id,
+            'locale' => 'en',
+            'title' => 'English Published Locale',
+            'slug' => 'english-published-locale',
+            'excerpt' => 'Excerpt',
+            'content' => '<p>English body</p>',
+            'is_published' => true,
+        ]);
+        BlogTranslation::create([
+            'blog_id' => $blog->id,
+            'locale' => 'de',
+            'title' => 'Unpublished German Index Title',
+            'slug' => 'unpublished-german-index',
+            'excerpt' => 'Auszug',
+            'content' => '<p>Deutscher Inhalt</p>',
+            'is_published' => false,
+        ]);
+
+        $this->get('/blog')
+            ->assertOk()
+            ->assertSee('English Published Locale', false);
+        $this->get('/de/blog')
+            ->assertOk()
+            ->assertDontSee('Unpublished German Index Title', false);
+        $this->get('/sitemap-de.xml')
+            ->assertOk()
+            ->assertDontSee('/de/blog/unpublished-german-index', false);
     }
 }
