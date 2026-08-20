@@ -4069,6 +4069,14 @@ class CatalogController extends Controller
                 'reason' => 'required|string|min:10',
             ]);
 
+            $reason = (string) $request->reason;
+            if (app(OrderChatContactGuard::class)->isBlocked($reason, OrderChatContactGuard::MODE_CONTENT)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => OrderChatContactGuard::messageFor('revision'),
+                ], 422);
+            }
+
             $order = Order::with(['items.site.publisher'])->findOrFail($id);
 
             if ($order->user_id !== auth()->id()) {
@@ -4134,7 +4142,7 @@ class CatalogController extends Controller
             // Contact-detail share/ask in the reason is saved but not delivered to the publisher.
             try {
                 $chatBody = "Revision requested: {$request->reason}\nPlease update the article, then paste the corrected live URL in this chat to resubmit.";
-                $guard = app(OrderChatContactGuard::class)->inspect($chatBody);
+                $guard = app(OrderChatContactGuard::class)->inspect($chatBody, OrderChatContactGuard::MODE_CONTENT);
                 OrderChatMessage::create([
                     'order_id' => $order->id,
                     'user_id' => auth()->id(),

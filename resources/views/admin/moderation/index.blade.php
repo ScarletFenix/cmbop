@@ -78,8 +78,8 @@
                         </div>
                         <div class="form-check mb-3">
                             <input class="form-check-input" type="checkbox" name="block_on_quality_failure" value="1" id="blockQuality"
-                                @checked($errors->any() ? old('block_on_quality_failure') : ($cfg['quality']['block_on_quality_failure'] ?? false))>
-                            <label class="form-check-label" for="blockQuality">Block orders on quality failures (word count / placeholders)</label>
+                                @checked($errors->any() ? old('block_on_quality_failure') : ($cfg['quality']['block_on_quality_failure'] ?? true))>
+                            <label class="form-check-label" for="blockQuality">Block orders on too many outbound links or placeholder text</label>
                         </div>
 
                         <div class="mb-3">

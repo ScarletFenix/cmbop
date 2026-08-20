@@ -5,6 +5,27 @@ namespace App\Services\ContentModeration;
 class ContentQualityAnalyzer
 {
     /**
+     * @var list<string>
+     */
+    public const DEFAULT_SHORTENER_HOSTS = [
+        'bit.ly',
+        'tinyurl.com',
+        't.co',
+        'goo.gl',
+        'is.gd',
+        'ow.ly',
+        'buff.ly',
+        'cutt.ly',
+        'rebrand.ly',
+        'shorturl.at',
+        'rb.gy',
+        'tiny.cc',
+        'lnkd.in',
+        't.ly',
+        'tiny.one',
+    ];
+
+    /**
      * @param  array<int, string>  $links
      * @return array{checks: array<int, array{key:string,label:string,status:string,detail:string}>, score:int, blocking_issues:array<int,string>}
      */
@@ -20,16 +41,14 @@ class ContentQualityAnalyzer
         $checks = [];
         $blocking = [];
 
-        // Word count
+        // Word count stays advisory even when quality blocks are on — the hard
+        // gates are placeholder text, outbound-link count, and URL shorteners.
         if ($wordCount >= $min) {
             $checks[] = $this->check('word_count', 'Word Count', 'pass', number_format($wordCount).' words');
         } elseif ($wordCount >= $warn) {
             $checks[] = $this->check('word_count', 'Word Count', 'warn', number_format($wordCount)." words (recommended ≥ {$min})");
         } else {
             $checks[] = $this->check('word_count', 'Word Count', 'fail', number_format($wordCount)." words (recommended ≥ {$min})");
-            if (! empty($qualityConfig['block_on_quality_failure'])) {
-                $blocking[] = 'word_count';
-            }
         }
 
         // Readability (Flesch-like approximation)
@@ -72,17 +91,29 @@ class ContentQualityAnalyzer
             $stuffing > 0.12 ? 'Possible keyword stuffing' : 'Looks balanced'
         );
 
-        // Links
+        // Links — shorteners are always reported, even when the article also
+        // exceeds the outbound-link cap, so the author can fix both at once.
+        // Count ignores google.com docs/maps links; shortener detection still
+        // reads those URLs plus bare bit.ly/… text that never became an href.
         $external = array_values(array_filter($links, fn ($l) => ! str_contains(strtolower($l), 'google.com')));
-        $suspicious = array_values(array_filter($external, function ($l) {
-            return (bool) preg_match('/bit\.ly|tinyurl|t\.co|goo\.gl|is\.gd|spam|xxx|porn|casino|bet\d/i', $l);
-        }));
-        if (count($external) > $maxLinks) {
-            $checks[] = $this->check('external_links', 'External Links', 'warn', count($external).' found (high)');
-        } elseif (count($suspicious) > 0) {
-            $checks[] = $this->check('external_links', 'External Links', 'warn', count($external).' found · '.count($suspicious).' look suspicious');
+        $shorteners = $this->shortenerUrlsFromHaystack($text, $html, $links, $qualityConfig);
+        $blockQuality = ! empty($qualityConfig['block_on_quality_failure']);
+        $tooManyLinks = count($external) > $maxLinks;
+        if ($tooManyLinks) {
+            $checks[] = $this->check('external_links', 'External Links', 'fail', count($external)." found (maximum {$maxLinks})");
+            if ($blockQuality) {
+                $blocking[] = 'external_links';
+            }
+        } elseif ($shorteners !== []) {
+            $checks[] = $this->check('external_links', 'External Links', 'fail', count($shorteners).' URL shortener(s) are not allowed');
         } else {
             $checks[] = $this->check('external_links', 'External Links', 'pass', count($external).' found');
+        }
+        if ($shorteners !== []) {
+            $blocking[] = 'url_shortener';
+            if ($tooManyLinks) {
+                $checks[] = $this->check('url_shortener', 'URL shorteners', 'fail', count($shorteners).' URL shortener(s) are not allowed');
+            }
         }
 
         $pass = count(array_filter($checks, fn ($c) => $c['status'] === 'pass'));
@@ -94,7 +125,83 @@ class ContentQualityAnalyzer
             'blocking_issues' => array_values(array_unique($blocking)),
             'word_count' => $wordCount,
             'external_link_count' => count($external),
+            'shortener_urls' => $shorteners,
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $qualityConfig
+     */
+    public function isShortener(string $url, array $qualityConfig = []): bool
+    {
+        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+        if ($host === '') {
+            $host = strtolower((string) parse_url('https://'.ltrim($url, '/'), PHP_URL_HOST));
+        }
+        $host = preg_replace('/^www\./', '', $host) ?? $host;
+        if ($host === '') {
+            return false;
+        }
+
+        foreach ($this->shortenerHosts($qualityConfig) as $known) {
+            $known = strtolower(trim((string) $known));
+            if ($known === '') {
+                continue;
+            }
+            if ($host === $known || str_ends_with($host, '.'.$known)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  array<string, mixed>  $qualityConfig
+     * @return list<string>
+     */
+    public function shortenerHosts(array $qualityConfig = []): array
+    {
+        $hosts = $qualityConfig['shortener_hosts'] ?? self::DEFAULT_SHORTENER_HOSTS;
+        if (! is_array($hosts) || $hosts === []) {
+            return self::DEFAULT_SHORTENER_HOSTS;
+        }
+
+        return array_values(array_filter(array_map('strval', $hosts)));
+    }
+
+    /**
+     * @param  array<int, string>  $links
+     * @param  array<string, mixed>  $qualityConfig
+     * @return list<string>
+     */
+    public function shortenerUrlsFromHaystack(string $text, string $html, array $links, array $qualityConfig = []): array
+    {
+        $found = [];
+        foreach ($links as $link) {
+            $link = trim((string) $link);
+            if ($link !== '' && $this->isShortener($link, $qualityConfig)) {
+                $found[] = $link;
+            }
+        }
+
+        $hosts = array_values(array_filter(array_map(
+            static fn ($host) => preg_quote(strtolower(trim((string) $host)), '#'),
+            $this->shortenerHosts($qualityConfig)
+        )));
+        if ($hosts === []) {
+            return array_values(array_unique($found));
+        }
+
+        $haystack = $text."\n".$html;
+        $pattern = '#(?:https?://)?(?:www\.)?(?:'.implode('|', $hosts).')/[^\s<>"\']+#i';
+        if (preg_match_all($pattern, $haystack, $matches)) {
+            foreach ($matches[0] as $url) {
+                $found[] = rtrim((string) $url, '.,);]');
+            }
+        }
+
+        return array_values(array_unique($found));
     }
 
     protected function check(string $key, string $label, string $status, string $detail): array

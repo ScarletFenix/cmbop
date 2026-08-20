@@ -42,6 +42,8 @@ class ContentRevisionService
             ]);
         }
 
+        $this->assertNoOffPlatformContact($reason, 'reason');
+
         return DB::transaction(function () use ($item, $publisher, $reason) {
             $locked = OrderItem::query()->whereKey($item->id)->lockForUpdate()->firstOrFail();
             $order = Order::query()->whereKey($locked->order_id)->lockForUpdate()->firstOrFail();
@@ -160,6 +162,9 @@ class ContentRevisionService
         $contentLink = isset($payload['content_link']) ? trim((string) $payload['content_link']) : '';
         $submissionId = isset($payload['content_submission_id']) ? (int) $payload['content_submission_id'] : null;
         $note = isset($payload['note']) ? trim((string) $payload['note']) : '';
+        if ($note !== '') {
+            $this->assertNoOffPlatformContact($note, 'note');
+        }
         $orderItemId = isset($payload['order_item_id']) ? (int) $payload['order_item_id'] : null;
         $confirmExisting = ! empty($payload['confirm_existing']);
 
@@ -620,10 +625,19 @@ class ContentRevisionService
         }
     }
 
+    private function assertNoOffPlatformContact(string $text, string $field): void
+    {
+        if ($this->chatGuard->isBlocked($text, OrderChatContactGuard::MODE_CONTENT)) {
+            throw ValidationException::withMessages([
+                $field => OrderChatContactGuard::messageFor('revision'),
+            ]);
+        }
+    }
+
     private function postChat(Order $order, int $userId, string $senderType, string $body): void
     {
         try {
-            $guard = $this->chatGuard->inspect($body);
+            $guard = $this->chatGuard->inspect($body, OrderChatContactGuard::MODE_CONTENT);
             OrderChatMessage::create([
                 'order_id' => $order->id,
                 'user_id' => $userId,

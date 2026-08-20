@@ -8,12 +8,15 @@ use App\Models\ContentSubmission;
 use App\Models\User;
 use App\Services\ContentModeration\ContentModerationService;
 use App\Services\ContentModeration\ContentQualityAnalyzer;
+use App\Services\OrderChatContactGuard;
+use App\Support\UserMessages;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Article evaluation: gambling/adult compliance + language match are blocking;
- * uniqueness/quality are advisory only.
+ * Article evaluation: gambling/adult, language, off-platform contact,
+ * placeholder text, URL shorteners, and excess outbound links are blocking.
+ * Uniqueness and readability scores stay advisory.
  */
 class ArticleEvaluationService
 {
@@ -234,10 +237,47 @@ class ArticleEvaluationService
             ];
         }
 
+        $linkUrls = $this->moderation->linksFromSubmission($submission);
+        $contactGuard = app(OrderChatContactGuard::class);
+        $contactHaystack = trim($title."\n".$text."\n".$html."\n".implode("\n", $linkUrls));
+        if ($contactGuard->isBlocked($contactHaystack, OrderChatContactGuard::MODE_CONTENT)) {
+            $message = UserMessages::get('moderation.contact_article');
+            $report = [
+                'word_count' => str_word_count($text),
+                'summary' => $message,
+                'language' => $languageCheck,
+                'fix_hints' => [$message],
+                'matched_terms' => [],
+                'checks' => [[
+                    'key' => 'off_platform_contact',
+                    'label' => 'Off-platform contact',
+                    'status' => 'fail',
+                    'detail' => $message,
+                ]],
+                'passed_compliance' => true,
+                'passed_language' => true,
+                'passed_uniqueness' => true,
+                'passed_quality' => false,
+            ];
+
+            return [
+                'approved' => false,
+                'moderation_status' => ContentSubmission::STATUS_REJECTED,
+                'evaluation_status' => 'rejected',
+                'uniqueness_score' => 0,
+                'quality_score' => 0,
+                'report' => $report,
+                'title' => 'Article needs changes',
+                'message' => $message,
+                'log' => null,
+                'highlighted_html' => null,
+                'matched_terms' => [],
+                'blocked_urls' => [],
+            ];
+        }
+
         // 1) Policy compliance (casino / gambling / betting / adult) — includes cloaked hrefs,
         // stored .docx parts the publisher downloads, backlink anchors, and image alt text.
-        $linkUrls = $this->moderation->linksFromSubmission($submission);
-
         $scan = $this->moderation->scanExtractedContent(
             text: $this->moderation->scanPolicyTextFromSubmission($submission),
             html: $html,
@@ -248,12 +288,13 @@ class ArticleEvaluationService
             contentSubmissionId: (int) $submission->id,
         );
 
-        // 2) Quality heuristics (advisory)
+        // 2) Quality heuristics — placeholder, shorteners, and excess links can block.
+        $qualityCfg = $this->moderation->effectiveConfig()['quality'] ?? config('content_moderation.quality', []);
         $quality = $this->quality->analyze(
             $text,
             $html,
             $linkUrls,
-            array_merge(config('content_moderation.quality', []), ['block_on_quality_failure' => false])
+            is_array($qualityCfg) ? $qualityCfg : []
         );
 
         // 3) Uniqueness vs platform corpus (advisory)
@@ -332,17 +373,29 @@ class ArticleEvaluationService
                 ?: ($cfg['help']['compliance_reject'] ?? 'Please revise restricted content and resubmit.');
             $report['summary'] = $message;
             $category = $scan['log']?->detected_category;
-            $policyLabel = 'Restricted content ('.$this->moderation->categoryTopic($category).')';
-            $report['checks'][] = [
-                'key' => 'restricted_content',
-                'label' => $policyLabel,
-                'status' => 'fail',
-                'detail' => $blockedUrls !== []
-                    ? 'Blocked links: '.implode(', ', array_slice($blockedUrls, 0, 5))
-                    : ($matchedTerms !== []
-                        ? 'Found: '.implode(', ', array_slice($matchedTerms, 0, 10))
-                        : 'Restricted content detected'),
-            ];
+            if (! $category && ! empty($quality['blocking_issues'])) {
+                $message = $this->qualityRejectionMessage($quality);
+                $report['summary'] = $message;
+                $report['passed_quality'] = false;
+                $report['checks'][] = [
+                    'key' => 'quality_policy',
+                    'label' => 'Quality policy',
+                    'status' => 'fail',
+                    'detail' => $message,
+                ];
+            } else {
+                $policyLabel = 'Restricted content ('.$this->moderation->categoryTopic($category).')';
+                $report['checks'][] = [
+                    'key' => 'restricted_content',
+                    'label' => $policyLabel,
+                    'status' => 'fail',
+                    'detail' => $blockedUrls !== []
+                        ? 'Blocked links: '.implode(', ', array_slice($blockedUrls, 0, 5))
+                        : ($matchedTerms !== []
+                            ? 'Found: '.implode(', ', array_slice($matchedTerms, 0, 10))
+                            : 'Restricted content detected'),
+                ];
+            }
 
             $highlighted = $html;
             $canHighlight = mb_strlen($html) <= 200000;
@@ -369,7 +422,35 @@ class ArticleEvaluationService
             ];
         }
 
-        // Uniqueness / quality no longer block approval — advisory only.
+        $qualityBlocks = ! empty($quality['blocking_issues']);
+        if ($qualityBlocks) {
+            $message = $this->qualityRejectionMessage($quality);
+            $report['summary'] = $message;
+            $report['passed_quality'] = false;
+            $report['fix_hints'] = array_values(array_unique(array_merge(
+                $report['fix_hints'] ?? [],
+                [$message]
+            )));
+
+            return [
+                'approved' => false,
+                'moderation_status' => ContentSubmission::STATUS_REJECTED,
+                'evaluation_status' => 'rejected',
+                'uniqueness_score' => $uniquenessScore,
+                'quality_score' => $qualityScore,
+                'report' => $report,
+                'title' => 'Article needs changes',
+                'message' => $message,
+                'log' => $scan['log'] ?? null,
+                'highlighted_html' => null,
+                'matched_terms' => [],
+                'blocked_urls' => array_values(array_unique(array_map(
+                    'strval',
+                    $quality['shortener_urls'] ?? []
+                ))),
+            ];
+        }
+
         $message = 'Your article was approved for publication. You can now select websites and place an order.';
         $report['summary'] = $message;
 
@@ -387,6 +468,27 @@ class ArticleEvaluationService
             'matched_terms' => [],
             'blocked_urls' => [],
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $quality
+     */
+    private function qualityRejectionMessage(array $quality): string
+    {
+        $blocking = $quality['blocking_issues'] ?? [];
+        if (in_array('url_shortener', $blocking, true)) {
+            return UserMessages::get('moderation.quality_shortener');
+        }
+        if (in_array('external_links', $blocking, true)) {
+            $max = (int) (config('content_moderation.quality.max_external_links') ?? 15);
+
+            return UserMessages::get('moderation.quality_links', ['max' => $max]);
+        }
+        if (in_array('placeholder', $blocking, true)) {
+            return UserMessages::get('moderation.quality_placeholder');
+        }
+
+        return UserMessages::get('moderation.quality');
     }
 
     /**

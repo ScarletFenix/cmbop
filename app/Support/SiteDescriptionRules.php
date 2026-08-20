@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Services\OrderChatContactGuard;
 use Illuminate\Support\Str;
 
 /**
@@ -97,6 +98,12 @@ class SiteDescriptionRules
 
         if (self::wordCount($plain) > self::MAX_WORDS) {
             $errors[] = 'Description must be at most '.self::MAX_WORDS.' words.';
+        }
+
+        $guard = new OrderChatContactGuard;
+        if ($guard->isBlocked($plain, OrderChatContactGuard::MODE_CONTENT)
+            || $guard->isBlocked($html, OrderChatContactGuard::MODE_CONTENT)) {
+            $errors[] = OrderChatContactGuard::messageFor('description');
         }
 
         return $errors;

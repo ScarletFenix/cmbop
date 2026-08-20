@@ -111,6 +111,16 @@ return [
         'feature_cards_not_configured' => 'Card payments are not configured. Please use wallet balance or contact support.',
     ],
 
+    'moderation' => [
+        'quality' => 'This article did not meet our quality checks. Review the report and resubmit.',
+        'quality_links' => 'This article has too many outbound links. Keep at most :max external links and resubmit.',
+        'quality_shortener' => 'URL shorteners are not allowed. Use the full destination URL.',
+        'quality_placeholder' => 'Placeholder or dummy text is not allowed. Replace it with the real article.',
+        'contact_article' => 'Remove email, phone, or messaging-app contact details from this article. Keep communication on the platform.',
+        'contact_description' => 'Remove email, phone, or messaging-app contact details from the site description.',
+        'contact_revision' => 'Remove email, phone, or messaging-app contact details from these notes. Keep communication on the platform.',
+    ],
+
     'cron' => [
         'disabled' => 'Scheduler is not configured.',
         'forbidden' => 'Forbidden.',

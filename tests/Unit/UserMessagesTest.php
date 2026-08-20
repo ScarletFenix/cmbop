@@ -46,6 +46,10 @@ class UserMessagesTest extends TestCase
             'payment.billing_fetch_failed',
             'payment.wallet_unavailable',
             'payment.feature_cards_not_configured',
+            'moderation.quality',
+            'moderation.quality_links',
+            'moderation.quality_shortener',
+            'moderation.contact_article',
             'cron.disabled',
             'cron.forbidden',
         ];

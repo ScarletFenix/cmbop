@@ -10,6 +10,8 @@ use App\Services\ActivityLogger;
 use App\Services\ContentUpload\ArticleHtmlSanitizer;
 use App\Services\ContentUpload\ContentUploadService;
 use App\Services\ContentUpload\DocumentTextExtractor;
+use App\Services\OrderChatContactGuard;
+use App\Support\UserMessages;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -257,7 +259,70 @@ class ContentModerationService
             ];
         }
 
+        $contactHaystack = trim($title."\n".$text."\n".$html."\n".implode("\n", array_map('strval', $links)));
+        if (app(OrderChatContactGuard::class)->isBlocked($contactHaystack, OrderChatContactGuard::MODE_CONTENT)) {
+            $message = UserMessages::get('moderation.contact_article');
+            $token = Str::random(40);
+            $log = ContentModerationLog::create([
+                'user_id' => $user?->id,
+                'content_submission_id' => $contentSubmissionId,
+                'document_url' => $sourceLabel,
+                'document_id' => $documentId,
+                'status' => ContentModerationLog::STATUS_REJECTED,
+                'passed' => false,
+                'error_code' => 'off_platform_contact',
+                'error_message' => $message,
+                'scan_token' => $token,
+                'word_count' => str_word_count($text),
+                'signals' => ['off_platform_contact' => true, 'source' => 'upload'],
+                'quality_report' => ['blocking_issues' => ['off_platform_contact'], 'word_count' => str_word_count($text)],
+            ]);
+
+            return [
+                'passed' => false,
+                'status' => 'rejected',
+                'user_title' => 'Article needs changes',
+                'user_message' => $message,
+                'loading_done' => true,
+                'log' => $log,
+                'report' => ['summary' => $message, 'fix_hints' => [$message]],
+                'scan_token' => $token,
+                'matched_terms' => [],
+                'blocked_urls' => [],
+            ];
+        }
+
+        $quality = $this->quality->analyze(
+            $text,
+            $html,
+            $links,
+            $cfg['quality'] ?? []
+        );
+        $blocking = $quality['blocking_issues'] ?? [];
+        $alwaysBlock = array_intersect($blocking, ['url_shortener', 'placeholder']);
+        $qualityBlocks = $alwaysBlock !== []
+            || ((bool) ($cfg['quality']['block_on_quality_failure'] ?? false) && $blocking !== []);
+
         if (! $this->isEnabled()) {
+            if ($qualityBlocks) {
+                $token = Str::random(40);
+                $log = ContentModerationLog::create([
+                    'user_id' => $user?->id,
+                    'content_submission_id' => $contentSubmissionId,
+                    'document_url' => $sourceLabel,
+                    'document_id' => $documentId,
+                    'status' => ContentModerationLog::STATUS_REJECTED,
+                    'passed' => false,
+                    'max_confidence' => 0,
+                    'scan_token' => $token,
+                    'word_count' => $quality['word_count'] ?? str_word_count($text),
+                    'signals' => ['source' => 'upload', 'quality_only' => true],
+                    'quality_report' => $quality,
+                ]);
+
+                return $this->resultFromLog($log);
+            }
+
             $token = Str::random(40);
             $log = ContentModerationLog::create([
                 'user_id' => $user?->id,
@@ -292,18 +357,8 @@ class ContentModerationService
             exceptions: is_array($exceptions) ? $exceptions : [],
         );
 
-        $quality = $this->quality->analyze(
-            $text,
-            $html,
-            $links,
-            $cfg['quality'] ?? []
-        );
-
         $threshold = $this->threshold();
         $restrictedFail = $score['max_confidence'] >= $threshold;
-        // Quality is advisory unless explicitly configured to block.
-        $qualityBlocks = (bool) (($cfg['quality']['block_on_quality_failure'] ?? false)
-            && ! empty($quality['blocking_issues']));
         $passed = ! $restrictedFail && ! $qualityBlocks;
 
         $matchedTerms = $score['matched_terms'] ?? [];
@@ -349,10 +404,9 @@ class ContentModerationService
      */
     public function assertSubmissionsApproved(array $submissions, ?User $user = null): array
     {
-        if (! $this->isEnabled()) {
-            return ['ok' => true, 'failures' => []];
-        }
-
+        // Always re-scan. scanExtractedContent still blocks off-platform
+        // contact, URL shorteners, and placeholder/link-spam when the
+        // restricted-category scanner is switched off.
         $failures = [];
 
         foreach ($submissions as $submission) {
@@ -453,8 +507,9 @@ class ContentModerationService
                 $failures[] = [
                     'url' => 'upload:'.$submission->id,
                     'title' => $result['user_title'] ?? 'Article needs changes',
-                    'message' => config('content_upload.help.compliance_reject')
-                        ?: ($result['user_message'] ?? 'Please revise restricted content before ordering.'),
+                    'message' => $result['user_message']
+                        ?? (config('content_upload.help.compliance_reject')
+                            ?: 'Please revise this article before ordering.'),
                     'report' => $result['report'] ?? [],
                 ];
             }
@@ -563,6 +618,28 @@ class ContentModerationService
 
     public function rejectionMessage(?ContentModerationLog $log = null): string
     {
+        $quality = is_array($log?->quality_report) ? $log->quality_report : [];
+        $blocking = $quality['blocking_issues'] ?? [];
+        if (is_array($blocking) && $blocking !== [] && ! $log?->detected_category) {
+            if (in_array('off_platform_contact', $blocking, true)
+                || ($log?->error_code === 'off_platform_contact')) {
+                return UserMessages::get('moderation.contact_article');
+            }
+            if (in_array('url_shortener', $blocking, true)) {
+                return UserMessages::get('moderation.quality_shortener');
+            }
+            if (in_array('external_links', $blocking, true)) {
+                $max = (int) (($this->effectiveConfig()['quality']['max_external_links'] ?? 15));
+
+                return UserMessages::get('moderation.quality_links', ['max' => $max]);
+            }
+            if (in_array('placeholder', $blocking, true)) {
+                return UserMessages::get('moderation.quality_placeholder');
+            }
+
+            return UserMessages::get('moderation.quality');
+        }
+
         $category = $log?->detected_category;
         $topic = $this->categoryTopic($category);
         $blockedUrls = $log ? $this->blockedUrlsFromLog($log) : [];
@@ -663,7 +740,25 @@ class ContentModerationService
         }
 
         $fixHints = [];
-        if ($log->status === ContentModerationLog::STATUS_REJECTED && ! $log->passed) {
+        $qualityBlocking = is_array($quality['blocking_issues'] ?? null) ? $quality['blocking_issues'] : [];
+        $qualityOnlyReject = $log->status === ContentModerationLog::STATUS_REJECTED
+            && ! $log->passed
+            && ! filled($log->detected_category)
+            && $qualityBlocking !== [];
+        if ($qualityOnlyReject) {
+            foreach ($qualityBlocking as $issue) {
+                if ($issue === 'off_platform_contact') {
+                    $fixHints[] = UserMessages::get('moderation.contact_article');
+                } elseif ($issue === 'url_shortener') {
+                    $fixHints[] = UserMessages::get('moderation.quality_shortener');
+                } elseif ($issue === 'external_links') {
+                    $max = (int) (($this->effectiveConfig()['quality']['max_external_links'] ?? 15));
+                    $fixHints[] = UserMessages::get('moderation.quality_links', ['max' => $max]);
+                } elseif ($issue === 'placeholder') {
+                    $fixHints[] = UserMessages::get('moderation.quality_placeholder');
+                }
+            }
+        } elseif ($log->status === ContentModerationLog::STATUS_REJECTED && ! $log->passed) {
             if ($blockedUrls !== []) {
                 $detail = 'Remove or replace blocked links: '.implode(', ', array_slice($blockedUrls, 0, 5));
                 foreach (array_slice($blockedUrls, 0, 5) as $url) {
@@ -1647,35 +1742,45 @@ class ContentModerationService
             $report['blocked_urls'] = [];
         } else {
             $message = (string) ($result['user_message'] ?? 'Please revise restricted content before ordering.');
+            $log = $result['log'] instanceof ContentModerationLog ? $result['log'] : null;
+            $qualityReport = is_array($log?->quality_report) ? $log->quality_report : [];
+            $qualityBlocking = is_array($qualityReport['blocking_issues'] ?? null)
+                ? $qualityReport['blocking_issues']
+                : [];
+            $qualityOnly = ! filled($log?->detected_category)
+                && ($qualityBlocking !== [] || $log?->error_code === 'off_platform_contact');
             $detail = $urls !== []
                 ? 'Blocked links: '.implode(', ', array_slice($urls, 0, 5))
                 : ($terms !== []
                     ? 'Found: '.implode(', ', array_slice($terms, 0, 10))
                     : $message);
-            $report['passed_compliance'] = false;
+            $report['passed_compliance'] = $qualityOnly;
+            if ($qualityOnly) {
+                $report['passed_quality'] = false;
+            }
             $report['summary'] = $message;
             $report['matched_terms'] = $terms;
             $report['blocked_urls'] = $urls;
 
             $updated = false;
-            $topic = $this->categoryTopic(
-                $result['log'] instanceof ContentModerationLog
-                    ? $result['log']->detected_category
-                    : null
-            );
+            $topic = $this->categoryTopic($log?->detected_category);
+            $checkKey = $qualityOnly ? 'quality_policy' : 'restricted_content';
+            $checkLabel = $qualityOnly
+                ? 'Article needs changes'
+                : 'Restricted content ('.$topic.')';
             foreach ($checks as $i => $check) {
-                if (! is_array($check) || ($check['key'] ?? '') !== 'restricted_content') {
+                if (! is_array($check) || ($check['key'] ?? '') !== $checkKey) {
                     continue;
                 }
                 $checks[$i]['status'] = 'fail';
-                $checks[$i]['label'] = 'Restricted content ('.$topic.')';
+                $checks[$i]['label'] = $checkLabel;
                 $checks[$i]['detail'] = $detail;
                 $updated = true;
             }
             if (! $updated && ! $error) {
                 $checks[] = [
-                    'key' => 'restricted_content',
-                    'label' => 'Restricted content ('.$topic.')',
+                    'key' => $checkKey,
+                    'label' => $checkLabel,
                     'status' => 'fail',
                     'detail' => $detail,
                 ];

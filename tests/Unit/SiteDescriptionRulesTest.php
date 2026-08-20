@@ -65,6 +65,30 @@ class SiteDescriptionRulesTest extends TestCase
         $this->assertSame([], SiteDescriptionRules::errors($ok));
     }
 
+    public function test_errors_reject_off_platform_contact_details(): void
+    {
+        $html = '<p>'.str_repeat('Quality editorial site for guest posts. ', 3).' Telegram me @publisherhelp for rates.</p>';
+        $errors = SiteDescriptionRules::errors($html);
+
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('messaging-app', implode(' ', $errors));
+    }
+
+    public function test_errors_allow_telegram_as_a_topic_without_a_handle(): void
+    {
+        $html = '<p>'.str_repeat('Quality editorial site for guest posts. ', 3).' We also cover Telegram marketing.</p>';
+
+        $this->assertSame([], SiteDescriptionRules::errors($html));
+    }
+
+    public function test_errors_allow_copy_about_readers_outside_the_site(): void
+    {
+        $html = '<p>'.str_repeat('Quality editorial site for guest posts. ', 3)
+            .'We accept writers from outside the site niche and value personal contact with readers.</p>';
+
+        $this->assertSame([], SiteDescriptionRules::errors($html));
+    }
+
     public function test_excerpt_strips_tags(): void
     {
         $excerpt = SiteDescriptionRules::excerpt('<p>Hello <b>world</b> and more text about the site.</p>', 20);

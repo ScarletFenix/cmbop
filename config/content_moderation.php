@@ -24,8 +24,26 @@ return [
         'max_external_links' => 15,
         'block_placeholder_text' => true,
         'require_headings' => false,
-        // Quality remains advisory — gambling/adult/language gates block approval.
-        'block_on_quality_failure' => false,
+        // Placeholder, too many outbound links, and URL shorteners reject approval
+        // when this is on. Word count / readability stay advisory.
+        'block_on_quality_failure' => filter_var(env('CONTENT_MODERATION_BLOCK_QUALITY', true), FILTER_VALIDATE_BOOLEAN),
+        'shortener_hosts' => [
+            'bit.ly',
+            'tinyurl.com',
+            't.co',
+            'goo.gl',
+            'is.gd',
+            'ow.ly',
+            'buff.ly',
+            'cutt.ly',
+            'rebrand.ly',
+            'shorturl.at',
+            'rb.gy',
+            'tiny.cc',
+            'lnkd.in',
+            't.ly',
+            'tiny.one',
+        ],
     ],
 
     /*
