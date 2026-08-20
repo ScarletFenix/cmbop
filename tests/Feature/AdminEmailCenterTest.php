@@ -484,6 +484,7 @@ class AdminEmailCenterTest extends TestCase
         $this->assertArrayHasKey('spend_budget_alert', EmailCatalog::templates());
         foreach ([
             'email_verification',
+            'password_changed',
             'content_evaluation_result',
             'site_discount_ended',
             'payout_profile_updated',
@@ -508,6 +509,7 @@ class AdminEmailCenterTest extends TestCase
         $this->actingAs($admin)
             ->get(route('admin.emails.index'))
             ->assertOk()
+            ->assertSee('Password Changed', false)
             ->assertSee('Spend Budget Alert', false)
             ->assertSee('PayPal Deposit Refunded', false)
             ->assertSee('Email Verification', false)

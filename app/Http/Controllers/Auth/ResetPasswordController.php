@@ -8,6 +8,7 @@ use App\Support\UserMessages;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Schema;
@@ -47,15 +48,22 @@ class ResetPasswordController extends Controller
                 $user->save();
                 PasswordChangedMail::notify($user);
 
-                if (Auth::check() && (int) Auth::id() === (int) $user->id) {
-                    Auth::logoutOtherDevices($password);
-                    $request->session()->regenerate();
+                try {
+                    if (Auth::check() && (int) Auth::id() === (int) $user->id) {
+                        Auth::logoutOtherDevices($password);
+                        $request->session()->regenerate();
 
-                    return;
-                }
+                        return;
+                    }
 
-                if (Schema::hasTable('sessions')) {
-                    DB::table('sessions')->where('user_id', $user->id)->delete();
+                    if (Schema::hasTable('sessions')) {
+                        DB::table('sessions')->where('user_id', $user->id)->delete();
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning('Could not invalidate other sessions after password reset', [
+                        'user_id' => $user->id,
+                        'error' => $e->getMessage(),
+                    ]);
                 }
             }
         );

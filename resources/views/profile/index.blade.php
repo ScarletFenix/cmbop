@@ -96,7 +96,7 @@
                                        class="form-control border-start-0 ps-0"
                                        autocomplete="current-password" required placeholder="Enter current password">
                                 <button type="button" class="btn btn-outline-secondary border-start-0 toggle-password"
-                                        tabindex="-1">
+                                        tabindex="-1" aria-label="Show or hide current password">
                                     <i class="fas fa-eye"></i>
                                 </button>
                             </div>
@@ -320,8 +320,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // ── Password visibility toggle ──
     document.querySelectorAll('.toggle-password').forEach(btn => {
         btn.addEventListener('click', function() {
-            const input = this.previousElementSibling;
+            const group = this.closest('.input-group');
+            const input = group ? group.querySelector('input[type="password"], input[type="text"]') : this.previousElementSibling;
             const icon = this.querySelector('i');
+            if (!input || !icon) {
+                return;
+            }
             if (input.type === 'password') {
                 input.type = 'text';
                 icon.classList.replace('fa-eye', 'fa-eye-slash');

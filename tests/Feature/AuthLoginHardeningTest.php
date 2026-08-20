@@ -109,7 +109,8 @@ class AuthLoginHardeningTest extends TestCase
         $this->get(route('login'))
             ->assertOk()
             ->assertSee('name="remember"', false)
-            ->assertSee('Remember me', false);
+            ->assertSee('Remember me', false)
+            ->assertDontSee('form-check-label auth-label', false);
     }
 
     public function test_remember_me_sets_the_recaller_cookie(): void

@@ -128,7 +128,7 @@
                                     <div class="form-check mb-0">
                                         <input class="form-check-input" type="checkbox" name="remember" id="remember" value="1"
                                                title="Stay signed in on this device">
-                                        <label class="form-check-label auth-label mb-0" for="remember">Remember me</label>
+                                        <label class="form-check-label mb-0" for="remember">Remember me</label>
                                     </div>
                                     <a href="{{ route('password.request', absolute: false) }}" class="auth-meta-link">Forgot password?</a>
                                 </div>

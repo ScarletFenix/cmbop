@@ -60,6 +60,12 @@ class ProfilePasswordTest extends TestCase
 
         $this->assertTrue(Hash::check('newpass99', $this->user->fresh()->password));
         Mail::assertQueued(PasswordChangedMail::class, 1);
+
+        $this->post(route('logout'));
+        $this->postJson(route('login.post'), [
+            'email' => $this->user->email,
+            'password' => 'newpass99',
+        ])->assertOk()->assertJsonPath('status', 'success');
     }
 
     public function test_wrong_current_password_does_not_send_mail(): void
