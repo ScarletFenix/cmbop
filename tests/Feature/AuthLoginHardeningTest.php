@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Support\UserMessages;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
 
@@ -101,6 +102,56 @@ class AuthLoginHardeningTest extends TestCase
 
         $this->assertNotSame($before, session()->getId());
         $this->assertAuthenticatedAs($user);
+    }
+
+    public function test_login_form_offers_remember_me(): void
+    {
+        $this->get(route('login'))
+            ->assertOk()
+            ->assertSee('name="remember"', false)
+            ->assertSee('Remember me', false)
+            ->assertDontSee('form-check-label auth-label', false)
+            ->assertSee("credentials: 'same-origin'", false);
+    }
+
+    public function test_remember_me_sets_the_recaller_cookie(): void
+    {
+        $role = Role::where('name', 'advertiser')->firstOrFail();
+        $user = User::factory()->create([
+            'email' => 'remember-login@example.com',
+            'email_verified_at' => now(),
+            'password' => 'password',
+            'active_role_id' => $role->id,
+        ]);
+        $user->roles()->attach($role->id);
+
+        $recaller = Auth::guard()->getRecallerName();
+
+        $this->postJson(route('login.post'), [
+            'email' => $user->email,
+            'password' => 'password',
+            'remember' => '1',
+        ])->assertOk()->assertJsonPath('status', 'success')->assertCookie($recaller);
+
+        $this->assertNotEmpty($user->fresh()->remember_token);
+    }
+
+    public function test_login_without_remember_does_not_set_the_recaller_cookie(): void
+    {
+        $role = Role::where('name', 'advertiser')->firstOrFail();
+        $user = User::factory()->create([
+            'email' => 'session-login@example.com',
+            'email_verified_at' => now(),
+            'password' => 'password',
+            'active_role_id' => $role->id,
+        ]);
+        $user->roles()->attach($role->id);
+
+        $this->postJson(route('login.post'), [
+            'email' => $user->email,
+            'password' => 'password',
+        ])->assertOk()->assertJsonPath('status', 'success')
+            ->assertCookieMissing(Auth::guard()->getRecallerName());
     }
 
     public function test_logout_invalidates_the_session(): void

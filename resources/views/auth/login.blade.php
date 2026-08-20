@@ -124,7 +124,12 @@
                                     <div class="invalid-feedback" id="passwordError" role="alert" aria-live="polite"></div>
                                 </div>
 
-                                <div class="mb-3 text-end">
+                                <div class="mb-3 d-flex justify-content-between align-items-center gap-2">
+                                    <div class="form-check mb-0">
+                                        <input class="form-check-input" type="checkbox" name="remember" id="remember" value="1"
+                                               title="Stay signed in on this device">
+                                        <label class="form-check-label mb-0" for="remember">Remember me</label>
+                                    </div>
                                     <a href="{{ route('password.request', absolute: false) }}" class="auth-meta-link">Forgot password?</a>
                                 </div>
 
@@ -180,6 +185,7 @@
 function togglePassword(id, el){
     const input = document.getElementById(id);
     const icon = el.querySelector('i');
+    if(!input || !icon) return;
 
     if(input.type === 'password'){
         input.type = 'text';
@@ -203,6 +209,7 @@ document.getElementById('loginForm').addEventListener('submit', async function(e
 
     const res = await fetch("{{ route('login.post', absolute: false) }}", {
         method: 'POST',
+        credentials: 'same-origin',
         headers: {
             'X-CSRF-TOKEN': '{{ csrf_token() }}',
             'Accept': 'application/json',

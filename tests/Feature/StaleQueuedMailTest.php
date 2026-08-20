@@ -2,7 +2,9 @@
 
 namespace Tests\Feature;
 
+use App\Mail\PasswordChangedMail;
 use App\Mail\PlatformMailable;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Tests\TestCase;
@@ -71,6 +73,18 @@ class StaleQueuedMailTest extends TestCase
 
         $this->assertNotNull($mailable->queuedAt);
         $this->assertTrue(Carbon::parse($mailable->queuedAt)->greaterThan(Carbon::now()->subMinute()));
+    }
+
+    public function test_password_changed_mail_is_not_dropped_when_the_queue_is_late(): void
+    {
+        config(['email_notifications.max_age_hours' => 24]);
+
+        $user = User::factory()->create();
+        $mailable = new PasswordChangedMail($user);
+        $mailable->to($user->email);
+        $mailable->queuedAt = Carbon::now()->subHours(30)->toIso8601String();
+
+        $this->assertNotNull($mailable->send(app('mailer')));
     }
 }
 
