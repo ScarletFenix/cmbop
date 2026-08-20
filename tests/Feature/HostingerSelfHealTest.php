@@ -163,6 +163,24 @@ class HostingerSelfHealTest extends TestCase
         $this->assertSame(ProductionReadiness::SEVERITY_WARN, $scheduler['severity']);
     }
 
+    public function test_heal_is_not_remembered_when_migrate_failed(): void
+    {
+        $this->assertFalse(ProductionRepair::migrateCompleted([
+            'migrate failed: SQLSTATE[42000]: 1059 Identifier name is too long',
+            'roles seeded (advertiser, publisher, admin, marketing)',
+        ]));
+        $this->assertFalse(ProductionRepair::migrateCompleted([
+            'migrate --force exited 1',
+        ]));
+        $this->assertFalse(ProductionRepair::migrateCompleted([
+            'roles seeded (advertiser, publisher, admin, marketing)',
+        ]));
+        $this->assertTrue(ProductionRepair::migrateCompleted([
+            'migrate --force completed',
+            'roles seeded (advertiser, publisher, admin, marketing)',
+        ]));
+    }
+
     public function test_web_heal_defaults_on_and_docs_name_the_self_heal(): void
     {
         $this->assertTrue(config('app.web_heal'));

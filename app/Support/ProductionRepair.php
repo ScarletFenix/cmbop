@@ -64,6 +64,35 @@ class ProductionRepair
     }
 
     /**
+     * Web heal must not cache a 6-hour skip when migrate did not finish.
+     * A 1059 (or any later) failure is swallowed above so MEDIA_PATH still
+     * runs — the flag has to look at notes, not whether run() threw.
+     *
+     * @param  list<string>  $notes
+     */
+    public static function migrateCompleted(array $notes): bool
+    {
+        $sawCompleted = false;
+
+        foreach ($notes as $note) {
+            if (! is_string($note)) {
+                continue;
+            }
+
+            if (str_starts_with($note, 'migrate failed:')
+                || str_starts_with($note, 'migrate --force exited')) {
+                return false;
+            }
+
+            if ($note === 'migrate --force completed') {
+                $sawCompleted = true;
+            }
+        }
+
+        return $sawCompleted;
+    }
+
+    /**
      * Filename timestamps are out of dependency order. A clean Hostinger
      * `migrate --force` fails unless users/sites/orders/order_items exist first.
      */
@@ -200,7 +229,7 @@ class ProductionRepair
 
     private function persistKey(string $key, string $value, bool $persistEnv): bool
     {
-        if (! $persistEnv || app()->runningUnitTests()) {
+        if (! $persistEnv || $this->runningAutomatedTest()) {
             return false;
         }
 
@@ -213,6 +242,21 @@ class ProductionRepair
         $_SERVER[$key] = $value;
 
         return true;
+    }
+
+    /**
+     * runningUnitTests() is false after tests set app.env to production
+     * (Hostinger repair coverage). Still never write the real .env.
+     */
+    private function runningAutomatedTest(): bool
+    {
+        if (app()->runningUnitTests()) {
+            return true;
+        }
+
+        $env = $_ENV['APP_ENV'] ?? $_SERVER['APP_ENV'] ?? getenv('APP_ENV');
+
+        return is_string($env) && strtolower($env) === 'testing';
     }
 
     private function refreshCachedConfig(): void

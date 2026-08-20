@@ -21,7 +21,8 @@ class HealHostingerProduction
 {
     private const HEAL_LOCK = 'ops:hostinger-heal';
 
-    private const HEAL_FLAG = 'ops:hostinger-healed';
+    // v2: bust the 6-hour skip left by a failed migrate (flag was set anyway).
+    private const HEAL_FLAG = 'ops:hostinger-healed-v2';
 
     private const SCHEDULE_LOCK = 'ops:web-schedule';
 
@@ -73,7 +74,13 @@ class HealHostingerProduction
 
         try {
             $notes = app(ProductionRepair::class)->run();
-            Cache::put(self::HEAL_FLAG, true, now()->addHours(6));
+            if (ProductionRepair::migrateCompleted($notes)) {
+                Cache::put(self::HEAL_FLAG, true, now()->addHours(6));
+            } else {
+                Log::warning('Hostinger production heal did not cache skip; migrate incomplete', [
+                    'notes' => $notes,
+                ]);
+            }
             Log::info('Hostinger production heal ran', ['notes' => $notes]);
         } catch (\Throwable $e) {
             Log::warning('Hostinger production heal failed', ['error' => $e->getMessage()]);

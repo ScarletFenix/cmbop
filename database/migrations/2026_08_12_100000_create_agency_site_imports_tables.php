@@ -45,14 +45,26 @@ return new class extends Migration
                 $table->index(['agency_site_import_id', 'row_number'], 'asif_import_row_idx');
             });
         } else {
-            $indexNames = collect(Schema::getIndexes('agency_site_import_failures'))
-                ->pluck('name')
-                ->all();
-            if (! in_array('asif_import_row_idx', $indexNames, true)
-                && ! in_array('agency_site_import_failures_agency_site_import_id_row_number_index', $indexNames, true)) {
-                Schema::table('agency_site_import_failures', function (Blueprint $table) {
-                    $table->index(['agency_site_import_id', 'row_number'], 'asif_import_row_idx');
-                });
+            $hasCompositeIndex = false;
+            try {
+                $indexNames = collect(Schema::getIndexes('agency_site_import_failures'))
+                    ->pluck('name')
+                    ->all();
+                $hasCompositeIndex = in_array('asif_import_row_idx', $indexNames, true)
+                    || in_array('agency_site_import_failures_agency_site_import_id_row_number_index', $indexNames, true);
+            } catch (Throwable) {
+                // Locked-down hosts may not list indexes; try to add anyway.
+            }
+
+            if (! $hasCompositeIndex) {
+                try {
+                    Schema::table('agency_site_import_failures', function (Blueprint $table) {
+                        $table->index(['agency_site_import_id', 'row_number'], 'asif_import_row_idx');
+                    });
+                } catch (Throwable) {
+                    // Leftover table already has this index, or we cannot add it.
+                    // Do not block later migrations (welcome_bonus_settings).
+                }
             }
         }
 
