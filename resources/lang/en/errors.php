@@ -54,7 +54,7 @@ return [
         'paypal_rejected' => 'PayPal could not start this payment (:code). Try again or use wallet or card.',
         'paypal_restricted' => 'This PayPal business account cannot receive payments. Use wallet or card, or check the account in the PayPal dashboard.',
         'paypal_webhook_as_secret' => 'PAYPAL_SECRET is a webhook ID (WH-…). Paste the REST app Secret from the PayPal dashboard, not the webhook ID.',
-        'paypal_return_url' => 'PayPal needs a public https:// return URL. Set APP_URL to your live domain, then run php artisan config:clear.',
+        'paypal_return_url' => 'PayPal needs a public https website address. Contact support if this keeps happening.',
         'paypal_duplicate' => 'This checkout was already sent to PayPal. Refresh the page and try again.',
         'paypal_not_completed' => 'PayPal payment was not completed.',
         'paypal_cancelled' => 'PayPal payment was cancelled.',
@@ -101,6 +101,14 @@ return [
         'saved_card_charge_failed' => 'Unable to charge this saved card. Please try again.',
         'saved_card_declined' => 'Could not charge this card. Try another card or pay with a new card.',
         'saved_card_deposit_declined' => 'Could not charge this card. Try another card or Stripe Checkout.',
+        'stripe_schema_missing' => 'Card payments cannot start until support updates this account. Try again later or pay with wallet.',
+        'bonus_reserve_failed' => 'Unable to apply your bonus to this order. Try again in a moment or pay without the bonus.',
+        'bonus_order_failed' => 'Unable to place the bonus-covered order. Try again in a moment.',
+        'place_order_failed' => 'Unable to place this order. Check your payment method and try again.',
+        'order_missing_after_pay' => 'Payment went through, but we could not find the new order. Contact support with your payment receipt.',
+        'billing_fetch_failed' => 'Could not load saved cards. Refresh the page or try again in a moment.',
+        'wallet_unavailable' => 'Your wallet is not available right now. Contact support.',
+        'feature_cards_not_configured' => 'Card payments are not configured. Please use wallet balance or contact support.',
     ],
 
     'cron' => [

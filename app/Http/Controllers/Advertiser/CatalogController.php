@@ -2420,7 +2420,7 @@ class CatalogController extends Controller
 
                 return response()->json([
                     'success' => false,
-                    'message' => 'Unable to apply bonus balance. Please try again without bonus, or contact support.',
+                    'message' => UserMessages::get('payment.bonus_reserve_failed'),
                 ]);
             }
 
@@ -2793,7 +2793,7 @@ class CatalogController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Unable to apply bonus balance. Please try again without bonus, or contact support.',
+                'message' => UserMessages::get('payment.bonus_reserve_failed'),
             ]);
         }
 
@@ -2930,7 +2930,7 @@ class CatalogController extends Controller
 
                 return response()->json([
                     'success' => false,
-                    'message' => 'Unable to place bonus order. Please try again.',
+                    'message' => UserMessages::get('payment.bonus_order_failed'),
                 ]);
             }
         }
@@ -3424,7 +3424,7 @@ class CatalogController extends Controller
             if (! $advertiserRoleId) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Advertiser role not configured.',
+                    'message' => UserMessages::get('payment.wallet_unavailable'),
                 ]);
             }
 
@@ -3746,7 +3746,7 @@ class CatalogController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Unable to place order. Please try again.',
+                'message' => UserFacingError::message($e, UserMessages::get('payment.place_order_failed')),
             ]);
         }
     }
@@ -3876,7 +3876,7 @@ class CatalogController extends Controller
                 ]);
 
                 return redirect()->route('advertiser.checkout')
-                    ->with('error', 'Order not found. Please contact support with your payment reference.');
+                    ->with('error', UserMessages::get('payment.order_missing_after_pay'));
             }
 
             $paidOrders = $orders->filter(fn (Order $order) => $order->payment_status === 'paid');
@@ -6606,7 +6606,7 @@ class CatalogController extends Controller
         if (! $advertiserRoleId) {
             return response()->json([
                 'success' => false,
-                'message' => 'Advertiser role not configured.',
+                'message' => UserMessages::get('payment.wallet_unavailable'),
             ]);
         }
 

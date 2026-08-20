@@ -96,7 +96,7 @@ class SitePromotionController extends Controller
         if (! config('services.stripe.secret')) {
             return response()->json([
                 'success' => false,
-                'message' => 'Card payments are not configured. Please use wallet balance or contact support.',
+                'message' => UserMessages::get('payment.feature_cards_not_configured'),
             ], 503);
         }
 

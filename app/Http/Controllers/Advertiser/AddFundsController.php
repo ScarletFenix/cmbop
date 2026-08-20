@@ -936,7 +936,7 @@ class AddFundsController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to fetch billing information',
+                'message' => UserFacingError::message($e, UserMessages::get('payment.billing_fetch_failed')),
             ], 500);
         }
     }
