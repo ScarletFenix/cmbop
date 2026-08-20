@@ -34,6 +34,9 @@ class UserMessagesTest extends TestCase
             'payment.stripe_not_configured',
             'payment.verification_failed',
             'payment.wallet_failed',
+            'payment.cards_not_configured',
+            'payment.pay_again_failed',
+            'payment.paypal_refund_failed',
             'cron.disabled',
             'cron.forbidden',
         ];

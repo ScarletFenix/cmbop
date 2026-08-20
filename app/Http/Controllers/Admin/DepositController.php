@@ -15,6 +15,7 @@ use App\Services\Wallet\ManualDepositAlreadyProcessedException;
 use App\Services\Wallet\ManualDepositApprovalService;
 use App\Services\WalletPaypalDepositService;
 use App\Support\UserFacingError;
+use App\Support\UserMessages;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -256,7 +257,7 @@ class DepositController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => UserFacingError::message($e, 'PayPal refund failed. The wallet was not changed.'),
+                'message' => UserFacingError::message($e, UserMessages::get('payment.paypal_refund_failed')),
             ], 422);
         }
     }

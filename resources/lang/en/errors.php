@@ -89,6 +89,18 @@ return [
         'feature_not_completed' => 'Payment was not completed.',
         'feature_mismatch' => 'Payment session does not match this website.',
         'feature_verify_failed' => 'Could not verify payment. Contact support if you were charged.',
+        'cards_not_configured' => 'Card payments are not configured. Please contact support.',
+        'cards_not_configured_short' => 'Card payments are not configured.',
+        'card_setup_failed' => 'Unable to start card setup. Please try again.',
+        'card_remove_failed' => 'Unable to remove this card.',
+        'card_default_failed' => 'Unable to set default card.',
+        'payment_method_invalid' => 'Invalid payment method.',
+        'pay_again_failed' => 'Unable to start payment retry. Please try again or contact support.',
+        'paypal_refund_failed' => 'PayPal refund failed. The wallet was not changed.',
+        'paypal_refund_failed_credit' => 'PayPal refund failed. The wallet was not credited.',
+        'saved_card_charge_failed' => 'Unable to charge this saved card. Please try again.',
+        'saved_card_declined' => 'Could not charge this card. Try another card or pay with a new card.',
+        'saved_card_deposit_declined' => 'Could not charge this card. Try another card or Stripe Checkout.',
     ],
 
     'cron' => [

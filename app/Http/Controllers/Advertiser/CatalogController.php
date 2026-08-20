@@ -2228,7 +2228,7 @@ class CatalogController extends Controller
             if (! in_array($paymentMethod, ['wallet', 'card', 'paypal'], true)) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Invalid payment method',
+                    'message' => UserMessages::get('payment.payment_method_invalid'),
                 ]);
             }
 
@@ -3102,7 +3102,7 @@ class CatalogController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Unable to charge this saved card. Please try again.',
+                'message' => UserMessages::get('payment.saved_card_charge_failed'),
             ], 422);
         }
 
@@ -3217,7 +3217,7 @@ class CatalogController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Could not charge this card. Try another card or pay with a new card.',
+                'message' => UserMessages::get('payment.saved_card_declined'),
             ], 422);
         } catch (\Throwable $e) {
             $paid = $this->paidCardOrdersForCheckout($referenceCode, $userId);
@@ -4475,7 +4475,7 @@ class CatalogController extends Controller
             if (! app(StripeCustomerService::class)->configured()) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Card payments are not configured. Set STRIPE_SECRET and STRIPE_KEY, or choose another payment method.',
+                    'message' => UserMessages::get('payment.cards_not_configured'),
                 ], 503);
             }
 
@@ -4568,7 +4568,7 @@ class CatalogController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Unable to start payment retry. Please try again or contact support.',
+                'message' => UserFacingError::message($e, UserMessages::get('payment.pay_again_failed')),
             ], 500);
         }
     }

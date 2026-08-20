@@ -557,7 +557,7 @@ class AddFundsController extends Controller
         if (! app(StripeCustomerService::class)->configured()) {
             return response()->json([
                 'success' => false,
-                'message' => 'Card payments are not configured.',
+                'message' => UserMessages::get('payment.cards_not_configured_short'),
             ], 503);
         }
 
@@ -618,7 +618,7 @@ class AddFundsController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Could not charge this card. Try another card or Stripe Checkout.',
+                'message' => UserMessages::get('payment.saved_card_deposit_declined'),
             ], 422);
         } catch (\Throwable $e) {
             Log::error('Saved card wallet deposit failed: '.$e->getMessage());
