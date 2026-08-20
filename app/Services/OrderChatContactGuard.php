@@ -91,13 +91,7 @@ class OrderChatContactGuard
             return true;
         }
 
-        // Standard email / lightly obfuscated email after normalize.
-        if (preg_match('/[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}\b/i', $normalized)) {
-            return true;
-        }
-
-        // Spaced email fragments that survived normalize poorly: "name @ gmail . com"
-        if (preg_match('/[a-z0-9._%+\-]+\s*@\s*[a-z0-9.\-]+\s*\.\s*[a-z]{2,}\b/i', $original)) {
+        if ($this->containsEmailAddress($normalized) || $this->containsSpacedEmailAddress($original)) {
             return true;
         }
 
@@ -192,6 +186,9 @@ class OrderChatContactGuard
         $askPatterns = [
             '/\b(?:email|mail|phone|call|text|whatsapp|telegram|dm)\s+me\b/i',
             '/\b(?:send|share|give|drop)\s+me\s+(?:your\s+)?(?:e[\-\s]?mail|email|mail|phone|whatsapp|telegram)\b/i',
+            '/\b(?:what(?:\'s| is)|whats)\s+your\s+(?:e[\-\s]?mail|email|mail|phone|mobile|cell|whatsapp|telegram|skype|discord)\b/i',
+            '/\b(?:can|could|may)\s+(?:i|we)\s+(?:have|get)\s+(?:your\s+)?(?:e[\-\s]?mail|email|mail|phone|whatsapp|telegram)\b/i',
+            '/\b(?:can|could)\s+(?:i|we)\s+call\s+you\b/i',
         ];
 
         if ($mode === self::MODE_CHAT) {
@@ -214,5 +211,42 @@ class OrderChatContactGuard
         }
 
         return false;
+    }
+
+    private function containsEmailAddress(string $text): bool
+    {
+        if (! preg_match_all('/[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}\b/i', $text, $matches)) {
+            return false;
+        }
+
+        foreach ($matches[0] as $email) {
+            if (! $this->looksLikeAssetFilename((string) $email)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function containsSpacedEmailAddress(string $original): bool
+    {
+        if (! preg_match_all('/[a-z0-9._%+\-]+\s*@\s*[a-z0-9.\-]+\s*\.\s*[a-z]{2,}\b/i', $original, $matches)) {
+            return false;
+        }
+
+        foreach ($matches[0] as $email) {
+            $compact = preg_replace('/\s+/', '', (string) $email) ?? (string) $email;
+            if (! $this->looksLikeAssetFilename($compact)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function looksLikeAssetFilename(string $value): bool
+    {
+        return (bool) preg_match('/@\d+x\.(?:png|jpe?g|gif|webp|svg|avif|bmp)\b/i', $value)
+            || (bool) preg_match('/\.(?:png|jpe?g|gif|webp|svg|avif|bmp)(?:\?|#|$)/i', $value);
     }
 }

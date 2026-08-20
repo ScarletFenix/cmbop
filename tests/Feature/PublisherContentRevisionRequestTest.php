@@ -147,6 +147,39 @@ class PublisherContentRevisionRequestTest extends TestCase
         $this->assertFalse($item->fresh()->isContentRevisionRequested());
     }
 
+    public function test_publisher_revision_reason_rejects_asking_for_email(): void
+    {
+        $item = $this->makeProcessingItem();
+
+        $this->actingAs($this->publisher)
+            ->postJson(route('publisher.orders.request-content-revision', $item->id), [
+                'reason' => "What's your email so I can send the markup directly?",
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('reason');
+
+        $this->assertFalse($item->fresh()->isContentRevisionRequested());
+    }
+
+    public function test_publisher_revision_reason_allows_outside_the_site_copy(): void
+    {
+        $item = $this->makeProcessingItem();
+
+        $this->actingAs($this->publisher)
+            ->postJson(route('publisher.orders.request-content-revision', $item->id), [
+                'reason' => 'Please add a section about reaching readers outside the site homepage.',
+            ])
+            ->assertOk();
+
+        $this->assertTrue($item->fresh()->isContentRevisionRequested());
+        $this->assertFalse(
+            (bool) OrderChatMessage::query()
+                ->where('order_id', $item->order_id)
+                ->where('message', 'like', 'Revised article requested:%')
+                ->value('is_blocked')
+        );
+    }
+
     public function test_advertiser_revision_note_rejects_off_platform_contact(): void
     {
         $item = $this->makeProcessingItem();

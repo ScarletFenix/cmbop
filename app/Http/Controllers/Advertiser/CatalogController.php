@@ -4142,7 +4142,7 @@ class CatalogController extends Controller
             // Contact-detail share/ask in the reason is saved but not delivered to the publisher.
             try {
                 $chatBody = "Revision requested: {$request->reason}\nPlease update the article, then paste the corrected live URL in this chat to resubmit.";
-                $guard = app(OrderChatContactGuard::class)->inspect($chatBody);
+                $guard = app(OrderChatContactGuard::class)->inspect($chatBody, OrderChatContactGuard::MODE_CONTENT);
                 OrderChatMessage::create([
                     'order_id' => $order->id,
                     'user_id' => auth()->id(),

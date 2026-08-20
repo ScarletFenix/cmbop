@@ -271,6 +271,26 @@ class ContentQualityAndContactGuardTest extends TestCase
         $this->assertStringContainsString('shortener', strtolower((string) $result['message']));
     }
 
+    public function test_evaluation_allows_retina_image_filenames(): void
+    {
+        config(['content_moderation.enabled' => true]);
+
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $body = $this->englishBody();
+        $submission->update([
+            'language' => 'en',
+            'extracted_text' => $body,
+            'preview_html' => '<p>'.$body.'</p><img src="/storage/articles/hero@2x.png" alt="hero">',
+            'target_url' => null,
+            'feature_image_url' => '/storage/articles/hero@2x.png',
+        ]);
+
+        $result = app(ArticleEvaluationService::class)->evaluate($submission->fresh(), $advertiser);
+
+        $this->assertTrue($result['approved'], (string) ($result['message'] ?? ''));
+    }
+
     public function test_evaluation_allows_year_2000_next_to_a_date(): void
     {
         config(['content_moderation.enabled' => true]);

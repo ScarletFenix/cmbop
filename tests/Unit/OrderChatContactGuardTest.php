@@ -106,6 +106,18 @@ class OrderChatContactGuardTest extends TestCase
             'Growth since 2000 2024-12-15 has been steady for a number of brands.',
             OrderChatContactGuard::MODE_CONTENT
         ));
+        $this->assertFalse($this->guard->isBlocked(
+            '<p>Hero image</p><img src="/storage/articles/hero@2x.png" alt="hero">',
+            OrderChatContactGuard::MODE_CONTENT
+        ));
+        $this->assertTrue($this->guard->isBlocked(
+            "What's your email after you publish?",
+            OrderChatContactGuard::MODE_CONTENT
+        ));
+        $this->assertTrue($this->guard->isBlocked(
+            'Can I call you about the draft?',
+            OrderChatContactGuard::MODE_CONTENT
+        ));
     }
 
     public function test_blocks_phone_share_with_context(): void

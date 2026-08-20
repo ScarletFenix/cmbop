@@ -637,7 +637,7 @@ class ContentRevisionService
     private function postChat(Order $order, int $userId, string $senderType, string $body): void
     {
         try {
-            $guard = $this->chatGuard->inspect($body);
+            $guard = $this->chatGuard->inspect($body, OrderChatContactGuard::MODE_CONTENT);
             OrderChatMessage::create([
                 'order_id' => $order->id,
                 'user_id' => $userId,
