@@ -202,6 +202,11 @@
                 $catalogSalePct = $catalogSalePctNominal; // nominal for data-* / JS
                 $catalogSalePctDisplay = $viewPrices['sale_percent'];
                 $catalogSalePrice = $viewPrices['sale'];
+                $articlePay = $catalogSalePrice ?? $catalogListPrice;
+                $showAdvertiserPay = ! $isOwnedByMe;
+                // Advertisers always get a Details pay line so homepage-only
+                // listings cannot show publisher +€ amounts with no article total.
+                $hasPricingExtras = $hasSensitiveExtras || $showAdvertiserPay;
             @endphp
             @php
                 // Dynamic "new" flag — listing created within the last 30 days
@@ -644,6 +649,7 @@
                     @if($hasPricingExtras)
                     <div class="col-lg-3 col-md-6 catalog-expand-pricing">
                         <div class="d-flex flex-column gap-2">
+                                @if($hasSensitiveExtras)
                                 <p class="mb-0"><strong>Sensitive topics</strong></p>
                                 <p class="small text-muted mb-1">Additional charge on top of the base price.</p>
 
@@ -662,13 +668,13 @@
                                                value="0"
                                                data-type="none"
                                                data-additional-price="0"
-                                               data-total-price="{{ $catalogSalePrice ?? $catalogListPrice }}"
+                                               data-total-price="{{ $articlePay }}"
                                                data-site-id="{{ $site->id }}"
                                                id="sensitive_{{ $site->id }}_none"
                                                checked>
                                         <label class="form-check-label" for="sensitive_{{ $site->id }}_none">
                                             <strong>No sensitive topic</strong>
-                                            <span class="text-muted">€{{ number_format($catalogSalePrice ?? $catalogListPrice, 2) }}</span>
+                                            <span class="text-muted">€{{ number_format($articlePay, 2) }}</span>
                                         </label>
                                     </div>
 
@@ -697,18 +703,20 @@
                                             <label class="form-check-label"
                                                    for="sensitive_{{ $site->id }}_{{ $loop->index }}">
                                                 <strong>{{ ucfirst($type) }}</strong>
-                                                <span class="text-danger">+€{{ number_format($additionalPrice, 2) }}</span>
-                                                <span class="text-muted">→ €{{ number_format($totalPrice, 2) }}</span>
+                                                <span class="text-danger">add-on +€{{ number_format($additionalPrice, 2) }}</span>
+                                                <span class="text-muted">→ you pay €{{ number_format($totalPrice, 2) }}</span>
                                             </label>
                                         </div>
                                     @endforeach
                                 </div>
+                                @endif
 
+                                @if($showAdvertiserPay)
                                 <div class="selected-price-info mt-1"
                                      id="price-info-{{ $site->id }}">
                                     <small class="text-muted">
                                         You pay:
-                                        <strong>€{{ number_format($catalogSalePrice ?? $catalogListPrice, 2) }}</strong>
+                                        <strong>€{{ number_format($articlePay, 2) }}</strong>
                                         @if($catalogSalePrice !== null)
                                             <span class="text-decoration-line-through">€{{ number_format($catalogListPrice, 2) }}</span>
                                             (offer price)
@@ -717,6 +725,7 @@
                                         @endif
                                     </small>
                                 </div>
+                                @endif
                         </div>
                     </div>
                     @endif
@@ -786,7 +795,10 @@
                                             @if($isFreeHome)
                                                 <span class="text-success">Free</span>
                                             @else
-                                                <span class="text-muted">+€{{ number_format($fee, 2) }}</span>
+                                                <span class="text-muted">add-on +€{{ number_format($fee, 2) }}</span>
+                                            @endif
+                                            @if($showAdvertiserPay)
+                                                <span class="text-muted">→ you pay €{{ number_format(round($articlePay + (float) $fee, 2), 2) }}</span>
                                             @endif
                                         </label>
                                     </div>
@@ -978,6 +990,8 @@
             $catalogSalePct = $catalogSalePctNominal; // nominal for data-* / JS
             $catalogSalePctDisplay = $viewPrices['sale_percent'];
             $catalogSalePrice = $viewPrices['sale'];
+            $articlePay = $catalogSalePrice ?? $catalogListPrice;
+            $showAdvertiserPay = ! $isOwnedByMe;
         @endphp
         <article class="catalog-mobile-card {{ $isBlacklisted ? 'is-blacklisted' : '' }}"
                  data-id="{{ $site->id }}"
@@ -1140,13 +1154,13 @@
                                value="0"
                                data-type="none"
                                data-additional-price="0"
-                               data-total-price="{{ $catalogSalePrice ?? $catalogListPrice }}"
+                               data-total-price="{{ $articlePay }}"
                                data-site-id="{{ $site->id }}"
                                id="sensitive_mobile_{{ $site->id }}_none"
                                checked>
                         <label class="form-check-label" for="sensitive_mobile_{{ $site->id }}_none">
                             <strong>No sensitive topic</strong>
-                            <span class="text-muted">€{{ number_format($catalogSalePrice ?? $catalogListPrice, 2) }}</span>
+                            <span class="text-muted">€{{ number_format($articlePay, 2) }}</span>
                         </label>
                     </div>
                     @foreach($mobileSensitivePrices as $type => $additionalPrice)
@@ -1171,25 +1185,27 @@
                                    id="sensitive_mobile_{{ $site->id }}_{{ $loop->index }}">
                             <label class="form-check-label" for="sensitive_mobile_{{ $site->id }}_{{ $loop->index }}">
                                 <strong>{{ ucfirst($type) }}</strong>
-                                <span class="text-danger">+€{{ number_format($additionalPrice, 2) }}</span>
-                                <span class="text-muted">→ €{{ number_format($totalPrice, 2) }}</span>
+                                <span class="text-danger">add-on +€{{ number_format($additionalPrice, 2) }}</span>
+                                <span class="text-muted">→ you pay €{{ number_format($totalPrice, 2) }}</span>
                             </label>
                         </div>
                     @endforeach
-                    {{-- Rendered server-side like the table's copy. It used to be
-                         an empty div until the shopper touched a radio. --}}
-                    <div class="selected-price-info mt-1" id="price-info-mobile-{{ $site->id }}">
-                        <small class="text-muted">
-                            You pay:
-                            <strong>€{{ number_format($catalogSalePrice ?? $catalogListPrice, 2) }}</strong>
-                            @if($catalogSalePrice !== null)
-                                <span class="text-decoration-line-through">€{{ number_format($catalogListPrice, 2) }}</span>
-                                (offer price)
-                            @else
-                                (base price)
-                            @endif
-                        </small>
-                    </div>
+                </div>
+            @endif
+            @if($showAdvertiserPay)
+                {{-- Always present so homepage-only cards have a live You pay
+                     target (JS rewrites this when radios change). --}}
+                <div class="selected-price-info mt-1" id="price-info-mobile-{{ $site->id }}">
+                    <small class="text-muted">
+                        You pay:
+                        <strong>€{{ number_format($articlePay, 2) }}</strong>
+                        @if($catalogSalePrice !== null)
+                            <span class="text-decoration-line-through">€{{ number_format($catalogListPrice, 2) }}</span>
+                            (offer price)
+                        @else
+                            (base price)
+                        @endif
+                    </small>
                 </div>
             @endif
             @if($homepageOptions !== [])
@@ -1230,7 +1246,10 @@
                                 @if($isFreeHome)
                                     <span class="text-success">Free</span>
                                 @else
-                                    <span class="text-muted">+€{{ number_format($fee, 2) }}</span>
+                                    <span class="text-muted">add-on +€{{ number_format($fee, 2) }}</span>
+                                @endif
+                                @if($showAdvertiserPay)
+                                    <span class="text-muted">→ you pay €{{ number_format(round($articlePay + (float) $fee, 2), 2) }}</span>
                                 @endif
                             </label>
                         </div>
@@ -1400,7 +1419,10 @@
                                         @if((float) $fee <= 0)
                                             — <span class="text-success">Free</span>
                                         @else
-                                            — +€{{ number_format((float) $fee, 2) }}
+                                            — add-on +€{{ number_format((float) $fee, 2) }}
+                                        @endif
+                                        @if($showAdvertiserPay)
+                                            → you pay €{{ number_format(round($articlePay + (float) $fee, 2), 2) }}
                                         @endif
                                     </li>
                                 @endforeach
