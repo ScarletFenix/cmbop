@@ -3554,6 +3554,29 @@ function catalogDiscountPercentForSite(siteId) {
 }
 
 /**
+ * Advertiser list (fee-inclusive) for a catalog site.
+ * Prefer the sensitive-price group, then the Buy button — never publisher.
+ */
+function catalogAdvertiserBasePrice(siteId) {
+    const id = String(siteId);
+    const group = catalogVisibleFirst(document.querySelectorAll(
+        '.sensitive-prices-group[data-site-id="' + id + '"]'
+    ));
+    if (group && group.dataset.basePrice != null && group.dataset.basePrice !== '') {
+        const fromGroup = parseFloat(group.dataset.basePrice);
+        if (Number.isFinite(fromGroup) && fromGroup > 0) return fromGroup;
+    }
+
+    const buy = document.querySelector('.buy-now[data-id="' + id + '"]');
+    if (buy && buy.dataset.basePrice != null && buy.dataset.basePrice !== '') {
+        const fromBuy = parseFloat(buy.dataset.basePrice);
+        if (Number.isFinite(fromBuy) && fromBuy > 0) return fromBuy;
+    }
+
+    return 0;
+}
+
+/**
  * Publisher payout floor for a catalog site (entered base + selected add-on).
  * data-publisher-price is the raw listing price before the portal fee markup.
  */
@@ -3612,12 +3635,13 @@ function getSelectedSensitiveForSite(siteId) {
         'input.sensitive-price-checkbox[data-site-id="' + id + '"]:checked'
     ));
     if (!checked) {
+        const fallbackBase = catalogAdvertiserBasePrice(id);
         return {
             type: null,
             additionalPrice: 0,
             totalPrice: null,
-            basePrice: null,
-            listTotal: null,
+            basePrice: fallbackBase > 0 ? fallbackBase : null,
+            listTotal: fallbackBase > 0 ? catalogRoundMoney(fallbackBase) : null,
             discountPercent: discountPercent,
         };
     }
@@ -3819,9 +3843,7 @@ function syncSensitiveSelectionUi(siteId) {
     const homepage = getSelectedHomepageForSite(siteId);
     const basePrice = selected.basePrice != null
         ? selected.basePrice
-        : (parseFloat((document.querySelector(
-            '.sensitive-prices-group[data-site-id="' + String(siteId) + '"]'
-        ) || {}).dataset?.basePrice) || 0);
+        : catalogAdvertiserBasePrice(siteId);
     const discountPercent = selected.discountPercent != null
         ? selected.discountPercent
         : catalogDiscountPercentForSite(siteId);
@@ -3849,7 +3871,7 @@ function syncSensitiveSelectionUi(siteId) {
     const effectiveOfferPct = catalogEffectiveDiscountPercent(listForLabel, articlePay);
     const homeNote = homepage.days
         ? (' · Homepage ' + homepage.days + 'd'
-            + (homeFee > 0 ? (' +€' + homeFee.toFixed(2)) : ' Free'))
+            + (homeFee > 0 ? (' add-on +€' + homeFee.toFixed(2)) : ' Free'))
         : '';
 
     if (selected.type && selected.additionalPrice > 0) {
@@ -3859,7 +3881,7 @@ function syncSensitiveSelectionUi(siteId) {
             + '</strong></small><br>'
             + '<small class="text-success">Selected: <strong>' + catalogEscapeHtml(selected.type)
             + '</strong> — You pay: <strong>€' + Number(payTotal).toFixed(2)
-            + '</strong> (+€' + selected.additionalPrice.toFixed(2);
+            + '</strong> (add-on +€' + selected.additionalPrice.toFixed(2);
         if (effectiveOfferPct > 0) {
             infoHtml += ', includes −'
                 + catalogFormatPercentLabel(effectiveOfferPct)
