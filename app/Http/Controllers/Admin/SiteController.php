@@ -1910,6 +1910,7 @@ class SiteController extends Controller
             $rules['site_url'] = 'sometimes|required|url|max:255';
             $rules['example_url'] = 'nullable|url|max:255';
             $rules['price'] = 'sometimes|required|numeric|min:0|max:999999.99';
+            $rules['description'] = 'sometimes|nullable|string|max:5000';
         }
 
         if ($request->exists('site_name') && is_string($request->input('site_name'))) {
@@ -1918,6 +1919,7 @@ class SiteController extends Controller
 
         $validator = Validator::make($request->all(), $rules, array_merge($this->siteImageValidationMessages(), [
             'price.max' => 'Price must be at most €999,999.99.',
+            'description.max' => 'Description must be at most 5000 characters.',
         ]));
 
         // site_image is often a stored path string after upload-image; only
@@ -1982,6 +1984,14 @@ class SiteController extends Controller
                     $validator->errors()->add('example_url', 'Example URL must be on the same website domain.');
                 }
             }
+
+            if ($canFixListing && $request->exists('description')) {
+                $rawDescription = scalar_text($request->input('description', ''));
+                $clean = app(SiteDescriptionSanitizer::class)->sanitize($rawDescription);
+                foreach (SiteDescriptionRules::errors($clean) as $message) {
+                    $validator->errors()->add('description', $message);
+                }
+            }
         });
 
         if ($validator->fails()) {
@@ -2033,6 +2043,10 @@ class SiteController extends Controller
             }
             if ($request->exists('price')) {
                 $payload['price'] = $request->input('price');
+            }
+            if ($request->exists('description')) {
+                $payload['description'] = app(SiteDescriptionSanitizer::class)
+                    ->sanitize(scalar_text($request->input('description', '')));
             }
         }
 
