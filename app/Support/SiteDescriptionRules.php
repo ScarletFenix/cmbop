@@ -11,6 +11,8 @@ class SiteDescriptionRules
 {
     public const MIN_CHARS = 50;
 
+    public const MAX_CHARS = 5000;
+
     public const MAX_WORDS = 500;
 
     public const EXCERPT_CHARS = 260;
@@ -87,6 +89,10 @@ class SiteDescriptionRules
 
         if (mb_strlen($plain) < self::MIN_CHARS) {
             $errors[] = 'Description must be at least '.self::MIN_CHARS.' characters (visible text).';
+        }
+
+        if (mb_strlen($plain) > self::MAX_CHARS) {
+            $errors[] = 'Description must be at most '.self::MAX_CHARS.' characters.';
         }
 
         if (self::wordCount($plain) > self::MAX_WORDS) {

@@ -492,6 +492,21 @@ class AdminSiteUpdateGuardTest extends TestCase
         $this->assertTrue(blank($site->fresh()->description));
     }
 
+    public function test_update_accepts_quill_wrapped_max_length_description(): void
+    {
+        $site = $this->site();
+        $plain = str_repeat('a', SiteDescriptionRules::MAX_CHARS);
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'description' => '<p>'.$plain.'</p>',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertSame($plain, SiteDescriptionRules::plainText((string) $site->fresh()->description));
+    }
+
     public function test_update_saves_quill_html_description(): void
     {
         $site = $this->site();

@@ -48,6 +48,12 @@ class SiteDescriptionRulesTest extends TestCase
         $this->assertStringContainsString('50 characters', $errors[0]);
     }
 
+    public function test_max_chars_uses_visible_text_not_quill_tags(): void
+    {
+        $this->assertNotEmpty(SiteDescriptionRules::errors(str_repeat('a', 5001)));
+        $this->assertSame([], SiteDescriptionRules::errors('<p>'.str_repeat('a', 5000).'</p>'));
+    }
+
     public function test_max_words_enforced(): void
     {
         $words = implode(' ', array_fill(0, 501, 'word'));
