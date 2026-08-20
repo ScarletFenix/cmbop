@@ -227,6 +227,73 @@ class HostingerSelfHealTest extends TestCase
         $this->assertTrue(collect($notes)->contains('welcome bonus tables ready'));
     }
 
+    public function test_welcome_bonus_tables_are_created_when_migrate_rows_already_exist(): void
+    {
+        Schema::dropIfExists('welcome_bonus_claims');
+        Schema::dropIfExists('welcome_bonus_settings');
+        $this->assertFalse(ProductionRepair::welcomeBonusStorageReady());
+
+        $recorded = DB::table('migrations')->whereIn('migration', [
+            '2026_08_14_180000_create_welcome_bonus_settings_table',
+            '2026_08_14_180100_create_welcome_bonus_claims_table',
+        ])->count();
+        $this->assertSame(2, $recorded);
+
+        $notes = [];
+        app(ProductionRepair::class)->ensureWelcomeBonusMigrations($notes);
+
+        $this->assertTrue(Schema::hasTable('welcome_bonus_settings'));
+        $this->assertTrue(Schema::hasTable('welcome_bonus_claims'));
+        $this->assertTrue(ProductionRepair::welcomeBonusStorageReady());
+        $this->assertTrue(collect($notes)->contains('welcome bonus tables ready'));
+    }
+
+    public function test_incomplete_heal_always_sets_retry_even_when_promotions_storage_is_missing(): void
+    {
+        Schema::dropIfExists('welcome_bonus_claims');
+        $this->assertFalse(ProductionRepair::promotionsStorageReady());
+
+        $this->app->instance(ProductionRepair::class, new class extends ProductionRepair
+        {
+            public function run(bool $persistEnv = true): array
+            {
+                return ['migrate failed: later FK'];
+            }
+        });
+
+        $middleware = $this->app->make(HealHostingerProduction::class);
+        $healOnce = new \ReflectionMethod($middleware, 'healOnce');
+
+        $healOnce->invoke($middleware);
+
+        $this->assertTrue((bool) cache()->get(HealHostingerProduction::HEAL_RETRY));
+        $this->assertFalse((bool) cache()->get(HealHostingerProduction::HEAL_FLAG));
+    }
+
+    public function test_heal_skips_while_retry_is_cached(): void
+    {
+        cache()->put(HealHostingerProduction::HEAL_RETRY, true, 300);
+
+        $state = (object) ['ran' => false];
+        $this->app->instance(ProductionRepair::class, new class($state) extends ProductionRepair
+        {
+            public function __construct(private object $state) {}
+
+            public function run(bool $persistEnv = true): array
+            {
+                $this->state->ran = true;
+
+                return ['migrate --force completed'];
+            }
+        });
+
+        $middleware = $this->app->make(HealHostingerProduction::class);
+        $healOnce = new \ReflectionMethod($middleware, 'healOnce');
+        $healOnce->invoke($middleware);
+
+        $this->assertFalse($state->ran);
+    }
+
     public function test_web_heal_defaults_on_and_docs_name_the_self_heal(): void
     {
         $this->assertTrue(config('app.web_heal'));

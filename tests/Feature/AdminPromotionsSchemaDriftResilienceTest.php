@@ -92,6 +92,23 @@ class AdminPromotionsSchemaDriftResilienceTest extends TestCase
         $this->assertTrue(Schema::hasTable('welcome_bonus_settings'));
     }
 
+    public function test_admin_promotions_hub_creates_claims_table_when_missing(): void
+    {
+        Schema::dropIfExists('welcome_bonus_claims');
+        $this->assertFalse(Schema::hasTable('welcome_bonus_claims'));
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.promotions.index'))
+            ->assertOk()
+            ->assertSee('Enabled', false)
+            ->assertDontSee('>Unknown<', false)
+            ->assertSee('Disable', false)
+            ->assertSee('0 claims this week', false)
+            ->assertDontSee('Something went wrong');
+
+        $this->assertTrue(Schema::hasTable('welcome_bonus_claims'));
+    }
+
     public function test_restore_is_not_500_when_announcement_table_is_missing(): void
     {
         Schema::dropIfExists('site_announcements');
