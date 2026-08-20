@@ -101,7 +101,21 @@ class ContentQualityAnalyzerTest extends TestCase
     {
         $this->assertTrue($this->analyzer->isShortener('https://bit.ly/x', $this->config));
         $this->assertTrue($this->analyzer->isShortener('https://www.tinyurl.com/x', $this->config));
+        $this->assertTrue($this->analyzer->isShortener('https://t.ly/abc', $this->config));
         $this->assertFalse($this->analyzer->isShortener('https://example.com/x', $this->config));
+    }
+
+    public function test_plain_text_shortener_is_found_without_an_href(): void
+    {
+        $result = $this->analyzer->analyze(
+            $this->body().' Read more at bit.ly/guestpost today.',
+            '<p>Read more at bit.ly/guestpost today.</p>',
+            [],
+            $this->config
+        );
+
+        $this->assertContains('url_shortener', $result['blocking_issues']);
+        $this->assertNotEmpty($result['shortener_urls']);
     }
 
     /**

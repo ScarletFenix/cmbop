@@ -41,6 +41,8 @@ return [
             'rb.gy',
             'tiny.cc',
             'lnkd.in',
+            't.ly',
+            'tiny.one',
         ],
     ],
 

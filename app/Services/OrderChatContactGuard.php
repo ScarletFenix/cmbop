@@ -136,6 +136,9 @@ class OrderChatContactGuard
         return (bool) preg_match(
             '#(?:https?:)?//(?:(?:www\.)?(?:t\.me|telegram\.me|wa\.me|api\.whatsapp\.com|chat\.whatsapp\.com|discord\.gg)|m\.me)/#i',
             $original
+        ) || (bool) preg_match(
+            '#(?<![\w./])(?:t\.me|telegram\.me|wa\.me|discord\.gg)/[^\s<>"\']+#i',
+            $original
         ) || (bool) preg_match('#\b(?:tg|whatsapp|skype)://#i', $original);
     }
 
@@ -145,8 +148,9 @@ class OrderChatContactGuard
             return true;
         }
 
-        // International numbers are contact details on every surface.
-        if (preg_match('/(?:\+|00)\d[\d\s().\-]{7,}\d/', $original)) {
+        // International numbers. The lookbehind stops "2000 2024-12-15" from
+        // looking like a 00-prefixed phone inside a long article.
+        if (preg_match('/(?<![\d])(?:\+|00)[\d\s().\-]{8,}\d/', $original)) {
             return true;
         }
 

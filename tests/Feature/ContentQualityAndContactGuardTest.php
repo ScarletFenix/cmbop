@@ -230,4 +230,63 @@ class ContentQualityAndContactGuardTest extends TestCase
             strtolower((string) ($check['failures'][0]['message'] ?? ''))
         );
     }
+
+    public function test_evaluation_rejects_whatsapp_backlink_target(): void
+    {
+        config(['content_moderation.enabled' => true]);
+
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $body = $this->englishBody();
+        $submission->update([
+            'language' => 'en',
+            'extracted_text' => $body,
+            'preview_html' => '<p>'.$body.'</p>',
+            'target_url' => 'https://wa.me/441234567890',
+        ]);
+
+        $result = app(ArticleEvaluationService::class)->evaluate($submission->fresh(), $advertiser);
+
+        $this->assertFalse($result['approved']);
+        $this->assertSame(OrderChatContactGuard::messageFor('article'), $result['message']);
+    }
+
+    public function test_evaluation_rejects_plain_text_shortener(): void
+    {
+        config(['content_moderation.enabled' => true]);
+
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $body = $this->englishBody().' Full case study: bit.ly/guestpost';
+        $submission->update([
+            'language' => 'en',
+            'extracted_text' => $body,
+            'preview_html' => '<p>'.$body.'</p>',
+            'target_url' => null,
+        ]);
+
+        $result = app(ArticleEvaluationService::class)->evaluate($submission->fresh(), $advertiser);
+
+        $this->assertFalse($result['approved']);
+        $this->assertStringContainsString('shortener', strtolower((string) $result['message']));
+    }
+
+    public function test_evaluation_allows_year_2000_next_to_a_date(): void
+    {
+        config(['content_moderation.enabled' => true]);
+
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $body = $this->englishBody().' Growth since 2000 2024-12-15 has been steady.';
+        $submission->update([
+            'language' => 'en',
+            'extracted_text' => $body,
+            'preview_html' => '<p>'.$body.'</p>',
+            'target_url' => null,
+        ]);
+
+        $result = app(ArticleEvaluationService::class)->evaluate($submission->fresh(), $advertiser);
+
+        $this->assertTrue($result['approved'], (string) ($result['message'] ?? ''));
+    }
 }

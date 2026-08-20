@@ -259,7 +259,7 @@ class ContentModerationService
             ];
         }
 
-        $contactHaystack = trim($title."\n".$text."\n".$html);
+        $contactHaystack = trim($title."\n".$text."\n".$html."\n".implode("\n", array_map('strval', $links)));
         if (app(OrderChatContactGuard::class)->isBlocked($contactHaystack, OrderChatContactGuard::MODE_CONTENT)) {
             $message = UserMessages::get('moderation.contact_article');
             $token = Str::random(40);

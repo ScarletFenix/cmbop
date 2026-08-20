@@ -237,8 +237,9 @@ class ArticleEvaluationService
             ];
         }
 
+        $linkUrls = $this->moderation->linksFromSubmission($submission);
         $contactGuard = app(OrderChatContactGuard::class);
-        $contactHaystack = trim($title."\n".$text."\n".$html);
+        $contactHaystack = trim($title."\n".$text."\n".$html."\n".implode("\n", $linkUrls));
         if ($contactGuard->isBlocked($contactHaystack, OrderChatContactGuard::MODE_CONTENT)) {
             $message = UserMessages::get('moderation.contact_article');
             $report = [
@@ -277,8 +278,6 @@ class ArticleEvaluationService
 
         // 1) Policy compliance (casino / gambling / betting / adult) — includes cloaked hrefs,
         // stored .docx parts the publisher downloads, backlink anchors, and image alt text.
-        $linkUrls = $this->moderation->linksFromSubmission($submission);
-
         $scan = $this->moderation->scanExtractedContent(
             text: $this->moderation->scanPolicyTextFromSubmission($submission),
             html: $html,

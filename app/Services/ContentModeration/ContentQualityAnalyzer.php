@@ -21,6 +21,8 @@ class ContentQualityAnalyzer
         'rb.gy',
         'tiny.cc',
         'lnkd.in',
+        't.ly',
+        'tiny.one',
     ];
 
     /**
@@ -91,8 +93,10 @@ class ContentQualityAnalyzer
 
         // Links — shorteners are always reported, even when the article also
         // exceeds the outbound-link cap, so the author can fix both at once.
+        // Count ignores google.com docs/maps links; shortener detection still
+        // reads those URLs plus bare bit.ly/… text that never became an href.
         $external = array_values(array_filter($links, fn ($l) => ! str_contains(strtolower($l), 'google.com')));
-        $shorteners = array_values(array_filter($external, fn ($l) => $this->isShortener($l, $qualityConfig)));
+        $shorteners = $this->shortenerUrlsFromHaystack($text, $html, $links, $qualityConfig);
         $blockQuality = ! empty($qualityConfig['block_on_quality_failure']);
         $tooManyLinks = count($external) > $maxLinks;
         if ($tooManyLinks) {
@@ -164,6 +168,40 @@ class ContentQualityAnalyzer
         }
 
         return array_values(array_filter(array_map('strval', $hosts)));
+    }
+
+    /**
+     * @param  array<int, string>  $links
+     * @param  array<string, mixed>  $qualityConfig
+     * @return list<string>
+     */
+    public function shortenerUrlsFromHaystack(string $text, string $html, array $links, array $qualityConfig = []): array
+    {
+        $found = [];
+        foreach ($links as $link) {
+            $link = trim((string) $link);
+            if ($link !== '' && $this->isShortener($link, $qualityConfig)) {
+                $found[] = $link;
+            }
+        }
+
+        $hosts = array_values(array_filter(array_map(
+            static fn ($host) => preg_quote(strtolower(trim((string) $host)), '#'),
+            $this->shortenerHosts($qualityConfig)
+        )));
+        if ($hosts === []) {
+            return array_values(array_unique($found));
+        }
+
+        $haystack = $text."\n".$html;
+        $pattern = '#(?:https?://)?(?:www\.)?(?:'.implode('|', $hosts).')/[^\s<>"\']+#i';
+        if (preg_match_all($pattern, $haystack, $matches)) {
+            foreach ($matches[0] as $url) {
+                $found[] = rtrim((string) $url, '.,);]');
+            }
+        }
+
+        return array_values(array_unique($found));
     }
 
     protected function check(string $key, string $label, string $status, string $detail): array

@@ -94,6 +94,18 @@ class OrderChatContactGuardTest extends TestCase
             'Use a contact form and keep a number of follow-ups in 2024-12-15.',
             OrderChatContactGuard::MODE_CONTENT
         ));
+        $this->assertTrue($this->guard->isBlocked(
+            'Message the editor on t.me/brandhelp after you publish.',
+            OrderChatContactGuard::MODE_CONTENT
+        ));
+        $this->assertTrue($this->guard->isBlocked(
+            'Send proofs to wa.me/441234567890',
+            OrderChatContactGuard::MODE_CONTENT
+        ));
+        $this->assertFalse($this->guard->isBlocked(
+            'Growth since 2000 2024-12-15 has been steady for a number of brands.',
+            OrderChatContactGuard::MODE_CONTENT
+        ));
     }
 
     public function test_blocks_phone_share_with_context(): void
