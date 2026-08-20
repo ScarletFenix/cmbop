@@ -170,6 +170,41 @@ class CatalogExpandCorrectnessTest extends TestCase
         $this->assertStringNotContainsString('Base guest post only', $html);
     }
 
+    public function test_homepage_only_details_shows_advertiser_you_pay_not_publisher_base(): void
+    {
+        $site = $this->makeSite([
+            'price' => 100,
+            'sensitive_prices' => null,
+            'homepage_placement_prices' => ['7' => 25, '30' => 40],
+        ]);
+
+        $html = $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('base-price-display">€113.00', $html);
+        $this->assertStringContainsString('data-base-price="113"', $html);
+
+        // No sensitive add-ons used to hide the Details pay line entirely, so
+        // advertisers only saw publisher homepage +€ amounts.
+        $this->assertGreaterThanOrEqual(2, substr_count($html, 'You pay:'));
+        $this->assertMatchesRegularExpression('/You pay:\s*<strong>€113\.00<\/strong>/', $html);
+        $this->assertDoesNotMatchRegularExpression('/You pay:\s*<strong>€100\.00<\/strong>/', $html);
+
+        $this->assertStringContainsString('+€25.00', $html);
+        $this->assertStringContainsString('→ you pay €138.00', $html);
+        $this->assertStringContainsString('+€40.00', $html);
+        $this->assertStringContainsString('→ you pay €153.00', $html);
+
+        $payload = $this->actingAs($this->advertiser)
+            ->postJson(route('advertiser.cart.add'), ['id' => $site->id])
+            ->assertOk()
+            ->json();
+
+        $this->assertEquals(113.0, (float) $payload['cart'][0]['price']);
+    }
+
     public function test_expand_shows_homepage_and_social_in_site_details_meta(): void
     {
         $this->makeSite([
