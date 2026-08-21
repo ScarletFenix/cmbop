@@ -637,6 +637,53 @@ class AdminCampaignsTest extends TestCase
             ->assertSessionHas('success');
 
         Mail::assertQueued(AudienceCampaignMail::class, fn (AudienceCampaignMail $mail) => $mail->hasTo($unverified->email));
+        $this->assertTrue((bool) EmailCampaign::query()->latest('id')->value('include_unverified'));
+    }
+
+    public function test_send_stores_include_unverified_false_by_default(): void
+    {
+        Mail::fake();
+
+        $admin = $this->makeUser('admin');
+        $this->makeUser('advertiser');
+
+        $this->actingAs($admin)
+            ->post(route('admin.campaigns.send'), $this->campaignPayload([
+                'respect_preferences' => '0',
+            ]))
+            ->assertRedirect(route('admin.campaigns.index'));
+
+        $campaign = EmailCampaign::query()->latest('id')->first();
+        $this->assertNotNull($campaign);
+        $this->assertFalse((bool) $campaign->include_unverified);
+        $this->assertFalse($campaign->isDraft());
+        $this->assertFalse($campaign->isEditableDraft());
+    }
+
+    public function test_draft_helpers_require_draft_status_and_no_recipients(): void
+    {
+        $admin = $this->makeUser('admin');
+        $draft = EmailCampaign::create([
+            'name' => 'Held update',
+            'subject' => 'Held update',
+            'body_html' => '<p>Later.</p>',
+            'audience' => 'advertisers',
+            'status' => EmailCampaign::STATUS_DRAFT,
+            'created_by' => $admin->id,
+        ]);
+        $this->assertTrue($draft->isDraft());
+        $this->assertTrue($draft->isEditableDraft());
+
+        $queued = EmailCampaign::create([
+            'name' => 'Queued update',
+            'subject' => 'Queued update',
+            'body_html' => '<p>Now.</p>',
+            'audience' => 'advertisers',
+            'status' => EmailCampaign::STATUS_QUEUED,
+            'created_by' => $admin->id,
+        ]);
+        $this->assertFalse($queued->isDraft());
+        $this->assertFalse($queued->isEditableDraft());
     }
 
     public function test_selected_audience_rejects_admin_ids(): void

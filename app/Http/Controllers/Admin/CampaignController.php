@@ -165,14 +165,7 @@ class CampaignController extends Controller
     {
         $this->canonicalizeAudienceInput($request);
 
-        $data = $request->validate(array_merge($this->audienceInputRules(), [
-            'name' => ['nullable', 'string', 'max:120'],
-            'subject' => ['required', 'string', 'max:180'],
-            'body_html' => ['required', 'string', 'max:20000'],
-            'cta_label' => ['nullable', 'string', 'max:80'],
-            'cta_url' => $this->ctaUrlRules(),
-            'respect_preferences' => ['boolean'],
-        ]));
+        $data = $request->validate($this->campaignContentRules());
 
         if (! EmailCampaign::tableAvailable()
             || ! $this->schemaTableAvailable((new EmailCampaignRecipient)->getTable())) {
@@ -201,24 +194,21 @@ class CampaignController extends Controller
         $respectPrefs = $request->boolean('respect_preferences');
         $count = $recipients->count();
 
-        $campaign = DB::transaction(function () use ($data, $recipients, $count, $respectPrefs, $bodyHtml) {
-            $campaign = EmailCampaign::create([
-                'name' => ($data['name'] ?? null) ?: $data['subject'],
-                'subject' => $data['subject'],
-                'body_html' => $bodyHtml,
-                'audience' => $data['audience'],
-                'selected_user_ids' => $data['audience'] === 'selected'
-                    ? $recipients->pluck('id')->map(fn ($id) => (int) $id)->values()->all()
-                    : null,
-                'cta_label' => $data['cta_label'] ?? null,
-                'cta_url' => $this->safeCtaUrl($data['cta_url'] ?? null),
-                'recipients_count' => $count,
-                'sent_count' => 0,
-                'skipped_count' => 0,
-                'status' => EmailCampaign::STATUS_QUEUED,
-                'respect_preferences' => $respectPrefs,
-                'created_by' => auth()->id(),
-            ]);
+        $campaign = DB::transaction(function () use ($data, $recipients, $count, $respectPrefs, $includeUnverified, $bodyHtml) {
+            $selectedIds = $data['audience'] === 'selected'
+                ? $recipients->pluck('id')->map(fn ($id) => (int) $id)->values()->all()
+                : null;
+
+            $campaign = EmailCampaign::create(EmailCampaign::attributesThatExist(array_merge(
+                $this->hydrateCampaignAttributes($data, $bodyHtml, $selectedIds, $respectPrefs, $includeUnverified),
+                [
+                    'recipients_count' => $count,
+                    'sent_count' => 0,
+                    'skipped_count' => 0,
+                    'status' => EmailCampaign::STATUS_QUEUED,
+                    'created_by' => auth()->id(),
+                ]
+            )));
 
             $now = now();
             foreach ($recipients->chunk(200) as $chunk) {
@@ -280,6 +270,49 @@ class CampaignController extends Controller
         return redirect()
             ->route('admin.campaigns.index')
             ->with('success', "Campaign queued for {$count} recipient(s).");
+    }
+
+    /**
+     * Shared compose payload for send and (later) save-draft.
+     *
+     * @return array<string, list<mixed>>
+     */
+    protected function campaignContentRules(bool $requireName = false): array
+    {
+        return array_merge($this->audienceInputRules(), [
+            'name' => [$requireName ? 'required' : 'nullable', 'string', 'max:120'],
+            'subject' => ['required', 'string', 'max:180'],
+            'body_html' => ['required', 'string', 'max:20000'],
+            'cta_label' => ['nullable', 'string', 'max:80'],
+            'cta_url' => $this->ctaUrlRules(),
+            'respect_preferences' => ['boolean'],
+        ]);
+    }
+
+    /**
+     * @param  list<int>|null  $selectedUserIds
+     * @return array<string, mixed>
+     */
+    protected function hydrateCampaignAttributes(
+        array $data,
+        string $bodyHtml,
+        ?array $selectedUserIds,
+        bool $respectPreferences,
+        bool $includeUnverified,
+    ): array {
+        return [
+            'name' => filled($data['name'] ?? null) ? $data['name'] : $data['subject'],
+            'subject' => $data['subject'],
+            'body_html' => $bodyHtml,
+            'audience' => $data['audience'],
+            'selected_user_ids' => ($data['audience'] ?? null) === 'selected'
+                ? array_values(array_map('intval', $selectedUserIds ?? []))
+                : null,
+            'cta_label' => $data['cta_label'] ?? null,
+            'cta_url' => $this->safeCtaUrl($data['cta_url'] ?? null),
+            'respect_preferences' => $respectPreferences,
+            'include_unverified' => $includeUnverified,
+        ];
     }
 
     /**
