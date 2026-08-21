@@ -46,6 +46,7 @@ class EmailCampaign extends Model
         'skipped_count',
         'status',
         'respect_preferences',
+        'include_unverified',
         'created_by',
         'sent_at',
     ];
@@ -53,6 +54,7 @@ class EmailCampaign extends Model
     protected $casts = [
         'selected_user_ids' => 'array',
         'respect_preferences' => 'boolean',
+        'include_unverified' => 'boolean',
         'recipients_count' => 'integer',
         'sent_count' => 'integer',
         'skipped_count' => 'integer',
@@ -67,6 +69,24 @@ class EmailCampaign extends Model
     public function recipients(): HasMany
     {
         return $this->hasMany(EmailCampaignRecipient::class);
+    }
+
+    public function isDraft(): bool
+    {
+        return $this->status === self::STATUS_DRAFT;
+    }
+
+    public function isEditableDraft(): bool
+    {
+        if (! $this->isDraft()) {
+            return false;
+        }
+
+        try {
+            return ! $this->recipients()->exists();
+        } catch (\Throwable) {
+            return true;
+        }
     }
 
     /**
