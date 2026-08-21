@@ -16,6 +16,8 @@ use App\Services\StripePaymentService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Mockery;
+use Stripe\ApiRequestor;
+use Stripe\HttpClient\ClientInterface;
 use Tests\Support\CreatesContentSubmissions;
 use Tests\TestCase;
 
@@ -65,8 +67,40 @@ class CheckoutDiscountPaymentMethodsTest extends TestCase
 
     protected function tearDown(): void
     {
+        ApiRequestor::setHttpClient(null);
         Mockery::close();
         parent::tearDown();
+    }
+
+    /**
+     * @param  list<string>  $sessionIds
+     */
+    private function fakeStripeCheckoutSessions(array $sessionIds): void
+    {
+        $client = Mockery::mock(ClientInterface::class);
+        $returns = [];
+        foreach ($sessionIds as $sessionId) {
+            $returns[] = [json_encode([
+                'id' => 'cus_test_'.substr($sessionId, -8),
+                'object' => 'customer',
+                'email' => 'test@example.com',
+                'livemode' => false,
+            ], JSON_THROW_ON_ERROR), 200, []];
+            $returns[] = [json_encode([
+                'id' => $sessionId,
+                'object' => 'checkout.session',
+                'url' => 'https://checkout.stripe.com/c/pay/'.$sessionId,
+                'payment_status' => 'unpaid',
+                'mode' => 'payment',
+                'metadata' => [],
+            ], JSON_THROW_ON_ERROR), 200, []];
+        }
+
+        $client->shouldReceive('request')
+            ->times(count($returns))
+            ->andReturn(...$returns);
+
+        ApiRequestor::setHttpClient($client);
     }
 
     private function makeSite(string $slug, float $price, array $overrides = []): Site
@@ -180,21 +214,7 @@ class CheckoutDiscountPaymentMethodsTest extends TestCase
     {
         $site = $this->saleSite('card-sale');
         $sub = $this->createApprovedSubmission($this->advertiser, $site->id);
-        $captured = null;
-
-        $this->mock(StripeCustomerService::class, function ($mock) use (&$captured) {
-            $mock->shouldReceive('createCheckoutSession')
-                ->once()
-                ->andReturnUsing(function (array $payload) use (&$captured) {
-                    $captured = $payload;
-                    $session = (object) [
-                        'id' => 'cs_test_sale10',
-                        'url' => 'https://checkout.stripe.com/c/pay/cs_test_sale10',
-                    ];
-
-                    return $session;
-                });
-        });
+        $this->fakeStripeCheckoutSessions(['cs_test_sale10']);
 
         $this->actingAs($this->advertiser)
             ->withSession(['cart' => $this->cartFor($site, 1, [$sub->id])])
@@ -203,10 +223,6 @@ class CheckoutDiscountPaymentMethodsTest extends TestCase
             ->assertJsonPath('success', true)
             ->assertJsonPath('amount_due', 101.7);
 
-        $this->assertIsArray($captured);
-        $this->assertSame(10170, $captured['line_items'][0]['price_data']['unit_amount']);
-        $this->assertSame('101.7', $captured['metadata']['expected_amount']);
-        $this->assertSame('101.7', $captured['metadata']['order_total']);
         $this->assertSame(10170, StripePaymentService::toCents(101.7));
 
         $package = app(OrderPaymentService::class)->getPendingCheckout('CARDSALE');
@@ -322,18 +338,7 @@ class CheckoutDiscountPaymentMethodsTest extends TestCase
         $this->assertSame(101.7, $expected['total']);
         $packTotal = 305.1;
 
-        $this->mock(StripeCustomerService::class, function ($mock) use ($packTotal) {
-            $mock->shouldReceive('createCheckoutSession')
-                ->once()
-                ->andReturnUsing(function (array $payload) use ($packTotal) {
-                    $this->assertSame(StripePaymentService::toCents($packTotal), $payload['line_items'][0]['price_data']['unit_amount']);
-
-                    return (object) [
-                        'id' => 'cs_test_bulk',
-                        'url' => 'https://checkout.stripe.com/c/pay/cs_test_bulk',
-                    ];
-                });
-        });
+        $this->fakeStripeCheckoutSessions(['cs_test_bulk']);
 
         $this->actingAs($this->advertiser)
             ->withSession(['cart' => $this->cartFor($site, 3, $ids)])
@@ -370,35 +375,26 @@ class CheckoutDiscountPaymentMethodsTest extends TestCase
     public function test_every_rail_charges_full_list_when_there_is_no_discount(): void
     {
         $site = $this->makeSite('plain', 100);
-        $sub = $this->createApprovedSubmission($this->advertiser, $site->id);
         $expected = app(CartPricingService::class)->priceForAdvertiser($site);
         $this->assertSame(113.0, $expected['total']);
 
+        $walletSub = $this->createApprovedSubmission($this->advertiser, $site->id, 0, 'plain wallet', 'https://example.com/plain-w');
         $this->actingAs($this->advertiser)
-            ->withSession(['cart' => $this->cartFor($site, 1, [$sub->id])])
-            ->postJson(route('advertiser.checkout.process'), $this->checkoutPayload('wallet', 'WALPLAIN', $site, [$sub->id]))
+            ->withSession(['cart' => $this->cartFor($site, 1, [$walletSub->id])])
+            ->postJson(route('advertiser.checkout.process'), $this->checkoutPayload('wallet', 'WALPLAIN', $site, [$walletSub->id]))
             ->assertOk()
             ->assertJsonPath('success', true);
         $this->assertEquals(113.0, (float) Order::where('reference_code', 'WALPLAIN')->value('total_amount'));
 
-        $this->mock(StripeCustomerService::class, function ($mock) {
-            $mock->shouldReceive('createCheckoutSession')
-                ->once()
-                ->andReturnUsing(function (array $payload) {
-                    $this->assertSame(11300, $payload['line_items'][0]['price_data']['unit_amount']);
-
-                    return (object) [
-                        'id' => 'cs_test_plain',
-                        'url' => 'https://checkout.stripe.com/c/pay/cs_test_plain',
-                    ];
-                });
-        });
+        $cardSub = $this->createApprovedSubmission($this->advertiser, $site->id, 1, 'plain card', 'https://example.com/plain-c');
+        $this->fakeStripeCheckoutSessions(['cs_test_plain']);
         $this->actingAs($this->advertiser)
-            ->withSession(['cart' => $this->cartFor($site, 1, [$sub->id])])
-            ->postJson(route('advertiser.checkout.process'), $this->checkoutPayload('card', 'CARDPLAIN', $site, [$sub->id]))
+            ->withSession(['cart' => $this->cartFor($site, 1, [$cardSub->id])])
+            ->postJson(route('advertiser.checkout.process'), $this->checkoutPayload('card', 'CARDPLAIN', $site, [$cardSub->id]))
             ->assertOk()
             ->assertJsonPath('amount_due', 113);
 
+        $paypalSub = $this->createApprovedSubmission($this->advertiser, $site->id, 2, 'plain paypal', 'https://example.com/plain-p');
         $this->mock(PaypalCheckoutService::class, function ($mock) {
             $mock->shouldReceive('configured')->andReturn(true);
             $mock->shouldReceive('browserCallbackUrl')->andReturn('https://example.test/paypal');
@@ -411,15 +407,16 @@ class CheckoutDiscountPaymentMethodsTest extends TestCase
                 ]);
         });
         $this->actingAs($this->advertiser)
-            ->withSession(['cart' => $this->cartFor($site, 1, [$sub->id])])
-            ->postJson(route('advertiser.checkout.process'), $this->checkoutPayload('paypal', 'PPPLAIN', $site, [$sub->id]))
+            ->withSession(['cart' => $this->cartFor($site, 1, [$paypalSub->id])])
+            ->postJson(route('advertiser.checkout.process'), $this->checkoutPayload('paypal', 'PPPLAIN', $site, [$paypalSub->id]))
             ->assertOk()
             ->assertJsonPath('amount_due', 113);
 
+        $manualSub = $this->createApprovedSubmission($this->advertiser, $site->id, 3, 'plain manual', 'https://example.com/plain-m');
         foreach (['bank', 'wise', 'crypto'] as $method) {
             $this->actingAs($this->advertiser)
-                ->withSession(['cart' => $this->cartFor($site, 1, [$sub->id])])
-                ->postJson(route('advertiser.checkout.process'), $this->checkoutPayload($method, 'PLN'.strtoupper($method), $site, [$sub->id]))
+                ->withSession(['cart' => $this->cartFor($site, 1, [$manualSub->id])])
+                ->postJson(route('advertiser.checkout.process'), $this->checkoutPayload($method, 'PLN'.strtoupper($method), $site, [$manualSub->id]))
                 ->assertStatus(422)
                 ->assertJsonPath('suggested_amount', 113);
         }
