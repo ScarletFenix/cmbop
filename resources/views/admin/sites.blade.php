@@ -138,7 +138,7 @@
                         <td>
                             <div class="d-flex flex-wrap gap-1">
                                 <a href="{{ $openUrl }}" class="btn btn-sm btn-outline-secondary">Open</a>
-                                <a href="{{ staff_route('sites.edit', $site->id) }}" class="btn btn-sm btn-outline-primary">{{ $site->isLockedForMarketingEdits() ? 'View' : 'Edit' }}</a>
+                                <a href="{{ staff_route('sites.edit', $site->id) }}" class="btn btn-sm btn-outline-primary">{{ auth()->user()?->isMarketing() && ! auth()->user()?->isAdmin() && $site->isLockedForMarketingEdits() && ! $site->marketingCanEditDescription() ? 'View' : 'Edit' }}</a>
                                 @if(auth()->user()?->canActivateSites() && $site->marketingCanActivate())
                                     <button type="button" class="btn btn-sm btn-success js-mkt-activate" data-id="{{ $site->id }}" data-name="{{ $site->site_name }}" data-description-english="{{ $site->descriptionLooksLikeEnglish() ? '1' : '0' }}" data-description-excerpt="{{ site_description_excerpt($site->description, 200) }}">Activate</button>
                                 @endif
@@ -1568,9 +1568,10 @@ function renderSites(data){
                 || isActive
                 || !!site.listing_locked
             );
-            const editItem = IS_MARKETING_EDITOR
-                ? `<li><a class="dropdown-item" href="${STAFF_BASE}/sites/${site.id}/edit"><i class="fa fa-${listingLocked ? 'eye' : 'edit'} me-2"></i>${listingLocked ? 'View' : 'Edit'}</a></li>`
-                : `<li><button type="button" class="dropdown-item edit-site" data-id="${site.id}"><i class="fa fa-edit me-2"></i>Edit</button></li>`;
+            const editItem = `<li><a class="dropdown-item" href="${STAFF_BASE}/sites/${site.id}/edit"><i class="fa fa-edit me-2"></i>Edit</a></li>`
+                + (IS_MARKETING_EDITOR
+                    ? ''
+                    : `<li><button type="button" class="dropdown-item edit-site" data-id="${site.id}"><i class="fa fa-image me-2"></i>Metrics &amp; image</button></li>`);
             const enrichItems = (IS_MARKETING_EDITOR && listingLocked)
                 ? ''
                 : `<li><button type="button" class="dropdown-item enrich-site" data-id="${site.id}"><i class="fa fa-sync me-2"></i>Enrich</button></li>
@@ -1775,15 +1776,8 @@ window.addEventListener('DOMContentLoaded',()=>{
         sessionStorage.setItem('selected_user', publisherId);
         fetchUserSites(publisherId).then(() => {
             if (editSiteId) {
-                if (IS_MARKETING_EDITOR) {
-                    window.location.href = `${STAFF_BASE}/sites/${editSiteId}/edit`;
-                    return;
-                }
-                editSiteWithImage(editSiteId);
-                // Drop one-shot edit params so refresh doesn't reopen the modal.
-                params.delete('edit_site');
-                const next = `${window.location.pathname}${params.toString() ? '?' + params.toString() : ''}`;
-                window.history.replaceState({}, '', next);
+                window.location.href = `${STAFF_BASE}/sites/${editSiteId}/edit`;
+                return;
             }
         });
         return;
