@@ -76,17 +76,24 @@ class AdminSiteActivateGuardTest extends TestCase
         ], $overrides));
     }
 
-    public function test_activate_requires_verified(): void
+    public function test_admin_activate_verifies_unverified_review_ready_site(): void
     {
-        $site = $this->site(['verified' => false]);
+        $site = $this->site([
+            'verified' => false,
+            'onboarding_status' => null,
+        ]);
 
         $this->actingAs($this->admin)
             ->postJson(route('admin.sites.active', $site->id), ['active' => 1])
-            ->assertStatus(422)
-            ->assertJsonPath('success', false)
-            ->assertJsonPath('message', 'Verify this site before activating it.');
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('active', true);
 
-        $this->assertFalse((bool) $site->fresh()->active);
+        $fresh = $site->fresh();
+        $this->assertTrue((bool) $fresh->active);
+        $this->assertTrue((bool) $fresh->verified);
+        $this->assertSame(1, ActivityLog::query()->where('action', 'site.activated')->count());
+        $this->assertSame(1, ActivityLog::query()->where('action', 'site.approved')->count());
     }
 
     public function test_activate_rejects_cancelled_bulk_leftover(): void
@@ -416,7 +423,7 @@ class AdminSiteActivateGuardTest extends TestCase
         $this->assertStringNotContainsString('add_sites_status_reason.sql', $src);
     }
 
-    public function test_marketer_cannot_activate_unverified_legacy_queue_site(): void
+    public function test_marketer_can_activate_unverified_legacy_queue_site(): void
     {
         $site = $this->site([
             'verified' => false,
@@ -424,18 +431,18 @@ class AdminSiteActivateGuardTest extends TestCase
         ]);
 
         $this->assertTrue($site->needsAdminReview());
-        $this->assertFalse($site->isSubmittedForAdminReview());
+        $this->assertTrue($site->isReviewReadyForStaffGoLive());
         $this->assertTrue($site->marketingCanActivate());
 
         $this->actingAs($this->marketer)
             ->postJson(route('marketing.sites.active', $site->id), ['active' => 1])
-            ->assertStatus(422)
-            ->assertJsonPath('success', false)
-            ->assertJsonPath('message', 'Verify this site before activating it.');
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('active', true);
 
         $fresh = $site->fresh();
-        $this->assertFalse((bool) $fresh->active);
-        $this->assertFalse((bool) $fresh->verified);
+        $this->assertTrue((bool) $fresh->active);
+        $this->assertTrue((bool) $fresh->verified);
     }
 
     public function test_staff_list_flags_blocked_activate(): void
@@ -445,6 +452,7 @@ class AdminSiteActivateGuardTest extends TestCase
             'site_url' => 'https://blocked-activate.example',
             'domain' => 'blocked-activate.example',
             'verified' => false,
+            'onboarding_status' => Site::ONBOARDING_AWAITING_DETAILS,
         ]);
 
         $this->actingAs($this->admin)
@@ -452,7 +460,7 @@ class AdminSiteActivateGuardTest extends TestCase
             ->assertOk()
             ->assertJsonPath('sites.0.id', $blocked->id)
             ->assertJsonPath('sites.0.can_activate', false)
-            ->assertJsonPath('sites.0.activate_block_reason', 'Verify this site before activating it.');
+            ->assertJsonPath('sites.0.activate_block_reason', 'Publisher has not finished listing details.');
 
         $blade = file_get_contents(resource_path('views/admin/sites.blade.php'));
         $this->assertStringContainsString('activate_block_reason', $blade);

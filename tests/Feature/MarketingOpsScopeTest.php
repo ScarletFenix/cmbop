@@ -95,23 +95,12 @@ class MarketingOpsScopeTest extends TestCase
 
         $this->actingAs($this->marketer)
             ->postJson(route('marketing.sites.active', $site->id), ['active' => 1])
-            ->assertStatus(422)
-            ->assertJsonPath('success', false);
-
-        $this->assertFalse((bool) $site->fresh()->active);
-
-        $this->actingAs($this->admin)
-            ->postJson(route('admin.sites.verify', $site->id), ['verified' => 1])
-            ->assertOk();
-
-        $this->actingAs($this->marketer)
-            ->postJson(route('marketing.sites.active', $site->id), ['active' => 1])
             ->assertOk()
             ->assertJsonPath('success', true);
 
         $site->refresh();
-        $this->assertTrue((bool) $site->verified);
         $this->assertTrue((bool) $site->active);
+        $this->assertTrue((bool) $site->verified);
     }
 
     public function test_marketer_cannot_open_admin_records_sheet(): void

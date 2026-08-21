@@ -1346,6 +1346,15 @@ class Site extends Model
     }
 
     /**
+     * Staff Activate may verify-on-activate: explicit review submit or legacy
+     * null onboarding (same set as the review queue).
+     */
+    public function isReviewReadyForStaffGoLive(): bool
+    {
+        return $this->isReadyForAdminReview();
+    }
+
+    /**
      * @param  Builder<Site>  $query
      * @return Builder<Site>
      */
@@ -2000,18 +2009,60 @@ class Site extends Model
     }
 
     /**
-     * Marketing may activate this listing (pending, complete, market + quality bar).
+     * Marketing may activate this listing (review-ready, market + quality bar).
      */
     public function marketingCanActivate(): bool
     {
-        if ((bool) $this->active || $this->isArchived() || $this->isFromCancelledBulk()) {
-            return false;
-        }
-        if ($this->isPendingPublisherAcceptance() || $this->isPendingPublisherBulkSubmit()) {
-            return false;
+        return $this->staffCanGoLive(true);
+    }
+
+    /**
+     * Shared staff Activate predicate. Marketing still requires the quality bar.
+     */
+    public function staffCanGoLive(bool $requireQualityBar = false): bool
+    {
+        return $this->staffGoLiveBlockReason($requireQualityBar) === null;
+    }
+
+    public function staffGoLiveBlockReason(bool $requireQualityBar = false): ?string
+    {
+        if ((bool) $this->active) {
+            return 'This listing is already live.';
         }
 
-        return $this->hasMarketplaceCountry() && $this->hasGoodMetrics();
+        if ($this->isArchived()) {
+            return 'This site is archived and cannot be activated.';
+        }
+
+        if ($this->isFromCancelledBulk()) {
+            return 'This listing is from a cancelled bulk request and cannot be activated.';
+        }
+
+        if ($this->awaitsPublisherDetails()) {
+            return 'Publisher has not finished listing details.';
+        }
+
+        if ($this->hasDetailsComplete()) {
+            return 'Publisher is still reviewing this listing.';
+        }
+
+        if ($this->isPendingPublisherAcceptance()) {
+            return 'This site is waiting for the publisher to accept it into My Sites.';
+        }
+
+        if (! $this->isReviewReadyForStaffGoLive() && ! (bool) $this->verified) {
+            return 'Verify this site before activating it.';
+        }
+
+        if (! $this->hasMarketplaceCountry()) {
+            return 'Set a marketplace country before activating this site.';
+        }
+
+        if ($requireQualityBar && ! $this->hasGoodMetrics()) {
+            return 'This listing is below the quality bar (DA ≥ '.self::GOOD_MIN_DA.', DR ≥ '.self::GOOD_MIN_DR.', traffic ≥ '.number_format(self::GOOD_MIN_TRAFFIC).'). Update metrics before activating.';
+        }
+
+        return null;
     }
 
     /**
