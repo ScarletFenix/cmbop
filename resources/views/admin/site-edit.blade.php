@@ -73,7 +73,7 @@
                         @if($site->marketingCanEditDescription())
                             URL, price, and metrics stay locked on live listings. You can still update the advertiser-facing description.
                         @else
-                            This listing is live, verified, or archived. Marketing cannot change it. Ask an admin.
+                            This listing is archived. Marketing cannot change it. Ask an admin.
                         @endif
                     </div>
                 @else
@@ -108,15 +108,10 @@
                     </div>
                     @endif
                     <div class="col-md-4">
-                        <div class="text-muted small">Status</div>
-                        <div class="d-flex flex-wrap gap-2 mt-1">
-                            <span class="badge {{ $site->verified ? 'bg-success' : 'bg-warning text-dark' }}">
-                                {{ $site->verified ? 'Verified' : 'Unverified' }}
-                            </span>
-                            <span class="badge {{ $site->active ? 'bg-primary' : 'bg-secondary' }}">
-                                {{ $site->active ? 'Active' : 'Inactive' }}
-                            </span>
-                        </div>
+                        @include('partials.staff-site-status-actions', [
+                            'site' => $site,
+                            'isMarketingEditor' => $isMarketingEditor,
+                        ])
                     </div>
                 </div>
 
@@ -134,7 +129,7 @@
                             <div class="text-muted small">Traffic</div>
                             <div class="fw-semibold">{{ number_format((int) $site->traffic) }}</div>
                         </div>
-                        <div class="col-12" id="description">
+                        <div class="col-12">
                             @if($site->marketingCanEditDescription())
                                 <form method="POST" action="{{ staff_route('sites.update', $site->id) }}">
                                     @csrf
@@ -143,7 +138,7 @@
                                         'value' => old_text('description', $site->description),
                                         'required' => false,
                                         'editorId' => 'quillEditorLive',
-                                        'help' => 'Advertisers see this on the listing. Live URL, price, and metrics stay locked.',
+                                        'help' => 'Advertisers see this on the listing. Live URL, price, and metrics stay locked. Leave it empty to keep the current brief.',
                                     ])
                                     <button type="submit" class="btn btn-primary mt-2">
                                         <i class="fa fa-save me-1"></i> Save description
@@ -151,7 +146,7 @@
                                 </form>
                             @else
                                 <div class="text-muted small">Description</div>
-                                <div class="site-description-readonly border rounded p-3 bg-white mt-1">
+                                <div id="description" class="site-description-readonly border rounded p-3 bg-white mt-1">
                                     @if($site->safeDescriptionHtml() !== '')
                                         {!! $site->safeDescriptionHtml() !!}
                                     @else
@@ -243,6 +238,13 @@
                                    value="{{ old_text('traffic', $site->traffic) }}">
                             @error('traffic')<div class="invalid-feedback">{{ $message }}</div>@enderror
                         </div>
+                        <div class="col-12">
+                            @include('partials.site-description-editor', [
+                                'value' => old_text('description', $site->description),
+                                'required' => false,
+                                'help' => 'Shown to advertisers on the listing. Leave it empty to keep the current brief when you only need to save metrics.',
+                            ])
+                        </div>
                         @if($site->metrics_manual)
                         <div class="col-12">
                             <div class="alert alert-warning border-0 py-2 mb-0 d-flex flex-wrap align-items-center gap-2">
@@ -304,12 +306,6 @@
                             </div>
                         </div>
 
-                        <div class="col-12">
-                            @include('partials.site-description-editor', [
-                                'value' => old_text('description', $site->description),
-                                'required' => true,
-                            ])
-                        </div>
                     </div>
 
                     <div class="d-flex flex-wrap gap-2 mt-4">
@@ -407,6 +403,12 @@
                                    step="1" inputmode="numeric" placeholder="e.g. 1500000"
                                    value="{{ old_text('traffic', $site->traffic) }}">
                         </div>
+                        <div class="col-12">
+                            @include('partials.site-description-editor', [
+                                'value' => old_text('description', $site->description),
+                                'required' => false,
+                            ])
+                        </div>
                         @if($site->metrics_manual)
                         <div class="col-12">
                             <div class="alert alert-warning border-0 py-2 mb-0 d-flex flex-wrap align-items-center gap-2">
@@ -466,13 +468,6 @@
                             <label class="form-label fw-semibold" for="link_type">Link type</label>
                             <input type="text" id="link_type" name="link_type" class="form-control"
                                    value="{{ old_text('link_type', $site->link_type) }}" placeholder="dofollow">
-                        </div>
-
-                            <div class="col-12">
-                            @include('partials.site-description-editor', [
-                                'value' => old_text('description', $site->description),
-                                'required' => false,
-                            ])
                         </div>
 
                         @php
@@ -544,16 +539,10 @@
                         </div>
 
                         <div class="col-md-6">
-                            <label class="form-label fw-semibold d-block">Status</label>
-                            <div class="d-flex flex-wrap gap-2">
-                                <span class="badge {{ $site->verified ? 'bg-success' : 'bg-warning text-dark' }}">
-                                    {{ $site->verified ? 'Verified' : 'Unverified' }}
-                                </span>
-                                <span class="badge {{ $site->active ? 'bg-primary' : 'bg-secondary' }}">
-                                    {{ $site->active ? 'Active' : 'Inactive' }}
-                                </span>
-                            </div>
-                            <div class="form-text mt-2">Verify / activate are admin-only.</div>
+                            @include('partials.staff-site-status-actions', [
+                                'site' => $site,
+                                'isMarketingEditor' => false,
+                            ])
                         </div>
                     </div>
 
