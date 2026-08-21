@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Support\SiteDescriptionRules;
 use Database\Seeders\CategoriesTableSeeder;
 use Database\Seeders\CountriesTableSeeder;
+use Database\Seeders\CountryLanguageSeeder;
 use Database\Seeders\LanguagesTableSeeder;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -328,7 +329,28 @@ class MarketingOpsScopeTest extends TestCase
             ->assertSee('name="categories"', false)
             ->assertSee('name="site_image"', false)
             ->assertSee('enctype="multipart/form-data"', false)
+            ->assertSee('js-staff-activate-blocked', false)
+            ->assertDontSee('js-staff-verify', false)
+            ->assertDontSee('Verify / activate are admin-only.', false)
+            ->assertSee('assets/js/staff-site-status.js', false)
+            ->assertSee('Leave it empty to keep the current brief', false)
             ->getContent();
+
+        $descriptionPos = strpos($html, 'data-site-description-editor');
+        $imagePos = strpos($html, 'id="site_image"');
+        $this->assertNotFalse($descriptionPos);
+        $this->assertNotFalse($imagePos);
+        $this->assertLessThan($imagePos, $descriptionPos, 'Description editor must sit above the cover image.');
+        $this->assertSame(
+            1,
+            preg_match_all('/id="description"(?![\\w-])/', $html),
+            'Activate #description hash must hit exactly one target.'
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/<textarea[^>]*id="description-input"[^>]*\\srequired/i',
+            $html,
+            'Pending marketing save must not HTML5-block an empty brief.'
+        );
 
         unset($html);
 
@@ -338,6 +360,7 @@ class MarketingOpsScopeTest extends TestCase
             ->getContent();
         $this->assertStringContainsString('IS_MARKETING_EDITOR = true', $sitesHtml);
         $this->assertStringContainsString('${STAFF_BASE}/sites/${site.id}/edit', $sitesHtml);
+        $this->assertStringContainsString("site.archived) ? 'View' : 'Edit'", $sitesHtml);
         $this->assertStringContainsString('/edit#description', $sitesHtml);
         $this->assertStringContainsString('site-row-preview', $sitesHtml);
         $this->assertStringContainsString('sitePreviewPaths', $sitesHtml);
@@ -388,6 +411,70 @@ class MarketingOpsScopeTest extends TestCase
         $this->assertSame(['de'], $site->languages);
         $this->assertSame(['de'], $site->countries);
         $this->assertContains($category->name, $site->categories ?? []);
+    }
+
+    public function test_marketer_can_save_french_listing_without_blaming_the_url(): void
+    {
+        $this->seed(CountryLanguageSeeder::class);
+
+        $travel = Category::query()->where('name', 'Travel & Tourism')->first()
+            ?? Category::query()->firstOrFail();
+        $fashion = Category::query()->where('name', 'Fashion & Luxury')->value('name')
+            ?? $travel->name;
+        $beauty = Category::query()->where('name', 'Beauty & Skincare')->value('name')
+            ?? $travel->name;
+
+        $site = $this->makeSite([
+            'site_name' => 'Le Blog Beauté',
+            'site_url' => 'https://old-beaute.example',
+            'domain' => 'old-beaute.example',
+            'example_url' => 'https://old-beaute.example/sample',
+            'da' => 16,
+            'dr' => 28,
+            'traffic' => 3,
+            'country' => 'fr',
+            'language' => 'fr',
+            'price' => 70,
+            'description' => '',
+        ]);
+
+        $brief = 'This listing is for your audience and the publishers who write guest posts here.';
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.sites.edit', $site->id))
+            ->put(route('marketing.sites.update', $site->id), [
+                'site_name' => 'Le Blog Beauté',
+                'site_url' => 'https://leblogbeaute.fr',
+                'example_url' => 'https://leblogbeaute.fr/',
+                'price' => 70,
+                'description' => $brief,
+                'da' => 16,
+                'dr' => 28,
+                'traffic' => 3,
+                'language' => 'fr',
+                'country' => 'fr',
+                'categories' => $travel->name.'|'.$fashion.'|'.$beauty,
+            ])
+            ->assertRedirect(route('marketing.sites.index', [
+                'publisher' => $site->publisher_id,
+                'site' => $site->id,
+            ]))
+            ->assertSessionDoesntHaveErrors('site_url');
+
+        $site->refresh();
+        $this->assertSame('https://leblogbeaute.fr', $site->site_url);
+        $this->assertSame('leblogbeaute.fr', $site->domain);
+        $this->assertSame('https://leblogbeaute.fr/', $site->example_url);
+        $this->assertSame($brief, $site->description);
+        $this->assertSame(16, (int) $site->da);
+        $this->assertFalse($site->marketingCanActivate());
+
+        $this->actingAs($this->marketer)
+            ->get(route('marketing.sites.edit', $site->id))
+            ->assertOk()
+            ->assertSee('js-staff-activate-blocked', false)
+            ->assertSee('Below the quality bar', false)
+            ->assertSee('data-site-description-editor', false);
     }
 
     public function test_marketer_pending_update_keeps_brief_when_quill_posts_empty_html(): void
@@ -525,18 +612,66 @@ class MarketingOpsScopeTest extends TestCase
             'domain' => 'admin-full-edit.example',
         ]);
 
-        $this->actingAs($this->admin)
+        $html = $this->actingAs($this->admin)
             ->get(route('admin.sites.edit', $site->id))
             ->assertOk()
             ->assertSee('Edit site', false)
             ->assertSee('name="site_name"', false)
             ->assertSee('name="site_url"', false)
             ->assertSee('name="description"', false)
+            ->assertSee('id="description-input"', false)
             ->assertSee('data-site-description-editor', false)
+            ->assertSee('cdn.quilljs.com/1.3.6/quill.js', false)
+            ->assertSee('assets/js/site-description-editor.js', false)
             ->assertSee('name="example_url"', false)
+            ->assertSee('js-staff-verify', false)
+            ->assertSee('js-staff-activate', false)
+            ->assertDontSee('Verify / activate are admin-only.', false)
             ->assertDontSee('Publisher already provided URL and price', false)
             ->assertDontSee('Fix the URL, price, description, or metrics if needed', false)
-            ->assertDontSee('Marketing cannot change it', false);
+            ->assertDontSee('Marketing cannot change it', false)
+            ->assertSee('assets/js/staff-site-status.js', false)
+            ->getContent();
+
+        $this->assertDoesNotMatchRegularExpression(
+            '/<textarea[^>]+id="description-input"[^>]+hidden/i',
+            $html,
+            'Admin must be able to type a brief even when Quill JS does not load.'
+        );
+        $this->assertSame(
+            1,
+            preg_match_all('/id="description"(?![\\w-])/', $html),
+            'Admin edit must not duplicate id="description".'
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/<textarea[^>]*id="description-input"[^>]*\\srequired/i',
+            $html,
+            'Admin save must not HTML5-block an empty brief.'
+        );
+        $descriptionPos = strpos($html, 'id="description-input"');
+        $imagePos = strpos($html, 'id="site_image"');
+        $this->assertNotFalse($descriptionPos);
+        $this->assertNotFalse($imagePos);
+        $this->assertLessThan($imagePos, $descriptionPos, 'Admin description must sit above the cover image.');
+    }
+
+    public function test_admin_edit_page_shows_unverify_and_deactivate_on_live_site(): void
+    {
+        $site = $this->makeSite([
+            'site_name' => 'Admin Live Status',
+            'site_url' => 'https://admin-live-status.example',
+            'domain' => 'admin-live-status.example',
+            'verified' => true,
+            'active' => true,
+        ]);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.sites.edit', $site->id))
+            ->assertOk()
+            ->assertSee('js-staff-verify', false)
+            ->assertSee('js-staff-deactivate', false)
+            ->assertDontSee('js-staff-activate', false)
+            ->assertDontSee('Verify / activate are admin-only.', false);
     }
 
     public function test_marketer_sees_description_editor_on_live_site(): void
@@ -551,7 +686,7 @@ class MarketingOpsScopeTest extends TestCase
             'description' => 'Publisher brief stays visible on the locked marketing view.',
         ]);
 
-        $this->actingAs($this->marketer)
+        $html = $this->actingAs($this->marketer)
             ->get(route('marketing.sites.edit', $site->id))
             ->assertOk()
             ->assertSee('Edit description', false)
@@ -560,9 +695,18 @@ class MarketingOpsScopeTest extends TestCase
             ->assertSee('name="description"', false)
             ->assertSee('data-site-description-editor', false)
             ->assertSee('Save description', false)
+            ->assertSee('js-staff-deactivate', false)
+            ->assertDontSee('js-staff-verify', false)
             ->assertDontSee('name="site_url"', false)
             ->assertDontSee('name="price"', false)
-            ->assertDontSee('name="da"', false);
+            ->assertDontSee('name="da"', false)
+            ->getContent();
+
+        $this->assertSame(
+            1,
+            preg_match_all('/id="description"(?![\\w-])/', $html),
+            'Live marketing edit must not wrap the brief in a second id="description".'
+        );
     }
 
     public function test_marketer_can_update_description_on_live_or_verified_site(): void
@@ -640,7 +784,7 @@ class MarketingOpsScopeTest extends TestCase
             ->get(route('marketing.sites.edit', $site->id))
             ->assertOk()
             ->assertSee('View site', false)
-            ->assertSee('This listing is live, verified, or archived. Marketing cannot change it.', false)
+            ->assertSee('This listing is archived. Marketing cannot change it.', false)
             ->assertDontSee('name="site_url"', false)
             ->assertDontSee('Save description', false)
             ->assertDontSee('data-site-description-editor', false);
@@ -658,6 +802,23 @@ class MarketingOpsScopeTest extends TestCase
                 'categories' => $category->name,
             ])
             ->assertForbidden();
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.sites.edit', $site->id))
+            ->put(route('marketing.sites.update', $site->id), [
+                'site_name' => 'Should Not Stick',
+                'site_url' => 'https://should-not-stick.example',
+                'price' => 1,
+                'da' => 11,
+                'dr' => 12,
+                'traffic' => 100,
+                'language' => 'de',
+                'country' => 'de',
+                'categories' => $category->name,
+            ])
+            ->assertRedirect(route('marketing.sites.edit', $site->id))
+            ->assertSessionHasErrors('save')
+            ->assertSessionDoesntHaveErrors('site_url');
 
         $this->assertSame('https://archived-pending.example', $site->fresh()->site_url);
         $this->assertSame(40, (int) $site->fresh()->da);
