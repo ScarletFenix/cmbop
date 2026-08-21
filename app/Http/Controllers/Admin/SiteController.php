@@ -2857,9 +2857,9 @@ class SiteController extends Controller
         return (bool) ($actor?->isMarketing() && ! $actor?->isAdmin());
     }
 
-    private function marketingMaySkipVerify(bool $isMarketingActor, Site $site): bool
+    private function staffMayVerifyOnActivate(Site $site): bool
     {
-        return $isMarketingActor && $site->isSubmittedForAdminReview();
+        return $site->isReviewReadyForStaffGoLive();
     }
 
     private function staffSiteMutationFailure(string $logMessage, int $siteId, \Throwable $e, string $userMessage): JsonResponse
@@ -2877,20 +2877,12 @@ class SiteController extends Controller
 
     private function staffCanActivateSite(Site $site): bool
     {
-        if ($this->isMarketingActor()) {
-            return $site->marketingCanActivate();
-        }
-
-        return $site->canBeActivated();
+        return $site->staffCanGoLive($this->isMarketingActor());
     }
 
     private function staffActivateBlockReason(Site $site): ?string
     {
-        if ($this->staffCanActivateSite($site)) {
-            return null;
-        }
-
-        return $site->activationBlockReason(! $this->marketingMaySkipVerify($this->isMarketingActor(), $site));
+        return $site->staffGoLiveBlockReason($this->isMarketingActor());
     }
 
     // TOGGLE ACTIVE STATUS — admin and marketing (shared Sites Management)
@@ -2912,43 +2904,26 @@ class SiteController extends Controller
 
             $isMarketingActor = (bool) ($actor?->isMarketing() && ! $actor?->isAdmin());
 
-            if ($activating) {
-                if ($isMarketingActor && $site->isPendingPublisherBulkSubmit()) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => $site->hasDetailsComplete()
-                            ? 'Publisher is still reviewing this listing.'
-                            : 'Publisher has not finished listing details.',
-                    ], 422);
-                }
-
-                $block = $site->activationBlockReason(! $this->marketingMaySkipVerify($isMarketingActor, $site));
+            if ($activating && ! (bool) $site->active) {
+                $block = $site->staffGoLiveBlockReason($isMarketingActor);
                 if ($block !== null) {
                     return response()->json([
                         'success' => false,
                         'message' => $block,
                         'missing_market' => ! $site->hasMarketplaceCountry(),
-                    ], 422);
-                }
-
-                if ($isMarketingActor && ! $site->hasGoodMetrics()) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'This listing is below the quality bar (DA ≥ 30, DR ≥ 30, traffic ≥ 10,000). Update metrics before activating.',
-                        'below_quality_bar' => true,
+                        'below_quality_bar' => $isMarketingActor && ! $site->hasGoodMetrics(),
                     ], 422);
                 }
             }
 
             $oldStatus = (int) $site->active;
             $verifyOnActivate = $activating
-                && $isMarketingActor
                 && ! (bool) $site->verified
-                && $site->isSubmittedForAdminReview();
+                && $this->staffMayVerifyOnActivate($site);
             $site->active = $activating ? 1 : 0;
             if ($activating) {
-                // Marketing has no verify route; Activate is the go-live action
-                // and the catalog requires verified + active.
+                // Catalog requires verified + active. Activate verifies when
+                // the listing is review-ready (null or ready_for_review).
                 if ($verifyOnActivate) {
                     $site->verified = 1;
                     $site->verified_at = now();
