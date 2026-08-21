@@ -554,7 +554,7 @@ class MarketingOpsScopeTest extends TestCase
         $this->actingAs($this->marketer)
             ->get(route('marketing.sites.edit', $site->id))
             ->assertOk()
-            ->assertSee('View site', false)
+            ->assertSee('Edit description', false)
             ->assertSee('You can still update the advertiser-facing description.', false)
             ->assertSee('https://live-locked.example', false)
             ->assertSee('name="description"', false)
@@ -639,8 +639,11 @@ class MarketingOpsScopeTest extends TestCase
         $this->actingAs($this->marketer)
             ->get(route('marketing.sites.edit', $site->id))
             ->assertOk()
+            ->assertSee('View site', false)
             ->assertSee('This listing is live, verified, or archived. Marketing cannot change it.', false)
-            ->assertDontSee('name="site_url"', false);
+            ->assertDontSee('name="site_url"', false)
+            ->assertDontSee('Save description', false)
+            ->assertDontSee('data-site-description-editor', false);
 
         $this->actingAs($this->marketer)
             ->putJson(route('marketing.sites.update', $site->id), [
