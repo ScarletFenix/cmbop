@@ -51,16 +51,6 @@
         <a href="{{ $sitesBackUrl }}" class="btn btn-sm btn-outline-secondary">← Back to Sites</a>
     </div>
 
-    @if($errors->any())
-        <div class="alert alert-danger border-0 shadow-sm">
-            <ul class="mb-0">
-                @foreach($errors->all() as $error)
-                    <li>{{ $error }}</li>
-                @endforeach
-            </ul>
-        </div>
-    @endif
-
     <div class="card border-0 shadow-sm">
         <div class="card-body">
             <form method="POST" action="{{ staff_route('sites.store') }}" enctype="multipart/form-data" id="staffAssignSiteForm">

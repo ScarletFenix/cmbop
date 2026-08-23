@@ -49,16 +49,6 @@
         </div>
     </div>
 
-    @if($errors->any())
-        <div class="alert alert-danger border-0 shadow-sm">
-            <ul class="mb-0">
-                @foreach($errors->all() as $error)
-                    <li>{{ $error }}</li>
-                @endforeach
-            </ul>
-        </div>
-    @endif
-
     @if($site->metrics_manual && ! $marketingListingLocked)
         <form id="allow-api-overwrite-form" method="POST" action="{{ staff_route('sites.allow-api-metrics', $site->id) }}">
             @csrf
