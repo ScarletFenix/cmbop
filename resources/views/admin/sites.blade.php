@@ -812,6 +812,20 @@ function editSiteWithImage(siteId) {
     });
 }
 
+function firstStaffValidationError(data) {
+    const errors = data && data.errors && typeof data.errors === 'object' ? data.errors : {};
+    for (const key of Object.keys(errors)) {
+        const val = errors[key];
+        if (Array.isArray(val) && val[0]) {
+            return String(val[0]);
+        }
+        if (typeof val === 'string' && val !== '') {
+            return val;
+        }
+    }
+    return '';
+}
+
 async function submitSiteUpdate(siteId, updateData) {
     const imageAlreadySaved = !!(updateData && updateData._imageUploaded);
     const payload = { ...(updateData || {}) };
@@ -867,7 +881,7 @@ async function submitSiteUpdate(siteId, updateData) {
             return;
         }
 
-        toast(data.message || 'Update failed', 'error');
+        toast(firstStaffValidationError(data) || data.message || 'Update failed', 'error');
     } catch (error) {
         if (imageAlreadySaved) {
             toast('Image saved. Other fields could not be updated — try again.', 'warning');

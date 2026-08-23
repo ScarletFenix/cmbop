@@ -298,6 +298,11 @@
                 .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
                 .then(({ ok, data }) => {
                     if (ok && data && data.success) {
+                        if (data.warning && typeof window.showAppToast === 'function') {
+                            window.showAppToast(String(data.warning), 'warning');
+                            setTimeout(function () { window.location.reload(); }, 1600);
+                            return;
+                        }
                         window.location.reload();
                         return;
                     }

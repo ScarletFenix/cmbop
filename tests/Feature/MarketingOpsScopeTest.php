@@ -361,6 +361,7 @@ class MarketingOpsScopeTest extends TestCase
         $this->assertStringContainsString('IS_MARKETING_EDITOR = true', $sitesHtml);
         $this->assertStringContainsString('${STAFF_BASE}/sites/${site.id}/edit', $sitesHtml);
         $this->assertStringContainsString("site.archived) ? 'View' : 'Edit'", $sitesHtml);
+        $this->assertStringContainsString('function firstStaffValidationError', $sitesHtml);
         $this->assertStringContainsString('/edit#description', $sitesHtml);
         $this->assertStringContainsString('site-row-preview', $sitesHtml);
         $this->assertStringContainsString('sitePreviewPaths', $sitesHtml);
@@ -648,6 +649,11 @@ class MarketingOpsScopeTest extends TestCase
             $html,
             'Admin save must not HTML5-block an empty brief.'
         );
+        $this->assertStringNotContainsString(
+            'alert alert-danger border-0 shadow-sm',
+            $html,
+            'Edit must not repeat the shared validation banner.'
+        );
         $descriptionPos = strpos($html, 'id="description-input"');
         $imagePos = strpos($html, 'id="site_image"');
         $this->assertNotFalse($descriptionPos);
@@ -817,7 +823,9 @@ class MarketingOpsScopeTest extends TestCase
                 'categories' => $category->name,
             ])
             ->assertRedirect(route('marketing.sites.edit', $site->id))
-            ->assertSessionHasErrors('save')
+            ->assertSessionHasErrors([
+                'save' => 'This listing is archived. Marketing cannot change it. Ask an admin.',
+            ])
             ->assertSessionDoesntHaveErrors('site_url');
 
         $this->assertSame('https://archived-pending.example', $site->fresh()->site_url);
@@ -915,6 +923,37 @@ class MarketingOpsScopeTest extends TestCase
             ->getContent();
 
         $this->assertDoesNotMatchRegularExpression('/<select[^>]+id="language"[^>]*disabled/', $html);
+        $this->assertStringNotContainsString('alert alert-danger border-0 shadow-sm', $html);
+    }
+
+    public function test_create_validation_errors_show_one_banner(): void
+    {
+        $category = Category::query()->where('name', 'News')->first()
+            ?? Category::query()->firstOrFail();
+
+        $html = $this->actingAs($this->marketer)
+            ->from(route('marketing.sites.create'))
+            ->followingRedirects()
+            ->post(route('marketing.sites.store'), [
+                'publisher_id' => $this->publisher->id,
+                'site_name' => '   ',
+                'site_url' => 'https://one-banner.example',
+                'example_url' => 'https://one-banner.example/sample',
+                'da' => 40,
+                'dr' => 45,
+                'traffic' => 12000,
+                'country' => 'de',
+                'language' => 'de',
+                'categories' => $category->name,
+                'price' => 50,
+            ])
+            ->assertOk()
+            ->assertSee('Please fix the following', false)
+            ->getContent();
+
+        $this->assertSame(1, substr_count($html, 'Please fix the following'));
+        $this->assertSame(1, substr_count($html, 'data-slb-flash'));
+        $this->assertSame(0, Site::where('domain', 'one-banner.example')->count());
     }
 
     public function test_marketing_niche_or_metrics_save_does_not_email_publisher(): void

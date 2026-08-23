@@ -727,7 +727,7 @@ class SiteController extends Controller
         if (! Site::hasSitesColumn('publisher_accepted_at') || ! Site::hasSitesColumn('assigned_by_user_id')) {
             return back()
                 ->withErrors([
-                    'site_url' => 'Database is missing the publisher-acceptance columns. Run migrations, then try again.',
+                    'save' => 'Database is missing the publisher-acceptance columns. Run migrations, then try again.',
                 ])
                 ->withInput();
         }
@@ -1008,14 +1008,15 @@ class SiteController extends Controller
                     ->withInput();
             }
 
-            $hint = 'We could not save this website. Please try again.';
-            if (str_contains($e->getMessage(), 'Unknown column')
-                || str_contains($e->getMessage(), 'did not persist after save.')) {
-                $hint = 'We could not save invite state, DA/DR, monthly traffic, or price. Run the latest migrations on the server, clear caches, and try again.';
+            $errors = $this->staffSiteUpdateFailureErrors($e);
+            if (str_contains($e->getMessage(), 'did not persist after save.')
+                || str_contains($e->getMessage(), 'Unknown column')
+                || str_contains($e->getMessage(), 'no such column')) {
+                $errors = ['save' => 'We could not save invite state, DA/DR, monthly traffic, or price. Run the latest migrations on the server, clear caches, and try again.'];
             }
 
             return redirect()->back()
-                ->withErrors(['site_url' => $hint])
+                ->withErrors($errors)
                 ->withInput();
         }
 
@@ -1032,7 +1033,7 @@ class SiteController extends Controller
 
         if (! $site) {
             return redirect()->back()
-                ->withErrors(['site_url' => 'We could not save this website. Please try again.'])
+                ->withErrors(['save' => 'We could not save this website. Please try again.'])
                 ->withInput();
         }
 
@@ -1320,7 +1321,7 @@ class SiteController extends Controller
         $isMarketingEditor = $this->isMarketingEditor($user);
 
         if ($isMarketingEditor && $site->isArchived()) {
-            $message = 'Marketing can only edit pending sites that are not live.';
+            $message = 'This listing is archived. Marketing cannot change it. Ask an admin.';
             if ($request->expectsJson() || $request->ajax()) {
                 return response()->json([
                     'success' => false,
@@ -1710,7 +1711,12 @@ class SiteController extends Controller
                 $siteUrl = $request->filled('site_url') ? $request->input('site_url') : $site->site_url;
                 $exampleUrl = $request->exists('example_url') ? $request->input('example_url') : $site->example_url;
                 if ($this->exampleUrlHostDiffers($siteUrl, $exampleUrl)) {
-                    $validator->errors()->add('example_url', 'Example URL must be on the same website domain.');
+                    if (! $request->exists('example_url') && $request->filled('site_url')) {
+                        // Metrics & image modal posts a new URL but no example URL.
+                        $request->merge(['example_url' => '']);
+                    } else {
+                        $validator->errors()->add('example_url', 'Example URL must be on the same website domain.');
+                    }
                 }
             }
         });
@@ -1899,7 +1905,7 @@ class SiteController extends Controller
     private function marketingDescriptionOnlyPayload(Request $request, Site $site): array|JsonResponse|RedirectResponse
     {
         if (! $site->marketingCanEditDescription()) {
-            $message = 'Marketing can only edit pending sites that are not live.';
+            $message = 'This listing is archived. Marketing cannot change it. Ask an admin.';
             if ($request->expectsJson() || $request->ajax()) {
                 return response()->json([
                     'success' => false,

@@ -602,6 +602,30 @@ class AdminSiteUpdateGuardTest extends TestCase
         $this->assertTrue(blank($site->example_url));
     }
 
+    public function test_metrics_modal_url_change_clears_stale_example_url(): void
+    {
+        $site = $this->site([
+            'example_url' => 'https://guard-site.example/sample',
+        ]);
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'site_name' => $site->site_name,
+                'site_url' => 'https://new-guard-site.example',
+                'da' => 41,
+                'dr' => 42,
+                'traffic' => 16000,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $site->refresh();
+        $this->assertSame('https://new-guard-site.example', $site->site_url);
+        $this->assertSame('new-guard-site.example', $site->domain);
+        $this->assertTrue(blank($site->example_url));
+        $this->assertSame(41, (int) $site->da);
+    }
+
     public function test_update_rejects_description_over_word_max(): void
     {
         $site = $this->site();

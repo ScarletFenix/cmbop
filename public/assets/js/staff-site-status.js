@@ -125,6 +125,13 @@
 
     function handleResult(result, fallback) {
         if (result.ok && result.data && result.data.success) {
+            if (result.data.warning) {
+                toast(result.data.warning, 'warning');
+                setTimeout(function () {
+                    global.location.reload();
+                }, 1600);
+                return;
+            }
             global.location.reload();
             return;
         }
