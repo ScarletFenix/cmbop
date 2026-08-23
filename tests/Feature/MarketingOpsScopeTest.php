@@ -931,8 +931,9 @@ class MarketingOpsScopeTest extends TestCase
         $category = Category::query()->where('name', 'News')->first()
             ?? Category::query()->firstOrFail();
 
-        $this->actingAs($this->marketer)
+        $html = $this->actingAs($this->marketer)
             ->from(route('marketing.sites.create'))
+            ->followingRedirects()
             ->post(route('marketing.sites.store'), [
                 'publisher_id' => $this->publisher->id,
                 'site_name' => '   ',
@@ -946,17 +947,13 @@ class MarketingOpsScopeTest extends TestCase
                 'categories' => $category->name,
                 'price' => 50,
             ])
-            ->assertRedirect(route('marketing.sites.create'))
-            ->assertSessionHasErrors('site_name')
-            ->assertSessionDoesntHaveErrors('save');
-
-        $html = $this->actingAs($this->marketer)
-            ->get(route('marketing.sites.create'))
             ->assertOk()
+            ->assertSee('Please fix the following', false)
             ->getContent();
 
         $this->assertSame(1, substr_count($html, 'Please fix the following'));
         $this->assertSame(1, substr_count($html, 'data-slb-flash'));
+        $this->assertSame(0, Site::where('domain', 'one-banner.example')->count());
     }
 
     public function test_marketing_niche_or_metrics_save_does_not_email_publisher(): void
