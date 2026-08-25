@@ -508,6 +508,28 @@ class SiteRatingTest extends TestCase
         }
     }
 
+    public function test_update_missing_rating_is_json_404(): void
+    {
+        $this->actingAs($this->admin())
+            ->putJson(route('admin.site-ratings.update', 999999), [
+                'status' => 'hidden',
+            ])
+            ->assertNotFound()
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'Rating not found')
+            ->assertJsonMissingPath('exception');
+    }
+
+    public function test_destroy_missing_rating_is_json_404(): void
+    {
+        $this->actingAs($this->admin())
+            ->deleteJson(route('admin.site-ratings.destroy', 999999))
+            ->assertNotFound()
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'Rating not found')
+            ->assertJsonMissingPath('exception');
+    }
+
     public function test_ratings_mutations_are_503_when_table_missing(): void
     {
         $publisher = User::factory()->create();

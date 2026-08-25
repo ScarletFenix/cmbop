@@ -7,6 +7,7 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\OrderItemDispute;
 use App\Services\Orders\OrderClawbackService;
+use App\Support\UserFacingError;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -24,7 +25,14 @@ class OrderDisputeController extends Controller
             'order_item_id' => 'nullable|integer',
         ]);
 
-        $order = Order::with('items')->findOrFail($orderId);
+        $order = Order::with('items')->find($orderId);
+        if (! $order) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Order not found.',
+            ], 404);
+        }
+
         $requestedItemId = isset($data['order_item_id']) ? (int) $data['order_item_id'] : null;
         if ($requestedItemId) {
             $item = $order->items->firstWhere('id', $requestedItemId);
@@ -60,6 +68,11 @@ class OrderDisputeController extends Controller
                 'message' => collect($e->errors())->flatten()->first() ?? 'Unable to open dispute.',
                 'errors' => $e->errors(),
             ], 422);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'Unable to open dispute.'),
+            ], 500);
         }
     }
 
@@ -73,7 +86,13 @@ class OrderDisputeController extends Controller
             return $unavailable;
         }
 
-        $dispute = OrderItemDispute::findOrFail($disputeId);
+        $dispute = OrderItemDispute::find($disputeId);
+        if (! $dispute) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Dispute not found.',
+            ], 404);
+        }
 
         try {
             $dispute = $this->clawbacks->uphold($dispute, $request->user(), $data['admin_notes']);
@@ -89,6 +108,11 @@ class OrderDisputeController extends Controller
                 'message' => collect($e->errors())->flatten()->first() ?? 'Unable to uphold dispute.',
                 'errors' => $e->errors(),
             ], 422);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'Unable to uphold dispute.'),
+            ], 500);
         }
     }
 
@@ -102,7 +126,13 @@ class OrderDisputeController extends Controller
             return $unavailable;
         }
 
-        $dispute = OrderItemDispute::findOrFail($disputeId);
+        $dispute = OrderItemDispute::find($disputeId);
+        if (! $dispute) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Dispute not found.',
+            ], 404);
+        }
 
         try {
             $dispute = $this->clawbacks->dismiss($dispute, $request->user(), $data['admin_notes']);
@@ -118,6 +148,11 @@ class OrderDisputeController extends Controller
                 'message' => collect($e->errors())->flatten()->first() ?? 'Unable to dismiss dispute.',
                 'errors' => $e->errors(),
             ], 422);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'Unable to dismiss dispute.'),
+            ], 500);
         }
     }
 

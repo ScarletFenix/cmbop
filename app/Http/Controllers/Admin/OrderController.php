@@ -12,6 +12,7 @@ use App\Services\Billing\AdminInvoiceLinks;
 use App\Services\Orders\AdminOrderStatusOverride;
 use App\Services\Orders\OrderClawbackService;
 use App\Support\ArticleDownload;
+use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -28,6 +29,20 @@ class OrderController extends Controller
     }
 
     public function data(Request $request)
+    {
+        try {
+            return $this->ordersData($request);
+        } catch (\Throwable $e) {
+            Log::error('Error fetching admin orders data: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'Failed to load orders. Please try again.'),
+            ], 500);
+        }
+    }
+
+    private function ordersData(Request $request)
     {
         $query = Order::with(['user', 'items.site.publisher'])
             ->orderByDesc('created_at');

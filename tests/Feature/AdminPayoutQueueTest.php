@@ -645,7 +645,9 @@ class AdminPayoutQueueTest extends TestCase
 
         $this->seedWithdrawal($publisher, [
             'status' => 'completed',
-            'processed_at' => now()->subDays(2),
+            // Must stay inside the current calendar week. subDays(2) from
+            // Tuesday is Sunday, which is last week when the week starts Monday.
+            'processed_at' => now()->startOfWeek()->addHour(),
             'amount' => 80,
             'fee' => 0,
             'net_amount' => 80,

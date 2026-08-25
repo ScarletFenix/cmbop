@@ -2600,6 +2600,32 @@ class Site extends Model
         return $codes;
     }
 
+    /**
+     * Marketplace codes in publisher/admin stored order (primary first if it
+     * is not already listed). Records-sheet CSV keeps this order so a DE+AT
+     * listing stays `de|at` instead of the sorted `at|de` from countryCodes().
+     *
+     * @return list<string>
+     */
+    public function countryCodesForDisplay(): array
+    {
+        $codes = collect($this->countries ?? [])
+            ->filter()
+            ->map(fn ($c) => strtolower(trim((string) $c)))
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($this->country) {
+            $primary = strtolower(trim((string) $this->country));
+            if ($primary !== '' && ! in_array($primary, $codes, true)) {
+                array_unshift($codes, $primary);
+            }
+        }
+
+        return array_values(array_filter($codes));
+    }
+
     public function hasMarketplaceCountry(): bool
     {
         return $this->countryCodes() !== [];
