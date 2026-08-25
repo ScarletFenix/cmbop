@@ -90,6 +90,8 @@ class DepositEmailApproveCtaWiringTest extends TestCase
         $this->assertInstanceOf(DepositMarkedPaid::class, $preview);
         $html = $preview->render();
         $this->assertStringContainsString('approve-confirm', $html);
-        $this->assertStringContainsString('signature=', $html);
+        // Catalog stand-ins use /approve-confirm/preview — never a live HMAC.
+        $this->assertStringContainsString('/admin/deposits/approve-confirm/preview', $html);
+        $this->assertStringNotContainsString('signature=', $html);
     }
 }

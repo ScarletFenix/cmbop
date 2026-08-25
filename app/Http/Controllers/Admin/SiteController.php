@@ -518,7 +518,7 @@ class SiteController extends Controller
             $url = $domain !== '' ? 'https://'.$domain : '';
         }
 
-        $countries = collect($site->countryCodes())
+        $countries = collect($site->countryCodesForDisplay())
             ->filter()
             ->map(fn ($code) => strtolower(trim((string) $code)))
             ->unique()
