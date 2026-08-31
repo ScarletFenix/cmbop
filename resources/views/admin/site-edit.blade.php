@@ -361,6 +361,11 @@
                 </script>
                 @endif
             @else
+                @if(! $site->active)
+                    <div class="alert alert-info border-0 mb-4">
+                        Save the advertiser brief, then use Activate. Save does not change status.
+                    </div>
+                @endif
                 <form method="POST" action="{{ staff_route('sites.update', $site->id) }}" enctype="multipart/form-data">
                     @csrf
                     @method('PUT')

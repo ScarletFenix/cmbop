@@ -126,6 +126,41 @@ class PublisherEditClearsAwaitingDetailsTest extends TestCase
         $this->assertTrue((bool) $site->fresh()->active);
     }
 
+    public function test_admin_save_promotes_complete_details_complete_draft(): void
+    {
+        $site = $this->makeAwaitingDetailsSite([
+            'onboarding_status' => Site::ONBOARDING_DETAILS_COMPLETE,
+        ]);
+        $next = 'This listing is for your audience and the publishers who write guest posts here.';
+
+        $this->assertTrue($site->hasDetailsComplete());
+        $this->assertTrue($site->hasCompletedPublisherDetails());
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'description' => $next,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $site->refresh();
+        $this->assertSame($next, $site->description);
+        $this->assertFalse($site->hasDetailsComplete());
+        $this->assertTrue($site->isReadyForAdminReview());
+        $this->assertFalse((bool) $site->verified);
+    }
+
+    public function test_html_wrapped_short_description_is_not_complete(): void
+    {
+        $site = $this->makeAwaitingDetailsSite([
+            'description' => '<p>Hi</p><p><br></p><p><br></p><p><br></p><p><br></p>',
+        ]);
+
+        $this->assertFalse($site->hasCompletedPublisherDetails());
+        $this->assertFalse($site->promoteFromAwaitingDetailsIfComplete());
+        $this->assertTrue($site->fresh()->awaitsPublisherDetails());
+    }
+
     public function test_admin_cannot_activate_stale_awaiting_details_site(): void
     {
         $site = $this->makeAwaitingDetailsSite();

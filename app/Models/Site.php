@@ -1229,7 +1229,7 @@ class Site extends Model
      */
     public function promoteFromAwaitingDetailsIfComplete(): bool
     {
-        if (! $this->awaitsPublisherDetails()) {
+        if (! $this->awaitsPublisherDetails() && ! $this->hasDetailsComplete()) {
             return false;
         }
 
@@ -1273,14 +1273,14 @@ class Site extends Model
      */
     public function hasCompletedPublisherDetails(): bool
     {
-        $description = trim((string) ($this->description ?? ''));
+        $description = SiteDescriptionRules::plainText((string) ($this->description ?? ''));
         $niches = collect($this->categories_array ?? [])
             ->map(fn ($v) => trim((string) $v))
             ->filter(fn ($v) => $v !== '' && strtolower($v) !== 'pending')
             ->values()
             ->all();
 
-        if (strlen($description) < 50) {
+        if (mb_strlen($description) < SiteDescriptionRules::MIN_CHARS) {
             return false;
         }
 

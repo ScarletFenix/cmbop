@@ -20,6 +20,7 @@ class ActionConfirmDialogsTest extends TestCase
         $this->assertStringContainsString('global.slbConfirmActivate', $js);
         $this->assertStringContainsString('This brief does not look English', $js);
         $this->assertStringContainsString('Activate anyway', $js);
+        $this->assertStringContainsString("cancelText: 'Edit description'", $js);
         $this->assertStringContainsString('opts.editUrl', $js);
         $this->assertStringContainsString('global.location.href = editUrl', $js);
         $this->assertStringContainsString("opts.looksEnglish !== 'false'", $js);

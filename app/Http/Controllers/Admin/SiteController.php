@@ -1387,6 +1387,12 @@ class SiteController extends Controller
 
         try {
             $site->update($data);
+            $site->refresh();
+            if (! $isMarketingEditor
+                && ($site->awaitsPublisherDetails() || $site->hasDetailsComplete())) {
+                $site->promoteFromAwaitingDetailsIfComplete();
+                $site->refresh();
+            }
         } catch (ValidationException $e) {
             $storedThisRequest = $request->attributes->get('staff_stored_site_image');
             if (is_string($storedThisRequest) && $storedThisRequest !== '') {

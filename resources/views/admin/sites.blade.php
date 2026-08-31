@@ -636,6 +636,10 @@ function editSiteWithImage(siteId) {
                 <label style="font-weight:600; margin-bottom:5px; margin-top:10px; display:block;">Traffic (monthly visitors)</label>
                 <input id="swal-traffic" class="swal2-input" type="number" value="${site.traffic ?? ''}" placeholder="e.g. 1500000" min="0" max="4294967295" step="1" inputmode="numeric">
 
+                <label style="font-weight:600; margin-bottom:5px; margin-top:14px; display:block;" for="swal-description">Description</label>
+                <textarea id="swal-description" class="swal2-textarea" rows="6" placeholder="Advertiser-facing brief (min 50 characters)">${escapeHtml(site.description ?? '')}</textarea>
+                <small class="text-muted" style="display:block; margin-top:0; margin-bottom:12px;">Shown on the listing. Min 50 characters. Leave empty to keep the current brief.</small>
+
                 <label style="font-weight:600; margin-bottom:5px; margin-top:14px; display:block;">Site Image (Upload)</label>
                 <input type="file" id="swal-site_image" class="form-control" accept="image/jpeg,image/png,image/gif,image/webp,.jpg,.jpeg,.png,.gif,.webp" data-max-kb="${SITE_IMAGE_MAX_KB}" data-php-max-kb="${SITE_IMAGE_PHP_MAX_KB}">
                 <div id="imagePreviewContainer" class="site-image-desktop-preview ${(site.image_url || site.preview_full_url || site.site_image) ? '' : 'is-empty'}">
@@ -801,6 +805,7 @@ function editSiteWithImage(siteId) {
                 da: document.getElementById('swal-da').value,
                 dr: document.getElementById('swal-dr').value,
                 traffic: document.getElementById('swal-traffic').value,
+                description: document.getElementById('swal-description')?.value ?? '',
                 _imageUploaded: !!imagePath,
             };
         }
@@ -1683,7 +1688,7 @@ function renderSites(data){
                                     <div class="col-md-4"><strong>Link Type</strong><div>${site.link_type ?? '-'}</div></div>
                                     <div class="col-md-4"><strong>Sponsored</strong><div>${site.sponsored ? 'Yes':'No'}</div></div>
                                     <div class="col-md-4"><strong>Price</strong><div>€${site.price ?? '-'}</div></div>
-                                    <div class="col-12"><strong>Description</strong><div class="slb-text-break">${escapeHtml(site.description ?? '-')}</div></div>
+                                    <div class="col-12"><strong>Description</strong><div class="slb-text-break">${escapeHtml(site.description ?? '-')}</div><a class="small" href="${STAFF_BASE}/sites/${site.id}/edit#description">Edit description</a></div>
                                     ${(site.image_url || siteMediaUrl(site.site_image) || siteStorageUrl(site.site_image)) ? `<div class="col-12"><strong>Site Image</strong><div class="site-preview-detail"><img data-detail-src="${escapeHtml(site.image_url || siteMediaUrl(site.site_image) || siteStorageUrl(site.site_image))}" alt="Site image" loading="lazy" decoding="async"></div></div>` : ''}
                                 </div>
                             </div>
