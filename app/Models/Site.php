@@ -1245,7 +1245,34 @@ class Site extends Model
      */
     public function clearAwaitingDetailsForAdmin(): bool
     {
-        if (! $this->awaitsPublisherDetails()) {
+        if (! $this->awaitsPublisherDetails() && ! $this->hasDetailsComplete()) {
+            return false;
+        }
+
+        return $this->clearAwaitingDetailsOnboarding();
+    }
+
+    /**
+     * After an admin save: unlock Activate when the advertiser brief is usable.
+     * Missing niches/turnaround must not keep a finished brief stuck in draft.
+     */
+    public function promoteForAdminSaveIfBriefReady(): bool
+    {
+        if (! $this->awaitsPublisherDetails() && ! $this->hasDetailsComplete()) {
+            return false;
+        }
+
+        if ($this->promoteFromAwaitingDetailsIfComplete()) {
+            return true;
+        }
+
+        $html = (string) ($this->description ?? '');
+        $plain = SiteDescriptionRules::plainText($html);
+        if ($plain === '' || str_starts_with($plain, 'Please replace')) {
+            return false;
+        }
+
+        if (! SiteDescriptionRules::isValid($html)) {
             return false;
         }
 

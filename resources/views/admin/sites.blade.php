@@ -797,7 +797,9 @@ function editSiteWithImage(siteId) {
                 }
             }
 
-            return {
+            const nextDescription = document.getElementById('swal-description')?.value ?? '';
+            const originalDescription = String(site.description ?? '');
+            const payload = {
                 site_name: document.getElementById('swal-site_name').value,
                 site_url: site_url,
                 domain: domain,
@@ -805,9 +807,13 @@ function editSiteWithImage(siteId) {
                 da: document.getElementById('swal-da').value,
                 dr: document.getElementById('swal-dr').value,
                 traffic: document.getElementById('swal-traffic').value,
-                description: document.getElementById('swal-description')?.value ?? '',
                 _imageUploaded: !!imagePath,
             };
+            // Skip an unchanged brief so a metrics-only save cannot 422 on a stale description.
+            if (nextDescription.trim() !== originalDescription.trim()) {
+                payload.description = nextDescription;
+            }
+            return payload;
         }
     }).then(async (result) => {
         if (!result.isConfirmed || !result.value) return;

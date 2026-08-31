@@ -1388,10 +1388,16 @@ class SiteController extends Controller
         try {
             $site->update($data);
             $site->refresh();
-            if (! $isMarketingEditor
-                && ($site->awaitsPublisherDetails() || $site->hasDetailsComplete())) {
-                $site->promoteFromAwaitingDetailsIfComplete();
-                $site->refresh();
+            if (! $isMarketingEditor) {
+                try {
+                    $site->promoteForAdminSaveIfBriefReady();
+                    $site->refresh();
+                } catch (\Throwable $e) {
+                    Log::warning('Could not promote site onboarding after admin save', [
+                        'site_id' => $site->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
             }
         } catch (ValidationException $e) {
             $storedThisRequest = $request->attributes->get('staff_stored_site_image');
@@ -1479,6 +1485,8 @@ class SiteController extends Controller
                 'success' => true,
                 'message' => 'Site updated successfully',
                 'email_sent' => $emailSent,
+                'can_activate' => $this->staffCanActivateSite($site),
+                'activate_block_reason' => $this->staffActivateBlockReason($site),
             ]);
         }
 
