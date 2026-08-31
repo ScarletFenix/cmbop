@@ -101,7 +101,7 @@ class MarketingOpsScopeTest extends TestCase
 
         $site->refresh();
         $this->assertTrue((bool) $site->active);
-        $this->assertTrue((bool) $site->verified);
+        $this->assertFalse((bool) $site->verified);
     }
 
     public function test_marketer_cannot_open_admin_records_sheet(): void
