@@ -3624,9 +3624,6 @@ class CatalogController extends Controller
 
             DB::commit();
             $this->forgetReplacedCheckoutPackages((int) $userId, ['lines' => $fulfillableLines]);
-            $this->restoreDeferredCartAfterPayment();
-
-            $isScheduled = ($schedule['mode'] ?? 'immediate') === 'scheduled';
 
             return $this->walletCheckoutSuccessResponse(
                 $createdOrders,
@@ -6206,9 +6203,23 @@ class CatalogController extends Controller
 
     /**
      * After a successful payment, keep not-ready sites in the cart.
+     * Idempotent: a second call must not wipe lines the first call just restored.
      */
     private function restoreDeferredCartAfterPayment(): void
     {
+        if (! session()->exists('checkout_deferred_cart')) {
+            session()->forget([
+                'checkout_content_submission_id',
+                'checkout_schedule',
+                'pending_card_reference',
+                'checkout_reference_code',
+                'ordering_from_library',
+                GuestPostWizardController::SESSION_KEY,
+            ]);
+
+            return;
+        }
+
         $deferred = session('checkout_deferred_cart');
         session()->forget([
             'checkout_deferred_cart',
