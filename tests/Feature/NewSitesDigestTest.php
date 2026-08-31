@@ -392,7 +392,7 @@ class NewSitesDigestTest extends TestCase
         $this->assertTrue($healed->greaterThanOrEqualTo(now()->subMinute()));
     }
 
-    public function test_unverified_and_inactive_listings_stay_out_of_the_catalog_email(): void
+    public function test_inactive_listings_stay_out_of_the_catalog_email(): void
     {
         $publisher = $this->userWithRole('publisher');
         $advertiser = $this->userWithRole('advertiser');
@@ -407,7 +407,7 @@ class NewSitesDigestTest extends TestCase
         Mail::assertQueued(NewSitesDigest::class, function ($mail) {
             $names = $mail->rows->pluck('site.site_name');
 
-            return ! $names->contains('Not Verified') && ! $names->contains('Switched Off');
+            return $names->contains('Not Verified') && ! $names->contains('Switched Off');
         });
     }
 

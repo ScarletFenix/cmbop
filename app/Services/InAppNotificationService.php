@@ -764,7 +764,7 @@ class InAppNotificationService
         }
 
         $labels = [
-            'verified' => ['Site verified', 'Your site is verified and ready for marketplace listings.'],
+            'verified' => ['Site verified', 'Your site now has the Verified badge.'],
             'unverified' => ['Site verification removed', 'Your site is no longer verified. Contact support if this looks wrong.'],
             'activated' => $site->isCatalogVisible()
                 ? ['Site activated', 'Your site is active and visible to advertisers.']

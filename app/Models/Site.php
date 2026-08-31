@@ -1347,8 +1347,8 @@ class Site extends Model
     }
 
     /**
-     * Staff Activate may verify-on-activate: explicit review submit or legacy
-     * null onboarding (same set as the review queue).
+     * Staff Activate is allowed without the Verified badge: explicit review
+     * submit or legacy null onboarding (same set as the review queue).
      */
     public function isReviewReadyForStaffGoLive(): bool
     {
@@ -1483,14 +1483,15 @@ class Site extends Model
     }
 
     /**
-     * Advertiser catalog / cart inventory: live, approved, and not staff-archived.
+     * Advertiser catalog / cart inventory: live and not staff-archived.
+     * Verified is a separate staff badge — it is not required to appear here.
      *
      * @param  Builder<Site>  $query
      * @return Builder<Site>
      */
     public function scopeCatalogVisible(Builder $query): Builder
     {
-        $query->active()->verified()->notArchived();
+        $query->active()->notArchived();
         if (static::hasSitesColumn('bulk_site_request_id')) {
             $query->notFromCancelledBulk();
         }
@@ -1501,7 +1502,6 @@ class Site extends Model
     public function isCatalogVisible(): bool
     {
         return (bool) $this->active
-            && (bool) $this->verified
             && ! $this->isArchived()
             && ! $this->isFromCancelledBulk();
     }
