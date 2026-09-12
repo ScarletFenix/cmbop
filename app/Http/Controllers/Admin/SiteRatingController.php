@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Site;
 use App\Models\SiteRating;
 use App\Services\ActivityLogger;
+use App\Support\UserFacingError;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -79,30 +80,37 @@ class SiteRatingController extends Controller
             'status' => 'required|in:approved,hidden,pending',
         ]);
 
-        $rating = SiteRating::create([
-            'site_id' => (int) $data['site_id'],
-            'user_id' => $data['user_id'] ?? auth()->id(),
-            'rating' => (int) $data['rating'],
-            'comment' => $data['comment'] ?? null,
-            'status' => $data['status'],
-            'is_admin' => true,
-        ]);
+        try {
+            $rating = SiteRating::create([
+                'site_id' => (int) $data['site_id'],
+                'user_id' => $data['user_id'] ?? auth()->id(),
+                'rating' => (int) $data['rating'],
+                'comment' => $data['comment'] ?? null,
+                'status' => $data['status'],
+                'is_admin' => true,
+            ]);
 
-        SiteRating::refreshSiteAggregate((int) $data['site_id']);
+            SiteRating::refreshSiteAggregate((int) $data['site_id']);
 
-        $this->logRatingActivity(
-            'site.rating_saved',
-            (auth()->user()->name ?? 'Staff').' saved a rating for site #'.$data['site_id'],
-            $rating->site,
-            ['rating_id' => $rating->id, 'rating' => $rating->rating, 'status' => $rating->status],
-            $rating->site?->site_name
-        );
+            $this->logRatingActivity(
+                'site.rating_saved',
+                (auth()->user()->name ?? 'Staff').' saved a rating for site #'.$data['site_id'],
+                $rating->site,
+                ['rating_id' => $rating->id, 'rating' => $rating->rating, 'status' => $rating->status],
+                $rating->site?->site_name
+            );
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Rating saved',
-            'rating' => $rating->load(['site:id,site_name,domain', 'user:id,name,email']),
-        ]);
+            return response()->json([
+                'success' => true,
+                'message' => 'Rating saved',
+                'rating' => $rating->load(['site:id,site_name,domain', 'user:id,name,email']),
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'Rating could not be saved.'),
+            ], 500);
+        }
     }
 
     public function update(Request $request, int $id)
@@ -111,7 +119,10 @@ class SiteRatingController extends Controller
             return $this->ratingsTableUnavailableResponse();
         }
 
-        $rating = SiteRating::findOrFail($id);
+        $rating = $this->findRatingForJson($id);
+        if ($rating instanceof JsonResponse) {
+            return $rating;
+        }
 
         $data = $request->validate([
             'rating' => 'sometimes|integer|min:1|max:5',
@@ -119,27 +130,34 @@ class SiteRatingController extends Controller
             'status' => 'sometimes|in:approved,hidden,pending',
         ]);
 
-        $rating->fill($data);
-        $rating->save();
-        $changed = $rating->wasChanged();
+        try {
+            $rating->fill($data);
+            $rating->save();
+            $changed = $rating->wasChanged();
 
-        SiteRating::refreshSiteAggregate($rating->site_id);
+            SiteRating::refreshSiteAggregate($rating->site_id);
 
-        if ($changed) {
-            $this->logRatingActivity(
-                'site.rating_updated',
-                (auth()->user()->name ?? 'Staff').' updated rating #'.$rating->id,
-                $rating->site,
-                $data,
-                $rating->site?->site_name
-            );
+            if ($changed) {
+                $this->logRatingActivity(
+                    'site.rating_updated',
+                    (auth()->user()->name ?? 'Staff').' updated rating #'.$rating->id,
+                    $rating->site,
+                    $data,
+                    $rating->site?->site_name
+                );
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Rating updated',
+                'rating' => $rating->fresh(['site:id,site_name,domain', 'user:id,name,email']),
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'Rating could not be updated.'),
+            ], 500);
         }
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Rating updated',
-            'rating' => $rating->fresh(['site:id,site_name,domain', 'user:id,name,email']),
-        ]);
     }
 
     public function destroy(int $id)
@@ -148,25 +166,49 @@ class SiteRatingController extends Controller
             return $this->ratingsTableUnavailableResponse();
         }
 
-        $rating = SiteRating::findOrFail($id);
-        $siteId = $rating->site_id;
-        $siteName = $rating->site?->site_name;
+        $rating = $this->findRatingForJson($id);
+        if ($rating instanceof JsonResponse) {
+            return $rating;
+        }
 
-        $rating->delete();
-        SiteRating::refreshSiteAggregate($siteId);
+        try {
+            $siteId = $rating->site_id;
+            $siteName = $rating->site?->site_name;
 
-        $this->logRatingActivity(
-            'site.rating_deleted',
-            (auth()->user()->name ?? 'Staff').' deleted a site rating',
-            null,
-            ['site_id' => $siteId, 'rating_id' => $id],
-            $siteName
-        );
+            $rating->delete();
+            SiteRating::refreshSiteAggregate($siteId);
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Rating deleted',
-        ]);
+            $this->logRatingActivity(
+                'site.rating_deleted',
+                (auth()->user()->name ?? 'Staff').' deleted a site rating',
+                null,
+                ['site_id' => $siteId, 'rating_id' => $id],
+                $siteName
+            );
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Rating deleted',
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'Rating could not be deleted.'),
+            ], 500);
+        }
+    }
+
+    private function findRatingForJson(int $id): SiteRating|JsonResponse
+    {
+        $rating = SiteRating::find($id);
+        if (! $rating) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Rating not found',
+            ], 404);
+        }
+
+        return $rating;
     }
 
     private function ratingsTableReady(): bool

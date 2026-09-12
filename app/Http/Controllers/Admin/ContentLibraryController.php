@@ -11,6 +11,7 @@ use App\Services\ContentUpload\AdminLibraryStaffActions;
 use App\Services\ContentUpload\ArticleHtmlSanitizer;
 use App\Services\ContentUpload\ArticlePreviewHtml;
 use App\Support\ArticleDownload;
+use App\Support\UserFacingError;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -220,7 +221,15 @@ class ContentLibraryController extends Controller
     public function restore(ContentSubmission $submission): RedirectResponse
     {
         $wasArchived = $submission->isArchived();
-        $this->staffActions->restore($submission);
+
+        try {
+            $this->staffActions->restore($submission);
+        } catch (ValidationException $e) {
+            return back()->with('error', collect($e->errors())->flatten()->first() ?: 'Could not restore this article.');
+        } catch (\Throwable $e) {
+            return back()->with('error', UserFacingError::message($e, 'Could not restore this article.'));
+        }
+
         $fresh = $submission->fresh() ?? $submission;
 
         if ($wasArchived && ! $fresh->isArchived()) {

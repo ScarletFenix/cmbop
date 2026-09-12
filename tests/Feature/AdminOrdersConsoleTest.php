@@ -11,6 +11,7 @@ use App\Models\OrderItemDispute;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
+use App\Services\Orders\OrderClawbackService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -1171,6 +1172,78 @@ class AdminOrdersConsoleTest extends TestCase
             ]);
             $this->artisan('migrate', [
                 '--path' => 'database/migrations/2026_07_17_100000_create_billing_invoices_tables.php',
+                '--force' => true,
+            ]);
+        }
+    }
+
+    public function test_open_dispute_for_missing_order_is_json_404(): void
+    {
+        $admin = $this->userWithRole('admin');
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.orders.disputes.open', 999999), [
+                'reason' => 'The live URL is gone after the listing disappeared.',
+            ])
+            ->assertNotFound()
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'Order not found.')
+            ->assertJsonMissingPath('exception');
+    }
+
+    public function test_uphold_dispute_unexpected_error_is_json_500(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $site = $this->siteFor($publisher);
+        $order = $this->orderFor($advertiser, $site);
+        $item = $order->items->first();
+
+        $dispute = OrderItemDispute::create([
+            'order_id' => $order->id,
+            'order_item_id' => $item->id,
+            'opened_by' => $advertiser->id,
+            'status' => OrderItemDispute::STATUS_OPEN,
+            'reason' => 'Live URL returns 404 after the listing disappeared.',
+        ]);
+
+        $this->mock(OrderClawbackService::class, function ($mock) {
+            $mock->shouldReceive('uphold')
+                ->once()
+                ->andThrow(new \RuntimeException('clawback exploded'));
+        });
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.orders.disputes.uphold', $dispute->id), [
+                'admin_notes' => 'Confirmed 404. Refund the advertiser now.',
+            ])
+            ->assertStatus(500)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'clawback exploded')
+            ->assertJsonMissingPath('exception');
+
+        $this->assertSame(OrderItemDispute::STATUS_OPEN, $dispute->fresh()->status);
+    }
+
+    public function test_orders_data_is_json_500_when_orders_table_is_gone(): void
+    {
+        $admin = $this->userWithRole('admin');
+
+        Schema::disableForeignKeyConstraints();
+        Schema::dropIfExists('orders');
+        Schema::enableForeignKeyConstraints();
+        $this->assertFalse(Schema::hasTable('orders'));
+
+        try {
+            $this->actingAs($admin)
+                ->getJson(route('admin.orders.data'))
+                ->assertStatus(500)
+                ->assertJsonPath('success', false)
+                ->assertJsonPath('message', 'Failed to load orders. Please try again.');
+        } finally {
+            $this->artisan('migrate', [
+                '--path' => 'database/migrations/2026_04_21_070134_create_orders_table.php',
                 '--force' => true,
             ]);
         }

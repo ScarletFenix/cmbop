@@ -534,4 +534,14 @@ class AdminSiteEnrichmentPageTest extends TestCase
             return $job->siteId === $failedOnly->id;
         });
     }
+
+    public function test_refresh_metrics_for_missing_site_is_json_404(): void
+    {
+        $this->actingAs($this->admin)
+            ->postJson(route('admin.sites.refresh-metrics', 999999))
+            ->assertNotFound()
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'Site not found')
+            ->assertJsonMissingPath('exception');
+    }
 }

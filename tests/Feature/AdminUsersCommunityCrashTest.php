@@ -9,6 +9,7 @@ use App\Models\SiteClaim;
 use App\Models\Suggestion;
 use App\Models\User;
 use App\Models\WebsiteSuggestion;
+use App\Services\SiteClaimTransferService;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -920,5 +921,28 @@ class AdminUsersCommunityCrashTest extends TestCase
             ->get(route('admin.users.index', ['user' => ['12']]))
             ->assertOk()
             ->assertSee('User Management', false);
+    }
+
+    public function test_claim_approve_unexpected_error_is_json_500(): void
+    {
+        $admin = $this->admin();
+        $publisher = $this->makeUser('publisher');
+        $claimer = $this->makeUser('advertiser');
+        $site = $this->siteFor($publisher);
+        $claim = $this->pendingClaim($claimer, $site);
+
+        $this->mock(SiteClaimTransferService::class, function ($mock) {
+            $mock->shouldReceive('approve')
+                ->once()
+                ->andThrow(new \RuntimeException('claim transfer exploded'));
+        });
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.community.claims.approve', $claim->id))
+            ->assertStatus(500)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'claim transfer exploded');
+
+        $this->assertSame('pending', $claim->fresh()->status);
     }
 }

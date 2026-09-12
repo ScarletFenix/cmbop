@@ -9,6 +9,7 @@ use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
 use App\Models\Wallet;
+use App\Services\Orders\OrderClawbackService;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -202,6 +203,38 @@ class AdminMoneyMenusCrashTest extends TestCase
                 '--force' => true,
             ]);
         }
+    }
+
+    public function test_clear_debt_unexpected_error_is_json_500(): void
+    {
+        $admin = $this->admin();
+        $publisher = $this->makeUser('publisher');
+        $wallet = Wallet::create([
+            'user_id' => $publisher->id,
+            'role_id' => Wallet::publisherRoleId(),
+            'balance' => 10,
+            'reserved_balance' => 0,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 0,
+            'debt_balance' => 42.5,
+            'currency' => 'EUR',
+        ]);
+
+        $this->mock(OrderClawbackService::class, function ($mock) {
+            $mock->shouldReceive('clearWalletDebt')
+                ->once()
+                ->andThrow(new \RuntimeException('clawback exploded'));
+        });
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.finance.wallets.clear-debt', $wallet), [
+                'reason' => 'Write-off leftover debt.',
+            ])
+            ->assertStatus(500)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'clawback exploded');
+
+        $this->assertEqualsWithDelta(42.5, (float) $wallet->fresh()->debt_balance, 0.01);
     }
 
     public function test_invoice_view_survives_blank_pdf_disk(): void
