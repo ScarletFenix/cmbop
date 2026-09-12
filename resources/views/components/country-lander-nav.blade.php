@@ -30,6 +30,7 @@
 <style>
   .country-lander-nav {
     margin-top: 3rem;
+    margin-bottom: 4.5rem;
     padding: 2rem 1.25rem 1.75rem;
     border: 1px solid rgba(26, 88, 94, 0.12);
     border-radius: 1.25rem;
@@ -65,16 +66,11 @@
       grid-template-columns: repeat(3, minmax(0, 1fr));
     }
   }
-  @media (min-width: 1200px) {
-    .country-lander-nav__grid {
-      grid-template-columns: repeat(6, minmax(0, 1fr));
-    }
-  }
   .country-lander-nav__card {
     display: flex;
     flex-direction: column;
     justify-content: center;
-    min-height: 5.5rem;
+    min-height: 5.75rem;
     height: 100%;
     padding: 0.9rem 0.85rem;
     border: 1px solid rgba(26, 88, 94, 0.14);
