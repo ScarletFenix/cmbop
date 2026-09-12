@@ -670,6 +670,9 @@ class WebsiteLeftoverErrorHardeningTest extends TestCase
             'original_filename' => 'leftover.docx',
             'disk' => 'local',
             'path' => 'content-uploads/leftover.docx',
+            'mime' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'extension' => 'docx',
+            'size_bytes' => 13,
             'moderation_status' => ContentSubmission::STATUS_APPROVED,
         ]);
 
