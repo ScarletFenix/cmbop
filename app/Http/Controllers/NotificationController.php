@@ -7,6 +7,7 @@ use App\Models\Order;
 use App\Models\OrderActivity;
 use App\Services\InAppNotificationService;
 use App\Support\UserFacingError;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 
 class NotificationController extends Controller
@@ -116,73 +117,127 @@ class NotificationController extends Controller
 
     public function markRead(Request $request, int $id)
     {
-        InAppNotification::ensureTable();
-        $user = $request->user();
-        $role = $user->activeRole();
-        $notification = InAppNotification::forUser($user->id)->forAudience($role)->findOrFail($id);
-        $notification->markRead();
+        try {
+            InAppNotification::ensureTable();
+            $user = $request->user();
+            $role = $user->activeRole();
+            $notification = InAppNotification::forUser($user->id)->forAudience($role)->findOrFail($id);
+            $notification->markRead();
 
-        return response()->json([
-            'success' => true,
-            'notification' => $notification->fresh()->toApiArray(),
-            'unread_count' => $this->notifications->unreadCount($user->id, $role),
-        ]);
+            return response()->json([
+                'success' => true,
+                'notification' => $notification->fresh()->toApiArray(),
+                'unread_count' => $this->notifications->unreadCount($user->id, $role),
+            ]);
+        } catch (ModelNotFoundException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'We could not update that notification. Please try again.'),
+            ], 500);
+        }
     }
 
     public function markUnread(Request $request, int $id)
     {
-        InAppNotification::ensureTable();
-        $user = $request->user();
-        $role = $user->activeRole();
-        $notification = InAppNotification::forUser($user->id)->forAudience($role)->findOrFail($id);
-        $notification->markUnread();
+        try {
+            InAppNotification::ensureTable();
+            $user = $request->user();
+            $role = $user->activeRole();
+            $notification = InAppNotification::forUser($user->id)->forAudience($role)->findOrFail($id);
+            $notification->markUnread();
 
-        return response()->json([
-            'success' => true,
-            'notification' => $notification->fresh()->toApiArray(),
-            'unread_count' => $this->notifications->unreadCount($user->id, $role),
-        ]);
+            return response()->json([
+                'success' => true,
+                'notification' => $notification->fresh()->toApiArray(),
+                'unread_count' => $this->notifications->unreadCount($user->id, $role),
+            ]);
+        } catch (ModelNotFoundException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'We could not update that notification. Please try again.'),
+            ], 500);
+        }
     }
 
     public function markAllRead(Request $request)
     {
-        $user = $request->user();
-        $role = $user->activeRole();
-        $updated = $this->notifications->markAllRead($user->id, $role);
+        try {
+            InAppNotification::ensureTable();
+            $user = $request->user();
+            $role = $user->activeRole();
+            $updated = $this->notifications->markAllRead($user->id, $role);
 
-        return response()->json([
-            'success' => true,
-            'updated' => $updated,
-            'unread_count' => 0,
-        ]);
+            return response()->json([
+                'success' => true,
+                'updated' => $updated,
+                'unread_count' => 0,
+            ]);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'We could not update your notifications. Please try again.'),
+            ], 500);
+        }
     }
 
     public function archive(Request $request, int $id)
     {
-        InAppNotification::ensureTable();
-        $user = $request->user();
-        $role = $user->activeRole();
-        $notification = InAppNotification::forUser($user->id)->forAudience($role)->findOrFail($id);
-        $notification->archive();
+        try {
+            InAppNotification::ensureTable();
+            $user = $request->user();
+            $role = $user->activeRole();
+            $notification = InAppNotification::forUser($user->id)->forAudience($role)->findOrFail($id);
+            $notification->archive();
 
-        return response()->json([
-            'success' => true,
-            'unread_count' => $this->notifications->unreadCount($user->id, $role),
-        ]);
+            return response()->json([
+                'success' => true,
+                'unread_count' => $this->notifications->unreadCount($user->id, $role),
+            ]);
+        } catch (ModelNotFoundException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'We could not archive that notification. Please try again.'),
+            ], 500);
+        }
     }
 
     public function destroy(Request $request, int $id)
     {
-        InAppNotification::ensureTable();
-        $user = $request->user();
-        $role = $user->activeRole();
-        $notification = InAppNotification::forUser($user->id)->forAudience($role)->findOrFail($id);
-        $notification->delete();
+        try {
+            InAppNotification::ensureTable();
+            $user = $request->user();
+            $role = $user->activeRole();
+            $notification = InAppNotification::forUser($user->id)->forAudience($role)->findOrFail($id);
+            $notification->delete();
 
-        return response()->json([
-            'success' => true,
-            'unread_count' => $this->notifications->unreadCount($user->id, $role),
-        ]);
+            return response()->json([
+                'success' => true,
+                'unread_count' => $this->notifications->unreadCount($user->id, $role),
+            ]);
+        } catch (ModelNotFoundException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'We could not delete that notification. Please try again.'),
+            ], 500);
+        }
     }
 
     public function orderTimeline(Request $request, int $orderId)

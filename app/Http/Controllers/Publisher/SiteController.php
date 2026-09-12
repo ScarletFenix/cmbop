@@ -22,6 +22,7 @@ use App\Support\SiteDescriptionRules;
 use App\Support\SiteImageUpload;
 use App\Support\SiteTag;
 use App\Support\UserFacingError;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -460,17 +461,35 @@ class SiteController extends Controller
 
     public function acceptAssignment(Request $request, $id)
     {
-        $site = DB::transaction(function () use ($id) {
-            $locked = Site::where('publisher_id', auth()->id())->lockForUpdate()->findOrFail($id);
-            if (! $locked->isPendingPublisherAcceptance()) {
-                return null;
+        try {
+            $site = DB::transaction(function () use ($id) {
+                $locked = Site::where('publisher_id', auth()->id())->lockForUpdate()->findOrFail($id);
+                if (! $locked->isPendingPublisherAcceptance()) {
+                    return null;
+                }
+
+                $locked->publisher_accepted_at = now();
+                $locked->save();
+
+                return $locked;
+            });
+        } catch (ModelNotFoundException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            report($e);
+            $message = UserFacingError::message($e, 'We could not accept that website. Please try again.');
+
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $message,
+                ], 500);
             }
 
-            $locked->publisher_accepted_at = now();
-            $locked->save();
-
-            return $locked;
-        });
+            return redirect()
+                ->route('publisher.websites', ['status' => 'pending'])
+                ->with('error', $message);
+        }
 
         if ($site === null) {
             if ($request->expectsJson() || $request->ajax()) {
@@ -528,35 +547,53 @@ class SiteController extends Controller
 
     public function rejectAssignment(Request $request, $id)
     {
-        $rejected = DB::transaction(function () use ($id) {
-            $locked = Site::where('publisher_id', auth()->id())->lockForUpdate()->findOrFail($id);
-            if (! $locked->isPendingPublisherAcceptance()) {
-                return ['status' => 'not_pending'];
+        try {
+            $rejected = DB::transaction(function () use ($id) {
+                $locked = Site::where('publisher_id', auth()->id())->lockForUpdate()->findOrFail($id);
+                if (! $locked->isPendingPublisherAcceptance()) {
+                    return ['status' => 'not_pending'];
+                }
+
+                $orderCount = $locked->orderItemsCount();
+                if ($orderCount > 0) {
+                    return ['status' => 'has_orders', 'order_count' => $orderCount];
+                }
+
+                try {
+                    app(InAppNotificationService::class)->completePublisherSiteAssignmentNotifications($locked);
+                } catch (\Throwable $e) {
+                    Log::warning('Failed to archive invite notification after publisher declined site: '.$e->getMessage());
+                }
+
+                $snapshot = [
+                    'status' => 'deleted',
+                    'id' => $locked->id,
+                    'domain' => $locked->domain ?: $locked->site_name,
+                    'cover' => is_string($locked->site_image) ? $locked->site_image : null,
+                    'screenshot' => is_string($locked->screenshot_path) ? $locked->screenshot_path : null,
+                    'thumb' => is_string($locked->screenshot_thumb_path) ? $locked->screenshot_thumb_path : null,
+                ];
+                $locked->delete();
+
+                return $snapshot;
+            });
+        } catch (ModelNotFoundException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            report($e);
+            $message = UserFacingError::message($e, 'We could not decline that invitation. Please try again.');
+
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $message,
+                ], 500);
             }
 
-            $orderCount = $locked->orderItemsCount();
-            if ($orderCount > 0) {
-                return ['status' => 'has_orders', 'order_count' => $orderCount];
-            }
-
-            try {
-                app(InAppNotificationService::class)->completePublisherSiteAssignmentNotifications($locked);
-            } catch (\Throwable $e) {
-                Log::warning('Failed to archive invite notification after publisher declined site: '.$e->getMessage());
-            }
-
-            $snapshot = [
-                'status' => 'deleted',
-                'id' => $locked->id,
-                'domain' => $locked->domain ?: $locked->site_name,
-                'cover' => is_string($locked->site_image) ? $locked->site_image : null,
-                'screenshot' => is_string($locked->screenshot_path) ? $locked->screenshot_path : null,
-                'thumb' => is_string($locked->screenshot_thumb_path) ? $locked->screenshot_thumb_path : null,
-            ];
-            $locked->delete();
-
-            return $snapshot;
-        });
+            return redirect()
+                ->route('publisher.websites', ['status' => 'invites'])
+                ->with('error', $message);
+        }
 
         if (($rejected['status'] ?? '') === 'not_pending') {
             if ($request->expectsJson() || $request->ajax()) {
@@ -612,6 +649,22 @@ class SiteController extends Controller
     }
 
     public function editData(int $id)
+    {
+        try {
+            return $this->editDataPayload($id);
+        } catch (ModelNotFoundException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'We could not load that website. Please try again.'),
+            ], 500);
+        }
+    }
+
+    private function editDataPayload(int $id)
     {
         $site = Site::where('publisher_id', auth()->id())->findOrFail($id);
 

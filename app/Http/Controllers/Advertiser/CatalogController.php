@@ -1319,36 +1319,48 @@ class CatalogController extends Controller
             ]);
         }
 
-        $query = Site::query()->catalogVisible();
-        $hostNeedle = $this->catalogSearchHostNeedle($text);
-        $catalogSearch->applyTextConstraints(
-            $query,
-            $text,
-            collect(),
-            $hostNeedle,
-            searchAllDomains: true,
-        );
-        $catalogSearch->applyRelevanceOrder($query, $text);
-        $query->orderByDesc('dr')->orderByDesc('id');
+        try {
+            $query = Site::query()->catalogVisible();
+            $hostNeedle = $this->catalogSearchHostNeedle($text);
+            $catalogSearch->applyTextConstraints(
+                $query,
+                $text,
+                collect(),
+                $hostNeedle,
+                searchAllDomains: true,
+            );
+            $catalogSearch->applyRelevanceOrder($query, $text);
+            $query->orderByDesc('dr')->orderByDesc('id');
 
-        $sites = $query
-            ->limit(8)
-            ->get(['id', 'site_name', 'site_url', 'domain', 'publisher_id', 'dr', 'category']);
+            $sites = $query
+                ->limit(8)
+                ->get(['id', 'site_name', 'site_url', 'domain', 'publisher_id', 'dr', 'category']);
 
-        $visibility->warmFor($user, $sites->pluck('id')->all());
+            $visibility->warmFor($user, $sites->pluck('id')->all());
 
-        $suggestions = $sites->map(function (Site $site) use ($visibility, $user) {
-            $shows = $visibility->showsFullIdentity($user, $site);
+            $suggestions = $sites->map(function (Site $site) use ($visibility, $user) {
+                $shows = $visibility->showsFullIdentity($user, $site);
 
-            return [
-                'id' => (int) $site->id,
-                'name' => $visibility->nameFor($user, $site),
-                'host' => $visibility->hostFor($user, $site),
-                'masked' => ! $shows,
-                'dr' => (int) ($site->dr ?? 0),
-                'href' => route('advertiser.catalog', ['site' => $site->id]),
-            ];
-        })->values()->all();
+                return [
+                    'id' => (int) $site->id,
+                    'name' => $visibility->nameFor($user, $site),
+                    'host' => $visibility->hostFor($user, $site),
+                    'masked' => ! $shows,
+                    'dr' => (int) ($site->dr ?? 0),
+                    'href' => route('advertiser.catalog', ['site' => $site->id]),
+                ];
+            })->values()->all();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'q' => $raw,
+                'in_hide_mode' => false,
+                'suggestions' => [],
+                'message' => UserFacingError::message($e, 'We could not load search suggestions. Please try again.'),
+            ], 500);
+        }
 
         return response()->json([
             'success' => true,
@@ -1505,7 +1517,19 @@ class CatalogController extends Controller
      */
     public function getCart(Request $request)
     {
-        return response()->json($this->cartPayloadForClient());
+        try {
+            return response()->json($this->cartPayloadForClient());
+        } catch (\Throwable $e) {
+            report($e);
+
+            $message = UserFacingError::message($e, 'We could not load your cart. Please refresh and try again.');
+
+            return response()->json([
+                'success' => false,
+                'error' => $message,
+                'message' => $message,
+            ], 500);
+        }
     }
 
     /**
@@ -1513,6 +1537,25 @@ class CatalogController extends Controller
      * Quantity > 1 creates multiple placements on the same site — each needs its own article.
      */
     public function assignCartArticle(Request $request)
+    {
+        try {
+            return $this->assignCartArticlePayload($request);
+        } catch (ValidationException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            report($e);
+
+            $message = UserFacingError::message($e, 'We could not assign that article. Please try again.');
+
+            return response()->json([
+                'success' => false,
+                'error' => $message,
+                'message' => $message,
+            ], 500);
+        }
+    }
+
+    private function assignCartArticlePayload(Request $request)
     {
         $data = $request->validate([
             'id' => ['required', 'integer'],
@@ -2035,9 +2078,27 @@ class CatalogController extends Controller
     {
         // Abandoned Stripe checkout: cancel unpaid pending card orders for this reference
         if ($request->boolean('canceled') && $request->filled('ref')) {
-            $this->cancelUnpaidCardOrdersAndRestoreCart((string) $request->ref);
+            try {
+                $this->cancelUnpaidCardOrdersAndRestoreCart((string) $request->ref);
+            } catch (\Throwable $e) {
+                report($e);
+            }
         }
 
+        try {
+            return $this->renderCheckoutPage($request);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return redirect()->route('advertiser.catalog')->with(
+                'error',
+                UserFacingError::message($e, 'We could not open checkout. Please review your cart and try again.')
+            );
+        }
+    }
+
+    private function renderCheckoutPage(Request $request)
+    {
         $this->syncPrunedSessionCart();
         $cart = session()->get('cart', []);
 
@@ -4297,19 +4358,33 @@ class CatalogController extends Controller
      */
     public function getCartCount(Request $request)
     {
-        // Keep badge in sync: drop inactive/missing lines before counting.
-        $this->syncPrunedSessionCart();
-        $cart = session()->get('cart', []);
-        $count = array_sum(array_column($cart, 'quantity'));
-        $total = round(array_sum(array_map(
-            fn ($item) => ((float) ($item['price'] ?? 0)) * ((int) ($item['quantity'] ?? 0)),
-            $cart
-        )), 2);
+        try {
+            // Keep badge in sync: drop inactive/missing lines before counting.
+            $this->syncPrunedSessionCart();
+            $cart = session()->get('cart', []);
+            $count = array_sum(array_column($cart, 'quantity'));
+            $total = round(array_sum(array_map(
+                fn ($item) => ((float) ($item['price'] ?? 0)) * ((int) ($item['quantity'] ?? 0)),
+                $cart
+            )), 2);
 
-        return response()->json([
-            'count' => $count,
-            'cart_total' => $total,
-        ]);
+            return response()->json([
+                'count' => $count,
+                'cart_total' => $total,
+            ]);
+        } catch (\Throwable $e) {
+            report($e);
+
+            $message = UserFacingError::message($e, 'We could not load your cart. Please refresh and try again.');
+
+            return response()->json([
+                'success' => false,
+                'count' => 0,
+                'cart_total' => 0,
+                'error' => $message,
+                'message' => $message,
+            ], 500);
+        }
     }
 
     /**
@@ -5790,26 +5865,35 @@ class CatalogController extends Controller
 
     public function saveCheckoutSchedule(Request $request): JsonResponse
     {
-        $normalized = app(ScheduledOrderService::class)->normalizeSchedule(
-            $request->input('publication_mode'),
-            $request->input('scheduled_date'),
-            $request->input('scheduled_time'),
-            $request->input('timezone'),
-        );
+        try {
+            $normalized = app(ScheduledOrderService::class)->normalizeSchedule(
+                $request->input('publication_mode'),
+                $request->input('scheduled_date'),
+                $request->input('scheduled_time'),
+                $request->input('timezone'),
+            );
 
-        if (! $normalized['ok']) {
+            if (! $normalized['ok']) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $normalized['message'] ?? 'Invalid publication schedule.',
+                ], 422);
+            }
+
+            $this->persistCheckoutScheduleSession($normalized);
+
+            return response()->json([
+                'success' => true,
+                'schedule' => $this->checkoutScheduleClientHint(),
+            ]);
+        } catch (\Throwable $e) {
+            report($e);
+
             return response()->json([
                 'success' => false,
-                'message' => $normalized['message'] ?? 'Invalid publication schedule.',
-            ], 422);
+                'message' => UserFacingError::message($e, 'We could not save that publication schedule. Please try again.'),
+            ], 500);
         }
-
-        $this->persistCheckoutScheduleSession($normalized);
-
-        return response()->json([
-            'success' => true,
-            'schedule' => $this->checkoutScheduleClientHint(),
-        ]);
     }
 
     /**

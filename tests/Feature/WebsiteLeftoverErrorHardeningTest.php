@@ -8,6 +8,7 @@ use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\ContentModeration\ContentModerationService;
+use App\Services\InAppNotificationService;
 use App\Services\SiteFileVerificationService;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -71,7 +72,7 @@ class WebsiteLeftoverErrorHardeningTest extends TestCase
             ->assertDontSee('SQLSTATE')
             ->assertDontSee('<html', false);
 
-        $message = (string) $response->json('message');
+        $message = (string) ($response->json('message') ?: $response->json('error'));
         $this->assertNotSame('', $message);
         $this->assertStringNotContainsString('SQLSTATE', $message);
         $this->assertStringNotContainsString('Unknown column', $message);
@@ -220,6 +221,169 @@ class WebsiteLeftoverErrorHardeningTest extends TestCase
 
         $this->assertSafeJsonFailure(
             $this->actingAs($publisher)->postJson(route('publisher.sites.verification.start', $site->id))
+        );
+    }
+
+    public function test_catalog_suggest_returns_json_when_sites_table_is_gone(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        Schema::dropIfExists('sites');
+
+        $this->assertSafeJsonFailure(
+            $this->actingAs($advertiser)->getJson(route('advertiser.catalog.suggest', ['q' => 'news']))
+        );
+    }
+
+    public function test_get_cart_returns_json_when_sites_table_is_gone(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $site = $this->siteFor($publisher);
+
+        Schema::dropIfExists('sites');
+
+        $this->assertSafeJsonFailure(
+            $this->actingAs($advertiser)
+                ->withSession([
+                    'cart' => [[
+                        'id' => $site->id,
+                        'name' => $site->site_name,
+                        'quantity' => 1,
+                        'language' => 'en',
+                    ]],
+                ])
+                ->getJson(route('advertiser.cart.get'))
+        );
+    }
+
+    public function test_cart_count_returns_json_when_sites_table_is_gone(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $site = $this->siteFor($publisher);
+
+        Schema::dropIfExists('sites');
+
+        $response = $this->actingAs($advertiser)
+            ->withSession([
+                'cart' => [[
+                    'id' => $site->id,
+                    'name' => $site->site_name,
+                    'quantity' => 1,
+                    'language' => 'en',
+                    'price' => 80,
+                ]],
+            ])
+            ->getJson(route('advertiser.cart.count'));
+
+        $this->assertSafeJsonFailure($response);
+        $response->assertJsonPath('count', 0)
+            ->assertJsonPath('cart_total', 0);
+    }
+
+    public function test_assign_cart_article_returns_json_when_submissions_table_is_gone(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $site = $this->siteFor($publisher);
+
+        Schema::dropIfExists('content_submissions');
+
+        $this->assertSafeJsonFailure(
+            $this->actingAs($advertiser)
+                ->withSession([
+                    'cart' => [[
+                        'id' => $site->id,
+                        'name' => $site->site_name,
+                        'quantity' => 1,
+                        'language' => 'en',
+                    ]],
+                ])
+                ->postJson(route('advertiser.cart.assign-article'), [
+                    'id' => $site->id,
+                    'content_submission_id' => 99,
+                ])
+        );
+    }
+
+    public function test_checkout_cancel_does_not_crash_when_orders_table_is_gone(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $site = $this->siteFor($publisher);
+
+        Schema::dropIfExists('orders');
+
+        $response = $this->actingAs($advertiser)
+            ->withSession([
+                'cart' => [[
+                    'id' => $site->id,
+                    'name' => $site->site_name,
+                    'quantity' => 1,
+                    'language' => 'en',
+                    'price' => 80,
+                ]],
+            ])
+            ->get(route('advertiser.checkout', ['canceled' => 1, 'ref' => 'LEFTREF1']));
+
+        $this->assertNotSame(500, $response->status());
+        $response->assertRedirect(route('advertiser.catalog'));
+        $response->assertDontSee('SQLSTATE');
+        $this->assertStringNotContainsString('SQLSTATE', (string) session('error'));
+    }
+
+    public function test_mark_all_read_returns_json_when_service_throws(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+
+        $this->mock(InAppNotificationService::class, function ($mock) {
+            $mock->shouldReceive('markAllRead')
+                ->once()
+                ->andThrow(new \RuntimeException('SQLSTATE[HY000]: bell boom'));
+        });
+
+        $this->assertSafeJsonFailure(
+            $this->actingAs($advertiser)->postJson(route('notifications.read-all'))
+        );
+    }
+
+    public function test_edit_data_returns_json_when_sites_table_is_gone(): void
+    {
+        $publisher = $this->userWithRole('publisher');
+        $site = $this->siteFor($publisher);
+        $siteId = $site->id;
+
+        Schema::dropIfExists('sites');
+
+        $this->assertSafeJsonFailure(
+            $this->actingAs($publisher)->getJson(route('publisher.sites.edit-data', $siteId))
+        );
+    }
+
+    public function test_bulk_join_returns_json_when_save_throws(): void
+    {
+        $publisher = $this->userWithRole('publisher');
+        $site = $this->siteFor($publisher);
+        $this->failNextSiteUpdate();
+
+        $this->assertSafeJsonFailure(
+            $this->actingAs($publisher)->postJson(route('publisher.sites.bulk-join', $site->id), [
+                'percent' => 15,
+            ])
+        );
+    }
+
+    public function test_problem_report_returns_json_when_table_is_gone(): void
+    {
+        Schema::dropIfExists('problem_reports');
+
+        $this->assertSafeJsonFailure(
+            $this->postJson(route('feedback.problem'), [
+                'name' => 'Guest Reporter',
+                'email' => 'guest@example.com',
+                'subject' => 'Checkout failed after leftover cart',
+                'message' => 'The leftover websites disappeared from my cart after I paid.',
+            ])
         );
     }
 }

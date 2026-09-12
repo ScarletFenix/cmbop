@@ -7,6 +7,7 @@ use App\Models\Suggestion;
 use App\Services\ActivityLogger;
 use App\Services\CommunityInboxNotifier;
 use App\Support\CommunityInbox;
+use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -31,16 +32,25 @@ class FeedbackController extends Controller
 
         $data = $request->validate($rules);
 
-        $report = ProblemReport::create([
-            'user_id' => $user?->id,
-            'name' => $data['name'] ?? $user?->name,
-            'email' => $data['email'] ?? $user?->email,
-            'subject' => $data['subject'],
-            'message' => $data['message'],
-            'page_url' => CommunityInbox::storedPageUrl($data['page_url'] ?? $request->headers->get('referer')),
-            'role_context' => $user?->activeRole(),
-            'status' => 'pending',
-        ]);
+        try {
+            $report = ProblemReport::create([
+                'user_id' => $user?->id,
+                'name' => $data['name'] ?? $user?->name,
+                'email' => $data['email'] ?? $user?->email,
+                'subject' => $data['subject'],
+                'message' => $data['message'],
+                'page_url' => CommunityInbox::storedPageUrl($data['page_url'] ?? $request->headers->get('referer')),
+                'role_context' => $user?->activeRole(),
+                'status' => 'pending',
+            ]);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'We could not submit that report. Please try again.'),
+            ], 500);
+        }
 
         try {
             ActivityLogger::log(
@@ -87,15 +97,24 @@ class FeedbackController extends Controller
 
         $data = $request->validate($rules);
 
-        $suggestion = Suggestion::create([
-            'user_id' => $user?->id,
-            'name' => $data['name'] ?? $user?->name,
-            'email' => $data['email'] ?? $user?->email,
-            'category' => $data['category'] ?? 'general',
-            'message' => $data['message'],
-            'page_url' => CommunityInbox::storedPageUrl($data['page_url'] ?? $request->headers->get('referer')),
-            'status' => 'pending',
-        ]);
+        try {
+            $suggestion = Suggestion::create([
+                'user_id' => $user?->id,
+                'name' => $data['name'] ?? $user?->name,
+                'email' => $data['email'] ?? $user?->email,
+                'category' => $data['category'] ?? 'general',
+                'message' => $data['message'],
+                'page_url' => CommunityInbox::storedPageUrl($data['page_url'] ?? $request->headers->get('referer')),
+                'status' => 'pending',
+            ]);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'We could not submit that suggestion. Please try again.'),
+            ], 500);
+        }
 
         try {
             ActivityLogger::log(
