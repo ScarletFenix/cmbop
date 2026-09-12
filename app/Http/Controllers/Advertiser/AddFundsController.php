@@ -51,16 +51,29 @@ class AddFundsController extends Controller
             abort(503, 'Advertiser wallet is unavailable.');
         }
 
-        $wallet = Wallet::firstOrCreate(
-            ['user_id' => $user->id, 'role_id' => $advertiserRoleId],
-            [
-                'balance' => 0,
-                'reserved_balance' => 0,
-                'bonus_balance' => 0,
-                'bonus_reserved' => 0,
-                'currency' => 'EUR',
-            ]
-        );
+        try {
+            $wallet = Wallet::firstOrCreate(
+                ['user_id' => $user->id, 'role_id' => $advertiserRoleId],
+                [
+                    'balance' => 0,
+                    'reserved_balance' => 0,
+                    'bonus_balance' => 0,
+                    'bonus_reserved' => 0,
+                    'currency' => 'EUR',
+                ]
+            );
+
+            $wallet->repairOrphanedWelcomeBonus();
+            $wallet->reconcileInflatedBonusBalance();
+            $wallet->refresh();
+        } catch (\Throwable $e) {
+            report($e);
+            session()->flash(
+                'error',
+                UserFacingError::message($e, 'We could not load your wallet. Please refresh and try again.')
+            );
+            $wallet = null;
+        }
 
         $pendingRequests = collect();
         if (DepositRequest::tableAvailable()) {
@@ -77,20 +90,18 @@ class AddFundsController extends Controller
             }
         }
 
-        $wallet->repairOrphanedWelcomeBonus();
-        $wallet->reconcileInflatedBonusBalance();
-        $wallet->refresh();
-
-        try {
-            $summary = $this->overview->summary($user->id, $wallet);
-            $analytics = $this->overview->analytics($user->id, 'month');
-        } catch (\Throwable $e) {
-            Log::warning('Add Funds wallet overview failed', [
-                'user_id' => $user->id,
-                'error' => $e->getMessage(),
-            ]);
-            $summary = [];
-            $analytics = ['labels' => [], 'deposits' => [], 'orders' => []];
+        $summary = [];
+        $analytics = ['labels' => [], 'deposits' => [], 'orders' => []];
+        if ($wallet) {
+            try {
+                $summary = $this->overview->summary($user->id, $wallet);
+                $analytics = $this->overview->analytics($user->id, 'month');
+            } catch (\Throwable $e) {
+                Log::warning('Add Funds wallet overview failed', [
+                    'user_id' => $user->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
 
         $prefillAmount = max(0, (float) $request->query('amount', 0));
@@ -103,7 +114,12 @@ class AddFundsController extends Controller
         if (is_string($prefillMethod) && ! $this->depositRailReady($prefillMethod, $stripeConfigured, $paypalConfigured, $cryptoEnabled)) {
             $prefillMethod = null;
         }
-        $lastUsedMethod = DepositRequest::lastUsedMethodForUser((int) $user->id);
+        try {
+            $lastUsedMethod = DepositRequest::lastUsedMethodForUser((int) $user->id);
+        } catch (\Throwable $e) {
+            report($e);
+            $lastUsedMethod = null;
+        }
         if (is_string($lastUsedMethod) && ! $this->depositRailReady($lastUsedMethod, $stripeConfigured, $paypalConfigured, $cryptoEnabled)) {
             $lastUsedMethod = null;
         }
@@ -115,34 +131,54 @@ class AddFundsController extends Controller
             $prefillMethod = $lastUsedMethod;
         }
 
-        $publisherRoleId = Wallet::publisherRoleId();
-        $publisherWallet = ($publisherRoleId && $user->hasRole('publisher'))
-            ? Wallet::where('user_id', $user->id)->where('role_id', $publisherRoleId)->first()
-            : null;
-        $publisher = $publisherWallet?->roleSnapshot() ?? Wallet::emptyRoleSnapshot();
+        $publisher = Wallet::emptyRoleSnapshot();
+        $publisherWallet = null;
+        try {
+            $publisherRoleId = Wallet::publisherRoleId();
+            $publisherWallet = ($publisherRoleId && $user->hasRole('publisher'))
+                ? Wallet::where('user_id', $user->id)->where('role_id', $publisherRoleId)->first()
+                : null;
+            $publisher = $publisherWallet?->roleSnapshot() ?? Wallet::emptyRoleSnapshot();
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        try {
+            $savedCards = app(StripeCustomerService::class)->listCards($user);
+        } catch (\Throwable $e) {
+            report($e);
+            $savedCards = [];
+        }
+
+        try {
+            $availableMethods = $this->payoutProfiles->availableMethods($user);
+        } catch (\Throwable $e) {
+            report($e);
+            $availableMethods = [];
+        }
 
         return view('advertiser.add-funds', [
             'pendingRequests' => $pendingRequests,
             'wallet' => $wallet,
             'summary' => $summary,
             'analytics' => $analytics,
-            'advertiserBalance' => (float) $wallet->balance,
-            'advertiserBonusBalance' => $wallet->lockedBonusBalance(),
-            'advertiserWithdrawableBalance' => $wallet->withdrawableBalance(),
-            'advertiserDebtBalance' => $wallet->debtBalance(),
-            'advertiserDebtReason' => $wallet->advertiserSpendBlockedReason(),
+            'advertiserBalance' => (float) ($wallet?->balance ?? 0),
+            'advertiserBonusBalance' => $wallet ? $wallet->lockedBonusBalance() : 0.0,
+            'advertiserWithdrawableBalance' => $wallet ? $wallet->withdrawableBalance() : 0.0,
+            'advertiserDebtBalance' => $wallet ? $wallet->debtBalance() : 0.0,
+            'advertiserDebtReason' => $wallet?->advertiserSpendBlockedReason(),
             'publisher' => $publisher,
             'publisherBalance' => $publisher['withdrawable'],
             'showPublisherWallet' => $publisherWallet !== null,
             'promotionalBonusMessage' => Wallet::PROMOTIONAL_BONUS_MESSAGE,
             'payoutProfile' => $user->payoutProfile(),
             'payoutLocked' => $user->payoutProfileLocked(),
-            'availableMethods' => $this->payoutProfiles->availableMethods($user),
+            'availableMethods' => $availableMethods,
             'prefillAmount' => $prefillAmount >= 10 ? $prefillAmount : null,
             'prefillMethod' => $prefillMethod,
             'lastUsedMethod' => $lastUsedMethod,
             'depositMethodOrder' => $depositMethodOrder,
-            'savedCards' => app(StripeCustomerService::class)->listCards($user),
+            'savedCards' => $savedCards,
             'stripeConfigured' => $stripeConfigured,
             'paypalConfigured' => $paypalConfigured,
             'cardsTab' => $request->query('tab') === 'cards',

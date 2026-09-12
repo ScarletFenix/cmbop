@@ -6,7 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Services\Advertiser\AdvertiserSpendService;
 use App\Services\Advertiser\SpendBudgetService;
 use App\Services\AdvertiserAnalyticsService;
+use App\Support\UserFacingError;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -31,10 +33,51 @@ class AnalyticsController extends Controller
             'to' => $request->get('to'),
         ];
 
-        $analytics = $this->analytics->build($request->user(), $view, $range);
-        $breakdown = $this->spend->breakdown((int) $request->user()->id, $dimension, $range);
-        $budget = $this->budgets->forUser($request->user());
-        $budgetStatus = $this->budgets->status($request->user());
+        try {
+            $analytics = $this->analytics->build($request->user(), $view, $range);
+            $breakdown = $this->spend->breakdown((int) $request->user()->id, $dimension, $range);
+            $budget = $this->budgets->forUser($request->user());
+            $budgetStatus = $this->budgets->status($request->user());
+        } catch (\Throwable $e) {
+            report($e);
+            session()->flash(
+                'error',
+                UserFacingError::message($e, 'Unable to load spending history. Please refresh and try again.')
+            );
+            $analytics = [
+                'has_spend' => false,
+                'total_spend' => 0,
+                'gross' => 0,
+                'refunded' => 0,
+                'net' => 0,
+                'spent' => 0,
+                'in_progress' => 0,
+                'committed' => 0,
+                'total_orders' => 0,
+                'spent_orders' => 0,
+                'in_progress_orders' => 0,
+                'first_order_at' => null,
+                'last_order_at' => null,
+                'by_order' => [],
+                'by_day' => [],
+                'by_month' => [],
+                'series' => [],
+                'view' => $view,
+                'summary' => [
+                    'net' => 0,
+                    'gross' => 0,
+                    'refunded' => 0,
+                    'spent' => 0,
+                    'in_progress' => 0,
+                    'committed' => 0,
+                    'spent_orders' => 0,
+                    'in_progress_orders' => 0,
+                ],
+            ];
+            $breakdown = [];
+            $budget = null;
+            $budgetStatus = ['has_budget' => false];
+        }
 
         return view('advertiser.analytics', compact(
             'analytics',
@@ -47,13 +90,21 @@ class AnalyticsController extends Controller
         ));
     }
 
-    public function exportCsv(Request $request): StreamedResponse
+    public function exportCsv(Request $request): StreamedResponse|RedirectResponse
     {
         $range = [
             'from' => $request->get('from'),
             'to' => $request->get('to'),
         ];
-        $rows = $this->spend->exportRows((int) auth()->id(), $range);
+        try {
+            $rows = $this->spend->exportRows((int) auth()->id(), $range);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return redirect()
+                ->route('advertiser.analytics')
+                ->with('error', UserFacingError::message($e, 'Unable to export spending history.'));
+        }
         $filename = 'spend-export-'.now()->format('Y-m-d').'.csv';
 
         return response()->streamDownload(function () use ($rows) {
@@ -94,27 +145,35 @@ class AnalyticsController extends Controller
             'from' => $request->get('from'),
             'to' => $request->get('to'),
         ];
-        $summary = $this->spend->summary((int) auth()->id(), $range);
-        $allRows = $this->spend->exportRows((int) auth()->id(), $range);
-        $rowLimit = 200;
-        $rows = array_slice($allRows, 0, $rowLimit);
-        $methods = $this->spend->breakdown((int) auth()->id(), 'payment_method', $range);
+        try {
+            $summary = $this->spend->summary((int) auth()->id(), $range);
+            $allRows = $this->spend->exportRows((int) auth()->id(), $range);
+            $rowLimit = 200;
+            $rows = array_slice($allRows, 0, $rowLimit);
+            $methods = $this->spend->breakdown((int) auth()->id(), 'payment_method', $range);
 
-        $html = view('advertiser.analytics.export-pdf', [
-            'summary' => $summary,
-            'rows' => $rows,
-            'rowTotal' => count($allRows),
-            'rowLimit' => $rowLimit,
-            'truncated' => count($allRows) > $rowLimit,
-            'methods' => $methods,
-            'range' => $range,
-            'user' => auth()->user(),
-            'company' => config('billing.company'),
-        ])->render();
+            $html = view('advertiser.analytics.export-pdf', [
+                'summary' => $summary,
+                'rows' => $rows,
+                'rowTotal' => count($allRows),
+                'rowLimit' => $rowLimit,
+                'truncated' => count($allRows) > $rowLimit,
+                'methods' => $methods,
+                'range' => $range,
+                'user' => auth()->user(),
+                'company' => config('billing.company'),
+            ])->render();
 
-        return Pdf::loadHTML($html)
-            ->setPaper('a4', 'portrait')
-            ->download('spend-summary-'.now()->format('Y-m-d').'.pdf');
+            return Pdf::loadHTML($html)
+                ->setPaper('a4', 'portrait')
+                ->download('spend-summary-'.now()->format('Y-m-d').'.pdf');
+        } catch (\Throwable $e) {
+            report($e);
+
+            return redirect()
+                ->route('advertiser.analytics')
+                ->with('error', UserFacingError::message($e, 'Unable to export spending history.'));
+        }
     }
 
     public function saveBudget(Request $request)
@@ -136,7 +195,9 @@ class AnalyticsController extends Controller
                 'notify_bell' => $request->boolean('notify_bell'),
             ]);
         } catch (\Throwable $e) {
-            return back()->with('error', 'Could not save spend budget. Please try again or contact support.');
+            report($e);
+
+            return back()->with('error', UserFacingError::message($e, 'Could not save spend budget. Please try again or contact support.'));
         }
 
         return back()->with('success', 'Spend budget saved.');

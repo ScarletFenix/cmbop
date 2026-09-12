@@ -8,6 +8,7 @@ use App\Models\OrderItem;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
+use App\Services\AdvertiserAnalyticsService;
 use App\Services\AgencySiteImportService;
 use App\Services\ContentModeration\ContentModerationService;
 use App\Services\InAppNotificationService;
@@ -705,6 +706,117 @@ class WebsiteLeftoverErrorHardeningTest extends TestCase
 
         $this->assertSafeJsonFailure(
             $this->actingAs($publisher)->getJson(route('publisher.dashboard.recent'))
+        );
+    }
+
+    public function test_catalog_still_renders_when_sites_table_is_gone(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        Schema::dropIfExists('sites');
+
+        $response = $this->actingAs($advertiser)->get(route('advertiser.catalog'));
+
+        $this->assertNotSame(500, $response->status());
+        $response->assertOk()->assertDontSee('SQLSTATE');
+        $this->assertStringNotContainsString('SQLSTATE', (string) session('error'));
+    }
+
+    public function test_catalog_results_still_render_when_sites_table_is_gone(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        Schema::dropIfExists('sites');
+
+        $response = $this->actingAs($advertiser)->get(route('advertiser.catalog.results'));
+
+        $this->assertNotSame(500, $response->status());
+        $response->assertOk()->assertDontSee('SQLSTATE');
+    }
+
+    public function test_add_funds_still_renders_when_wallets_table_is_gone(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        Schema::dropIfExists('wallets');
+
+        $response = $this->actingAs($advertiser)->get(route('advertiser.add-funds'));
+
+        $this->assertNotSame(500, $response->status());
+        $response->assertOk()->assertDontSee('SQLSTATE');
+        $this->assertStringNotContainsString('SQLSTATE', (string) session('error'));
+    }
+
+    public function test_notifications_inbox_still_renders_when_table_is_gone(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        Schema::dropIfExists('in_app_notifications');
+
+        $response = $this->actingAs($advertiser)->get(route('notifications.all'));
+
+        $this->assertNotSame(500, $response->status());
+        $response->assertOk()->assertDontSee('SQLSTATE');
+        $this->assertStringNotContainsString('SQLSTATE', (string) session('error'));
+    }
+
+    public function test_analytics_still_renders_when_service_throws(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+
+        $this->mock(AdvertiserAnalyticsService::class, function ($mock) {
+            $mock->shouldReceive('build')
+                ->once()
+                ->andThrow(new \RuntimeException('SQLSTATE[HY000]: analytics boom'));
+        });
+
+        $response = $this->actingAs($advertiser)->get(route('advertiser.analytics'));
+
+        $this->assertNotSame(500, $response->status());
+        $response->assertOk()->assertDontSee('SQLSTATE');
+        $this->assertStringNotContainsString('SQLSTATE', (string) session('error'));
+    }
+
+    public function test_advertiser_billing_still_renders_when_invoices_table_is_gone(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        Schema::dropIfExists('invoices');
+
+        $response = $this->actingAs($advertiser)->get(route('advertiser.billing.index'));
+
+        $this->assertNotSame(500, $response->status());
+        $response->assertOk()->assertDontSee('SQLSTATE');
+        $this->assertStringNotContainsString('SQLSTATE', (string) session('error'));
+    }
+
+    public function test_publisher_billing_still_renders_when_invoices_table_is_gone(): void
+    {
+        $publisher = $this->userWithRole('publisher');
+        Schema::dropIfExists('invoices');
+
+        $response = $this->actingAs($publisher)->get(route('publisher.billing.index'));
+
+        $this->assertNotSame(500, $response->status());
+        $response->assertOk()->assertDontSee('SQLSTATE');
+        $this->assertStringNotContainsString('SQLSTATE', (string) session('error'));
+    }
+
+    public function test_wizard_market_still_renders_when_countries_table_is_gone(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        Schema::dropIfExists('countries');
+
+        $response = $this->actingAs($advertiser)->get(route('advertiser.wizard.market'));
+
+        $this->assertNotSame(500, $response->status());
+        $response->assertOk()->assertDontSee('SQLSTATE');
+        $this->assertStringNotContainsString('SQLSTATE', (string) session('error'));
+    }
+
+    public function test_publisher_weekly_earnings_return_json_when_sites_table_is_gone(): void
+    {
+        $publisher = $this->userWithRole('publisher');
+        $this->siteFor($publisher);
+        Schema::dropIfExists('sites');
+
+        $this->assertSafeJsonFailure(
+            $this->actingAs($publisher)->getJson(route('publisher.dashboard.weekly-earnings'))
         );
     }
 

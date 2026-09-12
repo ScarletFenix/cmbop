@@ -9,6 +9,7 @@ use App\Services\InAppNotificationService;
 use App\Support\UserFacingError;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 
 class NotificationController extends Controller
 {
@@ -38,17 +39,31 @@ class NotificationController extends Controller
         $filterCategory = in_array($category, ['unread', 'archived'], true) ? 'all' : $category;
 
         $q = search_text($request->get('q'));
-        $paginator = $this->notifications->listForUser($user->id, [
-            'status' => $status,
-            'category' => $filterCategory,
-            'q' => $q,
-            'audience' => $role,
-        ], 30);
+        try {
+            $paginator = $this->notifications->listForUser($user->id, [
+                'status' => $status,
+                'category' => $filterCategory,
+                'q' => $q,
+                'audience' => $role,
+            ], 30);
+            $unreadCount = $this->notifications->unreadCount($user->id, $role);
+        } catch (\Throwable $e) {
+            report($e);
+            session()->flash(
+                'error',
+                UserFacingError::message($e, 'Unable to load notifications. Please refresh and try again.')
+            );
+            $paginator = new LengthAwarePaginator([], 0, 30, 1, [
+                'path' => $request->url(),
+                'query' => $request->query(),
+            ]);
+            $unreadCount = 0;
+        }
 
         return view('notifications.all', [
             'layout' => $layout,
             'notifications' => $paginator,
-            'unreadCount' => $this->notifications->unreadCount($user->id, $role),
+            'unreadCount' => $unreadCount,
             'filters' => [
                 'status' => $status,
                 'category' => $category,

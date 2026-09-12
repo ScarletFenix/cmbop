@@ -7,24 +7,15 @@ use App\Models\Invoice;
 use App\Services\Billing\BillingDocumentService;
 use App\Services\Billing\InvoicePdfGenerator;
 use App\Services\Billing\WithdrawalPayoutStatementService;
+use App\Support\UserFacingError;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 
 class BillingController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Invoice::queryPayoutsForPublisherUser(auth()->user());
-
-        $search = search_text($request->input('search'));
-        if ($search !== '') {
-            $query->where(function ($q) use ($search) {
-                $q->where('invoice_number', 'like', "%{$search}%")
-                    ->orWhere('reference_code', 'like', "%{$search}%")
-                    ->orWhere('transaction_id', 'like', "%{$search}%");
-            });
-        }
-
         $from = $this->parseDate($request->input('from'));
         $to = $this->parseDate($request->input('to'));
 
@@ -32,15 +23,38 @@ class BillingController extends Controller
             [$from, $to] = [$to, $from];
         }
 
-        if ($from) {
-            $query->whereDate('invoice_date', '>=', $from->toDateString());
-        }
+        try {
+            $query = Invoice::queryPayoutsForPublisherUser(auth()->user());
 
-        if ($to) {
-            $query->whereDate('invoice_date', '<=', $to->toDateString());
-        }
+            $search = search_text($request->input('search'));
+            if ($search !== '') {
+                $query->where(function ($q) use ($search) {
+                    $q->where('invoice_number', 'like', "%{$search}%")
+                        ->orWhere('reference_code', 'like', "%{$search}%")
+                        ->orWhere('transaction_id', 'like', "%{$search}%");
+                });
+            }
 
-        $documents = $query->latest('invoice_date')->latest('id')->paginate(20)->withQueryString();
+            if ($from) {
+                $query->whereDate('invoice_date', '>=', $from->toDateString());
+            }
+
+            if ($to) {
+                $query->whereDate('invoice_date', '<=', $to->toDateString());
+            }
+
+            $documents = $query->latest('invoice_date')->latest('id')->paginate(20)->withQueryString();
+        } catch (\Throwable $e) {
+            report($e);
+            session()->flash(
+                'error',
+                UserFacingError::message($e, 'Unable to load payout documents. Please refresh and try again.')
+            );
+            $documents = new LengthAwarePaginator([], 0, 20, 1, [
+                'path' => $request->url(),
+                'query' => $request->query(),
+            ]);
+        }
 
         return view('publisher.billing.index', [
             'documents' => $documents,
@@ -53,7 +67,15 @@ class BillingController extends Controller
     {
         $this->authorizePublisherPayout($invoice);
 
-        return view('publisher.billing.show', compact('invoice'));
+        try {
+            return view('publisher.billing.show', compact('invoice'));
+        } catch (\Throwable $e) {
+            report($e);
+
+            return redirect()
+                ->route('publisher.billing.index')
+                ->with('error', UserFacingError::message($e, 'Unable to load that payout document.'));
+        }
     }
 
     public function download(

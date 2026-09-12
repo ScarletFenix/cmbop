@@ -11,7 +11,6 @@ use App\Models\WalletTransaction;
 use App\Support\UserFacingError;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 class DashboardController extends Controller
@@ -148,16 +147,17 @@ class DashboardController extends Controller
                 'success' => true,
                 'data' => $this->buildWeeklyEarnings($this->publisherSiteIds()),
             ]);
-        } catch (\Exception $e) {
-            Log::error('Error fetching weekly earnings: '.$e->getMessage());
+        } catch (\Throwable $e) {
+            report($e);
 
             return response()->json([
                 'success' => false,
+                'message' => UserFacingError::message($e, 'Failed to load weekly earnings.'),
                 'data' => [
                     'labels' => ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
                     'values' => [0, 0, 0, 0, 0, 0, 0],
                 ],
-            ]);
+            ], 500);
         }
     }
 
@@ -171,16 +171,17 @@ class DashboardController extends Controller
                 'success' => true,
                 'data' => $this->buildOrderStatusDistribution($this->publisherSiteIds()),
             ]);
-        } catch (\Exception $e) {
-            Log::error('Error fetching order status: '.$e->getMessage());
+        } catch (\Throwable $e) {
+            report($e);
 
             return response()->json([
                 'success' => false,
+                'message' => UserFacingError::message($e, 'Failed to load order status.'),
                 'data' => [
                     'labels' => ['Pending', 'Processing', 'In Review', 'Scheduled', 'Completed', 'Cancelled'],
                     'values' => [0, 0, 0, 0, 0, 0],
                 ],
-            ]);
+            ], 500);
         }
     }
 
@@ -194,16 +195,17 @@ class DashboardController extends Controller
                 'success' => true,
                 'data' => $this->buildMonthlyEarnings($this->publisherSiteIds()),
             ]);
-        } catch (\Exception $e) {
-            Log::error('Error fetching monthly earnings: '.$e->getMessage());
+        } catch (\Throwable $e) {
+            report($e);
 
             return response()->json([
                 'success' => false,
+                'message' => UserFacingError::message($e, 'Failed to load monthly earnings.'),
                 'data' => [
                     'labels' => ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
                     'values' => [0, 0, 0, 0, 0, 0],
                 ],
-            ]);
+            ], 500);
         }
     }
 

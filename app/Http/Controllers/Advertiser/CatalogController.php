@@ -127,11 +127,17 @@ class CatalogController extends Controller
      */
     private function getAvailableCountries()
     {
-        return Country::marketplace()
-            ->orderBy('name')
-            ->pluck('name', 'code')
-            ->mapWithKeys(fn ($name, $code) => [strtolower($code) => $name])
-            ->all();
+        try {
+            return Country::marketplace()
+                ->orderBy('name')
+                ->pluck('name', 'code')
+                ->mapWithKeys(fn ($name, $code) => [strtolower($code) => $name])
+                ->all();
+        } catch (\Throwable $e) {
+            Log::warning('Catalog countries lookup failed', ['error' => $e->getMessage()]);
+
+            return [];
+        }
     }
 
     /**
@@ -139,11 +145,17 @@ class CatalogController extends Controller
      */
     private function getAvailableLanguages()
     {
-        return Language::marketplace()
-            ->orderBy('name')
-            ->pluck('name', 'code')
-            ->mapWithKeys(fn ($name, $code) => [strtolower($code) => $name])
-            ->all();
+        try {
+            return Language::marketplace()
+                ->orderBy('name')
+                ->pluck('name', 'code')
+                ->mapWithKeys(fn ($name, $code) => [strtolower($code) => $name])
+                ->all();
+        } catch (\Throwable $e) {
+            Log::warning('Catalog languages lookup failed', ['error' => $e->getMessage()]);
+
+            return [];
+        }
     }
 
     /**
@@ -154,7 +166,38 @@ class CatalogController extends Controller
      */
     private function getAvailableCategories(): array
     {
-        return Category::catalogPickerRows();
+        try {
+            return Category::catalogPickerRows();
+        } catch (\Throwable $e) {
+            Log::warning('Catalog categories lookup failed', ['error' => $e->getMessage()]);
+
+            return [];
+        }
+    }
+
+    /**
+     * @return array{
+     *     sites: LengthAwarePaginator,
+     *     favorites: array<int, int>,
+     *     blacklist: array<int, int>,
+     *     showBlacklistedOnly: bool
+     * }
+     */
+    private function emptyCatalogListing(Request $request): array
+    {
+        $perPage = CatalogUrlQuery::perPage($request);
+        $sites = new \Illuminate\Pagination\LengthAwarePaginator([], 0, $perPage, 1, [
+            'path' => route('advertiser.catalog', absolute: false),
+            'query' => CatalogUrlQuery::fromRequest($request),
+        ]);
+        $sites->appends(CatalogUrlQuery::fromRequest($request));
+
+        return [
+            'sites' => $sites,
+            'favorites' => [],
+            'blacklist' => [],
+            'showBlacklistedOnly' => search_text($request->input('blacklist_filter')) === '1',
+        ];
     }
 
     public function index(Request $request)
@@ -169,9 +212,23 @@ class CatalogController extends Controller
 
         // Content Library → Catalog: keep the active article in session for cart assign.
         // Do not pre-filter language/country — advertisers pick filters manually.
-        $orderingSubmission = $this->resolveActiveLibraryOrdering($request);
+        try {
+            $orderingSubmission = $this->resolveActiveLibraryOrdering($request);
+        } catch (\Throwable $e) {
+            report($e);
+            $orderingSubmission = null;
+        }
 
-        $listing = $this->buildCatalogListing($request);
+        try {
+            $listing = $this->buildCatalogListing($request);
+        } catch (\Throwable $e) {
+            report($e);
+            session()->flash(
+                'error',
+                UserFacingError::message($e, 'Unable to load catalog listings. Please refresh and try again.')
+            );
+            $listing = $this->emptyCatalogListing($request);
+        }
         $sites = $listing['sites'];
         $favorites = $listing['favorites'];
         $blacklist = $listing['blacklist'];
@@ -243,13 +300,24 @@ class CatalogController extends Controller
         // Resolve domain visibility for the whole page in one query, and hand the
         // service to the view so no template reads site_url directly.
         $urlVisibility = app(SiteUrlVisibility::class);
-        $urlVisibility->ensureSchema();
-        $urlVisibility->warmFor($currentUser, $sites->getCollection());
+        try {
+            $urlVisibility->ensureSchema();
+            $urlVisibility->warmFor($currentUser, $sites->getCollection());
+        } catch (\Throwable $e) {
+            report($e);
+        }
 
-        $catalogWallet = auth()->user()->activeWallet();
-        $catalogBonusBalance = $catalogWallet ? (float) $catalogWallet->lockedBonusBalance() : 0.0;
-        $catalogCashBalance = $catalogWallet ? (float) $catalogWallet->withdrawableBalance() : 0.0;
-        $catalogSpendableBalance = (float) ($catalogWallet?->balance ?? 0);
+        $catalogBonusBalance = 0.0;
+        $catalogCashBalance = 0.0;
+        $catalogSpendableBalance = 0.0;
+        try {
+            $catalogWallet = auth()->user()->activeWallet();
+            $catalogBonusBalance = $catalogWallet ? (float) $catalogWallet->lockedBonusBalance() : 0.0;
+            $catalogCashBalance = $catalogWallet ? (float) $catalogWallet->withdrawableBalance() : 0.0;
+            $catalogSpendableBalance = (float) ($catalogWallet?->balance ?? 0);
+        } catch (\Throwable $e) {
+            report($e);
+        }
 
         return view('advertiser.catalog', compact(
             'sites',
@@ -288,11 +356,20 @@ class CatalogController extends Controller
         }
 
         $currentUser = auth()->user();
-        $listing = $this->buildCatalogListing($request);
+        try {
+            $listing = $this->buildCatalogListing($request);
+        } catch (\Throwable $e) {
+            report($e);
+            $listing = $this->emptyCatalogListing($request);
+        }
 
         $urlVisibility = app(SiteUrlVisibility::class);
-        $urlVisibility->ensureSchema();
-        $urlVisibility->warmFor($currentUser, $listing['sites']->getCollection());
+        try {
+            $urlVisibility->ensureSchema();
+            $urlVisibility->warmFor($currentUser, $listing['sites']->getCollection());
+        } catch (\Throwable $e) {
+            report($e);
+        }
 
         return response()
             ->view('advertiser.partials.catalog-results', [
@@ -325,9 +402,14 @@ class CatalogController extends Controller
                 ->header('Cache-Control', 'no-store, private');
         }
 
-        $blacklist = UserBlacklist::where('user_id', auth()->id())->pluck('site_id')->toArray();
-        $showBlacklistedOnly = search_text($request->input('blacklist_filter')) === '1';
-        $bulkDeals = $this->loadBulkDeals($request, $blacklist, $showBlacklistedOnly);
+        try {
+            $blacklist = UserBlacklist::where('user_id', auth()->id())->pluck('site_id')->toArray();
+            $showBlacklistedOnly = search_text($request->input('blacklist_filter')) === '1';
+            $bulkDeals = $this->loadBulkDeals($request, $blacklist, $showBlacklistedOnly);
+        } catch (\Throwable $e) {
+            report($e);
+            $bulkDeals = collect();
+        }
 
         $urlVisibility = app(SiteUrlVisibility::class);
 

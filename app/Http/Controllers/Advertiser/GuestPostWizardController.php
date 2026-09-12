@@ -10,6 +10,7 @@ use App\Models\Site;
 use App\Services\CartPricingService;
 use App\Services\Marketplace\CountryLanguagePairs;
 use App\Services\Marketplace\LanguageCountryMap;
+use App\Support\UserFacingError;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -42,11 +43,24 @@ class GuestPostWizardController extends Controller
     public function market(): View
     {
         $state = $this->state();
-        $languages = Language::marketplace()->orderBy('name')->get(['code', 'name']);
-        $countries = Country::marketplace()->orderBy('name')->get(['code', 'name']);
-        $languageCountryMap = $this->languageCountryMap->map();
-        $countryLanguageMap = $this->countryLanguagePairs->mapWithNames();
-        $categories = $this->nicheCategories();
+        try {
+            $languages = Language::marketplace()->orderBy('name')->get(['code', 'name']);
+            $countries = Country::marketplace()->orderBy('name')->get(['code', 'name']);
+            $languageCountryMap = $this->languageCountryMap->map();
+            $countryLanguageMap = $this->countryLanguagePairs->mapWithNames();
+            $categories = $this->nicheCategories();
+        } catch (\Throwable $e) {
+            report($e);
+            session()->flash(
+                'error',
+                UserFacingError::message($e, 'Unable to load marketplace filters. Please refresh and try again.')
+            );
+            $languages = collect();
+            $countries = collect();
+            $languageCountryMap = [];
+            $countryLanguageMap = [];
+            $categories = [];
+        }
 
         return view('advertiser.wizard.market', [
             'step' => 1,
@@ -127,7 +141,15 @@ class GuestPostWizardController extends Controller
             return $state;
         }
 
-        $cart = $this->syncVisibleCart();
+        try {
+            $cart = $this->syncVisibleCart();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return redirect()
+                ->route('advertiser.wizard.publishers')
+                ->with('error', UserFacingError::message($e, 'Unable to load your cart. Please try again.'));
+        }
         if ($cart === []) {
             return redirect()
                 ->route('advertiser.wizard.publishers')
@@ -147,10 +169,18 @@ class GuestPostWizardController extends Controller
             }
         }
 
-        $approvedArticles = ContentSubmission::pickerArticlesForUser((int) auth()->id(), $mustIncludeIds);
+        try {
+            $approvedArticles = ContentSubmission::pickerArticlesForUser((int) auth()->id(), $mustIncludeIds);
+            $marketplaceCountries = Country::marketplace()->orderBy('name')->get(['code', 'name']);
+            $marketplaceLanguages = Language::marketplace()->orderBy('name')->get(['code', 'name']);
+            $languageCountryMap = $this->languageCountryMap->map();
+        } catch (\Throwable $e) {
+            report($e);
 
-        $marketplaceCountries = Country::marketplace()->orderBy('name')->get(['code', 'name']);
-        $marketplaceLanguages = Language::marketplace()->orderBy('name')->get(['code', 'name']);
+            return redirect()
+                ->route('advertiser.wizard.publishers')
+                ->with('error', UserFacingError::message($e, 'Unable to load articles for this step.'));
+        }
 
         return view('advertiser.wizard.content', [
             'step' => 3,
@@ -159,7 +189,7 @@ class GuestPostWizardController extends Controller
             'approvedArticles' => $approvedArticles,
             'marketplaceCountries' => $marketplaceCountries,
             'marketplaceLanguages' => $marketplaceLanguages,
-            'languageCountryMap' => $this->languageCountryMap->map(),
+            'languageCountryMap' => $languageCountryMap,
             'cartReady' => $this->cartHasReadyLine($cart),
             'cartFullyAssigned' => $this->cartFullyAssigned($cart),
         ]);
