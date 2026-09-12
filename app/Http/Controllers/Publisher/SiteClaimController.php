@@ -25,15 +25,31 @@ class SiteClaimController extends Controller
      */
     public function index(Request $request)
     {
-        $user = auth()->user();
-        $claims = SiteClaim::query()
-            ->with(['site:id,site_name,domain,site_url,publisher_id', 'reviewer:id,name'])
-            ->where('claimer_id', $user->id)
-            ->latest('id')
-            ->paginate(20)
-            ->withQueryString();
+        try {
+            $user = $request->user();
+            $claims = SiteClaim::query()
+                ->with(['site:id,site_name,domain,site_url,publisher_id', 'reviewer:id,name'])
+                ->where('claimer_id', $user->id)
+                ->latest('id')
+                ->paginate(20)
+                ->withQueryString();
 
-        SiteClaim::applyCatalogIdentity($claims->getCollection(), $user);
+            SiteClaim::applyCatalogIdentity($claims->getCollection(), $user);
+        } catch (\Throwable $e) {
+            report($e);
+            $message = UserFacingError::message($e, 'We could not load your ownership claims. Please try again.');
+
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $message,
+                ], 500);
+            }
+
+            return redirect()
+                ->route('publisher.websites')
+                ->with('error', $message);
+        }
 
         if ($request->wantsJson()) {
             return response()->json([

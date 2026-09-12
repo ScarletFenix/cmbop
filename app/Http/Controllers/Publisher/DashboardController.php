@@ -8,6 +8,7 @@ use App\Models\OrderItem;
 use App\Models\OrderItemDispute;
 use App\Models\Site;
 use App\Models\WalletTransaction;
+use App\Support\UserFacingError;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -19,6 +20,21 @@ class DashboardController extends Controller
      * Display publisher dashboard (server-rendered summary + chart payloads).
      */
     public function index()
+    {
+        try {
+            return $this->renderDashboard();
+        } catch (\Throwable $e) {
+            report($e);
+            session()->flash(
+                'error',
+                UserFacingError::message($e, 'We could not load your dashboard. Please refresh and try again.')
+            );
+
+            return view('publisher.dashboard', $this->emptyDashboardPayload());
+        }
+    }
+
+    private function renderDashboard()
     {
         $user = auth()->user();
         $userId = $user->id;
@@ -54,6 +70,29 @@ class DashboardController extends Controller
     }
 
     /**
+     * @return array<string, mixed>
+     */
+    private function emptyDashboardPayload(): array
+    {
+        $stats = $this->buildStatistics([]);
+
+        return [
+            'siteCount' => 0,
+            'unverifiedSiteCount' => 0,
+            'pendingTasks' => 0,
+            'primaryAction' => 'add_site',
+            'stats' => $stats,
+            'metrics' => $this->buildPerformanceMetrics($stats),
+            'availableBalance' => 0.0,
+            'withdrawableBalance' => 0.0,
+            'recentTasks' => $this->buildRecentTasks([]),
+            'weeklyEarnings' => $this->buildWeeklyEarnings([]),
+            'monthlyEarnings' => $this->buildMonthlyEarnings([]),
+            'orderStatus' => $this->buildOrderStatusDistribution([]),
+        ];
+    }
+
+    /**
      * Get dashboard statistics (AJAX)
      */
     public function getStatistics(Request $request)
@@ -67,12 +106,12 @@ class DashboardController extends Controller
                 'success' => true,
                 'data' => array_merge($stats, $metrics),
             ]);
-        } catch (\Exception $e) {
-            Log::error('Error fetching dashboard statistics: '.$e->getMessage());
+        } catch (\Throwable $e) {
+            report($e);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to load statistics',
+                'message' => UserFacingError::message($e, 'We could not load dashboard statistics. Please try again.'),
             ], 500);
         }
     }

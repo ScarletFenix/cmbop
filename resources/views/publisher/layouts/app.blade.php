@@ -76,7 +76,13 @@
             <span class="nav-label d-flex align-items-center w-100">
                 <span>My Sites</span>
                 @auth
-                    @php $siteCount = auth()->user()->sites()->count(); @endphp
+                    @php
+                        try {
+                            $siteCount = auth()->user()->sites()->count();
+                        } catch (\Throwable $e) {
+                            $siteCount = 0;
+                        }
+                    @endphp
                     @if($siteCount > 0)
                         <span class="badge nav-count-badge rounded-pill ms-auto" title="Total sites">
                             {{ $siteCount }}

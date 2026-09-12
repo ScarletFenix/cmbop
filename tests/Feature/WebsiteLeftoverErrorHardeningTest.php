@@ -7,11 +7,14 @@ use App\Models\OrderItem;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
+use App\Services\AgencySiteImportService;
 use App\Services\ContentModeration\ContentModerationService;
 use App\Services\InAppNotificationService;
+use App\Services\Marketplace\CountryLanguagePairs;
 use App\Services\SiteFileVerificationService;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Testing\TestResponse;
@@ -384,6 +387,126 @@ class WebsiteLeftoverErrorHardeningTest extends TestCase
                 'subject' => 'Checkout failed after leftover cart',
                 'message' => 'The leftover websites disappeared from my cart after I paid.',
             ])
+        );
+    }
+
+    public function test_publisher_websites_still_renders_when_sites_table_is_gone(): void
+    {
+        $publisher = $this->userWithRole('publisher');
+        Schema::dropIfExists('sites');
+
+        $response = $this->actingAs($publisher)->get(route('publisher.websites'));
+
+        $this->assertNotSame(500, $response->status());
+        $response->assertOk()->assertDontSee('SQLSTATE');
+        $this->assertStringNotContainsString('SQLSTATE', (string) session('error'));
+    }
+
+    public function test_publisher_dashboard_still_renders_when_sites_table_is_gone(): void
+    {
+        $publisher = $this->userWithRole('publisher');
+        Schema::dropIfExists('sites');
+
+        $response = $this->actingAs($publisher)->get(route('publisher.dashboard'));
+
+        $this->assertNotSame(500, $response->status());
+        $response->assertOk()->assertDontSee('SQLSTATE');
+        $this->assertStringNotContainsString('SQLSTATE', (string) session('error'));
+    }
+
+    public function test_publisher_destroy_redirects_safely_when_sites_table_is_gone(): void
+    {
+        $publisher = $this->userWithRole('publisher');
+        $site = $this->siteFor($publisher, ['verified' => false, 'active' => false]);
+        $siteId = $site->id;
+
+        Schema::dropIfExists('sites');
+
+        $response = $this->actingAs($publisher)->delete(route('publisher.sites.destroy', $siteId));
+
+        $this->assertNotSame(500, $response->status());
+        $response->assertRedirect();
+        $this->assertStringNotContainsString('SQLSTATE', (string) session('error'));
+    }
+
+    public function test_publisher_bulk_import_redirects_when_service_throws(): void
+    {
+        $publisher = $this->userWithRole('publisher');
+
+        $this->mock(AgencySiteImportService::class, function ($mock) {
+            $mock->shouldReceive('importFromUpload')
+                ->once()
+                ->andThrow(new \RuntimeException('SQLSTATE[HY000]: import boom'));
+        });
+
+        $response = $this->actingAs($publisher)->post(route('publisher.sites.bulk-import'), [
+            'csv_file' => UploadedFile::fake()->create('sites.csv', 20, 'text/csv'),
+        ]);
+
+        $this->assertNotSame(500, $response->status());
+        $response->assertRedirect();
+        $this->assertStringNotContainsString('SQLSTATE', (string) session('error'));
+    }
+
+    public function test_publisher_bulk_request_redirects_when_table_is_gone(): void
+    {
+        $publisher = $this->userWithRole('publisher');
+        Schema::dropIfExists('bulk_site_requests');
+
+        $response = $this->actingAs($publisher)->post(route('publisher.bulk-sites.request'), [
+            'sites' => [
+                ['url' => 'https://one-leftover.example', 'price' => 40],
+                ['url' => 'https://two-leftover.example', 'price' => 50],
+            ],
+        ]);
+
+        $this->assertNotSame(500, $response->status());
+        $response->assertRedirect(route('publisher.websites'));
+        $this->assertStringNotContainsString('SQLSTATE', (string) session('error'));
+    }
+
+    public function test_publisher_claims_index_returns_json_when_table_is_gone(): void
+    {
+        $publisher = $this->userWithRole('publisher');
+        Schema::dropIfExists('site_claims');
+
+        $this->assertSafeJsonFailure(
+            $this->actingAs($publisher)->getJson(route('site-claims.index'))
+        );
+    }
+
+    public function test_publisher_locate_task_returns_json_when_items_table_is_gone(): void
+    {
+        $publisher = $this->userWithRole('publisher');
+        Schema::dropIfExists('order_items');
+
+        $this->assertSafeJsonFailure(
+            $this->actingAs($publisher)->getJson(route('publisher.orders.locate', ['order_id' => 1]))
+        );
+    }
+
+    public function test_publisher_wallet_summary_returns_json_when_wallets_table_is_gone(): void
+    {
+        $publisher = $this->userWithRole('publisher');
+        Schema::dropIfExists('wallets');
+
+        $this->assertSafeJsonFailure(
+            $this->actingAs($publisher)->getJson(route('publisher.promotions.wallet'))
+        );
+    }
+
+    public function test_publisher_country_languages_returns_json_when_lookup_fails(): void
+    {
+        $publisher = $this->userWithRole('publisher');
+
+        $this->mock(CountryLanguagePairs::class, function ($mock) {
+            $mock->shouldReceive('mapWithNames')
+                ->once()
+                ->andThrow(new \RuntimeException('SQLSTATE[HY000]: pair boom'));
+        });
+
+        $this->assertSafeJsonFailure(
+            $this->actingAs($publisher)->getJson(route('publisher.countries.languages', 'us'))
         );
     }
 }

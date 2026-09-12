@@ -279,18 +279,27 @@ class OrderController extends Controller
             ], 422);
         }
 
-        $userId = auth()->id();
-        $siteIds = Site::where('publisher_id', $userId)->pluck('id');
+        try {
+            $userId = auth()->id();
+            $siteIds = Site::where('publisher_id', $userId)->pluck('id');
 
-        $item = OrderItem::query()
-            ->with('order:id,order_number')
-            ->where('order_id', $orderId)
-            ->whereIn('site_id', $siteIds)
-            ->whereHas('order', function ($q) {
-                $q->where('payment_status', 'paid');
-            })
-            ->orderBy('id')
-            ->first();
+            $item = OrderItem::query()
+                ->with('order:id,order_number')
+                ->where('order_id', $orderId)
+                ->whereIn('site_id', $siteIds)
+                ->whereHas('order', function ($q) {
+                    $q->where('payment_status', 'paid');
+                })
+                ->orderBy('id')
+                ->first();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'We could not find that task. Please try again.'),
+            ], 500);
+        }
 
         if (! $item) {
             return response()->json([

@@ -64,13 +64,17 @@ class SitePromotionController extends Controller
         $result = $this->promotions->featureWithWallet($site, auth()->user());
 
         if ($result['success'] ?? false) {
-            ActivityLogger::log(
-                'site.featured',
-                auth()->user()->name.' featured "'.$site->site_name.'"',
-                $site,
-                ['days' => $this->promotions->featureDays(), 'price' => $this->promotions->featurePrice()],
-                $site->site_name
-            );
+            try {
+                ActivityLogger::log(
+                    'site.featured',
+                    auth()->user()->name.' featured "'.$site->site_name.'"',
+                    $site,
+                    ['days' => $this->promotions->featureDays(), 'price' => $this->promotions->featurePrice()],
+                    $site->site_name
+                );
+            } catch (\Throwable $e) {
+                report($e);
+            }
         }
 
         if (! ($result['success'] ?? false) && ($result['needs_top_up'] ?? false)) {
@@ -210,26 +214,35 @@ class SitePromotionController extends Controller
 
     public function walletSummary()
     {
-        $roleId = Wallet::publisherRoleId();
-        $withdrawable = 0.0;
-        if ($roleId) {
-            $wallet = Wallet::where('user_id', auth()->id())->where('role_id', $roleId)->first();
-            $withdrawable = $wallet ? $wallet->withdrawableBalance() : 0.0;
-        }
+        try {
+            $roleId = Wallet::publisherRoleId();
+            $withdrawable = 0.0;
+            if ($roleId) {
+                $wallet = Wallet::where('user_id', auth()->id())->where('role_id', $roleId)->first();
+                $withdrawable = $wallet ? $wallet->withdrawableBalance() : 0.0;
+            }
 
-        return response()->json([
-            'success' => true,
-            // Featuring spends cash only — keep `balance` as withdrawable so the
-            // publisher UI does not offer "Pay from wallet" on bonus-inflated totals.
-            'balance' => $withdrawable,
-            'withdrawable' => $withdrawable,
-            'feature_price' => $this->promotions->featurePrice(),
-            'feature_days' => $this->promotions->featureDays(),
-            'top_up_url' => route('publisher.balance'),
-            'balance_url' => route('publisher.balance'),
-            'stripe_available' => (bool) config('services.stripe.secret'),
-            'hint' => 'Pay from publisher earnings (welcome bonus cannot be used), or pay by card with Stripe. Use Balance to transfer funds between wallets.',
-        ]);
+            return response()->json([
+                'success' => true,
+                // Featuring spends cash only — keep `balance` as withdrawable so the
+                // publisher UI does not offer "Pay from wallet" on bonus-inflated totals.
+                'balance' => $withdrawable,
+                'withdrawable' => $withdrawable,
+                'feature_price' => $this->promotions->featurePrice(),
+                'feature_days' => $this->promotions->featureDays(),
+                'top_up_url' => route('publisher.balance'),
+                'balance_url' => route('publisher.balance'),
+                'stripe_available' => (bool) config('services.stripe.secret'),
+                'hint' => 'Pay from publisher earnings (welcome bonus cannot be used), or pay by card with Stripe. Use Balance to transfer funds between wallets.',
+            ]);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'We could not load your promotion wallet. Please try again.'),
+            ], 500);
+        }
     }
 
     public function joinBulk(Request $request, int $id)
