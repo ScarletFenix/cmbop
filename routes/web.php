@@ -89,6 +89,7 @@ use App\Http\Middleware\RoleMiddleware;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\Marketing\CatalogTeaserService;
+use App\Support\LocalizedPublicPath;
 use App\Support\PublicI18n;
 use App\Support\RobotsTxt;
 use App\Support\UserMessages;
@@ -131,40 +132,56 @@ Route::get('/{locale}/register', fn () => Redirect::to('/register', 301))
     ->where('locale', $prefixedLocalePattern)
     ->name('locale.register.redirect');
 
-$registerPublicMarketingRoutes = function () {
+$registerPublicMarketingRoutes = function (string $locale = 'en') {
+    $p = function (string $english) use ($locale): string {
+        $localized = LocalizedPublicPath::for($english, $locale);
+
+        return $localized === '' ? '/' : '/'.$localized;
+    };
+
     Route::get('/', function (CatalogTeaserService $teasers) {
         return view('home', [
             'catalogPreview' => $teasers->teasers(8),
         ]);
     })->name('home');
-    Route::get('/contact', fn () => view('pages.contact'))->name('contact');
-    Route::get('/about', [MarketingPageController::class, 'about'])->name('about');
-    Route::get('/faq', [MarketingPageController::class, 'faq'])->name('faq');
-    Route::get('/pricing', [MarketingPageController::class, 'pricing'])->name('pricing');
-    Route::get('/marketplace', [MarketingPageController::class, 'marketplace'])->name('marketplace');
-    Route::get('/how-it-works', [MarketingPageController::class, 'howItWorks'])->name('how-it-works');
-    Route::get('/become-a-publisher', [MarketingPageController::class, 'becomePublisher'])->name('become-a-publisher');
-    Route::get('/why-choose-us', [MarketingPageController::class, 'whyChooseUs'])->name('why-choose-us');
-    Route::get('/privacy-policy', fn () => view('pages.privacy-policy'))->name('privacy-policy');
-    Route::get('/terms-of-services', fn () => view('pages.terms-of-services'))->name('terms-of-services');
-    Route::get('/cookie-policy', [MarketingPageController::class, 'cookiePolicy'])->name('cookie-policy');
-    Route::get('/refund-policy', [MarketingPageController::class, 'refundPolicy'])->name('refund-policy');
-    Route::get('/blog', [BlogController::class, 'index'])->name('blog.index');
-    Route::get('/blog/{slug}', [BlogController::class, 'show'])->name('blog.show');
-    Route::post('/newsletter/subscribe', [NewsletterController::class, 'subscribe'])
+    Route::get($p('contact'), fn () => view('pages.contact'))->name('contact');
+    Route::get($p('about'), [MarketingPageController::class, 'about'])->name('about');
+    Route::get($p('faq'), [MarketingPageController::class, 'faq'])->name('faq');
+    Route::get($p('pricing'), [MarketingPageController::class, 'pricing'])->name('pricing');
+    Route::get($p('marketplace'), [MarketingPageController::class, 'marketplace'])->name('marketplace');
+    Route::get($p('how-it-works'), [MarketingPageController::class, 'howItWorks'])->name('how-it-works');
+    Route::get($p('become-a-publisher'), [MarketingPageController::class, 'becomePublisher'])->name('become-a-publisher');
+    Route::get($p('why-choose-us'), [MarketingPageController::class, 'whyChooseUs'])->name('why-choose-us');
+    Route::get($p('privacy-policy'), fn () => view('pages.privacy-policy'))->name('privacy-policy');
+    Route::get($p('terms-of-services'), fn () => view('pages.terms-of-services'))->name('terms-of-services');
+    Route::get($p('cookie-policy'), [MarketingPageController::class, 'cookiePolicy'])->name('cookie-policy');
+    Route::get($p('refund-policy'), [MarketingPageController::class, 'refundPolicy'])->name('refund-policy');
+    Route::get($p('blog'), [BlogController::class, 'index'])->name('blog.index');
+    Route::get($p('blog').'/{slug}', [BlogController::class, 'show'])->name('blog.show');
+    Route::post($p('newsletter').'/subscribe', [NewsletterController::class, 'subscribe'])
         ->middleware('throttle:10,1')
         ->name('newsletter.subscribe');
 };
 
 // English (canonical, no prefix)
-Route::group([], $registerPublicMarketingRoutes);
+Route::group([], fn () => $registerPublicMarketingRoutes('en'));
 
-// Prefixed locales
-Route::group([
-    'prefix' => '{locale}',
-    'where' => ['locale' => $prefixedLocalePattern],
-    'as' => 'locale.',
-], $registerPublicMarketingRoutes);
+// Prefixed locales use translated slugs; English leftovers 301 below.
+foreach (PublicI18n::prefixed() as $locale) {
+    Route::group([
+        'prefix' => $locale,
+        'as' => 'locale.'.$locale.'.',
+    ], fn () => $registerPublicMarketingRoutes($locale));
+
+    foreach (LocalizedPublicPath::legacyRedirects($locale) as $from => $to) {
+        Route::get('/'.$locale.'/'.$from, function () use ($locale, $to) {
+            $query = request()->getQueryString();
+            $target = '/'.$locale.'/'.$to;
+
+            return Redirect::to($query ? $target.'?'.$query : $target, 301);
+        });
+    }
+}
 
 // SEO: sitemap index + per-locale sitemaps + robots + llms.txt
 Route::get('/sitemap.xml', [SitemapController::class, 'index'])->name('sitemap');

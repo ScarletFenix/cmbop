@@ -764,7 +764,11 @@ class AdminBlogCuratedSyncTest extends TestCase
         $this->assertNotSame('collision-slug-en', $translationSlug);
         $this->assertSame('collision-slug-en-1', $translationSlug);
 
-        $html = $this->get('/blog/collision-slug-en')
+        $this->get('/blog/collision-slug-en')
+            ->assertRedirect(url('/blog/occupant-public-url'));
+
+        $html = $this->followingRedirects()
+            ->get('/blog/collision-slug-en')
             ->assertOk()
             ->getContent();
         $this->assertMatchesRegularExpression('/<h1[^>]*>\s*Occupant Public Url\s*<\/h1>/', $html);

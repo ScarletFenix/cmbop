@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Support\LocalizedPublicPath;
 use App\Support\PublicI18n;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -46,16 +47,40 @@ class PublicI18nTest extends TestCase
 
     public function test_public_marketing_pages_exist_for_each_locale(): void
     {
-        $prefixes = [''];
-        foreach (PublicI18n::prefixed() as $locale) {
-            $prefixes[] = '/'.$locale;
-        }
-
-        foreach ($prefixes as $prefix) {
-            foreach (['/pricing', '/marketplace', '/faq', '/about', '/blog', '/cookie-policy', '/refund-policy'] as $path) {
-                $this->get($prefix.$path)->assertOk();
+        foreach (PublicI18n::supported() as $locale) {
+            foreach (['pricing', 'marketplace', 'faq', 'about', 'blog', 'cookie-policy', 'refund-policy'] as $page) {
+                $this->get(LocalizedPublicPath::publicPath($page, $locale))->assertOk();
             }
         }
+    }
+
+    public function test_prefixed_english_page_paths_redirect_to_localized_slugs(): void
+    {
+        $this->get('/de/about')
+            ->assertRedirect('/de/ueber-uns');
+        $this->get('/de/marketplace')
+            ->assertRedirect('/de/marktplatz');
+        $this->get('/fr/how-it-works')
+            ->assertRedirect('/fr/comment-ca-marche');
+        $this->get('/nl/become-a-publisher')
+            ->assertRedirect('/nl/publisher-worden');
+        $this->get('/es/pricing')
+            ->assertRedirect('/es/precios');
+        $this->get('/it/contact')
+            ->assertRedirect('/it/contatto');
+
+        $this->get('/us/about')->assertOk();
+        $this->get('/de/blog')->assertOk();
+    }
+
+    public function test_language_switcher_uses_localized_page_paths(): void
+    {
+        $this->get(LocalizedPublicPath::publicPath('about', 'de'))
+            ->assertOk()
+            ->assertSee(url(LocalizedPublicPath::publicPath('about', 'fr')), false)
+            ->assertSee(url(LocalizedPublicPath::publicPath('marketplace', 'de')), false)
+            ->assertDontSee(url('/de/about'), false)
+            ->assertDontSee(url('/de/marketplace'), false);
     }
 
     public function test_locale_sitemaps_are_available(): void
@@ -69,7 +94,9 @@ class PublicI18nTest extends TestCase
 
         $this->get('/sitemap-de.xml')
             ->assertOk()
-            ->assertSee('/de/marketplace', false)
+            ->assertSee('/de/marktplatz', false)
+            ->assertSee('/de/ueber-uns', false)
+            ->assertSee('/fr/a-propos', false)
             ->assertSee('hreflang="fr"', false)
             ->assertSee('hreflang="en-GB"', false)
             ->assertSee('hreflang="en-US"', false);
@@ -163,11 +190,11 @@ class PublicI18nTest extends TestCase
 
     public function test_about_and_contact_titles_do_not_collide(): void
     {
-        $this->get('/de/about')
+        $this->get(LocalizedPublicPath::publicPath('about', 'de'))
             ->assertOk()
             ->assertSee('Der Guest-Post-Marktplatz für Europa', false);
 
-        $this->get('/de/contact')
+        $this->get(LocalizedPublicPath::publicPath('contact', 'de'))
             ->assertOk()
             ->assertSee('Über SEOLinkBuildings', false)
             ->assertDontSee('Der Guest-Post-Marktplatz für Europa', false);
