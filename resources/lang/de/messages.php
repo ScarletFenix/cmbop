@@ -9,7 +9,7 @@ return [
 
     // Hero Section Translations
     'hero_title' => 'SEOLinkBuildings',
-    'hero_support' => 'Erhalten Sie starke Backlinks von vertrauenswürdigen Websites.',
+    'hero_support' => 'Gastbeitrag-Marktplatz für geprüfte Publisher-Seiten.',
     'get_started' => 'Loslegen',
     'hero_tagline' => 'Der globale Linkbuilding-Marktplatz für SEO, digitale PR und Content-Verteilung.',
     'hero_product_alt' => 'Vorschau des Marktplatz-Katalogs mit Publisher-Kennzahlen und Placement-Preisen',
@@ -535,8 +535,8 @@ return [
     'language_suggestion_dismiss' => 'Aktuelle Sprache behalten',
     'meta_default_title' => 'SEOLinkBuildings — Guest-Post- und Backlink-Marktplatz',
     'meta_default_description' => 'Seolinkbuildings.com ist der Guest-Post-Marktplatz zum Kaufen und Verkaufen redaktioneller Backlinks — mit verifizierten Publishern und klaren EUR-Preisen.',
-    'meta_home_title' => 'Guest-Post-Marktplatz für SEO-Backlinks | SEOLinkBuildings',
-    'meta_home_description' => 'Kaufen Sie Dofollow-Guest-Posts von verifizierten Publishern auf Seolinkbuildings.com. EUR-Wallet, transparente Preise, €20 Willkommensguthaben für Linkbuilding und Digital PR.',
+    'meta_home_title' => 'Gastbeitrag-Marktplatz für geprüfte Publisher | SEOLinkBuildings',
+    'meta_home_description' => 'Kaufen Sie Gastbeiträge auf geprüften Publisher-Seiten. EUR-Wallet, klare Preise, Live-URL im Auftrag — der Marktplatz von SEOLinkBuildings.',
     'meta_about_title' => 'Über SEOLinkBuildings — Guest-Post-Marktplatz für Europa',
     'meta_about_description' => 'Erfahren Sie, wie SEOLinkBuildings Advertiser und Publisher für ethische Guest Posts und Digital PR in Europa (DE/EN/FR/NL) verbindet. Betrieben von Topurlz Ltd (UK).',
     'meta_faq_title' => 'FAQ — Guest Posts, Zahlungen und Publishing | SEOLinkBuildings',

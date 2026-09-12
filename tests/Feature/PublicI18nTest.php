@@ -22,6 +22,18 @@ class PublicI18nTest extends TestCase
             ->assertSee('Registrieren', false);
     }
 
+    public function test_german_home_targets_gastbeitrag_marketplace(): void
+    {
+        $html = $this->get('/de')
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Gastbeitrag-Marktplatz für geprüfte Publisher | SEOLinkBuildings', $html);
+        $this->assertStringContainsString('Gastbeitrag-Marktplatz für geprüfte Publisher-Seiten.', $html);
+        $this->assertStringNotContainsString('Guest-Post-Marktplatz für SEO-Backlinks', $html);
+        $this->assertStringNotContainsString('The guest post marketplace for verified publisher sites.', $html);
+    }
+
     public function test_locale_login_redirects_to_english_auth(): void
     {
         $this->get('/de/login')
