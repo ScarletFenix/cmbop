@@ -109,7 +109,7 @@ class MarketingAssignSiteForPublisherTest extends TestCase
             ->assertDontSee('Click niches one by one', false)
             ->assertSee('data-site-description-editor', false)
             ->assertSee('name="description"', false)
-            ->assertSee('data-max-chars="'.\App\Support\SiteDescriptionRules::MAX_CHARS.'"', false)
+            ->assertSee('data-max-chars="'.SiteDescriptionRules::MAX_CHARS.'"', false)
             ->assertSee('max 500 words', false)
             ->assertSee('Shown to advertisers on the listing', false)
             ->assertSee('name="price_homepage[7]"', false)

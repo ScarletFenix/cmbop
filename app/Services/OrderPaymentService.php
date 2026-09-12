@@ -722,6 +722,19 @@ class OrderPaymentService
             if ($keepReferenceCode !== '' && (string) $referenceCode === $keepReferenceCode) {
                 continue;
             }
+
+            // Rotating to a new Stripe session must not drop a still-open
+            // package. A late webhook for the first session still needs it.
+            // Wallet/paid replace (no keep ref) may forget those leftovers.
+            if ($keepReferenceCode !== '') {
+                $package = $this->getPendingCheckout((string) $referenceCode);
+                $openStripeSession = is_array($package)
+                    && search_text($package['stripe_session_id'] ?? '') !== '';
+                if ($openStripeSession) {
+                    continue;
+                }
+            }
+
             $this->forgetPendingCheckoutKeepLeftoverHold($referenceCode, $userId);
         }
     }

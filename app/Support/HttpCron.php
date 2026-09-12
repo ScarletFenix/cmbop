@@ -10,7 +10,7 @@ class HttpCron
     {
         $secret = (string) config('app.cron_secret', '');
         if (strlen($secret) < 32) {
-            abort(404);
+            abort(404, UserMessages::get('cron.disabled'));
         }
 
         $provided = trim((string) $request->header('X-Cron-Key', ''));
@@ -19,7 +19,7 @@ class HttpCron
         }
 
         if ($provided === '' || ! hash_equals($secret, $provided)) {
-            abort(403);
+            abort(403, UserMessages::get('cron.forbidden'));
         }
     }
 }
