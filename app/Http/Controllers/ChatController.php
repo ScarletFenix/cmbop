@@ -15,6 +15,7 @@ use App\Support\CatalogVisitUrl;
 use App\Support\PublisherNeedsAction;
 use App\Support\UserFacingError;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
@@ -89,13 +90,14 @@ class ChatController extends Controller
                 'latest_unread_order' => $latestUnreadOrder,
                 'role' => $activeRole,
             ]);
-        } catch (\Exception $e) {
-            Log::error('Error fetching chat unread summary: '.$e->getMessage());
+        } catch (\Throwable $e) {
+            report($e);
 
             return response()->json([
                 'success' => false,
                 'unread_chat' => 0,
                 'needs_action' => 0,
+                'message' => UserFacingError::message($e, 'Failed to load chat summary.'),
             ], 500);
         }
     }
@@ -170,16 +172,14 @@ class ChatController extends Controller
                 'can_send' => $details['can_send'],
                 'composer_note' => $details['composer_note'],
             ]);
-        } catch (\Exception $e) {
-            Log::error('Error fetching messages: '.$e->getMessage(), [
-                'order_id' => $orderId,
-                'user_id' => auth()->id(),
-                'exception' => $e::class,
-            ]);
+        } catch (ModelNotFoundException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            report($e);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to fetch messages',
+                'message' => UserFacingError::message($e, 'Failed to fetch messages.'),
             ], 500);
         }
     }
@@ -279,10 +279,10 @@ class ChatController extends Controller
                 'current_user_id' => $user->id,
                 'can_send' => true,
             ]);
-        } catch (ValidationException $e) {
+        } catch (ValidationException|ModelNotFoundException $e) {
             throw $e;
-        } catch (\Exception $e) {
-            Log::error('Error sending message: '.$e->getMessage());
+        } catch (\Throwable $e) {
+            report($e);
 
             return response()->json([
                 'success' => false,

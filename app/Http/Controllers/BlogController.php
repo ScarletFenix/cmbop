@@ -5,7 +5,10 @@ namespace App\Http\Controllers;
 use App\Models\Blog;
 use App\Models\BlogTranslation;
 use App\Services\CuratedBlogSync;
+use App\Support\UserFacingError;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 
 class BlogController extends Controller
 {
@@ -14,19 +17,34 @@ class BlogController extends Controller
      */
     public function index()
     {
-        CuratedBlogSync::ensurePresent();
-        $requestedLocale = public_locale();
+        try {
+            CuratedBlogSync::ensurePresent();
+            $requestedLocale = public_locale();
 
-        $blog = Blog::published()
-            ->withPublishedLocale($requestedLocale)
-            ->orderByDesc('published_at')
-            ->paginate(12);
+            $blog = Blog::published()
+                ->withPublishedLocale($requestedLocale)
+                ->orderByDesc('published_at')
+                ->paginate(12);
 
-        $blog->getCollection()->transform(
-            fn (Blog $post) => $post->applyPublishedLocale($requestedLocale)
-        );
+            $blog->getCollection()->transform(
+                fn (Blog $post) => $post->applyPublishedLocale($requestedLocale)
+            );
 
-        return view('pages.blog', compact('blog'));
+            return view('pages.blog', compact('blog'));
+        } catch (\Throwable $e) {
+            report($e);
+            session()->flash(
+                'error',
+                UserFacingError::message($e, 'Unable to load blog posts right now.')
+            );
+
+            $blog = new LengthAwarePaginator([], 0, 12, 1, [
+                'path' => request()->url(),
+                'pageName' => 'page',
+            ]);
+
+            return view('pages.blog', compact('blog'));
+        }
     }
 
     /**
@@ -37,6 +55,21 @@ class BlogController extends Controller
      * the locale into a lone $slug argument.
      */
     public function show(Request $request)
+    {
+        try {
+            return $this->renderShow($request);
+        } catch (ModelNotFoundException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            report($e);
+
+            return redirect()
+                ->route('blog.index')
+                ->with('error', UserFacingError::message($e, 'Unable to load this post right now.'));
+        }
+    }
+
+    private function renderShow(Request $request)
     {
         CuratedBlogSync::ensurePresent();
         $requestedLocale = public_locale();

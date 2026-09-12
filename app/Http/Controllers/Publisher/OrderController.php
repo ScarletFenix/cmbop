@@ -34,6 +34,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
 class OrderController extends Controller
 {
@@ -50,28 +51,35 @@ class OrderController extends Controller
      */
     public function downloadContent(ContentSubmission $submission): StreamedResponse
     {
-        $allowed = OrderItem::query()
-            ->where('content_submission_id', $submission->id)
-            ->withoutClawback()
-            ->whereHas('site', fn ($q) => $q->where('publisher_id', auth()->id()))
-            ->whereHas('order', fn ($q) => $q->where('payment_status', 'paid'))
-            ->exists();
+        try {
+            $allowed = OrderItem::query()
+                ->where('content_submission_id', $submission->id)
+                ->withoutClawback()
+                ->whereHas('site', fn ($q) => $q->where('publisher_id', auth()->id()))
+                ->whereHas('order', fn ($q) => $q->where('payment_status', 'paid'))
+                ->exists();
 
-        abort_unless($allowed, 403);
+            abort_unless($allowed, 403);
 
-        $disk = Storage::disk($submission->disk ?: 'local');
-        if (! $submission->hasStoredFile() || ! $disk->exists($submission->path)) {
-            abort(404, 'File not found');
+            $disk = Storage::disk($submission->disk ?: 'local');
+            if (! $submission->hasStoredFile() || ! $disk->exists($submission->path)) {
+                abort(404, 'File not found');
+            }
+
+            return $disk->download(
+                $submission->path,
+                $submission->original_filename,
+                ArticleDownload::headers(
+                    (string) $submission->original_filename,
+                    (string) ($submission->mime ?: 'application/octet-stream')
+                )
+            );
+        } catch (HttpExceptionInterface $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            report($e);
+            abort(503, UserFacingError::message($e, 'Unable to download this file right now.'));
         }
-
-        return $disk->download(
-            $submission->path,
-            $submission->original_filename,
-            ArticleDownload::headers(
-                (string) $submission->original_filename,
-                (string) ($submission->mime ?: 'application/octet-stream')
-            )
-        );
     }
 
     /**

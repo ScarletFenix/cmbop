@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Mail\PasswordChangedMail;
+use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -25,10 +26,15 @@ class ProfileController extends Controller
 
         $user = auth()->user();
 
-        $user->name = $request->name;
-        $user->phone = $request->phone;
+        try {
+            $user->name = $request->name;
+            $user->phone = $request->phone;
+            $user->save();
+        } catch (\Throwable $e) {
+            report($e);
 
-        $user->save();
+            return back()->with('error', UserFacingError::message($e, 'We could not update your profile. Please try again.'));
+        }
 
         return back()->with('success', 'Profile updated successfully.');
     }
@@ -50,9 +56,15 @@ class ProfileController extends Controller
             return back()->with('error', 'Current password is incorrect.');
         }
 
-        // Hashed cast hashes once — do not Hash::make here or login breaks.
-        $user->password = $request->password;
-        $user->save();
+        try {
+            // Hashed cast hashes once — do not Hash::make here or login breaks.
+            $user->password = $request->password;
+            $user->save();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return back()->with('error', UserFacingError::message($e, 'We could not change your password. Please try again.'));
+        }
 
         PasswordChangedMail::notify($user);
 
@@ -83,11 +95,16 @@ class ProfileController extends Controller
 
         $user = auth()->user();
 
-        $user->facebook = $request->facebook;
-        $user->twitter = $request->twitter;
-        $user->linkedin = $request->linkedin;
+        try {
+            $user->facebook = $request->facebook;
+            $user->twitter = $request->twitter;
+            $user->linkedin = $request->linkedin;
+            $user->save();
+        } catch (\Throwable $e) {
+            report($e);
 
-        $user->save();
+            return back()->with('error', UserFacingError::message($e, 'We could not update your social links. Please try again.'));
+        }
 
         return back()->with('success', 'Social links updated successfully.');
     }
@@ -125,15 +142,20 @@ class ProfileController extends Controller
             $user->company_name = trim($request->company_name);
         }
 
-        $user->billing_name = $request->billing_name;
-        $user->country = $request->country;
-        $user->state = $request->state;
-        $user->city = $request->city;
-        $user->address = $request->address;
-        $user->postal_code = $request->postal_code;
-        $user->vat_number = $request->vat_number;
+        try {
+            $user->billing_name = $request->billing_name;
+            $user->country = $request->country;
+            $user->state = $request->state;
+            $user->city = $request->city;
+            $user->address = $request->address;
+            $user->postal_code = $request->postal_code;
+            $user->vat_number = $request->vat_number;
+            $user->save();
+        } catch (\Throwable $e) {
+            report($e);
 
-        $user->save();
+            return back()->with('error', UserFacingError::message($e, 'We could not update your billing information. Please try again.'));
+        }
 
         return back()->with('success', 'Billing information updated successfully.');
     }

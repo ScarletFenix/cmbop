@@ -59,6 +59,7 @@ use App\Support\UserFacingError;
 use App\Support\UserMessages;
 use Carbon\CarbonInterface;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -4309,48 +4310,59 @@ class CatalogController extends Controller
      */
     public function contentRevisionLibraryOptions(Request $request, $id)
     {
-        $order = Order::where('user_id', auth()->id())->with('items')->findOrFail($id);
+        try {
+            $order = Order::where('user_id', auth()->id())->with('items')->findOrFail($id);
 
-        $currentIds = $order->items
-            ->pluck('content_submission_id')
-            ->filter()
-            ->map(fn ($v) => (int) $v)
-            ->values()
-            ->all();
+            $currentIds = $order->items
+                ->pluck('content_submission_id')
+                ->filter()
+                ->map(fn ($v) => (int) $v)
+                ->values()
+                ->all();
 
-        $articles = ContentSubmission::query()
-            ->where('user_id', auth()->id())
-            ->checkoutReady()
-            ->latest('id')
-            ->limit(50)
-            ->get(['id', 'title', 'original_filename', 'language', 'country', 'anchor_text', 'target_url'])
-            ->map(fn (ContentSubmission $s) => [
-                'id' => $s->id,
-                'label' => $s->title ?: $s->original_filename ?: ('Article #'.$s->id),
-                'language' => $s->language,
-                'country' => $s->country,
-            ])
-            ->values();
-
-        $current = [];
-        if ($currentIds !== []) {
-            $current = ContentSubmission::query()
+            $articles = ContentSubmission::query()
                 ->where('user_id', auth()->id())
-                ->whereIn('id', $currentIds)
-                ->get(['id', 'title', 'original_filename'])
+                ->checkoutReady()
+                ->latest('id')
+                ->limit(50)
+                ->get(['id', 'title', 'original_filename', 'language', 'country', 'anchor_text', 'target_url'])
                 ->map(fn (ContentSubmission $s) => [
                     'id' => $s->id,
                     'label' => $s->title ?: $s->original_filename ?: ('Article #'.$s->id),
+                    'language' => $s->language,
+                    'country' => $s->country,
                 ])
-                ->values()
-                ->all();
-        }
+                ->values();
 
-        return response()->json([
-            'success' => true,
-            'current' => $current,
-            'orderable' => $articles,
-        ]);
+            $current = [];
+            if ($currentIds !== []) {
+                $current = ContentSubmission::query()
+                    ->where('user_id', auth()->id())
+                    ->whereIn('id', $currentIds)
+                    ->get(['id', 'title', 'original_filename'])
+                    ->map(fn (ContentSubmission $s) => [
+                        'id' => $s->id,
+                        'label' => $s->title ?: $s->original_filename ?: ('Article #'.$s->id),
+                    ])
+                    ->values()
+                    ->all();
+            }
+
+            return response()->json([
+                'success' => true,
+                'current' => $current,
+                'orderable' => $articles,
+            ]);
+        } catch (ModelNotFoundException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'Unable to load Content Library articles.'),
+            ], 500);
+        }
     }
 
     /**
@@ -4396,52 +4408,63 @@ class CatalogController extends Controller
             'order_item_id' => 'nullable|integer',
         ]);
 
-        $order = Order::with('items')->where('user_id', auth()->id())->findOrFail($id);
-        $requestedItemId = isset($data['order_item_id']) ? (int) $data['order_item_id'] : null;
-        if ($requestedItemId) {
-            $item = $order->items->firstWhere('id', $requestedItemId);
-        } else {
-            $withLiveUrl = $order->items->filter(fn ($line) => filled($line->live_url));
-            $item = $withLiveUrl->count() === 1
-                ? $withLiveUrl->first()
-                : ($order->items->count() === 1 ? $order->items->first() : null);
-        }
+        try {
+            $order = Order::with('items')->where('user_id', auth()->id())->findOrFail($id);
+            $requestedItemId = isset($data['order_item_id']) ? (int) $data['order_item_id'] : null;
+            if ($requestedItemId) {
+                $item = $order->items->firstWhere('id', $requestedItemId);
+            } else {
+                $withLiveUrl = $order->items->filter(fn ($line) => filled($line->live_url));
+                $item = $withLiveUrl->count() === 1
+                    ? $withLiveUrl->first()
+                    : ($order->items->count() === 1 ? $order->items->first() : null);
+            }
 
-        if (! $item instanceof OrderItem) {
+            if (! $item instanceof OrderItem) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $order->items->count() > 1
+                        ? 'Please choose which placement to recheck.'
+                        : 'No live URL to check yet.',
+                ], 422);
+            }
+
+            if (! filled($item->live_url)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No live URL to check yet.',
+                ], 422);
+            }
+
+            $health = app(LiveUrlHealthChecker::class)->check((string) $item->live_url);
+            if (Schema::hasColumn('order_items', 'live_url_check_ok')) {
+                $item->update([
+                    'live_url_check_ok' => $health['ok'],
+                    'live_url_http_status' => $health['status'],
+                    'live_url_checked_at' => $health['checked_at'],
+                ]);
+            }
+
             return response()->json([
-                'success' => false,
-                'message' => $order->items->count() > 1
-                    ? 'Please choose which placement to recheck.'
-                    : 'No live URL to check yet.',
-            ], 422);
-        }
-
-        if (! filled($item->live_url)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'No live URL to check yet.',
-            ], 422);
-        }
-
-        $health = app(LiveUrlHealthChecker::class)->check((string) $item->live_url);
-        if (Schema::hasColumn('order_items', 'live_url_check_ok')) {
-            $item->update([
-                'live_url_check_ok' => $health['ok'],
-                'live_url_http_status' => $health['status'],
-                'live_url_checked_at' => $health['checked_at'],
-            ]);
-        }
-
-        return response()->json([
-            'success' => true,
-            'message' => $health['message'],
-            'live_url_check' => [
-                'ok' => $health['ok'],
-                'status' => $health['status'],
-                'checked_at' => optional($health['checked_at'])->toIso8601String(),
+                'success' => true,
                 'message' => $health['message'],
-            ],
-        ]);
+                'live_url_check' => [
+                    'ok' => $health['ok'],
+                    'status' => $health['status'],
+                    'checked_at' => optional($health['checked_at'])->toIso8601String(),
+                    'message' => $health['message'],
+                ],
+            ]);
+        } catch (ModelNotFoundException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'Unable to recheck that live URL right now.'),
+            ], 500);
+        }
     }
 
     /**

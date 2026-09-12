@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ContentSubmission;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Role;
@@ -12,6 +13,7 @@ use App\Services\ContentModeration\ContentModerationService;
 use App\Services\InAppNotificationService;
 use App\Services\Marketplace\CountryLanguagePairs;
 use App\Services\SiteFileVerificationService;
+use App\Services\Wallet\WalletOverviewService;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -507,6 +509,239 @@ class WebsiteLeftoverErrorHardeningTest extends TestCase
 
         $this->assertSafeJsonFailure(
             $this->actingAs($publisher)->getJson(route('publisher.countries.languages', 'us'))
+        );
+    }
+
+    public function test_content_revision_options_return_json_when_submissions_table_is_gone(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $site = $this->siteFor($publisher);
+        $order = $this->paidOrder($advertiser, $site);
+
+        Schema::dropIfExists('content_submissions');
+
+        $this->assertSafeJsonFailure(
+            $this->actingAs($advertiser)->getJson(route('advertiser.orders.content-revision-options', $order->id))
+        );
+    }
+
+    public function test_recheck_live_url_returns_json_when_items_table_is_gone(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $site = $this->siteFor($publisher);
+        $order = $this->paidOrder($advertiser, $site);
+
+        Schema::dropIfExists('order_items');
+
+        $this->assertSafeJsonFailure(
+            $this->actingAs($advertiser)->postJson(route('advertiser.orders.recheck-live-url', $order->id))
+        );
+    }
+
+    public function test_advertiser_transactions_return_json_when_overview_throws(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+
+        $this->mock(WalletOverviewService::class, function ($mock) {
+            $mock->shouldReceive('activity')
+                ->once()
+                ->andThrow(new \RuntimeException('SQLSTATE[HY000]: tx boom'));
+        });
+
+        $this->assertSafeJsonFailure(
+            $this->actingAs($advertiser)->getJson(route('advertiser.balance.transactions'))
+        );
+    }
+
+    public function test_advertiser_analytics_return_json_when_overview_throws(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+
+        $this->mock(WalletOverviewService::class, function ($mock) {
+            $mock->shouldReceive('analytics')
+                ->once()
+                ->andThrow(new \RuntimeException('SQLSTATE[HY000]: analytics boom'));
+        });
+
+        $this->assertSafeJsonFailure(
+            $this->actingAs($advertiser)->getJson(route('advertiser.balance.analytics'))
+        );
+    }
+
+    public function test_advertiser_export_redirects_when_overview_throws(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+
+        $this->mock(WalletOverviewService::class, function ($mock) {
+            $mock->shouldReceive('exportRows')
+                ->once()
+                ->andThrow(new \RuntimeException('SQLSTATE[HY000]: export boom'));
+        });
+
+        $response = $this->actingAs($advertiser)->get(route('advertiser.balance.export'));
+
+        $this->assertNotSame(500, $response->status());
+        $response->assertRedirect(route('advertiser.add-funds'));
+        $this->assertStringNotContainsString('SQLSTATE', (string) session('error'));
+    }
+
+    public function test_profile_update_redirects_when_save_throws(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $this->failNextUserUpdate();
+
+        $response = $this->actingAs($advertiser)
+            ->from(route('profile'))
+            ->post(route('profile.update'), [
+                'name' => 'Leftover Name',
+                'phone' => '+123456789',
+            ]);
+
+        $this->assertNotSame(500, $response->status());
+        $response->assertRedirect(route('profile'));
+        $this->assertStringNotContainsString('SQLSTATE', (string) session('error'));
+    }
+
+    public function test_blog_index_still_renders_when_blogs_table_is_gone(): void
+    {
+        Schema::dropIfExists('blogs');
+
+        $response = $this->get(route('blog.index'));
+
+        $this->assertNotSame(500, $response->status());
+        $response->assertOk()->assertDontSee('SQLSTATE');
+        $this->assertStringNotContainsString('SQLSTATE', (string) session('error'));
+    }
+
+    public function test_blog_show_redirects_when_blogs_table_is_gone(): void
+    {
+        Schema::dropIfExists('blogs');
+
+        $response = $this->get(route('blog.show', 'leftover-post'));
+
+        $this->assertNotSame(500, $response->status());
+        $response->assertRedirect(route('blog.index'));
+        $this->assertStringNotContainsString('SQLSTATE', (string) session('error'));
+    }
+
+    public function test_publisher_balance_still_renders_when_wallets_table_is_gone(): void
+    {
+        $publisher = $this->userWithRole('publisher');
+        Schema::dropIfExists('wallets');
+
+        $response = $this->actingAs($publisher)->get(route('publisher.balance'));
+
+        $this->assertNotSame(500, $response->status());
+        $response->assertOk()->assertDontSee('SQLSTATE');
+        $this->assertStringNotContainsString('SQLSTATE', (string) session('error'));
+    }
+
+    public function test_publisher_withdraw_still_renders_when_wallets_table_is_gone(): void
+    {
+        $publisher = $this->userWithRole('publisher');
+        Schema::dropIfExists('wallets');
+
+        $response = $this->actingAs($publisher)->get(route('publisher.withdraw'));
+
+        $this->assertNotSame(500, $response->status());
+        $response->assertOk()->assertDontSee('SQLSTATE');
+        $this->assertStringNotContainsString('SQLSTATE', (string) session('error'));
+    }
+
+    public function test_publisher_withdrawal_history_returns_json_when_table_is_gone(): void
+    {
+        $publisher = $this->userWithRole('publisher');
+        Schema::dropIfExists('withdrawals');
+
+        $this->assertSafeJsonFailure(
+            $this->actingAs($publisher)->getJson(route('publisher.withdrawals.history'))
+        );
+    }
+
+    public function test_publisher_content_download_is_safe_when_items_table_is_gone(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $submission = ContentSubmission::create([
+            'user_id' => $advertiser->id,
+            'title' => 'Leftover article',
+            'original_filename' => 'leftover.docx',
+            'disk' => 'local',
+            'path' => 'content-uploads/leftover.docx',
+            'moderation_status' => ContentSubmission::STATUS_APPROVED,
+        ]);
+
+        Schema::dropIfExists('order_items');
+
+        $response = $this->actingAs($publisher)->get(route('publisher.content.download', $submission));
+
+        $this->assertSame(503, $response->status());
+        $response->assertDontSee('SQLSTATE');
+    }
+
+    public function test_chat_messages_return_json_when_table_is_gone(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $order = $this->paidOrder($advertiser, $this->siteFor($publisher));
+
+        Schema::dropIfExists('order_chat_messages');
+
+        $this->assertSafeJsonFailure(
+            $this->actingAs($advertiser)->getJson(route('chat.messages', $order->id))
+        );
+    }
+
+    public function test_publisher_recent_orders_return_json_when_items_table_is_gone(): void
+    {
+        $publisher = $this->userWithRole('publisher');
+        $this->siteFor($publisher);
+        Schema::dropIfExists('order_items');
+
+        $this->assertSafeJsonFailure(
+            $this->actingAs($publisher)->getJson(route('publisher.dashboard.recent'))
+        );
+    }
+
+    private function paidOrder(User $advertiser, Site $site): Order
+    {
+        $order = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => 'ORD-LEFT-'.uniqid(),
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'status' => 'processing',
+        ]);
+        OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'price' => 80,
+            'content_link' => 'https://example.com/draft-article',
+            'anchor_text' => 'best seo tools',
+            'target_url' => 'https://advertiser.example',
+            'publisher_status' => 'pending',
+            'live_url' => 'https://leftover-news.example/live-post',
+        ]);
+
+        return $order;
+    }
+
+    private function failNextUserUpdate(): void
+    {
+        if (Schema::getConnection()->getDriverName() !== 'sqlite') {
+            $this->markTestSkipped('SQLite trigger used to force a profile save failure');
+        }
+
+        DB::unprepared(
+            'CREATE TRIGGER leftover_fail_user_update BEFORE UPDATE ON users
+             BEGIN SELECT RAISE(ABORT, \'SQLSTATE[HY000]: General error: disk full\'); END'
         );
     }
 }

@@ -128,12 +128,12 @@ class DashboardController extends Controller
                 'success' => true,
                 'orders' => $orders,
             ]);
-        } catch (\Exception $e) {
-            Log::error('Error fetching recent orders: '.$e->getMessage());
+        } catch (\Throwable $e) {
+            report($e);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to fetch recent orders',
+                'message' => UserFacingError::message($e, 'Failed to fetch recent orders.'),
             ], 500);
         }
     }

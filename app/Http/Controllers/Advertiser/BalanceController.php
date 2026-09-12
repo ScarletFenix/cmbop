@@ -12,6 +12,7 @@ use App\Services\Wallet\PayoutProfileService;
 use App\Services\Wallet\WalletLedgerService;
 use App\Services\Wallet\WalletOverviewService;
 use App\Support\UserFacingError;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -34,51 +35,69 @@ class BalanceController extends Controller
 
     public function transactions(Request $request)
     {
-        $userId = auth()->id();
-        $paginator = $this->overview->activity($userId, [
-            'search' => $request->get('search'),
-            'type' => $request->get('type'),
-            'status' => $request->get('status'),
-            'from' => $request->get('from'),
-            'to' => $request->get('to'),
-            'page' => $request->get('page', 1),
-        ], (int) $request->get('per_page', 15));
+        try {
+            $userId = auth()->id();
+            $paginator = $this->overview->activity($userId, [
+                'search' => $request->get('search'),
+                'type' => $request->get('type'),
+                'status' => $request->get('status'),
+                'from' => $request->get('from'),
+                'to' => $request->get('to'),
+                'page' => $request->get('page', 1),
+            ], (int) $request->get('per_page', 15));
 
-        return response()->json([
-            'success' => true,
-            'transactions' => $paginator->items(),
-            'pagination' => [
-                'current_page' => $paginator->currentPage(),
-                'last_page' => $paginator->lastPage(),
-                'per_page' => $paginator->perPage(),
-                'total' => $paginator->total(),
-                'from' => $paginator->firstItem(),
-                'to' => $paginator->lastItem(),
-            ],
-        ]);
+            return response()->json([
+                'success' => true,
+                'transactions' => $paginator->items(),
+                'pagination' => [
+                    'current_page' => $paginator->currentPage(),
+                    'last_page' => $paginator->lastPage(),
+                    'per_page' => $paginator->perPage(),
+                    'total' => $paginator->total(),
+                    'from' => $paginator->firstItem(),
+                    'to' => $paginator->lastItem(),
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'Unable to load transactions.'),
+            ], 500);
+        }
     }
 
     public function transactionShow(Request $request, string $source, $id)
     {
-        $row = $this->overview->findActivity(auth()->id(), $source, $id);
-        if (! $row) {
-            return response()->json(['success' => false, 'message' => 'Transaction not found.'], 404);
-        }
-
-        if (! empty($row['invoice_id'])) {
-            $invoice = Invoice::where('user_id', auth()->id())->find($row['invoice_id']);
-            if ($invoice) {
-                $row['invoice_download_url'] = route('advertiser.billing.download', $invoice);
-                $row['invoice_view_url'] = route('advertiser.billing.show', $invoice);
+        try {
+            $row = $this->overview->findActivity(auth()->id(), $source, $id);
+            if (! $row) {
+                return response()->json(['success' => false, 'message' => 'Transaction not found.'], 404);
             }
-        }
 
-        if (empty($row['invoice_download_url']) && ($row['source'] ?? '') === 'deposit' && ! empty($row['reference'])) {
-            $row['invoice_view_url'] = route('advertiser.invoice', $row['reference']);
-            $row['invoice_download_url'] = route('advertiser.invoice', ['referenceCode' => $row['reference'], 'download' => 1]);
-        }
+            if (! empty($row['invoice_id'])) {
+                $invoice = Invoice::where('user_id', auth()->id())->find($row['invoice_id']);
+                if ($invoice) {
+                    $row['invoice_download_url'] = route('advertiser.billing.download', $invoice);
+                    $row['invoice_view_url'] = route('advertiser.billing.show', $invoice);
+                }
+            }
 
-        return response()->json(['success' => true, 'transaction' => $row]);
+            if (empty($row['invoice_download_url']) && ($row['source'] ?? '') === 'deposit' && ! empty($row['reference'])) {
+                $row['invoice_view_url'] = route('advertiser.invoice', $row['reference']);
+                $row['invoice_download_url'] = route('advertiser.invoice', ['referenceCode' => $row['reference'], 'download' => 1]);
+            }
+
+            return response()->json(['success' => true, 'transaction' => $row]);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'Unable to load that transaction.'),
+            ], 500);
+        }
     }
 
     public function analytics(Request $request)
@@ -89,47 +108,64 @@ class BalanceController extends Controller
             $range = 'month';
         }
 
-        return response()->json([
-            'success' => true,
-            'analytics' => $this->overview->analytics(
-                auth()->id(),
-                $range,
-                $request->get('from'),
-                $request->get('to')
-            ),
-        ]);
+        try {
+            return response()->json([
+                'success' => true,
+                'analytics' => $this->overview->analytics(
+                    auth()->id(),
+                    $range,
+                    $request->get('from'),
+                    $request->get('to')
+                ),
+            ]);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'Unable to load wallet analytics.'),
+            ], 500);
+        }
     }
 
-    public function export(Request $request): StreamedResponse
+    public function export(Request $request): StreamedResponse|RedirectResponse
     {
-        $rows = $this->overview->exportRows(auth()->id(), [
-            'search' => $request->get('search'),
-            'type' => $request->get('type'),
-            'status' => $request->get('status'),
-            'from' => $request->get('from'),
-            'to' => $request->get('to'),
-        ]);
+        try {
+            $rows = $this->overview->exportRows(auth()->id(), [
+                'search' => $request->get('search'),
+                'type' => $request->get('type'),
+                'status' => $request->get('status'),
+                'from' => $request->get('from'),
+                'to' => $request->get('to'),
+            ]);
 
-        $filename = 'wallet-statement-'.now()->format('Y-m-d').'.csv';
+            $filename = 'wallet-statement-'.now()->format('Y-m-d').'.csv';
 
-        return response()->streamDownload(function () use ($rows) {
-            $out = fopen('php://output', 'w');
-            fputcsv($out, ['Date', 'Type', 'Description', 'Reference', 'Amount', 'Status', 'Balance After']);
-            foreach ($rows as $row) {
-                fputcsv($out, [
-                    $row['date'] ?? '',
-                    $row['type_label'] ?? '',
-                    $row['description'] ?? '',
-                    $row['reference'] ?? '',
-                    number_format((float) ($row['signed_amount'] ?? 0), 2, '.', ''),
-                    $row['status'] ?? '',
-                    $row['balance_after'] !== null ? number_format((float) $row['balance_after'], 2, '.', '') : '',
-                ]);
-            }
-            fclose($out);
-        }, $filename, [
-            'Content-Type' => 'text/csv',
-        ]);
+            return response()->streamDownload(function () use ($rows) {
+                $out = fopen('php://output', 'w');
+                fputcsv($out, ['Date', 'Type', 'Description', 'Reference', 'Amount', 'Status', 'Balance After']);
+                foreach ($rows as $row) {
+                    fputcsv($out, [
+                        $row['date'] ?? '',
+                        $row['type_label'] ?? '',
+                        $row['description'] ?? '',
+                        $row['reference'] ?? '',
+                        number_format((float) ($row['signed_amount'] ?? 0), 2, '.', ''),
+                        $row['status'] ?? '',
+                        $row['balance_after'] !== null ? number_format((float) $row['balance_after'], 2, '.', '') : '',
+                    ]);
+                }
+                fclose($out);
+            }, $filename, [
+                'Content-Type' => 'text/csv',
+            ]);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return redirect()
+                ->route('advertiser.add-funds')
+                ->with('error', UserFacingError::message($e, 'Unable to export transactions.'));
+        }
     }
 
     /**
