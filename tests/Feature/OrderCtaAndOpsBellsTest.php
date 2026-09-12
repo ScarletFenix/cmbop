@@ -242,15 +242,16 @@ class OrderCtaAndOpsBellsTest extends TestCase
                 ->count()
         );
 
-        // Site review bells remain shared with marketing.
+        // Site review bells remain shared with marketing, on the marketing sites URL.
         $notifications->notifyAdminsNewSite($this->site, 'create');
-        $this->assertSame(
-            1,
-            InAppNotification::query()
-                ->where('user_id', $this->marketer->id)
-                ->where('related_type', Site::class)
-                ->where('related_id', $this->site->id)
-                ->count()
-        );
+        $marketingSiteNote = InAppNotification::query()
+            ->where('user_id', $this->marketer->id)
+            ->where('related_type', Site::class)
+            ->where('related_id', $this->site->id)
+            ->first();
+        $this->assertNotNull($marketingSiteNote);
+        $this->assertStringContainsString('/marketing/sites', (string) $marketingSiteNote->action_url);
+        $this->assertStringContainsString('needs_review=1', (string) $marketingSiteNote->action_url);
+        $this->assertStringNotContainsString('/admin/sites', (string) $marketingSiteNote->action_url);
     }
 }

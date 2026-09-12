@@ -367,7 +367,7 @@ class SiteController extends Controller
                 ->first();
 
             $waitingItemsQuery = BulkSiteRequestItem::query()
-                ->whereNull('site_id')
+                ->pending()
                 ->whereHas('bulkRequest', function ($q) {
                     $q->where('publisher_id', auth()->id())
                         ->where('status', '!=', BulkSiteRequest::STATUS_CANCELLED);
