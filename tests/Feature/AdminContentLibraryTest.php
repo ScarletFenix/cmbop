@@ -13,6 +13,7 @@ use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\ContentModeration\ContentModerationService;
+use App\Services\ContentUpload\AdminLibraryStaffActions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
@@ -916,6 +917,28 @@ class AdminContentLibraryTest extends TestCase
         $this->assertNotNull($archived);
         $this->assertSame($unused->id, (int) data_get($archived->properties, 'submission_id'));
         $this->assertSame(1, ActivityLog::query()->where('action', 'content.restored')->count());
+    }
+
+    public function test_restore_unexpected_error_flashes_instead_of_500(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        $unused = $this->createApprovedSubmission($advertiser);
+        $unused->forceFill(['archived_at' => now()])->save();
+
+        $this->mock(AdminLibraryStaffActions::class, function ($mock) {
+            $mock->shouldReceive('restore')
+                ->once()
+                ->andThrow(new \RuntimeException('restore exploded'));
+        });
+
+        $this->actingAs($admin)
+            ->from(route('admin.content-library.show', $unused))
+            ->post(route('admin.content-library.restore', $unused))
+            ->assertRedirect(route('admin.content-library.show', $unused))
+            ->assertSessionHas('error', 'restore exploded');
+
+        $this->assertNotNull($unused->fresh()->archived_at);
     }
 
     public function test_retry_on_paid_article_is_forbidden(): void

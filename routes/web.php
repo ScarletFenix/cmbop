@@ -287,16 +287,9 @@ Route::get('/cron/orders-auto-approve/{key}', function ($key) {
 // minute. Point an external pinger here and everything scheduled runs — mail
 // drain, auto-approve, scheduled publishing, reminders and digests. Same secret
 // gate as above, since these tasks move money and send mail.
-Route::get('/cron/run/{key}', function ($key) {
-    $secret = (string) config('app.cron_secret', '');
-
-    if (strlen($secret) < 32) {
-        abort(404, UserMessages::get('cron.disabled'));
-    }
-
-    if (! hash_equals($secret, (string) $key)) {
-        abort(403, UserMessages::get('cron.forbidden'));
-    }
+// Prefer POST /cron/run with X-Cron-Key so the secret is not in access logs.
+$runHttpScheduler = function (Request $request, string $key = '') {
+    HttpCron::authorize($request, $key);
 
     Artisan::call('schedule:run');
 
@@ -304,6 +297,14 @@ Route::get('/cron/run/{key}', function ($key) {
         'status' => 'success',
         'message' => 'Scheduler run',
     ]);
+};
+
+Route::match(['GET', 'POST'], '/cron/run', function (Request $request) use ($runHttpScheduler) {
+    return $runHttpScheduler($request);
+})->middleware('throttle:6,1')->name('cron.run.header');
+
+Route::get('/cron/run/{key}', function (Request $request, $key) use ($runHttpScheduler) {
+    return $runHttpScheduler($request, (string) $key);
 })->middleware('throttle:6,1')->name('cron.run');
 
 // ✅ UPDATED: Guest middleware for login/register pages

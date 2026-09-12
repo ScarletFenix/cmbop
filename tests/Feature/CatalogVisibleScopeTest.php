@@ -61,7 +61,7 @@ class CatalogVisibleScopeTest extends TestCase
         ], $attrs));
     }
 
-    public function test_catalog_lists_only_active_verified_not_archived_sites(): void
+    public function test_catalog_lists_active_not_archived_sites_and_verified_is_a_badge(): void
     {
         $advertiser = $this->userWithRole('advertiser');
         $publisher = $this->userWithRole('publisher');
@@ -92,7 +92,7 @@ class CatalogVisibleScopeTest extends TestCase
         ]);
 
         $this->assertTrue($live->isCatalogVisible());
-        $this->assertSame(1, Site::query()->catalogVisible()->count());
+        $this->assertSame(2, Site::query()->catalogVisible()->count());
 
         $html = $this->actingAs($advertiser)
             ->get(route('advertiser.catalog.results'))
@@ -100,9 +100,15 @@ class CatalogVisibleScopeTest extends TestCase
             ->getContent();
 
         $this->assertStringContainsString('Live Catalog Site', $html);
-        $this->assertStringNotContainsString('Unverified Catalog Site', $html);
+        $this->assertStringContainsString('Unverified Catalog Site', $html);
+        $this->assertStringContainsString('Verified Publisher', $html);
         $this->assertStringNotContainsString('Inactive Catalog Site', $html);
         $this->assertStringNotContainsString('Archived Catalog Site', $html);
+
+        $unverifiedPos = strpos($html, 'Unverified Catalog Site');
+        $this->assertNotFalse($unverifiedPos);
+        $slice = substr($html, $unverifiedPos, 1800);
+        $this->assertStringNotContainsString('Verified Publisher', $slice);
     }
 
     public function test_unparseable_archived_at_does_not_hide_a_live_listing(): void

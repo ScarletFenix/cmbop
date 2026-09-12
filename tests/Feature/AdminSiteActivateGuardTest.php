@@ -76,7 +76,7 @@ class AdminSiteActivateGuardTest extends TestCase
         ], $overrides));
     }
 
-    public function test_admin_activate_verifies_unverified_review_ready_site(): void
+    public function test_admin_activate_does_not_assign_verified_badge(): void
     {
         $site = $this->site([
             'verified' => false,
@@ -87,12 +87,33 @@ class AdminSiteActivateGuardTest extends TestCase
             ->postJson(route('admin.sites.active', $site->id), ['active' => 1])
             ->assertOk()
             ->assertJsonPath('success', true)
-            ->assertJsonPath('active', true);
+            ->assertJsonPath('active', true)
+            ->assertJsonPath('verified', false);
 
         $fresh = $site->fresh();
         $this->assertTrue((bool) $fresh->active);
-        $this->assertTrue((bool) $fresh->verified);
+        $this->assertFalse((bool) $fresh->verified);
+        $this->assertTrue($fresh->isCatalogVisible());
         $this->assertSame(1, ActivityLog::query()->where('action', 'site.activated')->count());
+        $this->assertSame(0, ActivityLog::query()->where('action', 'site.approved')->count());
+    }
+
+    public function test_admin_can_assign_verified_badge_separately(): void
+    {
+        $site = $this->site([
+            'verified' => false,
+            'active' => true,
+            'onboarding_status' => null,
+        ]);
+
+        $this->actingAs($this->admin)
+            ->postJson(route('admin.sites.verify', $site->id), ['verified' => 1])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('verified', true);
+
+        $this->assertTrue((bool) $site->fresh()->verified);
+        $this->assertTrue((bool) $site->fresh()->active);
         $this->assertSame(1, ActivityLog::query()->where('action', 'site.approved')->count());
     }
 
@@ -269,11 +290,11 @@ class AdminSiteActivateGuardTest extends TestCase
 
         $fresh = $site->fresh();
         $this->assertTrue((bool) $fresh->active);
-        $this->assertTrue((bool) $fresh->verified);
+        $this->assertFalse((bool) $fresh->verified);
         $this->assertTrue($fresh->isCatalogVisible());
         $this->assertNull($fresh->onboarding_status);
         $this->assertSame(1, ActivityLog::query()->where('action', 'site.activated')->count());
-        $this->assertSame(1, ActivityLog::query()->where('action', 'site.approved')->count());
+        $this->assertSame(0, ActivityLog::query()->where('action', 'site.approved')->count());
 
         $this->actingAs($this->marketer)
             ->postJson(route('marketing.sites.active', $site->id), ['active' => 1])
@@ -282,7 +303,7 @@ class AdminSiteActivateGuardTest extends TestCase
             ->assertJsonPath('email_sent', false);
 
         $this->assertSame(1, ActivityLog::query()->where('action', 'site.activated')->count());
-        $this->assertSame(1, ActivityLog::query()->where('action', 'site.approved')->count());
+        $this->assertSame(0, ActivityLog::query()->where('action', 'site.approved')->count());
         Mail::assertQueued(SiteStatusNotification::class, 1);
     }
 
@@ -442,7 +463,8 @@ class AdminSiteActivateGuardTest extends TestCase
 
         $fresh = $site->fresh();
         $this->assertTrue((bool) $fresh->active);
-        $this->assertTrue((bool) $fresh->verified);
+        $this->assertFalse((bool) $fresh->verified);
+        $this->assertTrue($fresh->isCatalogVisible());
     }
 
     public function test_staff_list_flags_blocked_activate(): void

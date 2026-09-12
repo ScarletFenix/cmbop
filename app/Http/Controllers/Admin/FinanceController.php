@@ -9,6 +9,7 @@ use App\Models\WalletTransaction;
 use App\Services\ActivityLogger;
 use App\Services\Admin\FinanceOverviewService;
 use App\Services\Orders\OrderClawbackService;
+use App\Support\UserFacingError;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -315,6 +316,16 @@ class FinanceController extends Controller
             }
 
             return back()->withErrors($e->errors());
+        } catch (\Throwable $e) {
+            $message = UserFacingError::message($e, 'Unable to clear debt. Please try again.');
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $message,
+                ], 500);
+            }
+
+            return back()->with('error', $message);
         }
     }
 

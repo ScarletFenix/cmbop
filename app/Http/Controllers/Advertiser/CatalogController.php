@@ -126,11 +126,44 @@ class CatalogController extends Controller
      */
     private function getAvailableCountries()
     {
-        return Country::marketplace()
-            ->orderBy('name')
-            ->pluck('name', 'code')
-            ->mapWithKeys(fn ($name, $code) => [strtolower($code) => $name])
-            ->all();
+        try {
+            return Country::marketplace()
+                ->orderBy('name')
+                ->pluck('name', 'code')
+                ->mapWithKeys(fn ($name, $code) => [strtolower($code) => $name])
+                ->all();
+        } catch (\Throwable $e) {
+            Log::warning('Catalog country list failed', ['error' => $e->getMessage()]);
+
+            return function_exists('marketplace_countries') ? marketplace_countries() : [];
+        }
+    }
+
+    /**
+     * Last-resort country dropdown when pickerSections() itself throws.
+     *
+     * @return list<array{key: string, label: string, options: list<array{code: string, name: string, count: int}>}>
+     */
+    private function staticCountryPickerSections(): array
+    {
+        $options = [];
+        foreach ($this->getAvailableCountries() as $code => $name) {
+            $options[] = [
+                'code' => (string) $code,
+                'name' => (string) $name,
+                'count' => 0,
+            ];
+        }
+
+        if ($options === []) {
+            return [];
+        }
+
+        return [[
+            'key' => 'all_other',
+            'label' => 'All countries',
+            'options' => $options,
+        ]];
     }
 
     /**
@@ -189,7 +222,7 @@ class CatalogController extends Controller
             $countryPickerGroups = $countryPicker['groups'];
         } catch (\Throwable $e) {
             Log::warning('Catalog country picker failed', ['error' => $e->getMessage()]);
-            $countryPickerSections = [];
+            $countryPickerSections = $this->staticCountryPickerSections();
             $countryPickerGroups = [];
         }
 
@@ -3591,9 +3624,6 @@ class CatalogController extends Controller
 
             DB::commit();
             $this->forgetReplacedCheckoutPackages((int) $userId, ['lines' => $fulfillableLines]);
-            $this->restoreDeferredCartAfterPayment();
-
-            $isScheduled = ($schedule['mode'] ?? 'immediate') === 'scheduled';
 
             return $this->walletCheckoutSuccessResponse(
                 $createdOrders,
@@ -5344,10 +5374,16 @@ class CatalogController extends Controller
                 'trace' => $e->getTraceAsString(),
             ]);
 
-            return response()->json([
+            $payload = [
                 'success' => false,
                 'message' => UserFacingError::message($e, 'Failed to approve order. Please try again.'),
-            ], 500);
+            ];
+            $debug = UserFacingError::debugDetail($e);
+            if ($debug !== null) {
+                $payload['debug'] = $debug;
+            }
+
+            return response()->json($payload, 500);
         }
     }
 
@@ -6173,9 +6209,23 @@ class CatalogController extends Controller
 
     /**
      * After a successful payment, keep not-ready sites in the cart.
+     * Idempotent: a second call must not wipe lines the first call just restored.
      */
     private function restoreDeferredCartAfterPayment(): void
     {
+        if (! session()->exists('checkout_deferred_cart')) {
+            session()->forget([
+                'checkout_content_submission_id',
+                'checkout_schedule',
+                'pending_card_reference',
+                'checkout_reference_code',
+                'ordering_from_library',
+                GuestPostWizardController::SESSION_KEY,
+            ]);
+
+            return;
+        }
+
         $deferred = session('checkout_deferred_cart');
         session()->forget([
             'checkout_deferred_cart',

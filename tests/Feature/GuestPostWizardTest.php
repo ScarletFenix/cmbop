@@ -236,7 +236,7 @@ class GuestPostWizardTest extends TestCase
         $live = $this->activeSite($publisher, 'wizard-live.example');
         $live->update(['languages' => ['en', 'de']]);
         $unverified = $this->activeSite($publisher, 'wizard-unverified.example');
-        $unverified->update(['verified' => false]);
+        $unverified->update(['active' => false]);
 
         $this->actingAs($advertiser)
             ->withSession([
@@ -276,7 +276,7 @@ class GuestPostWizardTest extends TestCase
     {
         $advertiser = $this->advertiser();
         $hidden = $this->activeSite($this->publisher(), 'wizard-hidden-ready.example');
-        $hidden->update(['verified' => false]);
+        $hidden->update(['active' => false]);
         $article = $this->createApprovedSubmission($advertiser, null, 0, 'anchor', 'https://example.com/a', 'us', 'en');
 
         $this->actingAs($advertiser)

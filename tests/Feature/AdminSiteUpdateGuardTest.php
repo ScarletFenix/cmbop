@@ -505,6 +505,173 @@ class AdminSiteUpdateGuardTest extends TestCase
         $this->assertStringContainsString('<strong>', $saved);
     }
 
+    public function test_admin_can_replace_brief_on_inactive_unverified_site(): void
+    {
+        $site = $this->site([
+            'verified' => false,
+            'active' => false,
+            'description' => str_repeat('Original pending listing brief for advertisers. ', 3),
+        ]);
+        $next = 'This listing is for your audience and the publishers who write guest posts here.';
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'description' => $next,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $site->refresh();
+        $this->assertSame($next, $site->description);
+        $this->assertFalse((bool) $site->verified);
+        $this->assertFalse((bool) $site->active);
+    }
+
+    public function test_admin_save_promotes_complete_awaiting_details_draft(): void
+    {
+        $site = $this->site([
+            'verified' => false,
+            'active' => false,
+            'onboarding_status' => Site::ONBOARDING_AWAITING_DETAILS,
+            'turnaround_time' => '3days',
+            'categories' => ['News & Politics'],
+            'category' => 'News & Politics',
+            'description' => str_repeat('Original pending listing brief for advertisers. ', 3),
+        ]);
+        $next = 'This listing is for your audience and the publishers who write guest posts here.';
+
+        $this->assertTrue($site->awaitsPublisherDetails());
+        $this->assertTrue($site->hasCompletedPublisherDetails());
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'description' => $next,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('can_activate', true);
+
+        $site->refresh();
+        $this->assertSame($next, $site->description);
+        $this->assertFalse($site->awaitsPublisherDetails());
+        $this->assertTrue($site->isReadyForAdminReview());
+        $this->assertFalse((bool) $site->verified);
+        $this->assertFalse((bool) $site->active);
+
+        $this->actingAs($this->admin)
+            ->postJson(route('admin.sites.active', $site->id), ['active' => 1])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('active', true);
+
+        $site->refresh();
+        $this->assertTrue((bool) $site->active);
+        $this->assertFalse((bool) $site->verified);
+    }
+
+    public function test_admin_save_of_valid_brief_unlocks_incomplete_awaiting_details(): void
+    {
+        $site = $this->site([
+            'verified' => false,
+            'active' => false,
+            'onboarding_status' => Site::ONBOARDING_AWAITING_DETAILS,
+            'turnaround_time' => '',
+            'categories' => null,
+            'category' => 'Pending',
+            'description' => 'Please replace this placeholder with a real site description (at least 50 characters) before submitting for review.',
+        ]);
+        $next = 'This listing is for your audience and the publishers who write guest posts here.';
+
+        $this->assertFalse($site->hasCompletedPublisherDetails());
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'description' => $next,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('can_activate', true);
+
+        $site->refresh();
+        $this->assertSame($next, $site->description);
+        $this->assertFalse($site->awaitsPublisherDetails());
+        $this->assertTrue($site->isReadyForAdminReview());
+        $this->assertFalse((bool) $site->verified);
+
+        $this->actingAs($this->admin)
+            ->postJson(route('admin.sites.active', $site->id), ['active' => 1])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertTrue((bool) $site->fresh()->active);
+        $this->assertFalse((bool) $site->fresh()->verified);
+    }
+
+    public function test_admin_metrics_only_save_does_not_422_on_stale_placeholder_brief(): void
+    {
+        $site = $this->site([
+            'verified' => false,
+            'active' => false,
+            'onboarding_status' => Site::ONBOARDING_AWAITING_DETAILS,
+            'description' => 'Please replace this placeholder with a real site description (at least 50 characters) before submitting for review.',
+        ]);
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'da' => 55,
+                'dr' => 44,
+                'traffic' => 12000,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('can_activate', false);
+
+        $site->refresh();
+        $this->assertSame(55, (int) $site->da);
+        $this->assertTrue($site->awaitsPublisherDetails());
+    }
+
+    public function test_admin_save_keeps_incomplete_awaiting_details_draft(): void
+    {
+        $site = $this->site([
+            'verified' => false,
+            'active' => false,
+            'onboarding_status' => Site::ONBOARDING_AWAITING_DETAILS,
+            'turnaround_time' => '3days',
+            'categories' => ['News & Politics'],
+            'category' => 'News & Politics',
+            'description' => 'Please replace this placeholder with a real site description (at least 50 characters) before submitting for review.',
+        ]);
+
+        $this->assertFalse($site->hasCompletedPublisherDetails());
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'description' => 'Too short',
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['description']);
+
+        $site->refresh();
+        $this->assertTrue($site->awaitsPublisherDetails());
+        $this->assertFalse((bool) $site->active);
+    }
+
+    public function test_edit_page_shows_description_editor_on_inactive_site(): void
+    {
+        $site = $this->site([
+            'verified' => false,
+            'active' => false,
+        ]);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.sites.edit', $site->id))
+            ->assertOk()
+            ->assertSee('data-site-description-editor', false)
+            ->assertSee('name="description"', false)
+            ->assertSee('Save the advertiser brief, then use Activate.', false);
+    }
+
     public function test_edit_form_can_replace_the_brief_on_a_live_site(): void
     {
         $site = $this->site([

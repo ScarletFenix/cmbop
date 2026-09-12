@@ -1229,7 +1229,7 @@ class Site extends Model
      */
     public function promoteFromAwaitingDetailsIfComplete(): bool
     {
-        if (! $this->awaitsPublisherDetails()) {
+        if (! $this->awaitsPublisherDetails() && ! $this->hasDetailsComplete()) {
             return false;
         }
 
@@ -1245,7 +1245,34 @@ class Site extends Model
      */
     public function clearAwaitingDetailsForAdmin(): bool
     {
-        if (! $this->awaitsPublisherDetails()) {
+        if (! $this->awaitsPublisherDetails() && ! $this->hasDetailsComplete()) {
+            return false;
+        }
+
+        return $this->clearAwaitingDetailsOnboarding();
+    }
+
+    /**
+     * After an admin save: unlock Activate when the advertiser brief is usable.
+     * Missing niches/turnaround must not keep a finished brief stuck in draft.
+     */
+    public function promoteForAdminSaveIfBriefReady(): bool
+    {
+        if (! $this->awaitsPublisherDetails() && ! $this->hasDetailsComplete()) {
+            return false;
+        }
+
+        if ($this->promoteFromAwaitingDetailsIfComplete()) {
+            return true;
+        }
+
+        $html = (string) ($this->description ?? '');
+        $plain = SiteDescriptionRules::plainText($html);
+        if ($plain === '' || str_starts_with($plain, 'Please replace')) {
+            return false;
+        }
+
+        if (! SiteDescriptionRules::isValid($html)) {
             return false;
         }
 
@@ -1273,14 +1300,14 @@ class Site extends Model
      */
     public function hasCompletedPublisherDetails(): bool
     {
-        $description = trim((string) ($this->description ?? ''));
+        $description = SiteDescriptionRules::plainText((string) ($this->description ?? ''));
         $niches = collect($this->categories_array ?? [])
             ->map(fn ($v) => trim((string) $v))
             ->filter(fn ($v) => $v !== '' && strtolower($v) !== 'pending')
             ->values()
             ->all();
 
-        if (strlen($description) < 50) {
+        if (mb_strlen($description) < SiteDescriptionRules::MIN_CHARS) {
             return false;
         }
 
@@ -1347,8 +1374,8 @@ class Site extends Model
     }
 
     /**
-     * Staff Activate may verify-on-activate: explicit review submit or legacy
-     * null onboarding (same set as the review queue).
+     * Staff Activate is allowed without the Verified badge: explicit review
+     * submit or legacy null onboarding (same set as the review queue).
      */
     public function isReviewReadyForStaffGoLive(): bool
     {
@@ -1483,14 +1510,15 @@ class Site extends Model
     }
 
     /**
-     * Advertiser catalog / cart inventory: live, approved, and not staff-archived.
+     * Advertiser catalog / cart inventory: live and not staff-archived.
+     * Verified is a separate staff badge — it is not required to appear here.
      *
      * @param  Builder<Site>  $query
      * @return Builder<Site>
      */
     public function scopeCatalogVisible(Builder $query): Builder
     {
-        $query->active()->verified()->notArchived();
+        $query->active()->notArchived();
         if (static::hasSitesColumn('bulk_site_request_id')) {
             $query->notFromCancelledBulk();
         }
@@ -1501,7 +1529,6 @@ class Site extends Model
     public function isCatalogVisible(): bool
     {
         return (bool) $this->active
-            && (bool) $this->verified
             && ! $this->isArchived()
             && ! $this->isFromCancelledBulk();
     }
@@ -2598,6 +2625,32 @@ class Site extends Model
         sort($codes, SORT_STRING);
 
         return $codes;
+    }
+
+    /**
+     * Marketplace codes in publisher/admin stored order (primary first if it
+     * is not already listed). Records-sheet CSV keeps this order so a DE+AT
+     * listing stays `de|at` instead of the sorted `at|de` from countryCodes().
+     *
+     * @return list<string>
+     */
+    public function countryCodesForDisplay(): array
+    {
+        $codes = collect($this->countries ?? [])
+            ->filter()
+            ->map(fn ($c) => strtolower(trim((string) $c)))
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($this->country) {
+            $primary = strtolower(trim((string) $this->country));
+            if ($primary !== '' && ! in_array($primary, $codes, true)) {
+                array_unshift($codes, $primary);
+            }
+        }
+
+        return array_values(array_filter($codes));
     }
 
     public function hasMarketplaceCountry(): bool
