@@ -151,7 +151,9 @@ class GuestPostPriceIndexTest extends TestCase
             'country' => 'de',
             'countries' => ['de'],
             'price' => 999,
+            // Verified is only a badge now; inactive listings stay off the catalog.
             'verified' => false,
+            'active' => false,
         ]);
 
         $snapshot = app(GuestPostPriceIndex::class)->snapshot();
