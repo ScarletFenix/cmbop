@@ -22,6 +22,145 @@ class PublicI18nTest extends TestCase
             ->assertSee('Registrieren', false);
     }
 
+    public function test_german_home_targets_gastbeitrag_marketplace(): void
+    {
+        $html = $this->get('/de')
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Gastbeiträge kaufen — Gastbeitrag-Marktplatz | SEOLinkBuildings', $html);
+        $this->assertStringContainsString('Gastbeitrag-Marktplatz für geprüfte Publisher.', $html);
+        $this->assertStringNotContainsString('Guest-Post-Marktplatz für SEO-Backlinks', $html);
+        $this->assertStringNotContainsString('The guest post marketplace for verified publisher sites.', $html);
+    }
+
+    public function test_locale_homes_target_native_buy_guest_post_queries(): void
+    {
+        $pages = [
+            '/de' => [
+                'Gastbeiträge kaufen — Gastbeitrag-Marktplatz | SEOLinkBuildings',
+                'Gastbeitrag-Marktplatz für geprüfte Publisher.',
+            ],
+            '/fr' => [
+                'Acheter des guest posts chez des éditeurs vérifiés | SEOLinkBuildings',
+                'Achetez des guest posts sur des sites d’éditeurs vérifiés.',
+            ],
+            '/it' => [
+                'Comprare guest post da editori verificati | SEOLinkBuildings',
+                'Comprate guest post su siti di editori verificati.',
+            ],
+            '/es' => [
+                'Comprar guest posts de editores verificados | SEOLinkBuildings',
+                'Compre guest posts en sitios de editores verificados.',
+            ],
+            '/nl' => [
+                'Guest posts kopen bij geverifieerde publishers | SEOLinkBuildings',
+                'Guest posts kopen bij geverifieerde publishers.',
+            ],
+        ];
+
+        foreach ($pages as $path => [$title, $h1]) {
+            $html = $this->get($path)->assertOk()->getContent();
+            $this->assertStringContainsString($title, $html, $path.' title');
+            $this->assertStringContainsString($h1, $html, $path.' h1');
+            $this->assertStringNotContainsString('The guest post marketplace for verified publisher sites.', $html, $path);
+        }
+    }
+
+    public function test_german_publisher_page_targets_website_vermarkten_gastbeitrag(): void
+    {
+        $html = $this->get(LocalizedPublicPath::publicPath('become-a-publisher', 'de'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Ihre Website mit Gastbeiträgen vermarkten | Publisher werden', $html);
+        $this->assertStringContainsString('Ihre Website mit Gastbeiträgen vermarkten', $html);
+        $this->assertStringNotContainsString('Guest Posts verkaufen und verdienen', $html);
+        $this->assertStringNotContainsString('Monetarisieren Sie Ihr redaktionelles Inventar', $html);
+    }
+
+    public function test_english_publisher_page_targets_become_a_publisher_guest_posts(): void
+    {
+        $html = $this->get('/become-a-publisher')
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Become a Publisher and Sell Guest Posts | SEOLinkBuildings', $html);
+        $this->assertStringContainsString('List your site and sell guest posts', $html);
+        $this->assertStringNotContainsString('Become a publisher for guest posts', $html);
+        $this->assertStringNotContainsString('Sell Guest Posts and Earn', $html);
+        $this->assertStringNotContainsString('Monetize your editorial inventory', $html);
+    }
+
+    public function test_locale_publisher_pages_use_native_titles_not_thin_calques(): void
+    {
+        $pages = [
+            LocalizedPublicPath::publicPath('become-a-publisher', 'fr') => [
+                'Devenir éditeur et vendre des guest posts | SEOLinkBuildings',
+                'Proposez votre site et vendez des guest posts',
+            ],
+            LocalizedPublicPath::publicPath('become-a-publisher', 'it') => [
+                'Diventare publisher e vendere guest post | SEOLinkBuildings',
+                'Mettete il vostro sito e vendete guest post',
+            ],
+            LocalizedPublicPath::publicPath('become-a-publisher', 'es') => [
+                'Hágase editor y venda guest posts | SEOLinkBuildings',
+                'Anuncie su sitio y venda guest posts',
+            ],
+            LocalizedPublicPath::publicPath('become-a-publisher', 'nl') => [
+                'Publisher worden en guestposts verkopen | SEOLinkBuildings',
+                'Plaats uw site en verkoop guestposts',
+            ],
+        ];
+
+        foreach ($pages as $path => [$title, $h1]) {
+            $html = $this->get($path)->assertOk()->getContent();
+            $this->assertStringContainsString($title, $html, $path.' title');
+            $this->assertStringContainsString($h1, $html, $path.' h1');
+            $this->assertStringNotContainsString('Monétisez votre inventaire éditorial', $html, $path);
+            $this->assertStringNotContainsString('Monetizza il tuo inventario editoriale', $html, $path);
+            $this->assertStringNotContainsString('Monetice su inventario editorial', $html, $path);
+            $this->assertStringNotContainsString('Monetiseer uw redactionele inventaris', $html, $path);
+            $this->assertStringContainsString('hreflang="de"', $html, $path);
+            $this->assertStringContainsString('hreflang="fr"', $html, $path);
+            $this->assertStringContainsString(url('/register'), $html, $path);
+        }
+    }
+
+    public function test_locale_homes_keep_hreflang_without_thin_lander_copies(): void
+    {
+        foreach (['/de', '/fr', '/it', '/es', '/nl'] as $path) {
+            $html = $this->get($path)->assertOk()->getContent();
+            $this->assertStringContainsString('hreflang="de"', $html, $path);
+            $this->assertStringContainsString('hreflang="it"', $html, $path);
+            $this->assertStringContainsString('hreflang="es"', $html, $path);
+            $this->assertStringContainsString('hreflang="fr"', $html, $path);
+            $this->assertStringContainsString('hreflang="nl"', $html, $path);
+            $this->assertStringContainsString(url('/register'), $html, $path);
+            $this->assertStringNotContainsString('/de/guest-posts-germany', $html, $path);
+        }
+    }
+
+    public function test_english_pricing_page_targets_digital_pr_marketplace(): void
+    {
+        $html = $this->get('/pricing')
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Digital PR Marketplace | Guest Posts and Packages | SEOLinkBuildings', $html);
+        $this->assertStringContainsString('The digital PR marketplace for guest posts and packages', $html);
+        $this->assertStringNotContainsString('Marketplace placements and Digital PR packages', $html);
+        $this->assertStringNotContainsString('Guest Post and Digital PR Pricing', $html);
+        $this->assertStringNotContainsString('Transparent pricing for every campaign', $html);
+        $this->assertStringNotContainsString('The guest post marketplace for verified publisher sites.', $html);
+        $this->assertStringNotContainsString('slb-section-kicker', $html);
+        $this->assertStringContainsString('marketing-kicker', $html);
+
+        $home = $this->get('/')->assertOk()->getContent();
+        $this->assertStringContainsString('Marketplace placements and Digital PR packages', $home);
+        $this->assertStringContainsString('The guest post marketplace for verified publisher sites.', $home);
+    }
+
     public function test_locale_login_redirects_to_english_auth(): void
     {
         $this->get('/de/login')

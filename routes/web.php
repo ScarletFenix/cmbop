@@ -67,8 +67,8 @@ use App\Http\Controllers\MarketingPageController;
 use App\Http\Controllers\NewsletterController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\NotificationPreferenceController;
-// BlogController for public blog pages
 use App\Http\Controllers\ProfileController;
+// BlogController for public blog pages
 use App\Http\Controllers\PromotionTrackController;
 use App\Http\Controllers\PublicMediaController;
 use App\Http\Controllers\Publisher\BalanceController;
@@ -89,6 +89,7 @@ use App\Http\Middleware\RoleMiddleware;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\Marketing\CatalogTeaserService;
+use App\Support\CountryLander;
 use App\Support\LocalizedPublicPath;
 use App\Support\PublicI18n;
 use App\Support\RobotsTxt;
@@ -161,10 +162,27 @@ $registerPublicMarketingRoutes = function (string $locale = 'en') {
     Route::post($p('newsletter').'/subscribe', [NewsletterController::class, 'subscribe'])
         ->middleware('throttle:10,1')
         ->name('newsletter.subscribe');
+
+    foreach (CountryLander::all() as $landerKey => $lander) {
+        $landerSlug = trim((string) ($lander['slug'] ?? ''));
+        if ($landerSlug === '') {
+            continue;
+        }
+        Route::get('/'.$landerSlug, [MarketingPageController::class, 'countryLander'])
+            ->defaults('key', $landerKey)
+            ->name('guest-posts.'.$landerKey);
+    }
+
+    Route::get('/guest-post-prices-europe', [MarketingPageController::class, 'europePriceIndex'])
+        ->name('guest-post-prices-europe');
 };
 
 // English (canonical, no prefix)
 Route::group([], fn () => $registerPublicMarketingRoutes('en'));
+
+// Short legal aliases used in citations / the SEO workbook Pages tab.
+Route::get('/privacy', fn () => Redirect::to('/privacy-policy', 301));
+Route::get('/terms', fn () => Redirect::to('/terms-of-services', 301));
 
 // Prefixed locales use translated slugs; English leftovers 301 below.
 foreach (PublicI18n::prefixed() as $locale) {
