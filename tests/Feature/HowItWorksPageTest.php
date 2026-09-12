@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Support\LocalizedPublicPath;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -47,7 +48,7 @@ class HowItWorksPageTest extends TestCase
 
     public function test_german_how_it_works_is_localized(): void
     {
-        $this->get('/de/how-it-works')
+        $this->get(LocalizedPublicPath::publicPath('how-it-works', 'de'))
             ->assertOk()
             ->assertSee('Vom Katalog zum Live-Link', false)
             ->assertSee('Für Advertiser', false)

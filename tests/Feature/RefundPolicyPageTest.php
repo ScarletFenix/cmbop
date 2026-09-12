@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Support\LocalizedPublicPath;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -31,7 +32,7 @@ class RefundPolicyPageTest extends TestCase
 
     public function test_german_refund_policy_is_localized(): void
     {
-        $this->get('/de/refund-policy')
+        $this->get(LocalizedPublicPath::publicPath('refund-policy', 'de'))
             ->assertOk()
             ->assertSee('Rückerstattungsrichtlinie', false)
             ->assertSee('30 Tagen', false)

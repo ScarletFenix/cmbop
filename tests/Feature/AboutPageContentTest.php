@@ -8,6 +8,7 @@ use App\Models\Country;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
+use App\Support\LocalizedPublicPath;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -183,7 +184,7 @@ class AboutPageContentTest extends TestCase
 
     public function test_german_about_page_uses_local_copy_and_companies_house_link(): void
     {
-        $this->get('/de/about')
+        $this->get(LocalizedPublicPath::publicPath('about', 'de'))
             ->assertOk()
             ->assertSee('Der Guest-Post-Marktplatz für Europa', false)
             ->assertSee('DACH', false)
@@ -194,8 +195,8 @@ class AboutPageContentTest extends TestCase
 
     public function test_french_and_dutch_about_pages_are_unique(): void
     {
-        $fr = $this->get('/fr/about')->assertOk()->getContent();
-        $nl = $this->get('/nl/about')->assertOk()->getContent();
+        $fr = $this->get(LocalizedPublicPath::publicPath('about', 'fr'))->assertOk()->getContent();
+        $nl = $this->get(LocalizedPublicPath::publicPath('about', 'nl'))->assertOk()->getContent();
 
         $this->assertStringContainsString('conçue pour l’Europe', $fr);
         $this->assertStringContainsString('France &amp; Belgique', $fr);

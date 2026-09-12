@@ -94,6 +94,19 @@ class BlogController extends Controller
             $translation = $display;
         }
 
+        if (
+            $translation
+            && $translation->locale === $requestedLocale
+            && is_string($translation->slug)
+            && $translation->slug !== ''
+            && $translation->slug !== $slug
+        ) {
+            $target = $blog->canonicalUrl($requestedLocale, $fallbackLocale);
+            $query = $request->getQueryString();
+
+            return redirect($query ? $target.'?'.$query : $target, 301);
+        }
+
         if (! $translation) {
             $translation = new BlogTranslation([
                 'blog_id' => $blog->id,
