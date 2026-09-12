@@ -9,7 +9,7 @@ return [
 
     // Hero Section Translations
     'hero_title' => 'SEOLinkBuildings',
-    'hero_support' => 'Earn powerful backlinks from trusted websites.',
+    'hero_support' => 'The guest post marketplace for verified publisher sites.',
     'get_started' => 'Get Started',
     'hero_tagline' => 'The global link building marketplace for SEO, digital PR, and content distribution.',
     'hero_product_alt' => 'Marketplace catalog preview with publisher metrics and placement prices',
@@ -67,14 +67,14 @@ return [
     'meta_about_description' => 'Learn how SEOLinkBuildings connects advertisers and publishers for ethical guest posts and digital PR across Europe and English-speaking markets. The public site is available in English (UK/US), German, French, Dutch, Spanish, and Italian. Operated by Topurlz Ltd (UK).',
     'meta_faq_title' => 'FAQ — Guest Posts, Payments and Publishing | SEOLinkBuildings',
     'meta_faq_description' => 'Answers on wallets, orders, refunds, verification, and publishing. Learn how the Seolinkbuildings.com marketplace works before you buy or sell.',
-    'meta_pricing_title' => 'Guest Post and Digital PR Pricing | SEOLinkBuildings',
-    'meta_pricing_description' => 'Marketplace placements priced per site, plus managed Digital PR packages from €499/mo. Clear EUR pricing—no surprise fees on Seolinkbuildings.com.',
+    'meta_pricing_title' => 'Digital PR Marketplace | Guest Posts and Packages | SEOLinkBuildings',
+    'meta_pricing_description' => 'The digital PR marketplace for guest-post placements and managed packages from €499/mo. Clear EUR prices — no surprise fees on Seolinkbuildings.com.',
     'meta_marketplace_title' => 'Browse Publisher Sites and Buy Guest Posts | SEOLinkBuildings',
     'meta_marketplace_description' => 'Filter verified websites by niche, language, and price. Order editorial placements with live-URL tracking on the SEOLinkBuildings marketplace.',
     'meta_how_it_works_title' => 'How Guest Post Ordering Works | SEOLinkBuildings',
     'meta_how_it_works_description' => 'Browse verified publishers with ratings and completion history, fund a EUR wallet (€20 welcome credit), assign content, approve the live URL, and rate delivery — plus how publishers list and get paid.',
-    'meta_become_publisher_title' => 'Sell Guest Posts and Earn | Become a Publisher',
-    'meta_become_publisher_description' => 'List your site, accept placement orders, and withdraw earnings. Join the SEOLinkBuildings publisher network for quality editorial demand.',
+    'meta_become_publisher_title' => 'Become a Publisher and Sell Guest Posts | SEOLinkBuildings',
+    'meta_become_publisher_description' => 'List your site, sell guest posts, and withdraw earnings on the SEOLinkBuildings publisher network.',
     'meta_why_choose_title' => 'Why Brands Choose SEOLinkBuildings',
     'meta_why_choose_description' => 'Verified publishers, multilingual inventory, wallet payments, and order chat—built for agencies and in-house SEO teams who need reliable backlinks.',
     'meta_cookie_title' => 'Cookie Policy | SEOLinkBuildings',
@@ -184,10 +184,10 @@ return [
 
     // Pricing page chrome
     'pricing_kicker' => 'Pricing',
-    'pricing_page_title' => 'Transparent pricing for every campaign',
-    'pricing_page_subtitle' => 'Pay per placement in the marketplace, or choose a managed Digital PR package.',
-    'pricing_hero_title' => 'Buy placements that match your market',
-    'pricing_hero_lead' => 'Browse verified publisher sites, pick a price that fits, and checkout from your wallet.',
+    'pricing_page_title' => 'The digital PR marketplace for guest posts and packages',
+    'pricing_page_subtitle' => 'Pay per guest-post placement, or choose a managed Digital PR package.',
+    'pricing_hero_title' => 'Marketplace placements and Digital PR packages',
+    'pricing_hero_lead' => 'Browse verified publisher sites, pick a price that fits, and check out from your wallet.',
     'pricing_hero_from' => 'Marketplace placements start from',
     'pricing_cta_create' => 'Create free account',
     'pricing_cta_browse' => 'Browse after login',
@@ -201,8 +201,8 @@ return [
 
     // Marketplace marketing page
     'marketplace_kicker' => 'Marketplace',
-    'marketplace_title' => 'A publisher network built for SEO outcomes',
-    'marketplace_subtitle' => 'Filter by country, language, category, and metrics — then buy placements with clear pricing.',
+    'marketplace_title' => 'Buy guest posts from verified publishers',
+    'marketplace_subtitle' => 'Filter by country, language, category, and metrics — then buy guest posts with clear EUR prices.',
     'marketplace_point_1_title' => 'Verified publishers',
     'marketplace_point_1_body' => 'Focus on real editorial sites across Europe and major international markets.',
     'marketplace_point_2_title' => 'Wallet checkout',
@@ -215,8 +215,8 @@ return [
 
     // Become publisher
     'become_publisher_kicker' => 'Publishers',
-    'become_publisher_title' => 'Monetize your editorial inventory',
-    'become_publisher_subtitle' => 'List websites, receive briefed orders, and get paid for quality placements.',
+    'become_publisher_title' => 'List your site and sell guest posts',
+    'become_publisher_subtitle' => 'List your site, sell guest posts, and get paid for quality placements.',
     'become_publisher_point_1_title' => 'Simple listing',
     'become_publisher_point_1_body' => 'Add your site details, pricing, and turnaround so advertisers can find you fast.',
     'become_publisher_point_2_title' => 'Clear order flow',

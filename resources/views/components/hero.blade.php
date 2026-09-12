@@ -44,6 +44,7 @@
             class="slb-hero-product"
             width="1200"
             height="518"
+            fetchpriority="high"
             loading="eager"
             decoding="async"
           >
@@ -134,8 +135,9 @@
     line-height: 1.15;
     font-weight: 700;
     color: var(--brand-primary, #1a585e);
-    letter-spacing: -0.03em;
-    max-width: 18ch;
+    letter-spacing: -0.015em;
+    word-spacing: 0.04em;
+    max-width: 32ch;
     animation: slbHeroFade 0.7s ease 0.08s both;
   }
 
@@ -391,12 +393,12 @@
   }
 
   @keyframes slbHeroFade {
-    from { opacity: 0; transform: translateY(10px); }
+    from { opacity: 1; transform: translateY(6px); }
     to { opacity: 1; transform: translateY(0); }
   }
 
   @keyframes slbHeroRise {
-    from { opacity: 0; transform: translateY(18px); }
+    from { opacity: 1; transform: translateY(8px); }
     to { opacity: 1; transform: translateY(0); }
   }
 

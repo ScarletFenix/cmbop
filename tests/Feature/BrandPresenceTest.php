@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Support\BrandOrganization;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -16,13 +17,72 @@ class BrandPresenceTest extends TestCase
             ->getContent();
 
         $this->assertStringContainsString('slb-hero-title', $html);
-        $this->assertStringContainsString('Earn powerful backlinks from trusted websites.', $html);
+        $this->assertStringContainsString('The guest post marketplace for verified publisher sites.', $html);
         $this->assertStringContainsString('assets/img/logo1.png', $html);
         $this->assertStringContainsString('slb-hero-mark', $html);
         $this->assertStringContainsString('favicon.svg', $html);
         $this->assertStringContainsString('alt="SEOLinkBuildings"', $html);
         $this->assertStringContainsString('navbar-logo', $html);
         $this->assertStringContainsString('height: 64px', $html);
+    }
+
+    public function test_homepage_brand_misspelling_uses_schema_not_the_title(): void
+    {
+        $html = $this->get('/')
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Guest Post Marketplace for SEO Backlinks', $html);
+        $this->assertStringContainsString('"SEO Link Buildings"', $html);
+        $this->assertStringContainsString('"Seolink Buildings"', $html);
+        $this->assertStringContainsString('"Topurlz Ltd"', $html);
+        $this->assertStringContainsString('20 Wenlock Road', $html);
+        $this->assertStringContainsString('N1 7GU', $html);
+        $this->assertStringContainsString('16607074', $html);
+        $this->assertStringContainsString('support@seolinkbuildings.com', $html);
+        $this->assertStringContainsString('find-and-update.company-information.service.gov.uk/company/16607074', $html);
+        $this->assertStringNotContainsString('<title>SEO Link Buildings', $html);
+        $this->assertStringNotContainsString('The guest post marketplace for verified publisher sites.</title>', $html);
+    }
+
+    public function test_homepage_brand_serp_links_site_linkedin_trustpilot_and_about(): void
+    {
+        $html = $this->get('/')
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Guest Post Marketplace for SEO Backlinks', $html);
+        $this->assertStringContainsString('https://www.linkedin.com/company/seolinkbuildings', $html);
+        $this->assertStringContainsString(config('services.trustpilot.review_url'), $html);
+        $this->assertStringContainsString('/about', $html);
+        $this->assertStringContainsString('"@type":"AboutPage"', $html);
+        $this->assertStringContainsString('trustpilot.com/review/seolinkbuildings.com', $html);
+        $this->assertStringNotContainsString('<title>seolinkbuildings', $html);
+        $this->assertStringNotContainsString('<title>SEOLinkBuildings</title>', $html);
+
+        $sameAs = BrandOrganization::sameAs();
+        $this->assertContains('https://www.linkedin.com/company/seolinkbuildings', $sameAs);
+        $this->assertContains(config('services.trustpilot.review_url'), $sameAs);
+        $this->assertContains('https://find-and-update.company-information.service.gov.uk/company/16607074', $sameAs);
+    }
+
+    public function test_homepage_and_marketplace_target_different_money_queries(): void
+    {
+        $home = $this->get('/')
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Guest Post Marketplace for SEO Backlinks', $home);
+        $this->assertStringContainsString('The guest post marketplace for verified publisher sites.', $home);
+        $this->assertStringNotContainsString('Buy guest posts from verified publishers', $home);
+
+        $market = $this->get('/marketplace')
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Browse Publisher Sites and Buy Guest Posts', $market);
+        $this->assertStringContainsString('Buy guest posts from verified publishers', $market);
+        $this->assertStringNotContainsString('The guest post marketplace for verified publisher sites.', $market);
     }
 
     public function test_marketing_subpage_hero_includes_brand_line(): void
@@ -60,6 +120,7 @@ class BrandPresenceTest extends TestCase
         $this->assertStringContainsString('contact-info-link', $html);
         $this->assertStringContainsString('overflow-wrap: anywhere', $html);
         $this->assertStringContainsString('linkedin.com/company/seolinkbuildings', $html);
+        $this->assertStringContainsString(config('social.profiles.linkedin.url'), $html);
     }
 
     public function test_footer_includes_official_social_icons(): void

@@ -9,7 +9,7 @@ return [
 
     // Hero Section Translations
     'hero_title' => 'SEOLinkBuildings',
-    'hero_support' => 'Ottieni backlink potenti da siti web di fiducia.',
+    'hero_support' => 'Comprate guest post su siti di editori verificati.',
     'get_started' => 'Inizia',
     'hero_tagline' => 'Il marketplace globale di link building per SEO, PR digitale e distribuzione di contenuti.',
     'hero_product_alt' => 'Anteprima del catalogo del marketplace con metriche dei publisher e prezzi delle pubblicazioni',
@@ -61,8 +61,8 @@ return [
     // Default + page meta (SEOLinkBuildings / seolinkbuildings.com)
     'meta_default_title' => 'SEOLinkBuildings — Marketplace di guest post e backlink',
     'meta_default_description' => 'Seolinkbuildings.com è il marketplace di guest post per comprare e vendere backlink editoriali con publisher verificati e prezzi trasparenti in EUR.',
-    'meta_home_title' => 'Marketplace di guest post per backlink SEO | SEOLinkBuildings',
-    'meta_home_description' => 'Acquista guest post dofollow da publisher verificati su Seolinkbuildings.com. Wallet in EUR, prezzi trasparenti, 20 € di credito di benvenuto. Scala il link building e la PR digitale.',
+    'meta_home_title' => 'Comprare guest post da editori verificati | SEOLinkBuildings',
+    'meta_home_description' => 'Comprare guest post su siti di editori verificati. Wallet in EUR, prezzi chiari, URL live nell\'ordine — il marketplace di SEOLinkBuildings.',
     'meta_about_title' => 'Chi siamo — Marketplace europeo di guest post | SEOLinkBuildings',
     'meta_about_description' => 'Scopri come SEOLinkBuildings mette in contatto inserzionisti e publisher per guest post etici e PR digitale in Europa e nei mercati anglofoni. Il sito pubblico è disponibile in inglese (UK/US), tedesco, francese, olandese, spagnolo e italiano. Gestito da Topurlz Ltd (UK).',
     'meta_faq_title' => 'FAQ — Guest post, pagamenti e pubblicazione | SEOLinkBuildings',
@@ -73,7 +73,7 @@ return [
     'meta_marketplace_description' => 'Filtra siti web verificati per nicchia, lingua e prezzo. Ordina pubblicazioni editoriali con tracciamento dell\'URL live sul marketplace di SEOLinkBuildings.',
     'meta_how_it_works_title' => 'Come funziona l\'ordine di un guest post | SEOLinkBuildings',
     'meta_how_it_works_description' => 'Sfoglia publisher verificati con valutazioni e storico di consegna, ricarica un wallet in EUR (20 € di credito di benvenuto), assegna i contenuti, approva l\'URL live e valuta la consegna — e come i publisher pubblicano e vengono pagati.',
-    'meta_become_publisher_title' => 'Vendi guest post e guadagna | Diventa publisher',
+    'meta_become_publisher_title' => 'Diventare publisher e vendere guest post | SEOLinkBuildings',
     'meta_become_publisher_description' => 'Metti in elenco il tuo sito, accetta ordini di pubblicazione e preleva i guadagni. Entra nella rete di publisher di SEOLinkBuildings per una domanda editoriale di qualità.',
     'meta_why_choose_title' => 'Perché i brand scelgono SEOLinkBuildings',
     'meta_why_choose_description' => 'Publisher verificati, inventario multilingue, pagamenti con wallet e chat dell\'ordine: pensato per agenzie e team SEO interni che hanno bisogno di backlink affidabili.',
@@ -215,7 +215,7 @@ return [
 
     // Become publisher
     'become_publisher_kicker' => 'Publisher',
-    'become_publisher_title' => 'Monetizza il tuo inventario editoriale',
+    'become_publisher_title' => 'Mettete il vostro sito e vendete guest post',
     'become_publisher_subtitle' => 'Metti in elenco i siti, ricevi ordini con brief e vieni pagato per pubblicazioni di qualità.',
     'become_publisher_point_1_title' => 'Elenco semplice',
     'become_publisher_point_1_body' => 'Aggiungi i dati del sito, il prezzo e i tempi di consegna così gli inserzionisti ti trovano in fretta.',

@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\Blog;
 use App\Models\BlogTranslation;
 use App\Services\CuratedBlogSync;
+use App\Services\Marketing\GuestPostPriceIndex;
+use App\Support\CountryLander;
 use App\Support\PublicI18n;
 use Illuminate\Http\Response;
 
@@ -33,7 +35,9 @@ class SitemapController extends Controller
 
     public function index(): Response
     {
-        $base = rtrim(config('app.url'), '/');
+        // Production APP_URL is sometimes still loopback. Child locs must
+        // use the public origin or GSC cannot fetch locale sitemaps.
+        $base = rtrim(app_public_url(), '/');
         $sitemaps = [];
 
         foreach (PublicI18n::supported() as $locale) {
@@ -54,7 +58,7 @@ class SitemapController extends Controller
         // Locale sitemaps join blog_translations — heal skipped migrations.
         CuratedBlogSync::ensurePresent();
 
-        $base = rtrim(config('app.url'), '/');
+        $base = rtrim(app_public_url(), '/');
         $urls = [];
 
         foreach ($this->staticPages() as $page) {
@@ -75,16 +79,28 @@ class SitemapController extends Controller
                 'priority' => '0.5',
                 'alternates' => [],
             ];
+
+            foreach (CountryLander::slugs() as $landerPath) {
+                $urls[] = $this->urlEntry($landerPath, $locale, 'weekly', '0.8', ['en'], ['en' => $landerPath]);
+            }
+
+            $priceIndex = GuestPostPriceIndex::SLUG;
+            $urls[] = $this->urlEntry($priceIndex, $locale, 'weekly', '0.8', ['en'], ['en' => $priceIndex]);
         }
 
-        $translations = BlogTranslation::query()
-            ->select('blog_translations.*')
-            ->join('blogs', 'blogs.id', '=', 'blog_translations.blog_id')
-            ->whereIn('blogs.id', Blog::published()->select('blogs.id'))
-            ->where('blog_translations.locale', $locale)
-            ->where('blog_translations.is_published', true)
-            ->orderByDesc('blogs.published_at')
-            ->get();
+        $translations = collect();
+        try {
+            $translations = BlogTranslation::query()
+                ->select('blog_translations.*')
+                ->join('blogs', 'blogs.id', '=', 'blog_translations.blog_id')
+                ->whereIn('blogs.id', Blog::published()->select('blogs.id'))
+                ->where('blog_translations.locale', $locale)
+                ->where('blog_translations.is_published', true)
+                ->orderByDesc('blogs.published_at')
+                ->get();
+        } catch (\Throwable) {
+            // Static money pages still ship if translations are mid-heal.
+        }
 
         foreach ($translations as $translation) {
             $path = 'blog/'.$translation->slug;
