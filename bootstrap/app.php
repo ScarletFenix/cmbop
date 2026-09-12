@@ -34,7 +34,12 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // Public-site locale detection (SaaS dashboards stay English via SetLocale rules)
         // Security headers (CSP, HSTS, nosniff, frame, referrer) on every web response
-        $middleware->prependToGroup('web', CanonicalHost::class);
+        // Partial Hostinger uploads often ship bootstrap/app.php without this file.
+        $canonicalHostFile = dirname(__DIR__).'/app/Http/Middleware/CanonicalHost.php';
+        if (is_file($canonicalHostFile)) {
+            require_once $canonicalHostFile;
+            $middleware->prependToGroup('web', CanonicalHost::class);
+        }
         $middleware->appendToGroup('web', [
             SetLocale::class,
             SecurityHeaders::class,
