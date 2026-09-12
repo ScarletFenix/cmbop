@@ -117,7 +117,7 @@ class MarketingPageController extends Controller
         }
 
         try {
-            $verified = (int) Site::query()->catalogVisible()->count();
+            $verified = (int) Site::query()->catalogVisible()->verified()->count();
             if ($verified > 0) {
                 $stats['verified_sites'] = $verified;
             }

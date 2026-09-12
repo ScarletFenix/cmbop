@@ -92,7 +92,7 @@
                 text: text,
                 icon: 'warning',
                 confirmText: 'Activate anyway',
-                cancelText: 'Go back',
+                cancelText: 'Edit description',
                 danger: true,
             }).then(function (ok) {
                 var editUrl = String(opts.editUrl || '').trim();

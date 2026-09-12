@@ -175,4 +175,20 @@ class CatalogCountryOrderedPickerTest extends TestCase
         $groupKeys = collect($sections['groups'])->pluck('key')->all();
         $this->assertSame(['dach_plus', 'nordics'], $groupKeys);
     }
+
+    public function test_country_dropdown_lists_marketplace_countries_when_inventory_is_empty(): void
+    {
+        Cache::flush();
+
+        $html = $this->actingAs($this->advertiser())
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('value="pt"', $html);
+        $this->assertStringContainsString('Portugal', $html);
+        $this->assertStringContainsString('value="de"', $html);
+        $this->assertStringContainsString('Germany', $html);
+        $this->assertStringNotContainsString('No markets with listings yet', $html);
+    }
 }
