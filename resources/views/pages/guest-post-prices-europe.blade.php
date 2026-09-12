@@ -104,7 +104,7 @@
             @if($index['europe']['median'] !== null)
                 <div class="col-md-6">
                     <div class="h-100 p-4 rounded-4 bg-white border">
-                        <div class="small text-muted mb-1">Europe median</div>
+                        <div class="small text-muted mb-1" data-price-index-kpi="europe-median">Europe median</div>
                         <div class="h3 mb-0" style="color:#1a585e;">€{{ number_format((float) $index['europe']['median'], 0) }}</div>
                         <p class="small text-muted mb-0 mt-2">Median advertiser checkout price across {{ number_format((int) $index['europe']['listings']) }} European catalog listings.</p>
                     </div>
@@ -165,7 +165,7 @@
             <li class="mb-2">Country is the listing’s <strong>primary country</strong> — the same rule as the advertiser catalog. A US-primary site with a Germany tag does not count as Germany.</li>
             <li class="mb-2">Prices are <strong>advertiser checkout</strong> (publisher list price plus the platform fee), in EUR. They are not what publishers withdraw.</li>
             <li class="mb-2">Each country uses the <strong>median</strong>, not the mean, so one expensive listing does not pull the number.</li>
-            <li class="mb-2">A country row needs <strong>at least three</strong> listings. The Europe median uses every European listing and also waits for a sample of three.</li>
+            <li class="mb-2">A country row needs <strong>at least three</strong> listings. The Europe-wide figure uses every European listing and also waits for a sample of three.</li>
         </ul>
     </section>
 

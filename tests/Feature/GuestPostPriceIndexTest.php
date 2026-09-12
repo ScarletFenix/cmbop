@@ -73,7 +73,7 @@ class GuestPostPriceIndexTest extends TestCase
         $this->assertStringContainsString(url('/register'), $html);
         $this->assertStringContainsString(localized_url('become-a-publisher'), $html);
         $this->assertStringContainsString('/guest-posts-germany', $html);
-        $this->assertStringNotContainsString('Europe median', $html);
+        $this->assertStringNotContainsString('data-price-index-kpi="europe-median"', $html);
         $this->assertStringNotContainsString('Median price by country', $html);
         $this->assertStringNotContainsString('AggregateRating', $html);
         $this->assertStringNotContainsString('advertiser/catalog', $html);
@@ -202,7 +202,7 @@ class GuestPostPriceIndexTest extends TestCase
         $this->get('/guest-post-prices-europe')
             ->assertOk()
             ->assertSee('Index updates as the catalog grows', false)
-            ->assertDontSee('Europe median', false)
+            ->assertDontSee('data-price-index-kpi="europe-median"', false)
             ->assertDontSee('Median price by country', false);
     }
 
