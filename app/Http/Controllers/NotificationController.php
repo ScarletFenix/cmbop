@@ -6,6 +6,7 @@ use App\Models\InAppNotification;
 use App\Models\Order;
 use App\Models\OrderActivity;
 use App\Services\InAppNotificationService;
+use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 
 class NotificationController extends Controller
@@ -204,12 +205,21 @@ class NotificationController extends Controller
             return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
         }
 
-        $activities = OrderActivity::where('order_id', $order->id)
-            ->orderBy('created_at')
-            ->orderBy('id')
-            ->get()
-            ->map(fn (OrderActivity $a) => $a->toApiArray())
-            ->values();
+        try {
+            $activities = OrderActivity::where('order_id', $order->id)
+                ->orderBy('created_at')
+                ->orderBy('id')
+                ->get()
+                ->map(fn (OrderActivity $a) => $a->toApiArray())
+                ->values();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'We could not load this order timeline. Please try again.'),
+            ], 500);
+        }
 
         return response()->json([
             'success' => true,

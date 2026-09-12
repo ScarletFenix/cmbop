@@ -9,6 +9,7 @@ use App\Services\ActivityLogger;
 use App\Services\Catalog\SiteUrlVisibility;
 use App\Services\SiteClaimTransferService;
 use App\Support\NormalizesHttpUrls;
+use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -166,6 +167,13 @@ class SiteClaimController extends Controller
                 'success' => false,
                 'message' => $e->validator->errors()->first() ?: 'Claim could not be submitted.',
             ], 422);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'We could not submit that claim. Please try again.'),
+            ], 500);
         }
 
         try {

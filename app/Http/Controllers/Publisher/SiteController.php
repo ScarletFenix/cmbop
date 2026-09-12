@@ -988,8 +988,17 @@ class SiteController extends Controller
         }
 
         // Hide via archived_at only — keep active/verified so restore does not force a site live.
-        $site->archived_at = now();
-        $site->save();
+        try {
+            $site->archived_at = now();
+            $site->save();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'We could not archive this website. Please try again.'),
+            ], 500);
+        }
 
         ActivityLogger::tryLog(
             'site.archived',
@@ -1017,9 +1026,18 @@ class SiteController extends Controller
             return response()->json(['success' => false, 'message' => 'Site is not archived.'], 422);
         }
 
-        $site->archived_at = null;
-        $site->save();
-        $site->refresh();
+        try {
+            $site->archived_at = null;
+            $site->save();
+            $site->refresh();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'We could not restore this website. Please try again.'),
+            ], 500);
+        }
 
         ActivityLogger::tryLog(
             'site.unarchived',

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Publisher;
 use App\Http\Controllers\Controller;
 use App\Models\Site;
 use App\Services\SiteFileVerificationService;
+use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
 
@@ -52,13 +53,23 @@ class SiteVerificationController extends Controller
         }
 
         $regenerate = $request->boolean('regenerate');
-        $payload = $this->verification->start($site, $regenerate);
+
+        try {
+            $payload = $this->verification->start($site, $regenerate);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'We could not start verification. Please try again.'),
+            ], 500);
+        }
 
         return response()->json([
             'success' => true,
             'verified' => false,
             'message' => $regenerate
-                ? 'New verification code generated. Update your file, then check again.'
+                ? 'New verification code generated. Update your file, then click Check verification.'
                 : 'Upload the verification file, then click Check verification.',
             'error_code' => null,
             ...$payload,
@@ -98,7 +109,17 @@ class SiteVerificationController extends Controller
             ], 422);
         }
 
-        $result = $this->verification->check($site->fresh());
+        try {
+            $result = $this->verification->check($site->fresh());
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'verified' => false,
+                'message' => UserFacingError::message($e, 'We could not check verification. Please try again.'),
+            ], 500);
+        }
 
         if (! empty($result['verified'])) {
             RateLimiter::clear($key);
