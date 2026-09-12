@@ -59,6 +59,7 @@ use App\Support\UserFacingError;
 use App\Support\UserMessages;
 use Carbon\CarbonInterface;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -133,37 +134,10 @@ class CatalogController extends Controller
                 ->mapWithKeys(fn ($name, $code) => [strtolower($code) => $name])
                 ->all();
         } catch (\Throwable $e) {
-            Log::warning('Catalog country list failed', ['error' => $e->getMessage()]);
+            Log::warning('Catalog countries lookup failed', ['error' => $e->getMessage()]);
 
-            return function_exists('marketplace_countries') ? marketplace_countries() : [];
-        }
-    }
-
-    /**
-     * Last-resort country dropdown when pickerSections() itself throws.
-     *
-     * @return list<array{key: string, label: string, options: list<array{code: string, name: string, count: int}>}>
-     */
-    private function staticCountryPickerSections(): array
-    {
-        $options = [];
-        foreach ($this->getAvailableCountries() as $code => $name) {
-            $options[] = [
-                'code' => (string) $code,
-                'name' => (string) $name,
-                'count' => 0,
-            ];
-        }
-
-        if ($options === []) {
             return [];
         }
-
-        return [[
-            'key' => 'all_other',
-            'label' => 'All countries',
-            'options' => $options,
-        ]];
     }
 
     /**
@@ -171,11 +145,17 @@ class CatalogController extends Controller
      */
     private function getAvailableLanguages()
     {
-        return Language::marketplace()
-            ->orderBy('name')
-            ->pluck('name', 'code')
-            ->mapWithKeys(fn ($name, $code) => [strtolower($code) => $name])
-            ->all();
+        try {
+            return Language::marketplace()
+                ->orderBy('name')
+                ->pluck('name', 'code')
+                ->mapWithKeys(fn ($name, $code) => [strtolower($code) => $name])
+                ->all();
+        } catch (\Throwable $e) {
+            Log::warning('Catalog languages lookup failed', ['error' => $e->getMessage()]);
+
+            return [];
+        }
     }
 
     /**
@@ -186,7 +166,38 @@ class CatalogController extends Controller
      */
     private function getAvailableCategories(): array
     {
-        return Category::catalogPickerRows();
+        try {
+            return Category::catalogPickerRows();
+        } catch (\Throwable $e) {
+            Log::warning('Catalog categories lookup failed', ['error' => $e->getMessage()]);
+
+            return [];
+        }
+    }
+
+    /**
+     * @return array{
+     *     sites: LengthAwarePaginator,
+     *     favorites: array<int, int>,
+     *     blacklist: array<int, int>,
+     *     showBlacklistedOnly: bool
+     * }
+     */
+    private function emptyCatalogListing(Request $request): array
+    {
+        $perPage = CatalogUrlQuery::perPage($request);
+        $sites = new \Illuminate\Pagination\LengthAwarePaginator([], 0, $perPage, 1, [
+            'path' => route('advertiser.catalog', absolute: false),
+            'query' => CatalogUrlQuery::fromRequest($request),
+        ]);
+        $sites->appends(CatalogUrlQuery::fromRequest($request));
+
+        return [
+            'sites' => $sites,
+            'favorites' => [],
+            'blacklist' => [],
+            'showBlacklistedOnly' => search_text($request->input('blacklist_filter')) === '1',
+        ];
     }
 
     public function index(Request $request)
@@ -201,9 +212,23 @@ class CatalogController extends Controller
 
         // Content Library → Catalog: keep the active article in session for cart assign.
         // Do not pre-filter language/country — advertisers pick filters manually.
-        $orderingSubmission = $this->resolveActiveLibraryOrdering($request);
+        try {
+            $orderingSubmission = $this->resolveActiveLibraryOrdering($request);
+        } catch (\Throwable $e) {
+            report($e);
+            $orderingSubmission = null;
+        }
 
-        $listing = $this->buildCatalogListing($request);
+        try {
+            $listing = $this->buildCatalogListing($request);
+        } catch (\Throwable $e) {
+            report($e);
+            session()->flash(
+                'error',
+                UserFacingError::message($e, 'Unable to load catalog listings. Please refresh and try again.')
+            );
+            $listing = $this->emptyCatalogListing($request);
+        }
         $sites = $listing['sites'];
         $favorites = $listing['favorites'];
         $blacklist = $listing['blacklist'];
@@ -239,8 +264,14 @@ class CatalogController extends Controller
         }
 
         // Drop hidden/owned lines before the banner, wizard chrome, and header badge render.
-        $cartRemovedInactive = $this->syncPrunedSessionCart();
-        $cart = session()->get('cart', []);
+        try {
+            $cartRemovedInactive = $this->syncPrunedSessionCart();
+            $cart = session()->get('cart', []);
+        } catch (\Throwable $e) {
+            report($e);
+            $cartRemovedInactive = false;
+            $cart = session()->get('cart', []);
+        }
 
         // Bulk discount marketplace section — follows Catalog country= (Option 1).
         // Option 2: hide the Spendable rail when More → Bulk deals only is on
@@ -275,13 +306,24 @@ class CatalogController extends Controller
         // Resolve domain visibility for the whole page in one query, and hand the
         // service to the view so no template reads site_url directly.
         $urlVisibility = app(SiteUrlVisibility::class);
-        $urlVisibility->ensureSchema();
-        $urlVisibility->warmFor($currentUser, $sites->getCollection());
+        try {
+            $urlVisibility->ensureSchema();
+            $urlVisibility->warmFor($currentUser, $sites->getCollection());
+        } catch (\Throwable $e) {
+            report($e);
+        }
 
-        $catalogWallet = auth()->user()->activeWallet();
-        $catalogBonusBalance = $catalogWallet ? (float) $catalogWallet->lockedBonusBalance() : 0.0;
-        $catalogCashBalance = $catalogWallet ? (float) $catalogWallet->withdrawableBalance() : 0.0;
-        $catalogSpendableBalance = (float) ($catalogWallet?->balance ?? 0);
+        $catalogBonusBalance = 0.0;
+        $catalogCashBalance = 0.0;
+        $catalogSpendableBalance = 0.0;
+        try {
+            $catalogWallet = auth()->user()->activeWallet();
+            $catalogBonusBalance = $catalogWallet ? (float) $catalogWallet->lockedBonusBalance() : 0.0;
+            $catalogCashBalance = $catalogWallet ? (float) $catalogWallet->withdrawableBalance() : 0.0;
+            $catalogSpendableBalance = (float) ($catalogWallet?->balance ?? 0);
+        } catch (\Throwable $e) {
+            report($e);
+        }
 
         return view('advertiser.catalog', compact(
             'sites',
@@ -320,11 +362,20 @@ class CatalogController extends Controller
         }
 
         $currentUser = auth()->user();
-        $listing = $this->buildCatalogListing($request);
+        try {
+            $listing = $this->buildCatalogListing($request);
+        } catch (\Throwable $e) {
+            report($e);
+            $listing = $this->emptyCatalogListing($request);
+        }
 
         $urlVisibility = app(SiteUrlVisibility::class);
-        $urlVisibility->ensureSchema();
-        $urlVisibility->warmFor($currentUser, $listing['sites']->getCollection());
+        try {
+            $urlVisibility->ensureSchema();
+            $urlVisibility->warmFor($currentUser, $listing['sites']->getCollection());
+        } catch (\Throwable $e) {
+            report($e);
+        }
 
         return response()
             ->view('advertiser.partials.catalog-results', [
@@ -357,9 +408,14 @@ class CatalogController extends Controller
                 ->header('Cache-Control', 'no-store, private');
         }
 
-        $blacklist = UserBlacklist::where('user_id', auth()->id())->pluck('site_id')->toArray();
-        $showBlacklistedOnly = search_text($request->input('blacklist_filter')) === '1';
-        $bulkDeals = $this->loadBulkDeals($request, $blacklist, $showBlacklistedOnly);
+        try {
+            $blacklist = UserBlacklist::where('user_id', auth()->id())->pluck('site_id')->toArray();
+            $showBlacklistedOnly = search_text($request->input('blacklist_filter')) === '1';
+            $bulkDeals = $this->loadBulkDeals($request, $blacklist, $showBlacklistedOnly);
+        } catch (\Throwable $e) {
+            report($e);
+            $bulkDeals = collect();
+        }
 
         $urlVisibility = app(SiteUrlVisibility::class);
 
@@ -1352,36 +1408,48 @@ class CatalogController extends Controller
             ]);
         }
 
-        $query = Site::query()->catalogVisible();
-        $hostNeedle = $this->catalogSearchHostNeedle($text);
-        $catalogSearch->applyTextConstraints(
-            $query,
-            $text,
-            collect(),
-            $hostNeedle,
-            searchAllDomains: true,
-        );
-        $catalogSearch->applyRelevanceOrder($query, $text);
-        $query->orderByDesc('dr')->orderByDesc('id');
+        try {
+            $query = Site::query()->catalogVisible();
+            $hostNeedle = $this->catalogSearchHostNeedle($text);
+            $catalogSearch->applyTextConstraints(
+                $query,
+                $text,
+                collect(),
+                $hostNeedle,
+                searchAllDomains: true,
+            );
+            $catalogSearch->applyRelevanceOrder($query, $text);
+            $query->orderByDesc('dr')->orderByDesc('id');
 
-        $sites = $query
-            ->limit(8)
-            ->get(['id', 'site_name', 'site_url', 'domain', 'publisher_id', 'dr', 'category']);
+            $sites = $query
+                ->limit(8)
+                ->get(['id', 'site_name', 'site_url', 'domain', 'publisher_id', 'dr', 'category']);
 
-        $visibility->warmFor($user, $sites->pluck('id')->all());
+            $visibility->warmFor($user, $sites->pluck('id')->all());
 
-        $suggestions = $sites->map(function (Site $site) use ($visibility, $user) {
-            $shows = $visibility->showsFullIdentity($user, $site);
+            $suggestions = $sites->map(function (Site $site) use ($visibility, $user) {
+                $shows = $visibility->showsFullIdentity($user, $site);
 
-            return [
-                'id' => (int) $site->id,
-                'name' => $visibility->nameFor($user, $site),
-                'host' => $visibility->hostFor($user, $site),
-                'masked' => ! $shows,
-                'dr' => (int) ($site->dr ?? 0),
-                'href' => route('advertiser.catalog', ['site' => $site->id]),
-            ];
-        })->values()->all();
+                return [
+                    'id' => (int) $site->id,
+                    'name' => $visibility->nameFor($user, $site),
+                    'host' => $visibility->hostFor($user, $site),
+                    'masked' => ! $shows,
+                    'dr' => (int) ($site->dr ?? 0),
+                    'href' => route('advertiser.catalog', ['site' => $site->id]),
+                ];
+            })->values()->all();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'q' => $raw,
+                'in_hide_mode' => false,
+                'suggestions' => [],
+                'message' => UserFacingError::message($e, 'We could not load search suggestions. Please try again.'),
+            ], 500);
+        }
 
         return response()->json([
             'success' => true,
@@ -1538,7 +1606,19 @@ class CatalogController extends Controller
      */
     public function getCart(Request $request)
     {
-        return response()->json($this->cartPayloadForClient());
+        try {
+            return response()->json($this->cartPayloadForClient());
+        } catch (\Throwable $e) {
+            report($e);
+
+            $message = UserFacingError::message($e, 'We could not load your cart. Please refresh and try again.');
+
+            return response()->json([
+                'success' => false,
+                'error' => $message,
+                'message' => $message,
+            ], 500);
+        }
     }
 
     /**
@@ -1546,6 +1626,25 @@ class CatalogController extends Controller
      * Quantity > 1 creates multiple placements on the same site — each needs its own article.
      */
     public function assignCartArticle(Request $request)
+    {
+        try {
+            return $this->assignCartArticlePayload($request);
+        } catch (ValidationException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            report($e);
+
+            $message = UserFacingError::message($e, 'We could not assign that article. Please try again.');
+
+            return response()->json([
+                'success' => false,
+                'error' => $message,
+                'message' => $message,
+            ], 500);
+        }
+    }
+
+    private function assignCartArticlePayload(Request $request)
     {
         $data = $request->validate([
             'id' => ['required', 'integer'],
@@ -2068,9 +2167,27 @@ class CatalogController extends Controller
     {
         // Abandoned Stripe checkout: cancel unpaid pending card orders for this reference
         if ($request->boolean('canceled') && $request->filled('ref')) {
-            $this->cancelUnpaidCardOrdersAndRestoreCart((string) $request->ref);
+            try {
+                $this->cancelUnpaidCardOrdersAndRestoreCart((string) $request->ref);
+            } catch (\Throwable $e) {
+                report($e);
+            }
         }
 
+        try {
+            return $this->renderCheckoutPage($request);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return redirect()->route('advertiser.catalog')->with(
+                'error',
+                UserFacingError::message($e, 'We could not open checkout. Please review your cart and try again.')
+            );
+        }
+    }
+
+    private function renderCheckoutPage(Request $request)
+    {
         $this->syncPrunedSessionCart();
         $cart = session()->get('cart', []);
 
@@ -4281,48 +4398,59 @@ class CatalogController extends Controller
      */
     public function contentRevisionLibraryOptions(Request $request, $id)
     {
-        $order = Order::where('user_id', auth()->id())->with('items')->findOrFail($id);
+        try {
+            $order = Order::where('user_id', auth()->id())->with('items')->findOrFail($id);
 
-        $currentIds = $order->items
-            ->pluck('content_submission_id')
-            ->filter()
-            ->map(fn ($v) => (int) $v)
-            ->values()
-            ->all();
+            $currentIds = $order->items
+                ->pluck('content_submission_id')
+                ->filter()
+                ->map(fn ($v) => (int) $v)
+                ->values()
+                ->all();
 
-        $articles = ContentSubmission::query()
-            ->where('user_id', auth()->id())
-            ->checkoutReady()
-            ->latest('id')
-            ->limit(50)
-            ->get(['id', 'title', 'original_filename', 'language', 'country', 'anchor_text', 'target_url'])
-            ->map(fn (ContentSubmission $s) => [
-                'id' => $s->id,
-                'label' => $s->title ?: $s->original_filename ?: ('Article #'.$s->id),
-                'language' => $s->language,
-                'country' => $s->country,
-            ])
-            ->values();
-
-        $current = [];
-        if ($currentIds !== []) {
-            $current = ContentSubmission::query()
+            $articles = ContentSubmission::query()
                 ->where('user_id', auth()->id())
-                ->whereIn('id', $currentIds)
-                ->get(['id', 'title', 'original_filename'])
+                ->checkoutReady()
+                ->latest('id')
+                ->limit(50)
+                ->get(['id', 'title', 'original_filename', 'language', 'country', 'anchor_text', 'target_url'])
                 ->map(fn (ContentSubmission $s) => [
                     'id' => $s->id,
                     'label' => $s->title ?: $s->original_filename ?: ('Article #'.$s->id),
+                    'language' => $s->language,
+                    'country' => $s->country,
                 ])
-                ->values()
-                ->all();
-        }
+                ->values();
 
-        return response()->json([
-            'success' => true,
-            'current' => $current,
-            'orderable' => $articles,
-        ]);
+            $current = [];
+            if ($currentIds !== []) {
+                $current = ContentSubmission::query()
+                    ->where('user_id', auth()->id())
+                    ->whereIn('id', $currentIds)
+                    ->get(['id', 'title', 'original_filename'])
+                    ->map(fn (ContentSubmission $s) => [
+                        'id' => $s->id,
+                        'label' => $s->title ?: $s->original_filename ?: ('Article #'.$s->id),
+                    ])
+                    ->values()
+                    ->all();
+            }
+
+            return response()->json([
+                'success' => true,
+                'current' => $current,
+                'orderable' => $articles,
+            ]);
+        } catch (ModelNotFoundException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'Unable to load Content Library articles.'),
+            ], 500);
+        }
     }
 
     /**
@@ -4330,19 +4458,33 @@ class CatalogController extends Controller
      */
     public function getCartCount(Request $request)
     {
-        // Keep badge in sync: drop inactive/missing lines before counting.
-        $this->syncPrunedSessionCart();
-        $cart = session()->get('cart', []);
-        $count = array_sum(array_column($cart, 'quantity'));
-        $total = round(array_sum(array_map(
-            fn ($item) => ((float) ($item['price'] ?? 0)) * ((int) ($item['quantity'] ?? 0)),
-            $cart
-        )), 2);
+        try {
+            // Keep badge in sync: drop inactive/missing lines before counting.
+            $this->syncPrunedSessionCart();
+            $cart = session()->get('cart', []);
+            $count = array_sum(array_column($cart, 'quantity'));
+            $total = round(array_sum(array_map(
+                fn ($item) => ((float) ($item['price'] ?? 0)) * ((int) ($item['quantity'] ?? 0)),
+                $cart
+            )), 2);
 
-        return response()->json([
-            'count' => $count,
-            'cart_total' => $total,
-        ]);
+            return response()->json([
+                'count' => $count,
+                'cart_total' => $total,
+            ]);
+        } catch (\Throwable $e) {
+            report($e);
+
+            $message = UserFacingError::message($e, 'We could not load your cart. Please refresh and try again.');
+
+            return response()->json([
+                'success' => false,
+                'count' => 0,
+                'cart_total' => 0,
+                'error' => $message,
+                'message' => $message,
+            ], 500);
+        }
     }
 
     /**
@@ -4354,52 +4496,63 @@ class CatalogController extends Controller
             'order_item_id' => 'nullable|integer',
         ]);
 
-        $order = Order::with('items')->where('user_id', auth()->id())->findOrFail($id);
-        $requestedItemId = isset($data['order_item_id']) ? (int) $data['order_item_id'] : null;
-        if ($requestedItemId) {
-            $item = $order->items->firstWhere('id', $requestedItemId);
-        } else {
-            $withLiveUrl = $order->items->filter(fn ($line) => filled($line->live_url));
-            $item = $withLiveUrl->count() === 1
-                ? $withLiveUrl->first()
-                : ($order->items->count() === 1 ? $order->items->first() : null);
-        }
+        try {
+            $order = Order::with('items')->where('user_id', auth()->id())->findOrFail($id);
+            $requestedItemId = isset($data['order_item_id']) ? (int) $data['order_item_id'] : null;
+            if ($requestedItemId) {
+                $item = $order->items->firstWhere('id', $requestedItemId);
+            } else {
+                $withLiveUrl = $order->items->filter(fn ($line) => filled($line->live_url));
+                $item = $withLiveUrl->count() === 1
+                    ? $withLiveUrl->first()
+                    : ($order->items->count() === 1 ? $order->items->first() : null);
+            }
 
-        if (! $item instanceof OrderItem) {
+            if (! $item instanceof OrderItem) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $order->items->count() > 1
+                        ? 'Please choose which placement to recheck.'
+                        : 'No live URL to check yet.',
+                ], 422);
+            }
+
+            if (! filled($item->live_url)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No live URL to check yet.',
+                ], 422);
+            }
+
+            $health = app(LiveUrlHealthChecker::class)->check((string) $item->live_url);
+            if (Schema::hasColumn('order_items', 'live_url_check_ok')) {
+                $item->update([
+                    'live_url_check_ok' => $health['ok'],
+                    'live_url_http_status' => $health['status'],
+                    'live_url_checked_at' => $health['checked_at'],
+                ]);
+            }
+
             return response()->json([
-                'success' => false,
-                'message' => $order->items->count() > 1
-                    ? 'Please choose which placement to recheck.'
-                    : 'No live URL to check yet.',
-            ], 422);
-        }
-
-        if (! filled($item->live_url)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'No live URL to check yet.',
-            ], 422);
-        }
-
-        $health = app(LiveUrlHealthChecker::class)->check((string) $item->live_url);
-        if (Schema::hasColumn('order_items', 'live_url_check_ok')) {
-            $item->update([
-                'live_url_check_ok' => $health['ok'],
-                'live_url_http_status' => $health['status'],
-                'live_url_checked_at' => $health['checked_at'],
-            ]);
-        }
-
-        return response()->json([
-            'success' => true,
-            'message' => $health['message'],
-            'live_url_check' => [
-                'ok' => $health['ok'],
-                'status' => $health['status'],
-                'checked_at' => optional($health['checked_at'])->toIso8601String(),
+                'success' => true,
                 'message' => $health['message'],
-            ],
-        ]);
+                'live_url_check' => [
+                    'ok' => $health['ok'],
+                    'status' => $health['status'],
+                    'checked_at' => optional($health['checked_at'])->toIso8601String(),
+                    'message' => $health['message'],
+                ],
+            ]);
+        } catch (ModelNotFoundException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'Unable to recheck that live URL right now.'),
+            ], 500);
+        }
     }
 
     /**
@@ -5829,26 +5982,35 @@ class CatalogController extends Controller
 
     public function saveCheckoutSchedule(Request $request): JsonResponse
     {
-        $normalized = app(ScheduledOrderService::class)->normalizeSchedule(
-            $request->input('publication_mode'),
-            $request->input('scheduled_date'),
-            $request->input('scheduled_time'),
-            $request->input('timezone'),
-        );
+        try {
+            $normalized = app(ScheduledOrderService::class)->normalizeSchedule(
+                $request->input('publication_mode'),
+                $request->input('scheduled_date'),
+                $request->input('scheduled_time'),
+                $request->input('timezone'),
+            );
 
-        if (! $normalized['ok']) {
+            if (! $normalized['ok']) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $normalized['message'] ?? 'Invalid publication schedule.',
+                ], 422);
+            }
+
+            $this->persistCheckoutScheduleSession($normalized);
+
+            return response()->json([
+                'success' => true,
+                'schedule' => $this->checkoutScheduleClientHint(),
+            ]);
+        } catch (\Throwable $e) {
+            report($e);
+
             return response()->json([
                 'success' => false,
-                'message' => $normalized['message'] ?? 'Invalid publication schedule.',
-            ], 422);
+                'message' => UserFacingError::message($e, 'We could not save that publication schedule. Please try again.'),
+            ], 500);
         }
-
-        $this->persistCheckoutScheduleSession($normalized);
-
-        return response()->json([
-            'success' => true,
-            'schedule' => $this->checkoutScheduleClientHint(),
-        ]);
     }
 
     /**

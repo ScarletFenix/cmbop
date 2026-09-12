@@ -9,6 +9,7 @@ use App\Services\ActivityLogger;
 use App\Services\Catalog\SiteUrlVisibility;
 use App\Services\SiteClaimTransferService;
 use App\Support\NormalizesHttpUrls;
+use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -24,15 +25,31 @@ class SiteClaimController extends Controller
      */
     public function index(Request $request)
     {
-        $user = auth()->user();
-        $claims = SiteClaim::query()
-            ->with(['site:id,site_name,domain,site_url,publisher_id', 'reviewer:id,name'])
-            ->where('claimer_id', $user->id)
-            ->latest('id')
-            ->paginate(20)
-            ->withQueryString();
+        try {
+            $user = $request->user();
+            $claims = SiteClaim::query()
+                ->with(['site:id,site_name,domain,site_url,publisher_id', 'reviewer:id,name'])
+                ->where('claimer_id', $user->id)
+                ->latest('id')
+                ->paginate(20)
+                ->withQueryString();
 
-        SiteClaim::applyCatalogIdentity($claims->getCollection(), $user);
+            SiteClaim::applyCatalogIdentity($claims->getCollection(), $user);
+        } catch (\Throwable $e) {
+            report($e);
+            $message = UserFacingError::message($e, 'We could not load your ownership claims. Please try again.');
+
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $message,
+                ], 500);
+            }
+
+            return redirect()
+                ->route('publisher.websites')
+                ->with('error', $message);
+        }
 
         if ($request->wantsJson()) {
             return response()->json([
@@ -166,6 +183,13 @@ class SiteClaimController extends Controller
                 'success' => false,
                 'message' => $e->validator->errors()->first() ?: 'Claim could not be submitted.',
             ], 422);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'We could not submit that claim. Please try again.'),
+            ], 500);
         }
 
         try {

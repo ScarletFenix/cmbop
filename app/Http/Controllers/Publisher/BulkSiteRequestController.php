@@ -14,6 +14,7 @@ use App\Services\InAppNotificationService;
 use App\Services\SiteDescriptionSanitizer;
 use App\Support\SiteDescriptionRules;
 use App\Support\SiteTag;
+use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -24,11 +25,19 @@ class BulkSiteRequestController extends Controller
 {
     public function store(Request $request)
     {
-        $open = BulkSiteRequest::query()
-            ->where('publisher_id', auth()->id())
-            ->blockingPublisher()
-            ->latest('id')
-            ->first();
+        try {
+            $open = BulkSiteRequest::query()
+                ->where('publisher_id', auth()->id())
+                ->blockingPublisher()
+                ->latest('id')
+                ->first();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return redirect()
+                ->route('publisher.websites')
+                ->with('error', UserFacingError::message($e, 'We could not submit that bulk request. Please try again.'));
+        }
 
         if ($open) {
             $publisherOwesWork = $open->status === BulkSiteRequest::STATUS_AWAITING_PUBLISHER
@@ -128,38 +137,52 @@ class BulkSiteRequestController extends Controller
                 ->with('open_bulk_request_modal', true);
         }
 
-        $bulk = DB::transaction(function () use ($request, $parsedRows) {
-            $bulk = BulkSiteRequest::create([
-                'publisher_id' => auth()->id(),
-                'status' => BulkSiteRequest::STATUS_REQUESTED,
-                'estimated_count' => count($parsedRows),
-                'publisher_note' => $request->publisher_note,
-            ]);
-
-            foreach ($parsedRows as $row) {
-                BulkSiteRequestItem::create([
-                    'bulk_site_request_id' => $bulk->id,
-                    'site_url' => $row['site_url'],
-                    'domain' => $row['domain'],
-                    'price' => $row['price'],
+        try {
+            $bulk = DB::transaction(function () use ($request, $parsedRows) {
+                $bulk = BulkSiteRequest::create([
+                    'publisher_id' => auth()->id(),
+                    'status' => BulkSiteRequest::STATUS_REQUESTED,
+                    'estimated_count' => count($parsedRows),
+                    'publisher_note' => $request->publisher_note,
                 ]);
-            }
 
-            return $bulk;
-        });
+                foreach ($parsedRows as $row) {
+                    BulkSiteRequestItem::create([
+                        'bulk_site_request_id' => $bulk->id,
+                        'site_url' => $row['site_url'],
+                        'domain' => $row['domain'],
+                        'price' => $row['price'],
+                    ]);
+                }
 
-        ActivityLogger::log(
-            'bulk_request.created',
-            (auth()->user()->name ?? 'Publisher').' submitted '.count($parsedRows).' site URL(s) + price(s) for bulk onboarding',
-            $bulk,
-            [
-                'bulk_site_request_id' => $bulk->id,
-                'publisher_id' => $bulk->publisher_id,
-                'estimated_count' => $bulk->estimated_count,
-                'domains' => array_column($parsedRows, 'domain'),
-            ],
-            'Bulk request #'.$bulk->id
-        );
+                return $bulk;
+            });
+        } catch (\Throwable $e) {
+            report($e);
+
+            return redirect()
+                ->route('publisher.websites')
+                ->with('error', UserFacingError::message($e, 'We could not submit that bulk request. Please try again.'))
+                ->withInput()
+                ->with('open_bulk_request_modal', true);
+        }
+
+        try {
+            ActivityLogger::log(
+                'bulk_request.created',
+                (auth()->user()->name ?? 'Publisher').' submitted '.count($parsedRows).' site URL(s) + price(s) for bulk onboarding',
+                $bulk,
+                [
+                    'bulk_site_request_id' => $bulk->id,
+                    'publisher_id' => $bulk->publisher_id,
+                    'estimated_count' => $bulk->estimated_count,
+                    'domains' => array_column($parsedRows, 'domain'),
+                ],
+                'Bulk request #'.$bulk->id
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Failed to log bulk site request: '.$e->getMessage());
+        }
 
         try {
             $admins = User::query()
@@ -204,6 +227,19 @@ class BulkSiteRequestController extends Controller
     }
 
     public function completeIndex()
+    {
+        try {
+            return $this->renderCompleteIndex();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return redirect()
+                ->route('publisher.websites')
+                ->with('error', UserFacingError::message($e, 'We could not load sites waiting for details. Please try again.'));
+        }
+    }
+
+    private function renderCompleteIndex()
     {
         $sites = Site::query()
             ->where('publisher_id', auth()->id())
@@ -384,6 +420,19 @@ class BulkSiteRequestController extends Controller
      * Final checklist before sites enter the admin review queue.
      */
     public function reviewIndex()
+    {
+        try {
+            return $this->renderReviewIndex();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return redirect()
+                ->route('publisher.websites')
+                ->with('error', UserFacingError::message($e, 'We could not load sites ready for review. Please try again.'));
+        }
+    }
+
+    private function renderReviewIndex()
     {
         $sites = Site::query()
             ->where('publisher_id', auth()->id())

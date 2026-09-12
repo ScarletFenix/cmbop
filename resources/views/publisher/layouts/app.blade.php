@@ -76,7 +76,13 @@
             <span class="nav-label d-flex align-items-center w-100">
                 <span>My Sites</span>
                 @auth
-                    @php $siteCount = auth()->user()->sites()->count(); @endphp
+                    @php
+                        try {
+                            $siteCount = auth()->user()->sites()->count();
+                        } catch (\Throwable $e) {
+                            $siteCount = 0;
+                        }
+                    @endphp
                     @if($siteCount > 0)
                         <span class="badge nav-count-badge rounded-pill ms-auto" title="Total sites">
                             {{ $siteCount }}
@@ -137,19 +143,27 @@
 
         @php
             $headerUser = auth()->user();
-            $headerPublisherRoleId = \App\Models\Wallet::publisherRoleId();
-            $headerAdvertiserRoleId = \App\Models\Wallet::advertiserRoleId();
-            $headerWallets = $headerUser->wallets()
-                ->whereIn('role_id', array_filter([$headerPublisherRoleId, $headerAdvertiserRoleId]))
-                ->get()
-                ->keyBy(fn ($wallet) => (int) $wallet->role_id);
-            $headerPublisherWallet = $headerPublisherRoleId ? $headerWallets->get((int) $headerPublisherRoleId) : null;
-            $headerAdvertiserWallet = ($headerAdvertiserRoleId && $headerUser->hasRole('advertiser'))
-                ? $headerWallets->get((int) $headerAdvertiserRoleId)
-                : null;
-            $headerEarnings = (float) ($headerPublisherWallet?->balance ?? 0);
-            $headerWithdrawable = $headerPublisherWallet ? $headerPublisherWallet->withdrawableBalance() : 0;
-            $headerReserved = (float) ($headerPublisherWallet?->reserved_balance ?? 0);
+            $headerEarnings = 0.0;
+            $headerWithdrawable = 0.0;
+            $headerReserved = 0.0;
+            $headerAdvertiserWallet = null;
+            try {
+                $headerPublisherRoleId = \App\Models\Wallet::publisherRoleId();
+                $headerAdvertiserRoleId = \App\Models\Wallet::advertiserRoleId();
+                $headerWallets = $headerUser->wallets()
+                    ->whereIn('role_id', array_filter([$headerPublisherRoleId, $headerAdvertiserRoleId]))
+                    ->get()
+                    ->keyBy(fn ($wallet) => (int) $wallet->role_id);
+                $headerPublisherWallet = $headerPublisherRoleId ? $headerWallets->get((int) $headerPublisherRoleId) : null;
+                $headerAdvertiserWallet = ($headerAdvertiserRoleId && $headerUser->hasRole('advertiser'))
+                    ? $headerWallets->get((int) $headerAdvertiserRoleId)
+                    : null;
+                $headerEarnings = (float) ($headerPublisherWallet?->balance ?? 0);
+                $headerWithdrawable = $headerPublisherWallet ? $headerPublisherWallet->withdrawableBalance() : 0;
+                $headerReserved = (float) ($headerPublisherWallet?->reserved_balance ?? 0);
+            } catch (\Throwable $e) {
+                report($e);
+            }
             $headerBalanceTitle = 'Earnings €'.number_format($headerEarnings, 2)
                 .' · Withdrawable €'.number_format($headerWithdrawable, 2)
                 .($headerReserved > 0 ? ' · On hold €'.number_format($headerReserved, 2) : '')

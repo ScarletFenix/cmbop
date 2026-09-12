@@ -36,15 +36,42 @@ class WithdrawalController extends Controller
     public function index()
     {
         $user = auth()->user();
+        $error = null;
+
+        try {
+            $wallet = Wallet::forPublisher((int) $user->id);
+            $availableMethods = $this->payoutProfiles->availableMethods($user);
+        } catch (\Throwable $e) {
+            report($e);
+            $wallet = null;
+            $availableMethods = [];
+            $error = UserFacingError::message($e, 'We could not load your wallet. Please refresh and try again.');
+        }
+
+        try {
+            $recentWithdrawals = Withdrawal::where('user_id', $user->id)
+                ->orderBy('created_at', 'desc')
+                ->limit(10)
+                ->get();
+        } catch (\Throwable $e) {
+            report($e);
+            $recentWithdrawals = collect();
+            $error ??= UserFacingError::message($e, 'We could not load withdrawals. Please refresh and try again.');
+        }
+
+        if ($error) {
+            session()->flash('error', $error);
+        }
 
         return view('publisher.withdraw', [
-            'wallet' => Wallet::forPublisher((int) $user->id),
+            'wallet' => $wallet,
             'platformChargePercent' => $this->platformChargePercent(),
             'minWithdrawalAmount' => $this->minWithdrawalAmount(),
             'payoutProfile' => $user->payoutProfile(),
             'payoutLocked' => $user->payoutProfileLocked(),
-            'availableMethods' => $this->payoutProfiles->availableMethods($user),
+            'availableMethods' => $availableMethods,
             'supportEmail' => config('email_notifications.brand.support_email', config('mail.from.address')),
+            'recentWithdrawals' => $recentWithdrawals,
         ]);
     }
 
@@ -299,13 +326,13 @@ class WithdrawalController extends Controller
                 'success' => true,
                 'data' => $withdrawals,
             ]);
-        } catch (\Exception $e) {
-            Log::error('Failed to fetch withdrawal history: '.$e->getMessage());
+        } catch (\Throwable $e) {
+            report($e);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to fetch withdrawal history',
-            ]);
+                'message' => UserFacingError::message($e, 'Failed to fetch withdrawal history.'),
+            ], 500);
         }
     }
 
@@ -332,13 +359,13 @@ class WithdrawalController extends Controller
                     'withdrawal_count' => $withdrawalCount,
                 ],
             ]);
-        } catch (\Exception $e) {
-            Log::error('Failed to fetch withdrawal statistics: '.$e->getMessage());
+        } catch (\Throwable $e) {
+            report($e);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to fetch statistics',
-            ]);
+                'message' => UserFacingError::message($e, 'Failed to fetch withdrawal statistics.'),
+            ], 500);
         }
     }
 
@@ -410,14 +437,14 @@ class WithdrawalController extends Controller
                 'success' => true,
                 'message' => 'Withdrawal request cancelled successfully. €'.number_format($withdrawal->amount, 2).' has been returned to your wallet.',
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             DB::rollBack();
-            Log::error('Failed to cancel withdrawal: '.$e->getMessage());
+            report($e);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to cancel withdrawal request',
-            ]);
+                'message' => UserFacingError::message($e, 'Failed to cancel withdrawal request.'),
+            ], 500);
         }
     }
 }

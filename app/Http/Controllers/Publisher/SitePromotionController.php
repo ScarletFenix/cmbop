@@ -10,6 +10,7 @@ use App\Services\SitePromotionService;
 use App\Services\StripePaymentService;
 use App\Support\UserFacingError;
 use App\Support\UserMessages;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Stripe\Checkout\Session;
@@ -63,13 +64,17 @@ class SitePromotionController extends Controller
         $result = $this->promotions->featureWithWallet($site, auth()->user());
 
         if ($result['success'] ?? false) {
-            ActivityLogger::log(
-                'site.featured',
-                auth()->user()->name.' featured "'.$site->site_name.'"',
-                $site,
-                ['days' => $this->promotions->featureDays(), 'price' => $this->promotions->featurePrice()],
-                $site->site_name
-            );
+            try {
+                ActivityLogger::log(
+                    'site.featured',
+                    auth()->user()->name.' featured "'.$site->site_name.'"',
+                    $site,
+                    ['days' => $this->promotions->featureDays(), 'price' => $this->promotions->featurePrice()],
+                    $site->site_name
+                );
+            } catch (\Throwable $e) {
+                report($e);
+            }
         }
 
         if (! ($result['success'] ?? false) && ($result['needs_top_up'] ?? false)) {
@@ -209,26 +214,35 @@ class SitePromotionController extends Controller
 
     public function walletSummary()
     {
-        $roleId = Wallet::publisherRoleId();
-        $withdrawable = 0.0;
-        if ($roleId) {
-            $wallet = Wallet::where('user_id', auth()->id())->where('role_id', $roleId)->first();
-            $withdrawable = $wallet ? $wallet->withdrawableBalance() : 0.0;
-        }
+        try {
+            $roleId = Wallet::publisherRoleId();
+            $withdrawable = 0.0;
+            if ($roleId) {
+                $wallet = Wallet::where('user_id', auth()->id())->where('role_id', $roleId)->first();
+                $withdrawable = $wallet ? $wallet->withdrawableBalance() : 0.0;
+            }
 
-        return response()->json([
-            'success' => true,
-            // Featuring spends cash only — keep `balance` as withdrawable so the
-            // publisher UI does not offer "Pay from wallet" on bonus-inflated totals.
-            'balance' => $withdrawable,
-            'withdrawable' => $withdrawable,
-            'feature_price' => $this->promotions->featurePrice(),
-            'feature_days' => $this->promotions->featureDays(),
-            'top_up_url' => route('publisher.balance'),
-            'balance_url' => route('publisher.balance'),
-            'stripe_available' => (bool) config('services.stripe.secret'),
-            'hint' => 'Pay from publisher earnings (welcome bonus cannot be used), or pay by card with Stripe. Use Balance to transfer funds between wallets.',
-        ]);
+            return response()->json([
+                'success' => true,
+                // Featuring spends cash only — keep `balance` as withdrawable so the
+                // publisher UI does not offer "Pay from wallet" on bonus-inflated totals.
+                'balance' => $withdrawable,
+                'withdrawable' => $withdrawable,
+                'feature_price' => $this->promotions->featurePrice(),
+                'feature_days' => $this->promotions->featureDays(),
+                'top_up_url' => route('publisher.balance'),
+                'balance_url' => route('publisher.balance'),
+                'stripe_available' => (bool) config('services.stripe.secret'),
+                'hint' => 'Pay from publisher earnings (welcome bonus cannot be used), or pay by card with Stripe. Use Balance to transfer funds between wallets.',
+            ]);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'We could not load your promotion wallet. Please try again.'),
+            ], 500);
+        }
     }
 
     public function joinBulk(Request $request, int $id)
@@ -243,57 +257,77 @@ class SitePromotionController extends Controller
                 .'|max:'.config('site_promotions.bulk.max_percent', 80),
         ]);
 
-        $alreadyJoined = $site->joinsBulkDiscount();
-        $previousPercent = $alreadyJoined ? (float) $site->bulk_discount_percent : null;
-        $site = $this->promotions->joinBulkDiscount($site, (float) $data['percent']);
-        $newPercent = (float) $site->bulk_discount_percent;
-        $pct = rtrim(rtrim(number_format($newPercent, 2), '0'), '.');
-        $lead = $alreadyJoined
-            ? 'Updated bulk discount to '.$pct.'% on 3–5 articles.'
-            : 'Joined bulk discount programme ('.$pct.'% on 3–5 articles).';
+        try {
+            $alreadyJoined = $site->joinsBulkDiscount();
+            $previousPercent = $alreadyJoined ? (float) $site->bulk_discount_percent : null;
+            $site = $this->promotions->joinBulkDiscount($site, (float) $data['percent']);
+            $newPercent = (float) $site->bulk_discount_percent;
+            $pct = rtrim(rtrim(number_format($newPercent, 2), '0'), '.');
+            $lead = $alreadyJoined
+                ? 'Updated bulk discount to '.$pct.'% on 3–5 articles.'
+                : 'Joined bulk discount programme ('.$pct.'% on 3–5 articles).';
 
-        if (! $alreadyJoined || abs(($previousPercent ?? 0) - $newPercent) >= 0.001) {
-            ActivityLogger::tryLog(
-                $alreadyJoined ? 'site.bulk_discount_updated' : 'site.bulk_discount_joined',
-                auth()->user()->name.' '.$lead,
-                $site,
-                [
-                    'percent' => $newPercent,
-                    'from' => $previousPercent,
-                ],
-                $site->site_name
-            );
+            if (! $alreadyJoined || abs(($previousPercent ?? 0) - $newPercent) >= 0.001) {
+                ActivityLogger::tryLog(
+                    $alreadyJoined ? 'site.bulk_discount_updated' : 'site.bulk_discount_joined',
+                    auth()->user()->name.' '.$lead,
+                    $site,
+                    [
+                        'percent' => $newPercent,
+                        'from' => $previousPercent,
+                    ],
+                    $site->site_name
+                );
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => $lead.' Exclusive better-of with any timed sale — not stacked. Off your list; advertisers pay list plus the platform fee, then this same percent.',
+                'site' => $site,
+            ]);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'We could not update that bulk discount. Please try again.'),
+            ], 500);
         }
-
-        return response()->json([
-            'success' => true,
-            'message' => $lead.' Exclusive better-of with any timed sale — not stacked. Off your list; advertisers pay list plus the platform fee, then this same percent.',
-            'site' => $site,
-        ]);
     }
 
     public function leaveBulk(int $id)
     {
-        $site = Site::where('publisher_id', auth()->id())->findOrFail($id);
-        $wasJoined = $site->joinsBulkDiscount();
-        $previousPercent = $wasJoined ? (float) $site->bulk_discount_percent : null;
-        $site = $this->promotions->leaveBulkDiscount($site);
+        try {
+            $site = Site::where('publisher_id', auth()->id())->findOrFail($id);
+            $wasJoined = $site->joinsBulkDiscount();
+            $previousPercent = $wasJoined ? (float) $site->bulk_discount_percent : null;
+            $site = $this->promotions->leaveBulkDiscount($site);
 
-        if ($wasJoined) {
-            ActivityLogger::tryLog(
-                'site.bulk_discount_left',
-                auth()->user()->name.' left the bulk discount programme on "'.$site->site_name.'"',
-                $site,
-                ['from' => $previousPercent],
-                $site->site_name
-            );
+            if ($wasJoined) {
+                ActivityLogger::tryLog(
+                    'site.bulk_discount_left',
+                    auth()->user()->name.' left the bulk discount programme on "'.$site->site_name.'"',
+                    $site,
+                    ['from' => $previousPercent],
+                    $site->site_name
+                );
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Left the bulk discount program.',
+                'site' => $site,
+            ]);
+        } catch (ModelNotFoundException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'We could not update that bulk discount. Please try again.'),
+            ], 500);
         }
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Left the bulk discount program.',
-            'site' => $site,
-        ]);
     }
 
     public function setDiscount(Request $request, int $id)
@@ -309,48 +343,68 @@ class SitePromotionController extends Controller
             'days' => 'required|integer|min:1|max:'.config('site_promotions.custom_discount.max_days', 90),
         ]);
 
-        $site = $this->promotions->setCustomDiscount($site, (float) $data['percent'], (int) $data['days']);
+        try {
+            $site = $this->promotions->setCustomDiscount($site, (float) $data['percent'], (int) $data['days']);
 
-        ActivityLogger::log(
-            'site.discount_set',
-            auth()->user()->name.' set a '.$data['percent'].'% discount on "'.$site->site_name.'" for '.$data['days'].' days',
-            $site,
-            $data,
-            $site->site_name
-        );
+            ActivityLogger::log(
+                'site.discount_set',
+                auth()->user()->name.' set a '.$data['percent'].'% discount on "'.$site->site_name.'" for '.$data['days'].' days',
+                $site,
+                $data,
+                $site->site_name
+            );
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Discount live for '.$data['days'].' day(s). You’ll get an email when it ends.',
-            'site' => $site,
-        ]);
+            return response()->json([
+                'success' => true,
+                'message' => 'Discount live for '.$data['days'].' day(s). You’ll get an email when it ends.',
+                'site' => $site,
+            ]);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'We could not update that discount. Please try again.'),
+            ], 500);
+        }
     }
 
     public function clearDiscount(int $id)
     {
-        $site = Site::where('publisher_id', auth()->id())->findOrFail($id);
-        $hadDiscount = $site->custom_discount_percent !== null
-            || $site->custom_discount_starts_at !== null
-            || $site->custom_discount_ends_at !== null;
-        $previousPercent = $site->custom_discount_percent !== null
-            ? (float) $site->custom_discount_percent
-            : null;
-        $site = $this->promotions->clearCustomDiscount($site);
+        try {
+            $site = Site::where('publisher_id', auth()->id())->findOrFail($id);
+            $hadDiscount = $site->custom_discount_percent !== null
+                || $site->custom_discount_starts_at !== null
+                || $site->custom_discount_ends_at !== null;
+            $previousPercent = $site->custom_discount_percent !== null
+                ? (float) $site->custom_discount_percent
+                : null;
+            $site = $this->promotions->clearCustomDiscount($site);
 
-        if ($hadDiscount) {
-            ActivityLogger::tryLog(
-                'site.discount_cleared',
-                auth()->user()->name.' cleared the custom discount on "'.$site->site_name.'"',
-                $site,
-                ['from' => $previousPercent],
-                $site->site_name
-            );
+            if ($hadDiscount) {
+                ActivityLogger::tryLog(
+                    'site.discount_cleared',
+                    auth()->user()->name.' cleared the custom discount on "'.$site->site_name.'"',
+                    $site,
+                    ['from' => $previousPercent],
+                    $site->site_name
+                );
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Custom discount removed.',
+                'site' => $site,
+            ]);
+        } catch (ModelNotFoundException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'We could not update that discount. Please try again.'),
+            ], 500);
         }
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Custom discount removed.',
-            'site' => $site,
-        ]);
     }
 }

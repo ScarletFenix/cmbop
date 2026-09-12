@@ -8,9 +8,9 @@ use App\Models\OrderItem;
 use App\Models\OrderItemDispute;
 use App\Models\Site;
 use App\Models\WalletTransaction;
+use App\Support\UserFacingError;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 class DashboardController extends Controller
@@ -19,6 +19,21 @@ class DashboardController extends Controller
      * Display publisher dashboard (server-rendered summary + chart payloads).
      */
     public function index()
+    {
+        try {
+            return $this->renderDashboard();
+        } catch (\Throwable $e) {
+            report($e);
+            session()->flash(
+                'error',
+                UserFacingError::message($e, 'We could not load your dashboard. Please refresh and try again.')
+            );
+
+            return view('publisher.dashboard', $this->emptyDashboardPayload());
+        }
+    }
+
+    private function renderDashboard()
     {
         $user = auth()->user();
         $userId = $user->id;
@@ -54,6 +69,29 @@ class DashboardController extends Controller
     }
 
     /**
+     * @return array<string, mixed>
+     */
+    private function emptyDashboardPayload(): array
+    {
+        $stats = $this->buildStatistics([]);
+
+        return [
+            'siteCount' => 0,
+            'unverifiedSiteCount' => 0,
+            'pendingTasks' => 0,
+            'primaryAction' => 'add_site',
+            'stats' => $stats,
+            'metrics' => $this->buildPerformanceMetrics($stats),
+            'availableBalance' => 0.0,
+            'withdrawableBalance' => 0.0,
+            'recentTasks' => $this->buildRecentTasks([]),
+            'weeklyEarnings' => $this->buildWeeklyEarnings([]),
+            'monthlyEarnings' => $this->buildMonthlyEarnings([]),
+            'orderStatus' => $this->buildOrderStatusDistribution([]),
+        ];
+    }
+
+    /**
      * Get dashboard statistics (AJAX)
      */
     public function getStatistics(Request $request)
@@ -67,12 +105,12 @@ class DashboardController extends Controller
                 'success' => true,
                 'data' => array_merge($stats, $metrics),
             ]);
-        } catch (\Exception $e) {
-            Log::error('Error fetching dashboard statistics: '.$e->getMessage());
+        } catch (\Throwable $e) {
+            report($e);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to load statistics',
+                'message' => UserFacingError::message($e, 'We could not load dashboard statistics. Please try again.'),
             ], 500);
         }
     }
@@ -89,12 +127,12 @@ class DashboardController extends Controller
                 'success' => true,
                 'orders' => $orders,
             ]);
-        } catch (\Exception $e) {
-            Log::error('Error fetching recent orders: '.$e->getMessage());
+        } catch (\Throwable $e) {
+            report($e);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to fetch recent orders',
+                'message' => UserFacingError::message($e, 'Failed to fetch recent orders.'),
             ], 500);
         }
     }
@@ -109,16 +147,17 @@ class DashboardController extends Controller
                 'success' => true,
                 'data' => $this->buildWeeklyEarnings($this->publisherSiteIds()),
             ]);
-        } catch (\Exception $e) {
-            Log::error('Error fetching weekly earnings: '.$e->getMessage());
+        } catch (\Throwable $e) {
+            report($e);
 
             return response()->json([
                 'success' => false,
+                'message' => UserFacingError::message($e, 'Failed to load weekly earnings.'),
                 'data' => [
                     'labels' => ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
                     'values' => [0, 0, 0, 0, 0, 0, 0],
                 ],
-            ]);
+            ], 500);
         }
     }
 
@@ -132,16 +171,17 @@ class DashboardController extends Controller
                 'success' => true,
                 'data' => $this->buildOrderStatusDistribution($this->publisherSiteIds()),
             ]);
-        } catch (\Exception $e) {
-            Log::error('Error fetching order status: '.$e->getMessage());
+        } catch (\Throwable $e) {
+            report($e);
 
             return response()->json([
                 'success' => false,
+                'message' => UserFacingError::message($e, 'Failed to load order status.'),
                 'data' => [
                     'labels' => ['Pending', 'Processing', 'In Review', 'Scheduled', 'Completed', 'Cancelled'],
                     'values' => [0, 0, 0, 0, 0, 0],
                 ],
-            ]);
+            ], 500);
         }
     }
 
@@ -155,16 +195,17 @@ class DashboardController extends Controller
                 'success' => true,
                 'data' => $this->buildMonthlyEarnings($this->publisherSiteIds()),
             ]);
-        } catch (\Exception $e) {
-            Log::error('Error fetching monthly earnings: '.$e->getMessage());
+        } catch (\Throwable $e) {
+            report($e);
 
             return response()->json([
                 'success' => false,
+                'message' => UserFacingError::message($e, 'Failed to load monthly earnings.'),
                 'data' => [
                     'labels' => ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
                     'values' => [0, 0, 0, 0, 0, 0],
                 ],
-            ]);
+            ], 500);
         }
     }
 

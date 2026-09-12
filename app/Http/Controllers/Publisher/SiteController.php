@@ -22,6 +22,7 @@ use App\Support\SiteDescriptionRules;
 use App\Support\SiteImageUpload;
 use App\Support\SiteTag;
 use App\Support\UserFacingError;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -35,39 +36,60 @@ class SiteController extends Controller
 
     public function index()
     {
-        $this->ensureListingSchema();
+        try {
+            $this->ensureListingSchema();
 
-        // Europe + major North America markets
-        $countries = Country::marketplace()->orderBy('name')->get();
-        // Same A–Z niche list as Catalog main search filter (Category::catalogPickerNames).
-        $categories = Category::catalogPickerNames();
-        $languages = Language::marketplace()
-            ->orderBy('name')
-            ->get();
+            // Europe + major North America markets
+            $countries = Country::marketplace()->orderBy('name')->get();
+            // Same A–Z niche list as Catalog main search filter (Category::catalogPickerNames).
+            $categories = Category::catalogPickerNames();
+            $languages = Language::marketplace()
+                ->orderBy('name')
+                ->get();
 
-        $pairs = app(CountryLanguagePairs::class);
-        // Country-first: country code → allowed languages.
-        $countryLanguageMap = $pairs->mapWithNames();
-        // Keep language→countries for any legacy UI that still reads it.
-        $languageCountryMap = app(LanguageCountryMap::class)->map();
+            $pairs = app(CountryLanguagePairs::class);
+            // Country-first: country code → allowed languages.
+            $countryLanguageMap = $pairs->mapWithNames();
+            // Keep language→countries for any legacy UI that still reads it.
+            $languageCountryMap = app(LanguageCountryMap::class)->map();
 
-        $openBulkRequest = BulkSiteRequest::query()
-            ->where('publisher_id', auth()->id())
-            ->blockingPublisher()
-            ->latest()
-            ->first();
+            $openBulkRequest = BulkSiteRequest::query()
+                ->where('publisher_id', auth()->id())
+                ->blockingPublisher()
+                ->latest()
+                ->first();
 
-        $awaitingDetailsCount = Site::query()
-            ->where('publisher_id', auth()->id())
-            ->notFromCancelledBulk()
-            ->where('onboarding_status', Site::ONBOARDING_AWAITING_DETAILS)
-            ->count();
+            $awaitingDetailsCount = 0;
+            $detailsCompleteCount = 0;
+            if (Site::hasSitesColumn('onboarding_status')) {
+                $awaitingDetailsCount = Site::query()
+                    ->where('publisher_id', auth()->id())
+                    ->notFromCancelledBulk()
+                    ->where('onboarding_status', Site::ONBOARDING_AWAITING_DETAILS)
+                    ->count();
 
-        $detailsCompleteCount = Site::query()
-            ->where('publisher_id', auth()->id())
-            ->notFromCancelledBulk()
-            ->where('onboarding_status', Site::ONBOARDING_DETAILS_COMPLETE)
-            ->count();
+                $detailsCompleteCount = Site::query()
+                    ->where('publisher_id', auth()->id())
+                    ->notFromCancelledBulk()
+                    ->where('onboarding_status', Site::ONBOARDING_DETAILS_COMPLETE)
+                    ->count();
+            }
+        } catch (\Throwable $e) {
+            report($e);
+            session()->flash(
+                'error',
+                UserFacingError::message($e, 'We could not load all website data. Please refresh and try again.')
+            );
+
+            $countries = collect();
+            $categories = [];
+            $languages = collect();
+            $countryLanguageMap = [];
+            $languageCountryMap = [];
+            $openBulkRequest = null;
+            $awaitingDetailsCount = 0;
+            $detailsCompleteCount = 0;
+        }
 
         return view('publisher.websites', compact(
             'countries',
@@ -93,13 +115,22 @@ class SiteController extends Controller
 
     public function getCountryLanguages($countryCode)
     {
-        $pairs = app(CountryLanguagePairs::class);
-        $rows = $pairs->mapWithNames()[strtolower(trim(scalar_text($countryCode)))] ?? [];
+        try {
+            $pairs = app(CountryLanguagePairs::class);
+            $rows = $pairs->mapWithNames()[strtolower(trim(scalar_text($countryCode)))] ?? [];
 
-        return response()->json(collect($rows)->map(fn ($r) => [
-            'code' => $r['code'],
-            'name' => $r['name'],
-        ])->values());
+            return response()->json(collect($rows)->map(fn ($r) => [
+                'code' => $r['code'],
+                'name' => $r['name'],
+            ])->values());
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'We could not load languages for that country. Please try again.'),
+            ], 500);
+        }
     }
 
     public function store(Request $request)
@@ -311,12 +342,13 @@ class SiteController extends Controller
                 'file' => $e->getFile().':'.$e->getLine(),
             ]);
 
-            $hint = 'We could not save this website. Please check your details and try again.';
+            $fallback = 'We could not save this website. Please check your details and try again.';
             if (str_contains($e->getMessage(), 'Unknown column')
                 || str_contains($e->getMessage(), 'Data too long')
                 || str_contains($e->getMessage(), 'onboarding_status')) {
-                $hint = 'We could not save this website because the database is missing a recent update. Please contact support.';
+                $fallback = 'We could not save this website because the database is missing a recent update. Please contact support.';
             }
+            $hint = UserFacingError::message($e, $fallback);
 
             return redirect()->back()
                 ->withErrors(['siteUrl' => $hint])
@@ -460,17 +492,35 @@ class SiteController extends Controller
 
     public function acceptAssignment(Request $request, $id)
     {
-        $site = DB::transaction(function () use ($id) {
-            $locked = Site::where('publisher_id', auth()->id())->lockForUpdate()->findOrFail($id);
-            if (! $locked->isPendingPublisherAcceptance()) {
-                return null;
+        try {
+            $site = DB::transaction(function () use ($id) {
+                $locked = Site::where('publisher_id', auth()->id())->lockForUpdate()->findOrFail($id);
+                if (! $locked->isPendingPublisherAcceptance()) {
+                    return null;
+                }
+
+                $locked->publisher_accepted_at = now();
+                $locked->save();
+
+                return $locked;
+            });
+        } catch (ModelNotFoundException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            report($e);
+            $message = UserFacingError::message($e, 'We could not accept that website. Please try again.');
+
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $message,
+                ], 500);
             }
 
-            $locked->publisher_accepted_at = now();
-            $locked->save();
-
-            return $locked;
-        });
+            return redirect()
+                ->route('publisher.websites', ['status' => 'pending'])
+                ->with('error', $message);
+        }
 
         if ($site === null) {
             if ($request->expectsJson() || $request->ajax()) {
@@ -528,35 +578,53 @@ class SiteController extends Controller
 
     public function rejectAssignment(Request $request, $id)
     {
-        $rejected = DB::transaction(function () use ($id) {
-            $locked = Site::where('publisher_id', auth()->id())->lockForUpdate()->findOrFail($id);
-            if (! $locked->isPendingPublisherAcceptance()) {
-                return ['status' => 'not_pending'];
+        try {
+            $rejected = DB::transaction(function () use ($id) {
+                $locked = Site::where('publisher_id', auth()->id())->lockForUpdate()->findOrFail($id);
+                if (! $locked->isPendingPublisherAcceptance()) {
+                    return ['status' => 'not_pending'];
+                }
+
+                $orderCount = $locked->orderItemsCount();
+                if ($orderCount > 0) {
+                    return ['status' => 'has_orders', 'order_count' => $orderCount];
+                }
+
+                try {
+                    app(InAppNotificationService::class)->completePublisherSiteAssignmentNotifications($locked);
+                } catch (\Throwable $e) {
+                    Log::warning('Failed to archive invite notification after publisher declined site: '.$e->getMessage());
+                }
+
+                $snapshot = [
+                    'status' => 'deleted',
+                    'id' => $locked->id,
+                    'domain' => $locked->domain ?: $locked->site_name,
+                    'cover' => is_string($locked->site_image) ? $locked->site_image : null,
+                    'screenshot' => is_string($locked->screenshot_path) ? $locked->screenshot_path : null,
+                    'thumb' => is_string($locked->screenshot_thumb_path) ? $locked->screenshot_thumb_path : null,
+                ];
+                $locked->delete();
+
+                return $snapshot;
+            });
+        } catch (ModelNotFoundException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            report($e);
+            $message = UserFacingError::message($e, 'We could not decline that invitation. Please try again.');
+
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $message,
+                ], 500);
             }
 
-            $orderCount = $locked->orderItemsCount();
-            if ($orderCount > 0) {
-                return ['status' => 'has_orders', 'order_count' => $orderCount];
-            }
-
-            try {
-                app(InAppNotificationService::class)->completePublisherSiteAssignmentNotifications($locked);
-            } catch (\Throwable $e) {
-                Log::warning('Failed to archive invite notification after publisher declined site: '.$e->getMessage());
-            }
-
-            $snapshot = [
-                'status' => 'deleted',
-                'id' => $locked->id,
-                'domain' => $locked->domain ?: $locked->site_name,
-                'cover' => is_string($locked->site_image) ? $locked->site_image : null,
-                'screenshot' => is_string($locked->screenshot_path) ? $locked->screenshot_path : null,
-                'thumb' => is_string($locked->screenshot_thumb_path) ? $locked->screenshot_thumb_path : null,
-            ];
-            $locked->delete();
-
-            return $snapshot;
-        });
+            return redirect()
+                ->route('publisher.websites', ['status' => 'invites'])
+                ->with('error', $message);
+        }
 
         if (($rejected['status'] ?? '') === 'not_pending') {
             if ($request->expectsJson() || $request->ajax()) {
@@ -612,6 +680,22 @@ class SiteController extends Controller
     }
 
     public function editData(int $id)
+    {
+        try {
+            return $this->editDataPayload($id);
+        } catch (ModelNotFoundException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'We could not load that website. Please try again.'),
+            ], 500);
+        }
+    }
+
+    private function editDataPayload(int $id)
     {
         $site = Site::where('publisher_id', auth()->id())->findOrFail($id);
 
@@ -851,12 +935,13 @@ class SiteController extends Controller
                 'file' => $e->getFile().':'.$e->getLine(),
             ]);
 
-            $hint = 'We could not update this website. Please check your details and try again.';
+            $fallback = 'We could not update this website. Please check your details and try again.';
             if (str_contains($e->getMessage(), 'Unknown column')
                 || str_contains($e->getMessage(), 'Data too long')
                 || str_contains($e->getMessage(), 'onboarding_status')) {
-                $hint = 'We could not update this website because the database is missing a recent update. Please contact support.';
+                $fallback = 'We could not update this website because the database is missing a recent update. Please contact support.';
             }
+            $hint = UserFacingError::message($e, $fallback);
 
             return redirect()->back()
                 ->withErrors(['siteUrl' => $hint])
@@ -913,38 +998,49 @@ class SiteController extends Controller
 
     public function destroy($id)
     {
-        $deleted = DB::transaction(function () use ($id) {
-            $site = Site::where('publisher_id', auth()->id())->lockForUpdate()->findOrFail($id);
+        try {
+            $deleted = DB::transaction(function () use ($id) {
+                $site = Site::where('publisher_id', auth()->id())->lockForUpdate()->findOrFail($id);
 
-            if ($site->verified || $site->active) {
-                return ['status' => 'live'];
-            }
+                if ($site->verified || $site->active) {
+                    return ['status' => 'live'];
+                }
 
-            if ($site->isArchived()) {
-                return ['status' => 'archived'];
-            }
+                if ($site->isArchived()) {
+                    return ['status' => 'archived'];
+                }
 
-            if ($site->orderItemsCount() > 0) {
-                return ['status' => 'has_orders'];
-            }
+                if ($site->orderItemsCount() > 0) {
+                    return ['status' => 'has_orders'];
+                }
 
-            try {
-                app(InAppNotificationService::class)->completePublisherSiteAssignmentNotifications($site);
-            } catch (\Throwable $e) {
-                Log::warning('Failed to archive invite notification after publisher deleted site: '.$e->getMessage());
-            }
+                try {
+                    app(InAppNotificationService::class)->completePublisherSiteAssignmentNotifications($site);
+                } catch (\Throwable $e) {
+                    Log::warning('Failed to archive invite notification after publisher deleted site: '.$e->getMessage());
+                }
 
-            $snapshot = [
-                'status' => 'deleted',
-                'cover' => is_string($site->site_image) ? $site->site_image : null,
-                'screenshot' => is_string($site->screenshot_path) ? $site->screenshot_path : null,
-                'thumb' => is_string($site->screenshot_thumb_path) ? $site->screenshot_thumb_path : null,
-                'id' => (int) $site->id,
-            ];
-            $site->delete();
+                $snapshot = [
+                    'status' => 'deleted',
+                    'cover' => is_string($site->site_image) ? $site->site_image : null,
+                    'screenshot' => is_string($site->screenshot_path) ? $site->screenshot_path : null,
+                    'thumb' => is_string($site->screenshot_thumb_path) ? $site->screenshot_thumb_path : null,
+                    'id' => (int) $site->id,
+                ];
+                $site->delete();
 
-            return $snapshot;
-        });
+                return $snapshot;
+            });
+        } catch (ModelNotFoundException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            report($e);
+
+            return redirect()->back()->with(
+                'error',
+                UserFacingError::message($e, 'We could not delete that website. Please try again.')
+            );
+        }
 
         if (($deleted['status'] ?? '') === 'live') {
             return redirect()->back()->with('error', 'You cannot delete an active or verified site. Archive it instead.');
@@ -958,12 +1054,19 @@ class SiteController extends Controller
             return redirect()->back()->with('error', 'This site has orders and cannot be deleted.');
         }
 
-        SiteImageUpload::deleteListingPublicMedia(
-            $deleted['cover'] ?? null,
-            $deleted['screenshot'] ?? null,
-            $deleted['thumb'] ?? null,
-            (int) ($deleted['id'] ?? 0)
-        );
+        try {
+            SiteImageUpload::deleteListingPublicMedia(
+                $deleted['cover'] ?? null,
+                $deleted['screenshot'] ?? null,
+                $deleted['thumb'] ?? null,
+                (int) ($deleted['id'] ?? 0)
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Failed to delete listing media after publisher site delete', [
+                'site_id' => $deleted['id'] ?? 0,
+                'error' => $e->getMessage(),
+            ]);
+        }
 
         return redirect()->back()->with('success', 'Site deleted successfully!');
     }
@@ -988,8 +1091,17 @@ class SiteController extends Controller
         }
 
         // Hide via archived_at only — keep active/verified so restore does not force a site live.
-        $site->archived_at = now();
-        $site->save();
+        try {
+            $site->archived_at = now();
+            $site->save();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'We could not archive this website. Please try again.'),
+            ], 500);
+        }
 
         ActivityLogger::tryLog(
             'site.archived',
@@ -1017,9 +1129,18 @@ class SiteController extends Controller
             return response()->json(['success' => false, 'message' => 'Site is not archived.'], 422);
         }
 
-        $site->archived_at = null;
-        $site->save();
-        $site->refresh();
+        try {
+            $site->archived_at = null;
+            $site->save();
+            $site->refresh();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'We could not restore this website. Please try again.'),
+            ], 500);
+        }
 
         ActivityLogger::tryLog(
             'site.unarchived',
@@ -1251,6 +1372,10 @@ class SiteController extends Controller
             );
         } catch (\InvalidArgumentException $e) {
             return back()->with('error', UserFacingError::message($e, 'We could not import that CSV. Please check the file and try again.'));
+        } catch (\Throwable $e) {
+            report($e);
+
+            return back()->with('error', UserFacingError::message($e, 'We could not import that CSV. Please try again.'));
         }
 
         $created = (int) $result['created'];

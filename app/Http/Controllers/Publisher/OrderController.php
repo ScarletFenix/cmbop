@@ -34,6 +34,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
 class OrderController extends Controller
 {
@@ -50,28 +51,35 @@ class OrderController extends Controller
      */
     public function downloadContent(ContentSubmission $submission): StreamedResponse
     {
-        $allowed = OrderItem::query()
-            ->where('content_submission_id', $submission->id)
-            ->withoutClawback()
-            ->whereHas('site', fn ($q) => $q->where('publisher_id', auth()->id()))
-            ->whereHas('order', fn ($q) => $q->where('payment_status', 'paid'))
-            ->exists();
+        try {
+            $allowed = OrderItem::query()
+                ->where('content_submission_id', $submission->id)
+                ->withoutClawback()
+                ->whereHas('site', fn ($q) => $q->where('publisher_id', auth()->id()))
+                ->whereHas('order', fn ($q) => $q->where('payment_status', 'paid'))
+                ->exists();
 
-        abort_unless($allowed, 403);
+            abort_unless($allowed, 403);
 
-        $disk = Storage::disk($submission->disk ?: 'local');
-        if (! $submission->hasStoredFile() || ! $disk->exists($submission->path)) {
-            abort(404, 'File not found');
+            $disk = Storage::disk($submission->disk ?: 'local');
+            if (! $submission->hasStoredFile() || ! $disk->exists($submission->path)) {
+                abort(404, 'File not found');
+            }
+
+            return $disk->download(
+                $submission->path,
+                $submission->original_filename,
+                ArticleDownload::headers(
+                    (string) $submission->original_filename,
+                    (string) ($submission->mime ?: 'application/octet-stream')
+                )
+            );
+        } catch (HttpExceptionInterface $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            report($e);
+            abort(503, UserFacingError::message($e, 'Unable to download this file right now.'));
         }
-
-        return $disk->download(
-            $submission->path,
-            $submission->original_filename,
-            ArticleDownload::headers(
-                (string) $submission->original_filename,
-                (string) ($submission->mime ?: 'application/octet-stream')
-            )
-        );
     }
 
     /**
@@ -279,18 +287,27 @@ class OrderController extends Controller
             ], 422);
         }
 
-        $userId = auth()->id();
-        $siteIds = Site::where('publisher_id', $userId)->pluck('id');
+        try {
+            $userId = auth()->id();
+            $siteIds = Site::where('publisher_id', $userId)->pluck('id');
 
-        $item = OrderItem::query()
-            ->with('order:id,order_number')
-            ->where('order_id', $orderId)
-            ->whereIn('site_id', $siteIds)
-            ->whereHas('order', function ($q) {
-                $q->where('payment_status', 'paid');
-            })
-            ->orderBy('id')
-            ->first();
+            $item = OrderItem::query()
+                ->with('order:id,order_number')
+                ->where('order_id', $orderId)
+                ->whereIn('site_id', $siteIds)
+                ->whereHas('order', function ($q) {
+                    $q->where('payment_status', 'paid');
+                })
+                ->orderBy('id')
+                ->first();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'We could not find that task. Please try again.'),
+            ], 500);
+        }
 
         if (! $item) {
             return response()->json([
@@ -1438,13 +1455,13 @@ class OrderController extends Controller
                 'orders' => $orders,
             ]);
 
-        } catch (\Exception $e) {
-            Log::error('Error fetching recent orders: '.$e->getMessage());
+        } catch (\Throwable $e) {
+            report($e);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to fetch recent orders',
-            ]);
+                'message' => UserFacingError::message($e, 'Failed to fetch recent orders.'),
+            ], 500);
         }
     }
 

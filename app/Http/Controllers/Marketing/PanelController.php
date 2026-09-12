@@ -7,6 +7,7 @@ use App\Models\ActivityLog;
 use App\Support\ActivityLogDateBounds;
 use App\Support\ActivityLogTextSearch;
 use App\Support\MarketingOpsQueues;
+use App\Support\UserFacingError;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 
@@ -101,11 +102,22 @@ class PanelController extends Controller
 
     public function queueCounts()
     {
-        return response()->json([
-            'success' => true,
-            'ready_sites' => MarketingOpsQueues::sitesReadyForStaffCount(),
-            'bulk_waiting' => MarketingOpsQueues::bulkWaitingOnMarketerCount(),
-        ]);
+        try {
+            return response()->json([
+                'success' => true,
+                'ready_sites' => MarketingOpsQueues::sitesReadyForStaffCount(),
+                'bulk_waiting' => MarketingOpsQueues::bulkWaitingOnMarketerCount(),
+            ]);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'We could not load queue counts. Please try again.'),
+                'ready_sites' => 0,
+                'bulk_waiting' => 0,
+            ], 500);
+        }
     }
 
     public function history(Request $request)

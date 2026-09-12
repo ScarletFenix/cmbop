@@ -27,6 +27,7 @@ use App\Support\PublicStorageLink;
 use App\Support\SiteDescriptionRules;
 use App\Support\SiteImageUpload;
 use App\Support\SiteTag;
+use App\Support\UserFacingError;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\QueryException;
@@ -135,64 +136,86 @@ class SiteController extends Controller
             $countryFilter = '';
         }
 
-        $query = Site::query()->orderBy('domain')->orderBy('id');
-        if ($missingMarket) {
-            $query->activeMissingMarketplaceCountry();
-        } else {
-            $this->applyRecordsCountryFilter($query, $countryFilter);
-        }
-
-        $sites = $query
-            ->paginate(100)
-            ->appends(array_filter([
-                'country' => $countryFilter !== '' ? $countryFilter : null,
-                'missing_market' => $missingMarket ? 1 : null,
-            ]))
-            ->through(fn (Site $site) => $this->siteRecordRow($site));
-
-        $countryCounts = $this->recordsCountryCounts();
-        $totalSites = (int) Site::query()->count();
-        $missingMarketCount = (int) Site::query()->activeMissingMarketplaceCountry()->count();
-        $countries = Country::marketplace()
-            ->orderBy('name')
-            ->get(['code', 'name'])
-            ->map(function (Country $country) use ($countryCounts) {
-                $code = strtolower(trim((string) $country->code));
-
-                return [
-                    'code' => $code,
-                    'name' => (string) $country->name,
-                    'count' => (int) ($countryCounts[$code] ?? 0),
-                ];
-            })
-            ->values();
-
-        $selectedCountry = $countryFilter;
-        $exportUrl = route('admin.sites.records.export', array_filter([
-            'country' => $selectedCountry !== '' ? $selectedCountry : null,
-            'missing_market' => $missingMarket ? 1 : null,
-        ]));
-
         $wantsPartial = $request->boolean('partial')
             || $request->expectsJson()
             || str_contains(strtolower((string) $request->header('Accept', '')), 'application/json');
 
-        if ($wantsPartial) {
-            $tableHtml = view('admin.sites.partials.records-table', [
-                'sites' => $sites,
-                'selectedCountry' => $selectedCountry,
-                'missingMarket' => $missingMarket,
-            ])->render();
+        try {
+            $query = Site::query()->orderBy('domain')->orderBy('id');
+            if ($missingMarket) {
+                $query->activeMissingMarketplaceCountry();
+            } else {
+                $this->applyRecordsCountryFilter($query, $countryFilter);
+            }
 
-            return response()->json([
-                'success' => true,
-                'selected_country' => $selectedCountry,
-                'missing_market' => $missingMarket,
-                'missing_market_count' => $missingMarketCount,
-                'total' => $sites->total(),
-                'export_url' => $exportUrl,
-                'table_html' => $tableHtml,
-            ]);
+            $sites = $query
+                ->paginate(100)
+                ->appends(array_filter([
+                    'country' => $countryFilter !== '' ? $countryFilter : null,
+                    'missing_market' => $missingMarket ? 1 : null,
+                ]))
+                ->through(fn (Site $site) => $this->siteRecordRow($site));
+
+            $countryCounts = $this->recordsCountryCounts();
+            $totalSites = (int) Site::query()->count();
+            $missingMarketCount = (int) Site::query()->activeMissingMarketplaceCountry()->count();
+            $countries = Country::marketplace()
+                ->orderBy('name')
+                ->get(['code', 'name'])
+                ->map(function (Country $country) use ($countryCounts) {
+                    $code = strtolower(trim((string) $country->code));
+
+                    return [
+                        'code' => $code,
+                        'name' => (string) $country->name,
+                        'count' => (int) ($countryCounts[$code] ?? 0),
+                    ];
+                })
+                ->values();
+
+            $selectedCountry = $countryFilter;
+            $exportUrl = route('admin.sites.records.export', array_filter([
+                'country' => $selectedCountry !== '' ? $selectedCountry : null,
+                'missing_market' => $missingMarket ? 1 : null,
+            ]));
+        } catch (\Throwable $e) {
+            report($e);
+
+            if ($wantsPartial) {
+                return response()->json([
+                    'success' => false,
+                    'message' => UserFacingError::message($e, 'We could not filter records. Please try again.'),
+                ], 500);
+            }
+
+            throw $e;
+        }
+
+        if ($wantsPartial) {
+            try {
+                $tableHtml = view('admin.sites.partials.records-table', [
+                    'sites' => $sites,
+                    'selectedCountry' => $selectedCountry,
+                    'missingMarket' => $missingMarket,
+                ])->render();
+
+                return response()->json([
+                    'success' => true,
+                    'selected_country' => $selectedCountry,
+                    'missing_market' => $missingMarket,
+                    'missing_market_count' => $missingMarketCount,
+                    'total' => $sites->total(),
+                    'export_url' => $exportUrl,
+                    'table_html' => $tableHtml,
+                ]);
+            } catch (\Throwable $e) {
+                report($e);
+
+                return response()->json([
+                    'success' => false,
+                    'message' => UserFacingError::message($e, 'We could not filter records. Please try again.'),
+                ], 500);
+            }
         }
 
         return view('admin.sites.records', compact(
