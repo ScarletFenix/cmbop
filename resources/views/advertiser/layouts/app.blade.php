@@ -190,9 +190,15 @@
 
         <!-- Balance -->
         @php
-            $activeWallet = auth()->user()->activeWallet();
-            $spendableBalance = (float) ($activeWallet?->balance ?? 0);
-            $reservedBalance = (float) ($activeWallet?->reserved_balance ?? 0);
+            $spendableBalance = 0.0;
+            $reservedBalance = 0.0;
+            try {
+                $activeWallet = auth()->user()->activeWallet();
+                $spendableBalance = (float) ($activeWallet?->balance ?? 0);
+                $reservedBalance = (float) ($activeWallet?->reserved_balance ?? 0);
+            } catch (\Throwable $e) {
+                report($e);
+            }
             $headerBalanceTitle = 'Spendable €' . number_format($spendableBalance, 2)
                 . ($reservedBalance > 0 ? ' · On hold: €' . number_format($reservedBalance, 2) : '');
         @endphp

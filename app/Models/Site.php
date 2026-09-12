@@ -2242,17 +2242,23 @@ class Site extends Model
 
         $uid = (int) $user->id;
 
-        return static::query()
-            ->where(function ($q) use ($uid) {
-                $q->where('publisher_id', $uid);
-                if (Schema::hasColumn('sites', 'owner_id')) {
-                    $q->orWhere('owner_id', $uid);
-                }
-            })
-            ->pluck('id')
-            ->map(fn ($id) => (int) $id)
-            ->values()
-            ->all();
+        try {
+            return static::query()
+                ->where(function ($q) use ($uid) {
+                    $q->where('publisher_id', $uid);
+                    if (Schema::hasColumn('sites', 'owner_id')) {
+                        $q->orWhere('owner_id', $uid);
+                    }
+                })
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->values()
+                ->all();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return [];
+        }
     }
 
     /**

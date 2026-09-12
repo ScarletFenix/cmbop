@@ -264,8 +264,14 @@ class CatalogController extends Controller
         }
 
         // Drop hidden/owned lines before the banner, wizard chrome, and header badge render.
-        $cartRemovedInactive = $this->syncPrunedSessionCart();
-        $cart = session()->get('cart', []);
+        try {
+            $cartRemovedInactive = $this->syncPrunedSessionCart();
+            $cart = session()->get('cart', []);
+        } catch (\Throwable $e) {
+            report($e);
+            $cartRemovedInactive = false;
+            $cart = session()->get('cart', []);
+        }
 
         // Bulk discount marketplace section — follows Catalog country= (Option 1).
         // Option 2: hide the Spendable rail when More → Bulk deals only is on
