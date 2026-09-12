@@ -67,7 +67,6 @@
 
     @include('components.country-lander-nav', [
         'title' => 'Guest posts by market',
-        'subtitle' => 'Open a public country page — prices and inventory stay on verified primary-country listings.',
         'landers' => $countryLanders ?? [],
         'label' => 'Country landers',
     ])

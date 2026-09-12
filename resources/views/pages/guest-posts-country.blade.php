@@ -180,7 +180,6 @@
 
     @include('components.country-lander-nav', [
         'title' => 'Other markets',
-        'subtitle' => 'Each page is a public English lander for that country’s catalog.',
         'landers' => $siblings ?? [],
         'label' => 'Other country landers',
     ])
