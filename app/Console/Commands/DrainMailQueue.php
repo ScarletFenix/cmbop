@@ -55,6 +55,9 @@ class DrainMailQueue extends Command
                 '--stop-when-empty' => true,
                 '--max-time' => (int) $this->option('max-time'),
                 '--tries' => (int) $this->option('tries'),
+                // queue:work defaults to 128MB and exits 12 when the parent
+                // artisan/PHPUnit process is already larger than that.
+                '--memory' => 0,
             ]);
             $exit = max($exit, $code);
         }

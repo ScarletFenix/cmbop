@@ -247,7 +247,7 @@ class CatalogController extends Controller
             $countryPickerGroups = $countryPicker['groups'];
         } catch (\Throwable $e) {
             Log::warning('Catalog country picker failed', ['error' => $e->getMessage()]);
-            $countryPickerSections = [];
+            $countryPickerSections = $this->staticCountryPickerSections();
             $countryPickerGroups = [];
         }
 
@@ -5527,10 +5527,16 @@ class CatalogController extends Controller
                 'trace' => $e->getTraceAsString(),
             ]);
 
-            return response()->json([
+            $payload = [
                 'success' => false,
                 'message' => UserFacingError::message($e, 'Failed to approve order. Please try again.'),
-            ], 500);
+            ];
+            $debug = UserFacingError::debugDetail($e);
+            if ($debug !== null) {
+                $payload['debug'] = $debug;
+            }
+
+            return response()->json($payload, 500);
         }
     }
 

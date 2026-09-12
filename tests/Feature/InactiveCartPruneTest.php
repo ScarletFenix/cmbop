@@ -144,7 +144,7 @@ class InactiveCartPruneTest extends TestCase
         $this->assertEmpty(session('cart', []));
     }
 
-    public function test_cart_get_prunes_unverified_and_archived_sites(): void
+    public function test_cart_get_keeps_unverified_live_sites_and_prunes_archived(): void
     {
         $live = $this->makeSite('keep-live', true);
         $unverified = $this->makeSite('still-active-unverified', true, ['verified' => false]);
@@ -160,30 +160,30 @@ class InactiveCartPruneTest extends TestCase
             ])
             ->getJson(route('advertiser.cart.get'))
             ->assertOk()
-            ->assertJsonPath('removed_inactive_count', 2)
-            ->assertJsonPath('cart_count', 1);
+            ->assertJsonPath('removed_inactive_count', 1)
+            ->assertJsonPath('cart_count', 2);
 
-        $this->assertCount(1, session('cart'));
-        $this->assertSame($live->id, (int) session('cart')[0]['id']);
+        $ids = collect(session('cart'))->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $this->assertEqualsCanonicalizing([$live->id, $unverified->id], $ids);
     }
 
     public function test_catalog_page_prunes_hidden_sites_from_banner(): void
     {
         $live = $this->makeSite('catalog-keep', true);
-        $unverified = $this->makeSite('catalog-unverified', true, ['verified' => false]);
+        $inactive = $this->makeSite('catalog-inactive', false);
 
         $html = $this->actingAs($this->advertiser)
             ->withSession([
                 'cart' => [
                     ['id' => $live->id, 'name' => $live->site_name, 'price' => 40, 'quantity' => 2],
-                    ['id' => $unverified->id, 'name' => $unverified->site_name, 'price' => 55, 'quantity' => 2],
+                    ['id' => $inactive->id, 'name' => $inactive->site_name, 'price' => 55, 'quantity' => 2],
                 ],
             ])
             ->get(route('advertiser.catalog'))
             ->assertOk();
 
         $html->assertSee('You have <strong>1</strong>', false);
-        $html->assertSee($unverified->site_name, false);
+        $html->assertSee($inactive->site_name, false);
         $html->assertSee('no longer available and was removed from your cart', false);
 
         $this->assertCount(1, session('cart'));
@@ -193,7 +193,7 @@ class InactiveCartPruneTest extends TestCase
     public function test_advertiser_header_prunes_hidden_sites_outside_catalog(): void
     {
         $live = $this->makeSite('dash-keep', true);
-        $unverified = $this->makeSite('dash-unverified', true, ['verified' => false]);
+        $unverified = $this->makeSite('dash-inactive', false);
 
         $html = $this->actingAs($this->advertiser)
             ->withSession([
@@ -223,7 +223,7 @@ class InactiveCartPruneTest extends TestCase
     public function test_add_to_cart_404_prunes_hidden_siblings(): void
     {
         $live = $this->makeSite('add-keep', true);
-        $unverified = $this->makeSite('add-unverified', true, ['verified' => false]);
+        $unverified = $this->makeSite('add-inactive', false);
 
         $this->actingAs($this->advertiser)
             ->withSession([
@@ -243,7 +243,7 @@ class InactiveCartPruneTest extends TestCase
     public function test_save_cart_drops_hidden_and_invalid_ids(): void
     {
         $live = $this->makeSite('save-keep', true);
-        $unverified = $this->makeSite('save-unverified', true, ['verified' => false]);
+        $unverified = $this->makeSite('save-inactive', false);
 
         $this->actingAs($this->advertiser)
             ->withSession([

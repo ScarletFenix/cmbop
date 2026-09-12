@@ -231,7 +231,7 @@ class CheckoutSystemFixTest extends TestCase
             ->assertOk()
             ->assertJson(['success' => true]);
 
-        $site->update(['verified' => false]);
+        $site->update(['active' => false]);
 
         $this->actingAs($advertiser)
             ->get(route('advertiser.checkout', ['canceled' => 1, 'ref' => 'CANH1']))

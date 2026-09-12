@@ -86,6 +86,29 @@ class CatalogCountryInventoryTest extends TestCase
         $this->assertArrayNotHasKey('fr', $counts);
     }
 
+    public function test_counts_include_active_unverified_listings(): void
+    {
+        Cache::flush();
+        $publisher = $this->publisher();
+        $this->site($publisher, [
+            'country' => 'pt',
+            'countries' => ['pt'],
+            'verified' => false,
+            'active' => true,
+            'domain' => 'pt-unverified.test',
+        ]);
+
+        $counts = app(CatalogCountryInventory::class)->counts();
+        $this->assertSame(1, $counts['pt'] ?? 0);
+
+        $codes = collect(app(CatalogCountryInventory::class)->pickerSections()['sections'])
+            ->flatMap(fn ($s) => $s['options'])
+            ->pluck('code')
+            ->all();
+        $this->assertContains('pt', $codes);
+        $this->assertContains('de', $codes);
+    }
+
     public function test_counts_ignore_countries_outside_allowlist(): void
     {
         Cache::flush();

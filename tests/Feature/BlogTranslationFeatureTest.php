@@ -7,7 +7,9 @@ use App\Models\BlogTranslation;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\CuratedBlogSync;
+use App\Support\BlogTranslationSlug;
 use App\Support\GastbeitraegeEuropaBlogPost;
+use App\Support\PublicI18n;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
@@ -67,6 +69,123 @@ class BlogTranslationFeatureTest extends TestCase
             ->assertDontSee('hreflang="en-GB" href="'.url('/blog/deutscher-titel').'"', false);
     }
 
+    public function test_english_blog_slug_redirects_to_localized_slug(): void
+    {
+        $blog = Blog::factory()->published()->create([
+            'title' => 'English title',
+            'slug' => 'english-title',
+            'content' => '<p>English body</p>',
+        ]);
+
+        BlogTranslation::create([
+            'blog_id' => $blog->id,
+            'locale' => 'en',
+            'title' => 'English title',
+            'slug' => 'english-title',
+            'excerpt' => 'English excerpt',
+            'content' => '<p>English body</p>',
+            'is_published' => true,
+        ]);
+
+        BlogTranslation::create([
+            'blog_id' => $blog->id,
+            'locale' => 'de',
+            'title' => 'Deutscher Titel',
+            'slug' => 'deutscher-titel',
+            'excerpt' => 'Deutscher Auszug',
+            'content' => '<p>Deutscher Inhalt</p>',
+            'is_published' => true,
+        ]);
+
+        $this->get('/de/blog/english-title')
+            ->assertRedirect(url('/de/blog/deutscher-titel'));
+
+        $this->followingRedirects()
+            ->get('/de/blog/english-title')
+            ->assertOk()
+            ->assertSee('Deutscher Titel', false);
+    }
+
+    public function test_language_switcher_on_post_uses_target_locale_slug(): void
+    {
+        $blog = Blog::factory()->published()->create([
+            'title' => 'English title',
+            'slug' => 'english-title',
+            'content' => '<p>English body</p>',
+        ]);
+
+        BlogTranslation::create([
+            'blog_id' => $blog->id,
+            'locale' => 'en',
+            'title' => 'English title',
+            'slug' => 'english-title',
+            'excerpt' => 'English excerpt',
+            'content' => '<p>English body</p>',
+            'is_published' => true,
+        ]);
+
+        BlogTranslation::create([
+            'blog_id' => $blog->id,
+            'locale' => 'de',
+            'title' => 'Deutscher Titel',
+            'slug' => 'deutscher-titel',
+            'excerpt' => 'Deutscher Auszug',
+            'content' => '<p>Deutscher Inhalt</p>',
+            'is_published' => true,
+        ]);
+
+        $this->assertSame(
+            url('/de/blog/deutscher-titel'),
+            PublicI18n::urlForLocale(PublicI18n::blogPathForLocale('english-title', 'de'), 'de')
+        );
+
+        $this->get('/blog/english-title')
+            ->assertOk()
+            ->assertSee(url('/de/blog/deutscher-titel'), false)
+            ->assertDontSee(url('/de/blog/english-title'), false);
+    }
+
+    public function test_copied_translation_slugs_are_localized_from_title(): void
+    {
+        $blog = Blog::factory()->published()->create([
+            'title' => 'English title',
+            'slug' => 'english-title',
+            'content' => '<p>English body</p>',
+        ]);
+
+        BlogTranslation::create([
+            'blog_id' => $blog->id,
+            'locale' => 'en',
+            'title' => 'English title',
+            'slug' => 'english-title',
+            'excerpt' => 'English excerpt',
+            'content' => '<p>English body</p>',
+            'is_published' => true,
+        ]);
+
+        BlogTranslation::create([
+            'blog_id' => $blog->id,
+            'locale' => 'de',
+            'title' => 'Deutscher Titel',
+            'slug' => 'english-title-de',
+            'excerpt' => 'Deutscher Auszug',
+            'content' => '<p>Deutscher Inhalt</p>',
+            'is_published' => true,
+        ]);
+
+        $this->assertTrue(BlogTranslationSlug::hasCopiedSlugs());
+        $this->assertSame(1, BlogTranslationSlug::localizeCopiedSlugs());
+        $this->assertSame(
+            'deutscher-titel',
+            $blog->translations()->where('locale', 'de')->value('slug')
+        );
+        $this->assertSame(
+            'english-title',
+            $blog->translations()->where('locale', 'en')->value('slug')
+        );
+        $this->assertFalse(BlogTranslationSlug::hasCopiedSlugs());
+    }
+
     public function test_show_resolves_translation_slug_when_blogs_slug_was_renamed(): void
     {
         $blog = Blog::factory()->published()->create([
@@ -102,13 +221,16 @@ class BlogTranslationFeatureTest extends TestCase
             ->assertSee('Deutscher Inhalt', false);
 
         $this->get('/blog/deutscher-titel-renamed-pillar')
+            ->assertRedirect(url('/blog/english-title-renamed-pillar'));
+
+        $this->followingRedirects()
+            ->get('/blog/deutscher-titel-renamed-pillar')
             ->assertOk()
             ->assertSee('English title', false)
             ->assertSee('English body', false);
 
         $this->get('/blog/renamed-pillar-slug')
-            ->assertOk()
-            ->assertSee('English title', false);
+            ->assertRedirect(url('/blog/english-title-renamed-pillar'));
     }
 
     public function test_missing_locale_translation_falls_back_to_english_notice(): void
@@ -917,7 +1039,11 @@ class BlogTranslationFeatureTest extends TestCase
         $this->assertSame(0, substr_count($enSitemap, '<loc>'.url('/blog/cross-locale-owned-slug').'</loc>'));
         $this->assertSame(0, substr_count($enSitemap, '<loc>'.url('/blog/'.$orphan->slug).'</loc>'));
 
-        $html = $this->get('/blog/cross-locale-owned-slug')
+        $this->get('/blog/cross-locale-owned-slug')
+            ->assertRedirect(url('/blog/owner-en-slug'));
+
+        $html = $this->followingRedirects()
+            ->get('/blog/cross-locale-owned-slug')
             ->assertOk()
             ->getContent();
         $this->assertMatchesRegularExpression('/<h1[^>]*>\s*Owner English Title\s*<\/h1>/', $html);

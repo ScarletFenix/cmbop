@@ -5,6 +5,7 @@ namespace App\Services\Catalog;
 use App\Models\Country;
 use App\Models\Site;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Active-site inventory counts per marketplace country (one country per site).
@@ -60,11 +61,7 @@ class CatalogCountryInventory
     public function options(bool $onlyWithInventory = true): array
     {
         $counts = $this->counts();
-        $names = Country::marketplace()
-            ->orderBy('name')
-            ->pluck('name', 'code')
-            ->mapWithKeys(fn ($name, $code) => [strtolower((string) $code) => (string) $name])
-            ->all();
+        $names = $this->marketplaceCountryNames();
 
         $options = [];
         $seen = [];
@@ -120,12 +117,13 @@ class CatalogCountryInventory
             }
         }
 
-        $counts = $this->counts();
-        $names = Country::marketplace()
-            ->orderBy('name')
-            ->pluck('name', 'code')
-            ->mapWithKeys(fn ($name, $code) => [strtolower((string) $code) => (string) $name])
-            ->all();
+        try {
+            $counts = $this->counts();
+        } catch (\Throwable $e) {
+            Log::warning('Catalog country inventory counts failed', ['error' => $e->getMessage()]);
+            $counts = [];
+        }
+        $names = $this->marketplaceCountryNames();
 
         $row = function (string $code) use ($counts, $names): array {
             return [
@@ -135,17 +133,10 @@ class CatalogCountryInventory
             ];
         };
 
+        // Always list marketplace countries so the dropdown is never empty
+        // when listings exist but inventory cache/counts miss (or count is 0).
         $eligible = [];
-        foreach ($this->buckets->orderedCodes() as $code) {
-            $count = (int) ($counts[$code] ?? 0);
-            if ($count > 0 || isset($selected[$code])) {
-                $eligible[$code] = $row($code);
-            }
-        }
-        foreach ($counts as $code => $count) {
-            if ($count < 1 || isset($eligible[$code])) {
-                continue;
-            }
+        foreach ($this->marketplacePickerCodes($counts, $selected) as $code) {
             $eligible[$code] = $row($code);
         }
 
@@ -334,14 +325,18 @@ class CatalogCountryInventory
         );
 
         $counts = [];
+        $columns = ['id', 'country'];
+        if (Site::hasSitesColumn('countries')) {
+            $columns[] = 'countries';
+        }
 
         Site::query()
             ->catalogVisible()
-            ->select(['id', 'country', 'countries'])
+            ->select($columns)
             ->orderBy('id')
             ->chunkById(500, function ($sites) use (&$counts, $allow) {
                 foreach ($sites as $site) {
-                    $code = $this->primaryCountryCode($site->country, $site->countries);
+                    $code = $this->primaryCountryCode($site->country, $site->countries ?? null);
                     if ($code === null || ! isset($allow[$code])) {
                         continue;
                     }
@@ -350,5 +345,61 @@ class CatalogCountryInventory
             });
 
         return $counts;
+    }
+
+    /**
+     * Display names: helper map first, countries table overrides when present.
+     *
+     * @return array<string, string>
+     */
+    private function marketplaceCountryNames(): array
+    {
+        $names = [];
+        if (function_exists('marketplace_countries')) {
+            foreach (marketplace_countries() as $code => $name) {
+                $names[strtolower((string) $code)] = (string) $name;
+            }
+        }
+
+        try {
+            $fromDb = Country::marketplace()
+                ->orderBy('name')
+                ->pluck('name', 'code')
+                ->mapWithKeys(fn ($name, $code) => [strtolower((string) $code) => (string) $name])
+                ->all();
+            $names = array_merge($names, $fromDb);
+        } catch (\Throwable $e) {
+            Log::warning('Catalog country names fell back to helper map', [
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $names;
+    }
+
+    /**
+     * @param  array<string, int>  $counts
+     * @param  array<string, true>  $selected
+     * @return list<string>
+     */
+    private function marketplacePickerCodes(array $counts, array $selected): array
+    {
+        $codes = [];
+        foreach ($this->buckets->orderedCodes() as $code) {
+            $codes[$code] = true;
+        }
+        foreach (array_keys($this->marketplaceCountryNames()) as $code) {
+            $codes[$code] = true;
+        }
+        foreach (array_keys($counts) as $code) {
+            if ((int) $counts[$code] > 0) {
+                $codes[$code] = true;
+            }
+        }
+        foreach (array_keys($selected) as $code) {
+            $codes[$code] = true;
+        }
+
+        return array_keys($codes);
     }
 }

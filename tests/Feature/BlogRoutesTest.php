@@ -12,6 +12,7 @@ use App\Support\FasterPublisherPayoutsBlogPost;
 use App\Support\GastbeitraegeEuropaBlogPost;
 use App\Support\HowToPriceYourSiteBlogPost;
 use App\Support\LiveLinkChecklistBlogPost;
+use App\Support\LocalizedPublicPath;
 use App\Support\PublicI18n;
 use App\Support\PublisherPlatformGuideBlogPost;
 use App\Support\WhySitesGetRejectedBlogPost;
@@ -95,7 +96,7 @@ class BlogRoutesTest extends TestCase
             'is_published' => true,
         ]);
 
-        $this->get('/de/about')
+        $this->get(LocalizedPublicPath::publicPath('about', 'de'))
             ->assertOk()
             ->assertSee('Deutscher Footer Titel', false)
             ->assertSee('/de/blog/deutscher-footer-titel', false)

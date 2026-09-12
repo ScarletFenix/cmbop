@@ -16,7 +16,8 @@ return [
 
     /**
      * Public marketing path prefixes (after optional locale segment).
-     * Auth entry points are intentionally English-only.
+     * Localized aliases (ueber-uns, marktplatz, …) live in LocalizedPublicPath
+     * and are treated as marketing too. Auth entry points stay English-only.
      */
     'public_paths' => [
         '',

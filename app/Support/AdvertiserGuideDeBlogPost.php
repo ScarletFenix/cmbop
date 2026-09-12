@@ -90,7 +90,7 @@ class AdvertiserGuideDeBlogPost
         $marketplace = '/marketplace';
         $register = '/register';
         $howItWorks = '/how-it-works';
-        $howItWorksDe = '/de/how-it-works';
+        $howItWorksDe = '/de/so-funktioniert-es';
         $publisherGuide = '/blog/publisher-guide-add-sites-complete-orders-withdraw';
         $liveCheck = '/blog/what-to-check-after-the-live-link-indexation-attributes-rankings';
         $imgDash = BlogInlineImages::publicUrl(self::IMAGE_DASHBOARD);

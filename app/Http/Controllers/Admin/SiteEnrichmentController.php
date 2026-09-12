@@ -13,6 +13,7 @@ use App\Services\SiteEnrichment\SiteEnrichmentService;
 use App\Services\SiteEnrichment\SiteMetricsAggregator;
 use App\Support\UserFacingError;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Log;
@@ -108,7 +109,10 @@ class SiteEnrichmentController extends Controller
         if ($denied = $this->denyIfEnrichmentDisabled()) {
             return $denied;
         }
-        $site = Site::findOrFail($id);
+        $site = $this->findSiteForJson($id);
+        if ($site instanceof JsonResponse) {
+            return $site;
+        }
         if ($denied = $this->denyMarketingLockedListing($request, $site)) {
             return $denied;
         }
@@ -168,7 +172,10 @@ class SiteEnrichmentController extends Controller
         if ($denied = $this->denyIfEnrichmentDisabled()) {
             return $denied;
         }
-        $site = Site::findOrFail($id);
+        $site = $this->findSiteForJson($id);
+        if ($site instanceof JsonResponse) {
+            return $site;
+        }
         if ($denied = $this->denyMarketingLockedListing($request, $site)) {
             return $denied;
         }
@@ -239,7 +246,10 @@ class SiteEnrichmentController extends Controller
         if ($denied = $this->denyIfEnrichmentDisabled()) {
             return $denied;
         }
-        $site = Site::findOrFail($id);
+        $site = $this->findSiteForJson($id);
+        if ($site instanceof JsonResponse) {
+            return $site;
+        }
         if ($denied = $this->denyMarketingLockedListing($request, $site)) {
             return $denied;
         }
@@ -285,7 +295,10 @@ class SiteEnrichmentController extends Controller
 
     public function manualMetrics(Request $request, int $id, SiteEnrichmentService $enrichment)
     {
-        $site = Site::findOrFail($id);
+        $site = $this->findSiteForJson($id);
+        if ($site instanceof JsonResponse) {
+            return $site;
+        }
         if ($denied = $this->denyMarketingLockedListing($request, $site)) {
             return $denied;
         }
@@ -360,7 +373,10 @@ class SiteEnrichmentController extends Controller
                 : back()->withErrors(['metrics_manual' => 'Manual metrics lock is unavailable until the database migration has been run.']);
         }
 
-        $site = Site::findOrFail($id);
+        $site = $this->findSiteForJson($id);
+        if ($site instanceof JsonResponse) {
+            return $site;
+        }
         if ($denied = $this->denyMarketingLockedListing($request, $site)) {
             if ($request->wantsJson()) {
                 return $denied;
@@ -595,6 +611,22 @@ class SiteEnrichmentController extends Controller
         $type = is_string($type) ? strtolower(trim($type)) : '';
 
         return in_array($type, ['metrics', 'screenshot'], true) ? $type : null;
+    }
+
+    /**
+     * AJAX enrichment actions must not leak findOrFail HTML / model class names.
+     */
+    private function findSiteForJson(int $id): Site|JsonResponse
+    {
+        $site = Site::find($id);
+        if (! $site) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Site not found',
+            ], 404);
+        }
+
+        return $site;
     }
 
     private function denyMarketingLockedListing(Request $request, Site $site)

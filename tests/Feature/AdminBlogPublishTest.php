@@ -93,7 +93,11 @@ class AdminBlogPublishTest extends TestCase
             $created->translations()->where('locale', 'en')->value('slug')
         );
 
-        $html = $this->get(route('blog.show', ['slug' => 'shared-public-slug']))
+        $this->get(route('blog.show', ['slug' => 'shared-public-slug']))
+            ->assertRedirect(url('/blog/legacy-other-slug'));
+
+        $html = $this->followingRedirects()
+            ->get(route('blog.show', ['slug' => 'shared-public-slug']))
             ->assertOk()
             ->getContent();
 

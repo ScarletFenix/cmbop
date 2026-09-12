@@ -72,6 +72,19 @@ class UserFacingError
     }
 
     /**
+     * Extra exception detail for JSON 500s when APP_DEBUG is on.
+     * Production stays message-only so internals never leak in the payload.
+     */
+    public static function debugDetail(\Throwable $e): ?string
+    {
+        if (! config('app.debug')) {
+            return null;
+        }
+
+        return $e::class.': '.$e->getMessage();
+    }
+
+    /**
      * Same fragment/length rules as {@see isSafe()}, for stored provider text
      * that is not wrapped in a Throwable.
      */

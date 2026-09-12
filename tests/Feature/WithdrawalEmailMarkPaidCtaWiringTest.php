@@ -69,6 +69,8 @@ class WithdrawalEmailMarkPaidCtaWiringTest extends TestCase
         $this->assertInstanceOf(WithdrawalRequestNotification::class, $preview);
         $html = $preview->render();
         $this->assertStringContainsString('mark-paid-confirm', $html);
-        $this->assertStringContainsString('signature=', $html);
+        // Catalog stand-ins use /mark-paid-confirm/preview — never a live HMAC.
+        $this->assertStringContainsString('/admin/withdrawals/mark-paid-confirm/preview', $html);
+        $this->assertStringNotContainsString('signature=', $html);
     }
 }

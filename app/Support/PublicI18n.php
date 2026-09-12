@@ -2,8 +2,11 @@
 
 namespace App\Support;
 
+use App\Models\Blog;
+use App\Models\BlogTranslation;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\App;
+use Illuminate\Support\Facades\Schema;
 
 class PublicI18n
 {
@@ -175,7 +178,7 @@ class PublicI18n
         }
 
         $first = self::firstPathSegment($request);
-        $public = array_values(array_filter(config('i18n.public_paths', [])));
+        $public = LocalizedPublicPath::allFirstSegments();
 
         // Home
         if ($first === '') {
@@ -193,7 +196,7 @@ class PublicI18n
     public static function urlForLocale(string $path, ?string $locale = null): string
     {
         $locale = $locale ?? App::getLocale();
-        $path = ltrim((string) $path, '/');
+        $path = LocalizedPublicPath::localize(ltrim((string) $path, '/'), $locale);
 
         if (! self::isSupported($locale) || $locale === self::default()) {
             return $path === '' ? url('/') : url($path);
@@ -204,13 +207,63 @@ class PublicI18n
 
     public static function switchUrl(Request $request, string $targetLocale): string
     {
-        $path = self::pathWithoutLocale($request);
+        $path = LocalizedPublicPath::canonicalize(self::pathWithoutLocale($request));
 
         if (self::isEnglishOnlyPath($request)) {
             return self::urlForLocale('', $targetLocale);
         }
 
+        if (preg_match('#^blog/([^/]+)$#', $path, $matches) === 1) {
+            $path = self::blogPathForLocale($matches[1], $targetLocale);
+        }
+
         return self::urlForLocale($path, $targetLocale);
+    }
+
+    /**
+     * Swap /blog/{slug} to the published slug for $targetLocale when we know the post.
+     */
+    public static function blogPathForLocale(string $slug, string $targetLocale): string
+    {
+        try {
+            if (! Schema::hasTable('blog_translations')) {
+                return 'blog/'.$slug;
+            }
+
+            $hit = BlogTranslation::query()
+                ->where('slug', $slug)
+                ->where('is_published', true)
+                ->first();
+
+            $blog = null;
+            if ($hit) {
+                $blog = Blog::published()
+                    ->with(['translations' => function ($query) {
+                        $query->where('is_published', true);
+                    }])
+                    ->where('id', $hit->blog_id)
+                    ->first();
+            }
+
+            if (! $blog) {
+                $blog = Blog::published()
+                    ->with(['translations' => function ($query) {
+                        $query->where('is_published', true);
+                    }])
+                    ->where('slug', $slug)
+                    ->first();
+            }
+
+            if (! $blog) {
+                return 'blog/'.$slug;
+            }
+
+            $display = $blog->displayTranslation($targetLocale, 'en');
+
+            return 'blog/'.($display?->slug ?: $blog->slug);
+        } catch (\Throwable) {
+            return 'blog/'.$slug;
+        }
     }
 
     /**
@@ -228,6 +281,7 @@ class PublicI18n
         }
 
         $path = $pathOverride !== null ? ltrim($pathOverride, '/') : self::pathWithoutLocale($request);
+        $path = LocalizedPublicPath::canonicalize($path);
         $tags = [];
         $targetLocales = $locales ?: self::supported();
         $targetLocales = array_values(array_filter($targetLocales, fn ($locale) => self::isSupported($locale)));
@@ -237,7 +291,7 @@ class PublicI18n
         }
 
         foreach ($targetLocales as $locale) {
-            $localePath = ltrim((string) ($pathByLocale[$locale] ?? $path), '/');
+            $localePath = ltrim((string) ($pathByLocale[$locale] ?? LocalizedPublicPath::localize($path, $locale)), '/');
             $tags[] = [
                 'hreflang' => self::hreflang($locale),
                 'href' => self::urlForLocale($localePath, $locale),
@@ -245,7 +299,7 @@ class PublicI18n
         }
 
         $xDefault = self::isSupported($xDefaultLocale) ? $xDefaultLocale : self::default();
-        $xDefaultPath = ltrim((string) ($pathByLocale[$xDefault] ?? $path), '/');
+        $xDefaultPath = ltrim((string) ($pathByLocale[$xDefault] ?? LocalizedPublicPath::localize($path, $xDefault)), '/');
 
         $tags[] = [
             'hreflang' => 'x-default',

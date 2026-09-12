@@ -541,7 +541,7 @@ class SiteController extends Controller
             $url = $domain !== '' ? 'https://'.$domain : '';
         }
 
-        $countries = collect($site->countryCodes())
+        $countries = collect($site->countryCodesForDisplay())
             ->filter()
             ->map(fn ($code) => strtolower(trim((string) $code)))
             ->unique()
@@ -1410,6 +1410,18 @@ class SiteController extends Controller
 
         try {
             $site->update($data);
+            $site->refresh();
+            if (! $isMarketingEditor) {
+                try {
+                    $site->promoteForAdminSaveIfBriefReady();
+                    $site->refresh();
+                } catch (\Throwable $e) {
+                    Log::warning('Could not promote site onboarding after admin save', [
+                        'site_id' => $site->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
         } catch (ValidationException $e) {
             $storedThisRequest = $request->attributes->get('staff_stored_site_image');
             if (is_string($storedThisRequest) && $storedThisRequest !== '') {
@@ -1496,6 +1508,8 @@ class SiteController extends Controller
                 'success' => true,
                 'message' => 'Site updated successfully',
                 'email_sent' => $emailSent,
+                'can_activate' => $this->staffCanActivateSite($site),
+                'activate_block_reason' => $this->staffActivateBlockReason($site),
             ]);
         }
 
@@ -2966,6 +2980,7 @@ class SiteController extends Controller
                 'success' => true,
                 'message' => 'Verification updated',
                 'email_sent' => $emailSent,
+                'verified' => (bool) $site->verified,
             ]);
         } catch (ValidationException $e) {
             throw $e;
@@ -2986,11 +3001,6 @@ class SiteController extends Controller
         $actor ??= auth()->user();
 
         return (bool) ($actor?->isMarketing() && ! $actor?->isAdmin());
-    }
-
-    private function staffMayVerifyOnActivate(Site $site): bool
-    {
-        return $site->isReviewReadyForStaffGoLive();
     }
 
     private function staffSiteMutationFailure(string $logMessage, int $siteId, \Throwable $e, string $userMessage): JsonResponse
@@ -3048,21 +3058,10 @@ class SiteController extends Controller
             }
 
             $oldStatus = (int) $site->active;
-            $verifyOnActivate = $activating
-                && ! (bool) $site->verified
-                && $this->staffMayVerifyOnActivate($site);
             $site->active = $activating ? 1 : 0;
             if ($activating) {
-                // Catalog requires verified + active. Activate verifies when
-                // the listing is review-ready (null or ready_for_review).
-                if ($verifyOnActivate) {
-                    $site->verified = 1;
-                    $site->verified_at = now();
-                    $site->verify_method = 'manual';
-                    $site->verify_token = null;
-                    $site->verify_token_created_at = null;
-                }
-                // Leave the review/onboarding queue once live.
+                // Activate only flips live. The Verified badge is assigned
+                // separately via verify() so staff can choose who gets it.
                 $site->onboarding_status = null;
             } else {
                 Site::ensureStatusReasonColumns();
@@ -3073,7 +3072,6 @@ class SiteController extends Controller
             $this->syncLinkedBulkAfterSiteRemoved($site->bulk_site_request_id);
 
             $activeChanged = $oldStatus !== (int) $site->active;
-            $justVerified = $verifyOnActivate && (int) $site->verified === 1;
 
             if ($activeChanged) {
                 $action = $site->active ? 'site.activated' : 'site.deactivated';
@@ -3095,22 +3093,6 @@ class SiteController extends Controller
                 );
             }
 
-            if ($justVerified) {
-                ActivityLogger::tryLog(
-                    'site.approved',
-                    ($actor->name ?? 'Staff').' approved site "'.$site->site_name.'" (verified on activate)',
-                    $site,
-                    [
-                        'from' => 0,
-                        'to' => 1,
-                        'bulk_site_request_id' => $site->bulk_site_request_id,
-                        'by_role' => $actor->activeRole(),
-                        'via' => 'marketing_activate',
-                    ],
-                    $site->site_name
-                );
-            }
-
             // Activate / deactivate counts as an admin decision for the open review task.
             try {
                 app(InAppNotificationService::class)->completeAdminSiteReviewNotifications($site);
@@ -3126,7 +3108,7 @@ class SiteController extends Controller
                 ? 'Activated below the quality bar (DA ≥ 30, DR ≥ 30, traffic ≥ 10,000). Listing is live; consider updating metrics before promoting it.'
                 : null;
 
-            if ($activeChanged || $justVerified) {
+            if ($activeChanged) {
                 try {
                     $publisher = $site->publisher;
                     if ($publisher && $publisher->email) {
@@ -3146,6 +3128,7 @@ class SiteController extends Controller
                 'message' => $activating ? 'Site activated' : 'Site deactivated',
                 'email_sent' => $emailSent,
                 'active' => (bool) $site->active,
+                'verified' => (bool) $site->verified,
                 'reason' => $notifyReason,
                 'warning' => $warning,
                 'missing_market' => false,

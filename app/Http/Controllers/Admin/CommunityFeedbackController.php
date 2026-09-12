@@ -11,6 +11,7 @@ use App\Services\ActivityLogger;
 use App\Services\CommunityInboxNotifier;
 use App\Services\SiteClaimTransferService;
 use App\Support\CommunityInbox;
+use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -301,6 +302,11 @@ class CommunityFeedbackController extends Controller
                     ? $this->claimTransfers->openDisputesCount($site)
                     : 0,
             ], 422);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'This claim could not be approved.'),
+            ], 500);
         }
 
         return response()->json([
@@ -331,6 +337,11 @@ class CommunityFeedbackController extends Controller
                 'success' => false,
                 'message' => $e->validator->errors()->first() ?: 'This claim could not be rejected.',
             ], 422);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'This claim could not be rejected.'),
+            ], 500);
         }
 
         return response()->json([

@@ -101,7 +101,7 @@ class MarketingOpsScopeTest extends TestCase
 
         $site->refresh();
         $this->assertTrue((bool) $site->active);
-        $this->assertTrue((bool) $site->verified);
+        $this->assertFalse((bool) $site->verified);
     }
 
     public function test_marketer_cannot_open_admin_records_sheet(): void
@@ -569,6 +569,47 @@ class MarketingOpsScopeTest extends TestCase
             ->assertSee('data-site-description-editor', false)
             ->assertDontSee('htmlspecialchars(): Argument #1', false)
             ->assertDontSee('TypeError', false);
+    }
+
+    public function test_marketer_save_does_not_promote_awaiting_details(): void
+    {
+        $category = Category::query()->where('name', 'Business & Finance')->first()
+            ?? Category::query()->firstOrFail();
+        $site = $this->makeSite([
+            'onboarding_status' => Site::ONBOARDING_AWAITING_DETAILS,
+            'turnaround_time' => '3days',
+            'categories' => [$category->name],
+            'category' => $category->name,
+            'description' => str_repeat('Quality editorial site for guest posts. ', 4),
+            'da' => 33,
+            'dr' => 44,
+            'traffic' => 5000,
+            'country' => 'de',
+            'language' => 'de',
+        ]);
+
+        $this->assertTrue($site->awaitsPublisherDetails());
+        $this->assertTrue($site->hasCompletedPublisherDetails());
+
+        $this->actingAs($this->marketer)
+            ->putJson(route('marketing.sites.update', $site->id), [
+                'site_name' => $site->site_name,
+                'site_url' => $site->site_url,
+                'price' => $site->price,
+                'description' => 'This listing is for your audience and the publishers who write guest posts here.',
+                'da' => 33,
+                'dr' => 44,
+                'traffic' => 5000,
+                'language' => 'de',
+                'country' => 'de',
+                'categories' => $category->name,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $site->refresh();
+        $this->assertTrue($site->awaitsPublisherDetails());
+        $this->assertFalse($site->isReadyForAdminReview());
     }
 
     public function test_marketer_pending_update_rejects_short_description(): void

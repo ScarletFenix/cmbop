@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Blog;
 use App\Support\BlogInlineImages;
+use App\Support\BlogTranslationSlug;
 use App\Support\CuratedBlogCatalog;
 use App\Support\PublicI18n;
 use Illuminate\Database\Schema\Blueprint;
@@ -214,6 +215,7 @@ class CuratedBlogSync
 
             // Always heal schema first — curated presence cache must not skip translations table.
             self::ensureSchema();
+            self::ensureLocalizedTranslationSlugs();
 
             $present = Cache::remember('curated_blogs_present_v1', now()->addMinutes(30), function () {
                 $slugs = array_values(array_filter(
@@ -248,6 +250,25 @@ class CuratedBlogSync
             self::ensureInlineImagesOnStorage();
         } catch (\Throwable $e) {
             Log::error('Curated blog ensurePresent failed', [
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Published translations that still copy another locale's slug get a title-based slug.
+     * One check per process so public blog routes do not join on every request.
+     */
+    public static function ensureLocalizedTranslationSlugs(): void
+    {
+        try {
+            if (! BlogTranslationSlug::hasCopiedSlugs()) {
+                return;
+            }
+
+            BlogTranslationSlug::localizeCopiedSlugs();
+        } catch (\Throwable $e) {
+            Log::error('Failed to localize copied blog translation slugs', [
                 'error' => $e->getMessage(),
             ]);
         }
