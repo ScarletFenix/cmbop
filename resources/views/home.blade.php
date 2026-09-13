@@ -40,10 +40,12 @@
     'name' => 'SEOLinkBuildings',
     'alternateName' => ['SEO Link Buildings', 'Seolink Buildings'],
     'url' => url('/'),
-    'inLanguage' => array_map(
-        fn (string $locale) => \App\Support\PublicI18n::htmlLang($locale),
-        \App\Support\PublicI18n::supported()
-    ),
+    'inLanguage' => class_exists(\App\Support\PublicI18n::class)
+        ? array_map(
+            fn (string $locale) => \App\Support\PublicI18n::htmlLang($locale),
+            \App\Support\PublicI18n::supported()
+        )
+        : ['en-GB'],
     'publisher' => [
         '@type' => 'Organization',
         'name' => 'SEOLinkBuildings',

@@ -23,9 +23,24 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
+        $appRoot = dirname(__DIR__);
+        $loadAppClass = static function (string $relativePath) use ($appRoot): bool {
+            $file = $appRoot.DIRECTORY_SEPARATOR.$relativePath;
+            if (! is_file($file)) {
+                return false;
+            }
+            require_once $file;
+
+            return true;
+        };
+
         // Trust only listed hops. "*" used to honor client X-Forwarded-For
         // (login limits and some money keys). Hostinger+Cloudflare: TRUSTED_PROXIES=cloudflare.
-        $middleware->trustProxies(at: TrustedProxies::addresses() ?: []);
+        $trusted = [];
+        if ($loadAppClass('app/Support/TrustedProxies.php')) {
+            $trusted = TrustedProxies::addresses() ?: [];
+        }
+        $middleware->trustProxies(at: $trusted);
 
         // Gmail List-Unsubscribe=One-Click POSTs have no CSRF token.
         $middleware->validateCsrfTokens(except: [
@@ -34,22 +49,30 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // Public-site locale detection (SaaS dashboards stay English via SetLocale rules)
         // Security headers (CSP, HSTS, nosniff, frame, referrer) on every web response
-        // Partial Hostinger uploads often ship bootstrap/app.php without this file.
-        $canonicalHostFile = dirname(__DIR__).'/app/Http/Middleware/CanonicalHost.php';
-        if (is_file($canonicalHostFile)) {
-            require_once $canonicalHostFile;
+        // Partial Hostinger uploads often ship bootstrap/app.php without these files.
+        if ($loadAppClass('app/Http/Middleware/CanonicalHost.php')) {
             $middleware->prependToGroup('web', CanonicalHost::class);
         }
-        $middleware->appendToGroup('web', [
-            SetLocale::class,
-            SecurityHeaders::class,
-        ]);
+        $webAppend = [];
+        if ($loadAppClass('app/Http/Middleware/SetLocale.php')) {
+            $webAppend[] = SetLocale::class;
+        }
+        if ($loadAppClass('app/Http/Middleware/SecurityHeaders.php')) {
+            $webAppend[] = SecurityHeaders::class;
+        }
+        if ($webAppend !== []) {
+            $middleware->appendToGroup('web', $webAppend);
+        }
 
         // Queued mail needs a consumer. Hosts without a worker or a per-minute
         // cron have neither, so ordinary traffic drains the queue after the
         // response is already on its way out.
-        $middleware->append(DrainQueuedMail::class);
-        $middleware->append(HealHostingerProduction::class);
+        if ($loadAppClass('app/Http/Middleware/DrainQueuedMail.php')) {
+            $middleware->append(DrainQueuedMail::class);
+        }
+        if ($loadAppClass('app/Http/Middleware/HealHostingerProduction.php')) {
+            $middleware->append(HealHostingerProduction::class);
+        }
     })
     ->withExceptions(function (Exceptions $exceptions) {
         // Production uses branded resources/views/errors/* pages (APP_DEBUG=false).
@@ -61,7 +84,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // 2M/8M becomes a 413 with no file. Return JSON so the Library fetch
         // does not show a generic "Upload failed" / "over the 10 MB limit".
         $exceptions->render(function (PostTooLargeException $e, $request) {
-            if (! $request->expectsJson()) {
+            if (! $request->expectsJson() || ! class_exists(ContentUploadService::class)) {
                 return null;
             }
             $uploads = app(ContentUploadService::class);

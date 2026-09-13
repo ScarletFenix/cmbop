@@ -14,7 +14,11 @@ class SeoLeftoverClassHardeningTest extends TestCase
     {
         $bootstrap = (string) file_get_contents(base_path('bootstrap/app.php'));
         $this->assertStringContainsString('CanonicalHost.php', $bootstrap);
-        $this->assertStringContainsString('is_file($canonicalHostFile)', $bootstrap);
+        $this->assertStringContainsString('TrustedProxies.php', $bootstrap);
+        $this->assertStringContainsString('SetLocale.php', $bootstrap);
+        $this->assertStringContainsString('SecurityHeaders.php', $bootstrap);
+        $this->assertStringContainsString('$loadAppClass', $bootstrap);
+        $this->assertStringContainsString('class_exists(ContentUploadService::class)', $bootstrap);
         $this->assertStringContainsString('prependToGroup(\'web\', CanonicalHost::class)', $bootstrap);
 
         $web = (string) file_get_contents(base_path('routes/web.php'));
@@ -45,12 +49,19 @@ class SeoLeftoverClassHardeningTest extends TestCase
         $home = (string) file_get_contents(base_path('resources/views/home.blade.php'));
         $about = (string) file_get_contents(base_path('resources/views/pages/about.blade.php'));
         $prices = (string) file_get_contents(base_path('resources/views/pages/guest-post-prices-europe.blade.php'));
+        $layout = (string) file_get_contents(base_path('resources/views/layouts/app.blade.php'));
+        $helper = (string) file_get_contents(base_path('app/Helpers/LanguageHelper.php'));
         $this->assertStringContainsString('class_exists(\\App\\Support\\BrandOrganization::class)', $home);
         $this->assertStringContainsString('class_exists(\\App\\Support\\BrandOrganization::class)', $about);
         $this->assertStringContainsString('class_exists(\\App\\Support\\BrandOrganization::class)', $prices);
+        $this->assertStringContainsString('class_exists(\\App\\Support\\PublicI18n::class)', $layout);
+        $this->assertStringContainsString('class_exists(PublicI18n::class)', $helper);
 
         $marketplace = (string) file_get_contents(base_path('resources/views/pages/marketplace.blade.php'));
+        $lander = (string) file_get_contents(base_path('resources/views/pages/guest-posts-country.blade.php'));
         $this->assertStringContainsString("view()->exists('components.country-lander-nav')", $marketplace);
+        $this->assertStringContainsString("view()->exists('components.country-lander-nav')", $lander);
+        $this->assertStringContainsString("view()->exists('components.country-lander-nav')", $prices);
 
         $sync = (string) file_get_contents(base_path('app/Services/CuratedBlogSync.php'));
         $this->assertStringContainsString('class_exists(BlogTranslationSlug::class)', $sync);

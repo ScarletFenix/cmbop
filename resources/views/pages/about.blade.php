@@ -52,7 +52,9 @@
     'name' => __('messages.meta_about_title'),
     'url' => localized_url('about'),
     'description' => __('messages.meta_about_description'),
-    'inLanguage' => \App\Support\PublicI18n::htmlLang(),
+    'inLanguage' => class_exists(\App\Support\PublicI18n::class)
+        ? \App\Support\PublicI18n::htmlLang()
+        : 'en-GB',
     'mainEntity' => class_exists(\App\Support\BrandOrganization::class)
         ? \App\Support\BrandOrganization::schema([
         'foundingLocation' => [
