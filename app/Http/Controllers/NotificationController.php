@@ -6,6 +6,7 @@ use App\Models\InAppNotification;
 use App\Models\Order;
 use App\Models\OrderActivity;
 use App\Services\InAppNotificationService;
+use App\Support\AdvertiserOrderDetails;
 use App\Support\UserFacingError;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
@@ -291,10 +292,16 @@ class NotificationController extends Controller
             ], 500);
         }
 
+        $reconstructed = $activities->isEmpty();
+        if ($reconstructed) {
+            $activities = collect(AdvertiserOrderDetails::reconstructedActivities($order))->values();
+        }
+
         return response()->json([
             'success' => true,
             'order_id' => $order->id,
             'order_number' => $order->order_number,
+            'reconstructed' => $reconstructed,
             'activities' => $activities,
         ]);
     }

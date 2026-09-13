@@ -237,6 +237,14 @@ button.wallet-kpi { cursor: pointer; appearance: none; }
 }
 
 /* Order details: fit one viewport — side-by-side, no collapsed sections */
+#orderDetailsModal {
+    z-index: 1080;
+}
+#orderDetailsModal .modal-content,
+.order-details-content {
+    background: #fff;
+    isolation: isolate;
+}
 .order-details-dialog {
     max-width: min(1180px, 96vw);
     margin: 0.4rem auto;
@@ -250,6 +258,7 @@ button.wallet-kpi { cursor: pointer; appearance: none; }
     flex: 1 1 auto;
     overflow: hidden;
     padding: 0.65rem 0.9rem;
+    background: #fff;
 }
 .order-view-shell {
     display: grid;
@@ -258,6 +267,13 @@ button.wallet-kpi { cursor: pointer; appearance: none; }
     height: 100%;
     min-height: 0;
     align-items: stretch;
+    background: #fff;
+}
+.order-view-shell--stack {
+    grid-template-columns: 1fr;
+    height: auto;
+    max-width: 42rem;
+    margin: 0 auto;
 }
 .order-view-panel {
     background: #f8fafc;
@@ -359,6 +375,28 @@ button.wallet-kpi { cursor: pointer; appearance: none; }
 }
 .order-view-refund a {
     font-weight: 600;
+}
+.ov-live-url__row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.45rem 0.75rem;
+}
+.ov-live-url__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    flex-shrink: 0;
+}
+.ov-empty-placements {
+    margin: 0;
+}
+.oa-reconstructed {
+    font-style: italic;
+}
+.order-view-shell--stack .order-view-timeline {
+    max-height: 260px;
 }
 @media (max-width: 991.98px) {
     .order-details-body {

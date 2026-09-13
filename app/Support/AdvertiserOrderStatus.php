@@ -226,9 +226,19 @@ class AdvertiserOrderStatus
         }
 
         if ($status === 'completed') {
+            $itemsCount = $order->items->count();
+            $anyLiveUrl = $order->items->contains(fn ($line) => filled($line->live_url));
+            if ($itemsCount < 1) {
+                $next = 'This order is marked complete, but it has no line items. Contact support if you expected a live URL here.';
+            } elseif ($anyLiveUrl) {
+                $next = 'All done — the publisher has been paid for this placement.';
+            } else {
+                $next = 'This order is marked complete. If a live URL is missing, use Chat or Report link removed.';
+            }
+
             return [
                 'label' => 'Completed',
-                'next' => 'All done — the publisher has been paid for this placement.',
+                'next' => $next,
                 'cls' => 'status-completed',
                 'stage' => 'completed',
                 'auto_approve_hint' => null,
@@ -251,21 +261,24 @@ class AdvertiserOrderStatus
     {
         $item = $item ?? $order->items->first();
         $status = (string) $order->status;
+        $hasItems = $order->items->isNotEmpty();
+        $hasLiveUrl = $order->items->contains(fn ($line) => filled($line->live_url));
         $paid = in_array($order->payment_status, ['paid', 'completed', 'refunded'], true)
             || in_array($status, ['processing', 'review', 'completed'], true);
-        $acceptedOrLater = in_array($status, ['processing', 'review', 'completed'], true)
-            || ($item && ! empty($item->accepted_at));
-        $urlDelivered = $status === 'review' || $status === 'completed'
-            || ($item && filled($item->live_url) && in_array($status, ['review', 'completed'], true));
+        $acceptedOrLater = $hasItems && (
+            in_array($status, ['processing', 'review', 'completed'], true)
+            || ($item && ! empty($item->accepted_at))
+        );
+        $urlDelivered = $hasLiveUrl && in_array($status, ['review', 'completed'], true);
         $completed = $status === 'completed';
         $modRequested = $item && (($item->modification_requested ?? 'no') === 'yes');
 
         $steps = [
             ['label' => 'Paid', 'done' => $paid, 'current' => false],
             ['label' => 'Accepted', 'done' => $acceptedOrLater, 'current' => false],
-            ['label' => 'Processing', 'done' => $urlDelivered || $completed, 'current' => false],
-            ['label' => 'URL delivered', 'done' => $completed, 'current' => false],
-            ['label' => 'Completed', 'done' => $completed, 'current' => false],
+            ['label' => 'Processing', 'done' => $hasItems && in_array($status, ['review', 'completed'], true), 'current' => false],
+            ['label' => 'URL delivered', 'done' => $urlDelivered, 'current' => false],
+            ['label' => 'Completed', 'done' => $completed && $hasItems, 'current' => false],
         ];
 
         if ($status === 'cancelled') {
@@ -292,6 +305,7 @@ class AdvertiserOrderStatus
             $steps[3]['done'] = false;
         } elseif ($status === 'completed') {
             $steps[4]['current'] = true;
+            $steps[4]['done'] = $hasItems;
         }
 
         return $steps;

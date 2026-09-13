@@ -51,6 +51,7 @@ use App\Services\PlatformFeeService;
 use App\Services\StripeCustomerService;
 use App\Services\StripePaymentService;
 use App\Services\Wallet\WalletLedgerService;
+use App\Support\AdvertiserOrderDetails;
 use App\Support\AdvertiserOrderStatus;
 use App\Support\CatalogVisitUrl;
 use App\Support\PaypalPaymentError;
@@ -5221,8 +5222,13 @@ class CatalogController extends Controller
             app(CheckoutSchemaService::class)->ensureCheckoutTables();
             $userId = auth()->id();
 
+            $relations = ['items.site'];
+            if (OrderItemDispute::tableAvailable()) {
+                $relations[] = 'items.latestDispute';
+            }
+
             $order = Order::where('user_id', $userId)
-                ->with(OrderItemDispute::tableAvailable() ? ['items.latestDispute'] : ['items'])
+                ->with($relations)
                 ->find($id);
 
             if (! $order) {
@@ -5232,29 +5238,22 @@ class CatalogController extends Controller
                 ]);
             }
 
-            $order->items_count = $order->items->count();
-            $meta = AdvertiserOrderStatus::meta($order, $order->items->first());
-            $order->status_label = $meta['label'];
-            $order->next_action = $meta['next'];
-            $order->status_cls = $meta['cls'];
-            $order->auto_approve_hint = $meta['auto_approve_hint'];
-            $this->sanitizeAdvertiserOrderItemUrls($order);
-            $this->attachAdvertiserOrderActionFlags($order);
-            $item = $order->items->first();
-            if ($item) {
-                $item->auto_approve_hours_remaining = (int) $item->getAutoApproveHoursRemaining();
+            $this->hydrateAdvertiserOrderDetail($order);
+
+            if (AdvertiserOrderDetails::placementsMissing($order)) {
+                Log::warning('Advertiser order details missing line items', [
+                    'order_id' => $order->id,
+                    'order_number' => $order->order_number,
+                    'user_id' => $userId,
+                    'status' => $order->status,
+                    'payment_status' => $order->payment_status,
+                    'total_amount' => $order->total_amount,
+                ]);
             }
-            foreach ($order->items as $line) {
-                if (method_exists($line, 'getAutoApproveHoursRemaining')) {
-                    $line->auto_approve_hours_remaining = (int) $line->getAutoApproveHoursRemaining();
-                }
-            }
-            $this->attachDisputeMeta($order, $item, app(OrderClawbackService::class));
-            $this->attachListingVisitUrls($order);
 
             return response()->json([
                 'success' => true,
-                'order' => $order,
+                'order' => $this->advertiserOrderDetailPayload($order),
             ]);
         } catch (\Throwable $e) {
             Log::error('Stack trace: '.$e->getTraceAsString());
@@ -5688,6 +5687,44 @@ class CatalogController extends Controller
         $order->dispute_status = $shown?->status;
         $order->dispute_id = $shown?->id;
         $order->dispute_reason = $shown?->reason;
+    }
+
+    private function hydrateAdvertiserOrderDetail(Order $order): void
+    {
+        $order->items_count = $order->items->count();
+        $meta = AdvertiserOrderStatus::meta($order, $order->items->first());
+        $order->status_label = $meta['label'];
+        $order->next_action = $meta['next'];
+        $order->status_cls = $meta['cls'];
+        $order->auto_approve_hint = $meta['auto_approve_hint'];
+        $this->sanitizeAdvertiserOrderItemUrls($order);
+        $this->attachAdvertiserOrderActionFlags($order);
+        foreach ($order->items as $line) {
+            if (method_exists($line, 'getAutoApproveHoursRemaining')) {
+                $line->auto_approve_hours_remaining = (int) $line->getAutoApproveHoursRemaining();
+            }
+        }
+        $this->attachDisputeMeta($order, $order->items->first(), app(OrderClawbackService::class));
+        $this->attachListingVisitUrls($order);
+    }
+
+    /**
+     * Explicit items array + flags the Order Details modal already reads.
+     *
+     * @return array<string, mixed>
+     */
+    private function advertiserOrderDetailPayload(Order $order): array
+    {
+        $payload = $order->toArray();
+        $payload['items'] = AdvertiserOrderDetails::presentItems($order);
+        $payload['items_count'] = count($payload['items']);
+        $payload['placements_missing'] = AdvertiserOrderDetails::placementsMissing($order);
+        $payload['empty_items_message'] = AdvertiserOrderDetails::emptyItemsMessage($order);
+        $payload['policy_note'] = AdvertiserOrderDetails::policyNote($order);
+        $payload['has_live_url'] = AdvertiserOrderDetails::hasLiveUrl($order);
+        $payload['timeline_steps'] = AdvertiserOrderStatus::timelineSteps($order, $order->items->first());
+
+        return $payload;
     }
 
     /**
