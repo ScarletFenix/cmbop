@@ -33,8 +33,12 @@ class ChatController extends Controller
             app(CheckoutSchemaService::class)->ensureCheckoutTables();
 
             $user = auth()->user();
-            $activeRole = $user->activeRole()
-                ?? optional($user->roles()->first())->name;
+            try {
+                $activeRole = $user->activeRole()
+                    ?? optional($user->roles()->first())->name;
+            } catch (\Throwable $e) {
+                $activeRole = null;
+            }
 
             $unreadChat = 0;
             $needsAction = 0;
@@ -149,18 +153,22 @@ class ChatController extends Controller
             }
 
             // Mark delivered counterpart messages as read when loading (including poll refreshes).
-            if ($isAdvertiser) {
-                OrderChatMessage::where('order_id', $orderId)
-                    ->where('sender_type', 'publisher')
-                    ->notBlocked()
-                    ->where('is_read', false)
-                    ->update(['is_read' => true, 'read_at' => now()]);
-            } else {
-                OrderChatMessage::where('order_id', $orderId)
-                    ->where('sender_type', 'advertiser')
-                    ->notBlocked()
-                    ->where('is_read', false)
-                    ->update(['is_read' => true, 'read_at' => now()]);
+            try {
+                if ($isAdvertiser) {
+                    OrderChatMessage::where('order_id', $orderId)
+                        ->where('sender_type', 'publisher')
+                        ->notBlocked()
+                        ->where('is_read', false)
+                        ->update(['is_read' => true, 'read_at' => now()]);
+                } else {
+                    OrderChatMessage::where('order_id', $orderId)
+                        ->where('sender_type', 'advertiser')
+                        ->notBlocked()
+                        ->where('is_read', false)
+                        ->update(['is_read' => true, 'read_at' => now()]);
+                }
+            } catch (\Throwable $e) {
+                // Leftover is_read / read_at must not hide the thread.
             }
 
             $this->loadOrderItemsForChat($order);
@@ -403,6 +411,15 @@ class ChatController extends Controller
      */
     private function serializeMessage(OrderChatMessage $message): array
     {
+        $userId = $message->user_id;
+        $userName = 'User';
+        try {
+            $userId = $message->user?->id ?? $message->user_id;
+            $userName = $message->user?->name ?? 'User';
+        } catch (\Throwable $e) {
+            // Leftover users must not hide a delivered message.
+        }
+
         return [
             'id' => $message->id,
             'order_id' => $message->order_id,
@@ -417,8 +434,8 @@ class ChatController extends Controller
             'created_at' => optional($message->created_at)?->toIso8601String(),
             'updated_at' => optional($message->updated_at)?->toIso8601String(),
             'user' => [
-                'id' => $message->user?->id ?? $message->user_id,
-                'name' => $message->user?->name ?? 'User',
+                'id' => $userId,
+                'name' => $userName,
             ],
         ];
     }

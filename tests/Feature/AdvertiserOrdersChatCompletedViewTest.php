@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Order;
+use App\Models\OrderChatMessage;
 use App\Models\OrderItem;
 use App\Models\Role;
 use App\Models\Site;
@@ -266,6 +267,34 @@ class AdvertiserOrdersChatCompletedViewTest extends TestCase
             ->assertJsonPath('can_send', true)
             ->assertDontSee('SQLSTATE')
             ->assertDontSee('no such table');
+    }
+
+    public function test_chat_load_survives_missing_read_at_column(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher);
+        $order = $this->makeOrder($advertiser, $site);
+
+        OrderChatMessage::create([
+            'order_id' => $order->id,
+            'user_id' => $publisher->id,
+            'sender_type' => 'publisher',
+            'message' => 'Live URL is up.',
+            'is_read' => false,
+        ]);
+
+        Schema::table('order_chat_messages', function ($table) {
+            $table->dropColumn('read_at');
+        });
+
+        $payload = $this->chatDetails(
+            $this->actingAs($advertiser)->getJson(route('chat.messages', $order->id))
+        );
+
+        $this->assertNotEmpty($payload['messages']);
+        $this->assertSame('Live URL is up.', $payload['messages'][0]['message']);
+        $this->assertTrue($payload['can_send']);
     }
 
     public function test_chat_send_survives_dropped_notifications_table(): void
