@@ -13,6 +13,7 @@ use App\Services\ContentUpload\ContentUploadService;
 use App\Services\Marketplace\CountryLanguagePairs;
 use App\Services\Marketplace\LanguageCountryMap;
 use App\Support\UserFacingError;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -217,9 +218,7 @@ class ContentLibraryController extends Controller
             $countScope->where('country', $countryFilter);
         }
 
-        if ($search !== '') {
-            $this->librarySearch->apply($countScope, $search);
-        }
+        $this->applyLibrarySearchSafely($countScope, $search);
 
         $statusTotals = $this->safeLibraryQuery(
             fn () => (clone $countScope)
@@ -258,9 +257,7 @@ class ContentLibraryController extends Controller
         if ($countryFilter !== '' && $countryFilter !== 'all') {
             $archivedCountScope->where('country', $countryFilter);
         }
-        if ($search !== '') {
-            $this->librarySearch->apply($archivedCountScope, $search);
-        }
+        $this->applyLibrarySearchSafely($archivedCountScope, $search);
         $availabilityCounts['archived'] = (int) $this->safeLibraryQuery(fn () => $archivedCountScope->count(), 0);
 
         // UI filter key: "completed" covers internal "published".
@@ -710,6 +707,23 @@ class ContentLibraryController extends Controller
      * Optional library strips (counts, market pickers) must not 500 the page
      * when Hostinger leftovers omit a column or marketplace table.
      */
+    /**
+     * @param  Builder<ContentSubmission>  $query
+     */
+    protected function applyLibrarySearchSafely(Builder $query, string $search): void
+    {
+        if ($search === '') {
+            return;
+        }
+
+        try {
+            $this->librarySearch->apply($query, $search);
+        } catch (\Throwable $e) {
+            report($e);
+            $query->whereRaw('0 = 1');
+        }
+    }
+
     protected function safeLibraryQuery(callable $fn, mixed $fallback): mixed
     {
         try {

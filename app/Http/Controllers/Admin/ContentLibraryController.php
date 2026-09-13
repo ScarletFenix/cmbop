@@ -164,6 +164,8 @@ class ContentLibraryController extends Controller
             );
         } catch (HttpException $e) {
             throw $e;
+        } catch (\InvalidArgumentException $e) {
+            abort(404, 'File not found');
         } catch (\Throwable $e) {
             report($e);
 

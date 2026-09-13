@@ -200,7 +200,9 @@ class ContentLibraryPhases02Test extends TestCase
         $this->assertStringContainsString('>Expired</span>', $html);
         $this->assertStringContainsString('>Processing</span>', $html);
         $this->assertStringContainsString('availability=in_progress', $html);
-        $this->assertStringNotContainsString('availability=evaluating', $html);
+        $this->assertStringContainsString('availability=evaluating', $html);
+        $this->assertStringContainsString('library-status-box--evaluating', $html);
+        $this->assertStringContainsString('>Evaluating</span>', $html);
         $this->assertStringNotContainsString('>In progress</span>', $html);
         $this->assertStringNotContainsString('library-eval-badge', $html);
         $this->assertStringNotContainsString('Evaluating 1', $html);
@@ -223,6 +225,18 @@ class ContentLibraryPhases02Test extends TestCase
         $this->assertMatchesRegularExpression(
             '/library-status-box--processing\s+is-active/',
             $processingHtml
+        );
+
+        $evaluatingHtml = $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', ['availability' => 'evaluating']))
+            ->assertOk()
+            ->getContent();
+        $this->assertStringContainsString('Still Checking', $evaluatingHtml);
+        $this->assertStringContainsString('library-status--evaluating', $evaluatingHtml);
+        $this->assertStringNotContainsString('Ordered Piece', $evaluatingHtml);
+        $this->assertMatchesRegularExpression(
+            '/library-status-box--evaluating\s+is-active/',
+            $evaluatingHtml
         );
 
         $archivedHtml = $this->actingAs($advertiser)
