@@ -539,14 +539,20 @@ function bootAdvertiserOrdersPage() {
         })
         .then(r => r.json())
         .then(data => {
+            hideOrderDetailsModal();
+            const reopen = () => viewOrder(orderId);
             if (data.success) {
-                Swal.fire('Checked', data.message || 'URL check finished.', data.live_url_check?.ok ? 'success' : 'warning');
-                viewOrder(orderId);
+                Swal.fire('Checked', data.message || 'URL check finished.', data.live_url_check?.ok ? 'success' : 'warning')
+                    .then(reopen);
             } else {
-                Swal.fire('Error', data.message || 'Could not recheck URL.', 'error');
+                Swal.fire('Error', data.message || 'Could not recheck URL.', 'error')
+                    .then(reopen);
             }
         })
-        .catch(() => Swal.fire('Error', 'Could not recheck URL.', 'error'))
+        .catch(() => {
+            hideOrderDetailsModal();
+            Swal.fire('Error', 'Could not recheck URL.', 'error').then(() => viewOrder(orderId));
+        })
         .finally(() => {
             if (btn) {
                 btn.disabled = false;

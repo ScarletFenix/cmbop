@@ -216,6 +216,7 @@ class AdvertiserOrderDetailsModalTest extends TestCase
         $this->assertMatchesRegularExpression('/reportLinkRemoved\\s*=\\s*function[\\s\\S]*hideOrderDetailsModal/', $js);
         $this->assertMatchesRegularExpression('/fulfillContentRevision\\s*=\\s*function[\\s\\S]*hideOrderDetailsModal/', $js);
         $this->assertMatchesRegularExpression('/retryOrderPayment\\s*=\\s*function[\\s\\S]*hideOrderDetailsModal/', $js);
+        $this->assertMatchesRegularExpression('/recheckLiveUrl\\s*=\\s*function[\\s\\S]{0,1500}hideOrderDetailsModal/', $js);
         $this->assertStringContainsString('ov-live-url', $js);
         $this->assertStringContainsString('ui-callout--info', $js);
         $this->assertStringNotContainsString('ov-empty-placements ui-callout ui-callout--attention', $js);
