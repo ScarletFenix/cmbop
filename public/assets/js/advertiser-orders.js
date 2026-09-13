@@ -557,6 +557,7 @@ function bootAdvertiserOrdersPage() {
 
     // Request modification
     window.requestModification = function(orderId) {
+        hideOrderDetailsModal();
         document.getElementById('modificationOrderId').value = orderId;
         document.getElementById('modificationReason').value = '';
         showBsModal('modificationModal');
@@ -606,6 +607,7 @@ function bootAdvertiserOrdersPage() {
 
     // Publisher asked for a revised article — advertiser fulfills with link or library article
     window.fulfillContentRevision = function(orderId, orderItemId, opts) {
+        hideOrderDetailsModal();
         const resolvedItemId = Number(orderItemId || 0) || null;
         const isLibrary = !!(opts && opts.isLibrary);
         const currentLabel = (opts && opts.currentLabel) ? String(opts.currentLabel) : 'Current Content Library article';
@@ -1501,6 +1503,7 @@ function bootAdvertiserOrdersPage() {
     };
 
     window.reportLinkRemoved = function(orderId, itemId) {
+        hideOrderDetailsModal();
         Swal.fire({
             title: 'Report link removed',
             html: '<p class="small text-start mb-2">Use this if the publisher deleted the article after completion. Our team will review and may refund you while clawing back the publisher payout.</p>',
@@ -1639,6 +1642,7 @@ function bootAdvertiserOrdersPage() {
     }
     
     window.retryOrderPayment = function(orderId) {
+        hideOrderDetailsModal();
         Swal.fire({
             title: 'Pay again?',
             text: 'We will open a new secure card checkout for this failed payment.',

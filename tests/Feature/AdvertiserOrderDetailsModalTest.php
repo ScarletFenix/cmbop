@@ -212,6 +212,10 @@ class AdvertiserOrderDetailsModalTest extends TestCase
         $this->assertStringContainsString('This order has no line items on file', $js);
         $this->assertStringContainsString('Open live URL', $js);
         $this->assertStringContainsString('copyOrderLiveUrl', $js);
+        $this->assertMatchesRegularExpression('/requestModification\\s*=\\s*function[\\s\\S]*hideOrderDetailsModal/', $js);
+        $this->assertMatchesRegularExpression('/reportLinkRemoved\\s*=\\s*function[\\s\\S]*hideOrderDetailsModal/', $js);
+        $this->assertMatchesRegularExpression('/fulfillContentRevision\\s*=\\s*function[\\s\\S]*hideOrderDetailsModal/', $js);
+        $this->assertMatchesRegularExpression('/retryOrderPayment\\s*=\\s*function[\\s\\S]*hideOrderDetailsModal/', $js);
         $this->assertStringContainsString('ov-live-url', $js);
         $this->assertStringContainsString('ui-callout--info', $js);
         $this->assertStringNotContainsString('ov-empty-placements ui-callout ui-callout--attention', $js);
@@ -376,6 +380,8 @@ class AdvertiserOrderDetailsModalTest extends TestCase
         $this->assertStringContainsString('.order-view-shell--stack', $css);
         $this->assertStringContainsString('.order-details-body:has(.order-view-shell--stack)', $css);
         $this->assertStringContainsString('overflow-y: auto', $css);
+        $this->assertStringNotContainsString('#orderDetailsModal {\n    z-index: 1080;', $css);
+        $this->assertStringNotContainsString('z-index: 1075', $css);
     }
 
     public function test_status_meta_and_steps_do_not_claim_a_placement_without_items(): void
