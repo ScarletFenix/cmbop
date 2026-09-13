@@ -628,7 +628,7 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('visually-hidden">Search</button>', $html);
         $this->assertStringContainsString('visually-hidden" for="libraryCountryFilter"', $html);
         $this->assertStringContainsString('visually-hidden" for="libraryLanguageFilter"', $html);
-        $this->assertStringContainsString('Search title or filename', $html);
+        $this->assertStringContainsString('Search title, filename, URL, or body', $html);
         $this->assertStringContainsString('All countries', $html);
         $this->assertStringContainsString('All languages', $html);
         $this->assertStringNotContainsString('>Apply<', $html);
