@@ -461,13 +461,6 @@
                                        href="{{ route('advertiser.content-library.order', $submission, false) }}">
                                         Order
                                     </a>
-                                @elseif($submission->canDuplicateForLibrary())
-                                    <button type="button"
-                                            class="btn btn-sm btn-outline-secondary js-library-duplicate"
-                                            data-submission-id="{{ $submission->id }}"
-                                            data-title="{{ $submission->title ?: $submission->original_filename }}">
-                                        Duplicate
-                                    </button>
                                 @elseif($availability === 'evaluating')
                                     <span class="small text-muted">Processing</span>
                                 @elseif($availability === 'needs_fix')
@@ -482,6 +475,13 @@
                                             Resubmit
                                         </a>
                                     @endif
+                                @elseif($submission->canDuplicateForLibrary())
+                                    <button type="button"
+                                            class="btn btn-sm btn-outline-secondary js-library-duplicate"
+                                            data-submission-id="{{ $submission->id }}"
+                                            data-title="{{ $submission->title ?: $submission->original_filename }}">
+                                        Duplicate
+                                    </button>
                                 @endif
                                 @if($availability === 'in_progress'
                                     || ($submission->libraryOrder() && ! $submission->isPublished() && $availability !== 'available'))

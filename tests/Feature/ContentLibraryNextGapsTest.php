@@ -268,7 +268,8 @@ class ContentLibraryNextGapsTest extends TestCase
         $js = (string) file_get_contents(public_path('assets/js/content-library.js'));
         $this->assertStringContainsString('libraryMultiUploadLimit', $js);
         $this->assertStringContainsString('assignLibraryFiles', $js);
-        $this->assertStringContainsString('replace_id', $js);
+        $this->assertStringContainsString('libraryIsReplaceUpload', $js);
+        $this->assertStringContainsString('replaceIdInput', $js);
     }
 
     public function test_search_matches_target_url_and_body(): void
