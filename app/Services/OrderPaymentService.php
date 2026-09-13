@@ -3169,14 +3169,14 @@ class OrderPaymentService
                     Mail::to($publisher->email)->send(
                         new SiteOwnerOrderNotification($site, $siteData['orders'])
                     );
-                } catch (\Exception $e) {
+                } catch (\Throwable $e) {
                     Log::error('Failed to send paid-order email to publisher', [
                         'email' => $publisher->email,
                         'error' => $e->getMessage(),
                     ]);
                 }
             }
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('notifyPublishersOfPaidOrders failed: '.$e->getMessage());
         }
     }

@@ -4241,7 +4241,7 @@ class CatalogController extends Controller
                         'publisher_email' => $publisher->email,
                         'order_count' => count($siteOrdersList),
                     ]);
-                } catch (\Exception $e) {
+                } catch (\Throwable $e) {
                     Log::error('Failed to send email to publisher', [
                         'email' => $publisher->email,
                         'error' => $e->getMessage(),
@@ -4249,7 +4249,7 @@ class CatalogController extends Controller
                 }
             }
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Failed to send site owner emails: '.$e->getMessage());
             Log::error('Stack trace: '.$e->getTraceAsString());
         }
@@ -5049,7 +5049,7 @@ class CatalogController extends Controller
                     'awaiting_payment' => $awaitingPayment,
                 ],
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Stack trace: '.$e->getTraceAsString());
 
             return response()->json([
@@ -5201,7 +5201,7 @@ class CatalogController extends Controller
                     'to' => $orders->lastItem(),
                 ],
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Stack trace: '.$e->getTraceAsString());
 
             return response()->json([
@@ -5255,7 +5255,7 @@ class CatalogController extends Controller
                 'success' => true,
                 'order' => $order,
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Stack trace: '.$e->getTraceAsString());
 
             return response()->json([
@@ -5741,7 +5741,7 @@ class CatalogController extends Controller
     {
         try {
             $expandedOrders = $this->cartPricing()->expandCart($cart, auth()->id());
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             $message = UserFacingError::message($e, 'Some items in your cart are no longer available. Please review your cart.');
             $status = str_contains($e->getMessage(), 'own websites') ? 422 : 200;
 

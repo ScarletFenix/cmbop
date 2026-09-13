@@ -184,6 +184,33 @@ class PaymentFlowLeftoverErrorTest extends TestCase
         }
     }
 
+    public function test_orders_ajax_survives_dropped_orders_table(): void
+    {
+        $advertiser = $this->advertiser();
+        Schema::dropIfExists('orders');
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.orders.statistics'))
+            ->assertStatus(500)
+            ->assertJsonPath('success', false)
+            ->assertJsonMissingPath('exception')
+            ->assertDontSee('SQLSTATE');
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.orders.list'))
+            ->assertStatus(500)
+            ->assertJsonPath('success', false)
+            ->assertJsonMissingPath('exception')
+            ->assertDontSee('SQLSTATE');
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.orders.get', 1))
+            ->assertStatus(500)
+            ->assertJsonPath('success', false)
+            ->assertJsonMissingPath('exception')
+            ->assertDontSee('SQLSTATE');
+    }
+
     public function test_payment_methods_index_survives_leftover_card_lookup(): void
     {
         $advertiser = $this->advertiser();
