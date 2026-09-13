@@ -148,7 +148,9 @@
                         <a href="{{ staff_route('promotions.preview', ['audience' => $announcement->audience === 'all' ? 'public' : $announcement->audience]) }}"
                            class="btn btn-outline-secondary" target="_blank" rel="noopener">Preview as audience</a>
                         @php
-                            $campaignHandoff = \App\Support\PromotionCampaignHandoff::query($announcement);
+                            $campaignHandoff = auth()->user()?->isAdmin() && class_exists(\App\Support\PromotionCampaignHandoff::class)
+                                ? \App\Support\PromotionCampaignHandoff::query($announcement)
+                                : [];
                         @endphp
                         @if(auth()->user()?->isAdmin() && $mode === 'edit' && $campaignHandoff !== [])
                             <a href="{{ route('admin.campaigns.index', $campaignHandoff) }}" class="btn btn-outline-secondary">Email this audience</a>

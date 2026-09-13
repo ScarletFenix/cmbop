@@ -2461,7 +2461,9 @@ class Site extends Model
     public static function forgetMarketingCaches(): void
     {
         try {
-            CatalogCountryInventory::forget();
+            if (class_exists(CatalogCountryInventory::class)) {
+                CatalogCountryInventory::forget();
+            }
         } catch (\Throwable $e) {
             Log::warning('Catalog country inventory cache bust failed', [
                 'error' => $e->getMessage(),

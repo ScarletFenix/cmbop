@@ -978,7 +978,6 @@ class SiteController extends Controller
                     'sensitive_prices' => ! empty($sensitivePrices) ? $sensitivePrices : null,
                     'homepage_placement_prices' => ! empty($homepagePrices) ? $homepagePrices : null,
                     'social_promotion' => $socialPromotion,
-                    'site_image' => $imagePath,
                 ]);
 
                 // Hard-set invite + metrics so a missing column skip cannot silently drop them.
@@ -997,9 +996,15 @@ class SiteController extends Controller
                     'metrics_fetched_at' => now(),
                 ]);
 
-                SiteTag::applyStaffDefault($site, $request->input('site_tag'));
+                if (class_exists(SiteTag::class)) {
+                    SiteTag::applyStaffDefault($site, $request->input('site_tag'));
+                }
 
                 $site->save();
+
+                if (is_string($imagePath) && $imagePath !== '') {
+                    $this->persistStaffSiteImagePath($site, $imagePath);
+                }
 
                 if ((int) $site->da !== $da || (int) $site->dr !== $dr || (int) $site->traffic !== $traffic) {
                     throw new \RuntimeException('DA/DR/traffic did not persist after save.');
@@ -1407,9 +1412,19 @@ class SiteController extends Controller
         );
 
         $previousImage = is_string($site->site_image) ? $site->site_image : null;
+        $imagePath = $data['site_image'] ?? null;
+        $persistImageSeparately = is_string($imagePath) && $imagePath !== '';
+        if ($persistImageSeparately) {
+            unset($data['site_image']);
+        }
 
         try {
-            $site->update($data);
+            if ($data !== []) {
+                $site->update($data);
+            }
+            if ($persistImageSeparately) {
+                $this->persistStaffSiteImagePath($site, $imagePath);
+            }
             $site->refresh();
             if (! $isMarketingEditor) {
                 try {
@@ -1929,6 +1944,10 @@ class SiteController extends Controller
         if (isset($data['description']) && is_string($data['description'])) {
             $data['description'] = app(SiteDescriptionSanitizer::class)
                 ->sanitize($data['description']);
+        }
+
+        if (! class_exists(SiteTag::class)) {
+            return $data;
         }
 
         return SiteTag::exclusiveAttributePatch($data, $site);

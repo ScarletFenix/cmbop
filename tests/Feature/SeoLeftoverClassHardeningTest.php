@@ -44,6 +44,16 @@ class SeoLeftoverClassHardeningTest extends TestCase
 
         $site = (string) file_get_contents(base_path('app/Models/Site.php'));
         $this->assertStringContainsString('class_exists(GuestPostPriceIndex::class)', $site);
+        $this->assertStringContainsString('class_exists(CatalogCountryInventory::class)', $site);
+
+        $staffSites = (string) file_get_contents(base_path('app/Http/Controllers/Admin/SiteController.php'));
+        $this->assertStringContainsString('class_exists(SiteTag::class)', $staffSites);
+        $this->assertStringContainsString('persistStaffSiteImagePath($site, $imagePath)', $staffSites);
+
+        $promoIndex = (string) file_get_contents(base_path('resources/views/admin/promotions/announcements/index.blade.php'));
+        $promoForm = (string) file_get_contents(base_path('resources/views/admin/promotions/announcements/form.blade.php'));
+        $this->assertStringContainsString('class_exists(\\App\\Support\\PromotionCampaignHandoff::class)', $promoIndex);
+        $this->assertStringContainsString('class_exists(\\App\\Support\\PromotionCampaignHandoff::class)', $promoForm);
 
         $i18n = (string) file_get_contents(base_path('app/Support/PublicI18n.php'));
         $this->assertStringContainsString('class_exists(LocalizedPublicPath::class)', $i18n);
