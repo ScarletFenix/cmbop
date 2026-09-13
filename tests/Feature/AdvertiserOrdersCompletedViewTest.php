@@ -9,6 +9,7 @@ use App\Models\Site;
 use App\Models\User;
 use App\Support\AdvertiserOrderStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 class AdvertiserOrdersCompletedViewTest extends TestCase
@@ -219,5 +220,110 @@ class AdvertiserOrdersCompletedViewTest extends TestCase
             ->assertForbidden()
             ->assertJsonPath('success', false)
             ->assertJsonPath('message', 'Unauthorized');
+    }
+
+    public function test_get_order_survives_dropped_order_items_table(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher);
+        $order = $this->makeOrder($advertiser, $site, [
+            'status' => 'completed',
+        ], [
+            'live_url' => 'https://live.example/leftover-items',
+        ]);
+
+        Schema::dropIfExists('order_items');
+
+        $payload = $this->actingAs($advertiser)
+            ->getJson(route('advertiser.orders.get', $order->id))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('order.status', 'completed')
+            ->assertJsonPath('order.items_count', 0)
+            ->assertJsonMissingPath('exception')
+            ->assertDontSee('SQLSTATE')
+            ->json('order');
+
+        $this->assertSame([], $payload['items']);
+        $this->assertSame('Completed', $payload['status_label']);
+        $this->assertSame('Placement details are missing for this order.', $payload['next_action']);
+        $this->assertStringNotContainsString('No placements', $payload['next_action']);
+        $this->assertStringNotContainsString('paid for this placement', $payload['next_action']);
+    }
+
+    public function test_order_timeline_survives_dropped_order_items_table(): void
+    {
+        $advertiser = $this->advertiser();
+        $stranger = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher);
+        $order = $this->makeOrder($advertiser, $site, [
+            'status' => 'completed',
+        ], [
+            'live_url' => 'https://live.example/leftover-timeline',
+        ]);
+
+        Schema::dropIfExists('order_items');
+
+        $this->actingAs($advertiser)
+            ->getJson(route('notifications.order-timeline', $order->id))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('order_id', $order->id)
+            ->assertJsonPath('order_number', $order->order_number)
+            ->assertJsonMissingPath('exception')
+            ->assertDontSee('SQLSTATE');
+
+        $this->actingAs($stranger)
+            ->getJson(route('notifications.order-timeline', $order->id))
+            ->assertForbidden()
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'Unauthorized')
+            ->assertDontSee('SQLSTATE');
+    }
+
+    public function test_orders_list_and_stats_survive_dropped_order_items_table(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher);
+        $order = $this->makeOrder($advertiser, $site, [
+            'order_number' => 'ORD-CV-LEFT',
+            'status' => 'completed',
+        ], [
+            'live_url' => 'https://live.example/leftover-list',
+        ]);
+
+        Schema::dropIfExists('order_items');
+
+        $list = $this->actingAs($advertiser)
+            ->getJson(route('advertiser.orders.list'))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonMissingPath('exception')
+            ->assertDontSee('SQLSTATE')
+            ->json();
+
+        $rows = collect($list['orders'] ?? []);
+        $row = $rows->firstWhere('id', $order->id);
+        $this->assertNotNull($row);
+        $this->assertSame(0, $row['items_count']);
+        $this->assertSame([], $row['items']);
+        $this->assertSame('Placement details are missing for this order.', $row['next_action']);
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.orders.list', ['search' => 'ORD-CV-LEFT']))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertDontSee('SQLSTATE');
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.orders.statistics'))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.completed', 1)
+            ->assertJsonPath('data.needs_action', 0)
+            ->assertDontSee('SQLSTATE');
     }
 }

@@ -4845,7 +4845,8 @@ class CatalogController extends Controller
     {
         $items = $order->items;
         $hasLiveUrl = $items->contains(fn ($line) => filled($line->live_url));
-        $needsRevision = Schema::hasColumn('order_items', 'content_revision_requested')
+        $needsRevision = AdvertiserOrderStatus::itemsTableAvailable()
+            && Schema::hasColumn('order_items', 'content_revision_requested')
             && $items->contains(function ($line) {
                 return $line instanceof OrderItem && $line->isContentRevisionRequested();
             });
@@ -5069,8 +5070,11 @@ class CatalogController extends Controller
             app(CheckoutSchemaService::class)->ensureCheckoutTables();
             $userId = auth()->id();
 
-            $query = Order::where('user_id', $userId)
-                ->with(OrderItemDispute::tableAvailable() ? ['items.latestDispute'] : ['items']);
+            $loadItems = AdvertiserOrderStatus::itemsTableAvailable();
+            $query = Order::where('user_id', $userId);
+            if ($loadItems) {
+                $query->with(OrderItemDispute::tableAvailable() ? ['items.latestDispute'] : ['items']);
+            }
 
             $search = search_text($request->input('search'));
             $statusFilter = strtolower(search_text($request->input('status')));
@@ -5156,6 +5160,11 @@ class CatalogController extends Controller
                 $query->orderBy('created_at', 'desc')->orderBy('id', 'desc');
             }
             $orders = $query->paginate(20);
+            if (! $loadItems) {
+                foreach ($orders->items() as $order) {
+                    $order->setRelation('items', collect());
+                }
+            }
 
             $orderIds = collect($orders->items())->pluck('id');
             $unreadByOrder = OrderChatMessage::whereIn('order_id', $orderIds)
@@ -5169,15 +5178,22 @@ class CatalogController extends Controller
             $clawbacks = app(OrderClawbackService::class);
             $ordersPayload = collect($orders->items())->map(function ($order) use ($unreadByOrder, $clawbacks) {
                 $order->unread_chat = (int) ($unreadByOrder[$order->id] ?? 0);
-                $order->items_count = $order->items->count();
-                $meta = AdvertiserOrderStatus::meta($order, $order->items->first());
+                try {
+                    $order->items_count = $order->items->count();
+                    $firstItem = $order->items->first();
+                } catch (\Throwable $e) {
+                    $order->setRelation('items', collect());
+                    $order->items_count = 0;
+                    $firstItem = null;
+                }
+                $meta = AdvertiserOrderStatus::meta($order, $firstItem instanceof OrderItem ? $firstItem : null);
                 $order->status_label = $meta['label'];
                 $order->next_action = $meta['next'];
                 $order->status_cls = $meta['cls'];
                 $order->auto_approve_hint = $meta['auto_approve_hint'];
                 $this->sanitizeAdvertiserOrderItemUrls($order);
                 $this->attachAdvertiserOrderActionFlags($order);
-                $item = $order->items->first();
+                $item = $firstItem instanceof OrderItem ? $firstItem : null;
                 if ($item) {
                     $item->auto_approve_hours_remaining = (int) $item->getAutoApproveHoursRemaining();
                 }
@@ -5221,9 +5237,7 @@ class CatalogController extends Controller
             app(CheckoutSchemaService::class)->ensureCheckoutTables();
             $userId = auth()->id();
 
-            $order = Order::where('user_id', $userId)
-                ->with(OrderItemDispute::tableAvailable() ? ['items.latestDispute'] : ['items'])
-                ->find($id);
+            $order = $this->findAdvertiserOrderForDetails((int) $userId, (int) $id);
 
             if (! $order) {
                 return response()->json([
@@ -5232,15 +5246,22 @@ class CatalogController extends Controller
                 ]);
             }
 
-            $order->items_count = $order->items->count();
-            $meta = AdvertiserOrderStatus::meta($order, $order->items->first());
+            try {
+                $order->items_count = $order->items->count();
+                $firstItem = $order->items->first();
+            } catch (\Throwable $e) {
+                $order->setRelation('items', collect());
+                $order->items_count = 0;
+                $firstItem = null;
+            }
+            $meta = AdvertiserOrderStatus::meta($order, $firstItem instanceof OrderItem ? $firstItem : null);
             $order->status_label = $meta['label'];
             $order->next_action = $meta['next'];
             $order->status_cls = $meta['cls'];
             $order->auto_approve_hint = $meta['auto_approve_hint'];
             $this->sanitizeAdvertiserOrderItemUrls($order);
             $this->attachAdvertiserOrderActionFlags($order);
-            $item = $order->items->first();
+            $item = $firstItem instanceof OrderItem ? $firstItem : null;
             if ($item) {
                 $item->auto_approve_hours_remaining = (int) $item->getAutoApproveHoursRemaining();
             }
@@ -5263,6 +5284,31 @@ class CatalogController extends Controller
                 'success' => false,
                 'message' => UserFacingError::message($e, 'Failed to fetch order details. Please try again.'),
             ], 500);
+        }
+    }
+
+    /**
+     * Load an advertiser order for View. Leftover / missing order_items must
+     * still return the order so the modal can show an honest empty state.
+     */
+    private function findAdvertiserOrderForDetails(int $userId, int $id): ?Order
+    {
+        try {
+            return Order::where('user_id', $userId)
+                ->with(OrderItemDispute::tableAvailable() ? ['items.latestDispute'] : ['items'])
+                ->find($id);
+        } catch (\Throwable $e) {
+            try {
+                $order = Order::where('user_id', $userId)->find($id);
+            } catch (\Throwable $inner) {
+                throw $e;
+            }
+
+            if ($order) {
+                $order->setRelation('items', collect());
+            }
+
+            return $order;
         }
     }
 

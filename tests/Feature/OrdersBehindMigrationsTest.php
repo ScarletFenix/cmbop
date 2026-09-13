@@ -180,18 +180,26 @@ class OrdersBehindMigrationsTest extends TestCase
             ->assertJsonPath('orders.0.dispute_status', OrderItemDispute::STATUS_OPEN);
     }
 
-    public function test_orders_list_reports_a_real_failure_with_an_error_status(): void
+    public function test_orders_list_survives_a_dropped_order_items_table(): void
     {
         $advertiser = $this->advertiser();
-        $this->orderFor($advertiser);
+        $order = $this->orderFor($advertiser);
 
-        // A broken orders table is an infrastructure fault: the client needs a
-        // non-2xx so it renders the retry affordance instead of "no orders yet".
+        // Placement rows can be leftover-missing; the order itself must still
+        // list with an honest empty state instead of a SQL popup.
         Schema::drop('order_items');
 
         $response = $this->actingAs($advertiser)->getJson(route('advertiser.orders.list'));
 
-        $response->assertStatus(500)->assertJsonPath('success', false);
-        $this->assertStringNotContainsString('SQLSTATE', $response->json('message'));
+        $response->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonMissingPath('exception')
+            ->assertDontSee('SQLSTATE');
+
+        $row = collect($response->json('orders'))->firstWhere('id', $order->id);
+        $this->assertNotNull($row);
+        $this->assertSame(0, $row['items_count']);
+        $this->assertSame([], $row['items']);
+        $this->assertStringNotContainsString('SQLSTATE', (string) ($row['next_action'] ?? ''));
     }
 }

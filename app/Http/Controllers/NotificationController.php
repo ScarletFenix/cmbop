@@ -258,12 +258,34 @@ class NotificationController extends Controller
     public function orderTimeline(Request $request, int $orderId)
     {
         $user = $request->user();
-        $order = Order::with('items.site')->findOrFail($orderId);
+        try {
+            $order = Order::with('items.site')->findOrFail($orderId);
+        } catch (ModelNotFoundException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            try {
+                $order = Order::findOrFail($orderId);
+                $order->setRelation('items', collect());
+            } catch (ModelNotFoundException $inner) {
+                throw $inner;
+            } catch (\Throwable $inner) {
+                report($e);
+
+                return response()->json([
+                    'success' => false,
+                    'message' => UserFacingError::message($e, 'We could not load this order timeline. Please try again.'),
+                ], 500);
+            }
+        }
 
         $isAdvertiser = (int) $order->user_id === (int) $user->id;
-        $isPublisher = $order->items->contains(function ($item) use ($user) {
-            return $item->site && (int) $item->site->publisher_id === (int) $user->id;
-        });
+        try {
+            $isPublisher = $order->items->contains(function ($item) use ($user) {
+                return $item->site && (int) $item->site->publisher_id === (int) $user->id;
+            });
+        } catch (\Throwable $e) {
+            $isPublisher = false;
+        }
         $isStaff = method_exists($user, 'isAdmin') && ($user->isAdmin() || $user->isMarketing());
 
         if (! $isAdvertiser && ! $isPublisher && ! $isStaff) {
