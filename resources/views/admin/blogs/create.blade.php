@@ -43,7 +43,7 @@
                                         type="button"
                                         role="tab"
                                     >
-                                        {{ \App\Support\PublicI18n::shortLabel($locale) }} {!! $locale === 'en' ? '<span class="text-danger">*</span>' : '' !!}
+                                        {{ class_exists(\App\Support\PublicI18n::class) ? \App\Support\PublicI18n::shortLabel($locale) : strtoupper($locale) }} {!! $locale === 'en' ? '<span class="text-danger">*</span>' : '' !!}
                                     </button>
                                 </li>
                             @endforeach

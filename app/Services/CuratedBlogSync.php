@@ -128,7 +128,7 @@ class CuratedBlogSync
 
         DB::table('blogs')->orderBy('id')->chunkById(100, function ($blogs) use (&$used, $blogSlugsById): void {
             foreach ($blogs as $blog) {
-                $locale = PublicI18n::isSupported($blog->primary_locale ?? null)
+                $locale = (class_exists(PublicI18n::class) && PublicI18n::isSupported($blog->primary_locale ?? null))
                     ? $blog->primary_locale
                     : 'en';
 

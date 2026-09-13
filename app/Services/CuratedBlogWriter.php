@@ -193,7 +193,7 @@ class CuratedBlogWriter
             return;
         }
 
-        $locale = PublicI18n::isSupported($blog->primary_locale)
+        $locale = (class_exists(PublicI18n::class) && PublicI18n::isSupported($blog->primary_locale))
             ? $blog->primary_locale
             : 'en';
 

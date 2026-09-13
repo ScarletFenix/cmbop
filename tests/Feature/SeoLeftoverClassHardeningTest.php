@@ -67,9 +67,19 @@ class SeoLeftoverClassHardeningTest extends TestCase
 
         $sync = (string) file_get_contents(base_path('app/Services/CuratedBlogSync.php'));
         $this->assertStringContainsString('class_exists(BlogTranslationSlug::class)', $sync);
+        $this->assertStringContainsString('class_exists(PublicI18n::class)', $sync);
 
         $setLocale = (string) file_get_contents(base_path('app/Http/Middleware/SetLocale.php'));
         $this->assertStringContainsString('class_exists(PublicI18n::class)', $setLocale);
+
+        $blogModel = (string) file_get_contents(base_path('app/Models/Blog.php'));
+        $catalog = (string) file_get_contents(base_path('app/Support/CuratedBlogCatalog.php'));
+        $writer = (string) file_get_contents(base_path('app/Services/CuratedBlogWriter.php'));
+        $validates = (string) file_get_contents(base_path('app/Http/Requests/Admin/Concerns/ValidatesBlogPost.php'));
+        $this->assertStringContainsString('class_exists(PublicI18n::class)', $blogModel);
+        $this->assertStringContainsString('class_exists(PublicI18n::class)', $catalog);
+        $this->assertStringContainsString('class_exists(PublicI18n::class)', $writer);
+        $this->assertStringContainsString('class_exists(PublicI18n::class)', $validates);
     }
 
     public function test_public_money_pages_and_admin_login_stay_up(): void
