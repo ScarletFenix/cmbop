@@ -12,6 +12,7 @@ use App\Services\Advertiser\ContentLibrarySearchQuery;
 use App\Services\ContentUpload\ContentUploadService;
 use App\Services\Marketplace\CountryLanguagePairs;
 use App\Services\Marketplace\LanguageCountryMap;
+use App\Support\UserFacingError;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -54,6 +55,10 @@ class ContentLibraryController extends Controller
         $languageFilter = strtolower(trim(scalar_text($request->query('language', ''))));
         $countryFilter = strtolower(trim(scalar_text($request->query('country', ''))));
         $search = trim(scalar_text($request->query('q', '')));
+        $sort = strtolower(trim(scalar_text($request->query('sort', 'latest'))));
+        if (! in_array($sort, ['latest', 'title', 'expires'], true)) {
+            $sort = 'latest';
+        }
 
         if (! in_array($status, ['all', 'approved', 'rejected', 'needs_improvement'], true)) {
             $status = 'approved';
@@ -97,12 +102,6 @@ class ContentLibraryController extends Controller
             $with[] = 'orderItems.disputes';
         }
 
-        $query = ContentSubmission::query()
-            ->forLibraryList()
-            ->with($with)
-            ->where('user_id', auth()->id())
-            ->latest('id');
-
         // Needs corrections / expired / archived chips must not keep the default
         // status=approved filter (that would hide rejected rows).
         if (in_array($availability, ['needs_fix', 'expired', 'archived', 'in_progress', 'published', 'evaluating'], true)
@@ -110,56 +109,75 @@ class ContentLibraryController extends Controller
             $status = 'all';
         }
 
-        // Available-for-publication already constrains moderation_status = approved.
-        if ($status && $status !== 'all' && ! in_array($availability, ['available', 'evaluating'], true)) {
-            $query->where('moderation_status', $status);
-        }
-
-        if ($languageFilter !== '' && $languageFilter !== 'all') {
-            $query->where('language', $languageFilter);
-        }
-
-        if ($countryFilter !== '' && $countryFilter !== 'all') {
-            $query->where('country', $countryFilter);
-        }
-
-        if ($search !== '') {
-            $this->librarySearch->apply($query, $search);
-        }
-
-        if ($availability === 'archived') {
-            $query->archived();
-        } else {
-            $query->notArchived();
-
-            if ($availability === 'available') {
-                $query->checkoutReady();
-            } elseif ($availability === 'evaluating') {
-                $query->evaluatingInLibrary();
-            } elseif ($availability === 'in_progress') {
-                $query->inProgressInLibrary();
-            } elseif ($availability === 'expired') {
-                $query->expiredUnused();
-            } elseif ($availability === 'needs_fix') {
-                $query->needsLibraryFix();
-            } elseif ($availability === 'published') {
-                $query->withCurrentLivePlacement();
-            }
-        }
-
         $page = (int) scalar_text($request->query('page', 1));
         if ($page < 1) {
             $page = 1;
         }
         $libraryPath = route('advertiser.content-library', absolute: false);
+        $submissions = new LengthAwarePaginator([], 0, 20, $page);
+        $submissions->setPath($libraryPath);
+
         try {
+            $query = ContentSubmission::query()
+                ->forLibraryList()
+                ->with($with)
+                ->where('user_id', auth()->id());
+
+            if ($sort === 'title') {
+                $query->orderBy('title')->orderByDesc('id');
+            } elseif ($sort === 'expires') {
+                $query->orderByRaw('case when expires_at is null then 1 else 0 end')
+                    ->orderBy('expires_at')
+                    ->orderByDesc('id');
+            } else {
+                $query->latest('id');
+            }
+
+            // Available-for-publication already constrains moderation_status = approved.
+            if ($status && $status !== 'all' && ! in_array($availability, ['available', 'evaluating'], true)) {
+                $query->where('moderation_status', $status);
+            }
+
+            if ($languageFilter !== '' && $languageFilter !== 'all') {
+                $query->where('language', $languageFilter);
+            }
+
+            if ($countryFilter !== '' && $countryFilter !== 'all') {
+                $query->where('country', $countryFilter);
+            }
+
+            if ($search !== '') {
+                $this->librarySearch->apply($query, $search);
+            }
+
+            if ($availability === 'archived') {
+                $query->archived();
+            } else {
+                $query->notArchived();
+
+                if ($availability === 'available') {
+                    $query->checkoutReady();
+                } elseif ($availability === 'evaluating') {
+                    $query->evaluatingInLibrary();
+                } elseif ($availability === 'in_progress') {
+                    $query->inProgressInLibrary();
+                } elseif ($availability === 'expired') {
+                    $query->expiredUnused();
+                } elseif ($availability === 'needs_fix') {
+                    $query->needsLibraryFix();
+                } elseif ($availability === 'published') {
+                    $query->withCurrentLivePlacement();
+                }
+            }
+
             $submissions = $query->paginate(20, ['*'], 'page', $page)->withQueryString();
             $submissions->setPath($libraryPath);
         } catch (\Throwable $e) {
-            Log::warning('Content library list leftover query failed', [
-                'user_id' => auth()->id(),
-                'error' => $e->getMessage(),
-            ]);
+            report($e);
+            session()->flash(
+                'error',
+                UserFacingError::message($e, 'We could not load your content library. Please refresh and try again.')
+            );
             $submissions = new LengthAwarePaginator([], 0, 20, $page);
             $submissions->setPath($libraryPath);
         }
@@ -264,7 +282,10 @@ class ContentLibraryController extends Controller
         );
         $languageCountryMap = $this->safeLibraryQuery(fn () => $this->languageCountryMap->map(), []);
         $countryLanguageMap = $this->safeLibraryQuery(fn () => $this->countryLanguagePairs->mapWithNames(), []);
-        $editSubmission = $this->resolveEditableSubmission(scalar_text($request->query('edit')));
+        $editSubmission = $this->safeLibraryQuery(
+            fn () => $this->resolveEditableSubmission(scalar_text($request->query('edit'))),
+            null,
+        );
 
         return [
             'submissions' => $submissions,
@@ -275,6 +296,7 @@ class ContentLibraryController extends Controller
             'languageFilter' => $languageFilter ?: 'all',
             'countryFilter' => $countryFilter ?: 'all',
             'searchQuery' => $search,
+            'sort' => $sort,
             'groupedByLanguage' => $groupedByLanguage,
             'groupedByCountry' => $groupedByCountry,
             'moderationCounts' => $moderationCounts,
@@ -296,6 +318,7 @@ class ContentLibraryController extends Controller
                 'language' => $languageFilter ?: 'all',
                 'country' => $countryFilter ?: 'all',
                 'q' => $search,
+                'sort' => $sort,
             ],
         ];
     }

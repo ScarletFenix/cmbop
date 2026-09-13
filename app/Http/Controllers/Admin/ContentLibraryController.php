@@ -22,6 +22,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class ContentLibraryController extends Controller
 {
@@ -32,6 +33,25 @@ class ContentLibraryController extends Controller
     ) {}
 
     public function index(Request $request)
+    {
+        return view('admin.content-library.index', $this->libraryIndexData($request));
+    }
+
+    public function results(Request $request)
+    {
+        if (! config('content_library.live_search.enabled', true)) {
+            abort(404);
+        }
+
+        return response()
+            ->view('admin.content-library.results', $this->libraryIndexData($request))
+            ->header('Cache-Control', 'no-store, private');
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function libraryIndexData(Request $request): array
     {
         $filters = $this->parseFilters($request);
         $page = (int) scalar_text($request->query('page', 1));
@@ -44,36 +64,46 @@ class ContentLibraryController extends Controller
             try {
                 $query = ContentSubmission::query()
                     ->forLibraryList()
-                    ->with($this->libraryListRelations())
-                    ->latest('id');
+                    ->with($this->libraryListRelations());
 
                 $this->applyListFilters($query, $filters);
+                $this->applySort($query, $filters['sort']);
                 $submissions = $query->paginate(30, ['*'], 'page', $page)->withQueryString();
             } catch (\Throwable $e) {
-                Log::warning('Admin content library list leftover query failed', [
-                    'error' => $e->getMessage(),
-                ]);
+                report($e);
+                session()->flash(
+                    'error',
+                    UserFacingError::message($e, 'We could not load the content library. Please refresh and try again.')
+                );
                 $submissions = $this->emptyLibraryPaginator($page);
             }
         }
 
+        $this->attachFileOnDiskFlags($submissions);
+
         $filterUser = $filters['user_id'] > 0
             ? User::query()->select(['id', 'name', 'email'])->find($filters['user_id'])
             : null;
+        $advertiserUnmatched = $filters['advertiser'] !== '' && $filters['user_id'] < 0;
 
-        return view('admin.content-library.index', [
+        return [
             'submissions' => $submissions,
             'availability' => $filters['availability'],
             'language' => $filters['language'] ?: 'all',
             'country' => $filters['country'] ?: 'all',
             'search' => $filters['search'],
-            'userId' => $filters['user_id'] ?: null,
+            'advertiserQuery' => $filters['advertiser'],
+            'sort' => $filters['sort'],
+            'userId' => $filters['user_id'] > 0 ? $filters['user_id'] : null,
             'filterUser' => $filterUser,
+            'advertiserUnmatched' => $advertiserUnmatched,
             'availabilityCounts' => $this->availabilityCounts($filters),
             'countries' => $this->marketCodes('country'),
             'languages' => $this->marketCodes('language'),
             'filterQuery' => $this->filterQuery($filters),
-        ]);
+            'liveSearchEnabled' => (bool) config('content_library.live_search.enabled', true),
+            'bulkLimit' => $this->bulkLimit(),
+        ];
     }
 
     public function show(Request $request, ContentSubmission $submission)
@@ -81,10 +111,11 @@ class ContentLibraryController extends Controller
         try {
             $submission->load($this->libraryShowRelations());
         } catch (\Throwable $e) {
-            Log::warning('Admin content library show leftover relations failed', [
-                'submission_id' => $submission->id,
-                'error' => $e->getMessage(),
-            ]);
+            report($e);
+            session()->flash(
+                'error',
+                UserFacingError::message($e, 'Some article details could not be loaded. Preview or order links may be incomplete.')
+            );
         }
 
         $filters = $this->parseFilters($request);
@@ -112,28 +143,35 @@ class ContentLibraryController extends Controller
         ]);
     }
 
-    public function download(ContentSubmission $submission): StreamedResponse
+    public function download(ContentSubmission $submission): StreamedResponse|RedirectResponse
     {
         try {
             $disk = Storage::disk($submission->disk ?: 'local');
-        } catch (\Throwable) {
-            abort(404, 'File not found');
-        }
-        $path = (string) $submission->path;
-        if ($path === '' || str_contains($path, '..') || ! $disk->exists($path)) {
-            abort(404, 'File not found');
-        }
+            $path = (string) $submission->path;
+            if ($path === '' || str_contains($path, '..') || ! $disk->exists($path)) {
+                abort(404, 'File not found');
+            }
 
-        $filename = str_replace(["\r", "\n", '"'], '', basename((string) ($submission->original_filename ?: 'article.docx')));
+            $filename = str_replace(["\r", "\n", '"'], '', basename((string) ($submission->original_filename ?: 'article.docx')));
 
-        return $disk->download(
-            $path,
-            $filename !== '' ? $filename : 'article.docx',
-            ArticleDownload::headers(
+            return $disk->download(
+                $path,
                 $filename !== '' ? $filename : 'article.docx',
-                (string) ($submission->mime ?: 'application/octet-stream')
-            )
-        );
+                ArticleDownload::headers(
+                    $filename !== '' ? $filename : 'article.docx',
+                    (string) ($submission->mime ?: 'application/octet-stream')
+                )
+            );
+        } catch (HttpException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            report($e);
+
+            return back()->with(
+                'error',
+                UserFacingError::message($e, 'We could not download that file. Please try again.')
+            );
+        }
     }
 
     public function retry(ContentSubmission $submission): RedirectResponse
@@ -255,7 +293,7 @@ class ContentLibraryController extends Controller
     }
 
     /**
-     * @return array{availability:string, language:string, country:string, search:string, user_id:int}
+     * @return array{availability:string, language:string, country:string, search:string, advertiser:string, sort:string, user_id:int}
      */
     protected function parseFilters(Request $request): array
     {
@@ -264,6 +302,8 @@ class ContentLibraryController extends Controller
         $language = strtolower(trim(scalar_text($request->query('language', ''))));
         $country = strtolower(trim(scalar_text($request->query('country', ''))));
         $search = trim(scalar_text($request->query('q', '')));
+        $advertiser = trim(scalar_text($request->query('advertiser', '')));
+        $sort = strtolower(trim(scalar_text($request->query('sort', 'latest'))));
         $userId = (int) scalar_text($request->query('user_id', 0));
 
         $allowed = ['all', 'available', 'evaluating', 'in_progress', 'needs_fix', 'completed', 'expired', 'archived'];
@@ -277,13 +317,23 @@ class ContentLibraryController extends Controller
         if ($country === 'all') {
             $country = '';
         }
+        if (! in_array($sort, ['latest', 'title', 'expires'], true)) {
+            $sort = 'latest';
+        }
+
+        if ($userId <= 0 && $advertiser !== '') {
+            $resolved = $this->resolveAdvertiserId($advertiser);
+            $userId = $resolved > 0 ? $resolved : -1;
+        }
 
         return [
             'availability' => $availability,
             'language' => $language,
             'country' => $country,
             'search' => $search,
-            'user_id' => $userId > 0 ? $userId : 0,
+            'advertiser' => $advertiser,
+            'sort' => $sort,
+            'user_id' => $userId,
         ];
     }
 
@@ -301,7 +351,7 @@ class ContentLibraryController extends Controller
 
     /**
      * @param  Builder<ContentSubmission>  $query
-     * @param  array{availability:string, language:string, country:string, search:string, user_id:int}  $filters
+     * @param  array{availability:string, language:string, country:string, search:string, advertiser:string, sort:string, user_id:int}  $filters
      */
     protected function applyListFilters(Builder $query, array $filters): void
     {
@@ -315,10 +365,34 @@ class ContentLibraryController extends Controller
         }
         if ($filters['user_id'] > 0) {
             $query->where('user_id', $filters['user_id']);
+        } elseif ($filters['user_id'] < 0) {
+            $query->whereRaw('0 = 1');
         }
         if ($filters['search'] !== '') {
             $this->applySearch($query, $filters['search']);
         }
+    }
+
+    /**
+     * @param  Builder<ContentSubmission>  $query
+     */
+    protected function applySort(Builder $query, string $sort): void
+    {
+        if ($sort === 'title') {
+            $query->orderBy('title')->orderByDesc('id');
+
+            return;
+        }
+
+        if ($sort === 'expires') {
+            $query->orderByRaw('case when expires_at is null then 1 else 0 end')
+                ->orderBy('expires_at')
+                ->orderByDesc('id');
+
+            return;
+        }
+
+        $query->latest('id');
     }
 
     /**
@@ -395,7 +469,7 @@ class ContentLibraryController extends Controller
     }
 
     /**
-     * @param  array{availability:string, language:string, country:string, search:string, user_id:int}  $filters
+     * @param  array{availability:string, language:string, country:string, search:string, advertiser:string, sort:string, user_id:int}  $filters
      * @return array<string, int>
      */
     protected function availabilityCounts(array $filters): array
@@ -425,6 +499,8 @@ class ContentLibraryController extends Controller
             }
             if ($filters['user_id'] > 0) {
                 $base->where('user_id', $filters['user_id']);
+            } elseif ($filters['user_id'] < 0) {
+                $base->whereRaw('0 = 1');
             }
             if ($filters['search'] !== '') {
                 $this->applySearch($base, $filters['search']);
@@ -491,7 +567,7 @@ class ContentLibraryController extends Controller
     }
 
     /**
-     * @param  array{availability:string, language:string, country:string, search:string, user_id:int}  $filters
+     * @param  array{availability:string, language:string, country:string, search:string, advertiser:string, sort:string, user_id:int}  $filters
      * @return array<string, string|int>
      */
     protected function filterQuery(array $filters): array
@@ -508,6 +584,12 @@ class ContentLibraryController extends Controller
         }
         if ($filters['search'] !== '') {
             $query['q'] = $filters['search'];
+        }
+        if ($filters['advertiser'] !== '') {
+            $query['advertiser'] = $filters['advertiser'];
+        }
+        if ($filters['sort'] !== '' && $filters['sort'] !== 'latest') {
+            $query['sort'] = $filters['sort'];
         }
         if ($filters['user_id'] > 0) {
             $query['user_id'] = $filters['user_id'];
@@ -622,6 +704,145 @@ class ContentLibraryController extends Controller
             return true;
         } catch (\Throwable) {
             return false;
+        }
+    }
+
+    public function export(Request $request): StreamedResponse|RedirectResponse
+    {
+        $filters = $this->parseFilters($request);
+
+        try {
+            $query = ContentSubmission::query()->forLibraryList()->with(['user:id,name,email']);
+            $this->applyListFilters($query, $filters);
+            $this->applySort($query, $filters['sort']);
+            $rows = $query->limit(2000)->get();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return redirect()
+                ->route('admin.content-library.index', $this->filterQuery($filters))
+                ->with('error', UserFacingError::message($e, 'We could not export the content library. Please try again.'));
+        }
+
+        $filename = 'content-library-'.now()->format('Y-m-d').'.csv';
+
+        return response()->streamDownload(function () use ($rows) {
+            $out = fopen('php://output', 'w');
+            fputcsv($out, ['id', 'title', 'advertiser_email', 'market', 'availability', 'expires_at']);
+
+            foreach ($rows as $submission) {
+                $market = trim(implode('/', array_filter([
+                    strtoupper((string) $submission->country),
+                    strtoupper((string) $submission->language),
+                ])));
+                fputcsv($out, [
+                    $submission->id,
+                    $submission->title ?: $submission->original_filename,
+                    $submission->user?->email,
+                    $market,
+                    $submission->libraryAvailability(),
+                    optional($submission->expires_at)?->toDateString(),
+                ]);
+            }
+
+            fclose($out);
+        }, $filename, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
+    public function bulkRetry(Request $request): RedirectResponse
+    {
+        return $this->runBulk($request, 'retry', 'Re-evaluated %d article(s).');
+    }
+
+    public function bulkArchive(Request $request): RedirectResponse
+    {
+        return $this->runBulk($request, 'archive', 'Archived %d article(s).');
+    }
+
+    private function runBulk(Request $request, string $action, string $success): RedirectResponse
+    {
+        $ids = $this->bulkIds($request);
+        if ($ids === []) {
+            return back()->with('error', 'Select at least one article.');
+        }
+
+        $done = 0;
+        $failed = 0;
+        foreach (ContentSubmission::query()->whereIn('id', $ids)->get() as $submission) {
+            try {
+                if ($action === 'retry') {
+                    $this->staffActions->retry($submission);
+                } else {
+                    $this->staffActions->archive($submission);
+                }
+                $done++;
+            } catch (ValidationException) {
+                $failed++;
+            } catch (\Throwable $e) {
+                report($e);
+                $failed++;
+            }
+        }
+
+        $flash = sprintf($success, $done);
+        if ($failed > 0) {
+            $flash .= ' '.$failed.' could not be updated.';
+        }
+
+        return back()->with($done > 0 ? 'success' : 'error', $flash);
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function bulkIds(Request $request): array
+    {
+        $raw = $request->input('ids', []);
+        if (! is_array($raw)) {
+            $raw = $raw === null || $raw === '' ? [] : [$raw];
+        }
+
+        return collect($raw)
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->unique()
+            ->take($this->bulkLimit())
+            ->values()
+            ->all();
+    }
+
+    private function bulkLimit(): int
+    {
+        $limit = (int) config('content_library.bulk_limit', 50);
+
+        return $limit > 0 ? $limit : 50;
+    }
+
+    private function resolveAdvertiserId(string $needle): int
+    {
+        $like = '%'.addcslashes($needle, '%_\\').'%';
+
+        $user = User::query()
+            ->where(function ($q) use ($needle, $like) {
+                $q->where('email', $needle)
+                    ->orWhere('email', 'like', $like)
+                    ->orWhere('name', 'like', $like);
+            })
+            ->orderByRaw('case when email = ? then 0 else 1 end', [$needle])
+            ->first(['id']);
+
+        return (int) ($user?->id ?? 0);
+    }
+
+    private function attachFileOnDiskFlags(LengthAwarePaginator $submissions): void
+    {
+        foreach ($submissions as $submission) {
+            if (! $submission instanceof ContentSubmission) {
+                continue;
+            }
+            $submission->setAttribute('file_on_disk', $this->staffActions->fileOnDisk($submission));
         }
     }
 }

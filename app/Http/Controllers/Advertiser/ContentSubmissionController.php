@@ -12,6 +12,9 @@ use App\Services\ContentUpload\ContentUploadService;
 use App\Services\ContentUpload\ScheduledOrderService;
 use App\Services\Orders\OrderRefundService;
 use App\Support\ArticleDownload;
+use App\Support\UserFacingError;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Log;
@@ -754,6 +757,149 @@ class ContentSubmissionController extends Controller
             'success' => true,
             'submission' => $this->serializeSubmission($submission->fresh()),
         ]);
+    }
+
+    public function updateMarket(Request $request, ContentSubmission $submission)
+    {
+        $this->authorizeSubmission($submission);
+
+        $allowedCountries = array_map('strtolower', config('markets.allowed_country_codes', []));
+        $allowedLanguages = array_map('strtolower', config('markets.allowed_language_codes', []));
+
+        $request->merge([
+            'country' => strtolower(trim(scalar_text($request->input('country')))),
+            'language' => strtolower(trim(scalar_text($request->input('language')))),
+        ]);
+
+        $data = $request->validate([
+            'country' => ['required', 'string', 'size:2', Rule::in($allowedCountries)],
+            'language' => ['required', 'string', 'size:2', Rule::in($allowedLanguages)],
+        ]);
+
+        $blocked = $this->marketChangeBlockMessage($submission);
+        if ($blocked !== null) {
+            return $request->expectsJson()
+                ? response()->json(['success' => false, 'message' => $blocked], 422)
+                : back()->with('error', $blocked);
+        }
+
+        $pairMessage = $this->uploads->validateMarket($data['country'], $data['language']);
+        if ($pairMessage !== null) {
+            return $request->expectsJson()
+                ? response()->json(['success' => false, 'message' => $pairMessage], 422)
+                : back()->withErrors(['language' => $pairMessage])->with('error', $pairMessage);
+        }
+
+        try {
+            $submission->update([
+                'country' => $data['country'],
+                'language' => $data['language'],
+            ]);
+            $this->uploads->reEvaluateSubmission($submission->fresh(), true);
+        } catch (\Throwable $e) {
+            report($e);
+            $message = UserFacingError::message($e, 'The market could not be changed. Please try again.');
+
+            return $request->expectsJson()
+                ? response()->json(['success' => false, 'message' => $message], 500)
+                : back()->with('error', $message);
+        }
+
+        $ok = 'Market updated. The article is being re-checked.';
+
+        return $request->expectsJson()
+            ? response()->json(['success' => true, 'message' => $ok])
+            : back()->with('success', $ok);
+    }
+
+    public function bulkArchive(Request $request)
+    {
+        return $this->runAdvertiserBulk($request, 'archive');
+    }
+
+    public function bulkDestroy(Request $request)
+    {
+        return $this->runAdvertiserBulk($request, 'destroy');
+    }
+
+    private function marketChangeBlockMessage(ContentSubmission $submission): ?string
+    {
+        if ($submission->isLockedByPaidOrder() || $submission->isInUse() || $submission->isPublished()) {
+            return 'Market cannot be changed after the article is in an order.';
+        }
+
+        if ($submission->isArchived()) {
+            return 'Restore this article before changing market.';
+        }
+
+        if ($submission->isUnusedExpired()) {
+            return 'Expired articles cannot change market.';
+        }
+
+        return null;
+    }
+
+    /**
+     * @return JsonResponse|RedirectResponse
+     */
+    private function runAdvertiserBulk(Request $request, string $action)
+    {
+        $data = $request->validate([
+            'ids' => ['required', 'array', 'min:1', 'max:50'],
+            'ids.*' => ['integer', 'min:1'],
+        ]);
+
+        $ok = 0;
+        $failed = 0;
+        foreach (array_values(array_unique(array_map('intval', $data['ids']))) as $id) {
+            if ($id < 1) {
+                $failed++;
+
+                continue;
+            }
+
+            $submission = ContentSubmission::query()->find($id);
+            if (! $submission || (int) $submission->user_id !== (int) $request->user()->id) {
+                $failed++;
+
+                continue;
+            }
+
+            try {
+                if ($action === 'archive') {
+                    if ($submission->isArchived()
+                        || (($submission->isInUse() || $submission->isClaimedByAnotherOrder()) && ! $submission->isPublished())) {
+                        $failed++;
+
+                        continue;
+                    }
+                    $submission->archive();
+                } else {
+                    if ($submission->isLinkedToOpenOrderItem()) {
+                        $failed++;
+
+                        continue;
+                    }
+                    $submission->deleteStoredFile();
+                    $submission->delete();
+                }
+                $ok++;
+            } catch (\Throwable $e) {
+                report($e);
+                $failed++;
+            }
+        }
+
+        $summary = $ok.' updated'.($failed > 0 ? ', '.$failed.' skipped' : '').'.';
+
+        return $request->expectsJson()
+            ? response()->json([
+                'success' => $failed === 0,
+                'ok' => $ok,
+                'failed' => $failed,
+                'message' => $summary,
+            ])
+            : back()->with($ok > 0 ? 'success' : 'error', $summary);
     }
 
     protected function authorizeSubmission(ContentSubmission $submission): void

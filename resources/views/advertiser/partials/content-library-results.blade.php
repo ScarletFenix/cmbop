@@ -5,6 +5,7 @@
         'language' => $languageFilter ?? 'all',
         'country' => $countryFilter ?? 'all',
         'q' => $searchQuery ?? '',
+        'sort' => $sort ?? 'latest',
     ];
     $libraryRoute = function (array $overrides = []) use ($filterBase) {
         $params = array_merge($filterBase, $overrides);
@@ -15,7 +16,7 @@
     };
     $statusLabels = [
         'available' => 'Approved',
-        'evaluating' => 'Processing',
+        'evaluating' => 'Evaluating',
         'in_progress' => 'Processing',
         'published' => 'Completed/LIVE',
         'needs_fix' => 'Needs corrections',
@@ -48,6 +49,11 @@
             'count' => (int) ($availabilityCounts['available'] ?? 0),
             'params' => ['status' => 'approved', 'availability' => 'available'],
         ],
+        'evaluating' => [
+            'label' => 'Evaluating',
+            'count' => (int) ($availabilityCounts['evaluating'] ?? 0),
+            'params' => ['status' => 'all', 'availability' => 'evaluating'],
+        ],
         'processing' => [
             'label' => 'Processing',
             'count' => (int) ($availabilityCounts['in_progress'] ?? 0),
@@ -77,6 +83,8 @@
     $activeLibraryChip = 'approved';
     if (($availabilityFilter ?? 'all') === 'completed') {
         $activeLibraryChip = 'completed';
+    } elseif (($availabilityFilter ?? 'all') === 'evaluating') {
+        $activeLibraryChip = 'evaluating';
     } elseif (($availabilityFilter ?? 'all') === 'in_progress') {
         $activeLibraryChip = 'processing';
     } elseif (($availabilityFilter ?? 'all') === 'needs_fix'
@@ -95,7 +103,7 @@
             'needs_fix' => 'needs_fix',
             'in_progress' => 'processing',
             'available' => 'approved',
-            'evaluating' => 'processing',
+            'evaluating' => 'evaluating',
             'expired' => 'expired',
             'archived' => 'archived',
             default => 'pending',
@@ -104,6 +112,7 @@
             'completed' => 'Completed/LIVE',
             'needs_fix' => 'Needs corrections',
             'approved' => 'Approved',
+            'evaluating' => 'Evaluating',
             'processing' => 'Processing',
             'expired' => 'Expired',
             'archived' => 'Archived',
@@ -135,7 +144,7 @@
                 <span class="library-status-box__main">
                     <span class="library-status-box__label">
                         <span>{{ $chip['label'] }}</span>
-                        @if($key === 'processing' && $chipCount > 0)
+                        @if(($key === 'processing' || $key === 'evaluating') && $chipCount > 0)
                             <span class="library-status-sweep" aria-hidden="true"></span>
                         @endif
                     </span>
@@ -149,11 +158,31 @@
         <p class="library-table-note" role="note">Unused originals are removed after expiry; preview stays.</p>
     @endif
 
+    <form method="POST" action="{{ route('advertiser.content-submissions.bulk-archive') }}" id="libraryBulkForm" class="d-flex flex-wrap gap-2 mb-2">
+        @csrf
+        <button type="submit" class="btn btn-sm btn-outline-secondary" id="libraryBulkArchiveBtn"
+                data-slb-confirm="Archive the selected unused articles?"
+                data-slb-confirm-title="Archive selected?"
+                data-slb-confirm-text="Archive">
+            Archive selected
+        </button>
+        <button type="submit" class="btn btn-sm btn-outline-danger" id="libraryBulkDeleteBtn"
+                formaction="{{ route('advertiser.content-submissions.bulk-destroy') }}"
+                data-slb-confirm="Delete the selected unused articles? This cannot be undone."
+                data-slb-confirm-title="Delete selected?"
+                data-slb-confirm-text="Delete"
+                data-slb-confirm-danger="1">
+            Delete selected
+        </button>
+        <span class="small text-muted align-self-center">Unused articles only · up to 50</span>
+    </form>
+
     <div class="library-table border shadow-sm">
         <div class="table-responsive">
             <table class="table table-hover align-middle mb-0">
                 <thead class="table-light">
                     <tr>
+                        <th style="width:2rem;"></th>
                         <th>Title</th>
                         <th>Market</th>
                         <th>Status</th>
@@ -199,6 +228,12 @@
                         $statusCategory = $statusDisplay['category'];
                     @endphp
                     <tr id="library-row-{{ $submission->id }}" @class(['library-row--completed' => $availability === 'published'])>
+                        <td>
+                            @if($availability !== 'in_progress' && $availability !== 'published' && ! $submission->isLinkedToOpenOrderItem())
+                                <input type="checkbox" name="ids[]" value="{{ $submission->id }}"
+                                       class="form-check-input library-bulk-id" aria-label="Select {{ $submission->title ?: $submission->original_filename }}">
+                            @endif
+                        </td>
                         <td>
                             @php
                                 $featureThumb = $submission->feature_image_url
@@ -318,6 +353,29 @@
                                     </div>
                                 @endif
                             @endif
+                            @if($submission->canEditArticle() && $availability !== 'published' && $availability !== 'in_progress')
+                                <form method="POST" action="{{ route('advertiser.content-submissions.market', $submission) }}"
+                                      id="library-market-{{ $submission->id }}" class="collapse mt-2">
+                                    @csrf
+                                    <div class="d-flex flex-wrap gap-1 align-items-end">
+                                        <select name="country" class="form-select form-select-sm" style="max-width:8rem;" required>
+                                            @foreach(($countries ?? []) as $country)
+                                                <option value="{{ $country->code }}" @selected(strtolower((string) $submission->country) === strtolower((string) $country->code))>
+                                                    {{ $country->name }}
+                                                </option>
+                                            @endforeach
+                                        </select>
+                                        <select name="language" class="form-select form-select-sm" style="max-width:8rem;" required>
+                                            @foreach(($languages ?? []) as $language)
+                                                <option value="{{ $language->code }}" @selected(strtolower((string) $submission->language) === strtolower((string) $language->code))>
+                                                    {{ $language->name }}
+                                                </option>
+                                            @endforeach
+                                        </select>
+                                        <button type="submit" class="btn btn-sm btn-primary">Save market</button>
+                                    </div>
+                                </form>
+                            @endif
                             @if($availability !== 'published')
                             <div class="library-title-edit d-none mt-2" data-title-edit="{{ $submission->id }}">
                                 <div class="input-group input-group-sm" style="max-width:320px;">
@@ -407,14 +465,13 @@
                                     <span class="small text-muted">Processing</span>
                                 @elseif($availability === 'needs_fix')
                                     @if($submission->canEditArticle() && ! $submission->needsCorrection())
-                                        <button type="button"
-                                                class="btn btn-sm btn-outline-primary js-open-editor"
-                                                data-submission-id="{{ $submission->id }}">
+                                        <a class="btn btn-sm btn-outline-primary"
+                                           href="{{ route('advertiser.content-library', ['edit' => $submission->id, 'fix' => 1], false) }}">
                                             Edit article
-                                        </button>
+                                        </a>
                                     @else
                                         <a class="btn btn-sm btn-outline-primary"
-                                           href="{{ route('advertiser.content-library', ['edit' => $submission->id, 'upload' => 1], false) }}">
+                                           href="{{ route('advertiser.content-library', ['edit' => $submission->id, 'upload' => 1, 'fix' => 1], false) }}">
                                             Resubmit
                                         </a>
                                     @endif
@@ -456,6 +513,11 @@
                                             <li>
                                                 <button type="button" class="dropdown-item" onclick="toggleLibraryTitleEdit({{ $submission->id }}, true)">Rename</button>
                                             </li>
+                                            <li>
+                                                <button type="button" class="dropdown-item" data-bs-toggle="collapse" data-bs-target="#library-market-{{ $submission->id }}">
+                                                    Change market
+                                                </button>
+                                            </li>
                                         @endif
                                         @if($submission->isArchived())
                                             <li>
@@ -483,7 +545,7 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="5" class="text-center text-muted py-5">
+                        <td colspan="6" class="text-center text-muted py-5">
                             @php
                                 $libraryTotalArticles = (int) ($moderationCounts['all'] ?? 0);
                                 $hasActiveSearchOrFacet = ! empty($searchQuery)
@@ -515,6 +577,12 @@
                                     icon="fa-check-circle"
                                     title="No completed articles yet"
                                     message="They’ll appear here with their live URL once a placement is published."
+                                />
+                            @elseif(($availabilityFilter ?? 'all') === 'evaluating')
+                                <x-ui.empty-state
+                                    icon="fa-spinner"
+                                    title="Nothing is being scanned"
+                                    message="New uploads appear here while uniqueness and policy checks run. You can open preview, but wait before replacing."
                                 />
                             @elseif(($availabilityFilter ?? 'all') === 'in_progress')
                                 <x-ui.empty-state
