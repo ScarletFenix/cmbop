@@ -53,7 +53,8 @@
     'url' => localized_url('about'),
     'description' => __('messages.meta_about_description'),
     'inLanguage' => \App\Support\PublicI18n::htmlLang(),
-    'mainEntity' => \App\Support\BrandOrganization::schema([
+    'mainEntity' => class_exists(\App\Support\BrandOrganization::class)
+        ? \App\Support\BrandOrganization::schema([
         'foundingLocation' => [
             '@type' => 'Place',
             'address' => [
@@ -81,7 +82,8 @@
             'Order completion tracking',
             'Verified publishers',
         ],
-    ]),
+    ])
+        : ['@type' => 'Organization', 'name' => 'SEOLinkBuildings'],
 ], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) !!}
 </script>
 <script type="application/ld+json">

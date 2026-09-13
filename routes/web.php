@@ -100,6 +100,7 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Redirect;
 use Illuminate\Support\Facades\Route;
+use Throwable;
 
 /*
 |--------------------------------------------------------------------------
@@ -135,14 +136,25 @@ Route::get('/{locale}/register', fn () => Redirect::to('/register', 301))
 
 $registerPublicMarketingRoutes = function (string $locale = 'en') {
     $p = function (string $english) use ($locale): string {
-        $localized = LocalizedPublicPath::for($english, $locale);
+        $localized = class_exists(LocalizedPublicPath::class)
+            ? LocalizedPublicPath::for($english, $locale)
+            : $english;
 
         return $localized === '' ? '/' : '/'.$localized;
     };
 
-    Route::get('/', function (CatalogTeaserService $teasers) {
+    Route::get('/', function () {
+        $catalogPreview = collect();
+        if (class_exists(CatalogTeaserService::class)) {
+            try {
+                $catalogPreview = app(CatalogTeaserService::class)->teasers(8);
+            } catch (Throwable) {
+                $catalogPreview = collect();
+            }
+        }
+
         return view('home', [
-            'catalogPreview' => $teasers->teasers(8),
+            'catalogPreview' => $catalogPreview,
         ]);
     })->name('home');
     Route::get($p('contact'), fn () => view('pages.contact'))->name('contact');
@@ -163,7 +175,8 @@ $registerPublicMarketingRoutes = function (string $locale = 'en') {
         ->middleware('throttle:10,1')
         ->name('newsletter.subscribe');
 
-    foreach (CountryLander::all() as $landerKey => $lander) {
+    $landers = class_exists(CountryLander::class) ? CountryLander::all() : [];
+    foreach ($landers as $landerKey => $lander) {
         $landerSlug = trim((string) ($lander['slug'] ?? ''));
         if ($landerSlug === '') {
             continue;
@@ -191,7 +204,10 @@ foreach (PublicI18n::prefixed() as $locale) {
         'as' => 'locale.'.$locale.'.',
     ], fn () => $registerPublicMarketingRoutes($locale));
 
-    foreach (LocalizedPublicPath::legacyRedirects($locale) as $from => $to) {
+    $legacyRedirects = class_exists(LocalizedPublicPath::class)
+        ? LocalizedPublicPath::legacyRedirects($locale)
+        : [];
+    foreach ($legacyRedirects as $from => $to) {
         Route::get('/'.$locale.'/'.$from, function () use ($locale, $to) {
             $query = request()->getQueryString();
             $target = '/'.$locale.'/'.$to;

@@ -80,12 +80,16 @@ class SitemapController extends Controller
                 'alternates' => [],
             ];
 
-            foreach (CountryLander::slugs() as $landerPath) {
-                $urls[] = $this->urlEntry($landerPath, $locale, 'weekly', '0.8', ['en'], ['en' => $landerPath]);
+            if (class_exists(CountryLander::class)) {
+                foreach (CountryLander::slugs() as $landerPath) {
+                    $urls[] = $this->urlEntry($landerPath, $locale, 'weekly', '0.8', ['en'], ['en' => $landerPath]);
+                }
             }
 
-            $priceIndex = GuestPostPriceIndex::SLUG;
-            $urls[] = $this->urlEntry($priceIndex, $locale, 'weekly', '0.8', ['en'], ['en' => $priceIndex]);
+            if (class_exists(GuestPostPriceIndex::class)) {
+                $priceIndex = GuestPostPriceIndex::SLUG;
+                $urls[] = $this->urlEntry($priceIndex, $locale, 'weekly', '0.8', ['en'], ['en' => $priceIndex]);
+            }
         }
 
         $translations = collect();

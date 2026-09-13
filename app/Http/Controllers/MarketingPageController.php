@@ -10,6 +10,7 @@ use App\Services\CuratedBlogWriter;
 use App\Services\Marketing\CatalogTeaserService;
 use App\Services\Marketing\GuestPostPriceIndex;
 use App\Support\CountryLander;
+use Illuminate\Support\Collection;
 use Throwable;
 
 class MarketingPageController extends Controller
@@ -37,16 +38,17 @@ class MarketingPageController extends Controller
         return view('pages.pricing');
     }
 
-    public function marketplace(CatalogTeaserService $teasers)
+    public function marketplace()
     {
         return view('pages.marketplace', [
-            'teasers' => $teasers->teasers(8),
-            'countryLanders' => CountryLander::siblings(),
+            'teasers' => $this->catalogTeasers(8),
+            'countryLanders' => $this->countryLanderSiblings(),
         ]);
     }
 
-    public function countryLander(string $key, CatalogTeaserService $teasers)
+    public function countryLander(string $key)
     {
+        abort_unless(class_exists(CountryLander::class), 404);
         $lander = CountryLander::find($key);
         abort_unless(is_array($lander), 404);
 
@@ -55,23 +57,82 @@ class MarketingPageController extends Controller
             $lander['codes'] ?? []
         )));
 
+        $teasers = $this->catalogTeaserService();
+
         return view('pages.guest-posts-country', [
             'landerKey' => $key,
             'lander' => $lander,
-            'teasers' => $teasers->teasersForCountries($codes, 8),
-            'siteCount' => $teasers->countForCountries($codes),
-            'priceFrom' => $teasers->priceFromForCountries($codes),
+            'teasers' => $teasers?->teasersForCountries($codes, 8) ?? collect(),
+            'siteCount' => $teasers?->countForCountries($codes),
+            'priceFrom' => $teasers?->priceFromForCountries($codes),
             'blogLinks' => $this->landerBlogLinks($lander['blog_slugs'] ?? []),
-            'siblings' => CountryLander::siblings($key),
+            'siblings' => $this->countryLanderSiblings($key),
         ]);
     }
 
-    public function europePriceIndex(GuestPostPriceIndex $index)
+    public function europePriceIndex()
     {
+        $snapshot = [
+            'generated_at' => null,
+            'europe' => ['median' => null, 'listings' => 0],
+            'countries' => [],
+            'has_index' => false,
+        ];
+
+        if (class_exists(GuestPostPriceIndex::class)) {
+            try {
+                $snapshot = app(GuestPostPriceIndex::class)->snapshot();
+            } catch (Throwable) {
+                // Leftover Hostinger deploys can miss CountryLander.
+            }
+        }
+
         return view('pages.guest-post-prices-europe', [
-            'index' => $index->snapshot(),
-            'countryLanders' => CountryLander::siblings(),
+            'index' => $snapshot,
+            'countryLanders' => $this->countryLanderSiblings(),
         ]);
+    }
+
+    /**
+     * @return Collection<int, array<string, mixed>>
+     */
+    private function catalogTeasers(int $limit): Collection
+    {
+        $service = $this->catalogTeaserService();
+        if ($service === null) {
+            return collect();
+        }
+
+        try {
+            return $service->teasers($limit);
+        } catch (Throwable) {
+            return collect();
+        }
+    }
+
+    private function catalogTeaserService(): ?CatalogTeaserService
+    {
+        if (! class_exists(CatalogTeaserService::class)) {
+            return null;
+        }
+
+        try {
+            return app(CatalogTeaserService::class);
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * @return list<array{key: string, slug: string, market: string, kicker: string, url: string}>
+     */
+    private function countryLanderSiblings(?string $exceptKey = null): array
+    {
+        if (! class_exists(CountryLander::class)) {
+            return [];
+        }
+
+        return CountryLander::siblings($exceptKey);
     }
 
     public function howItWorks()

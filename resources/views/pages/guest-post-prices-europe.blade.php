@@ -64,7 +64,9 @@
     'name' => 'EU guest-post price index',
     'description' => $metaDescription,
     'url' => $canonical,
-    'creator' => \App\Support\BrandOrganization::schema(),
+    'creator' => class_exists(\App\Support\BrandOrganization::class)
+        ? \App\Support\BrandOrganization::schema()
+        : ['@type' => 'Organization', 'name' => 'SEOLinkBuildings'],
     'isAccessibleForFree' => true,
     'spatialCoverage' => 'Europe',
     'variableMeasured' => 'Median advertiser guest-post checkout price (EUR)',

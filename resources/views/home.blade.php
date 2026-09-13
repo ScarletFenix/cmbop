@@ -8,7 +8,9 @@
 <script type="application/ld+json">
 {!! json_encode(array_merge([
     '@@context' => 'https://schema.org',
-], \App\Support\BrandOrganization::schema()), JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) !!}
+], class_exists(\App\Support\BrandOrganization::class)
+    ? \App\Support\BrandOrganization::schema()
+    : ['@type' => 'Organization', 'name' => 'SEOLinkBuildings']), JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) !!}
 </script>
 <script type="application/ld+json">
 {!! json_encode([

@@ -206,6 +206,10 @@ class GuestPostPriceIndex
      */
     private function landerUrlByCode(): array
     {
+        if (! class_exists(CountryLander::class)) {
+            return [];
+        }
+
         $map = [];
         foreach (CountryLander::all() as $lander) {
             $slug = trim((string) ($lander['slug'] ?? ''));
