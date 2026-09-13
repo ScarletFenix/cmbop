@@ -1,6 +1,8 @@
 @php
     $selectedCountry = $selectedCountry ?? '';
     $missingMarket = (bool) ($missingMarket ?? false);
+    $healthFilter = $healthFilter ?? ($missingMarket ? \App\Support\CatalogHealthQueue::MISSING_MARKET : null);
+    $healthLabels = \App\Support\CatalogHealthQueue::LABELS;
 @endphp
 <div class="card border-0 shadow-sm">
     <div class="table-responsive">
@@ -21,9 +23,10 @@
                             @else
                                 <span class="text-muted">—</span>
                             @endif
-                            @if(!empty($site['missing_market']) && !empty($site['active']))
-                                <span class="badge text-bg-danger ms-1">Missing market</span>
-                            @elseif(!empty($site['missing_market']))
+                            @foreach(($site['health_flags'] ?? []) as $flag)
+                                <span class="badge {{ $flag === 'missing_market' ? 'text-bg-danger' : 'text-bg-warning' }} ms-1">{{ $healthLabels[$flag] ?? $flag }}</span>
+                            @endforeach
+                            @if(empty($site['health_flags']) && !empty($site['missing_market']))
                                 <span class="badge text-bg-secondary ms-1">No country</span>
                             @endif
                         </td>
@@ -33,8 +36,8 @@
                 @empty
                     <tr>
                         <td colspan="3" class="text-center text-muted py-4">
-                            @if($missingMarket)
-                                No active websites are missing a marketplace country.
+                            @if($healthFilter)
+                                No websites match the {{ strtolower($healthLabels[$healthFilter] ?? 'health') }} queue.
                             @elseif($selectedCountry !== '')
                                 No websites found for country <span class="text-uppercase">{{ $selectedCountry }}</span>.
                             @else

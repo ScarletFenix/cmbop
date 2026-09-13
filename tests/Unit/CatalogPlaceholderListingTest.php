@@ -67,4 +67,14 @@ class CatalogPlaceholderListingTest extends TestCase
         ]);
         $this->assertFalse(CatalogPlaceholderListing::matches($live));
     }
+
+    public function test_constrain_query_matches_lorem_and_demo_hosts(): void
+    {
+        $query = Site::query();
+        CatalogPlaceholderListing::constrainQuery($query);
+        $haystack = strtolower($query->toSql().' '.implode(' ', $query->getBindings()));
+
+        $this->assertStringContainsString('lorem ipsum', $haystack);
+        $this->assertStringContainsString('demo%.com', $haystack);
+    }
 }

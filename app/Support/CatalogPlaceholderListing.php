@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\Site;
+use Illuminate\Database\Eloquent\Builder;
 
 /**
  * Detect demo / lorem catalog rows so Site Details can warn buyers.
@@ -45,5 +46,32 @@ class CatalogPlaceholderListing
         }
 
         return (bool) preg_match('/^demo\d*\.com$/', $host);
+    }
+
+    /**
+     * SQL approximation for the admin placeholder queue.
+     * PHP {@see matches()} remains the source of truth for badges.
+     *
+     * @param  Builder<Site>  $query
+     * @return Builder<Site>
+     */
+    public static function constrainQuery(Builder $query): Builder
+    {
+        return $query->where(function (Builder $q) {
+            $q->where('description', 'like', '%lorem ipsum%')
+                ->orWhere('description', 'like', '%replace this placeholder with a real site description%')
+                ->orWhere('domain', 'example.com')
+                ->orWhere('domain', 'localhost')
+                ->orWhere('domain', 'like', 'demo%.com');
+
+            foreach (['site_url', 'example_url'] as $column) {
+                if (! Site::hasSitesColumn($column)) {
+                    continue;
+                }
+                $q->orWhere($column, 'like', '%example.com%')
+                    ->orWhere($column, 'like', '%://localhost%')
+                    ->orWhere($column, 'like', '%demo%.com%');
+            }
+        });
     }
 }
