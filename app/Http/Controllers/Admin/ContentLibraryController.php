@@ -82,7 +82,7 @@ class ContentLibraryController extends Controller
         $this->attachFileOnDiskFlags($submissions);
 
         $filterUser = $filters['user_id'] > 0
-            ? User::query()->select(['id', 'name', 'email'])->find($filters['user_id'])
+            ? $this->safeAdvertiserLookup($filters['user_id'])
             : null;
         $advertiserUnmatched = $filters['advertiser'] !== '' && $filters['user_id'] < 0;
 
@@ -824,18 +824,35 @@ class ContentLibraryController extends Controller
 
     private function resolveAdvertiserId(string $needle): int
     {
-        $like = '%'.addcslashes($needle, '%_\\').'%';
+        try {
+            $like = '%'.addcslashes($needle, '%_\\').'%';
 
-        $user = User::query()
-            ->where(function ($q) use ($needle, $like) {
-                $q->where('email', $needle)
-                    ->orWhere('email', 'like', $like)
-                    ->orWhere('name', 'like', $like);
-            })
-            ->orderByRaw('case when email = ? then 0 else 1 end', [$needle])
-            ->first(['id']);
+            $user = User::query()
+                ->where(function ($q) use ($needle, $like) {
+                    $q->where('email', $needle)
+                        ->orWhere('email', 'like', $like)
+                        ->orWhere('name', 'like', $like);
+                })
+                ->orderByRaw('case when email = ? then 0 else 1 end', [$needle])
+                ->first(['id']);
 
-        return (int) ($user?->id ?? 0);
+            return (int) ($user?->id ?? 0);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return 0;
+        }
+    }
+
+    private function safeAdvertiserLookup(int $id): ?User
+    {
+        try {
+            return User::query()->select(['id', 'name', 'email'])->find($id);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return null;
+        }
     }
 
     private function attachFileOnDiskFlags(LengthAwarePaginator $submissions): void

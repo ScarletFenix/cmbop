@@ -496,4 +496,28 @@ class ContentLibraryImprovementsPlanTest extends TestCase
             ->assertStatus(422)
             ->assertJsonPath('success', false);
     }
+
+    public function test_drafts_json_is_safe_when_submissions_table_is_gone(): void
+    {
+        $advertiser = $this->advertiser();
+        Schema::dropIfExists('content_submissions');
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.content-submissions.drafts'))
+            ->assertStatus(500)
+            ->assertJsonPath('success', false)
+            ->assertJsonMissingPath('exception')
+            ->assertDontSee('SQLSTATE');
+    }
+
+    public function test_advertiser_download_unknown_disk_is_404(): void
+    {
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update(['disk' => 'not-a-real-disk']);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-submissions.download', $submission))
+            ->assertNotFound();
+    }
 }

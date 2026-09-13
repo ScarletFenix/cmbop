@@ -14,12 +14,14 @@ use App\Services\Marketplace\CountryLanguagePairs;
 use App\Services\Marketplace\LanguageCountryMap;
 use App\Support\UserFacingError;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class ContentLibraryController extends Controller
 {
@@ -474,15 +476,10 @@ class ContentLibraryController extends Controller
                 imageRightsSource: $data['image_rights_source'] ?? null,
             );
         } catch (\Throwable $e) {
-            Log::error('Content library upload failed', [
-                'user_id' => auth()->id(),
-                'error' => $e->getMessage(),
-            ]);
-
             return response()->json([
                 'success' => false,
                 'title' => 'Upload failed',
-                'message' => 'The article could not be uploaded. Please try again.',
+                'message' => UserFacingError::message($e, 'The article could not be uploaded. Please try again.'),
             ], 500);
         }
 
@@ -536,6 +533,22 @@ class ContentLibraryController extends Controller
      * Multiple websites are allowed; each website needs its own approved article.
      */
     public function orderInCatalog(Request $request, ?ContentSubmission $submission = null)
+    {
+        try {
+            return $this->startLibraryCatalogOrder($request, $submission);
+        } catch (ModelNotFoundException|HttpException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            report($e);
+
+            return back()->with(
+                'error',
+                UserFacingError::message($e, 'We could not start that order. Please try again.')
+            );
+        }
+    }
+
+    private function startLibraryCatalogOrder(Request $request, ?ContentSubmission $submission): RedirectResponse
     {
         if (! $submission) {
             $id = (int) scalar_text($request->input('content_submission_id', 0));

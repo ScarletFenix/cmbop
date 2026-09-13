@@ -13,14 +13,16 @@ use App\Services\ContentUpload\ScheduledOrderService;
 use App\Services\Orders\OrderRefundService;
 use App\Support\ArticleDownload;
 use App\Support\UserFacingError;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class ContentSubmissionController extends Controller
 {
@@ -149,18 +151,17 @@ class ContentSubmissionController extends Controller
                 imageRightsSource: $data['image_rights_source'] ?? null,
             );
         } catch (\Throwable $e) {
-            Log::error('Content submission upload failed', [
-                'user_id' => auth()->id(),
-                'error' => $e->getMessage(),
-            ]);
-
-            return response()->json([
-                'success' => false,
-                'message' => 'The article could not be uploaded. Please try again.',
-            ], 500);
+            return $this->leftoverJson($e, 'The article could not be uploaded. Please try again.');
         }
 
         $submission = $result['submission'] ?? null;
+
+        try {
+            $serialized = $submission ? $this->serializeSubmission($submission) : null;
+        } catch (\Throwable $e) {
+            report($e);
+            $serialized = $submission ? ['id' => $submission->id] : null;
+        }
 
         return response()->json([
             'success' => (bool) $result['ok'],
@@ -169,7 +170,7 @@ class ContentSubmissionController extends Controller
             'title' => $result['title'] ?? null,
             'message' => $result['message'] ?? null,
             'report' => $result['report'] ?? null,
-            'submission' => $submission ? $this->serializeSubmission($submission) : null,
+            'submission' => $serialized,
         ], $result['ok'] ? 200 : 422);
     }
 
@@ -254,15 +255,8 @@ class ContentSubmissionController extends Controller
             if ($rightsApplied) {
                 $submission->update($previousRights);
             }
-            Log::error('Content article save failed', [
-                'submission_id' => $submission->id,
-                'error' => $e->getMessage(),
-            ]);
 
-            return response()->json([
-                'success' => false,
-                'message' => 'Could not save article. Please try again.',
-            ], 500);
+            return $this->leftoverJson($e, 'Could not save article. Please try again.');
         }
 
         if (! $result['ok']) {
@@ -354,12 +348,7 @@ class ContentSubmissionController extends Controller
         try {
             $url = $this->uploads->storeArticleImage($binary, $ext, $file->getClientOriginalName(), auth()->user());
         } catch (\Throwable $e) {
-            Log::error('Editor image store failed', [
-                'user_id' => auth()->id(),
-                'error' => $e->getMessage(),
-            ]);
-
-            return response()->json(['success' => false, 'message' => 'Unable to store image.'], 500);
+            return $this->leftoverJson($e, 'Unable to store image.');
         }
 
         if (! $url) {
@@ -596,98 +585,112 @@ class ContentSubmissionController extends Controller
             unset($data['preview_html'], $data['anchor_text'], $data['target_url']);
         }
 
-        $submission->fill($data)->save();
+        try {
+            $submission->fill($data)->save();
 
-        $eval = null;
-        if ($contentChanged) {
-            // Keep extracted text in sync so uniqueness / policy scans stay accurate.
-            $html = (string) ($submission->fresh()->preview_html ?? '');
-            if ($html !== '') {
-                $sanitizer = new ArticleHtmlSanitizer;
-                $text = $sanitizer->htmlToPlainText($html);
-                $submission->forceFill([
-                    'extracted_text' => $text,
-                    'word_count' => $sanitizer->countWords($text),
-                ])->save();
+            $eval = null;
+            if ($contentChanged) {
+                // Keep extracted text in sync so uniqueness / policy scans stay accurate.
+                $html = (string) ($submission->fresh()->preview_html ?? '');
+                if ($html !== '') {
+                    $sanitizer = new ArticleHtmlSanitizer;
+                    $text = $sanitizer->htmlToPlainText($html);
+                    $submission->forceFill([
+                        'extracted_text' => $text,
+                        'word_count' => $sanitizer->countWords($text),
+                    ])->save();
+                }
+
+                $eval = $this->uploads->reEvaluateSubmission($submission->fresh());
+                $submission = $eval['submission'];
             }
 
-            $eval = $this->uploads->reEvaluateSubmission($submission->fresh());
-            $submission = $eval['submission'];
+            $payload = [
+                'success' => true,
+                'submission' => $this->serializeSubmission($submission->fresh()),
+            ];
+
+            if ($eval !== null) {
+                $payload['approved'] = (bool) ($eval['approved'] ?? false);
+                $payload['message'] = $eval['message'] ?? null;
+                $payload['report'] = $eval['report'] ?? null;
+                $payload['moderation_status'] = $eval['moderation_status'] ?? $submission->moderation_status;
+            }
+
+            return response()->json($payload);
+        } catch (ValidationException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            return $this->leftoverJson($e, 'Could not save the draft. Please try again.');
         }
-
-        $payload = [
-            'success' => true,
-            'submission' => $this->serializeSubmission($submission->fresh()),
-        ];
-
-        if ($eval !== null) {
-            $payload['approved'] = (bool) ($eval['approved'] ?? false);
-            $payload['message'] = $eval['message'] ?? null;
-            $payload['report'] = $eval['report'] ?? null;
-            $payload['moderation_status'] = $eval['moderation_status'] ?? $submission->moderation_status;
-        }
-
-        return response()->json($payload);
     }
 
     public function drafts(Request $request)
     {
-        $cartKey = trim(scalar_text($request->query('cart_key')));
-        $query = ContentSubmission::query()
-            ->forLibraryList()
-            ->where('user_id', auth()->id())
-            ->withoutOpenOwnerOrder()
-            ->latest('id');
+        try {
+            $cartKey = trim(scalar_text($request->query('cart_key')));
+            $query = ContentSubmission::query()
+                ->forLibraryList()
+                ->where('user_id', auth()->id())
+                ->withoutOpenOwnerOrder()
+                ->latest('id');
 
-        if ($cartKey !== '') {
-            $query->where('cart_key', $cartKey);
+            if ($cartKey !== '') {
+                $query->where('cart_key', $cartKey);
+            }
+
+            $items = $query->limit(50)->get()->map(fn (ContentSubmission $s) => $this->serializeSubmission($s));
+
+            return response()->json(['success' => true, 'drafts' => $items]);
+        } catch (\Throwable $e) {
+            return $this->leftoverJson($e, 'We could not load your drafts. Please refresh and try again.');
         }
-
-        $items = $query->limit(50)->get()->map(fn (ContentSubmission $s) => $this->serializeSubmission($s));
-
-        return response()->json(['success' => true, 'drafts' => $items]);
     }
 
     public function preview(ContentSubmission $submission)
     {
         $this->authorizeSubmission($submission);
 
-        $html = ArticlePreviewHtml::normalize((string) ($submission->preview_html ?? ''));
+        try {
+            $html = ArticlePreviewHtml::normalize((string) ($submission->preview_html ?? ''));
 
-        return response()->json([
-            'success' => true,
-            'id' => (int) $submission->id,
-            'title' => $submission->title ?: $submission->original_filename,
-            'preview_html' => $html,
-            'html' => $html,
-            'links' => $submission->detectedLinks(),
-            'detected_links' => $submission->detectedLinks(),
-            'editable' => $submission->canEditArticle(),
-            'word_count' => $submission->word_count,
-            'original_filename' => $submission->original_filename,
-            'moderation_status' => $submission->moderation_status,
-            'country' => $submission->country,
-            'language' => $submission->language,
-            'can_order' => $submission->canBeOrdered(),
-            'ready' => $submission->isReadyForCheckout(),
-            'availability' => $submission->libraryAvailability(),
-            'anchor_text' => $submission->anchor_text,
-            'target_url' => self::safeHrefUrl($submission->target_url),
-            'feature_image_url' => $submission->feature_image_url
-                ? ArticlePreviewHtml::normalizeSrc((string) $submission->feature_image_url)
-                : null,
-            'uniqueness_score' => $submission->uniqueness_score,
-            'quality_score' => $submission->quality_score,
-            'has_images' => $submission->hasImages(),
-            'needs_image_rights' => $submission->hasImages() && ! $submission->imageRightsCoverContent(),
-            'image_rights_covers' => $submission->imageRightsCoverContent(),
-            'has_file' => $submission->hasStoredFile(),
-            'editor_notice' => $submission->editorNotice(),
-            'editor_notice_ok' => false,
-        ]);
+            return response()->json([
+                'success' => true,
+                'id' => (int) $submission->id,
+                'title' => $submission->title ?: $submission->original_filename,
+                'preview_html' => $html,
+                'html' => $html,
+                'links' => $submission->detectedLinks(),
+                'detected_links' => $submission->detectedLinks(),
+                'editable' => $submission->canEditArticle(),
+                'word_count' => $submission->word_count,
+                'original_filename' => $submission->original_filename,
+                'moderation_status' => $submission->moderation_status,
+                'country' => $submission->country,
+                'language' => $submission->language,
+                'can_order' => $submission->canBeOrdered(),
+                'ready' => $submission->isReadyForCheckout(),
+                'availability' => $submission->libraryAvailability(),
+                'anchor_text' => $submission->anchor_text,
+                'target_url' => self::safeHrefUrl($submission->target_url),
+                'feature_image_url' => $submission->feature_image_url
+                    ? ArticlePreviewHtml::normalizeSrc((string) $submission->feature_image_url)
+                    : null,
+                'uniqueness_score' => $submission->uniqueness_score,
+                'quality_score' => $submission->quality_score,
+                'has_images' => $submission->hasImages(),
+                'needs_image_rights' => $submission->hasImages() && ! $submission->imageRightsCoverContent(),
+                'image_rights_covers' => $submission->imageRightsCoverContent(),
+                'has_file' => $submission->hasStoredFile(),
+                'editor_notice' => $submission->editorNotice(),
+                'editor_notice_ok' => false,
+            ]);
+        } catch (\Throwable $e) {
+            return $this->leftoverJson($e, 'We could not open that preview. Please refresh and try again.');
+        }
     }
 
-    public function download(ContentSubmission $submission): StreamedResponse
+    public function download(ContentSubmission $submission): StreamedResponse|RedirectResponse
     {
         $this->authorizeDownload($submission);
 
@@ -699,19 +702,32 @@ class ContentSubmissionController extends Controller
             }
         }
 
-        $disk = Storage::disk($submission->disk ?: 'local');
-        if (! $submission->path || ! $disk->exists($submission->path)) {
-            abort(404, 'File not found');
-        }
+        try {
+            $disk = Storage::disk($submission->disk ?: 'local');
+            if (! $submission->path || ! $disk->exists($submission->path)) {
+                abort(404, 'File not found');
+            }
 
-        return $disk->download(
-            $submission->path,
-            $submission->original_filename,
-            ArticleDownload::headers(
-                (string) $submission->original_filename,
-                (string) ($submission->mime ?: 'application/octet-stream')
-            )
-        );
+            return $disk->download(
+                $submission->path,
+                $submission->original_filename,
+                ArticleDownload::headers(
+                    (string) $submission->original_filename,
+                    (string) ($submission->mime ?: 'application/octet-stream')
+                )
+            );
+        } catch (HttpException $e) {
+            throw $e;
+        } catch (\InvalidArgumentException $e) {
+            abort(404, 'File not found');
+        } catch (\Throwable $e) {
+            report($e);
+
+            return back()->with(
+                'error',
+                UserFacingError::message($e, 'We could not download that file. Please try again.')
+            );
+        }
     }
 
     public function destroy(ContentSubmission $submission)
@@ -721,8 +737,12 @@ class ContentSubmissionController extends Controller
             return response()->json(['success' => false, 'message' => 'Cannot delete a submission linked to an order.'], 422);
         }
 
-        $submission->deleteStoredFile();
-        $submission->delete();
+        try {
+            $submission->deleteStoredFile();
+            $submission->delete();
+        } catch (\Throwable $e) {
+            return $this->leftoverJson($e, 'The article could not be deleted. Please try again.');
+        }
 
         return response()->json(['success' => true]);
     }
@@ -731,32 +751,41 @@ class ContentSubmissionController extends Controller
     {
         $this->authorizeSubmission($submission);
 
-        if (($submission->isInUse() || $submission->isClaimedByAnotherOrder()) && ! $submission->isPublished()) {
+        try {
+            if (($submission->isInUse() || $submission->isClaimedByAnotherOrder()) && ! $submission->isPublished()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $submission->isClaimedByAnotherOrder() && ! $submission->isInUse()
+                        ? ContentSubmission::ACTIVE_ORDER_CLAIM_MESSAGE
+                        : 'Articles in progress cannot be archived until the order is completed or cancelled.',
+                ], 422);
+            }
+
+            $submission->archive();
+
             return response()->json([
-                'success' => false,
-                'message' => $submission->isClaimedByAnotherOrder() && ! $submission->isInUse()
-                    ? ContentSubmission::ACTIVE_ORDER_CLAIM_MESSAGE
-                    : 'Articles in progress cannot be archived until the order is completed or cancelled.',
-            ], 422);
+                'success' => true,
+                'submission' => $this->serializeSubmission($submission->fresh()),
+            ]);
+        } catch (\Throwable $e) {
+            return $this->leftoverJson($e, 'The article could not be archived. Please try again.');
         }
-
-        $submission->archive();
-
-        return response()->json([
-            'success' => true,
-            'submission' => $this->serializeSubmission($submission->fresh()),
-        ]);
     }
 
     public function restore(ContentSubmission $submission)
     {
         $this->authorizeSubmission($submission);
-        $submission->restoreFromArchive();
 
-        return response()->json([
-            'success' => true,
-            'submission' => $this->serializeSubmission($submission->fresh()),
-        ]);
+        try {
+            $submission->restoreFromArchive();
+
+            return response()->json([
+                'success' => true,
+                'submission' => $this->serializeSubmission($submission->fresh()),
+            ]);
+        } catch (\Throwable $e) {
+            return $this->leftoverJson($e, 'The article could not be restored. Please try again.');
+        }
     }
 
     public function updateMarket(Request $request, ContentSubmission $submission)
@@ -797,12 +826,16 @@ class ContentSubmissionController extends Controller
             ]);
             $this->uploads->reEvaluateSubmission($submission->fresh(), true);
         } catch (\Throwable $e) {
-            report($e);
-            $message = UserFacingError::message($e, 'The market could not be changed. Please try again.');
+            if ($request->expectsJson()) {
+                return $this->leftoverJson($e, 'The market could not be changed. Please try again.');
+            }
 
-            return $request->expectsJson()
-                ? response()->json(['success' => false, 'message' => $message], 500)
-                : back()->with('error', $message);
+            report($e);
+
+            return back()->with(
+                'error',
+                UserFacingError::message($e, 'The market could not be changed. Please try again.')
+            );
         }
 
         $ok = 'Market updated. The article is being re-checked.';
@@ -900,6 +933,20 @@ class ContentSubmissionController extends Controller
                 'message' => $summary,
             ])
             : back()->with($ok > 0 ? 'success' : 'error', $summary);
+    }
+
+    private function leftoverJson(\Throwable $e, string $fallback): JsonResponse
+    {
+        if ($e instanceof ValidationException || $e instanceof ModelNotFoundException || $e instanceof HttpException) {
+            throw $e;
+        }
+
+        report($e);
+
+        return response()->json([
+            'success' => false,
+            'message' => UserFacingError::message($e, $fallback),
+        ], 500);
     }
 
     protected function authorizeSubmission(ContentSubmission $submission): void
