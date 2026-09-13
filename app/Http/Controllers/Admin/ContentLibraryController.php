@@ -782,12 +782,17 @@ class ContentLibraryController extends Controller
                     strtoupper((string) $submission->country),
                     strtoupper((string) $submission->language),
                 ])));
+                try {
+                    $availability = $submission->libraryAvailability();
+                } catch (\Throwable) {
+                    $availability = 'unavailable';
+                }
                 fputcsv($out, [
                     $submission->id,
                     $submission->title ?: $submission->original_filename,
                     $submission->user?->email,
                     $market,
-                    $submission->libraryAvailability(),
+                    $availability,
                     optional($submission->expires_at)?->toDateString(),
                 ]);
             }

@@ -304,7 +304,7 @@ class ContentSubmission extends Model
             }
         }
 
-        if (! Schema::hasColumn('order_items', 'content_submission_id')) {
+        if (! $this->orderItemsContentColumnAvailable()) {
             return false;
         }
 
@@ -1073,35 +1073,41 @@ class ContentSubmission extends Model
      */
     public function isLinkedToOpenOrderItem(): bool
     {
-        if ($this->isInUse()) {
-            return true;
-        }
+        try {
+            if ($this->isInUse()) {
+                return true;
+            }
 
-        if (! Schema::hasColumn('order_items', 'content_submission_id')) {
+            if (! $this->orderItemsContentColumnAvailable()) {
+                return false;
+            }
+
+            if ($this->relationLoaded('orderItems')) {
+                return $this->orderItems->contains(function (OrderItem $item) {
+                    if ($item->isClawedBack()) {
+                        return false;
+                    }
+
+                    $order = $item->relationLoaded('order')
+                        ? $item->order
+                        : $item->order()->first();
+
+                    return $order instanceof Order
+                        && $this->orderLooksLikeActiveClaim($order);
+                });
+            }
+
+            return $this->orderItems()
+                ->whereHas('order', function ($q) {
+                    $this->constrainActiveOrderClaim($q);
+                })
+                ->tap(fn ($item) => $this->excludeClawedBackItems($item))
+                ->exists();
+        } catch (\Throwable $e) {
+            report($e);
+
             return false;
         }
-
-        if ($this->relationLoaded('orderItems')) {
-            return $this->orderItems->contains(function (OrderItem $item) {
-                if ($item->isClawedBack()) {
-                    return false;
-                }
-
-                $order = $item->relationLoaded('order')
-                    ? $item->order
-                    : $item->order()->first();
-
-                return $order instanceof Order
-                    && $this->orderLooksLikeActiveClaim($order);
-            });
-        }
-
-        return $this->orderItems()
-            ->whereHas('order', function ($q) {
-                $this->constrainActiveOrderClaim($q);
-            })
-            ->tap(fn ($item) => $this->excludeClawedBackItems($item))
-            ->exists();
     }
 
     /**
@@ -1288,7 +1294,7 @@ class ContentSubmission extends Model
             return (int) $owner->id;
         }
 
-        if (! Schema::hasColumn('order_items', 'content_submission_id')) {
+        if (! $this->orderItemsContentColumnAvailable()) {
             return null;
         }
 
@@ -1347,7 +1353,7 @@ class ContentSubmission extends Model
             return $this->orderLooksLikeReplaceableLeftover($owner);
         }
 
-        if (! Schema::hasColumn('order_items', 'content_submission_id')) {
+        if (! $this->orderItemsContentColumnAvailable()) {
             return false;
         }
 
@@ -1718,6 +1724,16 @@ class ContentSubmission extends Model
             DB::table('order_items')->limit(1)->exists();
 
             return true;
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    protected function orderItemsContentColumnAvailable(): bool
+    {
+        try {
+            return $this->orderItemsTableAvailable()
+                && Schema::hasColumn('order_items', 'content_submission_id');
         } catch (\Throwable) {
             return false;
         }
@@ -2434,7 +2450,7 @@ class ContentSubmission extends Model
             return $item;
         }
 
-        if (! Schema::hasColumn('order_items', 'content_submission_id')) {
+        if (! $this->orderItemsContentColumnAvailable()) {
             return null;
         }
 
@@ -2533,7 +2549,7 @@ class ContentSubmission extends Model
             return true;
         }
 
-        if (! Schema::hasColumn('order_items', 'content_submission_id')) {
+        if (! $this->orderItemsContentColumnAvailable()) {
             return false;
         }
 
@@ -2575,7 +2591,7 @@ class ContentSubmission extends Model
             return (int) $owner->id;
         }
 
-        if (! Schema::hasColumn('order_items', 'content_submission_id')) {
+        if (! $this->orderItemsContentColumnAvailable()) {
             return null;
         }
 

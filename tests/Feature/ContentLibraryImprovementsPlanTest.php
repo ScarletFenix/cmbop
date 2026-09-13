@@ -578,6 +578,19 @@ class ContentLibraryImprovementsPlanTest extends TestCase
             ->assertDontSee('SQLSTATE');
     }
 
+    public function test_advertiser_bulk_is_safe_when_submissions_table_is_gone(): void
+    {
+        $advertiser = $this->advertiser();
+        Schema::dropIfExists('content_submissions');
+
+        $this->actingAs($advertiser)
+            ->from(route('advertiser.content-library'))
+            ->post(route('advertiser.content-submissions.bulk-archive'), ['ids' => [1]])
+            ->assertRedirect(route('advertiser.content-library'));
+
+        $this->assertStringNotContainsString('SQLSTATE', (string) session('error'));
+    }
+
     public function test_editor_image_json_is_safe_when_submissions_table_is_gone(): void
     {
         $advertiser = $this->advertiser();

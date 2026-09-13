@@ -913,17 +913,37 @@ class ContentSubmissionController extends Controller
             'ids.*' => ['integer', 'min:1'],
         ]);
 
+        $ids = array_values(array_unique(array_map('intval', $data['ids'])));
+        try {
+            $rows = ContentSubmission::query()
+                ->where('user_id', $request->user()->id)
+                ->whereIn('id', $ids)
+                ->get()
+                ->keyBy('id');
+        } catch (\Throwable $e) {
+            if ($request->expectsJson()) {
+                return $this->leftoverJson($e, 'We could not update those articles. Please try again.');
+            }
+
+            report($e);
+
+            return back()->with(
+                'error',
+                UserFacingError::message($e, 'We could not update those articles. Please try again.')
+            );
+        }
+
         $ok = 0;
         $failed = 0;
-        foreach (array_values(array_unique(array_map('intval', $data['ids']))) as $id) {
+        foreach ($ids as $id) {
             if ($id < 1) {
                 $failed++;
 
                 continue;
             }
 
-            $submission = ContentSubmission::query()->find($id);
-            if (! $submission || (int) $submission->user_id !== (int) $request->user()->id) {
+            $submission = $rows->get($id);
+            if (! $submission instanceof ContentSubmission) {
                 $failed++;
 
                 continue;
