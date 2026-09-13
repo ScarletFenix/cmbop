@@ -21,6 +21,7 @@ use App\Services\InAppNotificationService;
 use App\Services\Marketplace\CountryLanguagePairs;
 use App\Services\SiteDescriptionSanitizer;
 use App\Services\SiteEnrichment\ImageOptimizationService;
+use App\Support\CatalogHealthQueue;
 use App\Support\CommunityInbox;
 use App\Support\MarketingOpsQueues;
 use App\Support\PublicStorageLink;
@@ -68,6 +69,7 @@ class SiteController extends Controller
                 'needsReviewFilterActive' => false,
                 'openReviewCount' => 0,
                 'missingMarketCount' => 0,
+                'healthCounts' => CatalogHealthQueue::emptyCounts(),
                 'publisherSearch' => trim(scalar_text($request->query('q', ''))),
                 'flatQueue' => $request->boolean('flat'),
                 'flatQueueSites' => null,
@@ -91,7 +93,8 @@ class SiteController extends Controller
         $unverifiedFilter = $needsReviewFilter;
         $needsReviewFilterActive = $needsReviewFilter;
         $openReviewCount = MarketingOpsQueues::sitesReadyForStaffCount();
-        $missingMarketCount = Site::query()->activeMissingMarketplaceCountry()->count();
+        $healthCounts = CatalogHealthQueue::counts();
+        $missingMarketCount = (int) ($healthCounts[CatalogHealthQueue::MISSING_MARKET] ?? 0);
         $flatQueueSites = null;
 
         if ($flatQueue && $needsReviewFilter) {
@@ -139,6 +142,7 @@ class SiteController extends Controller
             'needsReviewFilterActive',
             'openReviewCount',
             'missingMarketCount',
+            'healthCounts',
             'publisherSearch',
             'flatQueue',
             'flatQueueSites'
@@ -153,15 +157,10 @@ class SiteController extends Controller
      */
     public function records(Request $request)
     {
-        $countryFilter = strtolower(trim(scalar_text($request->query('country', ''))));
-        if ($countryFilter === 'all') {
-            $countryFilter = '';
-        }
-        $missingMarket = $request->boolean('missing_market');
-        if ($missingMarket) {
-            // Missing-market queue is mutually exclusive with a specific country.
-            $countryFilter = '';
-        }
+        $filter = $this->recordsFilterState($request);
+        $countryFilter = $filter['country'];
+        $healthFilter = $filter['health'];
+        $missingMarket = $filter['missing_market'];
 
         $wantsPartial = $request->boolean('partial')
             || $request->expectsJson()
@@ -169,23 +168,17 @@ class SiteController extends Controller
 
         try {
             $query = Site::query()->orderBy('domain')->orderBy('id');
-            if ($missingMarket) {
-                $query->activeMissingMarketplaceCountry();
-            } else {
-                $this->applyRecordsCountryFilter($query, $countryFilter);
-            }
+            $this->applyRecordsFilters($query, $filter);
 
             $sites = $query
                 ->paginate(100)
-                ->appends(array_filter([
-                    'country' => $countryFilter !== '' ? $countryFilter : null,
-                    'missing_market' => $missingMarket ? 1 : null,
-                ]))
+                ->appends($filter['query_params'])
                 ->through(fn (Site $site) => $this->siteRecordRow($site));
 
             $countryCounts = $this->recordsCountryCounts();
             $totalSites = (int) Site::query()->count();
-            $missingMarketCount = (int) Site::query()->activeMissingMarketplaceCountry()->count();
+            $healthCounts = CatalogHealthQueue::counts();
+            $missingMarketCount = (int) ($healthCounts[CatalogHealthQueue::MISSING_MARKET] ?? 0);
             $countries = Country::marketplace()
                 ->orderBy('name')
                 ->get(['code', 'name'])
@@ -201,10 +194,7 @@ class SiteController extends Controller
                 ->values();
 
             $selectedCountry = $countryFilter;
-            $exportUrl = route('admin.sites.records.export', array_filter([
-                'country' => $selectedCountry !== '' ? $selectedCountry : null,
-                'missing_market' => $missingMarket ? 1 : null,
-            ]));
+            $exportUrl = route('admin.sites.records.export', $filter['query_params']);
         } catch (\Throwable $e) {
             report($e);
 
@@ -227,11 +217,9 @@ class SiteController extends Controller
             $countries = collect();
             $selectedCountry = $countryFilter;
             $totalSites = 0;
+            $healthCounts = CatalogHealthQueue::emptyCounts();
             $missingMarketCount = 0;
-            $exportUrl = route('admin.sites.records.export', array_filter([
-                'country' => $selectedCountry !== '' ? $selectedCountry : null,
-                'missing_market' => $missingMarket ? 1 : null,
-            ]));
+            $exportUrl = route('admin.sites.records.export', $filter['query_params']);
 
             return view('admin.sites.records', compact(
                 'sites',
@@ -240,7 +228,9 @@ class SiteController extends Controller
                 'totalSites',
                 'exportUrl',
                 'missingMarket',
-                'missingMarketCount'
+                'missingMarketCount',
+                'healthFilter',
+                'healthCounts'
             ));
         }
 
@@ -250,6 +240,7 @@ class SiteController extends Controller
                     'sites' => $sites,
                     'selectedCountry' => $selectedCountry,
                     'missingMarket' => $missingMarket,
+                    'healthFilter' => $healthFilter,
                 ])->render();
 
                 return response()->json([
@@ -257,6 +248,8 @@ class SiteController extends Controller
                     'selected_country' => $selectedCountry,
                     'missing_market' => $missingMarket,
                     'missing_market_count' => $missingMarketCount,
+                    'health' => $healthFilter,
+                    'health_counts' => $healthCounts,
                     'total' => $sites->total(),
                     'export_url' => $exportUrl,
                     'table_html' => $tableHtml,
@@ -278,7 +271,9 @@ class SiteController extends Controller
             'totalSites',
             'exportUrl',
             'missingMarket',
-            'missingMarketCount'
+            'missingMarketCount',
+            'healthFilter',
+            'healthCounts'
         ));
     }
 
@@ -287,27 +282,19 @@ class SiteController extends Controller
      */
     public function exportRecords(Request $request): StreamedResponse|RedirectResponse
     {
-        $countryFilter = strtolower(trim(scalar_text($request->query('country', ''))));
-        if ($countryFilter === 'all') {
-            $countryFilter = '';
-        }
-        $missingMarket = $request->boolean('missing_market');
-        if ($missingMarket) {
-            $countryFilter = '';
-        }
+        $filter = $this->recordsFilterState($request);
+        $countryFilter = $filter['country'];
+        $healthFilter = $filter['health'];
+        $missingMarket = $filter['missing_market'];
 
-        $suffix = $missingMarket
-            ? '-missing-market'
+        $suffix = $healthFilter !== null
+            ? '-'.$healthFilter
             : ($countryFilter !== '' ? '-'.$countryFilter : '');
         $filename = 'websites-records'.$suffix.'-'.now()->format('Y-m-d').'.csv';
 
         try {
             $query = Site::query()->orderBy('domain')->orderBy('id');
-            if ($missingMarket) {
-                $query->activeMissingMarketplaceCountry();
-            } else {
-                $this->applyRecordsCountryFilter($query, $countryFilter);
-            }
+            $this->applyRecordsFilters($query, $filter);
             $matchCount = (clone $query)->count();
         } catch (\Throwable $e) {
             report($e);
@@ -323,6 +310,7 @@ class SiteController extends Controller
             null,
             [
                 'country' => $countryFilter,
+                'health' => $healthFilter,
                 'missing_market' => $missingMarket,
                 'rows_exported' => $matchCount,
             ]
@@ -330,7 +318,7 @@ class SiteController extends Controller
 
         return response()->streamDownload(function () use ($query) {
             $out = fopen('php://output', 'w');
-            fputcsv($out, ['url', 'countries', 'categories', 'active']);
+            fputcsv($out, ['url', 'countries', 'categories', 'active', 'health']);
 
             foreach ($query->cursor() as $site) {
                 $row = $this->siteRecordRow($site);
@@ -339,6 +327,7 @@ class SiteController extends Controller
                     $row['countries'],
                     $row['categories'],
                     $site->active ? '1' : '0',
+                    $row['health'],
                 ]);
             }
 
@@ -346,6 +335,55 @@ class SiteController extends Controller
         }, $filename, [
             'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
+    }
+
+    /**
+     * @return array{
+     *     country: string,
+     *     health: ?string,
+     *     missing_market: bool,
+     *     query_params: array<string, int|string>
+     * }
+     */
+    private function recordsFilterState(Request $request): array
+    {
+        $countryFilter = strtolower(trim(scalar_text($request->query('country', ''))));
+        if ($countryFilter === 'all') {
+            $countryFilter = '';
+        }
+
+        $health = CatalogHealthQueue::fromRequest($request);
+        if ($health !== null) {
+            $countryFilter = '';
+        }
+
+        return [
+            'country' => $countryFilter,
+            'health' => $health,
+            'missing_market' => $health === CatalogHealthQueue::MISSING_MARKET,
+            'query_params' => array_filter([
+                'country' => $countryFilter !== '' ? $countryFilter : null,
+                'health' => ($health !== null && $health !== CatalogHealthQueue::MISSING_MARKET)
+                    ? $health
+                    : null,
+                'missing_market' => $health === CatalogHealthQueue::MISSING_MARKET ? 1 : null,
+            ]),
+        ];
+    }
+
+    /**
+     * @param  Builder<Site>  $query
+     * @param  array{country: string, health: ?string}  $filter
+     */
+    private function applyRecordsFilters($query, array $filter): void
+    {
+        if (is_string($filter['health'] ?? null) && $filter['health'] !== '') {
+            CatalogHealthQueue::apply($query, $filter['health']);
+
+            return;
+        }
+
+        $this->applyRecordsCountryFilter($query, (string) ($filter['country'] ?? ''));
     }
 
     /**
@@ -617,12 +655,16 @@ class SiteController extends Controller
             ->values()
             ->implode('|');
 
+        $healthFlags = CatalogHealthQueue::flags($site);
+
         return [
             'url' => $url,
             'countries' => $countries,
             'categories' => $categories,
             'missing_market' => ! $site->hasMarketplaceCountry(),
             'active' => (bool) $site->active,
+            'health_flags' => $healthFlags,
+            'health' => implode('|', $healthFlags),
         ];
     }
 

@@ -23,6 +23,26 @@
                     active site{{ $missingMarketCount === 1 ? '' : 's' }} missing market country
                 </small>
             @endif
+            @php
+                $healthCounts = $healthCounts ?? [];
+                $healthPreview = collect([
+                    'below_quality' => 'below quality bar',
+                    'unverified' => 'unverified active',
+                    'placeholder' => 'placeholder',
+                    'missing_cover' => 'missing cover',
+                ])->filter(fn ($label, $key) => (int) ($healthCounts[$key] ?? 0) > 0);
+            @endphp
+            @if($healthPreview->isNotEmpty() && auth()->user()?->isAdmin())
+                <small class="text-muted d-block mt-1">
+                    Catalog health:
+                    @foreach($healthPreview as $healthKey => $healthLabel)
+                        <a href="{{ route('admin.sites.records', ['health' => $healthKey]) }}" class="link-secondary">
+                            <span class="badge text-bg-warning">{{ (int) $healthCounts[$healthKey] }}</span>
+                            {{ $healthLabel }}
+                        </a>@if(! $loop->last), @endif
+                    @endforeach
+                </small>
+            @endif
         </div>
         <div class="d-flex flex-wrap gap-2">
             @if(!empty($needsReviewFilterActive))

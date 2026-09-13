@@ -5,6 +5,9 @@
     $selectedCountry = $selectedCountry ?? '';
     $missingMarket = (bool) ($missingMarket ?? false);
     $missingMarketCount = (int) ($missingMarketCount ?? 0);
+    $healthFilter = $healthFilter ?? ($missingMarket ? \App\Support\CatalogHealthQueue::MISSING_MARKET : null);
+    $healthCounts = $healthCounts ?? \App\Support\CatalogHealthQueue::emptyCounts();
+    $healthLabels = \App\Support\CatalogHealthQueue::LABELS;
     $countries = collect($countries ?? []);
     $totalSites = (int) ($totalSites ?? 0);
     $exportUrl = $exportUrl ?? route('admin.sites.records.export');
@@ -21,10 +24,10 @@
         <div>
             <h4 class="mb-1 fw-bold">Websites records sheet</h4>
             <p class="text-muted mb-0 small">
-                Live from database — refreshes on every load. Columns: URL, countries, categories only.
+                Live from database — refreshes on every load. Columns: URL, countries, categories, catalog health.
             </p>
             @if($missingMarketCount > 0)
-                <p class="mb-0 mt-1 small">
+                <p class="mb-0 mt-1 small" id="recordsMissingMarketNote">
                     <span class="badge text-bg-danger" id="recordsMissingMarketBadge">{{ $missingMarketCount }}</span>
                     active site{{ $missingMarketCount === 1 ? '' : 's' }} missing a marketplace country
                 </p>
@@ -57,9 +60,9 @@
                                        aria-autocomplete="list"
                                        aria-controls="recordsCountryList"
                                        aria-expanded="false"
-                                       @disabled($missingMarket)>
+                                       @disabled($healthFilter)>
                                 <button type="button"
-                                        class="btn btn-outline-secondary {{ $selectedCountry === '' ? 'd-none' : '' }}"
+                                        class="btn btn-outline-secondary {{ $selectedCountry === '' && ! $healthFilter ? 'd-none' : '' }}"
                                         id="recordsCountryClear"
                                         title="Show all countries">
                                     Clear
@@ -71,10 +74,10 @@
                                  hidden></div>
                         </div>
                         <div class="mt-2 small" id="recordsSelectedChipWrap">
-                            @if($missingMarket)
-                                <span class="badge text-bg-danger records-country-chip">
-                                    Missing market
-                                    <button type="button" class="btn-close btn-close-white ms-1" style="font-size:0.55rem;" id="recordsChipClear" aria-label="Clear missing market filter"></button>
+                            @if($healthFilter)
+                                <span class="badge {{ $healthFilter === 'missing_market' ? 'text-bg-danger' : 'text-bg-warning' }} records-country-chip">
+                                    {{ $healthLabels[$healthFilter] ?? $healthFilter }}
+                                    <button type="button" class="btn-close btn-close-white ms-1" style="font-size:0.55rem;" id="recordsChipClear" aria-label="Clear health filter"></button>
                                 </span>
                             @elseif($selectedCountry !== '')
                                 <span class="badge text-bg-dark records-country-chip">
@@ -87,22 +90,36 @@
                         </div>
                     </div>
                 </div>
-                <div class="col-sm-4 col-md-3 col-lg-3">
-                    <a href="{{ route('admin.sites.records', ['missing_market' => 1]) }}"
-                       id="recordsMissingMarketBtn"
-                       class="btn btn-sm w-100 {{ $missingMarket ? 'btn-danger' : 'btn-outline-danger' }}"
-                       data-missing-market="1">
-                        Missing market
-                        @if($missingMarketCount > 0)
-                            <span class="badge text-bg-light text-danger ms-1" id="recordsMissingMarketBtnCount">{{ $missingMarketCount }}</span>
-                        @endif
-                    </a>
+                <div class="col-12">
+                    <div class="d-flex flex-wrap gap-2" data-records-health-filters>
+                        @foreach($healthLabels as $healthKey => $healthLabel)
+                            @php
+                                $healthCount = (int) ($healthCounts[$healthKey] ?? 0);
+                                $healthActive = $healthFilter === $healthKey;
+                                $healthHref = $healthKey === \App\Support\CatalogHealthQueue::MISSING_MARKET
+                                    ? route('admin.sites.records', ['missing_market' => 1])
+                                    : route('admin.sites.records', ['health' => $healthKey]);
+                                $healthBtnClass = $healthKey === \App\Support\CatalogHealthQueue::MISSING_MARKET
+                                    ? ($healthActive ? 'btn-danger' : 'btn-outline-danger')
+                                    : ($healthActive ? 'btn-warning' : 'btn-outline-warning');
+                            @endphp
+                            <a href="{{ $healthHref }}"
+                               class="btn btn-sm {{ $healthBtnClass }}"
+                               data-health="{{ $healthKey }}"
+                               @if($healthKey === \App\Support\CatalogHealthQueue::MISSING_MARKET) id="recordsMissingMarketBtn" @endif>
+                                {{ $healthLabel }}
+                                <span class="badge text-bg-light {{ $healthKey === \App\Support\CatalogHealthQueue::MISSING_MARKET ? 'text-danger' : 'text-warning' }} ms-1 {{ $healthCount < 1 ? 'd-none' : '' }}"
+                                      data-health-count="{{ $healthKey }}"
+                                      @if($healthKey === \App\Support\CatalogHealthQueue::MISSING_MARKET) id="recordsMissingMarketBtnCount" @endif>{{ $healthCount }}</span>
+                            </a>
+                        @endforeach
+                    </div>
                 </div>
-                <div class="col-12 col-md text-md-end">
+                <div class="col-12 text-md-end">
                     <span class="small text-muted" id="recordsShowingLabel">
                         Showing {{ $sites->total() }} site{{ $sites->total() === 1 ? '' : 's' }}
-                        @if($missingMarket)
-                            with <strong>missing market</strong>
+                        @if($healthFilter)
+                            in <strong>{{ $healthLabels[$healthFilter] ?? $healthFilter }}</strong>
                         @elseif($selectedCountry !== '')
                             in <strong class="text-uppercase">{{ $selectedCountry }}</strong>
                         @endif
@@ -117,6 +134,7 @@
             'sites' => $sites,
             'selectedCountry' => $selectedCountry,
             'missingMarket' => $missingMarket,
+            'healthFilter' => $healthFilter,
         ])
     </div>
 </div>
@@ -131,6 +149,9 @@
     let selectedCountry = @json($selectedCountry);
     let missingMarket = @json((bool) $missingMarket);
     let missingMarketCount = @json((int) $missingMarketCount);
+    let healthFilter = @json($healthFilter);
+    let healthCounts = @json($healthCounts);
+    const HEALTH_LABELS = @json($healthLabels);
 
     const searchInput = document.getElementById('recordsCountrySearch');
     const listEl = document.getElementById('recordsCountryList');
@@ -209,23 +230,29 @@
     function updateChrome(meta) {
         selectedCountry = meta.selected_country || '';
         missingMarket = !!meta.missing_market;
+        healthFilter = meta.health || (missingMarket ? 'missing_market' : null);
+        if (meta.health_counts && typeof meta.health_counts === 'object') {
+            healthCounts = meta.health_counts;
+        }
         if (typeof meta.missing_market_count === 'number') {
             missingMarketCount = meta.missing_market_count;
+            healthCounts.missing_market = missingMarketCount;
         }
         const total = Number(meta.total || 0);
         const exportUrl = meta.export_url || EXPORT_BASE;
+        const healthOn = !!healthFilter;
 
         if (exportBtn) exportBtn.href = exportUrl;
-        searchInput.disabled = missingMarket;
+        searchInput.disabled = healthOn;
 
         if (clearBtn) {
-            clearBtn.classList.toggle('d-none', selectedCountry === '' && !missingMarket);
+            clearBtn.classList.toggle('d-none', selectedCountry === '' && !healthOn);
         }
 
         if (showingLabel) {
             const plural = total === 1 ? 'site' : 'sites';
-            if (missingMarket) {
-                showingLabel.innerHTML = `Showing ${total} ${plural} with <strong>missing market</strong>`;
+            if (healthOn) {
+                showingLabel.innerHTML = `Showing ${total} ${plural} in <strong>${escapeHtml(HEALTH_LABELS[healthFilter] || healthFilter)}</strong>`;
             } else if (selectedCountry) {
                 showingLabel.innerHTML = `Showing ${total} ${plural} in <strong class="text-uppercase">${escapeHtml(selectedCountry)}</strong>`;
             } else {
@@ -234,11 +261,12 @@
         }
 
         if (chipWrap) {
-            if (missingMarket) {
+            if (healthOn) {
+                const chipClass = healthFilter === 'missing_market' ? 'text-bg-danger' : 'text-bg-warning';
                 chipWrap.innerHTML = `
-                    <span class="badge text-bg-danger records-country-chip">
-                        Missing market
-                        <button type="button" class="btn-close btn-close-white ms-1" style="font-size:0.55rem;" data-chip-clear aria-label="Clear missing market filter"></button>
+                    <span class="badge ${chipClass} records-country-chip">
+                        ${escapeHtml(HEALTH_LABELS[healthFilter] || healthFilter)}
+                        <button type="button" class="btn-close btn-close-white ms-1" style="font-size:0.55rem;" data-chip-clear aria-label="Clear health filter"></button>
                     </span>
                 `;
             } else if (selectedCountry) {
@@ -255,17 +283,22 @@
             }
         }
 
-        if (missingBtn) {
-            missingBtn.classList.toggle('btn-danger', missingMarket);
-            missingBtn.classList.toggle('btn-outline-danger', !missingMarket);
-        }
+        document.querySelectorAll('[data-records-health-filters] [data-health]').forEach((btn) => {
+            const key = btn.getAttribute('data-health');
+            const active = healthFilter === key;
+            const isMarket = key === 'missing_market';
+            btn.classList.toggle(isMarket ? 'btn-danger' : 'btn-warning', active);
+            btn.classList.toggle(isMarket ? 'btn-outline-danger' : 'btn-outline-warning', !active);
+            const countEl = btn.querySelector('[data-health-count]');
+            const count = Number((healthCounts && healthCounts[key]) || 0);
+            if (countEl) {
+                countEl.textContent = String(count);
+                countEl.classList.toggle('d-none', count < 1);
+            }
+        });
         if (missingBadge) {
             missingBadge.textContent = String(missingMarketCount);
             missingBadge.closest('p')?.classList.toggle('d-none', missingMarketCount < 1);
-        }
-        if (missingBtnCount) {
-            missingBtnCount.textContent = String(missingMarketCount);
-            missingBtnCount.classList.toggle('d-none', missingMarketCount < 1);
         }
 
         searchInput.value = '';
@@ -277,8 +310,10 @@
         const token = ++fetchToken;
         const params = new URLSearchParams();
         params.set('partial', '1');
-        if (options.missingMarket) {
+        if (options.health === 'missing_market' || options.missingMarket) {
             params.set('missing_market', '1');
+        } else if (options.health) {
+            params.set('health', options.health);
         } else if (options.country) {
             params.set('country', options.country);
         }
@@ -304,7 +339,8 @@
             updateChrome(data);
 
             const nextParams = new URLSearchParams();
-            if (data.missing_market) nextParams.set('missing_market', '1');
+            if (data.health === 'missing_market' || data.missing_market) nextParams.set('missing_market', '1');
+            else if (data.health) nextParams.set('health', data.health);
             else if (data.selected_country) nextParams.set('country', data.selected_country);
             const nextUrl = nextParams.toString() ? `${RECORDS_URL}?${nextParams}` : RECORDS_URL;
             window.history.replaceState({}, '', nextUrl);
@@ -379,12 +415,15 @@
         }
     });
 
-    missingBtn?.addEventListener('click', (e) => {
+    document.querySelector('[data-records-health-filters]')?.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-health]');
+        if (!btn) return;
         e.preventDefault();
-        if (missingMarket) {
+        const key = btn.getAttribute('data-health');
+        if (healthFilter === key) {
             loadRecords({});
         } else {
-            loadRecords({ missingMarket: true });
+            loadRecords({ health: key });
         }
         setOpen(false);
     });

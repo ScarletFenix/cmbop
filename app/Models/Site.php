@@ -2041,6 +2041,28 @@ class Site extends Model
     }
 
     /**
+     * Uploaded cover or enrichment screenshot — catalog Details has something to show.
+     */
+    public function hasCatalogCover(): bool
+    {
+        foreach (['site_image', 'screenshot_path', 'screenshot_thumb_path'] as $column) {
+            if (! static::hasSitesColumn($column)) {
+                continue;
+            }
+            try {
+                $value = $this->{$column};
+            } catch (\Throwable) {
+                continue;
+            }
+            if (is_string($value) && trim($value) !== '') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Marketing may activate this listing (review-ready, market + quality bar).
      */
     public function marketingCanActivate(): bool
