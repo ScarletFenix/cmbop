@@ -238,7 +238,10 @@ class Blog extends Model
     public function canonicalUrl(?string $locale = null, ?string $fallbackLocale = 'en'): string
     {
         $preferredLocale = $locale ?: $this->primary_locale;
-        if (! PublicI18n::isSupported($preferredLocale)) {
+        $supported = class_exists(PublicI18n::class)
+            ? PublicI18n::isSupported($preferredLocale)
+            : in_array((string) $preferredLocale, ['en'], true);
+        if (! $supported) {
             $preferredLocale = $fallbackLocale;
         }
 
@@ -246,7 +249,11 @@ class Blog extends Model
         $slug = $translation?->slug ?: $this->slug;
         $canonicalLocale = $translation?->locale ?: $preferredLocale;
 
-        return PublicI18n::urlForLocale('blog/'.$slug, $canonicalLocale);
+        if (class_exists(PublicI18n::class)) {
+            return PublicI18n::urlForLocale('blog/'.$slug, $canonicalLocale);
+        }
+
+        return url('blog/'.$slug);
     }
 
     /**

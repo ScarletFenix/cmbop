@@ -183,10 +183,12 @@
         <a href="{{ url('/guest-post-prices-europe') }}">EU guest-post price index</a>
     </p>
 
-    @include('components.country-lander-nav', [
-        'title' => 'Other markets',
-        'landers' => $siblings ?? [],
-        'label' => 'Other country landers',
-    ])
+    @if(view()->exists('components.country-lander-nav'))
+        @include('components.country-lander-nav', [
+            'title' => 'Other markets',
+            'landers' => $siblings ?? [],
+            'label' => 'Other country landers',
+        ])
+    @endif
 </div>
 @endsection

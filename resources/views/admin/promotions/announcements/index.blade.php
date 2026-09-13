@@ -62,7 +62,9 @@
                     <tbody>
                         @forelse($announcements as $item)
                             @php
-                                $campaignHandoff = \App\Support\PromotionCampaignHandoff::query($item);
+                                $campaignHandoff = auth()->user()?->isAdmin() && class_exists(\App\Support\PromotionCampaignHandoff::class)
+                                    ? \App\Support\PromotionCampaignHandoff::query($item)
+                                    : [];
                             @endphp
                             <tr>
                                 <td>

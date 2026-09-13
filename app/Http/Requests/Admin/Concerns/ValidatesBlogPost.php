@@ -21,14 +21,14 @@ trait ValidatesBlogPost
             'author' => 'nullable|string|max:120',
             'tags' => 'nullable|string',
             'status' => 'required|in:draft,published',
-            'primary_locale' => 'nullable|string|in:'.implode(',', PublicI18n::supported()),
+            'primary_locale' => 'nullable|string|in:'.implode(',', $this->publicLocales()),
         ];
 
         if ($updating) {
             $rules['remove_featured_image'] = 'nullable|boolean';
         }
 
-        foreach (PublicI18n::supported() as $locale) {
+        foreach ($this->publicLocales() as $locale) {
             $titleRule = $locale === 'en' ? 'required' : 'nullable';
             $contentRule = $locale === 'en' ? 'required' : 'nullable';
 
@@ -64,5 +64,20 @@ trait ValidatesBlogPost
 
         $translations['en'] = $en;
         $this->merge(['translations' => $translations]);
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function publicLocales(): array
+    {
+        if (class_exists(PublicI18n::class)) {
+            return PublicI18n::supported();
+        }
+
+        return array_values(array_filter(
+            (array) config('i18n.supported', ['en']),
+            static fn ($locale) => is_string($locale) && $locale !== ''
+        )) ?: ['en'];
     }
 }
