@@ -100,19 +100,25 @@ class PaypalPaymentNotifier
 
     private function alreadySettled(User $user, string $kind, string $referenceCode): bool
     {
-        if ($kind === PaypalPaymentNotCompleted::KIND_DEPOSIT) {
-            return DepositRequest::query()
+        try {
+            if ($kind === PaypalPaymentNotCompleted::KIND_DEPOSIT) {
+                return DepositRequest::query()
+                    ->where('user_id', $user->id)
+                    ->where('reference_code', $referenceCode)
+                    ->whereIn('status', ['completed', 'approved'])
+                    ->exists();
+            }
+
+            return Order::query()
                 ->where('user_id', $user->id)
                 ->where('reference_code', $referenceCode)
-                ->whereIn('status', ['completed', 'approved'])
+                ->where('payment_method', 'paypal')
+                ->where('payment_status', 'paid')
                 ->exists();
-        }
+        } catch (\Throwable $e) {
+            report($e);
 
-        return Order::query()
-            ->where('user_id', $user->id)
-            ->where('reference_code', $referenceCode)
-            ->where('payment_method', 'paypal')
-            ->where('payment_status', 'paid')
-            ->exists();
+            return false;
+        }
     }
 }

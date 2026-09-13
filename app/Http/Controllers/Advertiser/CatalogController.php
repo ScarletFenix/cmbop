@@ -2858,17 +2858,21 @@ class CatalogController extends Controller
 
     private function notifyPaypalCheckoutNotCompleted(int $userId, string $referenceCode, string $reason): void
     {
-        $user = $userId > 0 ? User::query()->find($userId) : null;
-        if (! $user) {
-            return;
-        }
+        try {
+            $user = $userId > 0 ? User::query()->find($userId) : null;
+            if (! $user) {
+                return;
+            }
 
-        app(PaypalPaymentNotifier::class)->notifyNotCompleted(
-            $user,
-            PaypalPaymentNotCompleted::KIND_CHECKOUT,
-            $referenceCode,
-            $reason
-        );
+            app(PaypalPaymentNotifier::class)->notifyNotCompleted(
+                $user,
+                PaypalPaymentNotCompleted::KIND_CHECKOUT,
+                $referenceCode,
+                $reason
+            );
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 
     /**
