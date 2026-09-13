@@ -530,10 +530,15 @@ class AdvertiserOrdersUxAbcTest extends TestCase
         ], [
             'live_url' => 'https://live.example/review-me',
         ]);
+        $waitingReview = $this->makeOrder($advertiser, $site, [
+            'order_number' => 'ORD-Q-WAIT',
+            'status' => 'review',
+        ]);
         $completed->forceFill(['created_at' => now()->subDay()])->save();
         $cancelled->forceFill(['created_at' => now()->subHours(2)])->save();
         $processing->forceFill(['created_at' => now()->subHours(6)])->save();
         $review->forceFill(['created_at' => now()->subHours(8)])->save();
+        $waitingReview->forceFill(['created_at' => now()->subHours(10)])->save();
 
         $ids = collect($this->actingAs($advertiser)
             ->getJson(route('advertiser.orders.list'))
@@ -543,6 +548,7 @@ class AdvertiserOrdersUxAbcTest extends TestCase
         $this->assertSame([
             $review->id,
             $processing->id,
+            $waitingReview->id,
             $cancelled->id,
             $completed->id,
         ], $ids);

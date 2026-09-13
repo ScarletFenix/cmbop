@@ -72,10 +72,17 @@ class AdvertiserOrderStatus
             ))";
         }
 
+        $reviewReadySql = "EXISTS (
+            SELECT 1 FROM order_items
+            WHERE order_items.order_id = orders.id
+              AND order_items.live_url IS NOT NULL
+              AND order_items.live_url != ''
+        )";
+
         $query->orderByRaw(
             "CASE
                 WHEN orders.status IN ('completed', 'cancelled') THEN 2
-                WHEN (orders.status = 'review'{$revisionClause}) THEN 0
+                WHEN ((orders.status = 'review' AND {$reviewReadySql}){$revisionClause}) THEN 0
                 ELSE 1
             END"
         );
