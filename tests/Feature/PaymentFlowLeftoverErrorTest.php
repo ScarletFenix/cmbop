@@ -2,8 +2,10 @@
 
 namespace Tests\Feature;
 
+use App\Models\ContentSubmission;
 use App\Models\DepositRequest;
 use App\Models\Role;
+use App\Models\Site;
 use App\Models\User;
 use App\Services\StripeCustomerService;
 use Database\Seeders\RolesTableSeeder;
@@ -11,10 +13,12 @@ use Illuminate\Database\QueryException;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
+use Tests\Support\CreatesContentSubmissions;
 use Tests\TestCase;
 
 class PaymentFlowLeftoverErrorTest extends TestCase
 {
+    use CreatesContentSubmissions;
     use RefreshDatabase;
 
     private string $webhookSecret = 'whsec_test_payment_leftover';
@@ -233,6 +237,107 @@ class PaymentFlowLeftoverErrorTest extends TestCase
             ->assertJsonPath('cards', [])
             ->assertJsonMissingPath('exception')
             ->assertDontSee('SQLSTATE');
+    }
+
+    public function test_checkout_process_survives_dropped_orders_table(): void
+    {
+        config(['content_moderation.enabled' => false]);
+
+        $advertiser = $this->advertiser();
+        $this->fundAdvertiserWallet($advertiser, 500);
+        [$site, $submission] = $this->readyCheckoutCart($advertiser);
+
+        Schema::dropIfExists('orders');
+
+        $this->actingAs($advertiser)
+            ->withSession([
+                'cart' => [[
+                    'id' => $site->id,
+                    'name' => $site->site_name,
+                    'quantity' => 1,
+                    'content_submission_id' => $submission->id,
+                ]],
+            ])
+            ->postJson(route('advertiser.checkout.process'), [
+                'payment_method' => 'wallet',
+                'reference_code' => 'WALLET-LEFT',
+                'publication_mode' => 'immediate',
+                'content_submissions' => [
+                    $site->id => [$submission->id],
+                ],
+            ])
+            ->assertStatus(503)
+            ->assertJsonPath('success', false)
+            ->assertJsonMissingPath('exception')
+            ->assertDontSee('SQLSTATE');
+    }
+
+    public function test_checkout_process_survives_dropped_wallets_table(): void
+    {
+        config(['content_moderation.enabled' => false]);
+
+        $advertiser = $this->advertiser();
+        [$site, $submission] = $this->readyCheckoutCart($advertiser);
+
+        Schema::dropIfExists('wallets');
+
+        $this->actingAs($advertiser)
+            ->withSession([
+                'cart' => [[
+                    'id' => $site->id,
+                    'name' => $site->site_name,
+                    'quantity' => 1,
+                    'content_submission_id' => $submission->id,
+                ]],
+            ])
+            ->postJson(route('advertiser.checkout.process'), [
+                'payment_method' => 'wallet',
+                'reference_code' => 'WALLET-NOWALLET',
+                'publication_mode' => 'immediate',
+                'content_submissions' => [
+                    $site->id => [$submission->id],
+                ],
+            ])
+            ->assertJsonPath('success', false)
+            ->assertJsonMissingPath('exception')
+            ->assertDontSee('SQLSTATE');
+    }
+
+    /**
+     * @return array{0: Site, 1: ContentSubmission}
+     */
+    private function readyCheckoutCart(User $advertiser): array
+    {
+        $publisherRole = Role::where('name', 'publisher')->firstOrFail();
+        $publisher = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $publisherRole->id,
+        ]);
+        $publisher->roles()->attach($publisherRole->id);
+
+        $site = Site::create([
+            'publisher_id' => $publisher->id,
+            'site_name' => 'Leftover Checkout Site',
+            'site_url' => 'https://leftover-checkout.example',
+            'domain' => 'leftover-checkout.example',
+            'da' => 40,
+            'dr' => 40,
+            'traffic' => 1000,
+            'country' => 'us',
+            'language' => 'en',
+            'countries' => ['us'],
+            'languages' => ['en'],
+            'category' => 'marketing',
+            'price' => 80.00,
+            'publication_time' => '7 days',
+            'link_type' => 'dofollow',
+            'description' => 'Leftover checkout probe',
+            'verified' => true,
+            'active' => true,
+        ]);
+        $submission = $this->createApprovedSubmission($advertiser, $site->id);
+
+        return [$site, $submission];
     }
 
     private function restoreDepositRequestsTable(): void

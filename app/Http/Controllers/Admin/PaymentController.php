@@ -519,7 +519,7 @@ class PaymentController extends Controller
                 'success' => false,
                 'message' => UserFacingError::message($e, 'Could not update payment status on this database.'),
             ], 422);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             DB::rollBack();
             if (! $sendNotification) {
                 app(OrderLifecycleMailSuppressor::class)->forget((int) $id);
@@ -591,7 +591,7 @@ class PaymentController extends Controller
                     'user_id' => $order->user_id,
                 ]);
             }
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Failed to send payment confirmation email: '.$e->getMessage());
         }
     }

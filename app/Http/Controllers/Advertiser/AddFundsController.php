@@ -512,7 +512,7 @@ class AddFundsController extends Controller
                 Log::error('Saved-card deposit success error: '.$e->getMessage());
 
                 return redirect()->route('advertiser.add-funds')
-                    ->with('error', UserMessages::get('payment.verify_failed_support'));
+                    ->with('error', UserFacingError::message($e, UserMessages::get('payment.verify_failed_support')));
             }
         }
 

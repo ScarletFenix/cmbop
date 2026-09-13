@@ -60,6 +60,7 @@ use App\Support\UserMessages;
 use Carbon\CarbonInterface;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -2512,7 +2513,7 @@ class CatalogController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => $message,
-            ]);
+            ], $e instanceof QueryException ? 503 : 200);
         }
     }
 
