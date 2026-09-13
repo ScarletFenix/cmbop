@@ -1253,13 +1253,19 @@ class ContentSubmission extends Model
 
     public function canEditArticle(): bool
     {
-        if ($this->isLockedByPaidOrder() || $this->isArchived()) {
+        try {
+            if ($this->isLockedByPaidOrder() || $this->isArchived()) {
+                return false;
+            }
+
+            // Catalog expiry is unused-inventory only. A leftover still on an
+            // open order must stay editable so Pay again can be unblocked.
+            return ! $this->isUnusedExpired();
+        } catch (\Throwable $e) {
+            report($e);
+
             return false;
         }
-
-        // Catalog expiry is unused-inventory only. A leftover still on an
-        // open order must stay editable so Pay again can be unblocked.
-        return ! $this->isUnusedExpired();
     }
 
     /**
@@ -2367,9 +2373,15 @@ class ContentSubmission extends Model
 
     public function isReadyForCheckout(): bool
     {
-        return $this->canBeOrdered()
-            && $this->hasCheckoutReadyLinks()
-            && ! $this->isClaimedByAnotherOrder();
+        try {
+            return $this->canBeOrdered()
+                && $this->hasCheckoutReadyLinks()
+                && ! $this->isClaimedByAnotherOrder();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return false;
+        }
     }
 
     /**
@@ -2523,17 +2535,44 @@ class ContentSubmission extends Model
             && ($order->payment_status === null || $order->payment_status !== 'refunded');
     }
 
+    protected function ordersTableAvailable(): bool
+    {
+        try {
+            if (! Schema::hasTable('orders')) {
+                return false;
+            }
+
+            DB::table('orders')->limit(1)->exists();
+
+            return true;
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
     protected function relatedOwnerOrder(): ?Order
     {
         if ($this->order_id === null) {
             return null;
         }
 
-        $order = $this->relationLoaded('order')
-            ? $this->order
-            : $this->order()->first();
+        try {
+            if ($this->relationLoaded('order')) {
+                return $this->order instanceof Order ? $this->order : null;
+            }
 
-        return $order instanceof Order ? $order : null;
+            if (! $this->ordersTableAvailable()) {
+                return null;
+            }
+
+            $order = $this->order()->first();
+
+            return $order instanceof Order ? $order : null;
+        } catch (\Throwable $e) {
+            report($e);
+
+            return null;
+        }
     }
 
     /**

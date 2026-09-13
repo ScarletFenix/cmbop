@@ -578,6 +578,50 @@ class ContentLibraryImprovementsPlanTest extends TestCase
             ->assertDontSee('SQLSTATE');
     }
 
+    public function test_admin_and_advertiser_library_survive_dropped_orders_table(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update(['title' => 'Orders Leftover Piece']);
+        $this->paidOrder($advertiser, $submission, $this->siteFor($this->publisher()));
+
+        Schema::dropIfExists('orders');
+
+        $this->actingAs($admin)
+            ->get(route('admin.content-library.show', $submission))
+            ->assertOk()
+            ->assertSee('Orders Leftover Piece')
+            ->assertDontSee('SQLSTATE');
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', [
+                'status' => 'all',
+                'availability' => 'all',
+                'edit' => $submission->id,
+                'fix' => 1,
+            ]))
+            ->assertOk()
+            ->assertSee('Orders Leftover Piece')
+            ->assertDontSee('SQLSTATE');
+    }
+
+    public function test_update_content_json_is_safe_when_orders_table_is_gone(): void
+    {
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $this->paidOrder($advertiser, $submission, $this->siteFor($this->publisher()));
+
+        Schema::dropIfExists('orders');
+
+        $this->actingAs($advertiser)
+            ->putJson(route('advertiser.content-submissions.content', $submission), [
+                'preview_html' => '<p>Leftover edit with a <a href="https://example.com/tools">complete link</a>.</p>',
+            ])
+            ->assertJsonMissingPath('exception')
+            ->assertDontSee('SQLSTATE');
+    }
+
     public function test_advertiser_bulk_is_safe_when_submissions_table_is_gone(): void
     {
         $advertiser = $this->advertiser();

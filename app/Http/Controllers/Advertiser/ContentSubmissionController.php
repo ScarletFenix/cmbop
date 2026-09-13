@@ -190,16 +190,20 @@ class ContentSubmissionController extends Controller
     {
         $this->authorizeSubmission($submission);
 
-        if ($submission->isLockedByPaidOrder()) {
-            return response()->json(['success' => false, 'message' => 'This article is already linked to an order.'], 422);
-        }
+        try {
+            if ($submission->isLockedByPaidOrder()) {
+                return response()->json(['success' => false, 'message' => 'This article is already linked to an order.'], 422);
+            }
 
-        if ($submission->isArchived()) {
-            return response()->json(['success' => false, 'message' => 'Restore this article before editing.'], 422);
-        }
+            if ($submission->isArchived()) {
+                return response()->json(['success' => false, 'message' => 'Restore this article before editing.'], 422);
+            }
 
-        if ($submission->isUnusedExpired()) {
-            return response()->json(['success' => false, 'message' => 'Expired articles are preview only. The original file cannot be edited.'], 422);
+            if ($submission->isUnusedExpired()) {
+                return response()->json(['success' => false, 'message' => 'Expired articles are preview only. The original file cannot be edited.'], 422);
+            }
+        } catch (\Throwable $e) {
+            return $this->leftoverJson($e, 'Could not save article. Please try again.');
         }
 
         $data = $request->validate([
@@ -392,16 +396,20 @@ class ContentSubmissionController extends Controller
     {
         $this->authorizeSubmission($submission);
 
-        if ($submission->isLockedByPaidOrder()) {
-            return response()->json(['success' => false, 'message' => 'This submission is already linked to an order.'], 422);
-        }
+        try {
+            if ($submission->isLockedByPaidOrder()) {
+                return response()->json(['success' => false, 'message' => 'This submission is already linked to an order.'], 422);
+            }
 
-        if ($submission->isArchived()) {
-            return response()->json(['success' => false, 'message' => 'Restore this article before editing.'], 422);
-        }
+            if ($submission->isArchived()) {
+                return response()->json(['success' => false, 'message' => 'Restore this article before editing.'], 422);
+            }
 
-        if ($submission->isUnusedExpired()) {
-            return response()->json(['success' => false, 'message' => 'Expired articles are preview only. The original file cannot be edited.'], 422);
+            if ($submission->isUnusedExpired()) {
+                return response()->json(['success' => false, 'message' => 'Expired articles are preview only. The original file cannot be edited.'], 422);
+            }
+        } catch (\Throwable $e) {
+            return $this->leftoverJson($e, 'Could not save the draft. Please try again.');
         }
 
         try {
@@ -836,7 +844,20 @@ class ContentSubmissionController extends Controller
             'language' => ['required', 'string', 'size:2', Rule::in($allowedLanguages)],
         ]);
 
-        $blocked = $this->marketChangeBlockMessage($submission);
+        try {
+            $blocked = $this->marketChangeBlockMessage($submission);
+        } catch (\Throwable $e) {
+            if ($request->expectsJson()) {
+                return $this->leftoverJson($e, 'The market could not be changed. Please try again.');
+            }
+
+            report($e);
+
+            return back()->with(
+                'error',
+                UserFacingError::message($e, 'The market could not be changed. Please try again.')
+            );
+        }
         if ($blocked !== null) {
             return $request->expectsJson()
                 ? response()->json(['success' => false, 'message' => $blocked], 422)

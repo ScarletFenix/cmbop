@@ -300,6 +300,9 @@ class ContentLibraryController extends Controller
             fn () => $this->resolveEditableSubmission(scalar_text($request->query('edit'))),
             null,
         );
+        if ($editSubmission instanceof ContentSubmission) {
+            $this->sealMissingLibraryRelations($editSubmission);
+        }
 
         return [
             'submissions' => $submissions,
