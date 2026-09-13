@@ -226,9 +226,21 @@ class AdvertiserOrderStatus
         }
 
         if ($status === 'completed') {
+            if (! $item) {
+                return [
+                    'label' => 'Completed',
+                    'next' => 'Placement details are missing for this order.',
+                    'cls' => 'status-completed',
+                    'stage' => 'completed',
+                    'auto_approve_hint' => null,
+                ];
+            }
+
             return [
                 'label' => 'Completed',
-                'next' => 'All done — the publisher has been paid for this placement.',
+                'next' => $hasLiveUrl
+                    ? 'Your post is live. Open the published URL.'
+                    : 'Placement finished. Open the order for details.',
                 'cls' => 'status-completed',
                 'stage' => 'completed',
                 'auto_approve_hint' => null,

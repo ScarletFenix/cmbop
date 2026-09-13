@@ -982,7 +982,17 @@ function bootAdvertiserOrdersPage() {
             };
         }
         if (status === 'completed') {
-            return { label: 'Completed', next: 'All done — the publisher has been paid for this placement.', cls: 'status-completed', autoHint: null };
+            if (!item) {
+                return { label: 'Completed', next: 'Placement details are missing for this order.', cls: 'status-completed', autoHint: null };
+            }
+            return {
+                label: 'Completed',
+                next: hasLiveUrl
+                    ? 'Your post is live. Open the published URL.'
+                    : 'Placement finished. Open the order for details.',
+                cls: 'status-completed',
+                autoHint: null,
+            };
         }
         return { label: capitalize(status), next: '', cls: getStatusClass(status), autoHint: null };
     }
@@ -1254,7 +1264,9 @@ function bootAdvertiserOrdersPage() {
             const statusMeta = getAdvertiserStatusMeta(order);
             const items = Array.isArray(order.items) ? order.items : [];
             const firstItem = items[0] || null;
-            const siteName = firstItem ? firstItem.site_name : 'N/A';
+            const siteName = firstItem
+                ? (firstItem.site_name || firstItem.site_url || 'Placement details')
+                : 'Placement details';
             const siteUrl = firstItem ? firstItem.site_url : '';
             const siteHref = (firstItem && firstItem.visit_url) ? firstItem.visit_url : siteUrl;
             const itemsCount = Number(order.items_count) || items.length || 0;
@@ -1769,7 +1781,7 @@ function bootAdvertiserOrdersPage() {
                             : '')
                 ) : ''}
             `;
-        }).join('') || '<div class="text-muted">No placements on this order.</div>';
+        }).join('') || '<div class="text-muted">Placement details are missing for this order.</div>';
 
         let actionButtons = '';
         const revisionItems = items.filter((it) => it && it.content_revision_requested === 'yes');
