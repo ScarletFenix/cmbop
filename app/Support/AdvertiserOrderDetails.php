@@ -46,6 +46,10 @@ final class AdvertiserOrderDetails
         $payment = (string) $order->payment_status;
 
         if ($status === 'completed') {
+            if (self::placementsMissing($order)) {
+                return '';
+            }
+
             return 'If a published link is later removed, use Report link removed.';
         }
 
@@ -114,7 +118,6 @@ final class AdvertiserOrderDetails
         $row['can_report_link_removed'] = (bool) $line->getAttribute('can_report_link_removed');
         $row['dispute_status'] = $line->getAttribute('dispute_status');
         $row['dispute_id'] = $line->getAttribute('dispute_id');
-        $row['article_title'] = $line->getAttribute('article_title');
         $row['moderation_status'] = $line->moderation_status;
         $row['modification_requested'] = $line->modification_requested;
         $row['completion_notes'] = $line->completion_notes;

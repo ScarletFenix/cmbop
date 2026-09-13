@@ -194,6 +194,7 @@ class AdvertiserOrderDetailsModalTest extends TestCase
         $this->assertStringNotContainsString('No placements', $detail['empty_items_message']);
         $this->assertStringNotContainsString('paid for this placement', $detail['next_action']);
         $this->assertStringContainsString('no line items', $detail['next_action']);
+        $this->assertSame('', $detail['policy_note']);
 
         $urlStep = collect($detail['timeline_steps'])->firstWhere('label', 'URL delivered');
         $this->assertFalse($urlStep['done']);
@@ -212,8 +213,15 @@ class AdvertiserOrderDetailsModalTest extends TestCase
         $this->assertStringContainsString('Open live URL', $js);
         $this->assertStringContainsString('copyOrderLiveUrl', $js);
         $this->assertStringContainsString('ov-live-url', $js);
+        $this->assertStringContainsString('ui-callout--info', $js);
+        $this->assertStringNotContainsString('ov-empty-placements ui-callout ui-callout--attention', $js);
         $this->assertStringContainsString('order-view-shell--stack', $js);
         $this->assertStringContainsString('Reconstructed from order dates', $js);
+        $liveCardPos = strpos($js, '${liveUrlHtml}');
+        $documentPos = strpos($js, "ovBlock('Document'");
+        $this->assertNotFalse($liveCardPos);
+        $this->assertNotFalse($documentPos);
+        $this->assertLessThan($documentPos, $liveCardPos, 'Completed card must lead with the live URL before article fields');
         $this->assertStringNotContainsString("|| '<div class=\"text-muted\">No placements on this order.</div>'", $js);
 
         $advertiser = $this->advertiser();

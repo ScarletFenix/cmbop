@@ -1755,7 +1755,7 @@ function bootAdvertiserOrdersPage() {
                 ? `This order has no line items on file, so there is no live URL to show. If you expected a placement here, contact support and mention order ${order.order_number || ('#' + order.id)}.`
                 : 'No placements on this order.');
         if (missing) {
-            return `<div class="ov-empty-placements ui-callout ui-callout--attention ui-callout--sm">
+            return `<div class="ov-empty-placements ui-callout ui-callout--info ui-callout--sm ui-callout--flush">
                 <span class="ui-callout__icon" aria-hidden="true"><i class="fa-solid fa-circle-info"></i></span>
                 <div class="ui-callout__body">${escapeHtml(msg)}</div>
             </div>`;
@@ -1766,6 +1766,9 @@ function bootAdvertiserOrdersPage() {
     function policyNoteHtml(order) {
         const link = `<a href="${ordersRoute('refundPolicy')}" target="_blank" rel="noopener">Refund policy</a>`;
         if (order.status === 'completed') {
+            if (order.placements_missing === true || order.placements_missing === 1) {
+                return `<div class="order-view-refund">${link}</div>`;
+            }
             const note = order.policy_note || 'If a published link is later removed, use Report link removed.';
             return `<div class="order-view-refund">${escapeHtml(note)} ${link}</div>`;
         }
@@ -1897,6 +1900,7 @@ function bootAdvertiserOrdersPage() {
             ${revisionHtml}
             ${ovBlock('Site', siteHtml)}
             ${ovBlock('Site URL', siteUrlHtml)}
+            ${liveUrlHtml}
             ${ovBlock('Document', documentHtml + revisionAlert)}
             ${ovBlock('Anchor text', anchorHtml)}
             ${ovBlock('Target URL', targetHtml)}
@@ -1906,7 +1910,6 @@ function bootAdvertiserOrdersPage() {
             ${socialHtml}
             ${ovBlock('URL submitted', submittedHtml)}
             ${ovBlock('Completed', completedHtml)}
-            ${liveUrlHtml}
             ${reportHtml}
         `;
     }
@@ -1914,7 +1917,7 @@ function bootAdvertiserOrdersPage() {
     function renderOrderDetails(order) {
         const items = Array.isArray(order.items) ? order.items : [];
         const isUnderReview = order.status === 'review';
-        const hasAnyLiveUrl = items.some((it) => it.live_url && it.live_url !== '');
+        const hasAnyLiveUrl = items.some((it) => it && it.live_url && it.live_url !== '');
         const statusMeta = getAdvertiserStatusMeta(order);
         const timelineHtml = buildAdvertiserTimeline(order);
         const itemsCount = Number(order.items_count) || items.length || 0;
