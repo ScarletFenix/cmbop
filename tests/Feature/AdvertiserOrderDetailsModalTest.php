@@ -222,6 +222,11 @@ class AdvertiserOrderDetailsModalTest extends TestCase
         $this->assertStringNotContainsString('ov-empty-placements ui-callout ui-callout--attention', $js);
         $this->assertStringContainsString('order-view-shell--stack', $js);
         $this->assertStringContainsString('Reconstructed from order dates', $js);
+        $this->assertMatchesRegularExpression(
+            '/function loadOrderActivityTimeline[\\s\\S]{0,1800}reconstructOrderActivities/',
+            $js,
+            'A failed timeline fetch must still reconstruct activity from order dates'
+        );
         $liveCardPos = strpos($js, '${liveUrlHtml}');
         $documentPos = strpos($js, "ovBlock('Document'");
         $this->assertNotFalse($liveCardPos);

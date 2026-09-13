@@ -259,11 +259,18 @@ class NotificationController extends Controller
     public function orderTimeline(Request $request, int $orderId)
     {
         $user = $request->user();
-        $order = Order::with('items.site')->findOrFail($orderId);
+        $order = Order::with('items')->findOrFail($orderId);
+        try {
+            $order->loadMissing('items.site');
+        } catch (\Throwable) {
+            // Leftover Hostinger: sites table missing — advertiser timeline still works.
+        }
 
         $isAdvertiser = (int) $order->user_id === (int) $user->id;
         $isPublisher = $order->items->contains(function ($item) use ($user) {
-            return $item->site && (int) $item->site->publisher_id === (int) $user->id;
+            $site = $item->relationLoaded('site') ? $item->site : null;
+
+            return $site && (int) $site->publisher_id === (int) $user->id;
         });
         $isStaff = method_exists($user, 'isAdmin') && ($user->isAdmin() || $user->isMarketing());
 

@@ -1166,23 +1166,30 @@ function bootAdvertiserOrdersPage() {
         })
         .then(r => r.json())
         .then(data => {
-            if (!data.success) {
-                container.innerHTML = '<div class="text-muted small">Unable to load activity.</div>';
-                return;
-            }
-            let activities = data.activities || [];
+            let activities = (data && data.success) ? (data.activities || []) : [];
             if (!activities.length && order && typeof order === 'object') {
                 activities = reconstructOrderActivities(order);
             }
+            if (!activities.length) {
+                container.innerHTML = '<div class="text-muted small">Unable to load activity.</div>';
+                return;
+            }
             if (window.renderOrderActivityTimeline) {
                 window.renderOrderActivityTimeline(container, activities, {
-                    reconstructed: !!data.reconstructed,
+                    reconstructed: !!(data && data.reconstructed),
                 });
             } else {
                 renderOrderActivityFallback(container, activities);
             }
         })
         .catch(() => {
+            if (order && typeof order === 'object') {
+                const activities = reconstructOrderActivities(order);
+                if (activities.length) {
+                    renderOrderActivityFallback(container, activities);
+                    return;
+                }
+            }
             container.innerHTML = '<div class="text-muted small">Unable to load activity.</div>';
         });
     }
