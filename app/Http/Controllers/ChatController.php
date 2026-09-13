@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Services\CheckoutSchemaService;
 use App\Services\InAppNotificationService;
 use App\Services\OrderChatContactGuard;
+use App\Support\AdvertiserOrderDetails;
 use App\Support\AdvertiserOrderStatus;
 use App\Support\CatalogVisitUrl;
 use App\Support\PublisherNeedsAction;
@@ -427,7 +428,9 @@ class ChatController extends Controller
         } elseif ($order->payment_status !== 'paid') {
             $composerNote = 'Chat is available after the order is paid.';
         } elseif ($order->status === 'completed') {
-            $composerNote = 'This order is completed. You can still message about this placement.';
+            $composerNote = AdvertiserOrderDetails::placementsMissing($order)
+                ? 'This order is completed. You can still message support about it.'
+                : 'This order is completed. You can still message about this placement.';
         }
 
         $modificationRequested = $item?->modification_requested === 'yes';

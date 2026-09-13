@@ -530,10 +530,15 @@ class AdvertiserOrdersUxAbcTest extends TestCase
         ], [
             'live_url' => 'https://live.example/review-me',
         ]);
+        $waitingReview = $this->makeOrder($advertiser, $site, [
+            'order_number' => 'ORD-Q-WAIT',
+            'status' => 'review',
+        ]);
         $completed->forceFill(['created_at' => now()->subDay()])->save();
         $cancelled->forceFill(['created_at' => now()->subHours(2)])->save();
         $processing->forceFill(['created_at' => now()->subHours(6)])->save();
         $review->forceFill(['created_at' => now()->subHours(8)])->save();
+        $waitingReview->forceFill(['created_at' => now()->subHours(10)])->save();
 
         $ids = collect($this->actingAs($advertiser)
             ->getJson(route('advertiser.orders.list'))
@@ -543,6 +548,7 @@ class AdvertiserOrdersUxAbcTest extends TestCase
         $this->assertSame([
             $review->id,
             $processing->id,
+            $waitingReview->id,
             $cancelled->id,
             $completed->id,
         ], $ids);
@@ -735,5 +741,74 @@ class AdvertiserOrdersUxAbcTest extends TestCase
             ->getJson(route('advertiser.orders.get', $unpaid->id))
             ->assertOk()
             ->assertJsonPath('order.chat_readonly', true);
+    }
+
+    public function test_list_payload_is_honest_for_orphan_and_review_rows(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher, 'List Honest Site');
+
+        $review = $this->makeOrder($advertiser, $site, [
+            'order_number' => 'ORD-LIST-REVIEW',
+            'status' => 'review',
+        ], [
+            'live_url' => 'https://live.example/list-review',
+            'live_url_submitted_at' => now(),
+        ]);
+        $orphan = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => '797026',
+            'reference_code' => '83126',
+            'subtotal' => 103.50,
+            'tax' => 0,
+            'total_amount' => 103.50,
+            'payment_method' => 'card',
+            'payment_status' => 'paid',
+            'status' => 'completed',
+            'paid_at' => now()->subDays(2),
+            'completed_at' => now()->subDay(),
+        ]);
+        $waitingReview = $this->makeOrder($advertiser, $site, [
+            'order_number' => 'ORD-LIST-WAIT',
+            'status' => 'review',
+        ]);
+
+        $rows = collect($this->actingAs($advertiser)
+            ->getJson(route('advertiser.orders.list'))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->json('orders'))
+            ->keyBy('order_number');
+
+        $this->assertSame('URL delivered · your review', $rows['ORD-LIST-REVIEW']['status_label']);
+        $this->assertStringContainsString('approve or request changes', $rows['ORD-LIST-REVIEW']['next_action']);
+        $this->assertTrue($rows['ORD-LIST-REVIEW']['can_approve']);
+        $this->assertTrue($rows['ORD-LIST-REVIEW']['has_live_url']);
+        $this->assertFalse($rows['ORD-LIST-REVIEW']['placements_missing']);
+        $this->assertArrayHasKey('visit_url', $rows['ORD-LIST-REVIEW']['items'][0]);
+        $this->assertArrayNotHasKey('site', $rows['ORD-LIST-REVIEW']['items'][0]);
+        $this->assertSame($review->id, $rows['ORD-LIST-REVIEW']['id']);
+
+        $this->assertSame('Completed', $rows['797026']['status_label']);
+        $this->assertStringContainsString('no line items', $rows['797026']['next_action']);
+        $this->assertStringNotContainsString('paid for this placement', $rows['797026']['next_action']);
+        $this->assertTrue($rows['797026']['placements_missing']);
+        $this->assertFalse($rows['797026']['has_live_url']);
+        $this->assertSame([], $rows['797026']['items']);
+        $this->assertSame($orphan->id, $rows['797026']['id']);
+
+        $this->assertSame('In review', $rows['ORD-LIST-WAIT']['status_label']);
+        $this->assertStringContainsString('Waiting for live URL', $rows['ORD-LIST-WAIT']['next_action']);
+        $this->assertFalse($rows['ORD-LIST-WAIT']['can_approve']);
+        $this->assertFalse($rows['ORD-LIST-WAIT']['has_live_url']);
+        $this->assertSame($waitingReview->id, $rows['ORD-LIST-WAIT']['id']);
+
+        $js = file_get_contents(public_path('assets/js/advertiser-orders.js'));
+        $this->assertIsString($js);
+        $this->assertStringContainsString("applyOrdersStatusFilter('needs_action')", $js);
+        $this->assertStringContainsString('window.updateNeedsActionBanner', $js);
+        $this->assertStringContainsString('data.needs_action', $js);
+        $this->assertStringContainsString("label: hasLiveUrl ? 'URL delivered · your review' : 'In review'", $js);
     }
 }

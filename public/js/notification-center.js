@@ -673,13 +673,20 @@
     return new NotificationCenter(root, cfg);
   };
 
-  window.renderOrderActivityTimeline = function (container, activities) {
+  window.renderOrderActivityTimeline = function (container, activities, options) {
     if (!container) return;
+    options = options || {};
     if (!activities || !activities.length) {
       container.innerHTML = '<div class="text-muted small">No activity recorded yet.</div>';
       return;
     }
-    container.innerHTML = '<div class="oa-timeline">' + activities.map(function (a) {
+    var reconstructed = !!options.reconstructed || activities.some(function (a) {
+      return a && a.meta && a.meta.reconstructed;
+    });
+    var note = reconstructed
+      ? '<div class="oa-reconstructed text-muted small mb-2">Reconstructed from order dates.</div>'
+      : '';
+    container.innerHTML = note + '<div class="oa-timeline">' + activities.map(function (a) {
       return (
         '<div class="oa-item">' +
           '<span class="oa-dot" data-color="' + escapeHtml(a.badge_color || 'primary') + '"></span>' +

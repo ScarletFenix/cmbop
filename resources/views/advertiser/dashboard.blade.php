@@ -601,7 +601,11 @@
                                         @php
                                             $firstItem = $order->items->first();
                                             $numericOrder = preg_replace('/\D+/', '', (string) ($order->order_number ?? '')) ?: (string) $order->id;
-                                            $statusLabel = str_replace('_', ' ', (string) $order->status);
+                                            $statusMeta = \App\Support\AdvertiserOrderStatus::meta($order);
+                                            $statusLabel = $statusMeta['label'];
+                                            $statusDotClass = ($statusMeta['stage'] ?? '') === 'url_delivered'
+                                                ? 'review'
+                                                : (($statusMeta['stage'] ?? '') === 'review' ? 'pending' : (string) $order->status);
                                             $orderFocusUrl = route('advertiser.orders', ['focus' => 'order', 'order' => $order->id]);
                                             $siteModel = $firstItem?->relationLoaded('site') ? $firstItem->site : null;
                                             $canSeeRecentUrl = $siteModel
@@ -631,7 +635,7 @@
                                                 <div class="small text-muted mt-1">{{ $order->created_at?->format('M j, Y') }}</div>
                                             </td>
                                             <td class="py-3">
-                                                <span class="order-status {{ $order->status }}">
+                                                <span class="order-status {{ $statusDotClass }}">
                                                     <span class="order-status-dot" aria-hidden="true"></span>
                                                     {{ $statusLabel }}
                                                 </span>

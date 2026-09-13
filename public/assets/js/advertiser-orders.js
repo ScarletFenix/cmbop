@@ -52,6 +52,9 @@ function loadOrdStatistics() {
             setText('ordInProgress', data.in_progress);
             setText('ordCompleted', data.completed);
             setText('ordAwaitingPayment', data.awaiting_payment);
+            if (typeof window.updateNeedsActionBanner === 'function') {
+                window.updateNeedsActionBanner(data.needs_action || 0);
+            }
         })
         .catch(function (error) {
             console.error('Error loading order statistics:', error);
@@ -264,9 +267,7 @@ function bootAdvertiserOrdersPage() {
     });
 
     document.getElementById('showNeedsReviewBtn')?.addEventListener('click', function() {
-        document.getElementById('statusFilter').value = 'needs_action';
-        currentPage = 1;
-        fetchOrders(1, { historyMode: 'push' });
+        applyOrdersStatusFilter('needs_action');
     });
 
     document.getElementById('filterForm')?.addEventListener('submit', function(e) {
@@ -539,14 +540,20 @@ function bootAdvertiserOrdersPage() {
         })
         .then(r => r.json())
         .then(data => {
+            hideOrderDetailsModal();
+            const reopen = () => viewOrder(orderId);
             if (data.success) {
-                Swal.fire('Checked', data.message || 'URL check finished.', data.live_url_check?.ok ? 'success' : 'warning');
-                viewOrder(orderId);
+                Swal.fire('Checked', data.message || 'URL check finished.', data.live_url_check?.ok ? 'success' : 'warning')
+                    .then(reopen);
             } else {
-                Swal.fire('Error', data.message || 'Could not recheck URL.', 'error');
+                Swal.fire('Error', data.message || 'Could not recheck URL.', 'error')
+                    .then(reopen);
             }
         })
-        .catch(() => Swal.fire('Error', 'Could not recheck URL.', 'error'))
+        .catch(() => {
+            hideOrderDetailsModal();
+            Swal.fire('Error', 'Could not recheck URL.', 'error').then(() => viewOrder(orderId));
+        })
         .finally(() => {
             if (btn) {
                 btn.disabled = false;
@@ -557,6 +564,7 @@ function bootAdvertiserOrdersPage() {
 
     // Request modification
     window.requestModification = function(orderId) {
+        hideOrderDetailsModal();
         document.getElementById('modificationOrderId').value = orderId;
         document.getElementById('modificationReason').value = '';
         showBsModal('modificationModal');
@@ -606,6 +614,7 @@ function bootAdvertiserOrdersPage() {
 
     // Publisher asked for a revised article — advertiser fulfills with link or library article
     window.fulfillContentRevision = function(orderId, orderItemId, opts) {
+        hideOrderDetailsModal();
         const resolvedItemId = Number(orderItemId || 0) || null;
         const isLibrary = !!(opts && opts.isLibrary);
         const currentLabel = (opts && opts.currentLabel) ? String(opts.currentLabel) : 'Current Content Library article';
@@ -902,6 +911,7 @@ function bootAdvertiserOrdersPage() {
             banner.classList.add('d-none');
         }
     }
+    window.updateNeedsActionBanner = updateNeedsActionBanner;
 
     function isAwaitingScheduledRelease(order) {
         if (!order || order.schedule_released_at) return false;
@@ -910,17 +920,20 @@ function bootAdvertiserOrdersPage() {
     }
 
     function getAdvertiserStatusMeta(order) {
-        if (order.status_label && order.next_action) {
+        if (order.status_label) {
             return {
                 label: order.status_label,
-                next: order.next_action,
+                next: order.next_action || '',
                 cls: order.status_cls || (isAwaitingScheduledRelease(order) ? 'status-processing' : getStatusClass(order.status)),
                 autoHint: order.auto_approve_hint || null,
             };
         }
 
-        const item = order.items && order.items[0] ? order.items[0] : null;
-        const hasLiveUrl = !!(item && item.live_url);
+        const items = Array.isArray(order.items) ? order.items : [];
+        const item = items.find((it) => it && it.live_url) || items[0] || null;
+        const hasLiveUrl = order.has_live_url === true
+            || order.has_live_url === 1
+            || items.some((it) => it && it.live_url);
         const modRequested = item && item.modification_requested === 'yes';
         const contentRevisionRequested = Array.isArray(order.items)
             ? order.items.some((it) => it && it.content_revision_requested === 'yes')
@@ -975,49 +988,45 @@ function bootAdvertiserOrdersPage() {
         }
         if (status === 'review') {
             return {
-                label: 'URL delivered · your review',
+                label: hasLiveUrl ? 'URL delivered · your review' : 'In review',
                 next: hasLiveUrl ? 'Check the live URL, then approve or request changes.' : 'Waiting for live URL.',
                 cls: 'status-review',
                 autoHint,
             };
         }
         if (status === 'completed') {
+            const count = Array.isArray(order.items) ? order.items.length : (Number(order.items_count) || 0);
+            const anyLive = count > 0 && Array.isArray(order.items) && order.items.some((it) => it && it.live_url);
+            if (count < 1) {
+                return { label: 'Completed', next: 'This order is marked complete, but it has no line items. Contact support if you expected a live URL here.', cls: 'status-completed', autoHint: null };
+            }
+            if (!anyLive) {
+                return { label: 'Completed', next: 'This order is marked complete. If you expected a live URL, use Chat or contact support.', cls: 'status-completed', autoHint: null };
+            }
             return { label: 'Completed', next: 'All done — the publisher has been paid for this placement.', cls: 'status-completed', autoHint: null };
         }
         return { label: capitalize(status), next: '', cls: getStatusClass(status), autoHint: null };
     }
 
-    function buildAdvertiserTimeline(order) {
-        const item = order.items && order.items[0] ? order.items[0] : {};
+    function deriveAdvertiserTimelineSteps(order) {
+        const items = Array.isArray(order.items) ? order.items : [];
+        const item = items[0] || {};
         const status = order.status;
+        const hasItems = items.length > 0;
+        const hasLiveUrl = items.some((it) => it && it.live_url);
         const paid = ['paid', 'completed', 'refunded'].includes(order.payment_status)
             || ['processing', 'review', 'completed'].includes(status);
-        const acceptedOrLater = ['processing', 'review', 'completed'].includes(status) || !!item.accepted_at;
-        const urlDelivered = status === 'review' || status === 'completed';
+        const acceptedOrLater = hasItems && (['processing', 'review', 'completed'].includes(status) || !!item.accepted_at);
+        const urlDelivered = hasLiveUrl && ['review', 'completed'].includes(status);
         const completed = status === 'completed';
         const modRequested = item.modification_requested === 'yes';
-
-        if (status === 'cancelled' && order.payment_status === 'refunded') {
-            return `<div class="alert alert-secondary py-2 small mb-2">Cancelled · refunded to your wallet (usually instant).</div>
-                <h6>Activity Timeline</h6>
-                <div id="orderActivityTimeline" class="order-view-timeline">
-                    <div class="text-muted small">Loading activity…</div>
-                </div>`;
-        }
-        if (status === 'cancelled') {
-            return `<div class="alert alert-secondary py-2 small mb-2">This order was cancelled.</div>
-                <h6>Activity Timeline</h6>
-                <div id="orderActivityTimeline" class="order-view-timeline">
-                    <div class="text-muted small">Loading activity…</div>
-                </div>`;
-        }
 
         const steps = [
             { label: 'Paid', done: paid, current: false },
             { label: 'Accepted', done: acceptedOrLater, current: false },
-            { label: modRequested && status === 'processing' ? 'Revision' : 'Processing', done: urlDelivered || completed, current: false },
-            { label: 'URL delivered', done: completed, current: false },
-            { label: 'Completed', done: completed, current: false },
+            { label: modRequested && status === 'processing' ? 'Revision' : 'Processing', done: hasItems && ['review', 'completed'].includes(status), current: false },
+            { label: 'URL delivered', done: urlDelivered, current: false },
+            { label: 'Completed', done: completed && hasItems, current: false },
         ];
 
         if (status === 'pending' && !paid) {
@@ -1034,17 +1043,64 @@ function bootAdvertiserOrdersPage() {
             steps[3].done = false;
         } else if (status === 'processing') {
             steps[2].current = true;
-        } else if (status === 'review') {
+        } else if (status === 'review' && hasLiveUrl) {
             steps[3].current = true;
             steps[3].done = false;
+        } else if (status === 'review') {
+            steps[2].current = true;
+            steps[2].done = false;
         } else if (status === 'completed') {
             steps[4].current = true;
+            steps[4].done = hasItems;
         }
+
+        return steps;
+    }
+
+    function currentStepDateHtml(order, steps) {
+        const current = (steps || []).find((step) => step && step.current);
+        if (!current) return '';
+        const items = Array.isArray(order.items) ? order.items : [];
+        const item = items[0] || {};
+        let raw = null;
+        if (current.label === 'Completed') raw = order.completed_at;
+        else if (current.label === 'URL delivered') {
+            raw = items.map((it) => it && it.live_url_submitted_at).filter(Boolean).sort()[0] || null;
+        } else if (current.label === 'Paid') raw = order.paid_at;
+        else if (current.label === 'Accepted' || current.label === 'Scheduled') raw = item.accepted_at || order.paid_at;
+        else if (current.label === 'Processing' || current.label === 'Revision') raw = item.accepted_at || order.updated_at;
+        if (!raw) return '';
+        const label = formatDate(raw);
+        if (!label || label === '—') return '';
+        return `<div class="small text-muted mb-2 ov-step-date">${escapeHtml(current.label)} · ${escapeHtml(label)}</div>`;
+    }
+
+    function buildAdvertiserTimeline(order) {
+        const status = order.status;
+
+        if (status === 'cancelled' && order.payment_status === 'refunded') {
+            return `<div class="alert alert-secondary py-2 small mb-2">Cancelled · refunded to your wallet (usually instant).</div>
+                <h6>Activity Timeline</h6>
+                <div id="orderActivityTimeline" class="order-view-timeline">
+                    <div class="text-muted small">Loading activity…</div>
+                </div>`;
+        }
+        if (status === 'cancelled') {
+            return `<div class="alert alert-secondary py-2 small mb-2">This order was cancelled.</div>
+                <h6>Activity Timeline</h6>
+                <div id="orderActivityTimeline" class="order-view-timeline">
+                    <div class="text-muted small">Loading activity…</div>
+                </div>`;
+        }
+
+        const steps = Array.isArray(order.timeline_steps) && order.timeline_steps.length
+            ? order.timeline_steps
+            : deriveAdvertiserTimelineSteps(order);
 
         const statusSteps = `<div class="order-view-status-steps">${steps.map((step, i) => {
             const cls = step.done ? 'bg-success text-white' : (step.current ? 'bg-info text-white' : 'bg-light text-muted');
             const arrow = i < steps.length - 1 ? '<span class="ov-arrow">→</span>' : '';
-            return `<span class="badge ${cls}">${i + 1}. ${step.label}</span>${arrow}`;
+            return `<span class="badge ${cls}">${i + 1}. ${escapeHtml(step.label)}</span>${arrow}`;
         }).join('')}</div>`;
 
         const meta = getAdvertiserStatusMeta(order);
@@ -1052,33 +1108,96 @@ function bootAdvertiserOrdersPage() {
             ? `<div class="small text-muted mb-2"><i class="fa fa-clock-o me-1"></i>${escapeHtml(meta.autoHint)}</div>`
             : '';
 
-        return `${statusSteps}${hint}
+        return `${statusSteps}${currentStepDateHtml(order, steps)}${hint}
             <h6>Activity Timeline</h6>
             <div id="orderActivityTimeline" class="order-view-timeline">
                 <div class="text-muted small">Loading activity…</div>
             </div>`;
     }
 
-    function loadOrderActivityTimeline(orderId) {
-        const container = document.getElementById('orderActivityTimeline');
+    function reconstructOrderActivities(order) {
+        const events = [];
+        const push = (when, title) => {
+            if (!when) return;
+            const d = new Date(when);
+            if (Number.isNaN(d.getTime())) return;
+            events.push({
+                title,
+                description: 'Reconstructed from order dates.',
+                badge_color: 'secondary',
+                exact_time: d.toLocaleString('en-US', {
+                    month: 'short', day: 'numeric', year: 'numeric',
+                    hour: 'numeric', minute: '2-digit',
+                }),
+                relative_time: '',
+                meta: { reconstructed: true },
+            });
+        };
+        push(order.paid_at, 'Paid');
+        const items = Array.isArray(order.items) ? order.items : [];
+        const liveAt = items.map((it) => it && it.live_url_submitted_at).filter(Boolean).sort()[0];
+        push(liveAt, 'Live URL submitted');
+        push(order.completed_at, 'Completed');
+        if (!events.length) push(order.updated_at, 'Last updated');
+        return events;
+    }
+
+    function renderOrderActivityFallback(container, activities) {
         if (!container) return;
+        if (!activities || !activities.length) {
+            container.innerHTML = '<div class="text-muted small">No activity recorded yet.</div>';
+            return;
+        }
+        const reconstructed = activities.some((a) => a && a.meta && a.meta.reconstructed);
+        const note = reconstructed
+            ? '<div class="oa-reconstructed text-muted small mb-2">Reconstructed from order dates.</div>'
+            : '';
+        container.innerHTML = note + '<div class="oa-timeline">' + activities.map((a) => (
+            '<div class="oa-item">' +
+              '<span class="oa-dot"></span>' +
+              '<div class="oa-time">' + escapeHtml(a.relative_time || '') +
+                (a.exact_time ? ' · ' + escapeHtml(a.exact_time) : '') +
+              '</div>' +
+              '<p class="oa-title">' + escapeHtml(a.title || '') + '</p>' +
+              (a.description ? '<p class="oa-desc">' + escapeHtml(a.description) + '</p>' : '') +
+            '</div>'
+        )).join('') + '</div>';
+    }
+
+    function loadOrderActivityTimeline(order) {
+        const orderId = order && typeof order === 'object' ? order.id : order;
+        const container = document.getElementById('orderActivityTimeline');
+        if (!container || !orderId) return;
         fetch(`${ordersRoute('orderTimelineBase')}/${orderId}/timeline`, {
             headers: { 'Accept': 'application/json' },
             credentials: 'same-origin'
         })
         .then(r => r.json())
         .then(data => {
-            if (!data.success) {
+            let activities = (data && data.success) ? (data.activities || []) : [];
+            if (!activities.length && order && typeof order === 'object') {
+                activities = reconstructOrderActivities(order);
+            }
+            if (!activities.length) {
                 container.innerHTML = '<div class="text-muted small">Unable to load activity.</div>';
                 return;
             }
             if (window.renderOrderActivityTimeline) {
-                window.renderOrderActivityTimeline(container, data.activities || []);
+                window.renderOrderActivityTimeline(container, activities, {
+                    reconstructed: !!(data && data.reconstructed),
+                });
             } else {
-                container.innerHTML = '<div class="text-muted small">No activity recorded yet.</div>';
+                renderOrderActivityFallback(container, activities);
             }
         })
         .catch(() => {
+            if (order && typeof order === 'object') {
+                const activities = reconstructOrderActivities(order);
+                if (activities.length) {
+                    renderOrderActivityFallback(container, activities);
+                    return;
+                }
+            }
             container.innerHTML = '<div class="text-muted small">Unable to load activity.</div>';
         });
     }
@@ -1405,6 +1524,7 @@ function bootAdvertiserOrdersPage() {
     };
 
     window.reportLinkRemoved = function(orderId, itemId) {
+        hideOrderDetailsModal();
         Swal.fire({
             title: 'Report link removed',
             html: '<p class="small text-start mb-2">Use this if the publisher deleted the article after completion. Our team will review and may refund you while clawing back the publisher payout.</p>',
@@ -1543,6 +1663,7 @@ function bootAdvertiserOrdersPage() {
     }
     
     window.retryOrderPayment = function(orderId) {
+        hideOrderDetailsModal();
         Swal.fire({
             title: 'Pay again?',
             text: 'We will open a new secure card checkout for this failed payment.',
@@ -1603,7 +1724,7 @@ function bootAdvertiserOrdersPage() {
                 renderOrderDetails(data.order);
                 const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('orderDetailsModal'));
                 modal.show();
-                loadOrderActivityTimeline(orderId);
+                loadOrderActivityTimeline(data.order);
             } else {
                 Swal.fire('Error', data.message || 'Failed to load order details', 'error');
             }
@@ -1624,10 +1745,214 @@ function bootAdvertiserOrdersPage() {
         return '<span class="badge bg-secondary">Not checked yet</span>';
     }
 
+    window.copyOrderLiveUrl = function (url) {
+        const text = String(url || '');
+        if (!text) return;
+        const done = () => {
+            if (window.Swal) {
+                Swal.fire({
+                    toast: true,
+                    icon: 'success',
+                    title: 'Live URL copied',
+                    position: 'top',
+                    timer: 1600,
+                    showConfirmButton: false,
+                });
+            }
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(done).catch(() => {});
+        }
+    };
+
+    function ovBlock(label, inner) {
+        if (!inner) return '';
+        return `<div class="ov-block"><strong>${label}</strong><div>${inner}</div></div>`;
+    }
+
+    function emptyPlacementsHtml(order) {
+        const missing = order.placements_missing === true
+            || order.placements_missing === 1
+            || ((order.status === 'completed' || ['paid', 'completed', 'refunded'].includes(order.payment_status))
+                && !(Array.isArray(order.items) && order.items.length));
+        const msg = order.empty_items_message
+            || (missing
+                ? `This order has no line items on file, so there is no live URL to show. If you expected a placement here, contact support and mention order ${order.order_number || ('#' + order.id)}.`
+                : 'No placements on this order.');
+        if (missing) {
+            return `<div class="ov-empty-placements ui-callout ui-callout--info ui-callout--sm ui-callout--flush">
+                <span class="ui-callout__icon" aria-hidden="true"><i class="fa-solid fa-circle-info"></i></span>
+                <div class="ui-callout__body">${escapeHtml(msg)}</div>
+            </div>`;
+        }
+        return `<div class="text-muted">${escapeHtml(msg)}</div>`;
+    }
+
+    function policyNoteHtml(order) {
+        const link = `<a href="${ordersRoute('refundPolicy')}" target="_blank" rel="noopener">Refund policy</a>`;
+        if (order.status === 'completed') {
+            if (order.placements_missing === true || order.placements_missing === 1) {
+                return `<div class="order-view-refund">${link}</div>`;
+            }
+            const note = typeof order.policy_note === 'string'
+                ? order.policy_note
+                : 'If a published link is later removed, use Report link removed.';
+            if (!note) {
+                return `<div class="order-view-refund">${link}</div>`;
+            }
+            return `<div class="order-view-refund">${escapeHtml(note)} ${link}</div>`;
+        }
+        if (order.status === 'cancelled' || order.payment_status === 'refunded') {
+            return `<div class="order-view-refund">${link}</div>`;
+        }
+        const note = typeof order.policy_note === 'string'
+            ? order.policy_note
+            : 'Declines refund automatically · request changes before auto-approve';
+        if (!note) {
+            return `<div class="order-view-refund">${link}</div>`;
+        }
+        return `<div class="order-view-refund">${escapeHtml(note)} · ${link}</div>`;
+    }
+
+    function renderPlacementCard(order, it, idx, itemsCount) {
+        const completed = order.status === 'completed';
+        const liveUrl = it.live_url || null;
+        const hideEmpty = completed;
+        const modRequested = it.modification_requested === 'yes';
+        let healthHtml = '';
+        if (liveUrl) {
+            const checked = it.live_url_checked_at
+                ? ` · checked ${formatDate(it.live_url_checked_at)}`
+                : '';
+            const http = it.live_url_http_status ? ` · HTTP ${it.live_url_http_status}` : '';
+            healthHtml = `
+                <div class="d-flex flex-wrap align-items-center gap-2 mt-1">
+                    ${liveUrlHealthBadge(it)}
+                    <span class="small text-muted">Public reachability check${http}${checked}</span>
+                    <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2" id="recheckLiveUrlBtn-${it.id || idx}" onclick="recheckLiveUrl(${order.id}, ${it.id || 'null'})">
+                        <i class="fa fa-refresh me-1"></i>Recheck
+                    </button>
+                </div>`;
+        }
+        const liveUrlHtml = liveUrl
+            ? `<div class="ov-block ov-live-url">
+                    <strong>Live URL</strong>
+                    <div class="ov-live-url__row">
+                        <a href="${safeUrl(liveUrl)}" target="_blank" rel="noopener noreferrer" class="live-url">${escapeHtml(liveUrl)} <i class="fa fa-external-link fa-xs"></i></a>
+                        <div class="ov-live-url__actions">
+                            <a class="btn btn-sm btn-primary" href="${safeUrl(liveUrl)}" target="_blank" rel="noopener noreferrer">Open</a>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="copyOrderLiveUrl(${jsAttr(liveUrl)})">Copy</button>
+                        </div>
+                    </div>
+                    ${healthHtml}
+               </div>`
+            : (completed
+                ? ovBlock('Live URL', '<span class="text-muted">No live URL on file</span>')
+                : `<div class="ov-block"><strong>Live URL</strong><div class="text-muted">Not submitted yet</div></div>`);
+        const homepageDays = it.homepage_days != null ? parseInt(it.homepage_days, 10) : 0;
+        const homepageFee = euroNumber(it.homepage_price);
+        const homepageHtml = homepageDays
+            ? ovBlock(
+                'Homepage placement',
+                `${homepageDays} day${homepageDays === 1 ? '' : 's'}${Number.isFinite(homepageFee) && homepageFee > 0 ? ` (+${formatEuro(homepageFee)})` : ' · Free'}`
+            )
+            : '';
+        const socialChannels = Array.isArray(it.social_channels) ? it.social_channels : [];
+        const socialPosts = it.social_post_urls && typeof it.social_post_urls === 'object' ? it.social_post_urls : {};
+        const socialLabel = (ch) => (ch === 'x' ? 'X' : (String(ch).charAt(0).toUpperCase() + String(ch).slice(1)));
+        const socialHtml = socialChannels.length
+            ? `<div class="ov-block">
+                    <strong>Social promotion</strong>
+                    <div>${socialChannels.map(socialLabel).join(', ')} <span class="text-muted">(included)</span></div>
+                    <ul class="mb-0 ps-3 mt-1">
+                        ${socialChannels.map((ch) => {
+                            const url = socialPosts[ch];
+                            if (!url) {
+                                return `<li class="small text-muted">${socialLabel(ch)}: not submitted yet</li>`;
+                            }
+                            return `<li class="small"><strong>${socialLabel(ch)}:</strong> <a href="${safeUrl(url)}" target="_blank" rel="noopener noreferrer" class="live-url">${escapeHtml(url)}</a></li>`;
+                        }).join('')}
+                    </ul>
+               </div>`
+            : '';
+        const revisionHtml = modRequested && it.completion_notes
+            ? `<div class="ui-callout ui-callout--attention ui-callout--sm ui-callout--flush mb-2"><span class="ui-callout__icon" aria-hidden="true"><i class="fa-solid fa-circle-exclamation"></i></span><div class="ui-callout__body"><strong>Change request:</strong> ${escapeHtml(it.completion_notes)}</div></div>`
+            : '';
+        const heading = itemsCount > 1
+            ? `<h6 class="mt-2 mb-2">Placement ${idx + 1}${it.site_name ? ` · ${escapeHtml(it.site_name)}` : ''}</h6>`
+            : '<h6>Placement</h6>';
+
+        const siteHtml = it.site_name ? escapeHtml(it.site_name) : (hideEmpty ? '' : '—');
+        const siteUrlHtml = it.site_url
+            ? `<a href="${safeUrl(it.visit_url || it.site_url)}" target="_blank" rel="noopener noreferrer" class="text-primary">${escapeHtml(it.site_url)} <i class="fa fa-external-link fa-xs"></i></a>`
+            : (hideEmpty ? '' : '—');
+        const documentHtml = it.content_link
+            ? `<a href="${safeUrl(it.content_link)}" class="text-primary" target="_blank" rel="noopener noreferrer"><i class="fa fa-download me-1"></i>${escapeHtml(it.content_original_name || 'Download article')}</a>`
+            : (hideEmpty ? '' : '—');
+        const revisionAlert = it.content_revision_requested === 'yes' ? (() => {
+            const isLibrary = !!(it.content_submission_id);
+            const currentLabel = it.content_original_name
+                || it.article_title
+                || (it.content_submission_id ? ('Library article #' + it.content_submission_id) : 'article');
+            const siteHint = itemsCount > 1 && it.site_name
+                ? ` for ${escapeHtml(it.site_name)}`
+                : '';
+            return `<div class="alert alert-warning py-2 small mt-2 mb-0">
+                <div>Publisher asked for a revised article${it.content_revision_reason ? ': ' + escapeHtml(it.content_revision_reason) : '.'}</div>
+                ${(order.status === 'processing' || order.status === 'review') ? `<button type="button" class="btn btn-sm btn-warning mt-2" onclick="fulfillContentRevision(${order.id}, ${it.id || 'null'}, {isLibrary: ${isLibrary ? 'true' : 'false'}, currentLabel: ${jsAttr(currentLabel)}})">
+                    <i class="fa fa-upload"></i> Send revised article${siteHint}
+                </button>` : ''}
+            </div>`;
+        })() : '';
+        const anchorHtml = it.anchor_text ? escapeHtml(it.anchor_text) : (hideEmpty ? '' : '—');
+        const targetHtml = it.target_url
+            ? `<a href="${safeUrl(it.target_url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(it.target_url)}</a>`
+            : (hideEmpty ? '' : '—');
+        const featureHtml = it.feature_image_url
+            ? `<a href="${safeUrl(it.feature_image_url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(it.feature_image_url)}</a>`
+            : (hideEmpty ? '' : 'Publisher may choose');
+        const complianceHtml = it.moderation_status ? escapeHtml(it.moderation_status) : (hideEmpty ? '' : '—');
+        const submittedHtml = it.live_url_submitted_at && completed
+            ? escapeHtml(formatDate(it.live_url_submitted_at))
+            : '';
+        const completedHtml = it.completed_at && completed
+            ? escapeHtml(formatDate(it.completed_at))
+            : '';
+
+        const reportHtml = order.status === 'completed' && itemsCount > 1
+            ? (it.can_report_link_removed
+                ? `<div class="ov-block"><button type="button" class="btn btn-sm btn-outline-danger" onclick="reportLinkRemoved(${order.id}, ${it.id || 'null'})">
+                    <i class="fa fa-flag"></i> Report link removed${it.site_name ? ` · ${escapeHtml(it.site_name)}` : ''}
+                </button></div>`
+                : (it.dispute_status
+                    ? `<div class="ov-block"><span class="badge text-bg-${it.dispute_status === 'upheld' ? 'danger' : (it.dispute_status === 'dismissed' ? 'secondary' : 'warning')}">Dispute: ${escapeHtml(it.dispute_status)}</span></div>`
+                    : ''))
+            : '';
+
+        return `
+            ${idx > 0 ? '<hr class="my-2">' : ''}
+            ${heading}
+            ${revisionHtml}
+            ${ovBlock('Site', siteHtml)}
+            ${ovBlock('Site URL', siteUrlHtml)}
+            ${liveUrlHtml}
+            ${ovBlock('Document', documentHtml + revisionAlert)}
+            ${ovBlock('Anchor text', anchorHtml)}
+            ${ovBlock('Target URL', targetHtml)}
+            ${ovBlock('Feature image', featureHtml)}
+            ${ovBlock('Compliance', complianceHtml)}
+            ${homepageHtml}
+            ${socialHtml}
+            ${ovBlock('URL submitted', submittedHtml)}
+            ${ovBlock('Completed', completedHtml)}
+            ${reportHtml}
+        `;
+    }
+
     function renderOrderDetails(order) {
         const items = Array.isArray(order.items) ? order.items : [];
         const isUnderReview = order.status === 'review';
-        const hasAnyLiveUrl = items.some((it) => it.live_url && it.live_url !== '');
+        const hasAnyLiveUrl = items.some((it) => it && it.live_url && it.live_url !== '');
         const statusMeta = getAdvertiserStatusMeta(order);
         const timelineHtml = buildAdvertiserTimeline(order);
         const itemsCount = Number(order.items_count) || items.length || 0;
@@ -1651,125 +1976,9 @@ function bootAdvertiserOrdersPage() {
             return rows;
         }).join('');
 
-        const placementsHtml = items.map((it, idx) => {
-            const liveUrl = it.live_url || null;
-            const modRequested = it.modification_requested === 'yes';
-            let healthHtml = '';
-            if (liveUrl) {
-                const checked = it.live_url_checked_at
-                    ? ` · checked ${formatDate(it.live_url_checked_at)}`
-                    : '';
-                const http = it.live_url_http_status ? ` · HTTP ${it.live_url_http_status}` : '';
-                healthHtml = `
-                    <div class="d-flex flex-wrap align-items-center gap-2 mt-1">
-                        ${liveUrlHealthBadge(it)}
-                        <span class="small text-muted">Public reachability check${http}${checked}</span>
-                        <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2" id="recheckLiveUrlBtn-${it.id || idx}" onclick="recheckLiveUrl(${order.id}, ${it.id || 'null'})">
-                            <i class="fa fa-refresh me-1"></i>Recheck
-                        </button>
-                    </div>`;
-            }
-            const liveUrlHtml = liveUrl
-                ? `<div class="ov-block">
-                        <strong>Live URL</strong>
-                        <div><a href="${safeUrl(liveUrl)}" target="_blank" rel="noopener noreferrer" class="live-url">${escapeHtml(liveUrl)} <i class="fa fa-external-link fa-xs"></i></a></div>
-                        ${healthHtml}
-                   </div>`
-                : `<div class="ov-block"><strong>Live URL</strong><div class="text-muted">Not submitted yet</div></div>`;
-            const homepageDays = it.homepage_days != null ? parseInt(it.homepage_days, 10) : 0;
-            const homepageFee = euroNumber(it.homepage_price);
-            const homepageHtml = homepageDays
-                ? `<div class="ov-block">
-                        <strong>Homepage placement</strong>
-                        <div>${homepageDays} day${homepageDays === 1 ? '' : 's'}${Number.isFinite(homepageFee) && homepageFee > 0 ? ` (+${formatEuro(homepageFee)})` : ' · Free'}</div>
-                   </div>`
-                : '';
-            const socialChannels = Array.isArray(it.social_channels) ? it.social_channels : [];
-            const socialPosts = it.social_post_urls && typeof it.social_post_urls === 'object' ? it.social_post_urls : {};
-            const socialLabel = (ch) => (ch === 'x' ? 'X' : (String(ch).charAt(0).toUpperCase() + String(ch).slice(1)));
-            const socialHtml = socialChannels.length
-                ? `<div class="ov-block">
-                        <strong>Social promotion</strong>
-                        <div>${socialChannels.map(socialLabel).join(', ')} <span class="text-muted">(included)</span></div>
-                        <ul class="mb-0 ps-3 mt-1">
-                            ${socialChannels.map((ch) => {
-                                const url = socialPosts[ch];
-                                if (!url) {
-                                    return `<li class="small text-muted">${socialLabel(ch)}: not submitted yet</li>`;
-                                }
-                                return `<li class="small"><strong>${socialLabel(ch)}:</strong> <a href="${safeUrl(url)}" target="_blank" rel="noopener noreferrer" class="live-url">${escapeHtml(url)}</a></li>`;
-                            }).join('')}
-                        </ul>
-                   </div>`
-                : '';
-            const revisionHtml = modRequested && it.completion_notes
-                ? `<div class="ui-callout ui-callout--attention ui-callout--sm ui-callout--flush mb-2"><span class="ui-callout__icon" aria-hidden="true"><i class="fa-solid fa-circle-exclamation"></i></span><div class="ui-callout__body"><strong>Change request:</strong> ${escapeHtml(it.completion_notes)}</div></div>`
-                : '';
-            const heading = itemsCount > 1
-                ? `<h6 class="mt-2 mb-2">Placement ${idx + 1}${it.site_name ? ` · ${escapeHtml(it.site_name)}` : ''}</h6>`
-                : '<h6>Placement</h6>';
-
-            return `
-                ${idx > 0 ? '<hr class="my-2">' : ''}
-                ${heading}
-                ${revisionHtml}
-                <div class="ov-block">
-                    <strong>Site</strong>
-                    <div>${escapeHtml(it.site_name || '—')}</div>
-                </div>
-                <div class="ov-block">
-                    <strong>Site URL</strong>
-                    <div>${it.site_url ? `<a href="${safeUrl(it.visit_url || it.site_url)}" target="_blank" rel="noopener noreferrer" class="text-primary">${escapeHtml(it.site_url)} <i class="fa fa-external-link fa-xs"></i></a>` : '—'}</div>
-                </div>
-                <div class="ov-block">
-                    <strong>Document</strong>
-                    <div>${it.content_link ? `<a href="${safeUrl(it.content_link)}" class="text-primary" target="_blank" rel="noopener noreferrer"><i class="fa fa-download me-1"></i>${escapeHtml(it.content_original_name || 'Download article')}</a>` : '—'}</div>
-                    ${it.content_revision_requested === 'yes' ? (() => {
-                        const isLibrary = !!(it.content_submission_id);
-                        const currentLabel = it.content_original_name
-                            || it.article_title
-                            || (it.content_submission_id ? ('Library article #' + it.content_submission_id) : 'article');
-                        const siteHint = itemsCount > 1 && it.site_name
-                            ? ` for ${escapeHtml(it.site_name)}`
-                            : '';
-                        return `<div class="alert alert-warning py-2 small mt-2 mb-0">
-                            <div>Publisher asked for a revised article${it.content_revision_reason ? ': ' + escapeHtml(it.content_revision_reason) : '.'}</div>
-                            ${(order.status === 'processing' || order.status === 'review') ? `<button type="button" class="btn btn-sm btn-warning mt-2" onclick="fulfillContentRevision(${order.id}, ${it.id || 'null'}, {isLibrary: ${isLibrary ? 'true' : 'false'}, currentLabel: ${jsAttr(currentLabel)}})">
-                                <i class="fa fa-upload"></i> Send revised article${siteHint}
-                            </button>` : ''}
-                        </div>`;
-                    })() : ''}
-                </div>
-                <div class="ov-block">
-                    <strong>Anchor text</strong>
-                    <div>${escapeHtml(it.anchor_text || '—')}</div>
-                </div>
-                <div class="ov-block">
-                    <strong>Target URL</strong>
-                    <div>${it.target_url ? `<a href="${safeUrl(it.target_url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(it.target_url)}</a>` : '—'}</div>
-                </div>
-                <div class="ov-block">
-                    <strong>Feature image</strong>
-                    <div>${it.feature_image_url ? `<a href="${safeUrl(it.feature_image_url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(it.feature_image_url)}</a>` : 'Publisher may choose'}</div>
-                </div>
-                <div class="ov-block">
-                    <strong>Compliance</strong>
-                    <div>${escapeHtml(it.moderation_status || '—')}</div>
-                </div>
-                ${homepageHtml}
-                ${socialHtml}
-                ${liveUrlHtml}
-                ${order.status === 'completed' && itemsCount > 1 ? (
-                    it.can_report_link_removed
-                        ? `<div class="ov-block"><button type="button" class="btn btn-sm btn-outline-danger" onclick="reportLinkRemoved(${order.id}, ${it.id || 'null'})">
-                            <i class="fa fa-flag"></i> Report link removed${it.site_name ? ` · ${escapeHtml(it.site_name)}` : ''}
-                        </button></div>`
-                        : (it.dispute_status
-                            ? `<div class="ov-block"><span class="badge text-bg-${it.dispute_status === 'upheld' ? 'danger' : (it.dispute_status === 'dismissed' ? 'secondary' : 'warning')}">Dispute: ${escapeHtml(it.dispute_status)}</span></div>`
-                            : '')
-                ) : ''}
-            `;
-        }).join('') || '<div class="text-muted">No placements on this order.</div>';
+        const placementsHtml = items.length
+            ? items.map((it, idx) => renderPlacementCard(order, it, idx, itemsCount)).join('')
+            : emptyPlacementsHtml(order);
 
         let actionButtons = '';
         const revisionItems = items.filter((it) => it && it.content_revision_requested === 'yes');
@@ -1812,9 +2021,13 @@ function bootAdvertiserOrdersPage() {
                 </button>
             `;
         } else if (order.status === 'completed') {
+            const liveItem = items.find((it) => it && it.live_url);
             const reportableItems = items.filter((it) => it && it.can_report_link_removed);
             const singleReport = itemsCount <= 1 && reportableItems[0];
             actionButtons = `
+                ${liveItem ? `<a class="btn btn-sm btn-primary" href="${safeUrl(liveItem.live_url)}" target="_blank" rel="noopener noreferrer">
+                    <i class="fa fa-external-link"></i> Open live URL
+                </a>` : ''}
                 <button class="btn btn-sm btn-outline-secondary" onclick="openChat(${order.id}, ${jsAttr(order.order_number || '')})">
                     <i class="fa fa-comments"></i> Chat
                 </button>
@@ -1834,8 +2047,9 @@ function bootAdvertiserOrdersPage() {
             `;
         }
 
+        const shellClass = itemsCount <= 1 ? 'order-view-shell order-view-shell--stack' : 'order-view-shell';
         const html = `
-            <div class="order-view-shell">
+            <div class="${shellClass}">
                 <div class="order-view-panel">
                     <h6>Order details</h6>
                     <div class="ov-row"><strong>Order #</strong><span>${escapeHtml(order.order_number)}</span></div>
@@ -1854,10 +2068,7 @@ function bootAdvertiserOrdersPage() {
                     <div class="ov-row"><strong>Total</strong>${orderPaymentRefunded(order)
                         ? `<span class="fw-bold orders-total--refunded"><s>${formatEuro(order.total_amount)}</s> <span class="small fw-normal">Refunded</span></span>`
                         : `<span class="fw-bold text-primary">${formatEuro(order.total_amount)}</span>`}</div>
-                    <div class="order-view-refund">
-                        Declines refund automatically · request changes before auto-approve ·
-                        <a href="${ordersRoute('refundPolicy')}" target="_blank" rel="noopener">Refund policy</a>
-                    </div>
+                    ${policyNoteHtml(order)}
                 </div>
 
                 <div class="order-view-panel order-view-panel--scroll">
@@ -1871,12 +2082,17 @@ function bootAdvertiserOrdersPage() {
             </div>
         `;
 
-        document.getElementById('orderDetailsContent').innerHTML = html;
+        const contentEl = document.getElementById('orderDetailsContent');
+        if (contentEl) {
+            contentEl.innerHTML = html;
+        }
         const actionsEl = document.getElementById('orderDetailsActions');
         if (actionsEl) {
             actionsEl.innerHTML = actionButtons;
         }
+        return { html: html, actions: actionButtons };
     }
+    window.buildAdvertiserOrderDetailsMarkup = renderOrderDetails;
 
     function paginationPageWindow(current, last, radius = 1) {
         const pages = [];
