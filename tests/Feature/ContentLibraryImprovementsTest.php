@@ -588,14 +588,16 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('availability=in_progress', $html);
         $this->assertStringContainsString('availability=archived', $html);
         $this->assertStringContainsString('availability=expired', $html);
-        $this->assertStringNotContainsString('availability=evaluating', $html);
+        $this->assertStringContainsString('availability=evaluating', $html);
         $this->assertStringContainsString('Completed/LIVE', $html);
         $this->assertStringContainsString('>Approved</span>', $html);
+        $this->assertStringContainsString('>Evaluating</span>', $html);
         $this->assertStringContainsString('>Processing</span>', $html);
         $this->assertStringNotContainsString('>In progress</span>', $html);
         $this->assertStringContainsString('>Needs corrections</span>', $html);
         $this->assertStringContainsString('>Archived</span>', $html);
         $this->assertStringContainsString('>Expired</span>', $html);
+        $this->assertStringContainsString('library-status-box--evaluating', $html);
         $this->assertStringContainsString('library-status-box--processing', $html);
         $this->assertStringNotContainsString('library-status-box--in_progress', $html);
         $this->assertStringContainsString('library-status-box--archived', $html);

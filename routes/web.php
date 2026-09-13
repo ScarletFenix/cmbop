@@ -725,6 +725,14 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
         Route::post('/moderation/logs/{log}/revert', [AdminContentModerationController::class, 'revert'])->name('moderation.revert');
 
         Route::get('/content-library', [AdminContentLibraryController::class, 'index'])->name('content-library.index');
+        Route::get('/content-library/results', [AdminContentLibraryController::class, 'results'])->name('content-library.results');
+        Route::get('/content-library/export', [AdminContentLibraryController::class, 'export'])->name('content-library.export');
+        Route::post('/content-library/bulk-retry', [AdminContentLibraryController::class, 'bulkRetry'])
+            ->middleware('throttle:10,1')
+            ->name('content-library.bulk-retry');
+        Route::post('/content-library/bulk-archive', [AdminContentLibraryController::class, 'bulkArchive'])
+            ->middleware('throttle:10,1')
+            ->name('content-library.bulk-archive');
         Route::get('/content-library/{submission}', [AdminContentLibraryController::class, 'show'])->name('content-library.show');
         Route::get('/content-library/{submission}/download', [AdminContentLibraryController::class, 'download'])->name('content-library.download');
         Route::post('/content-library/{submission}/retry', [AdminContentLibraryController::class, 'retry'])
@@ -1010,6 +1018,15 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
             ->name('content-submissions.archive');
         Route::post('/content-submissions/{submission}/restore', [ContentSubmissionController::class, 'restore'])
             ->name('content-submissions.restore');
+        Route::post('/content-submissions/{submission}/market', [ContentSubmissionController::class, 'updateMarket'])
+            ->middleware('throttle:20,1')
+            ->name('content-submissions.market');
+        Route::post('/content-submissions/bulk-archive', [ContentSubmissionController::class, 'bulkArchive'])
+            ->middleware('throttle:10,1')
+            ->name('content-submissions.bulk-archive');
+        Route::post('/content-submissions/bulk-destroy', [ContentSubmissionController::class, 'bulkDestroy'])
+            ->middleware('throttle:10,1')
+            ->name('content-submissions.bulk-destroy');
 
         Route::get('/scheduled-orders', [ScheduledOrdersController::class, 'index'])
             ->name('scheduled-orders');

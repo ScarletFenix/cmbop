@@ -28,6 +28,36 @@
     </div>
 
     <div id="libraryFlash" class="alert d-none" role="status"></div>
+    @if($editSubmission && ($editSubmission->libraryAvailability() === 'needs_fix' || request()->boolean('fix')))
+        @php
+            $fixReasons = $editSubmission->evaluationReasonGroups();
+            $fixNotice = trim($editSubmission->editorNotice());
+        @endphp
+        <div class="alert alert-danger py-2 px-3 small mb-3" id="libraryFixBanner" role="status">
+            <strong>Needs corrections.</strong>
+            {{ $fixNotice !== '' ? $fixNotice : $editSubmission->libraryFixSummary() }}
+            @if(($fixReasons['blocking'] ?? []) !== [])
+                <ul class="mb-2 mt-2">
+                    @foreach(array_slice($fixReasons['blocking'], 0, 5) as $reason)
+                        <li>{{ $reason }}</li>
+                    @endforeach
+                </ul>
+            @endif
+            <div class="d-flex flex-wrap gap-2">
+                @if($editSubmission->canEditArticle())
+                    <button type="button" class="btn btn-sm btn-light js-open-editor" data-submission-id="{{ $editSubmission->id }}">
+                        Edit article
+                    </button>
+                @endif
+                @if($uploadsEnabled && $editSubmission->canEditArticle())
+                    <button type="button" class="btn btn-sm btn-outline-light" id="openUploadModalBtnFix"
+                            onclick="document.getElementById('openUploadModalBtn')?.click()">
+                        Replace .docx
+                    </button>
+                @endif
+            </div>
+        </div>
+    @endif
     @if(($nearExpiryCount ?? 0) > 0)
         <div class="alert alert-warning py-2 px-3 small mb-3" role="status">
             <i class="fa fa-hourglass-half me-1" aria-hidden="true"></i>
@@ -85,11 +115,20 @@
                     @endforeach
                 </select>
             </div>
+            <div class="library-filter-bar__select">
+                <label class="visually-hidden" for="librarySortFilter">Sort</label>
+                <select name="sort" id="librarySortFilter" class="form-select form-select-sm">
+                    <option value="latest" @selected(($sort ?? 'latest') === 'latest')>Newest</option>
+                    <option value="title" @selected(($sort ?? '') === 'title')>Title</option>
+                    <option value="expires" @selected(($sort ?? '') === 'expires')>Expiry</option>
+                </select>
+            </div>
             <div id="libraryFilterReset" class="library-filter-bar__actions{{ (
                 ! empty($searchQuery)
                 || ($countryFilter ?? 'all') !== 'all'
                 || ($languageFilter ?? 'all') !== 'all'
                 || ($availabilityFilter ?? 'available') !== 'available'
+                || (($sort ?? 'latest') !== 'latest')
             ) ? '' : ' d-none' }}">
                 <a href="{{ route('advertiser.content-library', absolute: false) }}" class="btn btn-sm btn-link">Reset</a>
             </div>

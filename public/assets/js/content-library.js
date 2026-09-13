@@ -2166,10 +2166,12 @@ function syncLibraryResetVisibility(params) {
     const country = params.get('country') || 'all';
     const language = params.get('language') || 'all';
     const availability = params.get('availability') || 'available';
+    const sort = params.get('sort') || 'latest';
     const show = q !== ''
         || (country !== '' && country !== 'all')
         || (language !== '' && language !== 'all')
-        || (availability !== '' && availability !== 'available');
+        || (availability !== '' && availability !== 'available')
+        || (sort !== '' && sort !== 'latest');
     reset.classList.toggle('d-none', !show);
 }
 
@@ -2232,6 +2234,7 @@ function syncLibraryFiltersFromParams(params) {
     setNamed('availability', normalized.availability);
     setNamed('country', params.get('country') || 'all');
     setNamed('language', params.get('language') || 'all');
+    setNamed('sort', params.get('sort') || 'latest');
 }
 
 function refreshLibraryListAfterRowChange(id) {
@@ -2359,7 +2362,7 @@ function bootLibraryLiveSearch() {
         runFetch({ reason: 'enter', historyMode: 'push' });
     });
 
-    ['libraryCountryFilter', 'libraryLanguageFilter'].forEach(function (id) {
+    ['libraryCountryFilter', 'libraryLanguageFilter', 'librarySortFilter'].forEach(function (id) {
         document.getElementById(id)?.addEventListener('change', function () {
             runFetch({ reason: 'filter', historyMode: 'push' });
         });
@@ -2407,6 +2410,24 @@ function bootLibraryLiveSearch() {
 }
 
 bootLibraryLiveSearch();
+
+document.addEventListener('submit', function (e) {
+    const form = e.target && e.target.id === 'libraryBulkForm' ? e.target : null;
+    if (!form) {
+        return;
+    }
+    form.querySelectorAll('input[data-bulk-cloned]').forEach(function (node) {
+        node.remove();
+    });
+    document.querySelectorAll('.library-bulk-id:checked').forEach(function (checkbox) {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'ids[]';
+        input.value = checkbox.value;
+        input.setAttribute('data-bulk-cloned', '1');
+        form.appendChild(input);
+    });
+});
 
 // Blade row actions call these from onclick="" — they must be global.
 window.toggleLibraryTitleEdit = toggleLibraryTitleEdit;
