@@ -193,7 +193,7 @@ class DepositController extends Controller
                 'success' => false,
                 'message' => UserFacingError::message($e, 'This deposit was already processed.'),
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Failed to approve deposit: '.$e->getMessage());
 
             return response()->json([
@@ -310,7 +310,7 @@ class DepositController extends Controller
             ]));
 
             DB::commit();
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             DB::rollBack();
             Log::error('Failed to reject deposit: '.$e->getMessage());
 
@@ -334,8 +334,8 @@ class DepositController extends Controller
                 $emailError = 'User has no email address';
                 Log::warning('Cannot send rejection email - User has no email. User ID: '.$deposit->user_id);
             }
-        } catch (\Exception $e) {
-            $emailError = $e->getMessage();
+        } catch (\Throwable $e) {
+            $emailError = UserFacingError::safeText($e->getMessage(), 'Email could not be sent.');
             Log::error('Failed to send deposit rejected email: '.$e->getMessage());
         }
 

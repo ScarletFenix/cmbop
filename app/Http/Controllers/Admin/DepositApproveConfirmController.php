@@ -86,7 +86,7 @@ class DepositApproveConfirmController extends Controller
             return redirect()
                 ->route('admin.deposits')
                 ->with('error', UserFacingError::message($e, 'This deposit was already processed.'));
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Failed to approve deposit from email confirm link', [
                 'deposit_id' => $deposit->id,
                 'error' => $e->getMessage(),

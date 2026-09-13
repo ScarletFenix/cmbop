@@ -46,7 +46,7 @@ class StripeWebhookController extends Controller
             ]);
 
             // Only skip when a prior delivery fully succeeded.
-            $existingLog = StripeWebhookLog::where('event_id', $eventId)->first();
+            $existingLog = $this->findWebhookLog($eventId);
             if ($existingLog && $existingLog->processed) {
                 Log::info('Webhook already processed', ['event_id' => $eventId]);
 
@@ -54,12 +54,7 @@ class StripeWebhookController extends Controller
             }
 
             if (! $existingLog) {
-                StripeWebhookLog::create([
-                    'event_id' => $eventId,
-                    'event_type' => $eventType,
-                    'payload' => WebhookPayloadRedactor::stripe($event),
-                    'processed' => false,
-                ]);
+                $this->recordWebhookLog($eventId, $eventType, WebhookPayloadRedactor::stripe($event));
             }
 
             if ($eventType === 'checkout.session.completed') {
@@ -76,7 +71,7 @@ class StripeWebhookController extends Controller
                 $this->routePaymentIntentSucceeded($event->data->object);
             }
 
-            StripeWebhookLog::where('event_id', $eventId)->update(['processed' => true]);
+            $this->markWebhookLogProcessed($eventId);
 
             return response()->json(['status' => 'success'], 200);
         } catch (SignatureVerificationException $e) {
@@ -420,5 +415,54 @@ class StripeWebhookController extends Controller
         }
 
         return (array) json_decode(json_encode($metadata), true);
+    }
+
+    private function findWebhookLog(string $eventId): ?StripeWebhookLog
+    {
+        if (! StripeWebhookLog::tableAvailable()) {
+            return null;
+        }
+
+        try {
+            return StripeWebhookLog::where('event_id', $eventId)->first();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return null;
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function recordWebhookLog(string $eventId, string $eventType, array $payload): void
+    {
+        if (! StripeWebhookLog::tableAvailable()) {
+            return;
+        }
+
+        try {
+            StripeWebhookLog::create([
+                'event_id' => $eventId,
+                'event_type' => $eventType,
+                'payload' => $payload,
+                'processed' => false,
+            ]);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+    }
+
+    private function markWebhookLogProcessed(string $eventId): void
+    {
+        if (! StripeWebhookLog::tableAvailable()) {
+            return;
+        }
+
+        try {
+            StripeWebhookLog::where('event_id', $eventId)->update(['processed' => true]);
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 }

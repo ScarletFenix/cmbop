@@ -143,7 +143,7 @@ class StripePaymentService
     {
         try {
             return Session::retrieve($sessionId);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             throw new \Exception('Invalid Stripe session: '.$e->getMessage());
         }
     }

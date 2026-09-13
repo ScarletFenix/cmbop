@@ -28,6 +28,8 @@ use App\Support\UserMessages;
 use Endroid\QrCode\Builder\Builder;
 use Endroid\QrCode\Writer\PngWriter;
 use Endroid\QrCode\Writer\SvgWriter;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -315,7 +317,7 @@ class AddFundsController extends Controller
 
         } catch (ValidationException $e) {
             throw $e;
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Stripe checkout error: '.$e->getMessage());
 
             return response()->json([
@@ -455,17 +457,21 @@ class AddFundsController extends Controller
 
     private function notifyPaypalDepositNotCompleted(int $userId, string $referenceCode, string $reason): void
     {
-        $user = $userId > 0 ? User::query()->find($userId) : null;
-        if (! $user) {
-            return;
-        }
+        try {
+            $user = $userId > 0 ? User::query()->find($userId) : null;
+            if (! $user) {
+                return;
+            }
 
-        app(PaypalPaymentNotifier::class)->notifyNotCompleted(
-            $user,
-            PaypalPaymentNotCompleted::KIND_DEPOSIT,
-            $referenceCode,
-            $reason
-        );
+            app(PaypalPaymentNotifier::class)->notifyNotCompleted(
+                $user,
+                PaypalPaymentNotCompleted::KIND_DEPOSIT,
+                $referenceCode,
+                $reason
+            );
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 
     public function checkoutSuccess(Request $request)
@@ -506,7 +512,7 @@ class AddFundsController extends Controller
                 Log::error('Saved-card deposit success error: '.$e->getMessage());
 
                 return redirect()->route('advertiser.add-funds')
-                    ->with('error', UserMessages::get('payment.verify_failed_support'));
+                    ->with('error', UserFacingError::message($e, UserMessages::get('payment.verify_failed_support')));
             }
         }
 
@@ -571,11 +577,11 @@ class AddFundsController extends Controller
             return redirect()->route('advertiser.add-funds')
                 ->with('error', UserMessages::get('payment.verification_failed_support'));
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Checkout success error: '.$e->getMessage());
 
             return redirect()->route('advertiser.add-funds')
-                ->with('error', UserMessages::get('payment.verify_failed_support'));
+                ->with('error', UserFacingError::message($e, UserMessages::get('payment.verify_failed_support')));
         }
     }
 
@@ -736,7 +742,7 @@ class AddFundsController extends Controller
                     Mail::to($defaultAdminEmail)->send(new DepositRequestSubmitted($depositRequest));
                 }
 
-            } catch (\Exception $e) {
+            } catch (\Throwable $e) {
                 Log::error('Failed to send deposit notification email: '.$e->getMessage());
             }
 
@@ -760,13 +766,13 @@ class AddFundsController extends Controller
 
         } catch (ValidationException $e) {
             throw $e;
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Error submitting deposit request: '.$e->getMessage());
 
             return response()->json([
                 'success' => false,
                 'message' => UserFacingError::message($e, 'Failed to submit deposit request. Please try again.'),
-            ], 500);
+            ], $e instanceof QueryException ? 503 : 500);
         }
     }
 
@@ -799,36 +805,54 @@ class AddFundsController extends Controller
             'user_payment_note' => ['nullable', 'string', 'max:255'],
         ]);
 
-        $firstReport = ! $deposit->userHasMarkedPaid();
+        try {
+            $firstReport = ! $deposit->userHasMarkedPaid();
 
-        if ($firstReport) {
-            $deposit->update([
-                'user_marked_paid_at' => now(),
-                'user_payment_note' => $data['user_payment_note'] ?? $deposit->user_payment_note,
-            ]);
-        }
+            if ($firstReport) {
+                if (! DepositRequest::hasUserMarkedPaidAtColumn()) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Deposits are temporarily unavailable. Please try again shortly.',
+                    ], 503);
+                }
 
-        $deposit->refresh();
+                $deposit->update(DepositRequest::attributesThatExist([
+                    'user_marked_paid_at' => now(),
+                    'user_payment_note' => $data['user_payment_note'] ?? $deposit->user_payment_note,
+                ]));
+            }
 
-        // Only on the transition: clicking again must not re-alert anyone.
-        if ($firstReport) {
-            $this->announcePaymentReported($deposit);
-        }
+            $deposit->refresh();
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Thanks — payment marked as sent. Status stays Pending until we confirm and credit your wallet.',
-            'status' => $deposit->status,
-            'user_marked_paid_at' => optional($deposit->user_marked_paid_at)?->toIso8601String(),
-            'deposit' => [
-                'id' => $deposit->id,
-                'reference_code' => $deposit->reference_code,
-                'amount' => (float) $deposit->amount,
-                'payment_method' => $deposit->payment_method,
+            // Only on the transition: clicking again must not re-alert anyone.
+            if ($firstReport) {
+                $this->announcePaymentReported($deposit);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Thanks — payment marked as sent. Status stays Pending until we confirm and credit your wallet.',
                 'status' => $deposit->status,
                 'user_marked_paid_at' => optional($deposit->user_marked_paid_at)?->toIso8601String(),
-            ],
-        ]);
+                'deposit' => [
+                    'id' => $deposit->id,
+                    'reference_code' => $deposit->reference_code,
+                    'amount' => (float) $deposit->amount,
+                    'payment_method' => $deposit->payment_method,
+                    'status' => $deposit->status,
+                    'user_marked_paid_at' => optional($deposit->user_marked_paid_at)?->toIso8601String(),
+                ],
+            ]);
+        } catch (ValidationException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'We could not record that payment. Please try again shortly.'),
+            ], $e instanceof QueryException ? 503 : 500);
+        }
     }
 
     /**
@@ -874,16 +898,34 @@ class AddFundsController extends Controller
 
     public function getStatus($id)
     {
-        $depositRequest = DepositRequest::where('user_id', auth()->id())
-            ->where('id', $id)
-            ->firstOrFail();
+        try {
+            if (! DepositRequest::tableAvailable()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Deposits are temporarily unavailable. Please try again shortly.',
+                ], 503);
+            }
 
-        return response()->json([
-            'success' => true,
-            'status' => $depositRequest->status,
-            'user_marked_paid_at' => optional($depositRequest->user_marked_paid_at)?->toIso8601String(),
-            'deposit' => $depositRequest,
-        ]);
+            $depositRequest = DepositRequest::where('user_id', auth()->id())
+                ->where('id', $id)
+                ->firstOrFail();
+
+            return response()->json([
+                'success' => true,
+                'status' => $depositRequest->status,
+                'user_marked_paid_at' => optional($depositRequest->user_marked_paid_at)?->toIso8601String(),
+                'deposit' => $depositRequest,
+            ]);
+        } catch (ModelNotFoundException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'We could not load that deposit. Please refresh and try again.'),
+            ], 500);
+        }
     }
 
     /**
@@ -928,7 +970,7 @@ class AddFundsController extends Controller
 
         } catch (ValidationException $e) {
             throw $e;
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Error saving billing info: '.$e->getMessage());
 
             return response()->json([
@@ -967,7 +1009,7 @@ class AddFundsController extends Controller
                 'data' => $billingInfo,
             ]);
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Error fetching billing info: '.$e->getMessage());
 
             return response()->json([
@@ -1078,11 +1120,11 @@ class AddFundsController extends Controller
             return redirect()->route('advertiser.add-funds')
                 ->with('error', 'Invoice not found');
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Error showing invoice: '.$e->getMessage());
 
             return redirect()->route('advertiser.add-funds')
-                ->with('error', 'Invoice not found');
+                ->with('error', UserFacingError::message($e, 'Invoice not found'));
         }
     }
 }

@@ -18,39 +18,46 @@ class ScheduledOrdersController extends Controller
 
     public function index(Request $request)
     {
-        $userId = (int) auth()->id();
-        $tab = $request->get('tab', 'upcoming');
-        if (! in_array($tab, ['upcoming', 'with_publisher', 'history'], true)) {
-            $tab = 'upcoming';
+        try {
+            $userId = (int) auth()->id();
+            $tab = $request->get('tab', 'upcoming');
+            if (! in_array($tab, ['upcoming', 'with_publisher', 'history'], true)) {
+                $tab = 'upcoming';
+            }
+
+            $counts = [
+                'upcoming' => $this->scheduler->upcomingCount($userId),
+                'with_publisher' => $this->scheduler->withPublisherQuery($userId)->count(),
+                'history' => $this->scheduler->historyQuery($userId)->count(),
+            ];
+
+            $query = match ($tab) {
+                'with_publisher' => $this->scheduler->withPublisherQuery($userId),
+                'history' => $this->scheduler->historyQuery($userId),
+                default => $this->scheduler->upcomingQuery($userId),
+            };
+
+            $orders = $query->with('items')->paginate(15)->withQueryString();
+            $maxMonths = $this->scheduler->maxMonths();
+            $maxDate = $this->scheduler->maxScheduleDateString();
+            $timezones = $this->scheduler->commonTimezones();
+            $editable = $tab === 'upcoming';
+
+            return view('advertiser.scheduled-orders', compact(
+                'orders',
+                'tab',
+                'counts',
+                'maxMonths',
+                'maxDate',
+                'timezones',
+                'editable'
+            ));
+        } catch (\Throwable $e) {
+            report($e);
+
+            return redirect()->route('advertiser.orders')
+                ->with('error', UserFacingError::message($e, 'We could not load scheduled orders. Please try again shortly.'));
         }
-
-        $counts = [
-            'upcoming' => $this->scheduler->upcomingCount($userId),
-            'with_publisher' => $this->scheduler->withPublisherQuery($userId)->count(),
-            'history' => $this->scheduler->historyQuery($userId)->count(),
-        ];
-
-        $query = match ($tab) {
-            'with_publisher' => $this->scheduler->withPublisherQuery($userId),
-            'history' => $this->scheduler->historyQuery($userId),
-            default => $this->scheduler->upcomingQuery($userId),
-        };
-
-        $orders = $query->with('items')->paginate(15)->withQueryString();
-        $maxMonths = $this->scheduler->maxMonths();
-        $maxDate = $this->scheduler->maxScheduleDateString();
-        $timezones = $this->scheduler->commonTimezones();
-        $editable = $tab === 'upcoming';
-
-        return view('advertiser.scheduled-orders', compact(
-            'orders',
-            'tab',
-            'counts',
-            'maxMonths',
-            'maxDate',
-            'timezones',
-            'editable'
-        ));
     }
 
     public function update(Request $request, Order $order)

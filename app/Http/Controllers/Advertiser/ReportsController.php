@@ -7,13 +7,27 @@ use App\Models\DepositRequest;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Services\Advertiser\AdvertiserSpendService;
+use App\Support\UserFacingError;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class ReportsController extends Controller
 {
     public function __construct(private AdvertiserSpendService $spend) {}
 
     public function index()
+    {
+        try {
+            return $this->renderReportsIndex();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return redirect()->route('advertiser.dashboard')
+                ->with('error', UserFacingError::message($e, 'We could not load reports. Please try again shortly.'));
+        }
+    }
+
+    private function renderReportsIndex()
     {
         $userId = auth()->id();
 
@@ -117,12 +131,12 @@ class ReportsController extends Controller
                     'total_orders' => $summary['spent_orders'] + $summary['in_progress_orders'],
                 ],
             ]);
-        } catch (\Exception $e) {
-            \Log::error('Error fetching statistics: '.$e->getMessage());
+        } catch (\Throwable $e) {
+            Log::error('Error fetching statistics: '.$e->getMessage());
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to load statistics',
+                'message' => UserFacingError::message($e, 'Failed to load statistics'),
             ], 500);
         }
     }
@@ -211,12 +225,12 @@ class ReportsController extends Controller
                 ],
             ]);
 
-        } catch (\Exception $e) {
-            \Log::error('Error fetching order report: '.$e->getMessage());
+        } catch (\Throwable $e) {
+            Log::error('Error fetching order report: '.$e->getMessage());
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to fetch order report',
+                'message' => UserFacingError::message($e, 'Failed to fetch order report'),
             ], 500);
         }
     }
@@ -264,12 +278,12 @@ class ReportsController extends Controller
                 'data' => $analytics,
             ]);
 
-        } catch (\Exception $e) {
-            \Log::error('Error fetching sensitive analytics: '.$e->getMessage());
+        } catch (\Throwable $e) {
+            Log::error('Error fetching sensitive analytics: '.$e->getMessage());
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to fetch analytics',
+                'message' => UserFacingError::message($e, 'Failed to fetch analytics'),
             ], 500);
         }
     }
@@ -315,12 +329,12 @@ class ReportsController extends Controller
                 ],
             ]);
 
-        } catch (\Exception $e) {
-            \Log::error('Error fetching funds activity: '.$e->getMessage());
+        } catch (\Throwable $e) {
+            Log::error('Error fetching funds activity: '.$e->getMessage());
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to fetch funds activity',
+                'message' => UserFacingError::message($e, 'Failed to fetch funds activity'),
             ], 500);
         }
     }

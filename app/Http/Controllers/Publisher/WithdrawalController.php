@@ -241,7 +241,7 @@ class WithdrawalController extends Controller
                 'success' => false,
                 'message' => 'Validation failed: '.implode(', ', array_merge(...array_values($e->errors()))),
             ], 422);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             DB::rollBack();
             Log::error('Withdrawal request failed: '.$e->getMessage(), [
                 'user_id' => auth()->id(),
