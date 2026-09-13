@@ -22,9 +22,37 @@ class ContentModerationController extends Controller
 {
     public function index(Request $request, ContentModerationService $moderation, ContentUploadService $uploads): View
     {
-        $cfg = $moderation->effectiveConfig();
-        $uploadCfg = $uploads->effectiveConfig();
-        $stats = $moderation->adminStats();
+        try {
+            $cfg = $moderation->effectiveConfig();
+        } catch (\Throwable $e) {
+            report($e);
+            session()->flash(
+                'error',
+                UserFacingError::message($e, 'We could not load moderation settings. Please refresh and try again.')
+            );
+            $cfg = config('content_moderation', []);
+        }
+
+        try {
+            $uploadCfg = $uploads->effectiveConfig();
+        } catch (\Throwable $e) {
+            report($e);
+            $uploadCfg = config('content_upload', []);
+        }
+
+        try {
+            $stats = $moderation->adminStats();
+        } catch (\Throwable) {
+            $stats = [
+                'total' => 0,
+                'approved' => 0,
+                'rejected' => 0,
+                'errors' => 0,
+                'skipped' => 0,
+                'overridden' => 0,
+                'today' => 0,
+            ];
+        }
 
         $status = strtolower(trim(scalar_text($request->query('status', 'all'))));
         if (! in_array($status, ['all', 'approved', 'rejected', 'error', 'skipped', 'overridden'], true)) {
@@ -110,16 +138,35 @@ class ContentModerationController extends Controller
             }
         }
 
-        $phpUploadMaxKb = PhpIniSize::uploadMaxKilobytes();
-        $articleUploadMaxKb = $uploads->effectiveMaxKilobytes($uploadCfg);
-        $phpBlocksArticleUploads = $phpUploadMaxKb < $articleUploadMaxKb;
+        try {
+            $phpUploadMaxKb = PhpIniSize::uploadMaxKilobytes();
+            $articleUploadMaxKb = $uploads->effectiveMaxKilobytes($uploadCfg);
+            $phpBlocksArticleUploads = $phpUploadMaxKb < $articleUploadMaxKb;
 
-        $extraKeywords = ContentModerationSetting::getValue('extra_keywords', []) ?: [];
-        $exceptions = ContentModerationSetting::getValue('exceptions', []) ?: [];
-        $disabledCategories = ContentModerationSetting::getValue('disabled_categories', []) ?: [];
-        $enabledCategories = ContentModerationSetting::getValue('enabled_categories', []) ?: [];
-        $activeCategories = $moderation->activeCategories();
-        $builtinExceptions = $this->builtinExceptionPhrases();
+            $extraKeywords = ContentModerationSetting::getValue('extra_keywords', []) ?: [];
+            $exceptions = ContentModerationSetting::getValue('exceptions', []) ?: [];
+            $disabledCategories = ContentModerationSetting::getValue('disabled_categories', []) ?: [];
+            $enabledCategories = ContentModerationSetting::getValue('enabled_categories', []) ?: [];
+            $activeCategories = $moderation->activeCategories();
+            $builtinExceptions = $this->builtinExceptionPhrases();
+        } catch (\Throwable $e) {
+            report($e);
+            if (! session()->has('error')) {
+                session()->flash(
+                    'error',
+                    UserFacingError::message($e, 'We could not load moderation settings. Please refresh and try again.')
+                );
+            }
+            $phpUploadMaxKb = 2048;
+            $articleUploadMaxKb = 10240;
+            $phpBlocksArticleUploads = false;
+            $extraKeywords = [];
+            $exceptions = [];
+            $disabledCategories = [];
+            $enabledCategories = [];
+            $activeCategories = $cfg['categories'] ?? [];
+            $builtinExceptions = [];
+        }
 
         return view('admin.moderation.index', compact(
             'cfg',

@@ -50,6 +50,33 @@ class SiteController extends Controller
 {
     public function index(Request $request)
     {
+        try {
+            return $this->renderSitesIndex($request);
+        } catch (\Throwable $e) {
+            report($e);
+            session()->flash(
+                'error',
+                UserFacingError::message($e, 'We could not load sites. Please refresh and try again.')
+            );
+
+            return view('admin.sites', [
+                'users' => new LengthAwarePaginator([], 0, 20, 1, [
+                    'path' => $request->url(),
+                    'query' => $request->query(),
+                ]),
+                'unverifiedFilter' => false,
+                'needsReviewFilterActive' => false,
+                'openReviewCount' => 0,
+                'missingMarketCount' => 0,
+                'publisherSearch' => trim(scalar_text($request->query('q', ''))),
+                'flatQueue' => $request->boolean('flat'),
+                'flatQueueSites' => null,
+            ]);
+        }
+    }
+
+    private function renderSitesIndex(Request $request)
+    {
         $needsReviewFilter = $request->boolean('needs_review')
             || $request->query('verified') === '0'
             || $request->query('verified') === 0;
@@ -188,7 +215,33 @@ class SiteController extends Controller
                 ], 500);
             }
 
-            throw $e;
+            session()->flash(
+                'error',
+                UserFacingError::message($e, 'We could not load site records. Please refresh and try again.')
+            );
+
+            $sites = new LengthAwarePaginator([], 0, 100, 1, [
+                'path' => $request->url(),
+                'query' => $request->query(),
+            ]);
+            $countries = collect();
+            $selectedCountry = $countryFilter;
+            $totalSites = 0;
+            $missingMarketCount = 0;
+            $exportUrl = route('admin.sites.records.export', array_filter([
+                'country' => $selectedCountry !== '' ? $selectedCountry : null,
+                'missing_market' => $missingMarket ? 1 : null,
+            ]));
+
+            return view('admin.sites.records', compact(
+                'sites',
+                'countries',
+                'selectedCountry',
+                'totalSites',
+                'exportUrl',
+                'missingMarket',
+                'missingMarketCount'
+            ));
         }
 
         if ($wantsPartial) {
@@ -232,7 +285,7 @@ class SiteController extends Controller
     /**
      * CSV download of the same live records sheet (honours country / missing-market filter).
      */
-    public function exportRecords(Request $request): StreamedResponse
+    public function exportRecords(Request $request): StreamedResponse|RedirectResponse
     {
         $countryFilter = strtolower(trim(scalar_text($request->query('country', ''))));
         if ($countryFilter === 'all') {
@@ -248,13 +301,21 @@ class SiteController extends Controller
             : ($countryFilter !== '' ? '-'.$countryFilter : '');
         $filename = 'websites-records'.$suffix.'-'.now()->format('Y-m-d').'.csv';
 
-        $query = Site::query()->orderBy('domain')->orderBy('id');
-        if ($missingMarket) {
-            $query->activeMissingMarketplaceCountry();
-        } else {
-            $this->applyRecordsCountryFilter($query, $countryFilter);
+        try {
+            $query = Site::query()->orderBy('domain')->orderBy('id');
+            if ($missingMarket) {
+                $query->activeMissingMarketplaceCountry();
+            } else {
+                $this->applyRecordsCountryFilter($query, $countryFilter);
+            }
+            $matchCount = (clone $query)->count();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return redirect()
+                ->route('admin.sites.records')
+                ->with('error', UserFacingError::message($e, 'We could not export site records. Please try again.'));
         }
-        $matchCount = (clone $query)->count();
 
         ActivityLogger::tryLog(
             'sites.records_exported',
@@ -578,6 +639,26 @@ class SiteController extends Controller
             ], 404);
         }
 
+        try {
+            return $this->userSitesPayload($request, $user);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'We could not load this publisher\'s sites.'),
+                'publisher' => [
+                    'id' => (int) $user->id,
+                    'name' => (string) $user->name,
+                    'email' => (string) $user->email,
+                ],
+                'sites' => [],
+            ], 500);
+        }
+    }
+
+    private function userSitesPayload(Request $request, User $user)
+    {
         $columns = [
             'id',
             'publisher_id',
@@ -1130,6 +1211,21 @@ class SiteController extends Controller
 
     // Edit page (optional)
     public function edit($id)
+    {
+        try {
+            return $this->renderSiteEdit($id);
+        } catch (ModelNotFoundException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            report($e);
+
+            return redirect()
+                ->to(staff_route('sites.index'))
+                ->with('error', UserFacingError::message($e, 'We could not load that site editor. Please try again.'));
+        }
+    }
+
+    private function renderSiteEdit($id)
     {
         $site = Site::with('publisher:id,name,email')->findOrFail($id);
         $user = auth()->user();

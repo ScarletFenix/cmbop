@@ -11,6 +11,7 @@ use App\Services\ActivityLogger;
 use App\Services\AudienceInventoryService;
 use App\Support\CampaignHtml;
 use App\Support\EmailCatalog;
+use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -184,9 +185,18 @@ class CampaignController extends Controller
         }
 
         $includeUnverified = $request->boolean('include_unverified');
-        $recipients = $inventory->collectRecipientRows($data['audience'], $data['user_ids'] ?? [], $includeUnverified)
-            ->unique('id')
-            ->values();
+        try {
+            $recipients = $inventory->collectRecipientRows($data['audience'], $data['user_ids'] ?? [], $includeUnverified)
+                ->unique('id')
+                ->values();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return back()->withInput()->with(
+                'error',
+                UserFacingError::message($e, 'We could not load campaign recipients. Please try again.')
+            );
+        }
         if ($recipients->isEmpty()) {
             return back()->withInput()->with('error', 'No recipients found for that audience.');
         }
@@ -194,36 +204,45 @@ class CampaignController extends Controller
         $respectPrefs = $request->boolean('respect_preferences');
         $count = $recipients->count();
 
-        $campaign = DB::transaction(function () use ($data, $recipients, $count, $respectPrefs, $includeUnverified, $bodyHtml) {
-            $selectedIds = $data['audience'] === 'selected'
-                ? $recipients->pluck('id')->map(fn ($id) => (int) $id)->values()->all()
-                : null;
+        try {
+            $campaign = DB::transaction(function () use ($data, $recipients, $count, $respectPrefs, $includeUnverified, $bodyHtml) {
+                $selectedIds = $data['audience'] === 'selected'
+                    ? $recipients->pluck('id')->map(fn ($id) => (int) $id)->values()->all()
+                    : null;
 
-            $campaign = EmailCampaign::create(EmailCampaign::attributesThatExist(array_merge(
-                $this->hydrateCampaignAttributes($data, $bodyHtml, $selectedIds, $respectPrefs, $includeUnverified),
-                [
-                    'recipients_count' => $count,
-                    'sent_count' => 0,
-                    'skipped_count' => 0,
-                    'status' => EmailCampaign::STATUS_QUEUED,
-                    'created_by' => auth()->id(),
-                ]
-            )));
+                $campaign = EmailCampaign::create(EmailCampaign::attributesThatExist(array_merge(
+                    $this->hydrateCampaignAttributes($data, $bodyHtml, $selectedIds, $respectPrefs, $includeUnverified),
+                    [
+                        'recipients_count' => $count,
+                        'sent_count' => 0,
+                        'skipped_count' => 0,
+                        'status' => EmailCampaign::STATUS_QUEUED,
+                        'created_by' => auth()->id(),
+                    ]
+                )));
 
-            $now = now();
-            foreach ($recipients->chunk(200) as $chunk) {
-                EmailCampaignRecipient::query()->insert($chunk->map(fn ($user) => [
-                    'email_campaign_id' => $campaign->id,
-                    'user_id' => $user->id,
-                    'email' => trim((string) $user->email),
-                    'status' => EmailCampaignRecipient::STATUS_PENDING,
-                    'created_at' => $now,
-                    'updated_at' => $now,
-                ])->all());
-            }
+                $now = now();
+                foreach ($recipients->chunk(200) as $chunk) {
+                    EmailCampaignRecipient::query()->insert($chunk->map(fn ($user) => [
+                        'email_campaign_id' => $campaign->id,
+                        'user_id' => $user->id,
+                        'email' => trim((string) $user->email),
+                        'status' => EmailCampaignRecipient::STATUS_PENDING,
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ])->all());
+                }
 
-            return $campaign;
-        });
+                return $campaign;
+            });
+        } catch (\Throwable $e) {
+            report($e);
+
+            return back()->withInput()->with(
+                'error',
+                UserFacingError::message($e, 'We could not queue this campaign. Please try again.')
+            );
+        }
 
         try {
             SendEmailCampaignJob::dispatch($campaign->id);

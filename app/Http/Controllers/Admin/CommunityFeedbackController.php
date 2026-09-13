@@ -390,7 +390,16 @@ class CommunityFeedbackController extends Controller
             $query->where('status', 'pending');
         }
 
-        $affected = $query->update($payload);
+        try {
+            $affected = $query->update($payload);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'This item could not be updated. Please try again.'),
+            ], 500);
+        }
         if ($leavingPending && $affected !== 1) {
             return response()->json([
                 'success' => false,

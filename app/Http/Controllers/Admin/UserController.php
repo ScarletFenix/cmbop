@@ -181,6 +181,13 @@ class UserController extends Controller
                 'success' => false,
                 'message' => $e->validator->errors()->first() ?: 'Payout details cannot be saved on this database.',
             ], 422);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'Payout details cannot be saved. Please try again.'),
+            ], 500);
         }
         $after = $user->fresh()?->payoutProfile() ?? $user->payoutProfile();
 
