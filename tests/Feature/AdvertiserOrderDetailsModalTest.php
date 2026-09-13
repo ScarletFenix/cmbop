@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Support\AdvertiserOrderDetails;
 use App\Support\AdvertiserOrderStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class AdvertiserOrderDetailsModalTest extends TestCase
@@ -301,6 +302,72 @@ class AdvertiserOrderDetailsModalTest extends TestCase
             'Reconstructed from order dates.',
             $response->json('activities.0.description')
         );
+    }
+
+    public function test_get_order_survives_leftover_unparseable_item_dates(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher, 'Leftover Dates Site');
+        $order = $this->makeOrder($advertiser, $site, [
+            'status' => 'completed',
+            'completed_at' => now(),
+        ], [
+            'live_url' => 'https://live.example/leftover-dates',
+            'live_url_submitted_at' => now()->subDay(),
+            'accepted_at' => now()->subDays(2),
+            'completed_at' => now(),
+        ]);
+        $item = $order->items->first();
+        DB::table('order_items')->where('id', $item->id)->update([
+            'live_url_submitted_at' => 'not-a-date',
+            'accepted_at' => 'also-not-a-date',
+            'completed_at' => 'still-not-a-date',
+        ]);
+
+        $detail = $this->actingAs($advertiser)
+            ->getJson(route('advertiser.orders.get', $order->id))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->json('order');
+
+        $this->assertSame('https://live.example/leftover-dates', $detail['items'][0]['live_url']);
+        $this->assertNull($detail['items'][0]['live_url_submitted_at']);
+        $this->assertNull($detail['items'][0]['accepted_at']);
+        $this->assertNull($detail['items'][0]['completed_at']);
+    }
+
+    public function test_get_order_items_do_not_embed_the_site_model(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher, 'No Nested Site');
+        $order = $this->makeOrder($advertiser, $site, [
+            'status' => 'completed',
+            'completed_at' => now(),
+        ], [
+            'live_url' => 'https://live.example/no-nested-site',
+        ]);
+
+        $detail = $this->actingAs($advertiser)
+            ->getJson(route('advertiser.orders.get', $order->id))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->json('order');
+
+        $this->assertSame('No Nested Site', $detail['items'][0]['site_name']);
+        $this->assertSame('https://live.example/no-nested-site', $detail['items'][0]['live_url']);
+        $this->assertArrayNotHasKey('site', $detail['items'][0]);
+        $this->assertArrayNotHasKey('latest_dispute', $detail['items'][0]);
+    }
+
+    public function test_stacked_modal_css_scrolls_instead_of_clipping(): void
+    {
+        $css = file_get_contents(public_path('assets/css/advertiser-orders.css'));
+        $this->assertIsString($css);
+        $this->assertStringContainsString('.order-view-shell--stack', $css);
+        $this->assertStringContainsString('.order-details-body:has(.order-view-shell--stack)', $css);
+        $this->assertStringContainsString('overflow-y: auto', $css);
     }
 
     public function test_status_meta_and_steps_do_not_claim_a_placement_without_items(): void

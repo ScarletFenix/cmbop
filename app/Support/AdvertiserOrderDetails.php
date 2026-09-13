@@ -80,18 +80,20 @@ final class AdvertiserOrderDetails
      */
     public static function presentItem(OrderItem $line): array
     {
+        $site = $line->relationLoaded('site') ? $line->site : null;
+        $line->unsetRelation('site');
+        $line->unsetRelation('latestDispute');
         $row = $line->toArray();
         unset($row['site'], $row['latest_dispute'], $row['latestDispute']);
 
-        $site = $line->relationLoaded('site') ? $line->site : null;
         $row['id'] = $line->id;
         $row['site_id'] = $line->site_id;
         $row['site_name'] = $line->site_name ?: $site?->site_name;
         $row['site_url'] = $line->site_url ?: $site?->site_url;
         $row['visit_url'] = $line->getAttribute('visit_url');
         $row['live_url'] = $line->live_url;
-        $row['live_url_submitted_at'] = optional($line->live_url_submitted_at)?->toIso8601String();
-        $row['live_url_checked_at'] = optional($line->live_url_checked_at)?->toIso8601String();
+        $row['live_url_submitted_at'] = self::iso($line->live_url_submitted_at);
+        $row['live_url_checked_at'] = self::iso($line->live_url_checked_at);
         $row['live_url_http_status'] = $line->live_url_http_status;
         $row['live_url_check_ok'] = $line->live_url_check_ok;
         $row['content_link'] = $line->content_link;
@@ -116,8 +118,8 @@ final class AdvertiserOrderDetails
         $row['moderation_status'] = $line->moderation_status;
         $row['modification_requested'] = $line->modification_requested;
         $row['completion_notes'] = $line->completion_notes;
-        $row['accepted_at'] = optional($line->accepted_at)?->toIso8601String();
-        $row['completed_at'] = optional($line->completed_at)?->toIso8601String();
+        $row['accepted_at'] = self::iso($line->accepted_at);
+        $row['completed_at'] = self::iso($line->completed_at);
         if (isset($line->auto_approve_hours_remaining)) {
             $row['auto_approve_hours_remaining'] = (int) $line->auto_approve_hours_remaining;
         }
@@ -178,6 +180,11 @@ final class AdvertiserOrderDetails
         });
 
         return $events;
+    }
+
+    private static function iso(mixed $when): ?string
+    {
+        return self::asDate($when)?->toIso8601String();
     }
 
     private static function asDate(mixed $when): ?CarbonInterface

@@ -240,6 +240,9 @@ button.wallet-kpi { cursor: pointer; appearance: none; }
 #orderDetailsModal {
     z-index: 1080;
 }
+body.modal-open:has(#orderDetailsModal.show) .modal-backdrop {
+    z-index: 1075;
+}
 #orderDetailsModal .modal-content,
 .order-details-content {
     background: #fff;
@@ -274,6 +277,9 @@ button.wallet-kpi { cursor: pointer; appearance: none; }
     height: auto;
     max-width: 42rem;
     margin: 0 auto;
+}
+.order-details-body:has(.order-view-shell--stack) {
+    overflow-y: auto;
 }
 .order-view-panel {
     background: #f8fafc;

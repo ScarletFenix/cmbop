@@ -5222,7 +5222,7 @@ class CatalogController extends Controller
             app(CheckoutSchemaService::class)->ensureCheckoutTables();
             $userId = auth()->id();
 
-            $relations = ['items.site'];
+            $relations = ['items'];
             if (OrderItemDispute::tableAvailable()) {
                 $relations[] = 'items.latestDispute';
             }
@@ -5236,6 +5236,12 @@ class CatalogController extends Controller
                     'success' => false,
                     'message' => 'Order not found',
                 ]);
+            }
+
+            try {
+                $order->loadMissing('items.site');
+            } catch (\Throwable) {
+                // Leftover Hostinger: sites table missing — item site_name/url still render.
             }
 
             $this->hydrateAdvertiserOrderDetail($order);
@@ -5715,7 +5721,10 @@ class CatalogController extends Controller
      */
     private function advertiserOrderDetailPayload(Order $order): array
     {
+        $items = $order->items;
+        $order->unsetRelation('items');
         $payload = $order->toArray();
+        $order->setRelation('items', $items);
         $payload['items'] = AdvertiserOrderDetails::presentItems($order);
         $payload['items_count'] = count($payload['items']);
         $payload['placements_missing'] = AdvertiserOrderDetails::placementsMissing($order);
