@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Services\StripeCustomerService;
 use App\Support\UserFacingError;
 use App\Support\UserMessages;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -15,13 +16,24 @@ class PaymentMethodController extends Controller
 
     public function index()
     {
-        $user = auth()->user();
+        try {
+            $user = auth()->user();
 
-        return response()->json([
-            'success' => true,
-            'configured' => $this->stripe->configured(),
-            'cards' => $this->stripe->listCards($user),
-        ]);
+            return response()->json([
+                'success' => true,
+                'configured' => $this->stripe->configured(),
+                'cards' => $this->stripe->listCards($user),
+            ]);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'configured' => false,
+                'cards' => [],
+                'message' => UserFacingError::message($e, 'We could not load your saved cards. Please refresh and try again.'),
+            ], $e instanceof QueryException ? 503 : 500);
+        }
     }
 
     public function createSetupSession(Request $request)

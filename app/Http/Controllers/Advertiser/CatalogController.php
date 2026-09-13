@@ -3255,7 +3255,7 @@ class CatalogController extends Controller
                 'bonus_applied' => $bonusApplied,
                 'amount_due' => $amountDue,
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             $this->refundCheckoutBonus((int) $userId, (string) $referenceCode);
             $paymentService->forgetPendingCheckout((string) $referenceCode);
 
@@ -3936,7 +3936,7 @@ class CatalogController extends Controller
                 'bonus_applied' => $bonusApplied,
                 'amount_due' => $amountDue,
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             DB::rollBack();
             Log::error('Order creation failed: '.$e->getMessage());
 
@@ -3977,7 +3977,7 @@ class CatalogController extends Controller
             if ($paymentIntentId && $paymentIntentId !== '{PAYMENT_INTENT_ID}') {
                 try {
                     $intent = PaymentIntent::retrieve($paymentIntentId);
-                } catch (\Exception $e) {
+                } catch (\Throwable $e) {
                     return redirect()->route('advertiser.checkout')
                         ->with('error', UserMessages::get('payment.stripe_verify_card_failed'));
                 }
@@ -4012,7 +4012,7 @@ class CatalogController extends Controller
 
                 try {
                     $stripeSession = Session::retrieve($sessionId);
-                } catch (\Exception $e) {
+                } catch (\Throwable $e) {
                     Log::error('Failed to retrieve Stripe session', [
                         'session_id' => $sessionId,
                         'error' => $e->getMessage(),
@@ -4047,11 +4047,16 @@ class CatalogController extends Controller
                 $newlyPaid = $paymentService->finalizeStripeFirstCheckout($referenceCode, $stripeSession);
             }
 
-            $orders = Order::with('items')
-                ->where('reference_code', $referenceCode)
-                ->where('payment_method', 'card')
-                ->where('user_id', auth()->id())
-                ->get();
+            try {
+                $orders = Order::with('items')
+                    ->where('reference_code', $referenceCode)
+                    ->where('payment_method', 'card')
+                    ->where('user_id', auth()->id())
+                    ->get();
+            } catch (\Throwable $e) {
+                report($e);
+                $orders = $newlyPaid;
+            }
 
             if ($orders->isEmpty()) {
                 $credited = $paymentService->walletCreditForUnfulfillableCardCheckout($referenceCode);
@@ -4092,23 +4097,31 @@ class CatalogController extends Controller
                     ->with('error', UserMessages::get('payment.listings_gone_after_pay'));
             }
 
-            if ($newlyPaid->isNotEmpty()) {
-                $paymentService->notifyPublishersOfPaidOrders($newlyPaid);
+            try {
+                if ($newlyPaid->isNotEmpty()) {
+                    $paymentService->notifyPublishersOfPaidOrders($newlyPaid);
+                }
+            } catch (\Throwable $e) {
+                Log::warning('notify after Stripe settle failed: '.$e->getMessage());
             }
 
-            $this->removePaidOrdersFromCart($paidOrders);
-            session()->forget([
-                'pending_card_payment',
-                'pending_cart',
-                'pending_content_links',
-                'pending_reference_code',
-                'pending_user_id',
-                'pending_card_reference',
-                'checkout_content_submission_id',
-                'checkout_schedule',
-                'checkout_deferred_cart',
-                'checkout_reference_code',
-            ]);
+            try {
+                $this->removePaidOrdersFromCart($paidOrders);
+                session()->forget([
+                    'pending_card_payment',
+                    'pending_cart',
+                    'pending_content_links',
+                    'pending_reference_code',
+                    'pending_user_id',
+                    'pending_card_reference',
+                    'checkout_content_submission_id',
+                    'checkout_schedule',
+                    'checkout_deferred_cart',
+                    'checkout_reference_code',
+                ]);
+            } catch (\Throwable $e) {
+                Log::warning('cart cleanup after Stripe settle failed: '.$e->getMessage());
+            }
 
             $orderNumbers = $paidOrders->pluck('order_number')->implode(', ');
             $paidCount = $paidOrders->count();
@@ -4135,7 +4148,7 @@ class CatalogController extends Controller
                 : redirect()->route('advertiser.orders');
 
             return $redirect->with('success', $successMsg);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Stripe success handling failed: '.$e->getMessage());
             Log::error('Stack trace: '.$e->getTraceAsString());
 

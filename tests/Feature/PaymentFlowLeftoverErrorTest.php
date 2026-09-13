@@ -2,9 +2,13 @@
 
 namespace Tests\Feature;
 
+use App\Models\DepositRequest;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\StripeCustomerService;
 use Database\Seeders\RolesTableSeeder;
+use Illuminate\Database\QueryException;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
@@ -117,5 +121,110 @@ class PaymentFlowLeftoverErrorTest extends TestCase
         )
             ->assertJsonMissingPath('exception')
             ->assertDontSee('SQLSTATE');
+    }
+
+    public function test_mark_paid_survives_missing_user_marked_paid_at_column(): void
+    {
+        $advertiser = $this->advertiser();
+        $deposit = DepositRequest::create([
+            'user_id' => $advertiser->id,
+            'reference_code' => 'MARK503',
+            'amount' => 40,
+            'payment_method' => 'wise',
+            'status' => 'pending',
+        ]);
+
+        if (! Schema::hasColumn('deposit_requests', 'user_marked_paid_at')) {
+            $this->markTestSkipped('deposit_requests.user_marked_paid_at is already absent');
+        }
+
+        try {
+            Schema::table('deposit_requests', function (Blueprint $table) {
+                $table->dropColumn('user_marked_paid_at');
+            });
+        } catch (\Throwable) {
+            $this->markTestSkipped('Could not drop user_marked_paid_at on this driver');
+        }
+
+        if (Schema::hasColumn('deposit_requests', 'user_marked_paid_at')) {
+            $this->markTestSkipped('user_marked_paid_at is still present after drop');
+        }
+
+        try {
+            $this->actingAs($advertiser)
+                ->postJson(route('advertiser.add-funds.mark-paid', $deposit), [
+                    'user_payment_note' => 'WISE-LEFT',
+                ])
+                ->assertStatus(503)
+                ->assertJsonPath('success', false)
+                ->assertJsonMissingPath('exception')
+                ->assertDontSee('SQLSTATE');
+        } finally {
+            if (! Schema::hasColumn('deposit_requests', 'user_marked_paid_at')) {
+                Schema::table('deposit_requests', function (Blueprint $table) {
+                    $table->timestamp('user_marked_paid_at')->nullable();
+                });
+            }
+        }
+    }
+
+    public function test_mark_paid_survives_dropped_deposit_requests_table(): void
+    {
+        $advertiser = $this->advertiser();
+
+        try {
+            Schema::dropIfExists('deposit_requests');
+            $this->actingAs($advertiser)
+                ->postJson(route('advertiser.add-funds.mark-paid', 1))
+                ->assertNotFound()
+                ->assertJsonMissingPath('exception')
+                ->assertDontSee('SQLSTATE');
+        } finally {
+            $this->restoreDepositRequestsTable();
+        }
+    }
+
+    public function test_payment_methods_index_survives_leftover_card_lookup(): void
+    {
+        $advertiser = $this->advertiser();
+
+        $this->mock(StripeCustomerService::class, function ($mock) {
+            $mock->shouldReceive('configured')->andReturn(true);
+            $mock->shouldReceive('listCards')->andThrow(new QueryException(
+                'sqlite',
+                'select * from users',
+                [],
+                new \PDOException('SQLSTATE[42S22]: Unknown column "stripe_customer_id"')
+            ));
+        });
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.payment-methods.index'))
+            ->assertStatus(503)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('configured', false)
+            ->assertJsonPath('cards', [])
+            ->assertJsonMissingPath('exception')
+            ->assertDontSee('SQLSTATE');
+    }
+
+    private function restoreDepositRequestsTable(): void
+    {
+        if (Schema::hasTable('deposit_requests')) {
+            return;
+        }
+
+        foreach ([
+            'database/migrations/2026_04_21_115734_create_deposit_requests_table.php',
+            'database/migrations/2026_04_22_113004_add_stripe_fields_to_deposit_requests_table.php',
+            'database/migrations/2026_07_21_140000_add_user_marked_paid_to_deposit_requests.php',
+            'database/migrations/2026_08_14_160000_unique_deposit_stripe_ids.php',
+            'database/migrations/2026_08_18_160000_add_paypal_columns_to_deposit_requests.php',
+        ] as $path) {
+            $this->artisan('migrate', [
+                '--path' => $path,
+                '--force' => true,
+            ]);
+        }
     }
 }
