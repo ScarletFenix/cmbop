@@ -83,7 +83,7 @@ class AdminWithdrawalController extends Controller
                     'to' => $withdrawals->lastItem(),
                 ],
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Error fetching withdrawals: '.$e->getMessage());
 
             return response()->json([
@@ -121,12 +121,12 @@ class AdminWithdrawalController extends Controller
                 'success' => true,
                 'data' => $withdrawal,
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Error fetching withdrawal: '.$e->getMessage());
 
             return response()->json([
                 'success' => false,
-                'message' => 'Withdrawal not found',
+                'message' => UserFacingError::message($e, 'Withdrawal not found'),
             ], 404);
         }
     }
@@ -411,12 +411,12 @@ class AdminWithdrawalController extends Controller
                 'success' => true,
                 'data' => $stats,
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Error fetching withdrawal statistics: '.$e->getMessage());
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to fetch statistics',
+                'message' => UserFacingError::message($e, 'Failed to fetch statistics'),
             ], 500);
         }
     }
@@ -658,7 +658,7 @@ class AdminWithdrawalController extends Controller
                 'success' => false,
                 'message' => UserFacingError::message($e, 'Cannot return these funds: the source wallet is unknown.'),
             ], 422);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Error updating withdrawal status: '.$e->getMessage());
 
             return response()->json([

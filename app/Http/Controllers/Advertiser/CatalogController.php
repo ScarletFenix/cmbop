@@ -4383,7 +4383,7 @@ class CatalogController extends Controller
             foreach ($publishers as $publisher) {
                 try {
                     Mail::to($publisher->email)->send(new ModificationRequested($order, $request->reason));
-                } catch (\Exception $e) {
+                } catch (\Throwable $e) {
                     Log::error('Failed to send email: '.$e->getMessage());
                 }
             }
@@ -4395,7 +4395,7 @@ class CatalogController extends Controller
                 'message' => 'Change request sent to the publisher.',
             ]);
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             DB::rollBack();
             Log::error('Error requesting modification: '.$e->getMessage());
 
@@ -4446,7 +4446,7 @@ class CatalogController extends Controller
             ]);
         } catch (ValidationException $e) {
             throw $e;
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Error fulfilling content revision: '.$e->getMessage());
 
             return response()->json([
@@ -5652,12 +5652,12 @@ class CatalogController extends Controller
                 'message' => collect($e->errors())->flatten()->first() ?? 'Unable to open dispute.',
                 'errors' => $e->errors(),
             ], 422);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Error reporting link removed: '.$e->getMessage());
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to submit dispute.',
+                'message' => UserFacingError::message($e, 'Failed to submit dispute.'),
             ], 500);
         }
     }

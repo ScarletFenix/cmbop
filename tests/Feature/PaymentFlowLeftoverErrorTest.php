@@ -303,6 +303,54 @@ class PaymentFlowLeftoverErrorTest extends TestCase
             ->assertDontSee('SQLSTATE');
     }
 
+    public function test_scheduled_orders_survives_dropped_orders_table(): void
+    {
+        $advertiser = $this->advertiser();
+        Schema::dropIfExists('orders');
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.scheduled-orders'))
+            ->assertRedirect(route('advertiser.orders'));
+        $this->assertStringNotContainsString('SQLSTATE', (string) session('error'));
+    }
+
+    public function test_reports_survive_dropped_order_and_deposit_tables(): void
+    {
+        $advertiser = $this->advertiser();
+        Schema::dropIfExists('orders');
+        Schema::dropIfExists('deposit_requests');
+
+        try {
+            $this->actingAs($advertiser)
+                ->get(route('advertiser.reports'))
+                ->assertRedirect(route('advertiser.dashboard'));
+            $this->assertStringNotContainsString('SQLSTATE', (string) session('error'));
+
+            $this->actingAs($advertiser)
+                ->getJson(route('advertiser.reports.statistics'))
+                ->assertStatus(500)
+                ->assertJsonPath('success', false)
+                ->assertJsonMissingPath('exception')
+                ->assertDontSee('SQLSTATE');
+
+            $this->actingAs($advertiser)
+                ->getJson(route('advertiser.reports.orders'))
+                ->assertStatus(500)
+                ->assertJsonPath('success', false)
+                ->assertJsonMissingPath('exception')
+                ->assertDontSee('SQLSTATE');
+
+            $this->actingAs($advertiser)
+                ->getJson(route('advertiser.reports.funds'))
+                ->assertStatus(500)
+                ->assertJsonPath('success', false)
+                ->assertJsonMissingPath('exception')
+                ->assertDontSee('SQLSTATE');
+        } finally {
+            $this->restoreDepositRequestsTable();
+        }
+    }
+
     /**
      * @return array{0: Site, 1: ContentSubmission}
      */
