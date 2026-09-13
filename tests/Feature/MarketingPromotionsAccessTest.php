@@ -55,6 +55,12 @@ class MarketingPromotionsAccessTest extends TestCase
                 'is_active' => 1,
             ])
             ->assertRedirect(route('marketing.promotions.announcements.index'));
+
+        $this->actingAs($this->marketer)
+            ->get(route('marketing.promotions.announcements.index'))
+            ->assertOk()
+            ->assertSee('Mkt notice', false)
+            ->assertDontSee('Email this audience', false);
     }
 
     public function test_marketer_cannot_toggle_welcome_bonus(): void

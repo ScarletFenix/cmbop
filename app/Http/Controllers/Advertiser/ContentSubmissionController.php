@@ -34,25 +34,29 @@ class ContentSubmissionController extends Controller
 
     public function config()
     {
-        $cfg = $this->uploads->effectiveConfig();
+        try {
+            $cfg = $this->uploads->effectiveConfig();
 
-        return response()->json([
-            'success' => true,
-            'config' => [
-                'enabled' => $this->uploads->uploadsEnabled(),
-                'require_same_language' => $this->uploads->requireSameLanguagePlacement(),
-                'preferred_extension' => $cfg['preferred_extension'] ?? 'docx',
-                'allowed_extensions' => $cfg['allowed_extensions'] ?? ['docx'],
-                'max_kilobytes' => $this->uploads->effectiveMaxKilobytes($cfg),
-                'php_max_kilobytes' => $this->uploads->phpUploadMaxKilobytes(),
-                'scheduling_enabled' => (bool) ($cfg['scheduling']['enabled'] ?? true),
-                'max_schedule_months' => (int) ($cfg['scheduling']['max_months'] ?? 3),
-                'max_schedule_at' => $this->scheduler->maxScheduleAt()->toIso8601String(),
-                'anchor_max' => (int) ($cfg['anchor_text']['max_length'] ?? 120),
-                'help' => $cfg['help'] ?? [],
-                'feature_image_extensions' => $cfg['feature_image']['allowed_extensions'] ?? ['jpg', 'jpeg', 'png', 'gif', 'webp'],
-            ],
-        ]);
+            return response()->json([
+                'success' => true,
+                'config' => [
+                    'enabled' => $this->uploads->uploadsEnabled(),
+                    'require_same_language' => $this->uploads->requireSameLanguagePlacement(),
+                    'preferred_extension' => $cfg['preferred_extension'] ?? 'docx',
+                    'allowed_extensions' => $cfg['allowed_extensions'] ?? ['docx'],
+                    'max_kilobytes' => $this->uploads->effectiveMaxKilobytes($cfg),
+                    'php_max_kilobytes' => $this->uploads->phpUploadMaxKilobytes(),
+                    'scheduling_enabled' => (bool) ($cfg['scheduling']['enabled'] ?? true),
+                    'max_schedule_months' => (int) ($cfg['scheduling']['max_months'] ?? 3),
+                    'max_schedule_at' => $this->scheduler->maxScheduleAt()->toIso8601String(),
+                    'anchor_max' => (int) ($cfg['anchor_text']['max_length'] ?? 120),
+                    'help' => $cfg['help'] ?? [],
+                    'feature_image_extensions' => $cfg['feature_image']['allowed_extensions'] ?? ['jpg', 'jpeg', 'png', 'gif', 'webp'],
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            return $this->leftoverJson($e, 'We could not load upload settings. Please refresh and try again.');
+        }
     }
 
     /**
@@ -68,8 +72,12 @@ class ContentSubmissionController extends Controller
             ], 403);
         }
 
-        $cfg = $this->uploads->effectiveConfig();
-        $maxKb = $this->uploads->effectiveMaxKilobytes($cfg);
+        try {
+            $cfg = $this->uploads->effectiveConfig();
+            $maxKb = $this->uploads->effectiveMaxKilobytes($cfg);
+        } catch (\Throwable $e) {
+            return $this->leftoverJson($e, 'The article could not be uploaded. Please try again.');
+        }
         $ext = implode(',', $cfg['allowed_extensions'] ?? ['docx']);
 
         $allowedCountries = array_map('strtolower', config('markets.allowed_country_codes', []));
@@ -88,24 +96,28 @@ class ContentSubmissionController extends Controller
             ], 422);
         }
 
-        $data = $request->validate([
-            'file' => ['required', 'file', 'max:'.$maxKb, 'extensions:'.($ext ?: 'docx')],
-            'site_id' => ['nullable', 'integer', 'exists:sites,id'],
-            'copy_index' => ['nullable', 'integer', 'min:0', 'max:50'],
-            'cart_key' => ['nullable', 'string', 'max:64'],
-            'replace_id' => ['nullable', 'integer'],
-            'title' => ['nullable', 'string', 'max:200'],
-            'country' => ['required', 'string', 'max:10', Rule::in($allowedCountries)],
-            'language' => ['required', 'string', 'max:10', Rule::in($allowedLanguages)],
-            'image_rights' => ['required', Rule::in(ContentSubmission::imageRightsOptions())],
-            'image_rights_source' => [
-                'nullable', 'string', 'max:2000',
-                'required_if:image_rights,'.ContentSubmission::IMAGE_RIGHTS_LICENSED,
-            ],
-        ], array_merge($this->uploads->uploadValidationMessages($cfg), [
-            'image_rights.required' => 'Tell us where the images in this article came from.',
-            'image_rights_source.required_if' => 'Add the source URL or copyright/licence details for the images.',
-        ]));
+        try {
+            $data = $request->validate([
+                'file' => ['required', 'file', 'max:'.$maxKb, 'extensions:'.($ext ?: 'docx')],
+                'site_id' => ['nullable', 'integer', 'exists:sites,id'],
+                'copy_index' => ['nullable', 'integer', 'min:0', 'max:50'],
+                'cart_key' => ['nullable', 'string', 'max:64'],
+                'replace_id' => ['nullable', 'integer'],
+                'title' => ['nullable', 'string', 'max:200'],
+                'country' => ['required', 'string', 'max:10', Rule::in($allowedCountries)],
+                'language' => ['required', 'string', 'max:10', Rule::in($allowedLanguages)],
+                'image_rights' => ['required', Rule::in(ContentSubmission::imageRightsOptions())],
+                'image_rights_source' => [
+                    'nullable', 'string', 'max:2000',
+                    'required_if:image_rights,'.ContentSubmission::IMAGE_RIGHTS_LICENSED,
+                ],
+            ], array_merge($this->uploads->uploadValidationMessages($cfg), [
+                'image_rights.required' => 'Tell us where the images in this article came from.',
+                'image_rights_source.required_if' => 'Add the source URL or copyright/licence details for the images.',
+            ]));
+        } catch (\Throwable $e) {
+            return $this->leftoverJson($e, 'The article could not be uploaded. Please try again.');
+        }
 
         $replace = null;
         if (! empty($data['replace_id'])) {
@@ -178,16 +190,20 @@ class ContentSubmissionController extends Controller
     {
         $this->authorizeSubmission($submission);
 
-        if ($submission->isLockedByPaidOrder()) {
-            return response()->json(['success' => false, 'message' => 'This article is already linked to an order.'], 422);
-        }
+        try {
+            if ($submission->isLockedByPaidOrder()) {
+                return response()->json(['success' => false, 'message' => 'This article is already linked to an order.'], 422);
+            }
 
-        if ($submission->isArchived()) {
-            return response()->json(['success' => false, 'message' => 'Restore this article before editing.'], 422);
-        }
+            if ($submission->isArchived()) {
+                return response()->json(['success' => false, 'message' => 'Restore this article before editing.'], 422);
+            }
 
-        if ($submission->isUnusedExpired()) {
-            return response()->json(['success' => false, 'message' => 'Expired articles are preview only. The original file cannot be edited.'], 422);
+            if ($submission->isUnusedExpired()) {
+                return response()->json(['success' => false, 'message' => 'Expired articles are preview only. The original file cannot be edited.'], 422);
+            }
+        } catch (\Throwable $e) {
+            return $this->leftoverJson($e, 'Could not save article. Please try again.');
         }
 
         $data = $request->validate([
@@ -291,6 +307,13 @@ class ContentSubmissionController extends Controller
             ], 403);
         }
 
+        if (! ContentSubmission::tableAvailable()) {
+            return $this->leftoverJson(
+                new \RuntimeException('Content submissions are unavailable.'),
+                'Unable to store image.'
+            );
+        }
+
         $image = $request->file('image');
         [$contentLength, $clientBytes] = $this->uploads->uploadByteHints($request);
         if ($message = $this->uploads->rejectedImageUploadMessage(
@@ -304,13 +327,21 @@ class ContentSubmissionController extends Controller
             ], 422);
         }
 
-        $request->validate([
-            'image' => ['required', 'image', 'mimes:jpeg,png,jpg,gif,webp', 'max:'.ContentUploadService::IMAGE_MAX_KILOBYTES],
-            'content_submission_id' => ['required', 'integer', 'exists:content_submissions,id'],
-            'current_image_count' => ['required', 'integer', 'min:0', 'max:500'],
-        ]);
+        try {
+            $request->validate([
+                'image' => ['required', 'image', 'mimes:jpeg,png,jpg,gif,webp', 'max:'.ContentUploadService::IMAGE_MAX_KILOBYTES],
+                'content_submission_id' => ['required', 'integer', 'exists:content_submissions,id'],
+                'current_image_count' => ['required', 'integer', 'min:0', 'max:500'],
+            ]);
+        } catch (\Throwable $e) {
+            return $this->leftoverJson($e, 'Unable to store image.');
+        }
 
-        $submission = ContentSubmission::query()->findOrFail((int) $request->input('content_submission_id'));
+        try {
+            $submission = ContentSubmission::query()->findOrFail((int) $request->input('content_submission_id'));
+        } catch (\Throwable $e) {
+            return $this->leftoverJson($e, 'Unable to store image.');
+        }
         $this->authorizeSubmission($submission);
 
         if ($submission->isLockedByPaidOrder()) {
@@ -365,19 +396,27 @@ class ContentSubmissionController extends Controller
     {
         $this->authorizeSubmission($submission);
 
-        if ($submission->isLockedByPaidOrder()) {
-            return response()->json(['success' => false, 'message' => 'This submission is already linked to an order.'], 422);
+        try {
+            if ($submission->isLockedByPaidOrder()) {
+                return response()->json(['success' => false, 'message' => 'This submission is already linked to an order.'], 422);
+            }
+
+            if ($submission->isArchived()) {
+                return response()->json(['success' => false, 'message' => 'Restore this article before editing.'], 422);
+            }
+
+            if ($submission->isUnusedExpired()) {
+                return response()->json(['success' => false, 'message' => 'Expired articles are preview only. The original file cannot be edited.'], 422);
+            }
+        } catch (\Throwable $e) {
+            return $this->leftoverJson($e, 'Could not save the draft. Please try again.');
         }
 
-        if ($submission->isArchived()) {
-            return response()->json(['success' => false, 'message' => 'Restore this article before editing.'], 422);
+        try {
+            $cfg = $this->uploads->effectiveConfig();
+        } catch (\Throwable $e) {
+            return $this->leftoverJson($e, 'Could not save the draft. Please try again.');
         }
-
-        if ($submission->isUnusedExpired()) {
-            return response()->json(['success' => false, 'message' => 'Expired articles are preview only. The original file cannot be edited.'], 422);
-        }
-
-        $cfg = $this->uploads->effectiveConfig();
         $anchorMax = (int) ($cfg['anchor_text']['max_length'] ?? 120);
         $imageExt = $cfg['feature_image']['allowed_extensions'] ?? ['jpg', 'jpeg', 'png', 'gif', 'webp'];
 
@@ -805,7 +844,20 @@ class ContentSubmissionController extends Controller
             'language' => ['required', 'string', 'size:2', Rule::in($allowedLanguages)],
         ]);
 
-        $blocked = $this->marketChangeBlockMessage($submission);
+        try {
+            $blocked = $this->marketChangeBlockMessage($submission);
+        } catch (\Throwable $e) {
+            if ($request->expectsJson()) {
+                return $this->leftoverJson($e, 'The market could not be changed. Please try again.');
+            }
+
+            report($e);
+
+            return back()->with(
+                'error',
+                UserFacingError::message($e, 'The market could not be changed. Please try again.')
+            );
+        }
         if ($blocked !== null) {
             return $request->expectsJson()
                 ? response()->json(['success' => false, 'message' => $blocked], 422)
@@ -882,17 +934,37 @@ class ContentSubmissionController extends Controller
             'ids.*' => ['integer', 'min:1'],
         ]);
 
+        $ids = array_values(array_unique(array_map('intval', $data['ids'])));
+        try {
+            $rows = ContentSubmission::query()
+                ->where('user_id', $request->user()->id)
+                ->whereIn('id', $ids)
+                ->get()
+                ->keyBy('id');
+        } catch (\Throwable $e) {
+            if ($request->expectsJson()) {
+                return $this->leftoverJson($e, 'We could not update those articles. Please try again.');
+            }
+
+            report($e);
+
+            return back()->with(
+                'error',
+                UserFacingError::message($e, 'We could not update those articles. Please try again.')
+            );
+        }
+
         $ok = 0;
         $failed = 0;
-        foreach (array_values(array_unique(array_map('intval', $data['ids']))) as $id) {
+        foreach ($ids as $id) {
             if ($id < 1) {
                 $failed++;
 
                 continue;
             }
 
-            $submission = ContentSubmission::query()->find($id);
-            if (! $submission || (int) $submission->user_id !== (int) $request->user()->id) {
+            $submission = $rows->get($id);
+            if (! $submission instanceof ContentSubmission) {
                 $failed++;
 
                 continue;

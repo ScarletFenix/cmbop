@@ -108,14 +108,24 @@ use Illuminate\Support\Facades\Route;
 |--------------------------------------------------------------------------
 */
 
-$prefixedLocalePattern = PublicI18n::prefixedPattern();
-$supportedLocalePattern = PublicI18n::supportedPattern();
+$prefixedLocales = class_exists(PublicI18n::class)
+    ? PublicI18n::prefixed()
+    : (array) config('i18n.prefixed', ['de', 'fr', 'nl', 'es', 'it', 'us']);
+$supportedLocales = class_exists(PublicI18n::class)
+    ? PublicI18n::supported()
+    : (array) config('i18n.supported', ['en', 'de', 'fr', 'nl', 'es', 'it', 'us']);
+$prefixedLocalePattern = implode('|', array_values(array_filter($prefixedLocales, 'strlen')));
+$supportedLocalePattern = implode('|', array_values(array_filter($supportedLocales, 'strlen')));
+if ($prefixedLocalePattern === '') {
+    $prefixedLocalePattern = 'de|fr|nl|es|it|us';
+}
+if ($supportedLocalePattern === '') {
+    $supportedLocalePattern = 'en|de|fr|nl|es|it|us';
+}
 
 // Stacked locale cleanup: /nl/fr → /nl
-Route::get('/{locale}/{nested}', function ($locale, $nested) {
-    $prefixed = PublicI18n::prefixed();
-
-    if (in_array($locale, $prefixed, true) && in_array($nested, $prefixed, true)) {
+Route::get('/{locale}/{nested}', function ($locale, $nested) use ($prefixedLocales) {
+    if (in_array($locale, $prefixedLocales, true) && in_array($nested, $prefixedLocales, true)) {
         $remaining = array_slice(request()->segments(), 2);
         $newPath = $remaining ? '/'.implode('/', $remaining) : '';
 
@@ -135,14 +145,25 @@ Route::get('/{locale}/register', fn () => Redirect::to('/register', 301))
 
 $registerPublicMarketingRoutes = function (string $locale = 'en') {
     $p = function (string $english) use ($locale): string {
-        $localized = LocalizedPublicPath::for($english, $locale);
+        $localized = class_exists(LocalizedPublicPath::class)
+            ? LocalizedPublicPath::for($english, $locale)
+            : $english;
 
         return $localized === '' ? '/' : '/'.$localized;
     };
 
-    Route::get('/', function (CatalogTeaserService $teasers) {
+    Route::get('/', function () {
+        $catalogPreview = collect();
+        if (class_exists(CatalogTeaserService::class)) {
+            try {
+                $catalogPreview = app(CatalogTeaserService::class)->teasers(8);
+            } catch (Throwable) {
+                $catalogPreview = collect();
+            }
+        }
+
         return view('home', [
-            'catalogPreview' => $teasers->teasers(8),
+            'catalogPreview' => $catalogPreview,
         ]);
     })->name('home');
     Route::get($p('contact'), fn () => view('pages.contact'))->name('contact');
@@ -163,7 +184,8 @@ $registerPublicMarketingRoutes = function (string $locale = 'en') {
         ->middleware('throttle:10,1')
         ->name('newsletter.subscribe');
 
-    foreach (CountryLander::all() as $landerKey => $lander) {
+    $landers = class_exists(CountryLander::class) ? CountryLander::all() : [];
+    foreach ($landers as $landerKey => $lander) {
         $landerSlug = trim((string) ($lander['slug'] ?? ''));
         if ($landerSlug === '') {
             continue;
@@ -185,13 +207,16 @@ Route::get('/privacy', fn () => Redirect::to('/privacy-policy', 301));
 Route::get('/terms', fn () => Redirect::to('/terms-of-services', 301));
 
 // Prefixed locales use translated slugs; English leftovers 301 below.
-foreach (PublicI18n::prefixed() as $locale) {
+foreach ($prefixedLocales as $locale) {
     Route::group([
         'prefix' => $locale,
         'as' => 'locale.'.$locale.'.',
     ], fn () => $registerPublicMarketingRoutes($locale));
 
-    foreach (LocalizedPublicPath::legacyRedirects($locale) as $from => $to) {
+    $legacyRedirects = class_exists(LocalizedPublicPath::class)
+        ? LocalizedPublicPath::legacyRedirects($locale)
+        : [];
+    foreach ($legacyRedirects as $from => $to) {
         Route::get('/'.$locale.'/'.$from, function () use ($locale, $to) {
             $query = request()->getQueryString();
             $target = '/'.$locale.'/'.$to;
@@ -207,7 +232,13 @@ Route::get('/sitemap-{locale}.xml', [SitemapController::class, 'locale'])
     ->where('locale', $supportedLocalePattern)
     ->name('sitemap.locale');
 Route::get('/robots.txt', function () {
-    return response(RobotsTxt::render(), 200, [
+    $body = class_exists(RobotsTxt::class)
+        ? RobotsTxt::render()
+        : (is_file(public_path('robots.txt'))
+            ? (string) file_get_contents(public_path('robots.txt'))
+            : "User-agent: *\nAllow: /\n");
+
+    return response($body, 200, [
         'Content-Type' => 'text/plain; charset=UTF-8',
         'Cache-Control' => 'public, max-age=3600',
     ]);

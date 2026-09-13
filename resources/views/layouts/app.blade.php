@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="{{ \App\Support\PublicI18n::htmlLang() }}">
+<html lang="{{ class_exists(\App\Support\PublicI18n::class) ? \App\Support\PublicI18n::htmlLang() : 'en-GB' }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -40,13 +40,15 @@
                 }
             }
         }
-        $hreflangTags = \App\Support\PublicI18n::hreflangTags(
-            request(),
-            $hreflangXDefault,
-            $hreflangLocales,
-            $hreflangPath,
-            $hreflangPathByLocale !== [] ? $hreflangPathByLocale : null
-        );
+        $hreflangTags = class_exists(\App\Support\PublicI18n::class)
+            ? \App\Support\PublicI18n::hreflangTags(
+                request(),
+                $hreflangXDefault,
+                $hreflangLocales,
+                $hreflangPath,
+                $hreflangPathByLocale !== [] ? $hreflangPathByLocale : null
+            )
+            : [];
     @endphp
     @include('components.favicon')
     <title>{{ $pageTitle }}</title>
@@ -69,7 +71,7 @@
     <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com">
     <link rel="dns-prefetch" href="https://fonts.googleapis.com">
     <link rel="dns-prefetch" href="https://fonts.gstatic.com">
-    <meta property="og:locale" content="{{ \App\Support\PublicI18n::ogLocale() }}">
+    <meta property="og:locale" content="{{ class_exists(\App\Support\PublicI18n::class) ? \App\Support\PublicI18n::ogLocale() : 'en_GB' }}">
     <meta property="og:type" content="{{ $pageType }}">
     <meta property="og:site_name" content="SEOLinkBuildings">
     <meta property="og:title" content="{{ $pageTitle }}">

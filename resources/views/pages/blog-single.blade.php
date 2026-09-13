@@ -38,7 +38,9 @@
     '@type' => 'BlogPosting',
     'headline' => $resolvedTitle,
     'description' => $blogDescription,
-    'inLanguage' => \App\Support\PublicI18n::htmlLang($activeTranslation?->locale ?: ($blog->primary_locale ?: app()->getLocale())),
+    'inLanguage' => class_exists(\App\Support\PublicI18n::class)
+        ? \App\Support\PublicI18n::htmlLang($activeTranslation?->locale ?: ($blog->primary_locale ?: app()->getLocale()))
+        : 'en-GB',
     'datePublished' => optional($blog->published_at)?->toIso8601String(),
     'dateModified' => optional($blog->updated_at)?->toIso8601String(),
     'author' => [
@@ -133,7 +135,7 @@
             </div>
             @if(($fallbackUsed ?? false) === true)
                 <div class="alert alert-info mt-3 mb-0">
-                    This article is currently shown in {{ \App\Support\PublicI18n::shortLabel($activeTranslation?->locale ?? 'en') }} because a {{ \App\Support\PublicI18n::shortLabel($requestedLocale ?? public_locale()) }} translation is not yet available.
+                    This article is currently shown in {{ class_exists(\App\Support\PublicI18n::class) ? \App\Support\PublicI18n::shortLabel($activeTranslation?->locale ?? 'en') : strtoupper((string) ($activeTranslation?->locale ?? 'en')) }} because a {{ class_exists(\App\Support\PublicI18n::class) ? \App\Support\PublicI18n::shortLabel($requestedLocale ?? public_locale()) : strtoupper((string) ($requestedLocale ?? public_locale())) }} translation is not yet available.
                 </div>
             @endif
             

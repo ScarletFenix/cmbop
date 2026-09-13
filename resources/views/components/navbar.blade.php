@@ -8,7 +8,7 @@
   // On English-only auth pages, send logo back to the visitor's remembered public locale
   $homeLocale = $showSwitcher
       ? $currentLocale
-      : PublicI18n::rememberedPublicLocale(request());
+      : (class_exists(PublicI18n::class) ? PublicI18n::rememberedPublicLocale(request()) : 'en');
   $homeUrl = localized_url('/', $homeLocale);
   // Auth always English
   $loginUrl = url('/login');

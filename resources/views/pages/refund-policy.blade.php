@@ -31,7 +31,9 @@
     'name' => __('messages.meta_refund_title'),
     'url' => localized_url('refund-policy'),
     'description' => __('messages.meta_refund_description'),
-    'inLanguage' => \App\Support\PublicI18n::htmlLang(),
+    'inLanguage' => class_exists(\App\Support\PublicI18n::class)
+        ? \App\Support\PublicI18n::htmlLang()
+        : 'en-GB',
     'dateModified' => __('messages.refund_last_updated_iso'),
 ], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) !!}
 </script>

@@ -178,7 +178,12 @@ class PublicI18n
         }
 
         $first = self::firstPathSegment($request);
-        $public = LocalizedPublicPath::allFirstSegments();
+        $public = class_exists(LocalizedPublicPath::class)
+            ? LocalizedPublicPath::allFirstSegments()
+            : array_values(array_filter(
+                config('i18n.public_paths', []),
+                fn ($path) => is_string($path) && $path !== ''
+            ));
 
         // Home
         if ($first === '') {
@@ -196,7 +201,10 @@ class PublicI18n
     public static function urlForLocale(string $path, ?string $locale = null): string
     {
         $locale = $locale ?? App::getLocale();
-        $path = LocalizedPublicPath::localize(ltrim((string) $path, '/'), $locale);
+        $path = ltrim((string) $path, '/');
+        if (class_exists(LocalizedPublicPath::class)) {
+            $path = LocalizedPublicPath::localize($path, $locale);
+        }
 
         if (! self::isSupported($locale) || $locale === self::default()) {
             return $path === '' ? url('/') : url($path);
@@ -207,7 +215,10 @@ class PublicI18n
 
     public static function switchUrl(Request $request, string $targetLocale): string
     {
-        $path = LocalizedPublicPath::canonicalize(self::pathWithoutLocale($request));
+        $path = self::pathWithoutLocale($request);
+        if (class_exists(LocalizedPublicPath::class)) {
+            $path = LocalizedPublicPath::canonicalize($path);
+        }
 
         if (self::isEnglishOnlyPath($request)) {
             return self::urlForLocale('', $targetLocale);
@@ -281,7 +292,9 @@ class PublicI18n
         }
 
         $path = $pathOverride !== null ? ltrim($pathOverride, '/') : self::pathWithoutLocale($request);
-        $path = LocalizedPublicPath::canonicalize($path);
+        if (class_exists(LocalizedPublicPath::class)) {
+            $path = LocalizedPublicPath::canonicalize($path);
+        }
         $tags = [];
         $targetLocales = $locales ?: self::supported();
         $targetLocales = array_values(array_filter($targetLocales, fn ($locale) => self::isSupported($locale)));
@@ -291,7 +304,10 @@ class PublicI18n
         }
 
         foreach ($targetLocales as $locale) {
-            $localePath = ltrim((string) ($pathByLocale[$locale] ?? LocalizedPublicPath::localize($path, $locale)), '/');
+            $fallbackPath = class_exists(LocalizedPublicPath::class)
+                ? LocalizedPublicPath::localize($path, $locale)
+                : $path;
+            $localePath = ltrim((string) ($pathByLocale[$locale] ?? $fallbackPath), '/');
             $tags[] = [
                 'hreflang' => self::hreflang($locale),
                 'href' => self::urlForLocale($localePath, $locale),
@@ -299,7 +315,10 @@ class PublicI18n
         }
 
         $xDefault = self::isSupported($xDefaultLocale) ? $xDefaultLocale : self::default();
-        $xDefaultPath = ltrim((string) ($pathByLocale[$xDefault] ?? LocalizedPublicPath::localize($path, $xDefault)), '/');
+        $xDefaultFallback = class_exists(LocalizedPublicPath::class)
+            ? LocalizedPublicPath::localize($path, $xDefault)
+            : $path;
+        $xDefaultPath = ltrim((string) ($pathByLocale[$xDefault] ?? $xDefaultFallback), '/');
 
         $tags[] = [
             'hreflang' => 'x-default',

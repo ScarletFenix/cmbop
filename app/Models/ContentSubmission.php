@@ -304,7 +304,7 @@ class ContentSubmission extends Model
             }
         }
 
-        if (! Schema::hasColumn('order_items', 'content_submission_id')) {
+        if (! $this->orderItemsContentColumnAvailable()) {
             return false;
         }
 
@@ -1073,35 +1073,41 @@ class ContentSubmission extends Model
      */
     public function isLinkedToOpenOrderItem(): bool
     {
-        if ($this->isInUse()) {
-            return true;
-        }
+        try {
+            if ($this->isInUse()) {
+                return true;
+            }
 
-        if (! Schema::hasColumn('order_items', 'content_submission_id')) {
+            if (! $this->orderItemsContentColumnAvailable()) {
+                return false;
+            }
+
+            if ($this->relationLoaded('orderItems')) {
+                return $this->orderItems->contains(function (OrderItem $item) {
+                    if ($item->isClawedBack()) {
+                        return false;
+                    }
+
+                    $order = $item->relationLoaded('order')
+                        ? $item->order
+                        : $item->order()->first();
+
+                    return $order instanceof Order
+                        && $this->orderLooksLikeActiveClaim($order);
+                });
+            }
+
+            return $this->orderItems()
+                ->whereHas('order', function ($q) {
+                    $this->constrainActiveOrderClaim($q);
+                })
+                ->tap(fn ($item) => $this->excludeClawedBackItems($item))
+                ->exists();
+        } catch (\Throwable $e) {
+            report($e);
+
             return false;
         }
-
-        if ($this->relationLoaded('orderItems')) {
-            return $this->orderItems->contains(function (OrderItem $item) {
-                if ($item->isClawedBack()) {
-                    return false;
-                }
-
-                $order = $item->relationLoaded('order')
-                    ? $item->order
-                    : $item->order()->first();
-
-                return $order instanceof Order
-                    && $this->orderLooksLikeActiveClaim($order);
-            });
-        }
-
-        return $this->orderItems()
-            ->whereHas('order', function ($q) {
-                $this->constrainActiveOrderClaim($q);
-            })
-            ->tap(fn ($item) => $this->excludeClawedBackItems($item))
-            ->exists();
     }
 
     /**
@@ -1247,13 +1253,19 @@ class ContentSubmission extends Model
 
     public function canEditArticle(): bool
     {
-        if ($this->isLockedByPaidOrder() || $this->isArchived()) {
+        try {
+            if ($this->isLockedByPaidOrder() || $this->isArchived()) {
+                return false;
+            }
+
+            // Catalog expiry is unused-inventory only. A leftover still on an
+            // open order must stay editable so Pay again can be unblocked.
+            return ! $this->isUnusedExpired();
+        } catch (\Throwable $e) {
+            report($e);
+
             return false;
         }
-
-        // Catalog expiry is unused-inventory only. A leftover still on an
-        // open order must stay editable so Pay again can be unblocked.
-        return ! $this->isUnusedExpired();
     }
 
     /**
@@ -1288,7 +1300,7 @@ class ContentSubmission extends Model
             return (int) $owner->id;
         }
 
-        if (! Schema::hasColumn('order_items', 'content_submission_id')) {
+        if (! $this->orderItemsContentColumnAvailable()) {
             return null;
         }
 
@@ -1347,7 +1359,7 @@ class ContentSubmission extends Model
             return $this->orderLooksLikeReplaceableLeftover($owner);
         }
 
-        if (! Schema::hasColumn('order_items', 'content_submission_id')) {
+        if (! $this->orderItemsContentColumnAvailable()) {
             return false;
         }
 
@@ -1657,42 +1669,115 @@ class ContentSubmission extends Model
      */
     public function placementItem(): ?OrderItem
     {
-        if ($this->order_item_id) {
-            if ($this->relationLoaded('orderItem') && $this->orderItem) {
-                return $this->orderItem;
+        try {
+            if (! $this->orderItemsTableAvailable()) {
+                return $this->placementItemFromLoadedRelations();
             }
-            if ($this->relationLoaded('orderItems')) {
-                $owned = $this->orderItems->firstWhere('id', (int) $this->order_item_id);
-                if ($owned) {
-                    return $owned;
+
+            if ($this->order_item_id) {
+                if ($this->relationLoaded('orderItem') && $this->orderItem) {
+                    return $this->orderItem;
+                }
+                if ($this->relationLoaded('orderItems')) {
+                    $owned = $this->orderItems->firstWhere('id', (int) $this->order_item_id);
+                    if ($owned) {
+                        return $owned;
+                    }
+                }
+
+                return $this->orderItem()->with('site')->first();
+            }
+
+            $items = $this->relationLoaded('orderItems')
+                ? $this->orderItems
+                : $this->orderItems()->with(['site', 'order'])->orderBy('id')->get();
+
+            if ($this->order_id) {
+                $onOwner = $items->first(function (OrderItem $item) {
+                    return (int) $item->order_id === (int) $this->order_id
+                        && (int) ($item->content_submission_id ?? 0) === (int) $this->id;
+                });
+                if ($onOwner) {
+                    return $onOwner;
                 }
             }
 
-            return $this->orderItem()->with('site')->first();
+            return $items->first(function (OrderItem $item) {
+                if ($item->isClawedBack()) {
+                    return false;
+                }
+
+                $order = $item->relationLoaded('order')
+                    ? $item->order
+                    : $item->order()->first();
+
+                return $order instanceof Order && $order->status !== 'cancelled';
+            });
+        } catch (\Throwable $e) {
+            report($e);
+
+            return $this->placementItemFromLoadedRelations();
+        }
+    }
+
+    protected function orderItemsTableAvailable(): bool
+    {
+        try {
+            if (! Schema::hasTable('order_items')) {
+                return false;
+            }
+
+            DB::table('order_items')->limit(1)->exists();
+
+            return true;
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    protected function orderItemsContentColumnAvailable(): bool
+    {
+        try {
+            return $this->orderItemsTableAvailable()
+                && Schema::hasColumn('order_items', 'content_submission_id');
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    protected function placementItemFromLoadedRelations(): ?OrderItem
+    {
+        if ($this->relationLoaded('orderItem') && $this->orderItem instanceof OrderItem) {
+            return $this->orderItem;
         }
 
-        $items = $this->relationLoaded('orderItems')
-            ? $this->orderItems
-            : $this->orderItems()->with(['site', 'order'])->orderBy('id')->get();
+        if (! $this->relationLoaded('orderItems')) {
+            return null;
+        }
+
+        if ($this->order_item_id) {
+            $owned = $this->orderItems->firstWhere('id', (int) $this->order_item_id);
+            if ($owned instanceof OrderItem) {
+                return $owned;
+            }
+        }
 
         if ($this->order_id) {
-            $onOwner = $items->first(function (OrderItem $item) {
+            $onOwner = $this->orderItems->first(function (OrderItem $item) {
                 return (int) $item->order_id === (int) $this->order_id
                     && (int) ($item->content_submission_id ?? 0) === (int) $this->id;
             });
-            if ($onOwner) {
+            if ($onOwner instanceof OrderItem) {
                 return $onOwner;
             }
         }
 
-        return $items->first(function (OrderItem $item) {
+        return $this->orderItems->first(function (OrderItem $item) {
             if ($item->isClawedBack()) {
                 return false;
             }
 
-            $order = $item->relationLoaded('order')
-                ? $item->order
-                : $item->order()->first();
+            $order = $item->relationLoaded('order') ? $item->order : null;
 
             return $order instanceof Order && $order->status !== 'cancelled';
         });
@@ -1703,6 +1788,17 @@ class ContentSubmission extends Model
      * was never written. Admin library "View order" must not go blank.
      */
     public function libraryOrder(): ?Order
+    {
+        try {
+            return $this->resolveLibraryOrder();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return null;
+        }
+    }
+
+    protected function resolveLibraryOrder(): ?Order
     {
         $paidId = $this->paidClaimOrderId();
         if ($paidId) {
@@ -1754,12 +1850,18 @@ class ContentSubmission extends Model
 
     public function liveUrl(): ?string
     {
-        $item = $this->currentPaidPlacementItem();
-        if (! $item || ! $item->hasLiveUrl()) {
+        try {
+            $item = $this->currentPaidPlacementItem();
+            if (! $item || ! $item->hasLiveUrl()) {
+                return null;
+            }
+
+            return trim((string) $item->live_url) ?: null;
+        } catch (\Throwable $e) {
+            report($e);
+
             return null;
         }
-
-        return trim((string) $item->live_url) ?: null;
     }
 
     /**
@@ -1768,7 +1870,13 @@ class ContentSubmission extends Model
      */
     public function libraryPlacementItem(): ?OrderItem
     {
-        return $this->currentPaidPlacementItem() ?: $this->placementItem();
+        try {
+            return $this->currentPaidPlacementItem() ?: $this->placementItem();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return null;
+        }
     }
 
     /**
@@ -1873,6 +1981,20 @@ class ContentSubmission extends Model
      * @return 'available'|'evaluating'|'in_progress'|'published'|'expired'|'archived'|'needs_fix'|'unavailable'
      */
     public function libraryAvailability(): string
+    {
+        try {
+            return $this->resolveLibraryAvailability();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return 'unavailable';
+        }
+    }
+
+    /**
+     * @return 'available'|'evaluating'|'in_progress'|'published'|'expired'|'archived'|'needs_fix'|'unavailable'
+     */
+    protected function resolveLibraryAvailability(): string
     {
         if ($this->isArchived()) {
             return 'archived';
@@ -2251,9 +2373,15 @@ class ContentSubmission extends Model
 
     public function isReadyForCheckout(): bool
     {
-        return $this->canBeOrdered()
-            && $this->hasCheckoutReadyLinks()
-            && ! $this->isClaimedByAnotherOrder();
+        try {
+            return $this->canBeOrdered()
+                && $this->hasCheckoutReadyLinks()
+                && ! $this->isClaimedByAnotherOrder();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return false;
+        }
     }
 
     /**
@@ -2334,7 +2462,7 @@ class ContentSubmission extends Model
             return $item;
         }
 
-        if (! Schema::hasColumn('order_items', 'content_submission_id')) {
+        if (! $this->orderItemsContentColumnAvailable()) {
             return null;
         }
 
@@ -2407,17 +2535,44 @@ class ContentSubmission extends Model
             && ($order->payment_status === null || $order->payment_status !== 'refunded');
     }
 
+    protected function ordersTableAvailable(): bool
+    {
+        try {
+            if (! Schema::hasTable('orders')) {
+                return false;
+            }
+
+            DB::table('orders')->limit(1)->exists();
+
+            return true;
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
     protected function relatedOwnerOrder(): ?Order
     {
         if ($this->order_id === null) {
             return null;
         }
 
-        $order = $this->relationLoaded('order')
-            ? $this->order
-            : $this->order()->first();
+        try {
+            if ($this->relationLoaded('order')) {
+                return $this->order instanceof Order ? $this->order : null;
+            }
 
-        return $order instanceof Order ? $order : null;
+            if (! $this->ordersTableAvailable()) {
+                return null;
+            }
+
+            $order = $this->order()->first();
+
+            return $order instanceof Order ? $order : null;
+        } catch (\Throwable $e) {
+            report($e);
+
+            return null;
+        }
     }
 
     /**
@@ -2433,7 +2588,7 @@ class ContentSubmission extends Model
             return true;
         }
 
-        if (! Schema::hasColumn('order_items', 'content_submission_id')) {
+        if (! $this->orderItemsContentColumnAvailable()) {
             return false;
         }
 
@@ -2475,7 +2630,7 @@ class ContentSubmission extends Model
             return (int) $owner->id;
         }
 
-        if (! Schema::hasColumn('order_items', 'content_submission_id')) {
+        if (! $this->orderItemsContentColumnAvailable()) {
             return null;
         }
 

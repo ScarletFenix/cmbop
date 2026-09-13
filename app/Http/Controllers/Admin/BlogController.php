@@ -78,7 +78,7 @@ class BlogController extends Controller
             }
 
             $locale = (string) $request->input('locale', '');
-            if (PublicI18n::isSupported($locale)) {
+            if (class_exists(PublicI18n::class) && PublicI18n::isSupported($locale)) {
                 $query->where('primary_locale', $locale);
             }
 
@@ -90,7 +90,7 @@ class BlogController extends Controller
             }
 
             if ($request->boolean('missing_translations') && $translationsAvailable) {
-                $needed = count(PublicI18n::supported());
+                $needed = count($this->publicLocales());
                 $query->whereRaw(
                     '(select count(*) from blog_translations where blog_translations.blog_id = blogs.id) < ?',
                     [$needed]
@@ -137,7 +137,7 @@ class BlogController extends Controller
     public function create()
     {
         return view('admin.blogs.create', [
-            'locales' => PublicI18n::supported(),
+            'locales' => $this->publicLocales(),
         ]);
     }
 
@@ -289,7 +289,7 @@ class BlogController extends Controller
 
             return view('admin.blogs.edit', [
                 'blog' => $blog,
-                'locales' => PublicI18n::supported(),
+                'locales' => $this->publicLocales(),
             ]);
         } catch (ModelNotFoundException $e) {
             return redirect()->route('admin.blogs.index')
@@ -762,7 +762,7 @@ class BlogController extends Controller
     {
         $normalized = [];
 
-        foreach (PublicI18n::supported() as $locale) {
+        foreach ($this->publicLocales() as $locale) {
             $item = (array) ($translations[$locale] ?? []);
             $title = trim((string) ($item['title'] ?? ''));
             $slug = trim((string) ($item['slug'] ?? ''));
@@ -847,11 +847,23 @@ class BlogController extends Controller
      * Both tables must share one namespace or a new translation can steal
      * a legacy post's URL.
      */
+    /**
+     * @return list<string>
+     */
+    private function publicLocales(): array
+    {
+        if (class_exists(PublicI18n::class)) {
+            return PublicI18n::supported();
+        }
+
+        return ['en'];
+    }
+
     private function requestedPrimaryLocale(Request $request): string
     {
         $locale = (string) $request->input('primary_locale');
 
-        return PublicI18n::isSupported($locale) ? $locale : 'en';
+        return (class_exists(PublicI18n::class) && PublicI18n::isSupported($locale)) ? $locale : 'en';
     }
 
     /**

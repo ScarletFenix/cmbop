@@ -330,6 +330,35 @@ class MarketingSiteImageUploadTest extends TestCase
         $this->assertSame('sites/existing-cover.webp', $site->fresh()->site_image);
     }
 
+    public function test_admin_upload_accepts_mac_screenshot_webp_name(): void
+    {
+        $site = $this->makeSite([
+            'domain' => 'mac-webp.example',
+            'site_url' => 'https://mac-webp.example',
+        ]);
+        $file = UploadedFile::fake()->createWithContent(
+            'Screenshot 2026-09-13 at 10.32.18 AM.webp',
+            $this->tinyWebpBytes()
+        );
+
+        $this->actingAs($this->admin)
+            ->postJson(route('admin.sites.upload-image', $site->id), [
+                'site_image' => $file,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $site->refresh();
+        $this->assertNotEmpty($site->site_image);
+        $this->assertStringStartsWith('sites/', (string) $site->site_image);
+        Storage::disk('public')->assertExists((string) $site->site_image);
+    }
+
+    public function test_forget_marketing_caches_does_not_throw(): void
+    {
+        $this->assertNull(Site::forgetMarketingCaches());
+    }
+
     public function test_admin_upload_image_endpoint_still_persists_site_image(): void
     {
         $site = $this->makeSite(['domain' => 'admin-image.example', 'site_url' => 'https://admin-image.example']);

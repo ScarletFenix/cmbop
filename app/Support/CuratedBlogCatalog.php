@@ -176,10 +176,14 @@ class CuratedBlogCatalog
             return $html;
         }
 
+        $prefixed = class_exists(PublicI18n::class) ? PublicI18n::prefixed() : [];
         $locales = implode('|', array_map(
             static fn (string $locale): string => preg_quote($locale, '~'),
-            PublicI18n::prefixed()
+            $prefixed
         ));
+        if ($locales === '') {
+            $locales = 'en';
+        }
 
         $rewritten = preg_replace_callback(
             '~(?<![:\w.-])((?:https?://[^"\'\s>]+)?)((?:/(?:'.$locales.'))?)(/blog/)('.implode('|', $from).')(/)?(?=["\'?#\s>]|$)~i',

@@ -10,6 +10,10 @@ use Illuminate\Support\Facades\Request;
 if (! function_exists('get_language_switcher_url')) {
     function get_language_switcher_url($locale)
     {
+        if (! class_exists(PublicI18n::class)) {
+            return url('/');
+        }
+
         return PublicI18n::switchUrl(Request::instance(), (string) $locale);
     }
 }
@@ -17,6 +21,12 @@ if (! function_exists('get_language_switcher_url')) {
 if (! function_exists('localized_url')) {
     function localized_url($path = '', $locale = null)
     {
+        if (! class_exists(PublicI18n::class)) {
+            $path = ltrim((string) $path, '/');
+
+            return $path === '' ? url('/') : url($path);
+        }
+
         return PublicI18n::urlForLocale((string) $path, $locale);
     }
 }
@@ -31,6 +41,10 @@ if (! function_exists('public_locale')) {
 if (! function_exists('show_public_language_switcher')) {
     function show_public_language_switcher(): bool
     {
+        if (! class_exists(PublicI18n::class)) {
+            return false;
+        }
+
         return PublicI18n::shouldShowLanguageSwitcher(Request::instance());
     }
 }
@@ -48,7 +62,9 @@ if (! function_exists('get_available_locales')) {
             'it' => ['name' => 'Italiano', 'flag' => '🇮🇹', 'code' => 'it'],
         ];
 
-        $supported = array_flip(PublicI18n::supported());
+        $supported = class_exists(PublicI18n::class)
+            ? array_flip(PublicI18n::supported())
+            : ['en' => 0];
 
         return array_filter($catalog, fn ($code) => isset($supported[$code]), ARRAY_FILTER_USE_KEY);
     }

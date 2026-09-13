@@ -64,7 +64,9 @@
     'name' => 'EU guest-post price index',
     'description' => $metaDescription,
     'url' => $canonical,
-    'creator' => \App\Support\BrandOrganization::schema(),
+    'creator' => class_exists(\App\Support\BrandOrganization::class)
+        ? \App\Support\BrandOrganization::schema()
+        : ['@type' => 'Organization', 'name' => 'SEOLinkBuildings'],
     'isAccessibleForFree' => true,
     'spatialCoverage' => 'Europe',
     'variableMeasured' => 'Median advertiser guest-post checkout price (EUR)',
@@ -186,10 +188,12 @@
     </div>
     <p class="text-center text-muted small mt-3 mb-0">{{ __('messages.marketplace_catalog_note') }}</p>
 
-    @include('components.country-lander-nav', [
-        'title' => 'Guest posts by market',
-        'landers' => $countryLanders ?? [],
-        'label' => 'Country landers',
-    ])
+    @if(view()->exists('components.country-lander-nav'))
+        @include('components.country-lander-nav', [
+            'title' => 'Guest posts by market',
+            'landers' => $countryLanders ?? [],
+            'label' => 'Country landers',
+        ])
+    @endif
 </div>
 @endsection
