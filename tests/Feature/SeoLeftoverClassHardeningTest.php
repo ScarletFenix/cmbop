@@ -40,6 +40,7 @@ class SeoLeftoverClassHardeningTest extends TestCase
         $sitemap = (string) file_get_contents(base_path('app/Http/Controllers/SitemapController.php'));
         $this->assertStringContainsString('class_exists(CountryLander::class)', $sitemap);
         $this->assertStringContainsString('class_exists(GuestPostPriceIndex::class)', $sitemap);
+        $this->assertStringContainsString('class_exists(PublicI18n::class)', $sitemap);
 
         $site = (string) file_get_contents(base_path('app/Models/Site.php'));
         $this->assertStringContainsString('class_exists(GuestPostPriceIndex::class)', $site);
@@ -66,6 +67,9 @@ class SeoLeftoverClassHardeningTest extends TestCase
 
         $sync = (string) file_get_contents(base_path('app/Services/CuratedBlogSync.php'));
         $this->assertStringContainsString('class_exists(BlogTranslationSlug::class)', $sync);
+
+        $setLocale = (string) file_get_contents(base_path('app/Http/Middleware/SetLocale.php'));
+        $this->assertStringContainsString('class_exists(PublicI18n::class)', $setLocale);
     }
 
     public function test_public_money_pages_and_admin_login_stay_up(): void
@@ -75,6 +79,8 @@ class SeoLeftoverClassHardeningTest extends TestCase
         $this->get('/marketplace')->assertOk();
         $this->get('/guest-posts-germany')->assertOk();
         $this->get('/guest-post-prices-europe')->assertOk();
+        $this->get('/how-it-works')->assertOk();
+        $this->get('/refund-policy')->assertOk();
         $this->get('/sitemap-en.xml')->assertOk();
         $this->get('/robots.txt')->assertOk();
         $this->get('/login')->assertOk();

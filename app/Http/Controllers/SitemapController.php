@@ -40,7 +40,7 @@ class SitemapController extends Controller
         $base = rtrim(app_public_url(), '/');
         $sitemaps = [];
 
-        foreach (PublicI18n::supported() as $locale) {
+        foreach ($this->supportedLocales() as $locale) {
             $sitemaps[] = [
                 'loc' => $base.'/sitemap-'.$locale.'.xml',
             ];
@@ -53,7 +53,7 @@ class SitemapController extends Controller
 
     public function locale(string $locale): Response
     {
-        abort_unless(PublicI18n::isSupported($locale), 404);
+        abort_unless(in_array($locale, $this->supportedLocales(), true), 404);
 
         // Locale sitemaps join blog_translations — heal skipped migrations.
         CuratedBlogSync::ensurePresent();
@@ -66,7 +66,7 @@ class SitemapController extends Controller
         }
 
         // English-only auth entry points appear only on the English sitemap
-        if ($locale === PublicI18n::default()) {
+        if ($locale === $this->defaultLocale()) {
             $urls[] = [
                 'loc' => $base.'/login',
                 'changefreq' => 'monthly',
@@ -134,6 +134,17 @@ class SitemapController extends Controller
      */
     private function urlEntry(string $path, string $locale, string $changefreq, string $priority, ?array $availableLocales = null, ?array $pathByLocale = null): array
     {
+        if (! class_exists(PublicI18n::class)) {
+            $path = ltrim($path, '/');
+
+            return [
+                'loc' => $path === '' ? url('/') : url($path),
+                'changefreq' => $changefreq,
+                'priority' => $priority,
+                'alternates' => [],
+            ];
+        }
+
         $alternates = [];
         $altLocales = $availableLocales ?: PublicI18n::supported();
         foreach ($altLocales as $alt) {
@@ -156,5 +167,29 @@ class SitemapController extends Controller
             'priority' => $priority,
             'alternates' => $alternates,
         ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function supportedLocales(): array
+    {
+        if (class_exists(PublicI18n::class)) {
+            return PublicI18n::supported();
+        }
+
+        return array_values(array_filter(
+            (array) config('i18n.supported', ['en']),
+            static fn ($locale) => is_string($locale) && $locale !== ''
+        ));
+    }
+
+    private function defaultLocale(): string
+    {
+        if (class_exists(PublicI18n::class)) {
+            return PublicI18n::default();
+        }
+
+        return (string) config('i18n.default', 'en');
     }
 }

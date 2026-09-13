@@ -14,6 +14,12 @@ class SetLocale
 {
     public function handle(Request $request, Closure $next): Response
     {
+        if (! class_exists(PublicI18n::class)) {
+            App::setLocale((string) config('i18n.default', 'en'));
+
+            return $next($request);
+        }
+
         // Authenticated SaaS + English-only auth pages always stay English.
         if (PublicI18n::isEnglishOnlyPath($request) || $this->isAuthenticatedAppPath($request)) {
             App::setLocale(PublicI18n::default());
