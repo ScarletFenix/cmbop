@@ -17,7 +17,10 @@ use App\Services\InAppNotificationService;
 use App\Services\Marketplace\CountryLanguagePairs;
 use App\Services\SiteClaimTransferService;
 use App\Support\MarketingOpsQueues;
+use App\Support\UserFacingError;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -29,37 +32,67 @@ class BulkSiteRequestController extends Controller
     public function index(Request $request)
     {
         $status = search_text($request->input('status'));
-
-        $withCount = [
-            'sites' => fn ($q) => $q->notArchived(),
-            'items as pending_items_count' => fn ($q) => $q->whereNull('site_id'),
-        ];
-        if (Site::hasSitesColumn('onboarding_status')) {
-            $withCount['sites as awaiting_details_count'] = fn ($q) => $q->notArchived()
-                ->where('onboarding_status', Site::ONBOARDING_AWAITING_DETAILS);
-            $withCount['sites as ready_count'] = fn ($q) => $q->notArchived()
-                ->where('onboarding_status', Site::ONBOARDING_READY_FOR_REVIEW);
-        }
-
-        $query = BulkSiteRequest::query()
-            ->with(['publisher', 'handler'])
-            ->withCount($withCount)
-            ->latest();
-
-        MarketingOpsQueues::applyBulkIndexStatus($query, $status);
-
-        $requests = $query->paginate(20)->withQueryString();
         $selectedStatus = $status !== '' ? $status : 'all';
+
+        try {
+            $withCount = [
+                'sites' => fn ($q) => $q->notArchived(),
+                'items as pending_items_count' => fn ($q) => $q->whereNull('site_id'),
+            ];
+            if (Site::hasSitesColumn('onboarding_status')) {
+                $withCount['sites as awaiting_details_count'] = fn ($q) => $q->notArchived()
+                    ->where('onboarding_status', Site::ONBOARDING_AWAITING_DETAILS);
+                $withCount['sites as ready_count'] = fn ($q) => $q->notArchived()
+                    ->where('onboarding_status', Site::ONBOARDING_READY_FOR_REVIEW);
+            }
+
+            $query = BulkSiteRequest::query()
+                ->with(['publisher', 'handler'])
+                ->withCount($withCount)
+                ->latest();
+
+            MarketingOpsQueues::applyBulkIndexStatus($query, $status);
+
+            $requests = $query->paginate(20)->withQueryString();
+            $waitingOnYouCount = MarketingOpsQueues::bulkWaitingOnMarketer()->count();
+        } catch (\Throwable $e) {
+            report($e);
+            session()->flash(
+                'error',
+                UserFacingError::message($e, 'We could not load bulk site requests. Please refresh and try again.')
+            );
+
+            $requests = new LengthAwarePaginator([], 0, 20, 1, [
+                'path' => $request->url(),
+                'query' => $request->query(),
+            ]);
+            $waitingOnYouCount = 0;
+        }
 
         return view('admin.bulk-site-requests.index', [
             'requests' => $requests,
             'status' => $selectedStatus,
             'filtersActive' => $selectedStatus !== 'all',
-            'waitingOnYouCount' => MarketingOpsQueues::bulkWaitingOnMarketer()->count(),
+            'waitingOnYouCount' => $waitingOnYouCount,
         ]);
     }
 
     public function show(int $id)
+    {
+        try {
+            return $this->renderShow($id);
+        } catch (ModelNotFoundException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            report($e);
+
+            return redirect()
+                ->to(staff_route('bulk-site-requests.index'))
+                ->with('error', UserFacingError::message($e, 'We could not load that bulk request. Please try again.'));
+        }
+    }
+
+    private function renderShow(int $id)
     {
         $bulkRequest = BulkSiteRequest::with([
             'publisher',
@@ -204,66 +237,75 @@ class BulkSiteRequestController extends Controller
         $alreadyCancelled = false;
         $blockedByOpenOrders = null;
 
-        DB::transaction(function () use ($bulkRequest, $reason, &$removedDrafts, &$archivedLive, &$alreadyCancelled, &$blockedByOpenOrders) {
-            $locked = BulkSiteRequest::query()->lockForUpdate()->find($bulkRequest->id);
-            if (! $locked || $locked->isCancelled()) {
-                $alreadyCancelled = true;
+        try {
+            DB::transaction(function () use ($bulkRequest, $reason, &$removedDrafts, &$archivedLive, &$alreadyCancelled, &$blockedByOpenOrders) {
+                $locked = BulkSiteRequest::query()->lockForUpdate()->find($bulkRequest->id);
+                if (! $locked || $locked->isCancelled()) {
+                    $alreadyCancelled = true;
 
-                return;
-            }
+                    return;
+                }
 
-            $orderGuard = app(SiteClaimTransferService::class);
-            $openOn = [];
-            foreach ($locked->sites()->notArchived()->lockForUpdate()->get() as $site) {
-                $open = $orderGuard->openOrderItemsCount($site);
-                if ($open > 0) {
-                    $label = Site::normalizeMarketplaceDomain((string) $site->domain);
-                    if ($label === '') {
-                        $label = (string) $site->site_name;
+                $orderGuard = app(SiteClaimTransferService::class);
+                $openOn = [];
+                foreach ($locked->sites()->notArchived()->lockForUpdate()->get() as $site) {
+                    $open = $orderGuard->openOrderItemsCount($site);
+                    if ($open > 0) {
+                        $label = Site::normalizeMarketplaceDomain((string) $site->domain);
+                        if ($label === '') {
+                            $label = (string) $site->site_name;
+                        }
+                        $openOn[] = $label.' ('.$open.')';
                     }
-                    $openOn[] = $label.' ('.$open.')';
                 }
-            }
-            if ($openOn !== []) {
-                $blockedByOpenOrders = 'Cannot cancel while these listings have open orders: '
-                    .implode(', ', $openOn)
-                    .'. Finish, cancel, or resolve those orders first.';
+                if ($openOn !== []) {
+                    $blockedByOpenOrders = 'Cannot cancel while these listings have open orders: '
+                        .implode(', ', $openOn)
+                        .'. Finish, cancel, or resolve those orders first.';
 
-                return;
-            }
-
-            $drafts = $locked->sites()
-                ->where(function ($q) {
-                    $q->where('verified', 0)->orWhereNull('verified');
-                })
-                ->where(function ($q) {
-                    $q->where('active', 0)->orWhereNull('active');
-                })
-                ->lockForUpdate()
-                ->get();
-
-            foreach ($drafts as $site) {
-                if (! $site->canBeHardDeleted()) {
-                    continue;
+                    return;
                 }
-                $site->delete();
-                $removedDrafts++;
-            }
 
-            $survivors = $locked->sites()->notArchived()->lockForUpdate()->get();
-            foreach ($survivors as $site) {
-                if ($site->archiveByStaff($reason)) {
-                    $archivedLive++;
+                $drafts = $locked->sites()
+                    ->where(function ($q) {
+                        $q->where('verified', 0)->orWhereNull('verified');
+                    })
+                    ->where(function ($q) {
+                        $q->where('active', 0)->orWhereNull('active');
+                    })
+                    ->lockForUpdate()
+                    ->get();
+
+                foreach ($drafts as $site) {
+                    if (! $site->canBeHardDeleted()) {
+                        continue;
+                    }
+                    $site->delete();
+                    $removedDrafts++;
                 }
-            }
 
-            $locked->items()->whereNull('site_id')->delete();
+                $survivors = $locked->sites()->notArchived()->lockForUpdate()->get();
+                foreach ($survivors as $site) {
+                    if ($site->archiveByStaff($reason)) {
+                        $archivedLive++;
+                    }
+                }
 
-            $locked->forceFill([
-                'status' => BulkSiteRequest::STATUS_CANCELLED,
-                'handled_by' => auth()->id(),
-            ])->save();
-        });
+                $locked->items()->whereNull('site_id')->delete();
+
+                $locked->forceFill([
+                    'status' => BulkSiteRequest::STATUS_CANCELLED,
+                    'handled_by' => auth()->id(),
+                ])->save();
+            });
+        } catch (\Throwable $e) {
+            report($e);
+
+            return back()->with(
+                'error',
+                UserFacingError::message($e, 'We could not cancel this request. Please try again.')
+            );
+        }
 
         if ($alreadyCancelled) {
             return redirect()

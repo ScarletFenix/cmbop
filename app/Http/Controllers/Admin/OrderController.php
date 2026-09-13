@@ -13,6 +13,7 @@ use App\Services\Orders\AdminOrderStatusOverride;
 use App\Services\Orders\OrderClawbackService;
 use App\Support\ArticleDownload;
 use App\Support\UserFacingError;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -169,6 +170,21 @@ class OrderController extends Controller
 
     public function show($id)
     {
+        try {
+            return $this->renderShow($id);
+        } catch (ModelNotFoundException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            report($e);
+
+            return redirect()
+                ->route('admin.orders.index')
+                ->with('error', UserFacingError::message($e, 'We could not load that order. Please try again.'));
+        }
+    }
+
+    private function renderShow($id)
+    {
         // Heal a skipped migration before reading, so disputes come back rather
         // than staying invisible on the screen built to manage them.
         OrderItemDispute::ensureTable();
@@ -231,6 +247,10 @@ class OrderController extends Controller
             $override->apply($order, $data['status'], $request->user(), $data['reason']);
         } catch (ValidationException $e) {
             return back()->with('error', collect($e->errors())->flatten()->first());
+        } catch (\Throwable $e) {
+            report($e);
+
+            return back()->with('error', UserFacingError::message($e, 'We could not update that order status. Please try again.'));
         }
 
         return back()->with('success', 'Order '.$order->order_number.' moved to '.$data['status'].'.');

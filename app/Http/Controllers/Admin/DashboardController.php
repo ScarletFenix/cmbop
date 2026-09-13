@@ -4,6 +4,9 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Services\Admin\DashboardMetricsService;
+use App\Services\ContentModeration\ContentModerationService;
+use App\Support\ProductionReadiness;
+use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -17,7 +20,26 @@ class DashboardController extends Controller
      */
     public function index()
     {
-        return view('admin.dashboard');
+        $moderationOff = false;
+        $opsAlerts = [];
+
+        try {
+            $moderationOff = ! app(ContentModerationService::class)->isEnabled();
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        try {
+            $opsAlerts = app(ProductionReadiness::class)->dashboardAlerts();
+        } catch (\Throwable $e) {
+            report($e);
+            session()->flash(
+                'error',
+                UserFacingError::message($e, 'We could not load production alerts. Please refresh and try again.')
+            );
+        }
+
+        return view('admin.dashboard', compact('moderationOff', 'opsAlerts'));
     }
 
     /**
@@ -37,7 +59,10 @@ class DashboardController extends Controller
         } catch (\Throwable $e) {
             Log::error('Admin dashboard statistics error: '.$e->getMessage());
 
-            return response()->json(['success' => false, 'message' => 'Failed to load statistics'], 500);
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'Failed to load statistics'),
+            ], 500);
         }
     }
 
@@ -56,7 +81,10 @@ class DashboardController extends Controller
         } catch (\Throwable $e) {
             Log::error('Admin dashboard trends error: '.$e->getMessage());
 
-            return response()->json(['success' => false, 'message' => 'Failed to load trends'], 500);
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'Failed to load trends'),
+            ], 500);
         }
     }
 
@@ -73,7 +101,10 @@ class DashboardController extends Controller
         } catch (\Throwable $e) {
             Log::error('Admin dashboard distributions error: '.$e->getMessage());
 
-            return response()->json(['success' => false, 'message' => 'Failed to load distributions'], 500);
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'Failed to load distributions'),
+            ], 500);
         }
     }
 
@@ -91,7 +122,10 @@ class DashboardController extends Controller
         } catch (\Throwable $e) {
             Log::error('Admin dashboard queue counts error: '.$e->getMessage());
 
-            return response()->json(['success' => false, 'message' => 'Failed to load queue counts'], 500);
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'Failed to load queue counts'),
+            ], 500);
         }
     }
 
@@ -106,7 +140,10 @@ class DashboardController extends Controller
         } catch (\Throwable $e) {
             Log::error('Admin dashboard finance strip error: '.$e->getMessage());
 
-            return response()->json(['success' => false, 'message' => 'Failed to load finance'], 500);
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'Failed to load finance'),
+            ], 500);
         }
     }
 
@@ -124,7 +161,10 @@ class DashboardController extends Controller
         } catch (\Throwable $e) {
             Log::error('Admin dashboard action queue error: '.$e->getMessage());
 
-            return response()->json(['success' => false, 'message' => 'Failed to load action queue'], 500);
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'Failed to load action queue'),
+            ], 500);
         }
     }
 

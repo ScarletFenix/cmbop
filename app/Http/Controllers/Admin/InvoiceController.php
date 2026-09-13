@@ -291,7 +291,16 @@ class InvoiceController extends Controller
             'limit' => 'nullable|integer|min:1|max:200',
         ]);
 
-        $result = $billing->backfillMissingTaxInvoices((int) ($data['limit'] ?? 50));
+        try {
+            $result = $billing->backfillMissingTaxInvoices((int) ($data['limit'] ?? 50));
+        } catch (\Throwable $e) {
+            report($e);
+
+            return back()->with(
+                'error',
+                UserFacingError::message($e, 'We could not backfill invoices. Please try again.')
+            );
+        }
 
         if ((int) ($result['created'] ?? 0) > 0 || (int) ($result['failed'] ?? 0) > 0) {
             ActivityLogger::tryLog(
@@ -331,7 +340,16 @@ class InvoiceController extends Controller
             'limit' => 'nullable|integer|min:1|max:200',
         ]);
 
-        $result = $billing->regenerateMissingPdfs((int) ($data['limit'] ?? 50));
+        try {
+            $result = $billing->regenerateMissingPdfs((int) ($data['limit'] ?? 50));
+        } catch (\Throwable $e) {
+            report($e);
+
+            return back()->with(
+                'error',
+                UserFacingError::message($e, 'We could not regenerate missing PDFs. Please try again.')
+            );
+        }
 
         if ((int) ($result['regenerated'] ?? 0) > 0 || (int) ($result['failed'] ?? 0) > 0) {
             ActivityLogger::tryLog(

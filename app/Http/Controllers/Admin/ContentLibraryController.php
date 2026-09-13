@@ -142,6 +142,8 @@ class ContentLibraryController extends Controller
             $result = $this->staffActions->retry($submission);
         } catch (ValidationException $e) {
             return back()->with('error', collect($e->errors())->flatten()->first() ?: 'Could not re-evaluate this article.');
+        } catch (\Throwable $e) {
+            return back()->with('error', UserFacingError::message($e, 'Could not re-evaluate this article.'));
         }
 
         $fresh = $submission->fresh() ?? $submission;
@@ -181,6 +183,8 @@ class ContentLibraryController extends Controller
             $result = $this->staffActions->override($submission, $data['decision'], $admin, $data['notes']);
         } catch (ValidationException $e) {
             return back()->with('error', collect($e->errors())->flatten()->first() ?: 'Override failed.');
+        } catch (\Throwable $e) {
+            return back()->with('error', UserFacingError::message($e, 'Override failed.'));
         }
 
         $fresh = $result['submission'] ?? $submission->fresh();
@@ -199,6 +203,8 @@ class ContentLibraryController extends Controller
             $this->staffActions->archive($submission);
         } catch (ValidationException $e) {
             return back()->with('error', collect($e->errors())->flatten()->first() ?: 'Could not archive this article.');
+        } catch (\Throwable $e) {
+            return back()->with('error', UserFacingError::message($e, 'Could not archive this article.'));
         }
 
         $fresh = $submission->fresh() ?? $submission;

@@ -11,6 +11,8 @@ use App\Models\User;
 use App\Services\ActivityLogger;
 use App\Services\Catalog\CatalogCopyStrikeGuard;
 use App\Services\Catalog\RevealPaceGuard;
+use App\Support\UserFacingError;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -43,6 +45,26 @@ class CatalogActivityController extends Controller
         $focusUserId = max(0, (int) $request->integer('user'));
 
         $shared = $this->sharedViewData($days, $copyFilter, $q, $focusUserId);
+
+        try {
+            return $this->renderIndex($request, $days, $pace, $shared);
+        } catch (\Throwable $e) {
+            report($e);
+            session()->flash(
+                'error',
+                UserFacingError::message($e, 'We could not load catalog activity. Please refresh and try again.')
+            );
+
+            return view('admin.catalog-activity', array_merge($shared, $this->emptyCatalogActivityPayload()));
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $shared
+     */
+    private function renderIndex(Request $request, int $days, RevealPaceGuard $pace, array $shared): View
+    {
+        $q = (string) ($shared['q'] ?? '');
 
         if (! Schema::hasTable('site_url_reveals')) {
             [$copyStrikeRows, $copyStrikeCapped] = $this->copyStrikeRows($request, $days, $pace);
@@ -141,38 +163,48 @@ class CatalogActivityController extends Controller
         ]));
     }
 
-    public function show(int $user): View
+    public function show(int $user): View|RedirectResponse
     {
-        $model = User::findOrFail($user);
+        try {
+            $model = User::findOrFail($user);
 
-        $copyEvents = collect();
-        if (Schema::hasTable('catalog_copy_events')) {
-            $copyEvents = CatalogCopyEvent::query()
-                ->with('site:id,site_name,domain,site_url')
-                ->where('user_id', $model->id)
-                ->orderByDesc('created_at')
-                ->limit(50)
-                ->get();
+            $copyEvents = collect();
+            if (Schema::hasTable('catalog_copy_events')) {
+                $copyEvents = CatalogCopyEvent::query()
+                    ->with('site:id,site_name,domain,site_url')
+                    ->where('user_id', $model->id)
+                    ->orderByDesc('created_at')
+                    ->limit(50)
+                    ->get();
+            }
+
+            $reveals = collect();
+            if (Schema::hasTable('site_url_reveals')) {
+                $reveals = SiteUrlReveal::query()
+                    ->with('site:id,site_name,domain,site_url')
+                    ->where('user_id', $model->id)
+                    ->orderByDesc('created_at')
+                    ->limit(50)
+                    ->get();
+            }
+
+            return view('admin.catalog-activity-show', [
+                'account' => $model,
+                'status' => $model->catalogCopyStatus(),
+                'copyEvents' => $copyEvents,
+                'reveals' => $reveals,
+                'hideHours' => max(1, (int) config('catalog.copy_strikes.hide_hours', 24)),
+                'userUrl' => $this->userUrl($model->id),
+            ]);
+        } catch (ModelNotFoundException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            report($e);
+
+            return redirect()
+                ->route('admin.catalog-activity')
+                ->with('error', UserFacingError::message($e, 'We could not load that catalog activity. Please try again.'));
         }
-
-        $reveals = collect();
-        if (Schema::hasTable('site_url_reveals')) {
-            $reveals = SiteUrlReveal::query()
-                ->with('site:id,site_name,domain,site_url')
-                ->where('user_id', $model->id)
-                ->orderByDesc('created_at')
-                ->limit(50)
-                ->get();
-        }
-
-        return view('admin.catalog-activity-show', [
-            'account' => $model,
-            'status' => $model->catalogCopyStatus(),
-            'copyEvents' => $copyEvents,
-            'reveals' => $reveals,
-            'hideHours' => max(1, (int) config('catalog.copy_strikes.hide_hours', 24)),
-            'userUrl' => $this->userUrl($model->id),
-        ]);
     }
 
     /**
@@ -579,6 +611,21 @@ class CatalogActivityController extends Controller
         })->values();
 
         return [$rows, $capped];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function emptyCatalogActivityPayload(): array
+    {
+        return [
+            'rows' => collect(),
+            'available' => false,
+            'copyStrikeRows' => collect(),
+            'copyStrikesAvailable' => false,
+            'copyStrikeCapped' => false,
+            'enforcing' => false,
+        ];
     }
 
     /**
