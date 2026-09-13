@@ -59,11 +59,21 @@ class ChatController extends Controller
                 }
                 $needsAction = AdvertiserOrderStatus::needsActionCountForUser((int) $user->id);
             } elseif ($activeRole === 'publisher') {
-                $orderIds = Order::where('payment_status', 'paid')
-                    ->where('status', '!=', 'cancelled')
-                    ->whereHas('items.site', function ($q) use ($user) {
-                        $q->where('publisher_id', $user->id);
-                    })->pluck('id');
+                try {
+                    $orderIds = AdvertiserOrderStatus::itemsTableAvailable()
+                        ? Order::where('payment_status', 'paid')
+                            ->where('status', '!=', 'cancelled')
+                            ->whereHas('items.site', function ($q) use ($user) {
+                                $q->where('publisher_id', $user->id);
+                            })->pluck('id')
+                        : collect();
+                    $needsAction = AdvertiserOrderStatus::itemsTableAvailable()
+                        ? PublisherNeedsAction::needsYouCount((int) $user->id)
+                        : 0;
+                } catch (\Throwable $e) {
+                    $orderIds = collect();
+                    $needsAction = 0;
+                }
                 $unreadQuery = OrderChatMessage::whereIn('order_id', $orderIds)
                     ->where('sender_type', 'advertiser')
                     ->where('is_read', false)
@@ -79,8 +89,6 @@ class ChatController extends Controller
                         ];
                     }
                 }
-
-                $needsAction = PublisherNeedsAction::needsYouCount((int) $user->id);
             }
 
             return response()->json([
@@ -408,7 +416,14 @@ class ChatController extends Controller
         $isAdvertiser = $viewer && (int) $order->user_id === (int) $viewer->id;
 
         $item = $this->resolveChatPlacement($order, $viewer, $isAdvertiser);
-        $site = $item?->site;
+        $site = null;
+        if ($item) {
+            try {
+                $site = $item->site;
+            } catch (\Throwable $e) {
+                $item->setRelation('site', null);
+            }
+        }
 
         $linkType = $site?->link_type
             ?? ($item ? 'dofollow' : null);
@@ -493,7 +508,17 @@ class ChatController extends Controller
         try {
             $order->loadMissing(['items.site']);
         } catch (\Throwable $e) {
-            $order->setRelation('items', collect());
+            try {
+                $order->unsetRelation('items');
+                $order->loadMissing(['items']);
+                foreach ($order->items as $loaded) {
+                    if ($loaded instanceof OrderItem) {
+                        $loaded->setRelation('site', null);
+                    }
+                }
+            } catch (\Throwable $inner) {
+                $order->setRelation('items', collect());
+            }
         }
     }
 

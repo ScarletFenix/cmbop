@@ -229,6 +229,84 @@ class AdvertiserOrdersChatCompletedViewTest extends TestCase
             ->assertDontSee('order_items');
     }
 
+    public function test_chat_keeps_item_site_name_when_sites_table_is_gone(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher, 'Leftover Sites Host');
+        $order = $this->makeOrder($advertiser, $site, [], [
+            'live_url' => 'https://live.example/leftover-sites',
+        ]);
+
+        Schema::rename('sites', 'sites_leftover_gone');
+        $this->assertFalse(Schema::hasTable('sites'));
+
+        $payload = $this->chatDetails(
+            $this->actingAs($advertiser)->getJson(route('chat.messages', $order->id))
+        );
+
+        $this->assertFalse($payload['order_details']['details_missing']);
+        $this->assertTrue($payload['order_details']['has_placement']);
+        $this->assertSame('Leftover Sites Host', $payload['order_details']['website_name']);
+        $this->assertStringContainsString('Your post is live', $payload['order_details']['next_action']);
+        $this->assertSame('This order is completed. You can still message about the live post.', $payload['composer_note']);
+        $this->assertStringNotContainsString('no such table', json_encode($payload));
+    }
+
+    public function test_publisher_chat_is_forbidden_when_order_items_are_gone(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher);
+        $order = $this->makeOrder($advertiser, $site);
+
+        Schema::dropIfExists('order_items');
+
+        $this->actingAs($publisher)
+            ->getJson(route('chat.messages', $order->id))
+            ->assertForbidden()
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'Unauthorized')
+            ->assertDontSee('SQLSTATE')
+            ->assertDontSee('order_items');
+
+        $this->actingAs($publisher)
+            ->postJson(route('chat.send', $order->id), ['message' => 'Can I still reply?'])
+            ->assertForbidden()
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'Unauthorized')
+            ->assertDontSee('SQLSTATE')
+            ->assertDontSee('order_items');
+    }
+
+    public function test_chat_fail_closed_when_orders_table_is_gone(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher);
+        $order = $this->makeOrder($advertiser, $site);
+
+        Schema::dropIfExists('orders');
+
+        $messages = $this->actingAs($advertiser)->getJson(route('chat.messages', $order->id));
+        $messages->assertStatus(500)
+            ->assertJsonPath('success', false)
+            ->assertJsonMissingPath('exception')
+            ->assertDontSee('SQLSTATE')
+            ->assertDontSee('Unknown column')
+            ->assertDontSee('<html', false);
+        $this->assertSame('Failed to fetch messages.', $messages->json('message'));
+
+        $send = $this->actingAs($advertiser)
+            ->postJson(route('chat.send', $order->id), ['message' => 'Hello leftover orders']);
+        $send->assertStatus(500)
+            ->assertJsonPath('success', false)
+            ->assertJsonMissingPath('exception')
+            ->assertDontSee('SQLSTATE')
+            ->assertDontSee('Unknown column');
+        $this->assertSame('Failed to send message. Please try again.', $send->json('message'));
+    }
+
     public function test_chat_send_and_unread_fail_closed_when_messages_table_is_gone(): void
     {
         $advertiser = $this->advertiser();
