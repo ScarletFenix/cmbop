@@ -1,7 +1,15 @@
 <?php
 
+use Illuminate\Support\Env;
+
 /**
  * PHPUnit bootstrap.
+ *
+ * Agent/Cloud shells often export APP_ENV=local and a leftover DB_DATABASE
+ * file. PHPUnit <env force="true"> updates getenv()/$_ENV but not always
+ * $_SERVER, and Laravel's Env repository reads $_SERVER first — so the app
+ * boots as local, CSRF stays on (postJson 419), and leftover tests can drop
+ * tables on the browser sqlite. Pin the isolated test values on all three.
  *
  * Laravel's LoadEnvironmentVariables still asks phpdotenv to read a file.
  * With APP_ENV=testing it prefers .env.testing; if that file is missing it
@@ -10,6 +18,23 @@
  * snapshots and fresh checkouts without .env).
  */
 $base = dirname(__DIR__);
+foreach ([
+    'APP_ENV' => 'testing',
+    'APP_URL' => 'http://127.0.0.1:8000',
+    'DB_CONNECTION' => 'sqlite',
+    'DB_DATABASE' => ':memory:',
+    'DB_URL' => '',
+    'QUEUE_CONNECTION' => 'sync',
+    'MAIL_MAILER' => 'array',
+    'CACHE_STORE' => 'array',
+    'SESSION_DRIVER' => 'array',
+    'MAIL_QUEUE_AUTO_DRAIN' => 'false',
+    'LOG_CHANNEL' => 'null',
+] as $key => $value) {
+    putenv($key.'='.$value);
+    $_ENV[$key] = $value;
+    $_SERVER[$key] = $value;
+}
 $testingEnv = $base.DIRECTORY_SEPARATOR.'.env.testing';
 
 if (! is_file($testingEnv)) {
@@ -45,3 +70,7 @@ ENV);
 }
 
 require $base.DIRECTORY_SEPARATOR.'vendor'.DIRECTORY_SEPARATOR.'autoload.php';
+
+if (class_exists(Env::class)) {
+    Env::enablePutenv();
+}
