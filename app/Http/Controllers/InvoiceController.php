@@ -6,6 +6,7 @@ use App\Models\DepositRequest;
 use App\Models\Invoice;
 use App\Models\Order;
 use App\Services\Billing\DepositReceiptService;
+use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -87,11 +88,11 @@ class InvoiceController extends Controller
             return redirect()->route('advertiser.dashboard')
                 ->with('error', 'Invoice not found');
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Error showing invoice: '.$e->getMessage());
 
             return redirect()->route('advertiser.dashboard')
-                ->with('error', 'Invoice not found');
+                ->with('error', UserFacingError::message($e, 'Invoice not found'));
         }
     }
 

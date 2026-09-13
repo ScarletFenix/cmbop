@@ -28,6 +28,7 @@ use App\Support\UserMessages;
 use Endroid\QrCode\Builder\Builder;
 use Endroid\QrCode\Writer\PngWriter;
 use Endroid\QrCode\Writer\SvgWriter;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -571,11 +572,11 @@ class AddFundsController extends Controller
             return redirect()->route('advertiser.add-funds')
                 ->with('error', UserMessages::get('payment.verification_failed_support'));
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Checkout success error: '.$e->getMessage());
 
             return redirect()->route('advertiser.add-funds')
-                ->with('error', UserMessages::get('payment.verify_failed_support'));
+                ->with('error', UserFacingError::message($e, UserMessages::get('payment.verify_failed_support')));
         }
     }
 
@@ -874,16 +875,34 @@ class AddFundsController extends Controller
 
     public function getStatus($id)
     {
-        $depositRequest = DepositRequest::where('user_id', auth()->id())
-            ->where('id', $id)
-            ->firstOrFail();
+        try {
+            if (! DepositRequest::tableAvailable()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Deposits are temporarily unavailable. Please try again shortly.',
+                ], 503);
+            }
 
-        return response()->json([
-            'success' => true,
-            'status' => $depositRequest->status,
-            'user_marked_paid_at' => optional($depositRequest->user_marked_paid_at)?->toIso8601String(),
-            'deposit' => $depositRequest,
-        ]);
+            $depositRequest = DepositRequest::where('user_id', auth()->id())
+                ->where('id', $id)
+                ->firstOrFail();
+
+            return response()->json([
+                'success' => true,
+                'status' => $depositRequest->status,
+                'user_marked_paid_at' => optional($depositRequest->user_marked_paid_at)?->toIso8601String(),
+                'deposit' => $depositRequest,
+            ]);
+        } catch (ModelNotFoundException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'We could not load that deposit. Please refresh and try again.'),
+            ], 500);
+        }
     }
 
     /**

@@ -2739,12 +2739,24 @@ class CatalogController extends Controller
         }
 
         $paymentService = app(OrderPaymentService::class);
-        $existingPaid = $this->paidOrdersForCheckout($ref, $userId, 'paypal');
+        try {
+            $existingPaid = $this->paidOrdersForCheckout($ref, $userId, 'paypal');
+        } catch (\Throwable $e) {
+            report($e);
+
+            return redirect()->route('advertiser.checkout')
+                ->with('error', UserFacingError::message($e, UserMessages::get('payment.verification_failed')));
+        }
         if ($existingPaid->isNotEmpty()) {
             return $this->redirectAfterPaidPaypalCheckout($existingPaid, collect());
         }
 
-        $package = $paymentService->getPendingCheckout($ref);
+        try {
+            $package = $paymentService->getPendingCheckout($ref);
+        } catch (\Throwable $e) {
+            report($e);
+            $package = null;
+        }
         if (is_array($package)) {
             $packageUser = (int) ($package['user_id'] ?? 0);
             if ($packageUser > 0 && $packageUser !== $userId) {
@@ -2799,6 +2811,9 @@ class CatalogController extends Controller
         }
 
         $paidOrders = $this->paidOrdersForCheckout($ref, $userId, 'paypal');
+        if ($paidOrders->isEmpty() && $newlyPaid->isNotEmpty()) {
+            $paidOrders = $newlyPaid;
+        }
         if ($paidOrders->isEmpty()) {
             return redirect()->route('advertiser.checkout')
                 ->with('error', UserMessages::get('payment.listings_gone_after_pay'));
@@ -2815,14 +2830,23 @@ class CatalogController extends Controller
         $ref = trim((string) $request->query('ref', ''));
         $userId = (int) auth()->id();
         if ($ref !== '' && $userId > 0) {
-            $paid = $this->paidOrdersForCheckout($ref, $userId, 'paypal');
-            if ($paid->isNotEmpty()) {
-                return $this->redirectAfterPaidPaypalCheckout($paid, collect());
-            }
+            try {
+                $paid = $this->paidOrdersForCheckout($ref, $userId, 'paypal');
+                if ($paid->isNotEmpty()) {
+                    return $this->redirectAfterPaidPaypalCheckout($paid, collect());
+                }
 
-            $package = app(OrderPaymentService::class)->getPendingCheckout($ref);
-            if (is_array($package) && (int) ($package['user_id'] ?? 0) === $userId) {
-                $this->notifyPaypalCheckoutNotCompleted($userId, $ref, PaypalPaymentNotCompleted::REASON_CANCELLED);
+                $package = app(OrderPaymentService::class)->getPendingCheckout($ref);
+                if (is_array($package) && (int) ($package['user_id'] ?? 0) === $userId) {
+                    $this->notifyPaypalCheckoutNotCompleted($userId, $ref, PaypalPaymentNotCompleted::REASON_CANCELLED);
+                }
+            } catch (\Throwable $e) {
+                report($e);
+
+                return redirect()->route('advertiser.checkout', array_filter([
+                    'canceled' => 1,
+                    'ref' => $ref !== '' ? $ref : null,
+                ]))->with('error', UserFacingError::message($e, UserMessages::get('payment.paypal_not_completed')));
             }
         }
 
@@ -2854,45 +2878,60 @@ class CatalogController extends Controller
     private function redirectAfterPaidPaypalCheckout($paidOrders, $newlyPaid)
     {
         $paymentService = app(OrderPaymentService::class);
-        if ($newlyPaid->isNotEmpty()) {
-            $paymentService->notifyPublishersOfPaidOrders($newlyPaid);
-        }
-
-        $this->removePaidOrdersFromCart($paidOrders);
-        session()->forget([
-            'pending_paypal_reference',
-            'pending_card_reference',
-            'checkout_content_submission_id',
-            'checkout_schedule',
-            'checkout_deferred_cart',
-            'checkout_reference_code',
-        ]);
-
-        $orderNumbers = $paidOrders->pluck('order_number')->implode(', ');
-        $paidCount = $paidOrders->count();
-        $remaining = count(session('cart', []));
-        $scheduledOrders = $paidOrders->filter(fn (Order $order) => ($order->publication_mode ?? '') === 'scheduled');
-        $successMsg = $paidCount.' order(s) paid successfully! Order numbers: '.$orderNumbers;
-        if ($scheduledOrders->isNotEmpty()) {
-            $first = $scheduledOrders->first();
-            $label = $this->scheduleSuccessLabel([
-                'mode' => 'scheduled',
-                'at' => $first->scheduled_publish_at,
-                'timezone' => $first->schedule_timezone ?: 'UTC',
-            ]);
-            if ($label) {
-                $successMsg .= ' Publisher notified — they must publish on '.$label.'.';
+        try {
+            if ($newlyPaid->isNotEmpty()) {
+                $paymentService->notifyPublishersOfPaidOrders($newlyPaid);
             }
-        }
-        if ($remaining > 0) {
-            $successMsg .= ' '.$remaining.' website(s) remain in your cart until they are ready for checkout.';
+        } catch (\Throwable $e) {
+            Log::warning('notify after PayPal settle failed: '.$e->getMessage());
         }
 
-        $redirect = $scheduledOrders->isNotEmpty()
-            ? redirect()->route('advertiser.scheduled-orders', ['tab' => 'upcoming'])
-            : redirect()->route('advertiser.orders');
+        try {
+            $this->removePaidOrdersFromCart($paidOrders);
+            session()->forget([
+                'pending_paypal_reference',
+                'pending_card_reference',
+                'checkout_content_submission_id',
+                'checkout_schedule',
+                'checkout_deferred_cart',
+                'checkout_reference_code',
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('cart cleanup after PayPal settle failed: '.$e->getMessage());
+        }
 
-        return $redirect->with('success', $successMsg);
+        try {
+            $orderNumbers = $paidOrders->pluck('order_number')->implode(', ');
+            $paidCount = $paidOrders->count();
+            $remaining = count(session('cart', []));
+            $scheduledOrders = $paidOrders->filter(fn (Order $order) => ($order->publication_mode ?? '') === 'scheduled');
+            $successMsg = $paidCount.' order(s) paid successfully! Order numbers: '.$orderNumbers;
+            if ($scheduledOrders->isNotEmpty()) {
+                $first = $scheduledOrders->first();
+                $label = $this->scheduleSuccessLabel([
+                    'mode' => 'scheduled',
+                    'at' => $first->scheduled_publish_at,
+                    'timezone' => $first->schedule_timezone ?: 'UTC',
+                ]);
+                if ($label) {
+                    $successMsg .= ' Publisher notified — they must publish on '.$label.'.';
+                }
+            }
+            if ($remaining > 0) {
+                $successMsg .= ' '.$remaining.' website(s) remain in your cart until they are ready for checkout.';
+            }
+
+            $redirect = $scheduledOrders->isNotEmpty()
+                ? redirect()->route('advertiser.scheduled-orders', ['tab' => 'upcoming'])
+                : redirect()->route('advertiser.orders');
+
+            return $redirect->with('success', $successMsg);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return redirect()->route('advertiser.orders')
+                ->with('success', 'Payment successful. Open Orders to see your placements.');
+        }
     }
 
     /**
@@ -3410,13 +3449,19 @@ class CatalogController extends Controller
      */
     private function paidOrdersForCheckout(string $referenceCode, int $userId, ?string $paymentMethod = null)
     {
-        return Order::query()
-            ->where('reference_code', $referenceCode)
-            ->where('user_id', $userId)
-            ->when($paymentMethod !== null, fn ($query) => $query->where('payment_method', $paymentMethod))
-            ->where('payment_status', 'paid')
-            ->where('status', '!=', 'cancelled')
-            ->get();
+        try {
+            return Order::query()
+                ->where('reference_code', $referenceCode)
+                ->where('user_id', $userId)
+                ->when($paymentMethod !== null, fn ($query) => $query->where('payment_method', $paymentMethod))
+                ->where('payment_status', 'paid')
+                ->where('status', '!=', 'cancelled')
+                ->get();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return collect();
+        }
     }
 
     /**
@@ -4751,7 +4796,7 @@ class CatalogController extends Controller
                 'amount_due' => $chargeAmount,
                 'unfulfilled_credit_applied' => $appliedCredit,
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Order payment retry failed: '.$e->getMessage(), [
                 'order_id' => $id,
                 'user_id' => auth()->id(),
@@ -4933,7 +4978,15 @@ class CatalogController extends Controller
     public function orders(Request $request)
     {
         if (search_text((string) $request->query('retry')) === 'canceled') {
-            $this->failPayAgainAfterStripeCancel($request);
+            try {
+                $this->failPayAgainAfterStripeCancel($request);
+            } catch (\Throwable $e) {
+                report($e);
+                session()->flash(
+                    'error',
+                    UserFacingError::message($e, 'We could not update that payment attempt. You can pay again from this page.')
+                );
+            }
         }
 
         return view('advertiser.orders');
@@ -6656,23 +6709,27 @@ class CatalogController extends Controller
         }
 
         $userId = (int) auth()->id();
-        $owned = Order::query()
-            ->where('user_id', $userId)
-            ->where('reference_code', $referenceCode)
-            ->where('payment_method', 'card')
-            ->where('payment_status', 'pending')
-            ->where('status', 'pending')
-            ->exists();
-        if (! $owned) {
-            return;
-        }
+        try {
+            $owned = Order::query()
+                ->where('user_id', $userId)
+                ->where('reference_code', $referenceCode)
+                ->where('payment_method', 'card')
+                ->where('payment_status', 'pending')
+                ->where('status', 'pending')
+                ->exists();
+            if (! $owned) {
+                return;
+            }
 
-        app(OrderPaymentService::class)->markOrdersFailedFromReference(
-            $referenceCode,
-            'Pay again canceled',
-            $userId
-        );
-        session()->forget('pending_card_reference');
+            app(OrderPaymentService::class)->markOrdersFailedFromReference(
+                $referenceCode,
+                'Pay again canceled',
+                $userId
+            );
+            session()->forget('pending_card_reference');
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 
     /**

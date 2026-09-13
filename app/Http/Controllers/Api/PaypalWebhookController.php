@@ -48,22 +48,21 @@ class PaypalWebhookController extends Controller
                 'event_type' => $eventType,
             ]);
 
-            $existingLog = PaypalWebhookLog::query()->where('event_id', $eventId)->first();
+            $existingLog = $this->findWebhookLog($eventId);
             if ($existingLog && $existingLog->processed) {
                 return response()->json(['status' => 'duplicate'], 200);
             }
             if (! $existingLog) {
-                PaypalWebhookLog::create([
-                    'event_id' => $eventId,
-                    'event_type' => $eventType !== '' ? $eventType : 'unknown',
-                    'payload' => WebhookPayloadRedactor::paypal($event),
-                    'processed' => false,
-                ]);
+                $this->recordWebhookLog(
+                    $eventId,
+                    $eventType !== '' ? $eventType : 'unknown',
+                    WebhookPayloadRedactor::paypal($event)
+                );
             }
 
             $this->routeEvent($eventType, $event, $paypal);
 
-            PaypalWebhookLog::query()->where('event_id', $eventId)->update(['processed' => true]);
+            $this->markWebhookLogProcessed($eventId);
 
             return response()->json(['status' => 'success'], 200);
         } catch (\Throwable $e) {
@@ -216,6 +215,55 @@ class PaypalWebhookController extends Controller
                 'paypal_refund_id' => $refunded['refund_id'] ?? null,
                 'wallet_debited' => $debited,
             ]);
+        }
+    }
+
+    private function findWebhookLog(string $eventId): ?PaypalWebhookLog
+    {
+        if (! PaypalWebhookLog::tableAvailable()) {
+            return null;
+        }
+
+        try {
+            return PaypalWebhookLog::query()->where('event_id', $eventId)->first();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return null;
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function recordWebhookLog(string $eventId, string $eventType, array $payload): void
+    {
+        if (! PaypalWebhookLog::tableAvailable()) {
+            return;
+        }
+
+        try {
+            PaypalWebhookLog::create([
+                'event_id' => $eventId,
+                'event_type' => $eventType,
+                'payload' => $payload,
+                'processed' => false,
+            ]);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+    }
+
+    private function markWebhookLogProcessed(string $eventId): void
+    {
+        if (! PaypalWebhookLog::tableAvailable()) {
+            return;
+        }
+
+        try {
+            PaypalWebhookLog::query()->where('event_id', $eventId)->update(['processed' => true]);
+        } catch (\Throwable $e) {
+            report($e);
         }
     }
 }

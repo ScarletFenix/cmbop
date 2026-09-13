@@ -146,6 +146,13 @@ class AdvertiserAddFundsErrorTest extends TestCase
                 ->assertDontSee('SQLSTATE');
 
             $this->actingAs($advertiser)
+                ->getJson(route('advertiser.add-funds.status', 1))
+                ->assertStatus(503)
+                ->assertJsonPath('success', false)
+                ->assertJsonMissingPath('exception')
+                ->assertDontSee('SQLSTATE');
+
+            $this->actingAs($advertiser)
                 ->getJson(route('advertiser.balance.transactions'))
                 ->assertOk()
                 ->assertJsonPath('success', true);
