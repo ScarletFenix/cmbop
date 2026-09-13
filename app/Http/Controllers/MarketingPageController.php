@@ -49,6 +49,7 @@ class MarketingPageController extends Controller
     public function countryLander(string $key)
     {
         abort_unless(class_exists(CountryLander::class), 404);
+        abort_unless(view()->exists('pages.guest-posts-country'), 404);
         $lander = CountryLander::find($key);
         abort_unless(is_array($lander), 404);
 
@@ -72,6 +73,8 @@ class MarketingPageController extends Controller
 
     public function europePriceIndex()
     {
+        abort_unless(view()->exists('pages.guest-post-prices-europe'), 404);
+
         $snapshot = [
             'generated_at' => null,
             'europe' => ['median' => null, 'listings' => 0],

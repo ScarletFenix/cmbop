@@ -262,7 +262,7 @@ class CuratedBlogSync
     public static function ensureLocalizedTranslationSlugs(): void
     {
         try {
-            if (! BlogTranslationSlug::hasCopiedSlugs()) {
+            if (! class_exists(BlogTranslationSlug::class) || ! BlogTranslationSlug::hasCopiedSlugs()) {
                 return;
             }
 

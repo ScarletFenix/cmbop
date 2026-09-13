@@ -21,12 +21,15 @@ class SeoLeftoverClassHardeningTest extends TestCase
         $this->assertStringContainsString('class_exists(CountryLander::class)', $web);
         $this->assertStringContainsString('class_exists(CatalogTeaserService::class)', $web);
         $this->assertStringContainsString('class_exists(LocalizedPublicPath::class)', $web);
+        $this->assertStringContainsString('class_exists(RobotsTxt::class)', $web);
 
         $controller = (string) file_get_contents(base_path('app/Http/Controllers/MarketingPageController.php'));
         $this->assertStringContainsString('class_exists(CountryLander::class)', $controller);
         $this->assertStringContainsString('class_exists(GuestPostPriceIndex::class)', $controller);
         $this->assertStringContainsString('class_exists(CatalogTeaserService::class)', $controller);
         $this->assertStringContainsString('catalogTeaserService()', $controller);
+        $this->assertStringContainsString("view()->exists('pages.guest-posts-country')", $controller);
+        $this->assertStringContainsString("view()->exists('pages.guest-post-prices-europe')", $controller);
         $this->assertStringNotContainsString('$teasers->teasersForCountries', $controller);
 
         $sitemap = (string) file_get_contents(base_path('app/Http/Controllers/SitemapController.php'));
@@ -45,6 +48,12 @@ class SeoLeftoverClassHardeningTest extends TestCase
         $this->assertStringContainsString('class_exists(\\App\\Support\\BrandOrganization::class)', $home);
         $this->assertStringContainsString('class_exists(\\App\\Support\\BrandOrganization::class)', $about);
         $this->assertStringContainsString('class_exists(\\App\\Support\\BrandOrganization::class)', $prices);
+
+        $marketplace = (string) file_get_contents(base_path('resources/views/pages/marketplace.blade.php'));
+        $this->assertStringContainsString("view()->exists('components.country-lander-nav')", $marketplace);
+
+        $sync = (string) file_get_contents(base_path('app/Services/CuratedBlogSync.php'));
+        $this->assertStringContainsString('class_exists(BlogTranslationSlug::class)', $sync);
     }
 
     public function test_public_money_pages_and_admin_login_stay_up(): void
@@ -55,6 +64,7 @@ class SeoLeftoverClassHardeningTest extends TestCase
         $this->get('/guest-posts-germany')->assertOk();
         $this->get('/guest-post-prices-europe')->assertOk();
         $this->get('/sitemap-en.xml')->assertOk();
+        $this->get('/robots.txt')->assertOk();
         $this->get('/login')->assertOk();
 
         $this->assertNull(Site::forgetMarketingCaches());

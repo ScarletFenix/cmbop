@@ -222,7 +222,13 @@ Route::get('/sitemap-{locale}.xml', [SitemapController::class, 'locale'])
     ->where('locale', $supportedLocalePattern)
     ->name('sitemap.locale');
 Route::get('/robots.txt', function () {
-    return response(RobotsTxt::render(), 200, [
+    $body = class_exists(RobotsTxt::class)
+        ? RobotsTxt::render()
+        : (is_file(public_path('robots.txt'))
+            ? (string) file_get_contents(public_path('robots.txt'))
+            : "User-agent: *\nAllow: /\n");
+
+    return response($body, 200, [
         'Content-Type' => 'text/plain; charset=UTF-8',
         'Cache-Control' => 'public, max-age=3600',
     ]);

@@ -188,10 +188,12 @@
     </div>
     <p class="text-center text-muted small mt-3 mb-0">{{ __('messages.marketplace_catalog_note') }}</p>
 
-    @include('components.country-lander-nav', [
-        'title' => 'Guest posts by market',
-        'landers' => $countryLanders ?? [],
-        'label' => 'Country landers',
-    ])
+    @if(view()->exists('components.country-lander-nav'))
+        @include('components.country-lander-nav', [
+            'title' => 'Guest posts by market',
+            'landers' => $countryLanders ?? [],
+            'label' => 'Country landers',
+        ])
+    @endif
 </div>
 @endsection

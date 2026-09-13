@@ -70,10 +70,12 @@
         — median advertiser prices by European publisher country.
     </p>
 
-    @include('components.country-lander-nav', [
-        'title' => 'Guest posts by market',
-        'landers' => $countryLanders ?? [],
-        'label' => 'Country landers',
-    ])
+    @if(view()->exists('components.country-lander-nav'))
+        @include('components.country-lander-nav', [
+            'title' => 'Guest posts by market',
+            'landers' => $countryLanders ?? [],
+            'label' => 'Country landers',
+        ])
+    @endif
 </div>
 @endsection
