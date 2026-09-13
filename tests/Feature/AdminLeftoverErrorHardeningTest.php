@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Order;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\Admin\DashboardMetricsService;
 use App\Services\Wallet\PayoutProfileService;
 use App\Support\ProductionReadiness;
 use Database\Seeders\RolesTableSeeder;
@@ -135,11 +136,10 @@ class AdminLeftoverErrorHardeningTest extends TestCase
     {
         $admin = $this->userWithRole('admin');
 
-        $this->assertTrue(Schema::hasTable('site_url_reveals'));
-        $this->assertTrue(Schema::hasColumn('site_url_reveals', 'created_at'));
-
-        Schema::table('site_url_reveals', function ($table) {
-            $table->dropColumn('created_at');
+        Schema::dropIfExists('site_url_reveals');
+        Schema::create('site_url_reveals', function ($table) {
+            $table->id();
+            $table->unsignedBigInteger('user_id')->nullable();
         });
 
         $response = $this->actingAs($admin)->get(route('admin.catalog-activity'));
@@ -197,8 +197,12 @@ class AdminLeftoverErrorHardeningTest extends TestCase
     public function test_dashboard_statistics_return_safe_json_when_metrics_throw(): void
     {
         $admin = $this->userWithRole('admin');
-        Schema::dropIfExists('orders');
-        Schema::dropIfExists('sites');
+
+        $this->mock(DashboardMetricsService::class, function ($mock) {
+            $mock->shouldReceive('statistics')
+                ->once()
+                ->andThrow(new \RuntimeException('SQLSTATE[HY000]: metrics boom'));
+        });
 
         $this->assertSafeJsonFailure(
             $this->actingAs($admin)->getJson(route('admin.dashboard.statistics'))
