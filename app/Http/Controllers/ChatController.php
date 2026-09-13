@@ -160,7 +160,7 @@ class ChatController extends Controller
                     ->update(['is_read' => true, 'read_at' => now()]);
             }
 
-            $order->loadMissing(['items.site']);
+            $this->loadOrderItemsForChat($order);
             $details = $this->buildOrderChatDetails($order, $user);
 
             return response()->json([
@@ -297,9 +297,13 @@ class ChatController extends Controller
             return true;
         }
 
-        $isPublisher = $order->items()->whereHas('site', function ($q) use ($user) {
-            $q->where('publisher_id', $user->id);
-        })->exists();
+        try {
+            $isPublisher = $order->items()->whereHas('site', function ($q) use ($user) {
+                $q->where('publisher_id', $user->id);
+            })->exists();
+        } catch (\Throwable $e) {
+            return false;
+        }
 
         if (! $isPublisher) {
             return false;
@@ -397,13 +401,7 @@ class ChatController extends Controller
         $viewer = $viewer ?: auth()->user();
         $isAdvertiser = $viewer && (int) $order->user_id === (int) $viewer->id;
 
-        $item = null;
-        if ($viewer && ! $isAdvertiser) {
-            $item = $order->items->first(function ($candidate) use ($viewer) {
-                return (int) ($candidate->site?->publisher_id) === (int) $viewer->id;
-            });
-        }
-        $item = $item ?: $order->items->first();
+        $item = $this->resolveChatPlacement($order, $viewer, $isAdvertiser);
         $site = $item?->site;
 
         $linkType = $site?->link_type
@@ -413,7 +411,11 @@ class ChatController extends Controller
         $startedAt = $order->paid_at ?? $order->created_at;
 
         $meta = AdvertiserOrderStatus::meta($order, $item);
-        $openContentRevision = OrderItem::orderHasOpenContentRevision((int) $order->id);
+        try {
+            $openContentRevision = OrderItem::orderHasOpenContentRevision((int) $order->id);
+        } catch (\Throwable $e) {
+            $openContentRevision = false;
+        }
         $liveUrl = safe_href_url($item?->live_url);
         $contentLink = safe_href_url($item?->publisherContentLink());
         $canReview = $isAdvertiser
@@ -421,14 +423,7 @@ class ChatController extends Controller
             && filled($liveUrl)
             && ! $openContentRevision;
         $canSend = $order->status !== 'cancelled' && $order->payment_status === 'paid';
-        $composerNote = null;
-        if ($order->status === 'cancelled') {
-            $composerNote = 'This order is cancelled. Chat is read-only.';
-        } elseif ($order->payment_status !== 'paid') {
-            $composerNote = 'Chat is available after the order is paid.';
-        } elseif ($order->status === 'completed') {
-            $composerNote = 'This order is completed. You can still message about this placement.';
-        }
+        $composerNote = $this->chatComposerNote($order, $item, $isAdvertiser, $liveUrl);
 
         $modificationRequested = $item?->modification_requested === 'yes';
         $canResubmit = ! $isAdvertiser
@@ -449,8 +444,13 @@ class ChatController extends Controller
             'can_request_changes' => $canReview,
             'can_resubmit' => $canResubmit,
             'can_send' => $canSend,
+            'can_view_order' => (bool) $isAdvertiser,
+            'has_placement' => $item instanceof OrderItem,
+            'details_missing' => ! $item,
             'composer_note' => $composerNote,
-            'website_name' => $item?->site_name ?: ($site?->site_name ?: '—'),
+            'website_name' => $item
+                ? ($item->site_name ?: ($site?->site_name ?: 'Placement details'))
+                : 'Placement details are missing for this order.',
             'website_url' => $item?->site_url ?: ($site?->site_url ?: null),
             'visit_url' => CatalogVisitUrl::forSiteId($item?->site_id ?: $site?->id),
             'order_date' => optional($order->created_at)?->toIso8601String(),
@@ -474,5 +474,69 @@ class ChatController extends Controller
             'content_revision_requested' => $item?->content_revision_requested,
             'has_open_content_revision' => $openContentRevision,
         ];
+    }
+
+    private function loadOrderItemsForChat(Order $order): void
+    {
+        if (! AdvertiserOrderStatus::itemsTableAvailable()) {
+            $order->setRelation('items', collect());
+
+            return;
+        }
+
+        try {
+            $order->loadMissing(['items.site']);
+        } catch (\Throwable $e) {
+            $order->setRelation('items', collect());
+        }
+    }
+
+    private function resolveChatPlacement(Order $order, ?User $viewer, bool $isAdvertiser): ?OrderItem
+    {
+        try {
+            $items = $order->items;
+        } catch (\Throwable $e) {
+            $order->setRelation('items', collect());
+
+            return null;
+        }
+
+        $item = null;
+        if ($viewer && ! $isAdvertiser) {
+            $item = $items->first(function ($candidate) use ($viewer) {
+                return $candidate instanceof OrderItem
+                    && (int) ($candidate->site?->publisher_id) === (int) $viewer->id;
+            });
+        }
+        $item = $item ?: $items->first();
+
+        return $item instanceof OrderItem ? $item : null;
+    }
+
+    private function chatComposerNote(Order $order, ?OrderItem $item, bool $isAdvertiser, ?string $liveUrl): ?string
+    {
+        if ($order->status === 'cancelled') {
+            return 'This order is cancelled. Chat is read-only.';
+        }
+
+        if ($order->payment_status !== 'paid') {
+            return 'Chat is available after the order is paid.';
+        }
+
+        if ($order->status !== 'completed') {
+            return null;
+        }
+
+        if (! $item) {
+            return 'Placement details are missing for this order. You can still send a message.';
+        }
+
+        if (filled($liveUrl)) {
+            return 'This order is completed. You can still message about the live post.';
+        }
+
+        return $isAdvertiser
+            ? 'This order is completed. You can still message the publisher.'
+            : 'This order is completed. You can still message the advertiser.';
     }
 }

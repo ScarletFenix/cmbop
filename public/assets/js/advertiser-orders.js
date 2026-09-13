@@ -437,15 +437,22 @@ function bootAdvertiserOrdersPage() {
         }
 
         window._chatOrderId = details.order_id || window._chatOrderId || null;
-        const websiteName = escapeHtml(details.website_name || '—');
+        const detailsMissing = details.details_missing === true || details.has_placement === false;
+        const missingLabel = 'Placement details are missing for this order.';
+        const websiteName = escapeHtml(detailsMissing
+            ? (details.website_name && details.website_name !== '—' ? details.website_name : missingLabel)
+            : (details.website_name || 'Placement details'));
         const websiteHref = details.visit_url || details.website_url;
-        const websiteUrl = details.website_url
+        const websiteUrl = !detailsMissing && details.website_url
             ? `<a class="chat-od__url" href="${safeUrl(websiteHref)}" target="_blank" rel="noopener noreferrer">${escapeHtml(details.website_url)}</a>`
             : '';
         const statusLabel = escapeHtml(details.status_label || details.status || '—');
         const nextAction = escapeHtml(details.next_action || '');
         const autoHint = details.auto_approve_hint
             ? `<div class="chat-od__hint">${escapeHtml(details.auto_approve_hint)}</div>`
+            : '';
+        const viewBtn = details.can_view_order && details.order_id
+            ? `<button type="button" class="btn btn-sm btn-outline-info chat-od__view" data-chat-view-order="${Number(details.order_id)}">View order</button>`
             : '';
 
         // Status summary only — review actions live in the View order details modal
@@ -454,6 +461,7 @@ function bootAdvertiserOrdersPage() {
                 <div class="chat-od__site">
                     <span class="chat-detail-primary">${websiteName}</span>
                     ${websiteUrl}
+                    ${viewBtn}
                 </div>
                 <div class="chat-od__status">
                     <strong>${statusLabel}</strong>
@@ -462,6 +470,12 @@ function bootAdvertiserOrdersPage() {
                 ${autoHint}
             </div>`;
         el.classList.remove('d-none');
+        el.querySelector('[data-chat-view-order]')?.addEventListener('click', function () {
+            const id = Number(this.getAttribute('data-chat-view-order'));
+            if (id && typeof window.viewOrder === 'function') {
+                window.viewOrder(id);
+            }
+        });
     }
 
     var orderChat = null;

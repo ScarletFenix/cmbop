@@ -678,9 +678,14 @@ $(document).ready(function() {
             return;
         }
 
-        const websiteName = escapeHtml(details.website_name || '—');
-        const websiteUrl = details.website_url
-            ? '<a class="chat-od__url" href="' + escapeHtml(details.website_url) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(details.website_url) + '</a>'
+        const detailsMissing = details.details_missing === true || details.has_placement === false;
+        const missingLabel = 'Placement details are missing for this order.';
+        const websiteName = escapeHtml(detailsMissing
+            ? (details.website_name && details.website_name !== '—' ? details.website_name : missingLabel)
+            : (details.website_name || 'Placement details'));
+        const websiteHref = details.visit_url || details.website_url;
+        const websiteUrl = !detailsMissing && details.website_url
+            ? '<a class="chat-od__url" href="' + escapeHtml(websiteHref) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(details.website_url) + '</a>'
             : '';
 
         const metaItems = [];
