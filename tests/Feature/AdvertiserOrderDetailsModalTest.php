@@ -221,6 +221,7 @@ class AdvertiserOrderDetailsModalTest extends TestCase
         $this->assertStringContainsString('ui-callout--info', $js);
         $this->assertStringNotContainsString('ov-empty-placements ui-callout ui-callout--attention', $js);
         $this->assertStringContainsString('order-view-shell--stack', $js);
+        $this->assertStringContainsString('} else if (status === \'review\' && hasLiveUrl) {', $js);
         $this->assertStringContainsString('Reconstructed from order dates', $js);
         $this->assertMatchesRegularExpression(
             '/function loadOrderActivityTimeline[\\s\\S]{0,1800}reconstructOrderActivities/',
@@ -432,6 +433,45 @@ class AdvertiserOrderDetailsModalTest extends TestCase
         $reviewMeta = AdvertiserOrderStatus::meta($review);
         $this->assertSame('In review', $reviewMeta['label']);
         $this->assertStringContainsString('Waiting for live URL', $reviewMeta['next']);
+
+        $reviewSteps = AdvertiserOrderStatus::timelineSteps($review);
+        $this->assertFalse(collect($reviewSteps)->firstWhere('label', 'URL delivered')['current']);
+        $this->assertFalse(collect($reviewSteps)->firstWhere('label', 'URL delivered')['done']);
+        $this->assertTrue(collect($reviewSteps)->firstWhere('label', 'Processing')['current']);
+        $this->assertFalse(collect($reviewSteps)->firstWhere('label', 'Processing')['done']);
+    }
+
+    public function test_review_status_uses_any_line_with_a_live_url(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $siteA = $this->siteFor($publisher, 'First No Url');
+        $siteB = $this->siteFor($publisher, 'Second Has Url');
+        $order = $this->makeOrder($advertiser, $siteA, [
+            'status' => 'review',
+        ]);
+        OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $siteB->id,
+            'site_name' => $siteB->site_name,
+            'site_url' => $siteB->site_url,
+            'price' => 50,
+            'content_link' => 'https://example.com/article-2.docx',
+            'live_url' => 'https://live.example/second-line',
+            'live_url_submitted_at' => now(),
+        ]);
+
+        $detail = $this->actingAs($advertiser)
+            ->getJson(route('advertiser.orders.get', $order->id))
+            ->assertOk()
+            ->json('order');
+
+        $this->assertSame('URL delivered · your review', $detail['status_label']);
+        $this->assertTrue($detail['has_live_url']);
+        $this->assertTrue($detail['can_approve']);
+        $urlStep = collect($detail['timeline_steps'])->firstWhere('label', 'URL delivered');
+        $this->assertTrue($urlStep['current']);
+        $this->assertFalse($urlStep['done']);
     }
 
     /**

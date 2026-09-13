@@ -929,8 +929,11 @@ function bootAdvertiserOrdersPage() {
             };
         }
 
-        const item = order.items && order.items[0] ? order.items[0] : null;
-        const hasLiveUrl = !!(item && item.live_url);
+        const items = Array.isArray(order.items) ? order.items : [];
+        const item = items.find((it) => it && it.live_url) || items[0] || null;
+        const hasLiveUrl = order.has_live_url === true
+            || order.has_live_url === 1
+            || items.some((it) => it && it.live_url);
         const modRequested = item && item.modification_requested === 'yes';
         const contentRevisionRequested = Array.isArray(order.items)
             ? order.items.some((it) => it && it.content_revision_requested === 'yes')
@@ -1040,9 +1043,12 @@ function bootAdvertiserOrdersPage() {
             steps[3].done = false;
         } else if (status === 'processing') {
             steps[2].current = true;
-        } else if (status === 'review') {
+        } else if (status === 'review' && hasLiveUrl) {
             steps[3].current = true;
             steps[3].done = false;
+        } else if (status === 'review') {
+            steps[2].current = true;
+            steps[2].done = false;
         } else if (status === 'completed') {
             steps[4].current = true;
             steps[4].done = hasItems;

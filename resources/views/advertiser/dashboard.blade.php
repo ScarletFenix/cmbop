@@ -601,7 +601,8 @@
                                         @php
                                             $firstItem = $order->items->first();
                                             $numericOrder = preg_replace('/\D+/', '', (string) ($order->order_number ?? '')) ?: (string) $order->id;
-                                            $statusLabel = str_replace('_', ' ', (string) $order->status);
+                                            $statusMeta = \App\Support\AdvertiserOrderStatus::meta($order);
+                                            $statusLabel = $statusMeta['label'];
                                             $orderFocusUrl = route('advertiser.orders', ['focus' => 'order', 'order' => $order->id]);
                                             $siteModel = $firstItem?->relationLoaded('site') ? $firstItem->site : null;
                                             $canSeeRecentUrl = $siteModel

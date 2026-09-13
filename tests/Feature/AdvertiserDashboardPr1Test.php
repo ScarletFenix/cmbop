@@ -122,7 +122,33 @@ class AdvertiserDashboardPr1Test extends TestCase
             ->get(route('advertiser.dashboard'))
             ->assertOk()
             ->assertSee('your attention', false)
-            ->assertSee('Open orders', false);
+            ->assertSee('Open orders', false)
+            ->assertSee('URL delivered · your review', false);
+    }
+
+    public function test_dashboard_review_counts_and_recent_labels_stay_honest(): void
+    {
+        $user = $this->advertiser();
+        $this->makeOrder($user, [
+            'status' => 'review',
+            'payment_status' => 'paid',
+            'live_url' => 'https://live.example/ready',
+        ]);
+        $this->makeOrder($user, [
+            'status' => 'review',
+            'payment_status' => 'paid',
+        ]);
+
+        $stats = app(AdvertiserDashboardService::class)->orderStats($user->id);
+        $this->assertSame(1, $stats['needs_review']);
+        $this->assertSame(1, $stats['needs_action']);
+        $this->assertSame(2, $stats['total']);
+
+        $this->actingAs($user)
+            ->get(route('advertiser.dashboard'))
+            ->assertOk()
+            ->assertSee('URL delivered · your review', false)
+            ->assertSee('In review', false);
     }
 
     public function test_dashboard_uses_controller_not_closure(): void

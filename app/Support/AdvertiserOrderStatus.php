@@ -26,10 +26,7 @@ class AdvertiserOrderStatus
             ->where('user_id', $userId)
             ->where(function ($q) {
                 $q->where(function ($reviewReady) {
-                    $reviewReady->where('status', 'review')
-                        ->whereHas('items', function ($iq) {
-                            $iq->whereNotNull('live_url')->where('live_url', '!=', '');
-                        });
+                    static::constrainReviewReady($reviewReady);
                 });
 
                 if (Schema::hasColumn('order_items', 'content_revision_requested')) {
@@ -72,12 +69,7 @@ class AdvertiserOrderStatus
             ))";
         }
 
-        $reviewReadySql = "EXISTS (
-            SELECT 1 FROM order_items
-            WHERE order_items.order_id = orders.id
-              AND order_items.live_url IS NOT NULL
-              AND order_items.live_url != ''
-        )";
+        $reviewReadySql = static::liveUrlExistsSql();
 
         $query->orderByRaw(
             "CASE
@@ -89,12 +81,44 @@ class AdvertiserOrderStatus
     }
 
     /**
+     * Advertiser “Needs review” / Live URL ready: status=review and at least one live URL.
+     *
+     * @param  Builder<Order>  $query
+     * @return Builder<Order>
+     */
+    public static function constrainReviewReady(Builder $query): Builder
+    {
+        return $query->where('status', 'review')
+            ->whereHas('items', function ($items) {
+                $items->whereNotNull('live_url')->where('live_url', '!=', '');
+            });
+    }
+
+    public static function liveUrlExistsSql(string $orderIdColumn = 'orders.id'): string
+    {
+        return "EXISTS (
+            SELECT 1 FROM order_items
+            WHERE order_items.order_id = {$orderIdColumn}
+              AND order_items.live_url IS NOT NULL
+              AND order_items.live_url != ''
+        )";
+    }
+
+    /**
      * @return array{label: string, next: string, cls: string, stage: string, auto_approve_hint: ?string}
      */
     public static function meta(Order $order, ?OrderItem $item = null): array
     {
+        $focused = func_num_args() >= 2 && $item !== null;
         $item = $item ?? $order->items->first();
-        $hasLiveUrl = $item && filled($item->live_url);
+        $hasLiveUrl = $focused
+            ? ($item && filled($item->live_url))
+            : AdvertiserOrderDetails::hasLiveUrl($order);
+        if (! $focused && $hasLiveUrl) {
+            $item = $order->items->first(
+                fn ($line) => $line instanceof OrderItem && filled($line->live_url)
+            ) ?? $item;
+        }
         $modRequested = $item && method_exists($item, 'isModificationRequested')
             ? $item->isModificationRequested()
             : (($item->modification_requested ?? 'no') === 'yes');
@@ -307,9 +331,12 @@ class AdvertiserOrderStatus
             $steps[3]['done'] = false;
         } elseif ($status === 'processing') {
             $steps[2]['current'] = true;
-        } elseif ($status === 'review') {
+        } elseif ($status === 'review' && $hasLiveUrl) {
             $steps[3]['current'] = true;
             $steps[3]['done'] = false;
+        } elseif ($status === 'review') {
+            $steps[2]['current'] = true;
+            $steps[2]['done'] = false;
         } elseif ($status === 'completed') {
             $steps[4]['current'] = true;
             $steps[4]['done'] = $hasItems;

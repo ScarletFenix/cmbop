@@ -5021,12 +5021,7 @@ class CatalogController extends Controller
             $userId = auth()->id();
             $base = Order::where('user_id', $userId);
 
-            $needsReview = (clone $base)
-                ->where('status', 'review')
-                ->whereHas('items', function ($items) {
-                    $items->whereNotNull('live_url')->where('live_url', '!=', '');
-                })
-                ->count();
+            $needsReview = AdvertiserOrderStatus::constrainReviewReady(clone $base)->count();
             $needsAction = AdvertiserOrderStatus::needsActionCountForUser((int) $userId);
             $inProgress = (clone $base)
                 ->where(function ($q) {
@@ -5117,10 +5112,7 @@ class CatalogController extends Controller
                     );
                 } elseif ($status === 'review') {
                     // Matches the Needs review KPI: live URL ready, not “in review” without a URL.
-                    $query->where('status', 'review')
-                        ->whereHas('items', function ($items) {
-                            $items->whereNotNull('live_url')->where('live_url', '!=', '');
-                        });
+                    AdvertiserOrderStatus::constrainReviewReady($query);
                 } else {
                     $query->where('status', $status);
                 }
@@ -5695,7 +5687,7 @@ class CatalogController extends Controller
     private function hydrateAdvertiserOrderDetail(Order $order): void
     {
         $order->items_count = $order->items->count();
-        $meta = AdvertiserOrderStatus::meta($order, $order->items->first());
+        $meta = AdvertiserOrderStatus::meta($order);
         $order->status_label = $meta['label'];
         $order->next_action = $meta['next'];
         $order->status_cls = $meta['cls'];
@@ -5728,7 +5720,7 @@ class CatalogController extends Controller
         $payload['empty_items_message'] = AdvertiserOrderDetails::emptyItemsMessage($order);
         $payload['policy_note'] = AdvertiserOrderDetails::policyNote($order);
         $payload['has_live_url'] = AdvertiserOrderDetails::hasLiveUrl($order);
-        $payload['timeline_steps'] = AdvertiserOrderStatus::timelineSteps($order, $order->items->first());
+        $payload['timeline_steps'] = AdvertiserOrderStatus::timelineSteps($order);
 
         return $payload;
     }
