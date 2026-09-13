@@ -2676,7 +2676,7 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('assets/js/content-library.js', $html);
         $js = (string) file_get_contents(public_path('assets/js/content-library.js'));
         $this->assertStringContainsString(
-            'function openPreviewModal(title, html, links, submissionId, editable)',
+            'function openPreviewModal(title, html, links, submissionId, editable, canDuplicate)',
             $js
         );
         $this->assertStringContainsString('preview_html: previewModalState.html || \'\'', $js);
