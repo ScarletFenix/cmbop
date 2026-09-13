@@ -6,9 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
 use App\Support\ActivityLogDateBounds;
 use App\Support\ActivityLogTextSearch;
+use App\Support\UserFacingError;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ActivityLogController extends Controller
@@ -23,6 +26,21 @@ class ActivityLogController extends Controller
     public const ROLES = ['admin', 'marketing', 'publisher', 'advertiser'];
 
     public function index(Request $request)
+    {
+        try {
+            return $this->renderIndex($request);
+        } catch (\Throwable $e) {
+            report($e);
+            session()->flash(
+                'error',
+                UserFacingError::message($e, 'We could not load activity history. Please refresh and try again.')
+            );
+
+            return $this->emptyIndexView($request);
+        }
+    }
+
+    private function renderIndex(Request $request): View|RedirectResponse
     {
         [$query, $meta] = $this->filteredQuery($request);
 
@@ -70,24 +88,33 @@ class ActivityLogController extends Controller
 
     public function export(Request $request): StreamedResponse|RedirectResponse
     {
-        [$query, $meta] = $this->filteredQuery($request);
+        try {
+            [$query, $meta] = $this->filteredQuery($request);
 
-        if ($meta['dateErrors'] !== []) {
+            if ($meta['dateErrors'] !== []) {
+                return redirect()
+                    ->route('admin.activity-logs.index', $this->filterQueryParams($request))
+                    ->with('error', implode(' ', $meta['dateErrors']));
+            }
+
+            $this->applySelectedAction($query, $meta['selectedAction']);
+
+            $limit = $this->exportLimit();
+            if ((clone $query)->count() > $limit) {
+                return redirect()
+                    ->route('admin.activity-logs.index', $this->filterQueryParams($request))
+                    ->with('error', 'More than '.number_format($limit).' events match. Narrow the filters before exporting — a partial CSV would look complete.');
+            }
+
+            $rows = $query->latest('id')->limit($limit)->get();
+        } catch (\Throwable $e) {
+            report($e);
+
             return redirect()
                 ->route('admin.activity-logs.index', $this->filterQueryParams($request))
-                ->with('error', implode(' ', $meta['dateErrors']));
+                ->with('error', UserFacingError::message($e, 'We could not export activity history. Please try again.'));
         }
 
-        $this->applySelectedAction($query, $meta['selectedAction']);
-
-        $limit = $this->exportLimit();
-        if ((clone $query)->count() > $limit) {
-            return redirect()
-                ->route('admin.activity-logs.index', $this->filterQueryParams($request))
-                ->with('error', 'More than '.number_format($limit).' events match. Narrow the filters before exporting — a partial CSV would look complete.');
-        }
-
-        $rows = $query->latest('id')->limit($limit)->get();
         $filename = 'activity-logs-'.now()->format('Y-m-d-His').'.csv';
 
         return response()->streamDownload(function () use ($rows) {
@@ -121,6 +148,38 @@ class ActivityLogController extends Controller
             fclose($out);
         }, $filename, [
             'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
+    private function emptyIndexView(Request $request): View
+    {
+        $selectedAction = search_text($request->input('action'));
+        if ($selectedAction !== '' && ! preg_match('/^[a-z0-9_.]+$/', $selectedAction)) {
+            $selectedAction = '';
+        }
+        if ($selectedAction !== '') {
+            $selectedAction = activity_action_canonical($selectedAction);
+        }
+
+        $selectedRole = search_text($request->input('role'));
+        if (! in_array($selectedRole, self::ROLES, true)) {
+            $selectedRole = '';
+        }
+
+        return view('admin.activity-logs', [
+            'logs' => new LengthAwarePaginator([], 0, 25, 1, [
+                'path' => $request->url(),
+                'query' => $request->query(),
+            ]),
+            'actions' => array_keys(activity_action_labels()),
+            'actionCounts' => collect(),
+            'exportQuery' => $this->filterQueryParams($request),
+            'exportCapped' => false,
+            'exportLimit' => $this->exportLimit(),
+            'dateErrors' => [],
+            'filtersActive' => $this->filterQueryParams($request) !== [],
+            'selectedAction' => $selectedAction,
+            'selectedRole' => $selectedRole,
         ]);
     }
 

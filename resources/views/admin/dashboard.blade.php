@@ -12,11 +12,7 @@
          approved, orders go through, and the scan log fills with passes. Nobody
          visits the moderation screen to check something they believe is running,
          so it has to say so here. --}}
-    @php
-        $moderationOff = ! app(\App\Services\ContentModeration\ContentModerationService::class)->isEnabled();
-        $opsAlerts = app(\App\Support\ProductionReadiness::class)->dashboardAlerts();
-    @endphp
-    @if($opsAlerts !== [])
+    @if(($opsAlerts ?? []) !== [])
         <div class="alert alert-warning d-flex align-items-start gap-2" role="alert">
             <i class="fa fa-server mt-1" aria-hidden="true"></i>
             <div>
@@ -37,7 +33,7 @@
             </div>
         </div>
     @endif
-    @if($moderationOff)
+    @if($moderationOff ?? false)
         <div class="alert alert-danger d-flex align-items-start gap-2" role="alert">
             <i class="fa fa-triangle-exclamation mt-1" aria-hidden="true"></i>
             <div>
