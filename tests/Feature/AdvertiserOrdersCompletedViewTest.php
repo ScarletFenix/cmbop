@@ -326,4 +326,32 @@ class AdvertiserOrdersCompletedViewTest extends TestCase
             ->assertJsonPath('data.needs_action', 0)
             ->assertDontSee('SQLSTATE');
     }
+
+    public function test_orders_list_survives_dropped_chat_table(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher);
+        $order = $this->makeOrder($advertiser, $site, [
+            'status' => 'completed',
+        ], [
+            'live_url' => 'https://live.example/leftover-chat',
+        ]);
+
+        Schema::dropIfExists('order_chat_messages');
+
+        $list = $this->actingAs($advertiser)
+            ->getJson(route('advertiser.orders.list'))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonMissingPath('exception')
+            ->assertDontSee('SQLSTATE')
+            ->json();
+
+        $row = collect($list['orders'] ?? [])->firstWhere('id', $order->id);
+        $this->assertNotNull($row);
+        $this->assertSame(0, $row['unread_chat']);
+        $this->assertSame(1, $row['items_count']);
+        $this->assertSame('Your post is live. Open the published URL.', $row['next_action']);
+    }
 }

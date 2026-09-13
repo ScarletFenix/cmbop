@@ -202,4 +202,21 @@ class OrdersBehindMigrationsTest extends TestCase
         $this->assertSame([], $row['items']);
         $this->assertStringNotContainsString('SQLSTATE', (string) ($row['next_action'] ?? ''));
     }
+
+    public function test_orders_list_survives_a_dropped_chat_table(): void
+    {
+        $advertiser = $this->advertiser();
+        $order = $this->orderFor($advertiser);
+
+        Schema::dropIfExists('order_chat_messages');
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.orders.list'))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('orders.0.id', $order->id)
+            ->assertJsonPath('orders.0.unread_chat', 0)
+            ->assertJsonMissingPath('exception')
+            ->assertDontSee('SQLSTATE');
+    }
 }

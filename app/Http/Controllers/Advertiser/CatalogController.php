@@ -5167,13 +5167,20 @@ class CatalogController extends Controller
             }
 
             $orderIds = collect($orders->items())->pluck('id');
-            $unreadByOrder = OrderChatMessage::whereIn('order_id', $orderIds)
-                ->where('sender_type', 'publisher')
-                ->where('is_read', false)
-                ->notBlocked()
-                ->selectRaw('order_id, COUNT(*) as unread_count')
-                ->groupBy('order_id')
-                ->pluck('unread_count', 'order_id');
+            $unreadByOrder = collect();
+            try {
+                if (Schema::hasTable('order_chat_messages') && $orderIds->isNotEmpty()) {
+                    $unreadByOrder = OrderChatMessage::whereIn('order_id', $orderIds)
+                        ->where('sender_type', 'publisher')
+                        ->where('is_read', false)
+                        ->notBlocked()
+                        ->selectRaw('order_id, COUNT(*) as unread_count')
+                        ->groupBy('order_id')
+                        ->pluck('unread_count', 'order_id');
+                }
+            } catch (\Throwable $e) {
+                $unreadByOrder = collect();
+            }
 
             $clawbacks = app(OrderClawbackService::class);
             $ordersPayload = collect($orders->items())->map(function ($order) use ($unreadByOrder, $clawbacks) {
@@ -5293,6 +5300,15 @@ class CatalogController extends Controller
      */
     private function findAdvertiserOrderForDetails(int $userId, int $id): ?Order
     {
+        if (! AdvertiserOrderStatus::itemsTableAvailable()) {
+            $order = Order::where('user_id', $userId)->find($id);
+            if ($order) {
+                $order->setRelation('items', collect());
+            }
+
+            return $order;
+        }
+
         try {
             return Order::where('user_id', $userId)
                 ->with(OrderItemDispute::tableAvailable() ? ['items.latestDispute'] : ['items'])
