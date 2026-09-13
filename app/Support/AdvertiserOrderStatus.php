@@ -264,7 +264,7 @@ class AdvertiserOrderStatus
             } elseif ($anyLiveUrl) {
                 $next = 'All done — the publisher has been paid for this placement.';
             } else {
-                $next = 'This order is marked complete. If a live URL is missing, use Chat or Report link removed.';
+                $next = 'This order is marked complete. If you expected a live URL, use Chat or contact support.';
             }
 
             return [

@@ -920,10 +920,10 @@ function bootAdvertiserOrdersPage() {
     }
 
     function getAdvertiserStatusMeta(order) {
-        if (order.status_label && order.next_action) {
+        if (order.status_label) {
             return {
                 label: order.status_label,
-                next: order.next_action,
+                next: order.next_action || '',
                 cls: order.status_cls || (isAwaitingScheduledRelease(order) ? 'status-processing' : getStatusClass(order.status)),
                 autoHint: order.auto_approve_hint || null,
             };
@@ -1001,7 +1001,7 @@ function bootAdvertiserOrdersPage() {
                 return { label: 'Completed', next: 'This order is marked complete, but it has no line items. Contact support if you expected a live URL here.', cls: 'status-completed', autoHint: null };
             }
             if (!anyLive) {
-                return { label: 'Completed', next: 'This order is marked complete. If a live URL is missing, use Chat or Report link removed.', cls: 'status-completed', autoHint: null };
+                return { label: 'Completed', next: 'This order is marked complete. If you expected a live URL, use Chat or contact support.', cls: 'status-completed', autoHint: null };
             }
             return { label: 'Completed', next: 'All done — the publisher has been paid for this placement.', cls: 'status-completed', autoHint: null };
         }
@@ -1794,13 +1794,23 @@ function bootAdvertiserOrdersPage() {
             if (order.placements_missing === true || order.placements_missing === 1) {
                 return `<div class="order-view-refund">${link}</div>`;
             }
-            const note = order.policy_note || 'If a published link is later removed, use Report link removed.';
+            const note = typeof order.policy_note === 'string'
+                ? order.policy_note
+                : 'If a published link is later removed, use Report link removed.';
+            if (!note) {
+                return `<div class="order-view-refund">${link}</div>`;
+            }
             return `<div class="order-view-refund">${escapeHtml(note)} ${link}</div>`;
         }
         if (order.status === 'cancelled' || order.payment_status === 'refunded') {
             return `<div class="order-view-refund">${link}</div>`;
         }
-        const note = order.policy_note || 'Declines refund automatically · request changes before auto-approve';
+        const note = typeof order.policy_note === 'string'
+            ? order.policy_note
+            : 'Declines refund automatically · request changes before auto-approve';
+        if (!note) {
+            return `<div class="order-view-refund">${link}</div>`;
+        }
         return `<div class="order-view-refund">${escapeHtml(note)} · ${link}</div>`;
     }
 

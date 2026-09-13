@@ -46,7 +46,7 @@ final class AdvertiserOrderDetails
         $payment = (string) $order->payment_status;
 
         if ($status === 'completed') {
-            if (self::placementsMissing($order)) {
+            if (self::placementsMissing($order) || ! self::hasLiveUrl($order)) {
                 return '';
             }
 

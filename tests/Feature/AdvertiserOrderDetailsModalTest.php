@@ -203,6 +203,29 @@ class AdvertiserOrderDetailsModalTest extends TestCase
         $this->assertFalse($completedStep['done']);
     }
 
+    public function test_completed_with_items_but_no_live_url_does_not_offer_report(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher, 'Complete No Url');
+        $order = $this->makeOrder($advertiser, $site, [
+            'status' => 'completed',
+            'completed_at' => now()->subHour(),
+        ]);
+
+        $detail = $this->actingAs($advertiser)
+            ->getJson(route('advertiser.orders.get', $order->id))
+            ->assertOk()
+            ->json('order');
+
+        $this->assertFalse($detail['placements_missing']);
+        $this->assertFalse($detail['has_live_url']);
+        $this->assertSame('', $detail['policy_note']);
+        $this->assertStringNotContainsString('Report link removed', $detail['next_action']);
+        $this->assertStringNotContainsString('paid for this placement', $detail['next_action']);
+        $this->assertStringContainsString('contact support', $detail['next_action']);
+    }
+
     public function test_completed_html_contract_has_live_url_and_honest_empty_state(): void
     {
         $js = file_get_contents(public_path('assets/js/advertiser-orders.js'));
@@ -222,6 +245,8 @@ class AdvertiserOrderDetailsModalTest extends TestCase
         $this->assertStringNotContainsString('ov-empty-placements ui-callout ui-callout--attention', $js);
         $this->assertStringContainsString('order-view-shell--stack', $js);
         $this->assertStringContainsString('} else if (status === \'review\' && hasLiveUrl) {', $js);
+        $this->assertStringContainsString("typeof order.policy_note === 'string'", $js);
+        $this->assertStringNotContainsString("order.policy_note || 'If a published link is later removed", $js);
         $this->assertStringContainsString('Reconstructed from order dates', $js);
         $this->assertMatchesRegularExpression(
             '/function loadOrderActivityTimeline[\\s\\S]{0,1800}reconstructOrderActivities/',

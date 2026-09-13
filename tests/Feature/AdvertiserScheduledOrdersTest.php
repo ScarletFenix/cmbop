@@ -301,6 +301,30 @@ class AdvertiserScheduledOrdersTest extends TestCase
             ->get(route('advertiser.scheduled-orders', ['tab' => 'with_publisher']))
             ->assertOk()
             ->assertSee('#'.$order->order_number)
+            ->assertSee('In review')
+            ->assertSee('Waiting on publisher')
+            ->assertDontSee('Needs your review');
+    }
+
+    public function test_with_publisher_review_phase_requires_a_live_url(): void
+    {
+        $advertiser = $this->advertiser();
+        [, $site] = $this->publisherWithSite();
+        $order = $this->scheduledOrder($advertiser, $site, [
+            'status' => 'review',
+            'schedule_released_at' => now()->subHour(),
+            'scheduled_publish_at' => now()->subHour(),
+        ]);
+        $order->items->first()->update([
+            'live_url' => 'https://live.example/scheduled-review',
+            'live_url_submitted_at' => now()->subHour(),
+        ]);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.scheduled-orders', ['tab' => 'with_publisher']))
+            ->assertOk()
+            ->assertSee('#'.$order->order_number)
+            ->assertSee('URL delivered · your review')
             ->assertSee('Needs your review')
             ->assertDontSee('Waiting on publisher');
     }
@@ -388,7 +412,8 @@ class AdvertiserScheduledOrdersTest extends TestCase
             ->assertOk()
             ->assertSee('#'.$processing->order_number)
             ->assertSee('#'.$review->order_number)
-            ->assertSee('Needs your review');
+            ->assertSee('In review')
+            ->assertDontSee('Needs your review');
 
         $this->actingAs($advertiser)
             ->post(route('advertiser.scheduled-orders.update', $processing), ['action' => 'cancel'])

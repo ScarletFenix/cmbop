@@ -78,14 +78,15 @@
                                     ? $order->scheduled_publish_at->copy()->timezone($tz)
                                     : null;
                                 $orderFocusUrl = route('advertiser.orders', ['focus' => 'order', 'order' => $order->id]);
-                                $statusLabel = str_replace('_', ' ', (string) $order->status);
+                                $statusMeta = \App\Support\AdvertiserOrderStatus::meta($order);
+                                $statusLabel = $statusMeta['label'];
                                 $isPaid = ($order->payment_status ?? '') === 'paid';
                                 $minDate = now($tz)->toDateString();
                                 $rowMaxDate = now($tz)->addMonthsNoOverflow($maxMonths)->toDateString();
                                 $phase = match (true) {
-                                    $tab === 'history' => ucfirst((string) $order->status),
+                                    $tab === 'history' => $statusLabel,
                                     $tab === 'upcoming' => 'Upcoming',
-                                    $order->status === 'review' => 'Needs your review',
+                                    ($statusMeta['stage'] ?? '') === 'url_delivered' => 'Needs your review',
                                     default => 'Waiting on publisher',
                                 };
                                 $cancelConfirm = $isPaid
@@ -101,7 +102,7 @@
                                     {{ $order->items->pluck('site_name')->filter()->implode(', ') ?: '—' }}
                                 </td>
                                 <td>
-                                    <span class="small text-capitalize">{{ $statusLabel }}</span>
+                                    <span class="small">{{ $statusLabel }}</span>
                                 </td>
                                 <td>
                                     @if($local)

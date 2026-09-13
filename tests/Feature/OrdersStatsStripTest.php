@@ -105,6 +105,8 @@ class OrdersStatsStripTest extends TestCase
         $this->assertStringContainsString('id="ordNeedsReview"', $html);
         $this->assertStringContainsString('id="ordInProgress"', $html);
         $this->assertStringContainsString('id="ordCompleted"', $html);
+        $this->assertStringContainsString('Marked complete', $html);
+        $this->assertStringNotContainsString('Approved &amp; live', $html);
         $this->assertStringContainsString('id="ordAwaitingPayment"', $html);
         $this->assertStringContainsString('wallet-kpi', $html);
         $this->assertStringContainsString('AdvertiserOrdersConfig', $html);
