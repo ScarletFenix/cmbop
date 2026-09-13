@@ -10,8 +10,11 @@ use App\Services\Billing\InvoicePdfGenerator;
 use App\Support\UserFacingError;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\QueryException;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
@@ -153,7 +156,19 @@ class BillingController extends Controller
     {
         $this->authorizeOwner($invoice);
 
-        $result = $billing->resendInvoiceEmail($invoice);
+        try {
+            $result = $billing->resendInvoiceEmail($invoice);
+        } catch (\Throwable $e) {
+            if ($request->expectsJson()) {
+                return $this->leftoverJson($e, 'Unable to send that invoice. Please try again.');
+            }
+
+            report($e);
+
+            return redirect()
+                ->route('advertiser.billing.show', $invoice)
+                ->with('error', UserFacingError::message($e, 'Unable to send that invoice. Please try again.'));
+        }
 
         if ($request->expectsJson()) {
             return response()->json([
@@ -167,12 +182,12 @@ class BillingController extends Controller
             ->with($result['ok'] ? 'success' : 'error', $result['message']);
     }
 
-    public function download(Invoice $invoice, InvoicePdfGenerator $pdfs, BillingDocumentService $billing)
+    public function download(Request $request, Invoice $invoice, InvoicePdfGenerator $pdfs, BillingDocumentService $billing)
     {
         $this->authorizeOwner($invoice);
 
-        if (! $invoice->advertiserCanDownloadPdf() && $invoice->isCancelled() && $invoice->isTaxInvoice()) {
-            abort(403, 'This invoice has been cancelled.');
+        if ($denied = $this->cancelledTaxInvoiceResponse($request, $invoice)) {
+            return $denied;
         }
 
         try {
@@ -187,6 +202,10 @@ class BillingController extends Controller
         } catch (HttpExceptionInterface $e) {
             throw $e;
         } catch (\Throwable $e) {
+            if ($request->expectsJson()) {
+                return $this->leftoverJson($e, 'Unable to download that invoice.');
+            }
+
             report($e);
 
             return redirect()
@@ -195,12 +214,12 @@ class BillingController extends Controller
         }
     }
 
-    public function viewPdf(Invoice $invoice, InvoicePdfGenerator $pdfs, BillingDocumentService $billing)
+    public function viewPdf(Request $request, Invoice $invoice, InvoicePdfGenerator $pdfs, BillingDocumentService $billing)
     {
         $this->authorizeOwner($invoice);
 
-        if (! $invoice->advertiserCanDownloadPdf() && $invoice->isCancelled() && $invoice->isTaxInvoice()) {
-            abort(403, 'This invoice has been cancelled.');
+        if ($denied = $this->cancelledTaxInvoiceResponse($request, $invoice)) {
+            return $denied;
         }
 
         try {
@@ -215,6 +234,10 @@ class BillingController extends Controller
         } catch (HttpExceptionInterface $e) {
             throw $e;
         } catch (\Throwable $e) {
+            if ($request->expectsJson()) {
+                return $this->leftoverJson($e, 'Unable to open that invoice.');
+            }
+
             report($e);
 
             return redirect()
@@ -299,10 +322,50 @@ class BillingController extends Controller
         return Carbon::create($year, $month, $day)->startOfDay();
     }
 
+    private function cancelledTaxInvoiceResponse(Request $request, Invoice $invoice): Response|JsonResponse|null
+    {
+        if ($invoice->advertiserCanDownloadPdf() || ! $invoice->isCancelled() || ! $invoice->isTaxInvoice()) {
+            return null;
+        }
+
+        return $this->leftoverDenied($request, 'This invoice has been cancelled.');
+    }
+
+    private function leftoverJson(\Throwable $e, string $fallback): JsonResponse
+    {
+        report($e);
+
+        return response()->json([
+            'success' => false,
+            'message' => UserFacingError::message($e, $fallback),
+        ], $e instanceof QueryException ? 503 : 500);
+    }
+
+    private function leftoverDenied(Request $request, string $message, int $status = 403): Response|JsonResponse
+    {
+        if ($request->expectsJson()) {
+            return response()->json([
+                'success' => false,
+                'message' => $message,
+            ], $status);
+        }
+
+        abort($status, $message);
+    }
+
     private function authorizeOwner(Invoice $invoice): void
     {
-        if ((int) $invoice->user_id !== (int) auth()->id() && ! auth()->user()?->isAdmin()) {
-            abort(403);
+        if ((int) $invoice->user_id === (int) auth()->id() || auth()->user()?->isAdmin()) {
+            return;
         }
+
+        if (request()->expectsJson()) {
+            abort(response()->json([
+                'success' => false,
+                'message' => 'You cannot access that invoice.',
+            ], 403));
+        }
+
+        abort(403);
     }
 }

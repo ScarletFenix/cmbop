@@ -11,6 +11,8 @@ use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\Billing\BillingDocumentService;
+use App\Services\Billing\InvoicePdfGenerator;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
@@ -225,6 +227,22 @@ class AdvertiserBillingUxTest extends TestCase
         $this->actingAs($user)
             ->get(route('advertiser.billing.download', $tax))
             ->assertForbidden();
+
+        $this->actingAs($user)
+            ->getJson(route('advertiser.billing.download', $tax))
+            ->assertForbidden()
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'This invoice has been cancelled.')
+            ->assertJsonMissingPath('exception')
+            ->assertDontSee('SQLSTATE')
+            ->assertDontSee('App\\Models');
+
+        $this->actingAs($user)
+            ->getJson(route('advertiser.billing.view', $tax))
+            ->assertForbidden()
+            ->assertJsonPath('success', false)
+            ->assertJsonMissingPath('exception')
+            ->assertDontSee('SQLSTATE');
     }
 
     public function test_date_filters_ignore_junk_and_swap_reversed_range(): void
@@ -259,6 +277,7 @@ class AdvertiserBillingUxTest extends TestCase
         foreach ([
             ['GET', route('advertiser.billing.show', 999999)],
             ['GET', route('advertiser.billing.download', 999999)],
+            ['GET', route('advertiser.billing.view', 999999)],
             ['POST', route('advertiser.billing.resend', 999999)],
         ] as [$method, $url]) {
             $this->actingAs($user)
@@ -301,6 +320,9 @@ class AdvertiserBillingUxTest extends TestCase
         $this->actingAs($other)
             ->postJson(route('advertiser.billing.resend', $tax))
             ->assertForbidden()
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'You cannot access that invoice.')
+            ->assertJsonMissingPath('exception')
             ->assertDontSee('SQLSTATE')
             ->assertDontSee('App\\Models');
 
@@ -369,6 +391,55 @@ class AdvertiserBillingUxTest extends TestCase
             ->postJson(route('advertiser.billing.resend', $tax))
             ->assertStatus(422)
             ->assertJsonPath('success', false)
+            ->assertJsonMissingPath('exception')
+            ->assertDontSee('SQLSTATE');
+    }
+
+    public function test_download_and_resend_failures_stay_leftover_safe(): void
+    {
+        Mail::fake();
+        $user = $this->advertiser();
+        $order = $this->paidOrder($user);
+        $tax = app(BillingDocumentService::class)->handlePaymentPaid($order);
+        $sql = new QueryException(
+            'sqlite',
+            'select * from invoices',
+            [],
+            new \PDOException('SQLSTATE[HY000]: leftover invoice lookup')
+        );
+
+        $this->mock(InvoicePdfGenerator::class, function ($mock) use ($sql) {
+            $mock->shouldReceive('generateAndStore')->andThrow($sql);
+            $mock->shouldReceive('download')->andThrow($sql);
+            $mock->shouldReceive('stream')->andThrow($sql);
+        });
+
+        $this->actingAs($user)
+            ->getJson(route('advertiser.billing.download', $tax))
+            ->assertStatus(503)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'Unable to download that invoice.')
+            ->assertJsonMissingPath('exception')
+            ->assertDontSee('SQLSTATE')
+            ->assertDontSee('App\\Models');
+
+        $this->actingAs($user)
+            ->getJson(route('advertiser.billing.view', $tax))
+            ->assertStatus(503)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'Unable to open that invoice.')
+            ->assertJsonMissingPath('exception')
+            ->assertDontSee('SQLSTATE');
+
+        $this->mock(BillingDocumentService::class, function ($mock) use ($sql) {
+            $mock->shouldReceive('resendInvoiceEmail')->andThrow($sql);
+        });
+
+        $this->actingAs($user)
+            ->postJson(route('advertiser.billing.resend', $tax))
+            ->assertStatus(503)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'Unable to send that invoice. Please try again.')
             ->assertJsonMissingPath('exception')
             ->assertDontSee('SQLSTATE');
     }
