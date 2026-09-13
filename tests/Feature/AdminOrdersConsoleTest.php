@@ -1248,4 +1248,30 @@ class AdminOrdersConsoleTest extends TestCase
             ]);
         }
     }
+
+    public function test_completed_order_without_items_does_not_say_no_placements(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $order = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => '797026',
+            'reference_code' => '83126',
+            'subtotal' => 103.50,
+            'tax' => 0,
+            'total_amount' => 103.50,
+            'payment_method' => 'card',
+            'payment_status' => 'paid',
+            'status' => 'completed',
+            'paid_at' => now()->subDays(2),
+            'completed_at' => now()->subDay(),
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.orders.show', $order->id))
+            ->assertOk()
+            ->assertSee('no line items', false)
+            ->assertSee('797026', false)
+            ->assertDontSee('No placements on this order.');
+    }
 }

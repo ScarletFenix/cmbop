@@ -398,6 +398,58 @@ function loadRepOrdersData(page) {
     });
 }
 
+function repOrderStatusBadge(order) {
+    var label = order.status_label || '';
+    if (!label && order.status) {
+        label = String(order.status).charAt(0).toUpperCase() + String(order.status).slice(1);
+    }
+    if (!label) label = '—';
+    var cls = 'bg-secondary';
+    if (order.status === 'completed') cls = 'bg-success';
+    else if (order.status === 'cancelled') cls = 'bg-danger';
+    else if (order.status === 'review') cls = 'bg-warning text-dark';
+    else if (order.status === 'processing') cls = 'bg-info text-dark';
+    else if (order.status === 'pending') cls = 'bg-warning text-dark';
+    return '<span class="badge ' + cls + '">' + escapeRepHtml(label) + '</span>';
+}
+
+function renderRepOrderRow(order, item) {
+    var additionalPrice = item ? parseFloat(item.additional_price || 0) : NaN;
+    var linePrice = item ? parseFloat(item.price) : NaN;
+    var basePrice = Number.isFinite(linePrice) ? (linePrice - (Number.isFinite(additionalPrice) ? additionalPrice : 0)) : NaN;
+    var sensitiveType = item ? (item.sensitive_type || null) : null;
+    var siteName = item && item.site_name ? item.site_name : (order.placements_missing ? 'No line items' : '—');
+    var siteUrl = item && item.site_url ? item.site_url : '';
+    var paymentStatusBadge = '';
+    if (order.payment_status === 'pending') paymentStatusBadge = '<span class="badge bg-warning text-dark">Pending</span>';
+    else if (order.payment_status === 'paid') paymentStatusBadge = '<span class="badge bg-success">Paid</span>';
+    else if (order.payment_status === 'failed') paymentStatusBadge = '<span class="badge bg-danger">Failed</span>';
+    else if (order.payment_status === 'refunded') paymentStatusBadge = '<span class="badge bg-info text-dark">Refunded</span>';
+    else paymentStatusBadge = '<span class="badge bg-secondary">' + escapeRepHtml(order.payment_status || '—') + '</span>';
+
+    return '<tr class="rep-report-row">' +
+        '<td><code class="fw-semibold bg-light px-2 py-1 rounded">#' + escapeRepHtml(order.order_number) + '</code></td>' +
+        '<td class="text-muted">' + formatRepDate(order.created_at) + '</td>' +
+        '<td>' +
+            '<div class="fw-semibold">' + escapeRepHtml(siteName) + '</div>' +
+            (siteUrl ? '<small class="text-muted">' + truncateRep(siteUrl, 30) + '</small>' : '') +
+        '</td>' +
+        '<td class="text-primary">' + (Number.isFinite(basePrice) ? ('€' + basePrice.toFixed(2)) : '—') + '</td>' +
+        '<td>' + (Number.isFinite(additionalPrice) && additionalPrice > 0 ?
+            '<span class="rep-sensitive-badge"><i class="fa fa-plus-circle"></i> ' + escapeRepHtml(sensitiveType || 'Sensitive') + ' (+€' + additionalPrice.toFixed(2) + ')</span>' :
+            '<span class="text-muted">—</span>') +
+        '</td>' +
+        '<td class="fw-semibold">' + (Number.isFinite(linePrice) ? ('€' + linePrice.toFixed(2)) : ('€' + parseFloat(order.total_amount || 0).toFixed(2))) + '</td>' +
+        '<td><code class="small bg-light px-2 py-1 rounded">' + escapeRepHtml(order.reference_code) + '</code></td>' +
+        '<td><span class="badge bg-secondary">' + escapeRepHtml(paymentMethodLabel(order.payment_method)) + '</span></td>' +
+        '<td>' + repOrderStatusBadge(order) + '</td>' +
+        '<td>' + paymentStatusBadge + '</td>' +
+        '<td>' +
+            '<a href="/advertiser/invoice/' + escapeRepHtml(order.reference_code) + '" class="btn btn-sm btn-outline-primary" target="_blank"><i class="fa fa-file-invoice"></i> Invoice</a>' +
+        '</td>' +
+        '</tr>';
+}
+
 function renderRepOrdersTable(orders) {
     if (!orders || orders.length === 0) {
         $('#repOrdersTableBody').html('\
@@ -410,56 +462,16 @@ function renderRepOrdersTable(orders) {
         ');
         return;
     }
-    
+
     var html = '';
     for (var i = 0; i < orders.length; i++) {
         var order = orders[i];
-        
-        if (order.items && order.items.length > 0) {
-            for (var j = 0; j < order.items.length; j++) {
-                var item = order.items[j];
-                var additionalPrice = parseFloat(item.additional_price || 0);
-                var basePrice = parseFloat(item.price) - additionalPrice;
-                var sensitiveType = item.sensitive_type || null;
-                
-                var statusBadge = '';
-                if (order.status === 'pending') statusBadge = '<span class="badge bg-warning text-dark">Pending</span>';
-                else if (order.status === 'processing') statusBadge = '<span class="badge bg-info text-dark">Processing</span>';
-                else if (order.status === 'completed') statusBadge = '<span class="badge bg-success">Completed</span>';
-                else if (order.status === 'cancelled') statusBadge = '<span class="badge bg-danger">Cancelled</span>';
-                
-                var paymentStatusBadge = '';
-                if (order.payment_status === 'pending') paymentStatusBadge = '<span class="badge bg-warning text-dark">Pending</span>';
-                else if (order.payment_status === 'paid') paymentStatusBadge = '<span class="badge bg-success">Paid</span>';
-                else if (order.payment_status === 'failed') paymentStatusBadge = '<span class="badge bg-danger">Failed</span>';
-                
-                var paymentMethod = paymentMethodLabel(order.payment_method);
-                
-                html += '<tr class="rep-report-row">' +
-                    '<td><code class="fw-semibold bg-light px-2 py-1 rounded">#' + escapeRepHtml(order.order_number) + '</code></td>' +
-                    '<td class="text-muted">' + formatRepDate(order.created_at) + '</td>' +
-                    '<td>' +
-                        '<div class="fw-semibold">' + escapeRepHtml(item.site_name) + '</div>' +
-                        '<small class="text-muted">' + truncateRep(item.site_url, 30) + '</small>' +
-                    '</td>' +
-                    '<td class="text-primary">€' + basePrice.toFixed(2) + '</td>' +
-                    '<td>' + (additionalPrice > 0 ? 
-                        '<span class="rep-sensitive-badge"><i class="fa fa-plus-circle"></i> ' + escapeRepHtml(sensitiveType || 'Sensitive') + ' (+€' + additionalPrice.toFixed(2) + ')</span>' : 
-                        '<span class="text-muted">—</span>') + 
-                    '</td>' +
-                    '<td class="fw-semibold">€' + parseFloat(item.price).toFixed(2) + '</td>' +
-                    '<td><code class="small bg-light px-2 py-1 rounded">' + escapeRepHtml(order.reference_code) + '</code></td>' +
-                    '<td><span class="badge bg-secondary">' + escapeRepHtml(paymentMethod) + '</span></td>' +
-                    '<td>' + statusBadge + '</td>' +
-                    '<td>' + paymentStatusBadge + '</td>' +
-                    '<td>' +
-                        '<a href="/advertiser/invoice/' + escapeRepHtml(order.reference_code) + '" class="btn btn-sm btn-outline-primary" target="_blank"><i class="fa fa-file-invoice"></i> Invoice</a>' +
-                    '</td>' +
-                    '</tr>';
-            }
+        var items = order.items && order.items.length ? order.items : [null];
+        for (var j = 0; j < items.length; j++) {
+            html += renderRepOrderRow(order, items[j]);
         }
     }
-    
+
     $('#repOrdersTableBody').html(html);
 }
 

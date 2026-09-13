@@ -245,7 +245,7 @@
                                     </div>
                                 @endif
                             @empty
-                                <div class="text-muted">No placements on this order.</div>
+                                <div class="text-muted">{{ \App\Support\AdvertiserOrderDetails::emptyItemsMessage($order) }}</div>
                             @endforelse
                         </div>
                     </div>

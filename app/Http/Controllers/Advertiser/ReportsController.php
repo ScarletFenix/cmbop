@@ -7,6 +7,8 @@ use App\Models\DepositRequest;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Services\Advertiser\AdvertiserSpendService;
+use App\Support\AdvertiserOrderDetails;
+use App\Support\AdvertiserOrderStatus;
 use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -172,12 +174,16 @@ class ReportsController extends Controller
 
             $transformedOrders = [];
             foreach ($orders as $order) {
+                $meta = AdvertiserOrderStatus::meta($order);
                 $orderData = [
                     'id' => $order->id,
                     'order_number' => $order->order_number,
                     'reference_code' => $order->reference_code,
                     'created_at' => $order->created_at,
                     'status' => $order->status,
+                    'status_label' => $meta['label'],
+                    'status_cls' => $meta['cls'],
+                    'placements_missing' => AdvertiserOrderDetails::placementsMissing($order),
                     'payment_method' => $order->payment_method,
                     'payment_status' => $order->payment_status,
                     'total_amount' => $order->total_amount,

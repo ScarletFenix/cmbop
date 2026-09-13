@@ -144,11 +144,14 @@ class AdvertiserDashboardPr1Test extends TestCase
         $this->assertSame(1, $stats['needs_action']);
         $this->assertSame(2, $stats['total']);
 
-        $this->actingAs($user)
+        $html = $this->actingAs($user)
             ->get(route('advertiser.dashboard'))
             ->assertOk()
             ->assertSee('URL delivered · your review', false)
-            ->assertSee('In review', false);
+            ->assertSee('In review', false)
+            ->getContent();
+        $this->assertStringContainsString('order-status review', $html);
+        $this->assertStringContainsString('order-status pending', $html);
     }
 
     public function test_dashboard_uses_controller_not_closure(): void
