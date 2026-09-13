@@ -251,6 +251,41 @@ class AdvertiserOrdersChatCompletedViewTest extends TestCase
         $this->assertStringContainsString('Your post is live', $payload['order_details']['next_action']);
         $this->assertSame('This order is completed. You can still message about the live post.', $payload['composer_note']);
         $this->assertStringNotContainsString('no such table', json_encode($payload));
+
+        $this->actingAs($advertiser)
+            ->getJson(route('chat.unread-summary'))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertDontSee('SQLSTATE')
+            ->assertDontSee('no such table');
+
+        $this->actingAs($advertiser)
+            ->postJson(route('chat.send', $order->id), ['message' => 'Follow-up after leftover sites.'])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('can_send', true)
+            ->assertDontSee('SQLSTATE')
+            ->assertDontSee('no such table');
+    }
+
+    public function test_chat_send_survives_dropped_notifications_table(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher);
+        $order = $this->makeOrder($advertiser, $site);
+
+        Schema::dropIfExists('in_app_notifications');
+        Schema::dropIfExists('order_activities');
+
+        $this->actingAs($advertiser)
+            ->postJson(route('chat.send', $order->id), ['message' => 'Hello after leftover notifications.'])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('can_send', true)
+            ->assertDontSee('SQLSTATE')
+            ->assertDontSee('in_app_notifications')
+            ->assertDontSee('order_activities');
     }
 
     public function test_publisher_chat_is_forbidden_when_order_items_are_gone(): void
@@ -358,5 +393,10 @@ class AdvertiserOrdersChatCompletedViewTest extends TestCase
         $this->assertStringContainsString('details_missing', $chatRenderer);
         $this->assertStringNotContainsString('paid for this placement', $chatRenderer);
         $this->assertStringNotContainsString('can_approve', $chatRenderer);
+
+        $chatJs = (string) file_get_contents(public_path('js/order-chat.js'));
+        $this->assertStringContainsString('function safeChatError', $chatJs);
+        $this->assertStringContainsString('SQLSTATE', $chatJs);
+        $this->assertStringContainsString('safeChatError(data.message', $chatJs);
     }
 }

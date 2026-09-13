@@ -132,11 +132,9 @@ class ChatController extends Controller
             $this->applyVisibleToViewer($baseQuery, $user);
 
             if ($sinceId) {
-                $messages = (clone $baseQuery)
-                    ->with('user')
-                    ->where('id', '>', $sinceId)
-                    ->orderBy('id', 'asc')
-                    ->get();
+                $messages = $this->loadChatMessages(
+                    (clone $baseQuery)->where('id', '>', $sinceId)->orderBy('id', 'asc')
+                );
                 $hasMoreOlder = false;
             } else {
                 $base = clone $baseQuery;
@@ -144,12 +142,9 @@ class ChatController extends Controller
                     $base->where('id', '<', $beforeId);
                 }
                 $totalMatching = (clone $base)->count();
-                $messages = (clone $base)->with('user')
-                    ->orderByDesc('id')
-                    ->limit($limit)
-                    ->get()
-                    ->sortBy('id')
-                    ->values();
+                $messages = $this->loadChatMessages(
+                    (clone $base)->orderByDesc('id')->limit($limit)
+                )->sortBy('id')->values();
                 $hasMoreOlder = $totalMatching > $messages->count();
             }
 
@@ -247,7 +242,11 @@ class ChatController extends Controller
             }
 
             $message = OrderChatMessage::create($payload);
-            $message->load('user');
+            try {
+                $message->load('user');
+            } catch (\Throwable $e) {
+                // Serialize still has user_id; leftover users must not fail the send.
+            }
 
             if (! $isBlocked) {
                 foreach ($this->resolveChatReceivers($order, $isAdvertiser) as $receiver) {
@@ -268,12 +267,19 @@ class ChatController extends Controller
                         }
                     }
 
-                    app(InAppNotificationService::class)->notifyNewChatMessage(
-                        $order,
-                        $user,
-                        $receiver,
-                        $body
-                    );
+                    try {
+                        app(InAppNotificationService::class)->notifyNewChatMessage(
+                            $order,
+                            $user,
+                            $receiver,
+                            $body
+                        );
+                    } catch (\Throwable $e) {
+                        Log::warning('Chat notification failed: '.$e->getMessage(), [
+                            'order_id' => $order->id,
+                            'message_id' => $message->id,
+                        ]);
+                    }
                 }
             }
 
@@ -364,6 +370,18 @@ class ChatController extends Controller
             $inner->where('is_blocked', false)
                 ->orWhere('user_id', $user->id);
         });
+    }
+
+    /**
+     * @return Collection<int, OrderChatMessage>
+     */
+    private function loadChatMessages(Builder $query): Collection
+    {
+        try {
+            return (clone $query)->with('user')->get();
+        } catch (\Throwable $e) {
+            return (clone $query)->get();
+        }
     }
 
     /**
