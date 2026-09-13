@@ -1279,7 +1279,7 @@ class SiteController extends Controller
         }
 
         try {
-            $site->update(['site_image' => $path]);
+            $this->persistStaffSiteImagePath($site, $path);
         } catch (\Throwable $e) {
             $this->deleteStoredSiteImage($path);
             Log::error('Staff site image upload failed to persist', [
@@ -2451,6 +2451,33 @@ class SiteController extends Controller
             'site_image.max' => 'The site image must be under '.$mb.' MB.',
             'site_image.required' => 'Choose a site image to upload.',
         ];
+    }
+
+    /**
+     * Write the cover path even when a leftover saved() hook throws
+     * (missing GuestPostPriceIndex after a partial Hostinger upload).
+     */
+    private function persistStaffSiteImagePath(Site $site, string $path): void
+    {
+        if (! Site::hasSitesColumn('site_image')) {
+            throw new \RuntimeException('sites.site_image column is missing');
+        }
+
+        try {
+            $site->update(['site_image' => $path]);
+
+            return;
+        } catch (\Throwable $e) {
+            Log::warning('Staff site image model update failed; retrying without events', [
+                'site_id' => $site->id,
+                'path' => $path,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        $site->withoutEvents(function () use ($site, $path) {
+            $site->update(['site_image' => $path]);
+        });
     }
 
     /**

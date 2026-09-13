@@ -23,6 +23,7 @@ trait CreatesBlogUploads
             match ($ext) {
                 'gif' => $this->tinyGifBytes(),
                 'png' => $this->tinyPngBytes(),
+                'webp' => $this->tinyWebpBytes(),
                 default => $this->tinyJpegBytes(),
             }
         );
@@ -111,5 +112,13 @@ trait CreatesBlogUploads
     protected function tinyGifBytes(): string
     {
         return 'GIF89a'.pack('v2', 1, 1)."\x00\x00\x00,\x00\x00\x00\x00".pack('v2', 1, 1)."\x00\x02\x02\x44\x01\x00;";
+    }
+
+    /**
+     * 1×1 WebP (RIFF/WEBP). Used for Mac screenshot names without needing GD WebP.
+     */
+    protected function tinyWebpBytes(): string
+    {
+        return base64_decode('UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEADsD+JaQAA3AAAAAA') ?: '';
     }
 }

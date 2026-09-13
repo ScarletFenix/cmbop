@@ -25,12 +25,8 @@ class Site extends Model
 
     protected static function booted(): void
     {
-        $bustInventory = static function () {
-            CatalogCountryInventory::forget();
-            GuestPostPriceIndex::forget();
-        };
-        static::saved($bustInventory);
-        static::deleted($bustInventory);
+        static::saved(static fn () => static::forgetMarketingCaches());
+        static::deleted(static fn () => static::forgetMarketingCaches());
     }
 
     protected $fillable = [
@@ -2455,6 +2451,32 @@ class Site extends Model
         }
 
         return substr($primaryCategory, 0, $max);
+    }
+
+    /**
+     * Bust catalog / price-index caches after a listing change.
+     * Never throw: a leftover Hostinger deploy can miss GuestPostPriceIndex
+     * while Site.php already calls it, which used to 500 staff image saves.
+     */
+    public static function forgetMarketingCaches(): void
+    {
+        try {
+            CatalogCountryInventory::forget();
+        } catch (\Throwable $e) {
+            Log::warning('Catalog country inventory cache bust failed', [
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        try {
+            if (class_exists(GuestPostPriceIndex::class)) {
+                GuestPostPriceIndex::forget();
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Guest post price index cache bust failed', [
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     public static function hasSitesColumn(string $column): bool
