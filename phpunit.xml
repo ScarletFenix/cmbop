@@ -42,5 +42,8 @@
         <!-- HTTP tests must not autoload EmailCampaign via DrainQueuedMail.
              Master currently fatals on compile (`continue` outside a loop). -->
         <env name="MAIL_QUEUE_AUTO_DRAIN" value="false"/>
+        <!-- Default Tawk IDs must not leak into GET / help-FAB assertions. -->
+        <env name="TAWK_PROPERTY_ID" value="" force="true"/>
+        <env name="TAWK_WIDGET_ID" value="" force="true"/>
     </php>
 </phpunit>

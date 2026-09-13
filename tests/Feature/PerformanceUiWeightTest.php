@@ -61,6 +61,7 @@ class PerformanceUiWeightTest extends TestCase
         $this->assertStringContainsString('js.stripe.com', $csp);
         $this->assertStringContainsString('fonts.gstatic.com', $csp);
         $this->assertStringContainsString('cdn.jsdelivr.net', $csp);
+        $this->assertStringContainsString('embed.tawk.to', $csp);
         $this->assertStringNotContainsString('unsafe-eval', $csp);
     }
 

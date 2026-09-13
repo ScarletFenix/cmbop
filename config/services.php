@@ -82,4 +82,13 @@ return [
     'support' => [
         'telegram_url' => env('SUPPORT_TELEGRAM_URL', 'https://t.me/arslan_seolinkbuildings'),
     ],
+
+    /*
+    | Public Tawk.to visitor chat (not order chat). Empty TAWK_PROPERTY_ID
+    | turns the widget off. IDs appear in the page source once embedded.
+    */
+    'tawk' => [
+        'property_id' => trim((string) env('TAWK_PROPERTY_ID', '6aa6a3693d02a53444168308')),
+        'widget_id' => trim((string) env('TAWK_WIDGET_ID', 'default')),
+    ],
 ];
