@@ -108,14 +108,24 @@ use Illuminate\Support\Facades\Route;
 |--------------------------------------------------------------------------
 */
 
-$prefixedLocalePattern = PublicI18n::prefixedPattern();
-$supportedLocalePattern = PublicI18n::supportedPattern();
+$prefixedLocales = class_exists(PublicI18n::class)
+    ? PublicI18n::prefixed()
+    : (array) config('i18n.prefixed', ['de', 'fr', 'nl', 'es', 'it', 'us']);
+$supportedLocales = class_exists(PublicI18n::class)
+    ? PublicI18n::supported()
+    : (array) config('i18n.supported', ['en', 'de', 'fr', 'nl', 'es', 'it', 'us']);
+$prefixedLocalePattern = implode('|', array_values(array_filter($prefixedLocales, 'strlen')));
+$supportedLocalePattern = implode('|', array_values(array_filter($supportedLocales, 'strlen')));
+if ($prefixedLocalePattern === '') {
+    $prefixedLocalePattern = 'de|fr|nl|es|it|us';
+}
+if ($supportedLocalePattern === '') {
+    $supportedLocalePattern = 'en|de|fr|nl|es|it|us';
+}
 
 // Stacked locale cleanup: /nl/fr → /nl
-Route::get('/{locale}/{nested}', function ($locale, $nested) {
-    $prefixed = PublicI18n::prefixed();
-
-    if (in_array($locale, $prefixed, true) && in_array($nested, $prefixed, true)) {
+Route::get('/{locale}/{nested}', function ($locale, $nested) use ($prefixedLocales) {
+    if (in_array($locale, $prefixedLocales, true) && in_array($nested, $prefixedLocales, true)) {
         $remaining = array_slice(request()->segments(), 2);
         $newPath = $remaining ? '/'.implode('/', $remaining) : '';
 
@@ -197,7 +207,7 @@ Route::get('/privacy', fn () => Redirect::to('/privacy-policy', 301));
 Route::get('/terms', fn () => Redirect::to('/terms-of-services', 301));
 
 // Prefixed locales use translated slugs; English leftovers 301 below.
-foreach (PublicI18n::prefixed() as $locale) {
+foreach ($prefixedLocales as $locale) {
     Route::group([
         'prefix' => $locale,
         'as' => 'locale.'.$locale.'.',
