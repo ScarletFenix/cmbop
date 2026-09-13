@@ -583,6 +583,10 @@
         flex: 0 1 10rem;
         min-width: 8.5rem;
     }
+    .library-filter-bar__score {
+        flex: 0 1 7.5rem;
+        min-width: 6.5rem;
+    }
     .library-filter-bar__actions {
         display: flex;
         align-items: center;

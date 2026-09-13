@@ -364,7 +364,7 @@ class ContentLibraryController extends Controller
         if ($country === 'all') {
             $country = '';
         }
-        if (! in_array($sort, ['latest', 'title', 'expires'], true)) {
+        if (! in_array($sort, ['latest', 'title', 'expires', 'uniqueness', 'quality'], true)) {
             $sort = 'latest';
         }
 
@@ -434,6 +434,22 @@ class ContentLibraryController extends Controller
         if ($sort === 'expires') {
             $query->orderByRaw('case when expires_at is null then 1 else 0 end')
                 ->orderBy('expires_at')
+                ->orderByDesc('id');
+
+            return;
+        }
+
+        if ($sort === 'uniqueness') {
+            $query->orderByRaw('case when uniqueness_score is null then 1 else 0 end')
+                ->orderByDesc('uniqueness_score')
+                ->orderByDesc('id');
+
+            return;
+        }
+
+        if ($sort === 'quality') {
+            $query->orderByRaw('case when quality_score is null then 1 else 0 end')
+                ->orderByDesc('quality_score')
                 ->orderByDesc('id');
 
             return;

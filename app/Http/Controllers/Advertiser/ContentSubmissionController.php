@@ -710,6 +710,7 @@ class ContentSubmissionController extends Controller
                 'can_order' => $submission->canBeOrdered(),
                 'ready' => $submission->isReadyForCheckout(),
                 'availability' => $submission->libraryAvailability(),
+                'can_duplicate' => $submission->canDuplicateForLibrary(),
                 'anchor_text' => $submission->anchor_text,
                 'target_url' => self::safeHrefUrl($submission->target_url),
                 'feature_image_url' => $submission->feature_image_url
@@ -1101,6 +1102,7 @@ class ContentSubmissionController extends Controller
             'editor_notice_ok' => false,
             'archived' => $s->isArchived(),
             'availability' => $s->libraryAvailability(),
+            'can_duplicate' => $s->canDuplicateForLibrary(),
             'live_url' => self::safeHrefUrl($s->liveUrl()),
             'can_order' => $s->canBeOrdered(),
             'editable' => $s->canEditArticle(),

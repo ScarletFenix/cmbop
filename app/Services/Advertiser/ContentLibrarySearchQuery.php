@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Builder;
 
 /**
  * Content Library free-text search: catalog token rules, word-AND across
- * title and original filename.
+ * title, original filename, target URL, and a prefix of extracted body text.
  */
 class ContentLibrarySearchQuery
 {
@@ -38,9 +38,12 @@ class ContentLibrarySearchQuery
             }
             $applied++;
             $like = '%'.$escaped.'%';
-            $query->where(function (Builder $q) use ($like) {
+            $bodySql = $this->bodyLikeSql($query);
+            $query->where(function (Builder $q) use ($like, $bodySql) {
                 $q->where('title', 'like', $like)
-                    ->orWhere('original_filename', 'like', $like);
+                    ->orWhere('original_filename', 'like', $like)
+                    ->orWhere('target_url', 'like', $like)
+                    ->orWhereRaw($bodySql, [$like]);
             });
         }
 
@@ -54,5 +57,18 @@ class ContentLibrarySearchQuery
     {
         // Neutralize LIKE wildcards so user input cannot broaden the match.
         return str_replace(['\\', '%', '_'], ['', '', ''], $value);
+    }
+
+    /**
+     * Bound body scan so a 10 MB extract cannot force a full-table LIKE.
+     */
+    private function bodyLikeSql(Builder $query): string
+    {
+        $driver = $query->getConnection()->getDriverName();
+        if ($driver === 'sqlite') {
+            return 'substr(extracted_text, 1, 20000) like ?';
+        }
+
+        return 'left(extracted_text, 20000) like ?';
     }
 }

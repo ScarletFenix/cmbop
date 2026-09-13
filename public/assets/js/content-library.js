@@ -28,6 +28,8 @@ const libraryEditSubmission = boot.editSubmission || null;
 const libraryIndexUrl = librarySameOriginPath(boot.libraryIndexUrl, '');
 const libraryResultsUrl = librarySameOriginPath(boot.libraryResultsUrl, '');
 const libraryUploadUrl = librarySameOriginPath(boot.uploadUrl, '');
+const libraryDuplicateUrlBase = librarySameOriginPath(boot.duplicateUrl, '/advertiser/content-library');
+const libraryMultiUploadLimit = Math.max(1, parseInt(boot.multiUploadLimit, 10) || 10);
 
 let articleQuill = null;
 let articleEditorSubmissionId = null;
@@ -108,6 +110,7 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 document.getElementById('uploadContentModal')?.addEventListener('shown.bs.modal', function () {
     libraryUploadDismissGen += 1;
+    syncLibraryFileInputMode();
     refreshLibraryLanguages(libraryPreferredLanguage || document.getElementById('libraryLanguage')?.value || '');
     if (!libraryUploadAbort && !libraryUploadHandoff) {
         const btn = document.getElementById('libraryUploadBtn');
@@ -135,9 +138,27 @@ function updateMarketChip() {
     chip.classList.remove('d-none');
 }
 
+function libraryReplaceId() {
+    return String(document.getElementById('replaceIdInput')?.value || '').trim();
+}
+
+function libraryIsReplaceUpload() {
+    return libraryReplaceId() !== '';
+}
+
+function syncLibraryFileInputMode() {
+    const input = document.getElementById('libraryFileInput');
+    if (!input) return;
+    if (libraryIsReplaceUpload()) {
+        input.removeAttribute('multiple');
+    } else {
+        input.setAttribute('multiple', 'multiple');
+    }
+}
+
 function updateUploadSteps() {
     const file = document.getElementById('libraryFileInput');
-    const hasFile = !!(file && file.files && file.files[0]);
+    const hasFile = !!(file && file.files && file.files.length);
     const hasMarket = !!(document.getElementById('libraryCountry')?.value
         && document.getElementById('libraryLanguage')?.value);
     const fileStep = document.querySelector('[data-upload-step="file"]');
@@ -175,15 +196,29 @@ function titleFromFilename(name) {
 }
 
 function showDropzoneFile(file) {
+    showDropzoneFiles(file ? [file] : []);
+}
+
+function showDropzoneFiles(files) {
+    const list = Array.from(files || []);
     const idle = document.getElementById('libraryDropzoneIdle');
     const shown = document.getElementById('libraryDropzoneFile');
     const zone = document.getElementById('libraryDropzone');
-    if (idle) idle.classList.toggle('d-none', !!file);
+    const has = list.length > 0;
+    if (idle) idle.classList.toggle('d-none', has);
     if (shown) {
-        shown.classList.toggle('d-none', !file);
-        shown.innerHTML = file
-            ? '<strong>' + escapeHtml(file.name) + '</strong><span>' + escapeHtml(formatFileSize(file.size)) + '</span>'
-            : '';
+        shown.classList.toggle('d-none', !has);
+        if (!has) {
+            shown.innerHTML = '';
+        } else if (list.length === 1) {
+            shown.innerHTML = '<strong>' + escapeHtml(list[0].name) + '</strong><span>'
+                + escapeHtml(formatFileSize(list[0].size)) + '</span>';
+        } else {
+            const names = list.slice(0, 4).map(function (file) { return escapeHtml(file.name); }).join(', ');
+            const extra = list.length > 4 ? ' +' + (list.length - 4) + ' more' : '';
+            shown.innerHTML = '<strong>' + list.length + ' Word files selected</strong><span>'
+                + names + extra + '</span>';
+        }
     }
     zone?.classList.remove('is-error', 'is-dragover');
 }
@@ -471,27 +506,68 @@ function libraryUrlWithClientBytes(url, bytes) {
 }
 
 function assignLibraryFile(file, feedback) {
+    return assignLibraryFiles(file ? [file] : [], feedback);
+}
+
+function assignLibraryFiles(files, feedback) {
     const input = document.getElementById('libraryFileInput');
-    if (!file || !input) return false;
-    if (!/\.docx$/i.test(file.name)) {
-        setFeedbackHtml(feedback, false, 'Word .docx only — not PDF, Google Doc, or pasted text.');
+    const list = Array.from(files || []).filter(Boolean);
+    if (!input) return false;
+    if (!list.length) return false;
+
+    if (libraryIsReplaceUpload() && list.length > 1) {
+        setFeedbackHtml(feedback, false, 'Replace uses one .docx. Clear replace or upload a single file.');
         document.getElementById('libraryDropzone')?.classList.add('is-error');
         return false;
     }
-    const tooLarge = libraryFileTooLargeMessage(file);
-    if (tooLarge) {
-        setFeedbackHtml(feedback, false, tooLarge);
+
+    const accepted = [];
+    for (let i = 0; i < list.length; i++) {
+        const file = list[i];
+        if (!/\.docx$/i.test(file.name)) {
+            setFeedbackHtml(feedback, false, 'Word .docx only — not PDF, Google Doc, or pasted text.');
+            document.getElementById('libraryDropzone')?.classList.add('is-error');
+            return false;
+        }
+        const tooLarge = libraryFileTooLargeMessage(file);
+        if (tooLarge) {
+            setFeedbackHtml(feedback, false, tooLarge);
+            document.getElementById('libraryDropzone')?.classList.add('is-error');
+            return false;
+        }
+        accepted.push(file);
+    }
+
+    if (accepted.length > libraryMultiUploadLimit) {
+        setFeedbackHtml(feedback, false, 'You can upload up to ' + libraryMultiUploadLimit + ' Word files at once.');
         document.getElementById('libraryDropzone')?.classList.add('is-error');
         return false;
     }
+
     const dt = new DataTransfer();
-    dt.items.add(file);
+    accepted.forEach(function (file) { dt.items.add(file); });
     input.files = dt.files;
-    showDropzoneFile(file);
+    showDropzoneFiles(accepted);
     const titleInput = document.getElementById('libraryTitleInput');
-    if (titleInput && (!titleInput.value.trim() || titleInput.dataset.autofilled === '1')) {
-        titleInput.value = titleFromFilename(file.name);
-        titleInput.dataset.autofilled = '1';
+    const titleWrap = document.getElementById('libraryTitleWrap');
+    if (accepted.length > 1) {
+        if (titleWrap) titleWrap.classList.add('d-none');
+        if (titleInput) {
+            titleInput.value = '';
+            titleInput.dataset.autofilled = '1';
+        }
+    } else {
+        if (titleWrap) titleWrap.classList.remove('d-none');
+        if (titleInput && accepted[0] && (!titleInput.value.trim() || titleInput.dataset.autofilled === '1')) {
+            titleInput.value = titleFromFilename(accepted[0].name);
+            titleInput.dataset.autofilled = '1';
+        }
+    }
+    const btn = document.getElementById('libraryUploadBtn');
+    if (btn) {
+        btn.textContent = accepted.length > 1
+            ? ('Upload ' + accepted.length + ' articles')
+            : 'Upload and edit';
     }
     if (feedback) feedback.textContent = '';
     updateUploadSteps();
@@ -509,10 +585,15 @@ function bindLibraryDropzone() {
         titleInput.dataset.autofilled = '0';
     });
     input.addEventListener('change', function () {
-        const file = input.files && input.files[0];
-        if (file) assignLibraryFile(file, feedback);
+        syncLibraryFileInputMode();
+        const files = input.files ? Array.from(input.files) : [];
+        if (files.length) assignLibraryFiles(files, feedback);
         else {
-            showDropzoneFile(null);
+            showDropzoneFiles([]);
+            const titleWrap = document.getElementById('libraryTitleWrap');
+            if (titleWrap) titleWrap.classList.remove('d-none');
+            const btn = document.getElementById('libraryUploadBtn');
+            if (btn) btn.textContent = 'Upload and edit';
             updateUploadSteps();
         }
     });
@@ -532,8 +613,8 @@ function bindLibraryDropzone() {
         });
     });
     zone.addEventListener('drop', function (e) {
-        const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-        assignLibraryFile(file, feedback);
+        const files = e.dataTransfer && e.dataTransfer.files ? Array.from(e.dataTransfer.files) : [];
+        assignLibraryFiles(files, feedback);
     });
 }
 
@@ -755,12 +836,13 @@ function bindLibraryResultLanding() {
     }
 }
 
-function openPreviewModal(title, html, links, submissionId, editable) {
+function openPreviewModal(title, html, links, submissionId, editable, canDuplicate) {
     const tools = window.ArticlePreviewTools;
     previewModalState = {
         title: title || 'Article preview',
         submissionId: submissionId || null,
         editable: !!editable && !!submissionId,
+        canDuplicate: !!canDuplicate && !!submissionId,
         html: html || '',
     };
     document.getElementById('articlePreviewTitle').textContent = previewModalState.title;
@@ -786,6 +868,10 @@ function openPreviewModal(title, html, links, submissionId, editable) {
     if (editBtn) {
         const canEdit = previewModalState.editable;
         editBtn.classList.toggle('d-none', !canEdit);
+    }
+    const dupBtn = document.getElementById('articlePreviewDuplicateBtn');
+    if (dupBtn) {
+        dupBtn.classList.toggle('d-none', !previewModalState.canDuplicate);
     }
     if (help) {
         help.textContent = previewModalState.editable
@@ -856,7 +942,8 @@ document.addEventListener('click', async function (e) {
                 payload.html || payload.preview_html || '',
                 payload.links || payload.detected_links || [],
                 payload.id || parseInt(id, 10),
-                !!payload.editable
+                !!payload.editable,
+                !!payload.can_duplicate
             );
             return;
         }
@@ -943,7 +1030,7 @@ document.getElementById('articleLinksSaveBtn')?.addEventListener('click', async 
         const html = sub.preview_html || previewModalState.html;
         const stillApproved = libraryModerationPassed(data, sub);
         const editable = sub.editable !== false;
-        openPreviewModal(sub.title || previewModalState.title, html, sub.detected_links || links, previewModalState.submissionId, editable);
+        openPreviewModal(sub.title || previewModalState.title, html, sub.detected_links || links, previewModalState.submissionId, editable, !!sub.can_duplicate);
         if (!stillApproved) {
             const msg = data.message || (data.report && data.report.summary) || 'Content moderation failed after your link changes. Fix restricted links before ordering.';
             tools.toast(msg, false);
@@ -1785,6 +1872,7 @@ document.getElementById('articleEditorPreviewBtn')?.addEventListener('click', fu
             html,
             links,
             articleEditorSubmissionId,
+            true,
             true
         );
     };
@@ -1988,6 +2076,70 @@ async function archiveLibraryArticle(id) {
     }
 }
 
+function libraryDuplicateEndpoint(id) {
+    return String(libraryDuplicateUrlBase || '/advertiser/content-library').replace(/\/$/, '') + '/' + id + '/duplicate';
+}
+
+async function duplicateLibraryArticle(id, title) {
+    const label = title ? String(title) : 'this article';
+    const ok = await window.slbConfirm({
+        title: 'Duplicate article?',
+        text: 'Creates a new unused copy of “' + label + '”. The original stays locked if it is in an order.',
+        confirmText: 'Duplicate',
+        icon: 'question',
+    });
+    if (!ok) {
+        return;
+    }
+    try {
+        const res = await fetch(libraryDuplicateEndpoint(id), {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': libraryCsrf,
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+            body: JSON.stringify({}),
+        });
+        const data = await parseLibraryJson(res);
+        if (!res.ok || !data || !data.success) {
+            const message = (data && data.message) || 'Could not duplicate this article.';
+            showLibraryFlash(message, false);
+            if (window.slbAlert) await window.slbAlert({ icon: 'error', title: message });
+            return;
+        }
+        const clone = data.submission || {};
+        showLibraryFlash(data.message || 'Created a new unused article.', true);
+        if (clone.id) {
+            fetchLibraryResults(librarySearchParamsFromForm(), {
+                historyMode: 'replace',
+                resetPage: false,
+                keepFocus: false,
+            });
+        } else {
+            refreshLibraryListAfterRowChange(id);
+        }
+        if (window.slbAlert) await window.slbAlert({ icon: 'success', title: data.message || 'Created a new unused article.' });
+    } catch (e) {
+        showLibraryFlash('Network error while duplicating.', false);
+        if (window.slbAlert) await window.slbAlert({ icon: 'error', title: 'Network error while duplicating.' });
+    }
+}
+
+document.addEventListener('click', function (e) {
+    const btn = e.target.closest('.js-library-duplicate');
+    if (!btn) return;
+    const id = btn.getAttribute('data-submission-id');
+    if (!id) return;
+    duplicateLibraryArticle(id, btn.getAttribute('data-title') || '');
+});
+
+document.getElementById('articlePreviewDuplicateBtn')?.addEventListener('click', function () {
+    if (!previewModalState.submissionId || !previewModalState.canDuplicate) return;
+    duplicateLibraryArticle(previewModalState.submissionId, previewModalState.title || '');
+});
+
 async function restoreLibraryArticle(id) {
     const ok = await window.slbConfirm({
             title: 'Restore article?',
@@ -2021,24 +2173,35 @@ async function restoreLibraryArticle(id) {
 document.getElementById('libraryUploadForm')?.addEventListener('submit', async function (e) {
     e.preventDefault();
     const fileInput = document.getElementById('libraryFileInput');
-    const file = fileInput && fileInput.files && fileInput.files[0];
+    const files = fileInput && fileInput.files ? Array.from(fileInput.files) : [];
     const feedback = document.getElementById('libraryUploadFeedback');
     const btn = document.getElementById('libraryUploadBtn');
     const progress = document.getElementById('libraryUploadProgress');
     const bar = progress ? progress.querySelector('.progress-bar') : null;
+    const titleInput = document.getElementById('libraryTitleInput');
 
-    if (!file) {
+    if (!files.length) {
         setFeedbackHtml(feedback, false, 'Drop a .docx or click the box to choose a file.');
         return;
     }
-    if (!/\.docx$/i.test(file.name)) {
-        setFeedbackHtml(feedback, false, 'Word .docx only — not PDF, Google Doc, or pasted text.');
+    if (libraryIsReplaceUpload() && files.length > 1) {
+        setFeedbackHtml(feedback, false, 'Replace uses one .docx. Clear replace or upload a single file.');
         return;
     }
-    const tooLarge = libraryFileTooLargeMessage(file);
-    if (tooLarge) {
-        setFeedbackHtml(feedback, false, tooLarge);
+    if (files.length > libraryMultiUploadLimit) {
+        setFeedbackHtml(feedback, false, 'You can upload up to ' + libraryMultiUploadLimit + ' Word files at once.');
         return;
+    }
+    for (let i = 0; i < files.length; i++) {
+        if (!/\.docx$/i.test(files[i].name)) {
+            setFeedbackHtml(feedback, false, 'Word .docx only — not PDF, Google Doc, or pasted text.');
+            return;
+        }
+        const tooLarge = libraryFileTooLargeMessage(files[i]);
+        if (tooLarge) {
+            setFeedbackHtml(feedback, false, tooLarge);
+            return;
+        }
     }
     const langSelect = document.getElementById('libraryLanguage');
     if (!document.getElementById('libraryCountry').value || !langSelect?.value) {
@@ -2056,45 +2219,102 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
     if (btn) btn.disabled = true;
     progress?.classList.remove('d-none');
     if (bar) bar.style.width = '10%';
-    if (feedback) feedback.textContent = 'Uploading your article…';
+    if (feedback) {
+        feedback.textContent = files.length > 1
+            ? ('Uploading 1 of ' + files.length + '…')
+            : 'Uploading your article…';
+    }
 
+    const batch = files.length > 1;
+    const failed = [];
+    let lastSuccess = null;
     let openedEditor = false;
+    const sharedTitle = titleInput ? String(titleInput.value || '').trim() : '';
+
     try {
         if (!libraryUploadUrl) {
             setFeedbackHtml(feedback, false, 'Upload URL is missing');
             return;
         }
-        const posted = await postLibraryUpload(
-            this,
-            file,
-            libraryUploadAbort ? libraryUploadAbort.signal : undefined,
-            function (part, total) {
-                if (bar) bar.style.width = Math.round((part / total) * 100) + '%';
-                if (feedback && total > 1) {
-                    feedback.textContent = 'Uploading your article… (' + part + '/' + total + ')';
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            if (titleInput) {
+                titleInput.value = batch ? '' : sharedTitle;
+            }
+            if (feedback) {
+                feedback.textContent = batch
+                    ? ('Uploading ' + (i + 1) + ' of ' + files.length + '…')
+                    : 'Uploading your article…';
+            }
+            const posted = await postLibraryUpload(
+                this,
+                file,
+                libraryUploadAbort ? libraryUploadAbort.signal : undefined,
+                function (part, total) {
+                    const fileShare = 1 / files.length;
+                    const done = i / files.length;
+                    const inner = total > 0 ? (part / total) : 1;
+                    if (bar) bar.style.width = Math.round((done + inner * fileShare) * 100) + '%';
+                    if (feedback && !batch && total > 1) {
+                        feedback.textContent = 'Uploading your article… (' + part + '/' + total + ')';
+                    }
                 }
+            );
+            const res = posted.res;
+            let data = posted.data;
+            if (!data) {
+                failed.push(file.name + ' (' + libraryUploadTransportMessage(res.status, file.size) + ')');
+                if (!batch) {
+                    setFeedbackHtml(feedback, false, libraryUploadTransportMessage(res.status, file.size));
+                    return;
+                }
+                continue;
             }
-        );
-        const res = posted.res;
-        let data = posted.data;
-        if (bar) bar.style.width = '100%';
-        if (!data) {
-            setFeedbackHtml(feedback, false, libraryUploadTransportMessage(res.status, file.size));
-            return;
-        }
-        if (!data.success) {
-            libraryUploadAbort = null;
-            if (res.status === 419 || res.status === 429) {
-                setFeedbackHtml(feedback, false, libraryUploadTransportMessage(res.status));
-                return;
+            if (!data.success) {
+                if (res.status === 419 || res.status === 429) {
+                    setFeedbackHtml(feedback, false, libraryUploadTransportMessage(res.status));
+                    return;
+                }
+                const err = librarySizeAwareUploadMessage(
+                    file.size,
+                    firstErrorMessage(data, 'The article could not be uploaded. Please try again.')
+                );
+                failed.push(file.name + ' (' + err + ')');
+                if (!batch) {
+                    libraryUploadAbort = null;
+                    setFeedbackHtml(feedback, false, err);
+                    return;
+                }
+                continue;
             }
-            setFeedbackHtml(feedback, false, librarySizeAwareUploadMessage(
-                file.size,
-                firstErrorMessage(data, 'The article could not be uploaded. Please try again.')
-            ));
-            return;
+            lastSuccess = { data: data, file: file };
         }
         libraryUploadAbort = null;
+        if (bar) bar.style.width = '100%';
+
+        if (batch) {
+            const okCount = files.length - failed.length;
+            let message = okCount
+                ? ('Uploaded ' + okCount + ' of ' + files.length + ' articles.')
+                : 'None of the articles could be uploaded.';
+            if (failed.length) {
+                message += ' Failed: ' + failed.map(function (row) { return row.split(' (')[0]; }).join(', ') + '.';
+            }
+            if (okCount) {
+                const saved = lastSuccess && lastSuccess.data && lastSuccess.data.submission
+                    ? lastSuccess.data.submission
+                    : {};
+                goToLibraryResult(saved, message, failed.length === 0);
+            } else {
+                setFeedbackHtml(feedback, false, message);
+            }
+            return;
+        }
+
+        const data = lastSuccess ? lastSuccess.data : null;
+        if (!data) {
+            return;
+        }
         setFeedbackHtml(feedback, true, 'Opening editor…');
         if (data.submission) {
             openedEditor = true;
@@ -2125,6 +2345,7 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
         }
         setFeedbackHtml(feedback, false, 'Upload failed. Please try again.');
     } finally {
+        if (titleInput && batch) titleInput.value = sharedTitle;
         if (!openedEditor && btn) btn.disabled = false;
         progress?.classList.add('d-none');
         if (bar) bar.style.width = '0%';
@@ -2167,11 +2388,15 @@ function syncLibraryResetVisibility(params) {
     const language = params.get('language') || 'all';
     const availability = params.get('availability') || 'available';
     const sort = params.get('sort') || 'latest';
+    const minUniqueness = (params.get('min_uniqueness') || '').trim();
+    const minQuality = (params.get('min_quality') || '').trim();
     const show = q !== ''
         || (country !== '' && country !== 'all')
         || (language !== '' && language !== 'all')
         || (availability !== '' && availability !== 'available')
-        || (sort !== '' && sort !== 'latest');
+        || (sort !== '' && sort !== 'latest')
+        || minUniqueness !== ''
+        || minQuality !== '';
     reset.classList.toggle('d-none', !show);
 }
 
@@ -2235,6 +2460,8 @@ function syncLibraryFiltersFromParams(params) {
     setNamed('country', params.get('country') || 'all');
     setNamed('language', params.get('language') || 'all');
     setNamed('sort', params.get('sort') || 'latest');
+    setNamed('min_uniqueness', params.get('min_uniqueness') || '');
+    setNamed('min_quality', params.get('min_quality') || '');
 }
 
 function refreshLibraryListAfterRowChange(id) {
@@ -2362,7 +2589,7 @@ function bootLibraryLiveSearch() {
         runFetch({ reason: 'enter', historyMode: 'push' });
     });
 
-    ['libraryCountryFilter', 'libraryLanguageFilter', 'librarySortFilter'].forEach(function (id) {
+    ['libraryCountryFilter', 'libraryLanguageFilter', 'librarySortFilter', 'libraryMinUniqueness', 'libraryMinQuality'].forEach(function (id) {
         document.getElementById(id)?.addEventListener('change', function () {
             runFetch({ reason: 'filter', historyMode: 'push' });
         });

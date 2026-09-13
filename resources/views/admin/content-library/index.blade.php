@@ -49,6 +49,8 @@
                 <option value="latest" @selected(($sort ?? 'latest') === 'latest')>Newest</option>
                 <option value="title" @selected(($sort ?? '') === 'title')>Title</option>
                 <option value="expires" @selected(($sort ?? '') === 'expires')>Expiry</option>
+                <option value="uniqueness" @selected(($sort ?? '') === 'uniqueness')>Uniqueness</option>
+                <option value="quality" @selected(($sort ?? '') === 'quality')>Quality</option>
             </select>
         </div>
         <div class="col-auto">

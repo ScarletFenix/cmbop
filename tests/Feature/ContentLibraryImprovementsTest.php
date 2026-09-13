@@ -628,7 +628,7 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('visually-hidden">Search</button>', $html);
         $this->assertStringContainsString('visually-hidden" for="libraryCountryFilter"', $html);
         $this->assertStringContainsString('visually-hidden" for="libraryLanguageFilter"', $html);
-        $this->assertStringContainsString('Search title or filename', $html);
+        $this->assertStringContainsString('Search title, filename, URL, or body', $html);
         $this->assertStringContainsString('All countries', $html);
         $this->assertStringContainsString('All languages', $html);
         $this->assertStringNotContainsString('>Apply<', $html);
@@ -2676,7 +2676,7 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('assets/js/content-library.js', $html);
         $js = (string) file_get_contents(public_path('assets/js/content-library.js'));
         $this->assertStringContainsString(
-            'function openPreviewModal(title, html, links, submissionId, editable)',
+            'function openPreviewModal(title, html, links, submissionId, editable, canDuplicate)',
             $js
         );
         $this->assertStringContainsString('preview_html: previewModalState.html || \'\'', $js);

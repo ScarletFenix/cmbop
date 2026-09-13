@@ -8,6 +8,7 @@ use App\Models\Country;
 use App\Models\Language;
 use App\Models\OrderItemDispute;
 use App\Models\User;
+use App\Services\Advertiser\ContentLibraryDuplicator;
 use App\Services\Advertiser\ContentLibrarySearchQuery;
 use App\Services\ContentUpload\ContentUploadService;
 use App\Services\Marketplace\CountryLanguagePairs;
@@ -15,6 +16,7 @@ use App\Services\Marketplace\LanguageCountryMap;
 use App\Support\UserFacingError;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -23,6 +25,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class ContentLibraryController extends Controller
@@ -32,6 +35,7 @@ class ContentLibraryController extends Controller
         private LanguageCountryMap $languageCountryMap,
         private CountryLanguagePairs $countryLanguagePairs,
         private ContentLibrarySearchQuery $librarySearch,
+        private ContentLibraryDuplicator $duplicator,
     ) {}
 
     public function index(Request $request)
@@ -72,9 +76,11 @@ class ContentLibraryController extends Controller
         $countryFilter = strtolower(trim(scalar_text($request->query('country', ''))));
         $search = trim(scalar_text($request->query('q', '')));
         $sort = strtolower(trim(scalar_text($request->query('sort', 'latest'))));
-        if (! in_array($sort, ['latest', 'title', 'expires'], true)) {
+        if (! in_array($sort, ['latest', 'title', 'expires', 'uniqueness', 'quality'], true)) {
             $sort = 'latest';
         }
+        $minUniqueness = $this->parseMinScore($request, 'min_uniqueness');
+        $minQuality = $this->parseMinScore($request, 'min_quality');
 
         if (! in_array($status, ['all', 'approved', 'rejected', 'needs_improvement'], true)) {
             $status = 'approved';
@@ -136,15 +142,7 @@ class ContentLibraryController extends Controller
                 ->with($with)
                 ->where('user_id', auth()->id());
 
-            if ($sort === 'title') {
-                $query->orderBy('title')->orderByDesc('id');
-            } elseif ($sort === 'expires') {
-                $query->orderByRaw('case when expires_at is null then 1 else 0 end')
-                    ->orderBy('expires_at')
-                    ->orderByDesc('id');
-            } else {
-                $query->latest('id');
-            }
+            $this->applyLibrarySort($query, $sort);
 
             // Available-for-publication already constrains moderation_status = approved.
             if ($status && $status !== 'all' && ! in_array($availability, ['available', 'evaluating'], true)) {
@@ -158,6 +156,8 @@ class ContentLibraryController extends Controller
             if ($countryFilter !== '' && $countryFilter !== 'all') {
                 $query->where('country', $countryFilter);
             }
+
+            $this->applyScoreFilters($query, $minUniqueness, $minQuality);
 
             if ($search !== '') {
                 $this->librarySearch->apply($query, $search);
@@ -235,6 +235,8 @@ class ContentLibraryController extends Controller
             $countScope->where('country', $countryFilter);
         }
 
+        $this->applyScoreFilters($countScope, $minUniqueness, $minQuality);
+
         $this->applyLibrarySearchSafely($countScope, $search);
 
         $statusTotals = $this->safeLibraryQuery(
@@ -274,6 +276,7 @@ class ContentLibraryController extends Controller
         if ($countryFilter !== '' && $countryFilter !== 'all') {
             $archivedCountScope->where('country', $countryFilter);
         }
+        $this->applyScoreFilters($archivedCountScope, $minUniqueness, $minQuality);
         $this->applyLibrarySearchSafely($archivedCountScope, $search);
         $availabilityCounts['archived'] = (int) $this->safeLibraryQuery(fn () => $archivedCountScope->count(), 0);
 
@@ -314,6 +317,8 @@ class ContentLibraryController extends Controller
             'countryFilter' => $countryFilter ?: 'all',
             'searchQuery' => $search,
             'sort' => $sort,
+            'minUniqueness' => $minUniqueness,
+            'minQuality' => $minQuality,
             'groupedByLanguage' => $groupedByLanguage,
             'groupedByCountry' => $groupedByCountry,
             'moderationCounts' => $moderationCounts,
@@ -339,6 +344,8 @@ class ContentLibraryController extends Controller
                 'country' => $countryFilter ?: 'all',
                 'q' => $search,
                 'sort' => $sort,
+                'min_uniqueness' => $minUniqueness,
+                'min_quality' => $minQuality,
             ],
         ];
     }
@@ -558,6 +565,78 @@ class ContentLibraryController extends Controller
     }
 
     /**
+     * Clone an article into a new unused library row. Paid lock stays on the source.
+     */
+    public function duplicate(Request $request, mixed $submission = null): JsonResponse
+    {
+        $user = auth()->user();
+        if (! $user instanceof User) {
+            abort(403);
+        }
+
+        $request->merge([
+            'country' => strtolower(trim(scalar_text($request->input('country')))),
+            'language' => strtolower(trim(scalar_text($request->input('language')))),
+        ]);
+
+        try {
+            $id = (int) (is_object($submission) ? ($submission->id ?? 0) : $submission);
+            if ($id < 1) {
+                $id = (int) scalar_text($request->input('id', $request->route('submission')));
+            }
+            $source = ContentSubmission::query()->where('id', $id)->first();
+        } catch (\Throwable $e) {
+            return $this->leftoverJson($e, 'The article could not be duplicated. Please try again.');
+        }
+
+        if (! $source) {
+            abort(404);
+        }
+        abort_unless((int) $source->user_id === (int) $user->id, 403);
+
+        $country = scalar_text($request->input('country'));
+        $language = scalar_text($request->input('language'));
+
+        try {
+            $result = $this->duplicator->duplicate(
+                $source,
+                $user,
+                $country !== '' ? $country : null,
+                $language !== '' ? $language : null,
+            );
+        } catch (\Throwable $e) {
+            return $this->leftoverJson($e, 'The article could not be duplicated. Please try again.');
+        }
+
+        if (! ($result['ok'] ?? false)) {
+            return response()->json([
+                'success' => false,
+                'title' => $result['title'] ?? 'Cannot duplicate',
+                'message' => $result['message'] ?? 'This article cannot be duplicated.',
+            ], 422);
+        }
+
+        try {
+            $payload = $this->serialize($result['submission']);
+        } catch (\Throwable $e) {
+            report($e);
+            $fallback = $result['submission'] ?? null;
+            $payload = [
+                'id' => $fallback->id ?? null,
+                'title' => $fallback->title ?? $result['title'] ?? null,
+                'can_order' => false,
+                'can_duplicate' => true,
+            ];
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => $result['message'],
+            'submission' => $payload,
+        ]);
+    }
+
+    /**
      * Start ordering an approved article via the Catalog (no language pre-filter).
      * Multiple websites are allowed; each website needs its own approved article.
      */
@@ -730,6 +809,7 @@ class ContentLibraryController extends Controller
             'editor_notice_ok' => false,
             'archived' => $s->isArchived(),
             'availability' => $s->libraryAvailability(),
+            'can_duplicate' => $s->canDuplicateForLibrary(),
             'live_url' => self::safeLiveUrl($s->liveUrl()),
             'download_url' => $s->canDownloadOriginal()
                 ? route('advertiser.content-submissions.download', $s)
@@ -749,6 +829,72 @@ class ContentLibraryController extends Controller
      * Optional library strips (counts, market pickers) must not 500 the page
      * when Hostinger leftovers omit a column or marketplace table.
      */
+    /**
+     * @param  Builder<ContentSubmission>  $query
+     */
+    protected function applyLibrarySort(Builder $query, string $sort): void
+    {
+        if ($sort === 'title') {
+            $query->orderBy('title')->orderByDesc('id');
+
+            return;
+        }
+
+        if ($sort === 'expires') {
+            $query->orderByRaw('case when expires_at is null then 1 else 0 end')
+                ->orderBy('expires_at')
+                ->orderByDesc('id');
+
+            return;
+        }
+
+        if ($sort === 'uniqueness') {
+            $query->orderByRaw('case when uniqueness_score is null then 1 else 0 end')
+                ->orderByDesc('uniqueness_score')
+                ->orderByDesc('id');
+
+            return;
+        }
+
+        if ($sort === 'quality') {
+            $query->orderByRaw('case when quality_score is null then 1 else 0 end')
+                ->orderByDesc('quality_score')
+                ->orderByDesc('id');
+
+            return;
+        }
+
+        $query->latest('id');
+    }
+
+    /**
+     * @param  Builder<ContentSubmission>  $query
+     */
+    protected function applyScoreFilters(Builder $query, ?int $minUniqueness, ?int $minQuality): void
+    {
+        if ($minUniqueness !== null) {
+            $query->where('uniqueness_score', '>=', $minUniqueness);
+        }
+        if ($minQuality !== null) {
+            $query->where('quality_score', '>=', $minQuality);
+        }
+    }
+
+    protected function parseMinScore(Request $request, string $key): ?int
+    {
+        $raw = trim(scalar_text($request->query($key, '')));
+        if ($raw === '' || ! preg_match('/^\d{1,3}$/', $raw)) {
+            return null;
+        }
+
+        $n = (int) $raw;
+        if ($n < 0 || $n > 100) {
+            return null;
+        }
+
+        return $n;
+    }
+
     /**
      * @param  Builder<ContentSubmission>  $query
      */
@@ -831,6 +977,22 @@ class ContentLibraryController extends Controller
 
             return $fallback;
         }
+    }
+
+    private function leftoverJson(\Throwable $e, string $fallback): JsonResponse
+    {
+        if ($e instanceof ValidationException
+            || $e instanceof ModelNotFoundException
+            || $e instanceof HttpException) {
+            throw $e;
+        }
+
+        report($e);
+
+        return response()->json([
+            'success' => false,
+            'message' => UserFacingError::message($e, $fallback),
+        ], 500);
     }
 
     /**
