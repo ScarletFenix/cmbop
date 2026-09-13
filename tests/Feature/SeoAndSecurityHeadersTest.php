@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Http\Middleware\CanonicalHost;
 use App\Models\Blog;
 use App\Models\BlogTranslation;
 use App\Support\RobotsTxt;
@@ -141,6 +142,9 @@ class SeoAndSecurityHeadersTest extends TestCase
 
     public function test_www_host_redirects_to_apex(): void
     {
+        $this->assertFileExists(app_path('Http/Middleware/CanonicalHost.php'));
+        $this->assertTrue(class_exists(CanonicalHost::class));
+
         $this->get('https://www.seolinkbuildings.com/about')
             ->assertRedirect('https://seolinkbuildings.com/about');
 
