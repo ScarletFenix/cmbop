@@ -81,8 +81,8 @@
             <div class="library-filter-bar__search">
                 <div class="position-relative slb-search-wrap">
                     <input type="search" name="q" id="librarySearchInput" class="form-control form-control-sm"
-                           value="{{ $searchQuery ?? '' }}" placeholder="Search title or filename"
-                           title="Results update as you type. Multi-word matches require every word."
+                           value="{{ $searchQuery ?? '' }}" placeholder="Search title, filename, URL, or body"
+                           title="Results update as you type. Multi-word matches require every word. Searches title, filename, target URL, and article text."
                            autocomplete="off" enterkeyhint="search"
                            aria-describedby="librarySearchStatus">
                     <button type="button"
@@ -121,7 +121,23 @@
                     <option value="latest" @selected(($sort ?? 'latest') === 'latest')>Newest</option>
                     <option value="title" @selected(($sort ?? '') === 'title')>Title</option>
                     <option value="expires" @selected(($sort ?? '') === 'expires')>Expiry</option>
+                    <option value="uniqueness" @selected(($sort ?? '') === 'uniqueness')>Uniqueness</option>
+                    <option value="quality" @selected(($sort ?? '') === 'quality')>Quality</option>
                 </select>
+            </div>
+            <div class="library-filter-bar__score">
+                <label class="visually-hidden" for="libraryMinUniqueness">Minimum uniqueness</label>
+                <input type="number" name="min_uniqueness" id="libraryMinUniqueness"
+                       class="form-control form-control-sm" min="0" max="100" step="1"
+                       value="{{ $minUniqueness !== null ? $minUniqueness : '' }}"
+                       placeholder="Min unique %">
+            </div>
+            <div class="library-filter-bar__score">
+                <label class="visually-hidden" for="libraryMinQuality">Minimum quality</label>
+                <input type="number" name="min_quality" id="libraryMinQuality"
+                       class="form-control form-control-sm" min="0" max="100" step="1"
+                       value="{{ $minQuality !== null ? $minQuality : '' }}"
+                       placeholder="Min quality %">
             </div>
             <div id="libraryFilterReset" class="library-filter-bar__actions{{ (
                 ! empty($searchQuery)
@@ -129,6 +145,8 @@
                 || ($languageFilter ?? 'all') !== 'all'
                 || ($availabilityFilter ?? 'available') !== 'available'
                 || (($sort ?? 'latest') !== 'latest')
+                || ($minUniqueness ?? null) !== null
+                || ($minQuality ?? null) !== null
             ) ? '' : ' d-none' }}">
                 <a href="{{ route('advertiser.content-library', absolute: false) }}" class="btn btn-sm btn-link">Reset</a>
             </div>
@@ -162,19 +180,20 @@
                 </ol>
                 <x-ui.callout variant="info" class="ui-callout--sm mb-3">
                     Microsoft Word (.docx) only — not PDF, Google Doc, or pasted text.
-                    Max {{ $uploadMaxMb }} MB. Unused articles are kept {{ (int) ($retentionMonths ?? 6) }} months, then the original file is removed and a preview stays in Expired.
-                    Opens in the editor next.
+                    Max {{ $uploadMaxMb }} MB each. You can select up to {{ (int) config('content_library.multi_upload_limit', 10) }} files; they upload one after another with the same market.
+                    Unused articles are kept {{ (int) ($retentionMonths ?? 6) }} months, then the original file is removed and a preview stays in Expired.
+                    A single file opens in the editor next.
                     Image rights are asked after we read the file, and only if it contains pictures.
                 </x-ui.callout>
 
                 <div class="mb-3">
                     <label class="library-dropzone" id="libraryDropzone" for="libraryFileInput">
-                        <input type="file" name="file" id="libraryFileInput" class="visually-hidden"
+                        <input type="file" name="file" id="libraryFileInput" class="visually-hidden" multiple
                                accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
                         <span class="library-dropzone__idle" id="libraryDropzoneIdle">
                             <i class="fa fa-file-word" aria-hidden="true"></i>
-                            <strong>Drop a .docx here or click to browse</strong>
-                            <span>Word only — not PDF, Google Doc, or pasted text</span>
+                            <strong>Drop .docx files here or click to browse</strong>
+                            <span>Word only — not PDF, Google Doc, or pasted text. Multiple files allowed.</span>
                         </span>
                         <span class="library-dropzone__file d-none" id="libraryDropzoneFile"></span>
                     </label>
@@ -206,7 +225,7 @@
                     <span class="library-market-chip d-none" id="libraryMarketChip"></span>
                 </div>
 
-                <div class="mb-3">
+                <div class="mb-3" id="libraryTitleWrap">
                     <label class="form-label" for="libraryTitleInput">Title <span class="text-muted">(optional)</span></label>
                     <input type="text" name="title" id="libraryTitleInput" class="form-control" maxlength="200"
                            placeholder="Defaults to the filename"
@@ -291,6 +310,11 @@
                         Edit article
                     </button>
                     <button type="button"
+                            class="btn btn-sm btn-outline-secondary d-none"
+                            id="articlePreviewDuplicateBtn">
+                        Duplicate
+                    </button>
+                    <button type="button"
                             class="btn btn-sm btn-outline-primary btn-copy-icon"
                             id="articleCopyHeadingBtn"
                             title="Copy heading to clipboard"
@@ -338,6 +362,8 @@ window.ContentLibraryBoot = {
     uploadsEnabled: @json(!empty($uploadsEnabled)),
     openUpload: @json(!empty($openUpload)),
     uploadUrl: @json(route('advertiser.content-library.upload', absolute: false)),
+    duplicateUrl: @json(url('/advertiser/content-library')),
+    multiUploadLimit: @json((int) config('content_library.multi_upload_limit', 10)),
     libraryIndexUrl: @json(route('advertiser.content-library', absolute: false)),
     libraryResultsUrl: @json(route('advertiser.content-library.results', absolute: false)),
     editSubmission: @json($editSubmissionBoot ?? null),

@@ -1251,6 +1251,21 @@ class ContentSubmission extends Model
         return ! $this->isUnusedExpired();
     }
 
+    /**
+     * Advertiser may clone this row into a new unused library article.
+     * Completed/LIVE placements stay one-shot — upload a new file instead.
+     */
+    public function canDuplicateForLibrary(): bool
+    {
+        try {
+            return ! $this->isPublished();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return false;
+        }
+    }
+
     public function canEditArticle(): bool
     {
         try {

@@ -10,4 +10,10 @@ return [
     ],
 
     'bulk_limit' => 50,
+
+    /*
+    | Max .docx files accepted in one upload-modal session. Each file still
+    | posts to the existing single-file chunked endpoint.
+    */
+    'multi_upload_limit' => max(1, min(20, (int) env('LIBRARY_MULTI_UPLOAD_LIMIT', 10))),
 ];

@@ -461,6 +461,13 @@
                                        href="{{ route('advertiser.content-library.order', $submission, false) }}">
                                         Order
                                     </a>
+                                @elseif($submission->canDuplicateForLibrary())
+                                    <button type="button"
+                                            class="btn btn-sm btn-outline-secondary js-library-duplicate"
+                                            data-submission-id="{{ $submission->id }}"
+                                            data-title="{{ $submission->title ?: $submission->original_filename }}">
+                                        Duplicate
+                                    </button>
                                 @elseif($availability === 'evaluating')
                                     <span class="small text-muted">Processing</span>
                                 @elseif($availability === 'needs_fix')
@@ -509,6 +516,15 @@
                                             <a class="dropdown-item" href="{{ route('advertiser.content-submissions.download', $submission, false) }}">Download</a>
                                         </li>
                                         @endif
+                                        @if($submission->canDuplicateForLibrary())
+                                            <li>
+                                                <button type="button" class="dropdown-item js-library-duplicate"
+                                                        data-submission-id="{{ $submission->id }}"
+                                                        data-title="{{ $submission->title ?: $submission->original_filename }}">
+                                                    Duplicate
+                                                </button>
+                                            </li>
+                                        @endif
                                         @if($submission->canEditArticle())
                                             <li>
                                                 <button type="button" class="dropdown-item" onclick="toggleLibraryTitleEdit({{ $submission->id }}, true)">Rename</button>
@@ -550,7 +566,9 @@
                                 $libraryTotalArticles = (int) ($moderationCounts['all'] ?? 0);
                                 $hasActiveSearchOrFacet = ! empty($searchQuery)
                                     || (($countryFilter ?? 'all') !== 'all')
-                                    || (($languageFilter ?? 'all') !== 'all');
+                                    || (($languageFilter ?? 'all') !== 'all')
+                                    || ($minUniqueness ?? null) !== null
+                                    || ($minQuality ?? null) !== null;
                             @endphp
                             @if($libraryTotalArticles < 1 && ! $hasActiveSearchOrFacet && ($availabilityFilter ?? 'available') === 'available')
                                 <x-ui.empty-state
