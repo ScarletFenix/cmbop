@@ -5115,6 +5115,12 @@ class CatalogController extends Controller
                         'id',
                         AdvertiserOrderStatus::needsActionQuery((int) $userId)->select('orders.id')
                     );
+                } elseif ($status === 'review') {
+                    // Matches the Needs review KPI: live URL ready, not “in review” without a URL.
+                    $query->where('status', 'review')
+                        ->whereHas('items', function ($items) {
+                            $items->whereNotNull('live_url')->where('live_url', '!=', '');
+                        });
                 } else {
                     $query->where('status', $status);
                 }

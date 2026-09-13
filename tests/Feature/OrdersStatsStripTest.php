@@ -197,6 +197,13 @@ class OrdersStatsStripTest extends TestCase
             ->assertJsonPath('success', true)
             ->assertJsonPath('data.needs_review', 1)
             ->assertJsonPath('data.needs_action', 1);
+
+        $reviewRows = collect($this->actingAs($advertiser)
+            ->getJson(route('advertiser.orders.list', ['status' => 'review']))
+            ->assertOk()
+            ->json('orders'));
+        $this->assertCount(1, $reviewRows);
+        $this->assertNotEmpty($reviewRows->first()['items'][0]['live_url'] ?? null);
     }
 
     public function test_reports_page_no_longer_shows_kpi_strip(): void
