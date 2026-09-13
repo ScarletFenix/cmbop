@@ -415,6 +415,23 @@ class AdvertiserOrderDetailsModalTest extends TestCase
         $this->assertFalse(collect($steps)->firstWhere('label', 'URL delivered')['done']);
         $this->assertFalse(collect($steps)->firstWhere('label', 'Accepted')['done']);
         $this->assertTrue(AdvertiserOrderDetails::placementsMissing($order));
+
+        $review = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => 'ORD-REVIEW-NO-URL',
+            'reference_code' => 'REF-REVIEW-NO-URL',
+            'subtotal' => 50,
+            'tax' => 0,
+            'total_amount' => 50,
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'status' => 'review',
+            'paid_at' => now(),
+        ]);
+        $review->load('items');
+        $reviewMeta = AdvertiserOrderStatus::meta($review);
+        $this->assertSame('In review', $reviewMeta['label']);
+        $this->assertStringContainsString('Waiting for live URL', $reviewMeta['next']);
     }
 
     /**

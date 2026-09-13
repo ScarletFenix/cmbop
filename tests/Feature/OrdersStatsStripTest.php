@@ -174,6 +174,31 @@ class OrdersStatsStripTest extends TestCase
         $this->assertCount(2, $inProgressList);
     }
 
+    public function test_needs_review_kpi_counts_only_review_orders_with_a_live_url(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher);
+
+        $this->makeOrder($advertiser, $site, [
+            'status' => 'review',
+            'payment_status' => 'paid',
+        ], [
+            'live_url' => 'https://funnel-kpi.example/ready',
+        ]);
+        $this->makeOrder($advertiser, $site, [
+            'status' => 'review',
+            'payment_status' => 'paid',
+        ]);
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.orders.statistics'))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.needs_review', 1)
+            ->assertJsonPath('data.needs_action', 1);
+    }
+
     public function test_reports_page_no_longer_shows_kpi_strip(): void
     {
         // ReportsController::index uses MySQL DATE_FORMAT; assert the Blade markup directly.

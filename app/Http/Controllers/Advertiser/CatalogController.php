@@ -5021,7 +5021,12 @@ class CatalogController extends Controller
             $userId = auth()->id();
             $base = Order::where('user_id', $userId);
 
-            $needsReview = (clone $base)->where('status', 'review')->count();
+            $needsReview = (clone $base)
+                ->where('status', 'review')
+                ->whereHas('items', function ($items) {
+                    $items->whereNotNull('live_url')->where('live_url', '!=', '');
+                })
+                ->count();
             $needsAction = AdvertiserOrderStatus::needsActionCountForUser((int) $userId);
             $inProgress = (clone $base)
                 ->where(function ($q) {
@@ -5167,25 +5172,11 @@ class CatalogController extends Controller
                 ->groupBy('order_id')
                 ->pluck('unread_count', 'order_id');
 
-            $clawbacks = app(OrderClawbackService::class);
-            $ordersPayload = collect($orders->items())->map(function ($order) use ($unreadByOrder, $clawbacks) {
+            $ordersPayload = collect($orders->items())->map(function ($order) use ($unreadByOrder) {
                 $order->unread_chat = (int) ($unreadByOrder[$order->id] ?? 0);
-                $order->items_count = $order->items->count();
-                $meta = AdvertiserOrderStatus::meta($order, $order->items->first());
-                $order->status_label = $meta['label'];
-                $order->next_action = $meta['next'];
-                $order->status_cls = $meta['cls'];
-                $order->auto_approve_hint = $meta['auto_approve_hint'];
-                $this->sanitizeAdvertiserOrderItemUrls($order);
-                $this->attachAdvertiserOrderActionFlags($order);
-                $item = $order->items->first();
-                if ($item) {
-                    $item->auto_approve_hours_remaining = (int) $item->getAutoApproveHoursRemaining();
-                }
-                $this->attachDisputeMeta($order, $item, $clawbacks);
-                $this->attachListingVisitUrls($order);
+                $this->hydrateAdvertiserOrderDetail($order);
 
-                return $order;
+                return $this->advertiserOrderDetailPayload($order);
             });
 
             $needsAction = AdvertiserOrderStatus::needsActionCountForUser((int) $userId);

@@ -52,6 +52,9 @@ function loadOrdStatistics() {
             setText('ordInProgress', data.in_progress);
             setText('ordCompleted', data.completed);
             setText('ordAwaitingPayment', data.awaiting_payment);
+            if (typeof window.updateNeedsActionBanner === 'function') {
+                window.updateNeedsActionBanner(data.needs_action || 0);
+            }
         })
         .catch(function (error) {
             console.error('Error loading order statistics:', error);
@@ -264,9 +267,7 @@ function bootAdvertiserOrdersPage() {
     });
 
     document.getElementById('showNeedsReviewBtn')?.addEventListener('click', function() {
-        document.getElementById('statusFilter').value = 'needs_action';
-        currentPage = 1;
-        fetchOrders(1, { historyMode: 'push' });
+        applyOrdersStatusFilter('needs_action');
     });
 
     document.getElementById('filterForm')?.addEventListener('submit', function(e) {
@@ -910,6 +911,7 @@ function bootAdvertiserOrdersPage() {
             banner.classList.add('d-none');
         }
     }
+    window.updateNeedsActionBanner = updateNeedsActionBanner;
 
     function isAwaitingScheduledRelease(order) {
         if (!order || order.schedule_released_at) return false;
@@ -983,7 +985,7 @@ function bootAdvertiserOrdersPage() {
         }
         if (status === 'review') {
             return {
-                label: 'URL delivered · your review',
+                label: hasLiveUrl ? 'URL delivered · your review' : 'In review',
                 next: hasLiveUrl ? 'Check the live URL, then approve or request changes.' : 'Waiting for live URL.',
                 cls: 'status-review',
                 autoHint,

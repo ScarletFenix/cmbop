@@ -215,12 +215,12 @@ class AdvertiserOrderStatus
 
         if ($status === 'review') {
             return [
-                'label' => 'URL delivered · your review',
+                'label' => $hasLiveUrl ? 'URL delivered · your review' : 'In review',
                 'next' => $hasLiveUrl
                     ? 'Check the live URL, then approve or request changes.'
                     : 'Waiting for live URL.',
                 'cls' => 'status-review',
-                'stage' => 'url_delivered',
+                'stage' => $hasLiveUrl ? 'url_delivered' : 'review',
                 'auto_approve_hint' => $autoHint,
             ];
         }
