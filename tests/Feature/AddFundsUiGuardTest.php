@@ -88,6 +88,19 @@ class AddFundsUiGuardTest extends TestCase
         $this->assertStringContainsString('assets/css/add-funds.css', $view);
         $this->assertStringNotContainsString('#9333ea', $view);
         $this->assertStringNotContainsString('balance.blade.php', $view);
+        $this->assertStringNotContainsString('XXXXXXXX', $view);
+        $this->assertStringContainsString('invoiceReadyBar', $view);
+        $this->assertStringContainsString('data-invoice-ready="0"', $view);
+        $this->assertStringContainsString('Your transfer reference is created with the invoice', $view);
+        $this->assertStringContainsString('function applyInvoice', $js);
+        $this->assertStringContainsString('function stampServerReference', $js);
+        $this->assertStringContainsString('if (!invoiceLocked)', $js);
+        $this->assertStringNotContainsString('function updateReferenceCode', $js);
+        $this->assertStringNotContainsString('function generateReferenceCode', $js);
+        $this->assertDoesNotMatchRegularExpression(
+            '/payment option click[\s\S]{0,400}syncWiseQr/i',
+            $js
+        );
     }
 
     public function test_recently_used_is_quiet_corner_text_not_a_brand_pill(): void
