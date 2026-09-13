@@ -209,6 +209,54 @@ class AdvertiserOrdersChatCompletedViewTest extends TestCase
         $this->assertFalse($payload['order_details']['can_approve']);
         $this->assertStringNotContainsString('order_items', json_encode($payload));
         $this->assertStringNotContainsString('Base table', json_encode($payload));
+
+        $this->actingAs($advertiser)
+            ->getJson(route('chat.unread-summary'))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonMissingPath('exception')
+            ->assertDontSee('SQLSTATE')
+            ->assertDontSee('Unknown column');
+
+        $this->actingAs($advertiser)
+            ->postJson(route('chat.send', $order->id), ['message' => 'Still here after leftover items.'])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('can_send', true)
+            ->assertJsonMissingPath('exception')
+            ->assertDontSee('SQLSTATE')
+            ->assertDontSee('Unknown column')
+            ->assertDontSee('order_items');
+    }
+
+    public function test_chat_send_and_unread_fail_closed_when_messages_table_is_gone(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher);
+        $order = $this->makeOrder($advertiser, $site);
+
+        Schema::dropIfExists('order_chat_messages');
+
+        $send = $this->actingAs($advertiser)
+            ->postJson(route('chat.send', $order->id), ['message' => 'Hello leftover chat table']);
+
+        $send->assertStatus(500)
+            ->assertJsonPath('success', false)
+            ->assertJsonMissingPath('exception')
+            ->assertDontSee('SQLSTATE')
+            ->assertDontSee('Unknown column')
+            ->assertDontSee('order_chat_messages');
+        $this->assertSame('Failed to send message. Please try again.', $send->json('message'));
+
+        $unread = $this->actingAs($advertiser)->getJson(route('chat.unread-summary'));
+        $unread->assertStatus(500)
+            ->assertJsonPath('success', false)
+            ->assertJsonMissingPath('exception')
+            ->assertDontSee('SQLSTATE')
+            ->assertDontSee('Unknown column')
+            ->assertDontSee('order_chat_messages');
+        $this->assertSame('Failed to load chat summary.', $unread->json('message'));
     }
 
     public function test_chat_details_js_has_view_order_and_missing_details_copy(): void

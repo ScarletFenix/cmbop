@@ -194,17 +194,14 @@ class ChatController extends Controller
             $order = Order::findOrFail($orderId);
             $user = auth()->user();
 
-            $isAdvertiser = (int) $order->user_id === (int) $user->id;
-            $isPublisher = $order->items()->whereHas('site', function ($q) use ($user) {
-                $q->where('publisher_id', $user->id);
-            })->exists();
-
-            if (! $isAdvertiser && ! $isPublisher) {
+            if (! $this->userCanAccessOrder($order, $user)) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Unauthorized',
                 ], 403);
             }
+
+            $isAdvertiser = (int) $order->user_id === (int) $user->id;
 
             if ($order->status === 'cancelled' || $order->payment_status !== 'paid') {
                 return response()->json([
@@ -320,7 +317,16 @@ class ChatController extends Controller
     private function resolveChatReceivers(Order $order, bool $senderIsAdvertiser): array
     {
         if ($senderIsAdvertiser) {
-            $order->loadMissing('items.site.publisher');
+            if (! AdvertiserOrderStatus::itemsTableAvailable()) {
+                return [];
+            }
+
+            try {
+                $order->loadMissing('items.site.publisher');
+            } catch (\Throwable $e) {
+                return [];
+            }
+
             $publishers = [];
             foreach ($order->items as $item) {
                 $publisher = $item->site?->publisher;
