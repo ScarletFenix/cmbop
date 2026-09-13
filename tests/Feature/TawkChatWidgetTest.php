@@ -35,6 +35,8 @@ class TawkChatWidgetTest extends TestCase
             ->assertSee('https://embed.tawk.to/6aa6a3693d02a53444168308/default', false)
             ->assertSee('Tawk_API', false)
             ->assertDontSee('aria-label="Open help and feedback"', false)
+            ->assertSee('slbOpenSupport', false)
+            ->assertDontSee("helpFeedbackToggle')?.click()", false)
             ->assertDontSee('SQLSTATE', false);
     }
 
