@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
@@ -244,6 +245,40 @@ class Invoice extends Model
     public function isDepositReceipt(): bool
     {
         return $this->type === self::TYPE_DEPOSIT_RECEIPT;
+    }
+
+    /**
+     * Advertiser list/show: cancelled tax invoices must not offer a PDF.
+     */
+    public function advertiserCanDownloadPdf(): bool
+    {
+        if ($this->isCancelled() && $this->isTaxInvoice()) {
+            return false;
+        }
+
+        return $this->status !== self::STATUS_PENDING || $this->hasPdf();
+    }
+
+    public function advertiserDetailsHeading(): string
+    {
+        return match ($this->type) {
+            self::TYPE_DEPOSIT_RECEIPT => 'Wallet top-up',
+            self::TYPE_REFUND_RECEIPT => 'Refund',
+            self::TYPE_PAYMENT_FAILURE => 'Failed payment',
+            self::TYPE_PAYMENT_RECEIPT => 'Payment receipt',
+            default => 'Order details',
+        };
+    }
+
+    /**
+     * Implicit {invoice} binding 404s must not leak the model class.
+     */
+    public static function missingDocumentJson(): JsonResponse
+    {
+        return response()->json([
+            'success' => false,
+            'message' => 'Invoice not found.',
+        ], 404);
     }
 
     public function hasPdf(): bool
