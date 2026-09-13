@@ -314,6 +314,22 @@ class PaymentFlowLeftoverErrorTest extends TestCase
         $this->assertStringNotContainsString('SQLSTATE', (string) session('error'));
     }
 
+    public function test_dashboard_survives_dropped_orders_and_wallets_tables(): void
+    {
+        $advertiser = $this->advertiser();
+        Schema::dropIfExists('orders');
+        Schema::dropIfExists('wallets');
+
+        $response = $this->actingAs($advertiser)
+            ->get(route('advertiser.dashboard'));
+
+        $this->assertContains($response->status(), [200, 302]);
+        $this->assertStringNotContainsString('SQLSTATE', $response->getContent());
+        if ($response->isRedirect()) {
+            $this->assertStringNotContainsString('SQLSTATE', (string) session('error'));
+        }
+    }
+
     public function test_reports_survive_dropped_order_and_deposit_tables(): void
     {
         $advertiser = $this->advertiser();
