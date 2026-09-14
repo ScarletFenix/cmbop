@@ -882,36 +882,42 @@ nav[aria-label="Pagination Navigation"] svg {
 }
 
 /*
- * Tawk.to visitor chat. Body is a flex column with overflow-x:clip so
- * Tawk's position:fixed iframe can attach to the shell instead of the
- * viewport and paint the pre-chat card over dashboard KPIs / order totals.
- * Keep the widget a corner overlay, never a flex item.
+ * Tawk.to visitor chat. Body is a flex column with overflow-x:clip, so
+ * leftover top/left on the iframe paints the pre-chat card over dashboard
+ * KPIs / order totals. Pin the iframe and its immediate wrapper only —
+ * a descendant :has(iframe) would match #app and pin the whole page.
+ * Tawk also writes inline top/left !important; slbPinTawk() overrides that.
  */
-body > iframe[title="chat widget"],
-body > iframe[title="Chat widget"],
-body > iframe[src*="tawk.to"] {
+iframe[title="chat widget"],
+iframe[title="Chat widget"],
+iframe[src*="tawk.to"] {
   position: fixed !important;
+  top: auto !important;
+  left: auto !important;
+  right: 16px !important;
+  bottom: 20px !important;
   z-index: var(--shell-z-fab, 1080) !important;
   flex: 0 0 auto !important;
+  align-self: flex-end !important;
+  margin: 0 !important;
+  transform: none !important;
   max-width: min(400px, calc(100vw - 24px)) !important;
   max-height: min(640px, calc(100dvh - 24px)) !important;
 }
 
-body > div:has(> iframe[title="chat widget"]),
-body > div:has(> iframe[title="Chat widget"]),
-body > div:has(> iframe[src*="tawk.to"]) {
+div:has(> iframe[title="chat widget"]),
+div:has(> iframe[title="Chat widget"]),
+div:has(> iframe[src*="tawk.to"]) {
   position: fixed !important;
+  top: auto !important;
+  left: auto !important;
+  right: 16px !important;
+  bottom: 20px !important;
   z-index: var(--shell-z-fab, 1080) !important;
   flex: 0 0 auto !important;
   align-self: flex-end !important;
   width: auto !important;
   height: auto !important;
   margin: 0 !important;
-  pointer-events: none;
-}
-
-body > div:has(> iframe[title="chat widget"]) iframe,
-body > div:has(> iframe[title="Chat widget"]) iframe,
-body > div:has(> iframe[src*="tawk.to"]) iframe {
-  pointer-events: auto;
+  transform: none !important;
 }
