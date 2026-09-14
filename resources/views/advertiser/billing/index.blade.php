@@ -5,22 +5,35 @@
     <div class="row mb-4 align-items-end g-3">
         <div class="col-md-8">
             <h2 class="mb-1 fw-semibold">Billing &amp; Invoices</h2>
-            <p class="text-muted mb-0">Download invoices, payment receipts, and refund documents anytime.</p>
+            <p class="text-muted mb-0">Download tax invoices, payment receipts, refunds, and wallet deposit receipts.</p>
             <p class="small text-muted mb-0 mt-1">
-                Invoices use your company name, address, and optional VAT / tax ID from checkout billing or
+                Documents use your company name, address, and optional VAT / tax ID from checkout billing or
                 <a href="{{ route('profile') }}">profile</a>.
+                Unpaid bank, Wise, or crypto pay-in slips stay on
+                <a href="{{ route('advertiser.add-funds') }}">Add Funds</a>
+                until we credit your wallet — those are not tax invoices.
             </p>
         </div>
-        <div class="col-md-4 text-md-end">
+        <div class="col-md-4 text-md-end d-flex flex-wrap gap-2 justify-content-md-end">
+            <a href="{{ route('advertiser.add-funds') }}" class="btn btn-sm btn-outline-secondary">Add funds</a>
             <a href="{{ route('advertiser.orders') }}" class="btn btn-sm btn-outline-secondary">View orders</a>
+            <a href="{{ route('advertiser.billing.export', request()->query()) }}" class="btn btn-sm btn-cta-tertiary">Export CSV</a>
         </div>
     </div>
+
+    @if(($pendingPayIns ?? 0) > 0)
+        <div class="alert alert-warning border mb-3" role="status">
+            You have a pending pay-in on
+            <a href="{{ route('advertiser.add-funds') }}" class="alert-link">Add Funds</a>.
+            It will appear here as a deposit receipt after we credit your wallet.
+        </div>
+    @endif
 
     <div class="card border-0 shadow-sm mb-4">
         <div class="card-body">
             <form method="GET" action="{{ route('advertiser.billing.index') }}" class="row g-3 align-items-end">
                 <div class="col-md-4">
-                    <x-slb-search-field name="search" id="advertiserBillingSearch" :value="request('search')" placeholder="Invoice #, order #, transaction…" />
+                    <x-slb-search-field name="search" id="advertiserBillingSearch" :value="request('search')" placeholder="Invoice #, order #, REF, transaction…" />
                 </div>
                 <div class="col-md-2">
                     <label class="form-label fw-semibold small text-muted mb-1">Status</label>
@@ -39,15 +52,16 @@
                         <option value="payment_receipt" @selected(request('type')==='payment_receipt')>Receipt</option>
                         <option value="refund_receipt" @selected(request('type')==='refund_receipt')>Refund</option>
                         <option value="payment_failure" @selected(request('type')==='payment_failure')>Failed attempt</option>
+                        <option value="deposit_receipt" @selected(request('type')==='deposit_receipt')>Deposit receipt</option>
                     </select>
                 </div>
                 <div class="col-md-2">
                     <label class="form-label fw-semibold small text-muted mb-1">From</label>
-                    <input type="date" name="from" value="{{ search_text(request('from')) }}" class="form-control form-control-sm">
+                    <input type="date" name="from" value="{{ $filterFrom ?? '' }}" class="form-control form-control-sm">
                 </div>
                 <div class="col-md-2">
                     <label class="form-label fw-semibold small text-muted mb-1">To</label>
-                    <input type="date" name="to" value="{{ search_text(request('to')) }}" class="form-control form-control-sm">
+                    <input type="date" name="to" value="{{ $filterTo ?? '' }}" class="form-control form-control-sm">
                 </div>
                 <div class="col-12 d-flex gap-2">
                     <button type="submit" class="btn btn-sm btn-primary">Filter</button>
@@ -64,7 +78,7 @@
                     <thead class="table-light">
                         <tr>
                             <th>Invoice</th>
-                            <th>Order</th>
+                            <th>Reference</th>
                             <th>Date</th>
                             <th>Amount</th>
                             <th>Status</th>
@@ -81,24 +95,24 @@
                                         <div class="small text-muted text-truncate" style="max-width:180px;">{{ $invoice->transaction_id }}</div>
                                     @endif
                                 </td>
-                                <td class="small">#{{ $invoice->order_number }}</td>
+                                <td class="small">
+                                    @if($invoice->order_id)
+                                        <a href="{{ route('advertiser.orders') }}">{{ $invoice->referenceLabel() }}</a>
+                                    @else
+                                        {{ $invoice->referenceLabel() }}
+                                    @endif
+                                </td>
                                 <td class="small">{{ optional($invoice->invoice_date)->format('M j, Y') }}</td>
                                 <td class="fw-semibold">€{{ number_format((float) $invoice->total_amount, 2) }}</td>
                                 <td>
-                                    <span class="badge text-bg-{{ match($invoice->status) {
-                                        'paid' => 'success',
-                                        'failed' => 'danger',
-                                        'pending' => 'warning',
-                                        'refunded' => 'info',
-                                        'cancelled' => 'secondary',
-                                        default => 'primary',
-                                    } }}">{{ ucfirst($invoice->status) }}</span>
+                                    <span class="badge text-bg-{{ $invoice->statusBadgeClass() }}">{{ ucfirst($invoice->status) }}</span>
                                 </td>
                                 <td class="small">{{ $invoice->typeLabel() }}</td>
                                 <td class="text-end">
                                     <div class="d-inline-flex flex-wrap gap-1 justify-content-end">
                                         <a href="{{ route('advertiser.billing.show', $invoice) }}" class="btn btn-sm btn-outline-secondary">View</a>
-                                        @if($invoice->status !== 'pending' || $invoice->hasPdf())
+                                        @if($invoice->advertiserCanDownloadPdf())
+                                            <a href="{{ route('advertiser.billing.view', $invoice) }}" class="btn btn-sm btn-outline-secondary" target="_blank" rel="noopener">View PDF</a>
                                             <a href="{{ route('advertiser.billing.download', $invoice) }}" class="btn btn-sm btn-primary">Download PDF</a>
                                         @endif
                                     </div>
@@ -110,7 +124,7 @@
                                     <x-ui.empty-state
                                         icon="fa-file-invoice"
                                         title="No invoices yet"
-                                        message="Invoices appear here automatically after a successful payment."
+                                        message="Tax invoices and receipts appear after a paid order. Wallet deposit receipts appear after we credit a top-up. Refunds and failed-payment documents show up here too."
                                         primary-label="Browse catalog"
                                         :primary-url="route('advertiser.catalog')"
                                     />

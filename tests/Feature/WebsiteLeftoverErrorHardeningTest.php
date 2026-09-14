@@ -797,6 +797,52 @@ class WebsiteLeftoverErrorHardeningTest extends TestCase
         $this->assertStringNotContainsString('SQLSTATE', (string) session('error'));
     }
 
+    public function test_missing_billing_invoice_html_is_leftover_safe(): void
+    {
+        config(['app.debug' => true]);
+        $advertiser = $this->userWithRole('advertiser');
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.billing.show', 999999))
+            ->assertNotFound()
+            ->assertSee('Page not found', false)
+            ->assertDontSee('App\\Models', false)
+            ->assertDontSee('SQLSTATE', false)
+            ->assertDontSee('No query results', false);
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.billing.show', 999999))
+            ->assertNotFound()
+            ->assertJsonPath('success', false)
+            ->assertJsonMissingPath('exception')
+            ->assertDontSee('SQLSTATE')
+            ->assertDontSee('App\\Models');
+    }
+
+    public function test_advertiser_billing_show_survives_missing_invoices_table(): void
+    {
+        config(['app.debug' => true]);
+        $advertiser = $this->userWithRole('advertiser');
+        Schema::dropIfExists('invoices');
+
+        $html = $this->actingAs($advertiser)->get(route('advertiser.billing.show', 1));
+        $this->assertContains($html->status(), [404, 500]);
+        $html->assertDontSee('SQLSTATE', false)
+            ->assertDontSee('App\\Models', false)
+            ->assertDontSee('No query results', false);
+        if ($html->status() === 404) {
+            $html->assertSee('Page not found', false);
+        } else {
+            $html->assertSee('Something went wrong', false);
+        }
+
+        $json = $this->actingAs($advertiser)->getJson(route('advertiser.billing.show', 1));
+        $this->assertContains($json->status(), [404, 503, 500]);
+        $json->assertJsonPath('success', false)
+            ->assertJsonMissingPath('exception')
+            ->assertDontSee('SQLSTATE');
+    }
+
     public function test_wizard_market_still_renders_when_countries_table_is_gone(): void
     {
         $advertiser = $this->userWithRole('advertiser');

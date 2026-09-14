@@ -9,8 +9,14 @@ use App\Services\Billing\InvoicePdfGenerator;
 use App\Services\Billing\WithdrawalPayoutStatementService;
 use App\Support\UserFacingError;
 use Carbon\Carbon;
+use Illuminate\Database\QueryException;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Symfony\Component\HttpFoundation\StreamedResponse;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
 class BillingController extends Controller
 {
@@ -79,71 +85,125 @@ class BillingController extends Controller
     }
 
     public function download(
+        Request $request,
         Invoice $invoice,
         InvoicePdfGenerator $pdfs,
         BillingDocumentService $billing,
         WithdrawalPayoutStatementService $statements,
-    ) {
+    ): StreamedResponse|RedirectResponse|JsonResponse {
         $this->authorizePublisherPayout($invoice);
 
-        // normalizeLegacyFeeLineItems() clears pdf_path when it strips legacy fee lines.
-        $invoice = $statements->normalizeLegacyFeeLineItems($invoice);
+        try {
+            // normalizeLegacyFeeLineItems() clears pdf_path when it strips legacy fee lines.
+            $invoice = $statements->normalizeLegacyFeeLineItems($invoice);
 
-        if (! $invoice->hasPdf() || ! $invoice->pdfExists()) {
-            try {
-                $pdfs->generateAndStore($invoice);
-                $invoice->refresh();
-            } catch (\Throwable $e) {
-                report($e);
-                // Fall through — download() can still render a live PDF.
+            if (! $invoice->hasPdf() || ! $invoice->pdfExists()) {
+                try {
+                    $pdfs->generateAndStore($invoice);
+                    $invoice->refresh();
+                } catch (\Throwable $e) {
+                    report($e);
+                    // Fall through — download() can still render a live PDF.
+                }
             }
+
+            $billing->recordDownload($invoice);
+
+            return $pdfs->download($invoice);
+        } catch (HttpExceptionInterface $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            return $this->leftoverDocumentFailure($request, $e, $invoice, 'Unable to download that document.');
         }
-
-        $billing->recordDownload($invoice);
-
-        return $pdfs->download($invoice);
     }
 
     public function viewPdf(
+        Request $request,
         Invoice $invoice,
         InvoicePdfGenerator $pdfs,
         BillingDocumentService $billing,
         WithdrawalPayoutStatementService $statements,
-    ) {
+    ): StreamedResponse|RedirectResponse|JsonResponse {
         $this->authorizePublisherPayout($invoice);
 
-        $invoice = $statements->normalizeLegacyFeeLineItems($invoice);
+        try {
+            $invoice = $statements->normalizeLegacyFeeLineItems($invoice);
 
-        if (! $invoice->hasPdf() || ! $invoice->pdfExists()) {
-            try {
-                $pdfs->generateAndStore($invoice);
-                $invoice->refresh();
-            } catch (\Throwable $e) {
-                report($e);
-                // Fall through — stream() can still render a live PDF.
+            if (! $invoice->hasPdf() || ! $invoice->pdfExists()) {
+                try {
+                    $pdfs->generateAndStore($invoice);
+                    $invoice->refresh();
+                } catch (\Throwable $e) {
+                    report($e);
+                    // Fall through — stream() can still render a live PDF.
+                }
             }
+
+            $billing->recordDownload($invoice);
+
+            return $pdfs->stream($invoice);
+        } catch (HttpExceptionInterface $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            return $this->leftoverDocumentFailure($request, $e, $invoice, 'Unable to open that document.');
+        }
+    }
+
+    private function leftoverDocumentFailure(
+        Request $request,
+        \Throwable $e,
+        Invoice $invoice,
+        string $fallback,
+    ): JsonResponse|RedirectResponse {
+        report($e);
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, $fallback),
+            ], $e instanceof QueryException ? 503 : 500);
         }
 
-        $billing->recordDownload($invoice);
+        return redirect()
+            ->route('publisher.billing.show', $invoice)
+            ->with('error', UserFacingError::message($e, $fallback));
+    }
 
-        return $pdfs->stream($invoice);
+    private function leftoverDenied(Request $request, string $message, int $status = 403): Response|JsonResponse
+    {
+        if ($request->expectsJson()) {
+            return response()->json([
+                'success' => false,
+                'message' => $message,
+            ], $status);
+        }
+
+        if ($status === 404) {
+            return Invoice::missingDocumentHtml();
+        }
+
+        abort($status, $message);
     }
 
     private function authorizeOwner(Invoice $invoice): void
     {
-        if ((int) $invoice->user_id !== (int) auth()->id() && ! auth()->user()?->isAdmin()) {
-            abort(403);
+        if ((int) $invoice->user_id === (int) auth()->id() || auth()->user()?->isAdmin()) {
+            return;
         }
+
+        abort($this->leftoverDenied(request(), 'You cannot access that document.'));
     }
 
     private function authorizePublisherPayout(Invoice $invoice): void
     {
         $this->authorizeOwner($invoice);
-        abort_unless($invoice->type === Invoice::TYPE_WITHDRAWAL_PAYOUT, 404);
-        abort_if($invoice->status === Invoice::STATUS_CANCELLED, 404);
 
         $owner = $invoice->user;
-        abort_unless($owner && $invoice->isPublisherPayoutFor($owner), 404);
+        if ($invoice->type !== Invoice::TYPE_WITHDRAWAL_PAYOUT
+            || $invoice->status === Invoice::STATUS_CANCELLED
+            || ! ($owner && $invoice->isPublisherPayoutFor($owner))) {
+            abort($this->leftoverDenied(request(), 'Document not found.', 404));
+        }
     }
 
     private function parseDate(mixed $value): ?Carbon

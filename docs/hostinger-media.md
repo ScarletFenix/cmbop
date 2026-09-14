@@ -3,6 +3,11 @@
 Public uploads (`sites/`, `site-screenshots/`, `blogs/`, `banners/`) use Laravel’s
 `public` disk and are served at `/storage/...` via `public/storage`.
 
+Billing PDFs (`invoices` table `pdf_path`) use `BILLING_DISK` (default `local` →
+`storage/app/invoices`). Point that disk at a folder next to `MEDIA_PATH`
+(for example `/home/USER/persistent/invoices`) if you need the same deploy
+survival as catalog images. View/download regenerate a missing file for the owner.
+
 **Problem:** replacing `public_html` during a Hostinger update can wipe
 `storage/app/public` (or break the symlink), so catalog images disappear even
 though DB paths are unchanged.

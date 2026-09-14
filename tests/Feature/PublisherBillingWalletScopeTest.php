@@ -125,17 +125,26 @@ class PublisherBillingWalletScopeTest extends TestCase
             ->assertOk()
             ->assertSee($publisherDoc->invoice_number, false);
 
-        $this->actingAs($user)
-            ->get(route('publisher.billing.show', $advertiserDoc))
-            ->assertNotFound();
+        $this->assertLeftoverSafeHtmlNotFound(
+            $this->actingAs($user)->get(route('publisher.billing.show', $advertiserDoc))
+        );
+
+        $this->assertLeftoverSafeHtmlNotFound(
+            $this->actingAs($user)->get(route('publisher.billing.view', $advertiserDoc))
+        );
+
+        $this->assertLeftoverSafeHtmlNotFound(
+            $this->actingAs($user)->get(route('publisher.billing.download', $advertiserDoc))
+        );
 
         $this->actingAs($user)
-            ->get(route('publisher.billing.view', $advertiserDoc))
-            ->assertNotFound();
-
-        $this->actingAs($user)
-            ->get(route('publisher.billing.download', $advertiserDoc))
-            ->assertNotFound();
+            ->getJson(route('publisher.billing.show', $advertiserDoc))
+            ->assertNotFound()
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'Document not found.')
+            ->assertJsonMissingPath('exception')
+            ->assertDontSee('SQLSTATE')
+            ->assertDontSee('App\\Models');
     }
 
     public function test_publisher_only_leftover_null_wallet_statement_is_listed(): void
@@ -183,13 +192,44 @@ class PublisherBillingWalletScopeTest extends TestCase
         $paid = $this->paidWithdrawal($owner, 30, $wallet);
         $doc = $this->statement($owner, $paid, 'PAY-2026-000041');
 
-        $this->actingAs($other)
-            ->get(route('publisher.billing.show', $doc))
-            ->assertForbidden();
+        config(['app.debug' => true]);
+
+        $this->assertLeftoverSafeHtmlForbidden(
+            $this->actingAs($other)->get(route('publisher.billing.show', $doc))
+        );
+
+        $this->assertLeftoverSafeHtmlForbidden(
+            $this->actingAs($other)->get(route('publisher.billing.download', $doc))
+        );
 
         $this->actingAs($other)
-            ->get(route('publisher.billing.download', $doc))
-            ->assertForbidden();
+            ->getJson(route('publisher.billing.show', $doc))
+            ->assertForbidden()
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'You cannot access that document.')
+            ->assertJsonMissingPath('exception')
+            ->assertDontSee('SQLSTATE')
+            ->assertDontSee('App\\Models');
+    }
+
+    public function test_missing_payout_document_html_is_leftover_safe(): void
+    {
+        config(['app.debug' => true]);
+        [$user] = $this->publisher(false);
+
+        $this->assertLeftoverSafeHtmlNotFound(
+            $this->actingAs($user)->get(route('publisher.billing.show', 999999))
+        );
+
+        $this->actingAs($user)
+            ->getJson(route('publisher.billing.show', 999999))
+            ->assertNotFound()
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'Invoice not found.')
+            ->assertJsonMissingPath('exception')
+            ->assertDontSee('SQLSTATE')
+            ->assertDontSee('App\\Models')
+            ->assertDontSee('No query results');
     }
 
     public function test_non_payout_invoice_still_not_found(): void
@@ -219,5 +259,23 @@ class PublisherBillingWalletScopeTest extends TestCase
         $this->actingAs($user)
             ->get(route('publisher.billing.download', $tax))
             ->assertNotFound();
+    }
+
+    private function assertLeftoverSafeHtmlNotFound($response): void
+    {
+        $response->assertNotFound()
+            ->assertSee('Page not found', false)
+            ->assertDontSee('App\\Models', false)
+            ->assertDontSee('SQLSTATE', false)
+            ->assertDontSee('No query results', false);
+    }
+
+    private function assertLeftoverSafeHtmlForbidden($response): void
+    {
+        $response->assertForbidden()
+            ->assertSee('Access denied', false)
+            ->assertDontSee('App\\Models', false)
+            ->assertDontSee('SQLSTATE', false)
+            ->assertDontSee('No query results', false);
     }
 }
