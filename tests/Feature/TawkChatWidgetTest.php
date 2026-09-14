@@ -95,6 +95,8 @@ class TawkChatWidgetTest extends TestCase
             ->assertSee('Tawk_API.minimize', false)
             ->assertSee('slbTawkKeepOpen', false)
             ->assertSee('slbPinTawk', false)
+            ->assertSee('slb-tawk-launcher', false)
+            ->assertSee('aria-label="Open customer support"', false)
             ->assertDontSee('aria-label="Open help and feedback"', false);
 
         $publisher = $this->userWithRole('publisher');
