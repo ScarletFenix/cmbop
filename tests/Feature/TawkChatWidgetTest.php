@@ -41,6 +41,8 @@ class TawkChatWidgetTest extends TestCase
             ->assertSee('slb-tawk-launcher', false)
             ->assertSee('aria-label="Open customer support"', false)
             ->assertSee("setProperty('top', 'auto', 'important')", false)
+            ->assertSee("removeProperty('max-width')", false)
+            ->assertSee('slbTawkKeepOpen = false', false)
             ->assertDontSee('aria-label="Open help and feedback"', false)
             ->assertSee('slbOpenSupport', false)
             ->assertDontSee("helpFeedbackToggle')?.click()", false)
@@ -109,6 +111,7 @@ class TawkChatWidgetTest extends TestCase
             ->assertSee('Tawk_API.onLoad', false)
             ->assertSee('Tawk_API.minimize', false)
             ->assertSee('slbPinTawk', false)
+            ->assertSee('slb-tawk-launcher', false)
             ->assertDontSee('aria-label="Open help and feedback"', false);
     }
 

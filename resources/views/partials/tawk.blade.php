@@ -42,8 +42,6 @@ html:not(.tawk-open) iframe[title="Chat widget"],
 html:not(.tawk-open) iframe[src*="tawk.to"] {
   opacity: 0 !important;
   pointer-events: none !important;
-  max-width: 0 !important;
-  max-height: 0 !important;
 }
 </style>
 <button type="button" class="slb-tawk-launcher" id="slbTawkLauncher" aria-label="Open customer support" title="Customer support">
@@ -108,8 +106,13 @@ Tawk_API.visitor = {!! json_encode($tawkVisitor, JSON_UNESCAPED_SLASHES | JSON_U
       var open = document.documentElement.classList.contains('tawk-open');
       document.querySelectorAll(tawkIframes).forEach(function (iframe) {
         pinBox(iframe);
-        iframe.style.setProperty('max-width', open ? 'min(400px, calc(100vw - 24px))' : '0px', 'important');
-        iframe.style.setProperty('max-height', open ? 'min(640px, calc(100dvh - 24px))' : '0px', 'important');
+        if (open) {
+          iframe.style.setProperty('max-width', 'min(400px, calc(100vw - 24px))', 'important');
+          iframe.style.setProperty('max-height', 'min(640px, calc(100dvh - 24px))', 'important');
+        } else {
+          iframe.style.removeProperty('max-width');
+          iframe.style.removeProperty('max-height');
+        }
         var wrap = iframe.parentElement;
         if (wrap && wrap !== document.body && wrap !== document.documentElement) {
           pinBox(wrap);
@@ -155,7 +158,8 @@ Tawk_API.visitor = {!! json_encode($tawkVisitor, JSON_UNESCAPED_SLASHES | JSON_U
     window.slbPinTawk();
   };
   Tawk_API.onChatMinimized = function () {
-    if (!window.slbTawkKeepOpen) setOpen(false);
+    window.slbTawkKeepOpen = false;
+    setOpen(false);
     window.slbPinTawk();
   };
 })();
