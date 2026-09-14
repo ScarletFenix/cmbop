@@ -224,9 +224,9 @@ class AdvertiserBillingUxTest extends TestCase
             ->assertDontSee('Download PDF', false)
             ->assertDontSee('Email me this invoice', false);
 
-        $this->actingAs($user)
-            ->get(route('advertiser.billing.download', $tax))
-            ->assertForbidden();
+        $this->assertLeftoverSafeHtmlForbidden(
+            $this->actingAs($user)->get(route('advertiser.billing.download', $tax))
+        );
 
         $this->actingAs($user)
             ->getJson(route('advertiser.billing.download', $tax))
@@ -292,6 +292,68 @@ class AdvertiserBillingUxTest extends TestCase
         }
     }
 
+    public function test_missing_invoice_html_is_leftover_safe(): void
+    {
+        config(['app.debug' => true]);
+        $user = $this->advertiser();
+
+        foreach ([
+            ['GET', route('advertiser.billing.show', 999999)],
+            ['GET', route('advertiser.billing.download', 999999)],
+            ['GET', route('advertiser.billing.view', 999999)],
+            ['POST', route('advertiser.billing.resend', 999999)],
+        ] as [$method, $url]) {
+            $this->assertLeftoverSafeHtmlNotFound(
+                $this->actingAs($user)->call($method, $url)
+            );
+        }
+    }
+
+    public function test_foreign_invoice_html_is_leftover_safe(): void
+    {
+        Mail::fake();
+        config(['app.debug' => true]);
+        $owner = $this->advertiser(['email' => 'owner-html@example.com']);
+        $other = $this->advertiser(['email' => 'other-html@example.com']);
+        $order = $this->paidOrder($owner);
+        $tax = app(BillingDocumentService::class)->handlePaymentPaid($order);
+
+        foreach ([
+            ['GET', route('advertiser.billing.show', $tax)],
+            ['GET', route('advertiser.billing.download', $tax)],
+            ['GET', route('advertiser.billing.view', $tax)],
+            ['POST', route('advertiser.billing.resend', $tax)],
+        ] as [$method, $url]) {
+            $this->assertLeftoverSafeHtmlForbidden(
+                $this->actingAs($other)->call($method, $url)
+            );
+        }
+    }
+
+    public function test_show_survives_dropped_invoices_table(): void
+    {
+        config(['app.debug' => true]);
+        $user = $this->advertiser();
+        Schema::dropIfExists('invoices');
+
+        $this->actingAs($user)
+            ->get(route('advertiser.billing.show', 1))
+            ->assertStatus(500)
+            ->assertSee('Something went wrong', false)
+            ->assertDontSee('SQLSTATE', false)
+            ->assertDontSee('App\\Models', false)
+            ->assertDontSee('No query results', false);
+
+        $this->actingAs($user)
+            ->getJson(route('advertiser.billing.show', 1))
+            ->assertStatus(503)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'Unable to load that invoice.')
+            ->assertJsonMissingPath('exception')
+            ->assertDontSee('SQLSTATE')
+            ->assertDontSee('App\\Models');
+    }
+
     public function test_owner_can_resend_invoice_email(): void
     {
         Mail::fake();
@@ -325,6 +387,10 @@ class AdvertiserBillingUxTest extends TestCase
             ->assertJsonMissingPath('exception')
             ->assertDontSee('SQLSTATE')
             ->assertDontSee('App\\Models');
+
+        $this->assertLeftoverSafeHtmlForbidden(
+            $this->actingAs($other)->get(route('advertiser.billing.show', $tax))
+        );
 
         $csv = $this->actingAs($other)
             ->get(route('advertiser.billing.export'))
@@ -442,5 +508,23 @@ class AdvertiserBillingUxTest extends TestCase
             ->assertJsonPath('message', 'Unable to send that invoice. Please try again.')
             ->assertJsonMissingPath('exception')
             ->assertDontSee('SQLSTATE');
+    }
+
+    private function assertLeftoverSafeHtmlNotFound($response): void
+    {
+        $response->assertNotFound()
+            ->assertSee('Page not found', false)
+            ->assertDontSee('App\\Models', false)
+            ->assertDontSee('SQLSTATE', false)
+            ->assertDontSee('No query results', false);
+    }
+
+    private function assertLeftoverSafeHtmlForbidden($response): void
+    {
+        $response->assertForbidden()
+            ->assertSee('Access denied', false)
+            ->assertDontSee('App\\Models', false)
+            ->assertDontSee('SQLSTATE', false)
+            ->assertDontSee('No query results', false);
     }
 }

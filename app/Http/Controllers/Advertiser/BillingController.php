@@ -350,6 +350,10 @@ class BillingController extends Controller
             ], $status);
         }
 
+        if ($status === 404) {
+            return Invoice::missingDocumentHtml();
+        }
+
         abort($status, $message);
     }
 
@@ -359,13 +363,6 @@ class BillingController extends Controller
             return;
         }
 
-        if (request()->expectsJson()) {
-            abort(response()->json([
-                'success' => false,
-                'message' => 'You cannot access that invoice.',
-            ], 403));
-        }
-
-        abort(403);
+        abort($this->leftoverDenied(request(), 'You cannot access that invoice.'));
     }
 }
