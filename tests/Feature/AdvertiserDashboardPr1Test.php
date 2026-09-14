@@ -8,6 +8,7 @@ use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\Advertiser\AdvertiserDashboardService;
+use App\Support\AdvertiserOrderStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -124,6 +125,67 @@ class AdvertiserDashboardPr1Test extends TestCase
             ->assertSee('your attention', false)
             ->assertSee('Open orders', false)
             ->assertSee('URL delivered · your review', false);
+    }
+
+    public function test_needs_action_is_the_only_primary_next_step(): void
+    {
+        $user = $this->advertiser();
+        $this->makeOrder($user, [
+            'status' => 'review',
+            'payment_status' => 'paid',
+            'live_url' => 'https://live.example/post',
+        ]);
+
+        $payload = app(AdvertiserDashboardService::class)->build($user);
+        $this->assertSame(
+            AdvertiserOrderStatus::needsActionCountForUser((int) $user->id),
+            $payload['stats']['needs_action']
+        );
+        $this->assertSame('needs_action', $payload['primaryAction']);
+        $this->assertSame('1 order needs your attention', $payload['welcomeSituation']);
+
+        $html = $this->actingAs($user)
+            ->get(route('advertiser.dashboard'))
+            ->assertOk()
+            ->assertSee('1 order needs your attention', false)
+            ->assertSee('Open orders', false)
+            ->assertSee('Orders need attention', false)
+            ->assertSee(route('advertiser.orders', ['status' => 'needs_action']), false)
+            ->getContent();
+
+        $this->assertStringContainsString('id="dashPrimaryCta"', $html);
+        $this->assertStringContainsString('status=needs_action', $html);
+        $this->assertStringNotContainsString('Guided placement', $html);
+        $this->assertStringNotContainsString('Spending history', $html);
+        $this->assertStringNotContainsString('Upload an article', $html);
+        $this->assertStringNotContainsString('Review orders', $html);
+    }
+
+    public function test_processing_only_uses_catalog_as_primary_cta(): void
+    {
+        $user = $this->advertiser();
+        $this->makeOrder($user, [
+            'status' => 'processing',
+            'payment_status' => 'paid',
+        ]);
+
+        $payload = app(AdvertiserDashboardService::class)->build($user);
+        $this->assertSame(0, $payload['stats']['needs_action']);
+        $this->assertSame(
+            AdvertiserOrderStatus::needsActionCountForUser((int) $user->id),
+            $payload['stats']['needs_action']
+        );
+        $this->assertSame('catalog', $payload['primaryAction']);
+        $this->assertSame('you are caught up', $payload['welcomeSituation']);
+
+        $this->actingAs($user)
+            ->get(route('advertiser.dashboard'))
+            ->assertOk()
+            ->assertSee('You are caught up', false)
+            ->assertSee('Browse catalog', false)
+            ->assertSee('Guided placement', false)
+            ->assertDontSee('Orders need attention', false)
+            ->assertDontSee('1 order needs your attention', false);
     }
 
     public function test_dashboard_review_counts_and_recent_labels_stay_honest(): void
