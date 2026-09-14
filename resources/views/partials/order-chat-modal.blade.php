@@ -2,12 +2,18 @@
     <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="chatModalTitle">
-                    <i class="fa fa-comments" aria-hidden="true"></i>
-                    <span>Order chat</span>
-                    <span class="text-muted fw-normal">·</span>
-                    <span id="chatOrderNumber"></span>
-                </h5>
+                <div class="chat-header-main">
+                    <h5 class="modal-title" id="chatModalTitle">
+                        <i class="fa fa-comments" aria-hidden="true"></i>
+                        <span>Order chat</span>
+                        <span class="text-muted fw-normal">·</span>
+                        <span id="chatOrderNumber"></span>
+                    </h5>
+                    <p id="chatPresence" class="chat-presence d-none" role="status">
+                        <span class="chat-presence__dot" aria-hidden="true"></span>
+                        <span class="chat-presence__text"></span>
+                    </p>
+                </div>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div id="chatOrderDetails" class="chat-order-details d-none" aria-live="polite"></div>

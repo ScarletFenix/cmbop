@@ -47,6 +47,7 @@ class User extends Authenticatable implements MustVerifyEmail
      * - stripe_customer_id / stripe_default_payment_method_id (StripeCustomerService)
      * - payout_* (PayoutProfileService)
      * - catalog_reveal_exempt* (CatalogActivityController)
+     * - last_seen_at (RecordUserLastSeen)
      */
 
     /**
@@ -83,7 +84,96 @@ class User extends Authenticatable implements MustVerifyEmail
         'catalog_copy_warned_at' => 'datetime',
         'catalog_copy_after_id' => 'integer',
         'catalog_hide_until' => 'datetime',
+        'last_seen_at' => 'datetime',
     ];
+
+    public const ONLINE_WINDOW_SECONDS = 120;
+
+    public const LAST_SEEN_THROTTLE_SECONDS = 60;
+
+    /**
+     * Whether this account was active within the online window.
+     */
+    public function isOnline(): bool
+    {
+        if ($this->last_seen_at === null) {
+            return false;
+        }
+
+        return $this->last_seen_at->gte(now()->subSeconds(self::ONLINE_WINDOW_SECONDS));
+    }
+
+    /**
+     * Chat header copy. Null when we have never recorded activity.
+     */
+    public function lastSeenLabel(): ?string
+    {
+        if ($this->last_seen_at === null) {
+            return null;
+        }
+
+        if ($this->isOnline()) {
+            return 'Online';
+        }
+
+        $seconds = (int) $this->last_seen_at->diffInSeconds(now());
+        if ($seconds < 3600) {
+            return 'Last seen '.max(1, (int) floor($seconds / 60)).'m ago';
+        }
+        if ($seconds < 86400) {
+            return 'Last seen '.(int) floor($seconds / 3600).'h ago';
+        }
+        if ($this->last_seen_at->isYesterday()) {
+            return 'Last seen yesterday';
+        }
+
+        return 'Last seen '.$this->last_seen_at->format('M j');
+    }
+
+    /**
+     * @return array{online: bool, last_seen_at: ?string, label: ?string}
+     */
+    public function presencePayload(): array
+    {
+        return [
+            'online' => $this->isOnline(),
+            'last_seen_at' => $this->last_seen_at?->toIso8601String(),
+            'label' => $this->lastSeenLabel(),
+        ];
+    }
+
+    /**
+     * Stamp last_seen_at at most once per throttle window.
+     */
+    public function touchLastSeen(): void
+    {
+        try {
+            if (! $this->lastSeenColumnReady()) {
+                return;
+            }
+            if ($this->last_seen_at !== null
+                && $this->last_seen_at->gt(now()->subSeconds(self::LAST_SEEN_THROTTLE_SECONDS))) {
+                return;
+            }
+            $this->forceFill(['last_seen_at' => now()])->saveQuietly();
+        } catch (\Throwable $e) {
+            report($e);
+        }
+    }
+
+    protected function lastSeenColumnReady(): bool
+    {
+        static $ready = null;
+        if ($ready === null) {
+            try {
+                $ready = Schema::hasColumn('users', 'last_seen_at');
+            } catch (\Throwable) {
+                $ready = false;
+            }
+        }
+
+        return $ready;
+    }
 
     public const CATALOG_COPY_HIDDEN = 'hidden';
 

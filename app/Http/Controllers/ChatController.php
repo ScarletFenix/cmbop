@@ -161,7 +161,7 @@ class ChatController extends Controller
                     ->update(['is_read' => true, 'read_at' => now()]);
             }
 
-            $order->loadMissing(['items.site']);
+            $order->loadMissing(['items.site.publisher', 'user']);
             $details = $this->buildOrderChatDetails($order, $user);
 
             return response()->json([
@@ -476,6 +476,37 @@ class ChatController extends Controller
             'modification_requested' => $item?->modification_requested,
             'content_revision_requested' => $item?->content_revision_requested,
             'has_open_content_revision' => $openContentRevision,
+            'counterpart' => $this->chatCounterpart($order, $isAdvertiser, $site),
+        ];
+    }
+
+    /**
+     * Presence for the other party on this order chat. Never the viewer.
+     *
+     * @return array{name: string, role: string, online: bool, last_seen_at: ?string, label: ?string}|null
+     */
+    private function chatCounterpart(Order $order, bool $isAdvertiser, $site): ?array
+    {
+        if ($isAdvertiser) {
+            $other = $site?->publisher;
+            $role = 'publisher';
+        } else {
+            $other = $order->user ?? User::query()->find($order->user_id);
+            $role = 'advertiser';
+        }
+
+        if (! $other) {
+            return null;
+        }
+
+        $presence = $other->presencePayload();
+
+        return [
+            'name' => (string) $other->name,
+            'role' => $role,
+            'online' => $presence['online'],
+            'last_seen_at' => $presence['last_seen_at'],
+            'label' => $presence['label'],
         ];
     }
 }

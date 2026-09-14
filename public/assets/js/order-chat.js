@@ -85,6 +85,7 @@
       detailsEl.classList.add('d-none');
       detailsEl.innerHTML = '';
     }
+    this.renderPresence(null);
     this.setComposerEnabled(true, null);
     this.load(false);
     this.showModal();
@@ -179,6 +180,7 @@
         if (typeof self.config.renderOrderDetails === 'function') {
           self.config.renderOrderDetails(data.order_details || null);
         }
+        self.renderPresence(data.order_details && data.order_details.counterpart);
 
         var messages = data.messages || [];
         if (incremental) {
@@ -202,6 +204,22 @@
           self.showError('Failed to load messages. Please try again.');
         }
       });
+  };
+
+  OrderChat.prototype.renderPresence = function (counterpart) {
+    var el = document.getElementById('chatPresence');
+    if (!el) return;
+    var text = el.querySelector('.chat-presence__text');
+    var label = counterpart && counterpart.label ? String(counterpart.label) : '';
+    if (!label) {
+      el.classList.add('d-none');
+      el.classList.remove('is-online');
+      if (text) text.textContent = '';
+      return;
+    }
+    if (text) text.textContent = label;
+    el.classList.toggle('is-online', !!counterpart.online);
+    el.classList.remove('d-none');
   };
 
   OrderChat.prototype.applyComposerState = function (canSend, note) {

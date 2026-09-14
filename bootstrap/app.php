@@ -5,6 +5,7 @@
 use App\Http\Middleware\CanonicalHost;
 use App\Http\Middleware\DrainQueuedMail;
 use App\Http\Middleware\HealHostingerProduction;
+use App\Http\Middleware\RecordUserLastSeen;
 use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\SetLocale;
 use App\Services\ContentUpload\ContentUploadService;
@@ -59,6 +60,9 @@ return Application::configure(basePath: dirname(__DIR__))
         }
         if ($loadAppClass('app/Http/Middleware/SecurityHeaders.php')) {
             $webAppend[] = SecurityHeaders::class;
+        }
+        if ($loadAppClass('app/Http/Middleware/RecordUserLastSeen.php')) {
+            $webAppend[] = RecordUserLastSeen::class;
         }
         if ($webAppend !== []) {
             $middleware->appendToGroup('web', $webAppend);
