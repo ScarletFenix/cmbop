@@ -3,9 +3,12 @@
 namespace Tests\Feature;
 
 use App\Models\DepositRequest;
+use App\Models\Invoice;
 use App\Models\Role;
 use App\Models\User;
 use App\Models\Wallet;
+use App\Models\WalletTransaction;
+use App\Services\Wallet\WalletOverviewService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -84,6 +87,48 @@ class AdvertiserAddFundsErrorTest extends TestCase
             ->assertJsonValidationErrors('amount');
     }
 
+    public function test_add_funds_hides_fake_zeros_when_wallets_table_is_gone(): void
+    {
+        $advertiser = $this->advertiser();
+        Schema::dropIfExists('wallets');
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.add-funds'))
+            ->assertOk()
+            ->assertSee('Add funds', false)
+            ->assertSee('We could not load your wallet', false)
+            ->assertSee('Unavailable', false)
+            ->assertDontSee('SQLSTATE', false)
+            ->getContent();
+
+        $this->assertStringContainsString('id="kpiSpendable">—', $html);
+        $this->assertStringContainsString('id="kpiAvailable">—', $html);
+        $this->assertStringNotContainsString('id="kpiSpendable">€0.00', $html);
+        $this->assertStringNotContainsString('pending deposit confirmation', $html);
+    }
+
+    public function test_activity_feed_ignores_junk_dates(): void
+    {
+        $advertiser = $this->advertiser();
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.balance.transactions', [
+                'from' => 'leftover',
+                'to' => 'not-a-date',
+            ]))
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.balance.analytics', [
+                'range' => 'custom',
+                'from' => '0000-00-00',
+                'to' => 'tomorrow',
+            ]))
+            ->assertOk()
+            ->assertJsonPath('success', true);
+    }
+
     public function test_add_funds_page_survives_leftover_deposit_dates(): void
     {
         $advertiser = $this->advertiser();
@@ -159,6 +204,201 @@ class AdvertiserAddFundsErrorTest extends TestCase
         } finally {
             $this->restoreDepositRequestsTable();
         }
+    }
+
+    public function test_activity_feed_keeps_ledger_rows_when_invoices_table_is_gone(): void
+    {
+        $advertiser = $this->advertiser();
+        $wallet = Wallet::where('user_id', $advertiser->id)->first();
+        $invoice = Invoice::create([
+            'invoice_number' => 'INV-LEFTOVER',
+            'type' => Invoice::TYPE_DEPOSIT_RECEIPT,
+            'status' => Invoice::STATUS_PAID,
+            'user_id' => $advertiser->id,
+            'customer_name' => $advertiser->name,
+            'customer_email' => $advertiser->email,
+            'subtotal' => 50,
+            'total_amount' => 50,
+            'invoice_date' => now(),
+            'reference_code' => '654321',
+            'line_items' => [['description' => 'Deposit', 'line_total' => 50]],
+        ]);
+        WalletTransaction::create([
+            'user_id' => $advertiser->id,
+            'wallet_id' => $wallet->id,
+            'type' => WalletTransaction::TYPE_DEPOSIT,
+            'direction' => 'credit',
+            'amount' => 50,
+            'status' => 'completed',
+            'description' => 'Wallet deposit via Wise',
+            'reference' => '654321',
+            'related_type' => Invoice::class,
+            'related_id' => $invoice->id,
+            'currency' => 'EUR',
+        ]);
+
+        Schema::dropIfExists('invoices');
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.balance.transactions'))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('pagination.total', 1)
+            ->assertJsonPath('transactions.0.reference', '654321')
+            ->assertJsonPath('transactions.0.invoice_id', null)
+            ->assertDontSee('SQLSTATE');
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.balance.analytics'))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertDontSee('SQLSTATE');
+    }
+
+    public function test_activity_feed_survives_missing_legacy_wallet_tables(): void
+    {
+        $advertiser = $this->advertiser();
+        Schema::dropIfExists('withdrawals');
+        Schema::dropIfExists('balance_transfers');
+        Schema::dropIfExists('orders');
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.balance.transactions'))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertDontSee('SQLSTATE');
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.balance.analytics'))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertDontSee('SQLSTATE');
+    }
+
+    public function test_add_funds_keeps_checkout_hold_when_withdrawals_table_is_gone(): void
+    {
+        $advertiser = $this->advertiser();
+        Wallet::where('user_id', $advertiser->id)->update([
+            'balance' => 80,
+            'reserved_balance' => 15,
+            'bonus_balance' => 0,
+        ]);
+        Schema::dropIfExists('withdrawals');
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.add-funds'))
+            ->assertOk()
+            ->assertSee('on hold for checkout', false)
+            ->assertDontSee('SQLSTATE', false)
+            ->getContent();
+
+        $this->assertStringContainsString('id="kpiSpendable">€80.00', $html);
+        $this->assertStringContainsString('€15.00', $html);
+    }
+
+    public function test_add_funds_shows_hold_and_pending_when_overview_summary_fails(): void
+    {
+        $advertiser = $this->advertiser();
+        Wallet::where('user_id', $advertiser->id)->update([
+            'balance' => 80,
+            'reserved_balance' => 15,
+            'bonus_balance' => 20,
+        ]);
+        DepositRequest::create([
+            'user_id' => $advertiser->id,
+            'reference_code' => 'HOLD15',
+            'amount' => 40,
+            'payment_method' => 'wise',
+            'status' => 'pending',
+        ]);
+
+        $this->mock(WalletOverviewService::class, function ($mock) {
+            $mock->shouldReceive('summary')
+                ->once()
+                ->andThrow(new \RuntimeException('SQLSTATE[HY000]: leftover'));
+            $mock->shouldReceive('analytics')
+                ->once()
+                ->andReturn(['labels' => [], 'deposits' => [], 'orders' => []]);
+        });
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.add-funds'))
+            ->assertOk()
+            ->assertSee('on hold for checkout', false)
+            ->assertSee('deposit confirmation', false)
+            ->assertDontSee('SQLSTATE', false)
+            ->getContent();
+
+        $this->assertStringContainsString('id="kpiSpendable">€80.00', $html);
+        $this->assertStringContainsString('€15.00', $html);
+        $this->assertStringContainsString('€40.00', $html);
+    }
+
+    public function test_activity_feed_survives_missing_wallet_transactions_table(): void
+    {
+        $advertiser = $this->advertiser();
+        Schema::dropIfExists('wallet_transactions');
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.balance.transactions'))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertDontSee('SQLSTATE');
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.balance.analytics'))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertDontSee('SQLSTATE');
+    }
+
+    public function test_header_hides_fake_zero_when_wallet_row_is_missing(): void
+    {
+        $advertiser = $this->advertiser();
+        Wallet::where('user_id', $advertiser->id)->delete();
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.billing.index'))
+            ->assertOk()
+            ->assertSee('Spendable balance unavailable', false)
+            ->assertDontSee('SQLSTATE', false)
+            ->getContent();
+
+        $this->assertMatchesRegularExpression('/class="balance-amount">—/', $html);
+        $this->assertStringNotContainsString('class="balance-amount">€0.00', $html);
+    }
+
+    public function test_withdraw_is_503_when_withdrawals_table_is_gone(): void
+    {
+        $advertiser = $this->advertiser();
+        Wallet::where('user_id', $advertiser->id)->update([
+            'balance' => 50,
+            'bonus_balance' => 0,
+        ]);
+        Schema::dropIfExists('withdrawals');
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.balance.withdraw'), [
+                'amount' => 10,
+                'payment_method' => 'paypal',
+                'business_name' => 'Acme Media',
+                'paypal_email' => 'user@example.com',
+            ])
+            ->assertStatus(503)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'Withdrawals are temporarily unavailable. Please try again shortly.')
+            ->assertJsonMissingPath('exception')
+            ->assertDontSee('SQLSTATE');
+    }
+
+    public function test_missing_pay_in_invoice_returns_to_add_funds(): void
+    {
+        $advertiser = $this->advertiser();
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.invoice', 'MISSING99'))
+            ->assertRedirect(route('advertiser.add-funds'));
+        $this->assertSame('Invoice not found', session('error'));
     }
 
     private function restoreDepositRequestsTable(): void

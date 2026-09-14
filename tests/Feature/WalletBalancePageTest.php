@@ -113,10 +113,23 @@ class WalletBalancePageTest extends TestCase
         $this->assertStringContainsString('id="publisherRoleStrip"', $html);
         $this->assertStringContainsString('Publisher earnings', $html);
         $this->assertStringContainsString('id="publisherEarningsKpi">€7.64', $html);
-        $this->assertStringContainsString('Open Balance to move earnings here for catalog spend', $html);
+        $this->assertStringContainsString('Transfers into this wallet are off', $html);
         $this->assertStringContainsString('id="publisherBalanceCta"', $html);
         $this->assertStringContainsString('id="publisherWithdrawCta"', $html);
         $this->assertStringNotContainsString('Transfer to Publisher Wallet', $html);
+        $this->assertStringNotContainsString('move earnings here for catalog spend', $html);
+    }
+
+    public function test_reserved_balance_is_not_called_a_pending_deposit(): void
+    {
+        $this->wallet->update(['reserved_balance' => 12.5, 'balance' => 32.5]);
+
+        $this->actingAs($this->user)
+            ->get(route('advertiser.add-funds'))
+            ->assertOk()
+            ->assertSee('on hold for checkout', false)
+            ->assertSee('€12.50', false)
+            ->assertDontSee('pending deposit confirmation', false);
     }
 
     public function test_add_funds_hides_publisher_strip_without_publisher_role(): void

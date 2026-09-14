@@ -77,7 +77,13 @@ class BalanceController extends Controller
             }
 
             if (! empty($row['invoice_id'])) {
-                $invoice = Invoice::where('user_id', auth()->id())->find($row['invoice_id']);
+                try {
+                    $invoice = Invoice::tableAvailable()
+                        ? Invoice::where('user_id', auth()->id())->find($row['invoice_id'])
+                        : null;
+                } catch (\Throwable) {
+                    $invoice = null;
+                }
                 if ($invoice) {
                     $row['invoice_download_url'] = route('advertiser.billing.download', $invoice);
                     $row['invoice_view_url'] = route('advertiser.billing.show', $invoice);
@@ -180,6 +186,13 @@ class BalanceController extends Controller
             ]);
 
             $user = auth()->user();
+            if (! Wallet::tableAvailable() || ! Withdrawal::tableAvailable()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Withdrawals are temporarily unavailable. Please try again shortly.',
+                ], 503);
+            }
+
             $advertiserRoleId = Wallet::advertiserRoleId();
             $wallet = $advertiserRoleId
                 ? Wallet::where('user_id', $user->id)

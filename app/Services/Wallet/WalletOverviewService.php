@@ -32,24 +32,38 @@ class WalletOverviewService
 
         $lifetimeDeposits = $this->depositAmountSum($userId, $this->spend->settledDepositStatuses());
 
-        $spendSummary = $this->spend->summary($userId);
+        try {
+            $spendSummary = $this->spend->summary($userId);
+        } catch (\Throwable) {
+            $spendSummary = [
+                'net' => 0.0,
+                'gross' => 0.0,
+                'refunded' => 0.0,
+                'spent' => 0.0,
+                'in_progress' => 0.0,
+                'committed' => 0.0,
+            ];
+        }
         $lifetimeSpending = $spendSummary['net'];
 
-        $lifetimeWithdrawals = (float) Withdrawal::where('user_id', $userId)
-            ->whereIn('status', ['completed', 'processing', 'pending'])
-            ->sum('amount');
+        $lifetimeWithdrawals = 0.0;
+        $pendingWithdrawals = 0.0;
+        if (Withdrawal::tableAvailable()) {
+            $lifetimeWithdrawals = $this->leftoverSum(fn () => Withdrawal::where('user_id', $userId)
+                ->whereIn('status', ['completed', 'processing', 'pending'])
+                ->sum('amount'));
+            $pendingWithdrawals = $this->leftoverSum(fn () => Withdrawal::where('user_id', $userId)
+                ->whereIn('status', ['pending', 'processing'])
+                ->sum('amount'));
+        }
 
-        $pendingWithdrawals = (float) Withdrawal::where('user_id', $userId)
-            ->whereIn('status', ['pending', 'processing'])
-            ->sum('amount');
-
-        $bonusReceived = (float) WalletTransaction::where('user_id', $userId)
+        $bonusReceived = $this->leftoverSum(fn () => WalletTransaction::where('user_id', $userId)
             ->where('type', WalletTransaction::TYPE_BONUS_CREDIT)
-            ->sum('bonus_amount');
+            ->sum('bonus_amount'));
         if ($bonusReceived <= 0) {
-            $bonusReceived = (float) WalletTransaction::where('user_id', $userId)
+            $bonusReceived = $this->leftoverSum(fn () => WalletTransaction::where('user_id', $userId)
                 ->where('type', WalletTransaction::TYPE_BONUS_CREDIT)
-                ->sum('amount');
+                ->sum('amount'));
         }
         if ($bonusReceived <= 0 && $bonus > 0) {
             $bonusReceived = $bonus;
@@ -113,18 +127,22 @@ class WalletOverviewService
             }
         }
 
-        $candleSeries = $this->spend->candles($userId, $bucket === 'day' ? 'day' : 'month', [
-            'from' => $from,
-            'to' => $to,
-        ])['series'];
+        try {
+            $candleSeries = $this->spend->candles($userId, $bucket === 'day' ? 'day' : 'month', [
+                'from' => $from,
+                'to' => $to,
+            ])['series'] ?? [];
+        } catch (\Throwable) {
+            $candleSeries = [];
+        }
 
         $pointOrders = [];
-        $orderRows = Order::with(['items.site'])
+        $orderRows = $this->leftoverCollection(fn () => Order::with(['items.site'])
             ->where('user_id', $userId)
             ->where('payment_status', 'paid')
             ->whereNotIn('status', ['cancelled', 'rejected', 'failed'])
             ->whereBetween(DB::raw('COALESCE(paid_at, created_at)'), [$from, $to])
-            ->get();
+            ->get());
 
         foreach ($candleSeries as $candle) {
             $key = $candle['key'];
@@ -150,7 +168,7 @@ class WalletOverviewService
             }
 
             $site = $row->items->first()?->site;
-            $invoice = Invoice::where('user_id', $userId)
+            $invoice = $this->safeInvoice(fn () => Invoice::where('user_id', $userId)
                 ->where('type', Invoice::TYPE_TAX_INVOICE)
                 ->where('status', '!=', Invoice::STATUS_CANCELLED)
                 ->where(function ($q) use ($row) {
@@ -159,7 +177,7 @@ class WalletOverviewService
                         ->orWhere('reference_code', $row->reference_code);
                 })
                 ->latest('id')
-                ->first();
+                ->first());
 
             $pointOrders[] = [
                 'id' => $row->id,
@@ -178,10 +196,12 @@ class WalletOverviewService
             ];
         }
 
-        $withdrawalRows = Withdrawal::where('user_id', $userId)
-            ->whereIn('status', ['pending', 'processing', 'completed'])
-            ->whereBetween('created_at', [$from, $to])
-            ->get(['amount', 'created_at']);
+        $withdrawalRows = Withdrawal::tableAvailable()
+            ? $this->leftoverCollection(fn () => Withdrawal::where('user_id', $userId)
+                ->whereIn('status', ['pending', 'processing', 'completed'])
+                ->whereBetween('created_at', [$from, $to])
+                ->get(['amount', 'created_at']))
+            : collect();
 
         foreach ($withdrawalRows as $row) {
             $key = $this->chartDateKey($row->created_at, $bucket);
@@ -190,11 +210,11 @@ class WalletOverviewService
             }
         }
 
-        $bonusRows = WalletTransaction::where('user_id', $userId)
+        $bonusRows = $this->leftoverCollection(fn () => WalletTransaction::where('user_id', $userId)
             ->where('type', WalletTransaction::TYPE_PURCHASE)
             ->where('bonus_amount', '>', 0)
             ->whereBetween('created_at', [$from, $to])
-            ->get(['bonus_amount', 'created_at']);
+            ->get(['bonus_amount', 'created_at']));
 
         foreach ($bonusRows as $row) {
             $key = $this->chartDateKey($row->created_at, $bucket);
@@ -276,15 +296,13 @@ class WalletOverviewService
         $search = search_text($filters['search'] ?? null);
         $type = search_text($filters['type'] ?? null);
         $status = search_text($filters['status'] ?? null);
-        $fromRaw = search_text($filters['from'] ?? null);
-        $toRaw = search_text($filters['to'] ?? null);
-        $from = $fromRaw !== '' ? Carbon::parse($fromRaw)->startOfDay() : null;
-        $to = $toRaw !== '' ? Carbon::parse($toRaw)->endOfDay() : null;
+        $from = $this->parseFilterDate($filters['from'] ?? null);
+        $to = $this->parseFilterDate($filters['to'] ?? null, true);
 
         $rows = collect();
 
         // Prefer ledger entries
-        $ledger = WalletTransaction::where('user_id', $userId)->orderByDesc('created_at')->get();
+        $ledger = $this->leftoverCollection(fn () => WalletTransaction::where('user_id', $userId)->orderByDesc('created_at')->get());
         foreach ($ledger as $tx) {
             // Advertiser activity is the spend wallet: hide the publisher debit twin.
             if ($tx->type === WalletTransaction::TYPE_ROLE_MOVE_OUT) {
@@ -302,16 +320,16 @@ class WalletOverviewService
             ];
             if ($tx->related_type && $tx->related_id) {
                 if ($tx->related_type === Invoice::class || str_contains((string) $tx->related_type, 'Invoice')) {
-                    $invoice = Invoice::find($tx->related_id);
+                    $invoice = $this->safeInvoice(fn () => Invoice::find($tx->related_id));
                 } elseif ($tx->type === WalletTransaction::TYPE_DEPOSIT) {
                     $deposit = $this->findDeposit((int) $tx->related_id);
                     if ($deposit) {
-                        $invoice = Invoice::where('user_id', $userId)
+                        $invoice = $this->safeInvoice(fn () => Invoice::where('user_id', $userId)
                             ->where(function ($q) use ($deposit) {
                                 $q->where('reference_code', $deposit->reference_code)
                                     ->orWhere('transaction_id', $deposit->stripe_payment_intent_id);
                             })
-                            ->first();
+                            ->first());
                         $depositMeta = [
                             'invoice_view_url' => $invoice
                                 ? route('advertiser.billing.show', $invoice)
@@ -330,13 +348,13 @@ class WalletOverviewService
                     $tx->type === WalletTransaction::TYPE_PURCHASE
                     && (str_contains((string) $tx->related_type, 'Order') || $tx->related_type === Order::class)
                 ) {
-                    $invoice = Invoice::query()
+                    $invoice = $this->safeInvoice(fn () => Invoice::query()
                         ->where('user_id', $userId)
                         ->where('type', Invoice::TYPE_TAX_INVOICE)
                         ->where('status', '!=', Invoice::STATUS_CANCELLED)
                         ->where('order_id', $tx->related_id)
                         ->latest('id')
-                        ->first();
+                        ->first());
                 }
             }
 
@@ -346,7 +364,7 @@ class WalletOverviewService
                 && $tx->type === WalletTransaction::TYPE_PURCHASE
                 && filled($tx->reference)
             ) {
-                $invoice = Invoice::query()
+                $invoice = $this->safeInvoice(fn () => Invoice::query()
                     ->where('user_id', $userId)
                     ->where('type', Invoice::TYPE_TAX_INVOICE)
                     ->where('status', '!=', Invoice::STATUS_CANCELLED)
@@ -356,7 +374,7 @@ class WalletOverviewService
                             ->orWhere('transaction_id', $tx->reference);
                     })
                     ->latest('id')
-                    ->first();
+                    ->first());
             }
 
             if ($invoice && empty($depositMeta['invoice_download_url'])) {
@@ -410,9 +428,9 @@ class WalletOverviewService
             if (in_array($d->reference_code, $ledgerDepositRefs, true)) {
                 return;
             }
-            $invoice = Invoice::where('user_id', $userId)
+            $invoice = $this->safeInvoice(fn () => Invoice::where('user_id', $userId)
                 ->where('reference_code', $d->reference_code)
-                ->first();
+                ->first());
             $status = $d->status === 'approved' ? 'completed' : $d->status;
             $invoicePageUrl = $invoice
                 ? route('advertiser.billing.show', $invoice)
@@ -465,39 +483,40 @@ class WalletOverviewService
         // Legacy withdrawals
         $ledgerWithdrawalIds = $ledger->where('type', WalletTransaction::TYPE_WITHDRAWAL)
             ->pluck('related_id')->filter()->all();
-        Withdrawal::where('user_id', $userId)->orderByDesc('created_at')->get()->each(function ($w) use ($rows, $ledgerWithdrawalIds) {
-            if (in_array($w->id, $ledgerWithdrawalIds, true)) {
-                return;
-            }
-            $rows->push([
-                'id' => $w->id,
-                'source' => 'withdrawal',
-                'date' => $w->created_at?->toIso8601String(),
-                'timestamp' => $w->created_at?->timestamp ?? 0,
-                'type' => WalletTransaction::TYPE_WITHDRAWAL,
-                'type_label' => 'Withdrawal',
-                'description' => 'Withdrawal via '.Invoice::paymentMethodLabel($w->payment_method),
-                'reference' => 'WD-'.$w->id,
-                'amount' => (float) $w->amount,
-                'direction' => 'debit',
-                'signed_amount' => -(float) $w->amount,
-                'status' => $w->status,
-                'balance_after' => null,
-                'bonus_amount' => 0,
-                'payment_method' => $w->payment_method,
-                'payment_method_label' => Invoice::paymentMethodLabel($w->payment_method),
-                'invoice_id' => null,
-                'invoice_number' => null,
-                'order_reference' => null,
-                'icon' => $this->iconForType(WalletTransaction::TYPE_WITHDRAWAL),
-            ]);
-        });
+        $this->leftoverCollection(fn () => Withdrawal::where('user_id', $userId)->orderByDesc('created_at')->get())
+            ->each(function ($w) use ($rows, $ledgerWithdrawalIds) {
+                if (in_array($w->id, $ledgerWithdrawalIds, true)) {
+                    return;
+                }
+                $rows->push([
+                    'id' => $w->id,
+                    'source' => 'withdrawal',
+                    'date' => $w->created_at?->toIso8601String(),
+                    'timestamp' => $w->created_at?->timestamp ?? 0,
+                    'type' => WalletTransaction::TYPE_WITHDRAWAL,
+                    'type_label' => 'Withdrawal',
+                    'description' => 'Withdrawal via '.Invoice::paymentMethodLabel($w->payment_method),
+                    'reference' => 'WD-'.$w->id,
+                    'amount' => (float) $w->amount,
+                    'direction' => 'debit',
+                    'signed_amount' => -(float) $w->amount,
+                    'status' => $w->status,
+                    'balance_after' => null,
+                    'bonus_amount' => 0,
+                    'payment_method' => $w->payment_method,
+                    'payment_method_label' => Invoice::paymentMethodLabel($w->payment_method),
+                    'invoice_id' => null,
+                    'invoice_number' => null,
+                    'order_reference' => null,
+                    'icon' => $this->iconForType(WalletTransaction::TYPE_WITHDRAWAL),
+                ]);
+            });
 
         // Transfers out from advertiser (legacy reverse moves; the live API is 410)
-        BalanceTransfer::where('user_id', $userId)
+        $this->leftoverCollection(fn () => BalanceTransfer::where('user_id', $userId)
             ->where('from_role', 'advertiser')
             ->orderByDesc('created_at')
-            ->get()
+            ->get())
             ->each(function ($t) use ($rows, $ledger) {
                 if ($ledger->where('reference', $t->reference_code)->isNotEmpty()) {
                     return;
@@ -526,11 +545,11 @@ class WalletOverviewService
             });
 
         // Publisher → advertiser moves that predate the role_move ledger types
-        BalanceTransfer::where('user_id', $userId)
+        $this->leftoverCollection(fn () => BalanceTransfer::where('user_id', $userId)
             ->where('from_role', 'publisher')
             ->where('to_role', 'advertiser')
             ->orderByDesc('created_at')
-            ->get()
+            ->get())
             ->each(function ($t) use ($rows, $ledger) {
                 if ($ledger->where('reference', $t->reference_code)->isNotEmpty()) {
                     return;
@@ -559,10 +578,10 @@ class WalletOverviewService
             });
 
         // Wallet purchases from orders
-        Order::where('user_id', $userId)
+        $this->leftoverCollection(fn () => Order::where('user_id', $userId)
             ->where('payment_method', 'wallet')
             ->orderByDesc('created_at')
-            ->get()
+            ->get())
             ->each(function ($o) use ($rows, $ledger) {
                 $ref = $o->reference_code ?? $o->order_number ?? ('ORD-'.$o->id);
                 if ($ledger->where('reference', $ref)->isNotEmpty()) {
@@ -594,9 +613,9 @@ class WalletOverviewService
 
         // Synthetic bonus if present and no ledger bonus
         if ($ledger->where('type', WalletTransaction::TYPE_BONUS_CREDIT)->isEmpty()) {
-            $wallet = Wallet::where('user_id', $userId)
+            $wallet = $this->leftoverCollection(fn () => Wallet::where('user_id', $userId)
                 ->where('role_id', Wallet::advertiserRoleId())
-                ->first();
+                ->get())->first();
             if ($wallet && ((float) $wallet->bonus_balance > 0 || (float) $wallet->bonus_reserved > 0)) {
                 // Remaining promo only — never invent a larger “welcome” than what is on the wallet.
                 $bonusAmt = round((float) $wallet->bonus_balance + (float) $wallet->bonus_reserved, 2);
@@ -662,18 +681,37 @@ class WalletOverviewService
         };
     }
 
+    private function parseFilterDate(mixed $value, bool $endOfDay = false): ?Carbon
+    {
+        $raw = search_text($value);
+        if ($raw === '' || ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $raw)) {
+            return null;
+        }
+
+        [$year, $month, $day] = array_map('intval', explode('-', $raw));
+        if (! checkdate($month, $day, $year)) {
+            return null;
+        }
+
+        $date = Carbon::create($year, $month, $day);
+
+        return $endOfDay ? $date->endOfDay() : $date->startOfDay();
+    }
+
     protected function rangeBounds(string $range, ?string $fromDate = null, ?string $toDate = null): array
     {
         if ($range === 'custom' && $fromDate && $toDate) {
-            $from = Carbon::parse($fromDate)->startOfDay();
-            $to = Carbon::parse($toDate)->endOfDay();
-            if ($from->gt($to)) {
-                [$from, $to] = [$to->copy()->startOfDay(), $from->copy()->endOfDay()];
-            }
-            $days = $from->diffInDays($to);
-            $bucket = $days > 90 ? 'month' : 'day';
+            $from = $this->parseFilterDate($fromDate);
+            $to = $this->parseFilterDate($toDate, true);
+            if ($from && $to) {
+                if ($from->gt($to)) {
+                    [$from, $to] = [$to->copy()->startOfDay(), $from->copy()->endOfDay()];
+                }
+                $days = $from->diffInDays($to);
+                $bucket = $days > 90 ? 'month' : 'day';
 
-            return [$from, $to, $bucket];
+                return [$from, $to, $bucket];
+            }
         }
 
         $to = now()->endOfDay();
@@ -685,6 +723,44 @@ class WalletOverviewService
             'lifetime' => [now()->subYears(5)->startOfMonth(), $to, 'month'],
             default => [now()->subDays(29)->startOfDay(), $to, 'day'], // 30d / month
         };
+    }
+
+    private function safeInvoice(callable $query): ?Invoice
+    {
+        if (! Invoice::tableAvailable()) {
+            return null;
+        }
+
+        try {
+            $invoice = $query();
+
+            return $invoice instanceof Invoice ? $invoice : null;
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * @return Collection<int, mixed>
+     */
+    private function leftoverCollection(callable $query): Collection
+    {
+        try {
+            $rows = $query();
+
+            return $rows instanceof Collection ? $rows : collect($rows ?? []);
+        } catch (\Throwable) {
+            return collect();
+        }
+    }
+
+    private function leftoverSum(callable $query): float
+    {
+        try {
+            return (float) $query();
+        } catch (\Throwable) {
+            return 0.0;
+        }
     }
 
     /**
