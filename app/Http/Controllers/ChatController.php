@@ -476,7 +476,7 @@ class ChatController extends Controller
             'modification_requested' => $item?->modification_requested,
             'content_revision_requested' => $item?->content_revision_requested,
             'has_open_content_revision' => $openContentRevision,
-            'counterpart' => $this->chatCounterpart($order, $isAdvertiser, $site),
+            'counterpart' => $this->chatCounterpart($order, $isAdvertiser, $site, $viewer),
         ];
     }
 
@@ -485,17 +485,26 @@ class ChatController extends Controller
      *
      * @return array{name: string, role: string, online: bool, last_seen_at: ?string, label: ?string}|null
      */
-    private function chatCounterpart(Order $order, bool $isAdvertiser, $site): ?array
+    private function chatCounterpart(Order $order, bool $isAdvertiser, $site, ?User $viewer): ?array
     {
         if ($isAdvertiser) {
             $other = $site?->publisher;
+            if (! $other) {
+                foreach ($order->items as $item) {
+                    $candidate = $item->site?->publisher;
+                    if ($candidate) {
+                        $other = $candidate;
+                        break;
+                    }
+                }
+            }
             $role = 'publisher';
         } else {
             $other = $order->user ?? User::query()->find($order->user_id);
             $role = 'advertiser';
         }
 
-        if (! $other) {
+        if (! $other || ($viewer && (int) $other->id === (int) $viewer->id)) {
             return null;
         }
 

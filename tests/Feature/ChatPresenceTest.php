@@ -115,6 +115,10 @@ class ChatPresenceTest extends TestCase
         $this->assertNull($never->lastSeenLabel());
         $this->assertNull($never->presencePayload()['label']);
 
+        $hidden = User::factory()->make(['last_seen_at' => now()]);
+        $this->assertArrayNotHasKey('last_seen_at', $hidden->toArray());
+        $this->assertNotNull($hidden->presencePayload()['last_seen_at']);
+
         Carbon::setTestNow();
     }
 
@@ -125,8 +129,11 @@ class ChatPresenceTest extends TestCase
         $advertiser = $this->advertiser();
         $publisher = $this->publisher();
         $order = $this->orderFor($advertiser, $this->siteFor($publisher));
+        $updatedAt = $advertiser->fresh()->updated_at;
 
         $this->assertNull($advertiser->last_seen_at);
+
+        Carbon::setTestNow('2026-09-14 12:00:05');
 
         $this->actingAs($advertiser)
             ->getJson(route('chat.messages', $order->id))
@@ -135,6 +142,7 @@ class ChatPresenceTest extends TestCase
         $first = $advertiser->fresh()->last_seen_at;
         $this->assertNotNull($first);
         $this->assertTrue($first->equalTo(now()));
+        $this->assertTrue($advertiser->fresh()->updated_at->equalTo($updatedAt));
         $this->assertNull($publisher->fresh()->last_seen_at);
 
         Carbon::setTestNow(now()->addSeconds(20));
@@ -148,6 +156,7 @@ class ChatPresenceTest extends TestCase
             ->getJson(route('chat.messages', $order->id))
             ->assertOk();
         $this->assertTrue($advertiser->fresh()->last_seen_at->equalTo(now()));
+        $this->assertTrue($advertiser->fresh()->updated_at->equalTo($updatedAt));
 
         Carbon::setTestNow();
     }
@@ -219,6 +228,17 @@ class ChatPresenceTest extends TestCase
         Carbon::setTestNow();
     }
 
+    public function test_self_purchase_does_not_show_own_presence(): void
+    {
+        $buyer = $this->advertiser();
+        $order = $this->orderFor($buyer, $this->siteFor($buyer));
+
+        $this->actingAs($buyer)
+            ->getJson(route('chat.messages', $order->id))
+            ->assertOk()
+            ->assertJsonPath('order_details.counterpart', null);
+    }
+
     public function test_unauthorized_chat_does_not_leak_presence(): void
     {
         $advertiser = $this->advertiser();
@@ -244,5 +264,6 @@ class ChatPresenceTest extends TestCase
         $this->assertStringContainsString('order_details.counterpart', $js);
         $this->assertStringContainsString('.chat-presence.is-online', $css);
         $this->assertStringContainsString('pointer-events: none', $css);
+        $this->assertStringContainsString('flex: 1', $css);
     }
 }

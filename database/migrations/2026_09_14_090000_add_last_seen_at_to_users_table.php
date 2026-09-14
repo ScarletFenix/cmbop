@@ -8,19 +8,23 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasColumn('users', 'last_seen_at')) {
+            return;
+        }
+
         Schema::table('users', function (Blueprint $table) {
-            if (! Schema::hasColumn('users', 'last_seen_at')) {
-                $table->timestamp('last_seen_at')->nullable()->index();
-            }
+            $table->timestamp('last_seen_at')->nullable()->index();
         });
     }
 
     public function down(): void
     {
+        if (! Schema::hasColumn('users', 'last_seen_at')) {
+            return;
+        }
+
         Schema::table('users', function (Blueprint $table) {
-            if (Schema::hasColumn('users', 'last_seen_at')) {
-                $table->dropColumn('last_seen_at');
-            }
+            $table->dropColumn('last_seen_at');
         });
     }
 };

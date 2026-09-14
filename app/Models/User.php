@@ -60,6 +60,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'remember_token',
         'google_token',
         'google_refresh_token',
+        'last_seen_at',
     ];
 
     /**
@@ -155,7 +156,16 @@ class User extends Authenticatable implements MustVerifyEmail
                 && $this->last_seen_at->gt(now()->subSeconds(self::LAST_SEEN_THROTTLE_SECONDS))) {
                 return;
             }
-            $this->forceFill(['last_seen_at' => now()])->saveQuietly();
+
+            // Presence is not a profile edit — leave updated_at alone.
+            $now = now();
+            $wasTimestamps = $this->timestamps;
+            $this->timestamps = false;
+            try {
+                $this->forceFill(['last_seen_at' => $now])->saveQuietly();
+            } finally {
+                $this->timestamps = $wasTimestamps;
+            }
         } catch (\Throwable $e) {
             report($e);
         }
@@ -163,13 +173,15 @@ class User extends Authenticatable implements MustVerifyEmail
 
     protected function lastSeenColumnReady(): bool
     {
-        static $ready = null;
-        if ($ready === null) {
-            try {
-                $ready = Schema::hasColumn('users', 'last_seen_at');
-            } catch (\Throwable) {
-                $ready = false;
-            }
+        static $ready = false;
+        if ($ready) {
+            return true;
+        }
+
+        try {
+            $ready = Schema::hasColumn('users', 'last_seen_at');
+        } catch (\Throwable) {
+            return false;
         }
 
         return $ready;
