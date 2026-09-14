@@ -73,10 +73,12 @@
             display: flex;
             gap: 30px;
             margin-bottom: 30px;
+            align-items: stretch;
         }
         
         .column {
             flex: 1;
+            min-width: 0;
         }
         
         .bill-to {
@@ -138,6 +140,14 @@
         td {
             padding: 12px;
             border-bottom: 1px solid #e5e7eb;
+            vertical-align: top;
+        }
+
+        th.amount,
+        td.amount {
+            text-align: right;
+            white-space: nowrap;
+            width: 150px;
         }
         
         .totals {
@@ -310,7 +320,7 @@
                 <thead>
                     <tr>
                         <th>Description</th>
-                        <th width="150">Amount</th>
+                        <th class="amount">Amount</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -340,7 +350,7 @@
                                 </small>
                             @endif
                         </td>
-                        <td>€{{ number_format($item['price'], 2) }}</td>
+                        <td class="amount">€{{ number_format($item['price'], 2) }}</td>
                     </tr>
                     @endforeach
                 </tbody>
@@ -364,14 +374,14 @@
                 <thead>
                     <tr>
                         <th>Description</th>
-                        <th width="150">Amount</th>
+                        <th class="amount">Amount</th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr>
                         <td>Wallet Deposit - Reference: REF{{ $referenceCode }}<br>
                         </td>
-                        <td>€{{ number_format($amount, 2) }}</td>
+                        <td class="amount">€{{ number_format($amount, 2) }}</td>
                     </tr>
                 </tbody>
             </table>

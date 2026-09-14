@@ -58,23 +58,23 @@
                 </div>
             </div>
 
-            <div class="card border-0 shadow-sm">
+            <div class="card border-0 shadow-sm mb-3">
                 <div class="card-body p-0">
                     <div class="table-responsive">
                         <table class="table align-middle mb-0">
                             <thead class="table-light">
                                 <tr>
-                                    <th>Service</th>
-                                    <th>{{ $invoice->isDepositReceipt() ? 'Reference' : 'Website' }}</th>
-                                    <th class="text-end">Amount</th>
+                                    <th style="width:48%;">Service</th>
+                                    <th style="width:32%;">{{ $invoice->isDepositReceipt() || $invoice->isWithdrawalPayout() ? 'Reference' : 'Website' }}</th>
+                                    <th class="text-end" style="width:20%;">Amount</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 @forelse($lineItems as $line)
                                     <tr>
                                         <td>{{ $line['description'] ?? 'Service' }}</td>
-                                        <td class="small">{{ $line['publisher_website'] ?? $line['reference'] ?? '—' }}</td>
-                                        <td class="text-end">€{{ number_format((float) ($line['line_total'] ?? 0), 2) }}</td>
+                                        <td class="small text-break">{{ $line['publisher_website'] ?? $line['reference'] ?? $line['site_url'] ?? '—' }}</td>
+                                        <td class="text-end text-nowrap">€{{ number_format((float) ($line['line_total'] ?? $line['total'] ?? 0), 2) }}</td>
                                     </tr>
                                 @empty
                                     <tr>
@@ -82,6 +82,28 @@
                                     </tr>
                                 @endforelse
                             </tbody>
+                            <tfoot>
+                                <tr>
+                                    <td colspan="2" class="text-end text-muted">Subtotal</td>
+                                    <td class="text-end">€{{ number_format((float) $invoice->subtotal, 2) }}</td>
+                                </tr>
+                                @if((float) $invoice->discount_amount > 0)
+                                    <tr>
+                                        <td colspan="2" class="text-end text-muted">Discount</td>
+                                        <td class="text-end">-€{{ number_format((float) $invoice->discount_amount, 2) }}</td>
+                                    </tr>
+                                @endif
+                                @if((float) $invoice->tax_amount > 0)
+                                    <tr>
+                                        <td colspan="2" class="text-end text-muted">{{ $invoice->tax_label ?: 'Tax' }}</td>
+                                        <td class="text-end">€{{ number_format((float) $invoice->tax_amount, 2) }}</td>
+                                    </tr>
+                                @endif
+                                <tr class="fw-semibold">
+                                    <td colspan="2" class="text-end">Total</td>
+                                    <td class="text-end" style="color:#1a585e;">€{{ number_format((float) $invoice->total_amount, 2) }}</td>
+                                </tr>
+                            </tfoot>
                         </table>
                     </div>
                 </div>

@@ -209,8 +209,13 @@ class InvoiceSellerDetailsTest extends TestCase
         $this->assertStringContainsString('https://seolinkbuildings.com', $html);
         $this->assertStringNotContainsString('http://localhost:8000', $html);
         $this->assertStringNotContainsString('localhost', $html);
-        $this->assertStringContainsString('Ref: 337156', $html);
-        $this->assertStringNotContainsString('Txn: 337156', $html);
+        $this->assertStringContainsString('337156', $html);
+        $this->assertStringContainsString('>Ref</', $html);
+        $this->assertStringNotContainsString('Txn', $html);
+        $this->assertStringContainsString('<tfoot>', $html);
+        $this->assertStringContainsString('table-layout: fixed', $html);
+        $this->assertStringContainsString('text-align: right', $html);
+        $this->assertStringNotContainsString('table class="totals"', $html);
         $this->assertSame('https://seolinkbuildings.com', brand_public_origin());
         $this->assertSame('https://seolinkbuildings.com', mail_brand_website_url());
     }

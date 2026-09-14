@@ -14,7 +14,7 @@
         }
         .muted { color: {{ $colors['muted'] ?? '#75787B' }}; }
         .primary { color: {{ $colors['primary'] ?? '#1a585e' }}; }
-        .header { width: 100%; margin-bottom: 28px; }
+        .header { width: 100%; margin-bottom: 22px; border-collapse: collapse; }
         .header td { vertical-align: top; }
         .brand-name {
             font-size: 18px; font-weight: 700;
@@ -22,9 +22,11 @@
             margin: 0 0 4px;
         }
         .doc-title {
-            font-size: 22px; font-weight: 700; text-align: right;
-            color: {{ $colors['primary'] ?? '#1a585e' }}; margin: 0;
+            font-size: 20px; font-weight: 700; text-align: right;
+            color: {{ $colors['primary'] ?? '#1a585e' }}; margin: 0 0 8px;
         }
+        .header-meta { width: 100%; border-collapse: collapse; }
+        .header-meta td { text-align: right; padding: 1px 0; }
         .badge {
             display: inline-block; padding: 3px 8px; border-radius: 4px;
             font-size: 10px; font-weight: 700; letter-spacing: .04em;
@@ -36,17 +38,26 @@
         .badge-refunded { background: #e0e7ff; color: #3730a3; }
         .badge-cancelled { background: #f1f5f9; color: #475569; }
         .badge-issued { background: #e0f2fe; color: #075985; }
-        .meta-table { width: 100%; margin-bottom: 22px; }
-        .meta-table td { width: 50%; vertical-align: top; padding: 0; }
+        .meta-table { width: 100%; margin: 0 0 20px; border-collapse: collapse; }
+        .meta-table td.box {
+            width: 49%; vertical-align: top;
+            border: 1px solid {{ $colors['border'] ?? '#e2e8f0' }};
+            border-radius: 6px; padding: 12px 14px;
+        }
+        .meta-table td.gap { width: 2%; border: 0; padding: 0; }
         .box {
             border: 1px solid {{ $colors['border'] ?? '#e2e8f0' }};
             border-radius: 6px; padding: 12px 14px;
         }
-        .box h4 {
+        .box h4, td.box h4 {
             margin: 0 0 8px; font-size: 10px; text-transform: uppercase;
             letter-spacing: .06em; color: {{ $colors['muted'] ?? '#75787B' }};
         }
-        table.items { width: 100%; border-collapse: collapse; margin: 8px 0 18px; }
+        .kv { width: 100%; border-collapse: collapse; }
+        .kv td { padding: 2px 0; vertical-align: top; }
+        .kv .k { width: 34%; color: {{ $colors['muted'] ?? '#75787B' }}; padding-right: 10px; }
+        .kv .v { font-weight: 700; }
+        table.items { width: 100%; table-layout: fixed; border-collapse: collapse; margin: 4px 0 0; }
         table.items th {
             text-align: left; font-size: 10px; text-transform: uppercase;
             letter-spacing: .04em; color: {{ $colors['muted'] ?? '#75787B' }};
@@ -58,19 +69,28 @@
             border-bottom: 1px solid {{ $colors['border'] ?? '#e2e8f0' }};
             vertical-align: top;
         }
-        table.items .num { text-align: right; white-space: nowrap; }
-        .totals { width: 280px; margin-left: auto; }
-        .totals td { padding: 5px 0; }
-        .totals .label { color: {{ $colors['muted'] ?? '#75787B' }}; }
-        .totals .grand td {
-            padding-top: 10px; border-top: 2px solid {{ $colors['primary'] ?? '#1a585e' }};
+        table.items th.num,
+        table.items td.num,
+        .num { text-align: right; white-space: nowrap; }
+        table.items tfoot td {
+            border-bottom: none;
+            padding: 5px 6px;
+        }
+        table.items tfoot tr.totals-first td { padding-top: 16px; }
+        table.items tfoot .label { color: {{ $colors['muted'] ?? '#75787B' }}; font-weight: 400; }
+        table.items tfoot tr.grand td {
+            padding-top: 10px;
+            border-top: 2px solid {{ $colors['primary'] ?? '#1a585e' }};
             font-size: 13px; font-weight: 700;
         }
         .footer {
-            margin-top: 36px; padding-top: 14px;
+            width: 100%; margin-top: 28px; padding-top: 14px;
             border-top: 1px solid {{ $colors['border'] ?? '#e2e8f0' }};
+            border-collapse: collapse;
             font-size: 10px; color: {{ $colors['muted'] ?? '#75787B' }};
         }
+        .footer td { vertical-align: top; padding: 0; }
+        .footer .end { text-align: right; }
         .thankyou {
             margin-top: 22px; padding: 12px 14px;
             background: #e6f5f5; border-radius: 6px;
@@ -117,7 +137,7 @@
 
 <table class="header">
     <tr>
-        <td width="55%">
+        <td width="58%">
             @php
                 // Dompdf needs PHP GD for PNG data-URIs. InvoicePdfGenerator
                 // sets includeLogo=false when gd is missing so PDFs still render.
@@ -146,77 +166,107 @@
                 <div class="muted">Registration No: {{ $company['registration_no'] }}</div>
             @endif
         </td>
-        <td width="45%" style="text-align:right;">
+        <td width="42%">
             <p class="doc-title">{{ $docHeading }}</p>
-            <div style="margin-top:8px;">
-                <span class="badge {{ $statusClass }}">{{ strtoupper($invoice->status) }}</span>
-            </div>
-            <div style="margin-top:12px;">
-                <div><strong>{{ $invoice->invoice_number }}</strong></div>
-                <div class="muted">Date: {{ optional($invoice->invoice_date)->format('M j, Y') }}</div>
+            <table class="header-meta">
+                <tr>
+                    <td>
+                        <span class="badge {{ $statusClass }}">{{ strtoupper($invoice->status) }}</span>
+                    </td>
+                </tr>
+                <tr>
+                    <td><strong>{{ $invoice->invoice_number }}</strong></td>
+                </tr>
+                <tr>
+                    <td class="muted">Date: {{ optional($invoice->invoice_date)->format('M j, Y') }}</td>
+                </tr>
                 @if($invoice->due_date)
-                    <div class="muted">Due: {{ $invoice->due_date->format('M j, Y') }}</div>
+                    <tr>
+                        <td class="muted">Due: {{ $invoice->due_date->format('M j, Y') }}</td>
+                    </tr>
                 @endif
                 @if($invoice->paid_at)
-                    <div class="muted">Paid: {{ $invoice->paid_at->format('M j, Y') }}</div>
+                    <tr>
+                        <td class="muted">Paid: {{ $invoice->paid_at->format('M j, Y') }}</td>
+                    </tr>
                 @endif
-            </div>
+            </table>
         </td>
     </tr>
 </table>
 
 <table class="meta-table">
     <tr>
-        <td style="padding-right:8px;">
-            <div class="box">
-                <h4>{{ $isPayout ? 'Pay to' : 'Bill to' }}</h4>
-                <div><strong>{{ $invoice->customer_name }}</strong></div>
-                <div class="muted">{{ $invoice->customer_email }}</div>
-                @php $bill = $invoice->billing_snapshot ?? []; @endphp
-                @if(!empty($bill['company']) && trim((string) $bill['company']) !== trim((string) $invoice->customer_name))
-                    <div><strong>{{ $bill['company'] }}</strong></div>
+        <td class="box">
+            <h4>{{ $isPayout ? 'Pay to' : 'Bill to' }}</h4>
+            <div><strong>{{ $invoice->customer_name }}</strong></div>
+            <div class="muted">{{ $invoice->customer_email }}</div>
+            @php $bill = $invoice->billing_snapshot ?? []; @endphp
+            @if(!empty($bill['company']) && trim((string) $bill['company']) !== trim((string) $invoice->customer_name))
+                <div><strong>{{ $bill['company'] }}</strong></div>
+            @endif
+            @if(!empty($bill['address'])) <div class="muted">{{ $bill['address'] }}</div> @endif
+            @if(!empty($bill['city']) || !empty($bill['state']) || !empty($bill['postal_code']))
+                @php
+                    $billLocality = trim(implode(', ', array_filter([
+                        $bill['city'] ?? null,
+                        $bill['state'] ?? null,
+                        $bill['postal_code'] ?? null,
+                    ])));
+                @endphp
+                @if($billLocality !== '')
+                    <div class="muted">{{ $billLocality }}</div>
                 @endif
-                @if(!empty($bill['address'])) <div class="muted">{{ $bill['address'] }}</div> @endif
-                @if(!empty($bill['city']) || !empty($bill['state']) || !empty($bill['postal_code']))
-                    @php
-                        $billLocality = trim(implode(', ', array_filter([
-                            $bill['city'] ?? null,
-                            $bill['state'] ?? null,
-                            $bill['postal_code'] ?? null,
-                        ])));
-                    @endphp
-                    @if($billLocality !== '')
-                        <div class="muted">{{ $billLocality }}</div>
-                    @endif
-                @endif
-                @if(!empty($bill['country'])) <div class="muted">{{ $bill['country'] }}</div> @endif
-                @if(!empty($bill['vat_number'])) <div class="muted">VAT / Tax ID: {{ $bill['vat_number'] }}</div> @endif
-            </div>
+            @endif
+            @if(!empty($bill['country'])) <div class="muted">{{ $bill['country'] }}</div> @endif
+            @if(!empty($bill['vat_number'])) <div class="muted">VAT / Tax ID: {{ $bill['vat_number'] }}</div> @endif
         </td>
-        <td style="padding-left:8px;">
-            <div class="box">
-                <h4>
-                    @if($isDeposit)
-                        Payment details
-                    @elseif($isPayout)
-                        Payout details
-                    @else
-                        Payment &amp; order
-                    @endif
-                </h4>
+        <td class="gap"></td>
+        <td class="box">
+            <h4>
+                @if($isDeposit)
+                    Payment details
+                @elseif($isPayout)
+                    Payout details
+                @else
+                    Payment &amp; order
+                @endif
+            </h4>
+            <table class="kv">
                 @unless($isDeposit || $isPayout)
-                    <div>Order: <strong>#{{ $invoice->order_number }}</strong></div>
+                    <tr>
+                        <td class="k">Order</td>
+                        <td class="v">#{{ $invoice->order_number }}</td>
+                    </tr>
                 @endunless
                 @if($invoice->reference_code)
-                    <div class="muted">Ref: {{ $invoice->reference_code }}</div>
+                    <tr>
+                        <td class="k">Ref</td>
+                        <td class="v">{{ $invoice->reference_code }}</td>
+                    </tr>
                 @endif
-                <div style="margin-top:6px;">Method: <strong>{{ \App\Models\Invoice::paymentMethodLabel($invoice->payment_method) }}</strong></div>
-                <div>Status: <strong>{{ ucfirst((string) $invoice->payment_status) }}</strong></div>
+                <tr>
+                    <td class="k">Method</td>
+                    <td class="v">{{ \App\Models\Invoice::paymentMethodLabel($invoice->payment_method) }}</td>
+                </tr>
+                <tr>
+                    <td class="k">Status</td>
+                    <td class="v">{{ ucfirst((string) $invoice->payment_status) }}</td>
+                </tr>
                 @if($invoice->transaction_id && (string) $invoice->transaction_id !== (string) $invoice->reference_code)
-                    <div class="muted" style="margin-top:6px;">Txn: {{ $invoice->transaction_id }}</div>
+                    <tr>
+                        <td class="k">Txn</td>
+                        <td class="v">{{ $invoice->transaction_id }}</td>
+                    </tr>
                 @endif
-                <div style="margin-top:6px;">Currency: <strong>{{ $invoice->currency }}</strong></div>
-                <div>Amount: <strong>{{ $symbol }}{{ number_format((float) $invoice->total_amount, 2) }}</strong></div>
+                <tr>
+                    <td class="k">Currency</td>
+                    <td class="v">{{ $invoice->currency }}</td>
+                </tr>
+                <tr>
+                    <td class="k">Amount</td>
+                    <td class="v">{{ $symbol }}{{ number_format((float) $invoice->total_amount, 2) }}</td>
+                </tr>
                 @if($isPayout)
                     @php
                         $payoutDest = \App\Models\Invoice::maskedPayoutDestination(
@@ -225,10 +275,13 @@
                         );
                     @endphp
                     @if($payoutDest)
-                        <div class="muted" style="margin-top:6px;">Sent to: {{ $payoutDest }}</div>
+                        <tr>
+                            <td class="k">Sent to</td>
+                            <td class="v">{{ $payoutDest }}</td>
+                        </tr>
                     @endif
                 @endif
-            </div>
+            </table>
         </td>
     </tr>
 </table>
@@ -257,19 +310,26 @@
 @endif
 
 <table class="items">
+    <colgroup>
+        <col style="width:40%;">
+        <col style="width:24%;">
+        <col style="width:8%;">
+        <col style="width:14%;">
+        <col style="width:14%;">
+    </colgroup>
     <thead>
         <tr>
-            <th style="width:42%;">{{ ($isDeposit || $isPayout) ? 'Description' : 'Service' }}</th>
-            <th style="width:28%;">
+            <th>{{ ($isDeposit || $isPayout) ? 'Description' : 'Service' }}</th>
+            <th>
                 @if($isDeposit || $isPayout)
                     Reference
                 @else
                     Publisher website
                 @endif
             </th>
-            <th class="num" style="width:10%;">Qty</th>
-            <th class="num" style="width:10%;">Unit</th>
-            <th class="num" style="width:10%;">Total</th>
+            <th class="num">Qty</th>
+            <th class="num">Unit</th>
+            <th class="num">Total</th>
         </tr>
     </thead>
     <tbody>
@@ -312,35 +372,34 @@
             </tr>
         @endforelse
     </tbody>
-</table>
-
-<table class="totals">
-    <tr>
-        <td class="label">{{ $isPayout ? 'Gross' : 'Subtotal' }}</td>
-        <td class="num">{{ $symbol }}{{ number_format((float) $invoice->subtotal, 2) }}</td>
-    </tr>
-    @if((float) $invoice->discount_amount > 0)
-        <tr>
-            <td class="label">
-                @if($isPayout)
-                    Withdrawal fee
-                @else
-                    Discount @if($invoice->coupon_code) ({{ $invoice->coupon_code }}) @endif
-                @endif
-            </td>
-            <td class="num">-{{ $symbol }}{{ number_format((float) $invoice->discount_amount, 2) }}</td>
+    <tfoot>
+        <tr class="totals-first">
+            <td colspan="4" class="num label">{{ $isPayout ? 'Gross' : 'Subtotal' }}</td>
+            <td class="num">{{ $symbol }}{{ number_format((float) $invoice->subtotal, 2) }}</td>
         </tr>
-    @endif
-    @if(! $isDeposit && ! $isPayout && ((float) $invoice->tax_amount > 0 || $invoice->tax_label))
-        <tr>
-            <td class="label">{{ $invoice->tax_label ?: 'Tax' }} @if((float)$invoice->tax_rate > 0) ({{ rtrim(rtrim(number_format((float)$invoice->tax_rate, 2), '0'), '.') }}%) @endif</td>
-            <td class="num">{{ $symbol }}{{ number_format((float) $invoice->tax_amount, 2) }}</td>
+        @if((float) $invoice->discount_amount > 0)
+            <tr>
+                <td colspan="4" class="num label">
+                    @if($isPayout)
+                        Withdrawal fee
+                    @else
+                        Discount @if($invoice->coupon_code) ({{ $invoice->coupon_code }}) @endif
+                    @endif
+                </td>
+                <td class="num">-{{ $symbol }}{{ number_format((float) $invoice->discount_amount, 2) }}</td>
+            </tr>
+        @endif
+        @if(! $isDeposit && ! $isPayout && ((float) $invoice->tax_amount > 0 || $invoice->tax_label))
+            <tr>
+                <td colspan="4" class="num label">{{ $invoice->tax_label ?: 'Tax' }} @if((float)$invoice->tax_rate > 0) ({{ rtrim(rtrim(number_format((float)$invoice->tax_rate, 2), '0'), '.') }}%) @endif</td>
+                <td class="num">{{ $symbol }}{{ number_format((float) $invoice->tax_amount, 2) }}</td>
+            </tr>
+        @endif
+        <tr class="grand">
+            <td colspan="4" class="num">{{ $isPayout ? 'Net payout' : 'Total' }}</td>
+            <td class="num">{{ $symbol }}{{ number_format((float) $invoice->total_amount, 2) }}</td>
         </tr>
-    @endif
-    <tr class="grand">
-        <td>{{ $isPayout ? 'Net payout' : 'Total' }}</td>
-        <td class="num">{{ $symbol }}{{ number_format((float) $invoice->total_amount, 2) }}</td>
-    </tr>
+    </tfoot>
 </table>
 
 @if($isDeposit)
@@ -363,9 +422,11 @@
     </div>
 @endif
 
-<div class="footer">
-    <div>{{ $company['legal_name'] ?? ($company['name'] ?? 'SEOLinkBuildings') }} · {{ $company['support_email'] ?? '' }}</div>
-    <div>Document {{ $invoice->invoice_number }} · Generated {{ now()->format('M j, Y g:i A') }}</div>
-</div>
+<table class="footer">
+    <tr>
+        <td>{{ $company['legal_name'] ?? ($company['name'] ?? 'SEOLinkBuildings') }} · {{ $company['support_email'] ?? '' }}</td>
+        <td class="end">Document {{ $invoice->invoice_number }} · Generated {{ now()->format('M j, Y g:i A') }}</td>
+    </tr>
+</table>
 </body>
 </html>
