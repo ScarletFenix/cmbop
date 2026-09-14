@@ -339,4 +339,90 @@ class AdminWelcomeBonusToggleTest extends TestCase
             ->assertSee('New advertisers get €35 free credit', false)
             ->assertDontSee('New advertisers get €20 free credit', false);
     }
+
+    public function test_marketing_pages_hide_new_grant_copy_when_bonus_cannot_grant(): void
+    {
+        app(WelcomeBonusService::class)->setEnabled(false);
+
+        $this->get('/')
+            ->assertOk()
+            ->assertDontSee('€20 welcome credit', false);
+
+        $this->get('/about')
+            ->assertOk()
+            ->assertDontSee('€20 welcome credit for new advertisers', false)
+            ->assertDontSee('New advertisers receive €20 promotional credit', false)
+            ->assertSee('wallet checkout.', false);
+
+        $this->get('/how-it-works')
+            ->assertOk()
+            ->assertDontSee('New advertisers get €20 welcome credit', false)
+            ->assertDontSee('What is the €20 welcome credit?', false)
+            ->assertSee('Site prices are clear before checkout.', false);
+
+        $this->get('/refund-policy')
+            ->assertOk()
+            ->assertDontSee('New advertisers receive €20 promotional welcome credit', false)
+            ->assertDontSee('What happens to the €20 welcome bonus if an order is refunded?', false)
+            ->assertSee('Promotional welcome credit is spend-only', false)
+            ->assertSee('What happens to welcome credit if an order is refunded?', false);
+    }
+
+    public function test_marketing_pages_use_live_grant_amount(): void
+    {
+        app(WelcomeBonusService::class)->setAmount(35);
+
+        $this->get('/about')
+            ->assertOk()
+            ->assertSee('€35 welcome credit for new advertisers', false)
+            ->assertDontSee('€20 welcome credit for new advertisers', false);
+
+        $this->get('/how-it-works')
+            ->assertOk()
+            ->assertSee('New advertisers get €35 welcome credit', false)
+            ->assertSee('What is the €35 welcome credit?', false);
+    }
+
+    public function test_register_meta_uses_live_grant_or_off_copy(): void
+    {
+        $this->get(route('register'))
+            ->assertOk()
+            ->assertSee('€20 Welcome Credit', false)
+            ->assertSee('New advertisers get €20 welcome credit', false);
+
+        app(WelcomeBonusService::class)->setAmount(35);
+        $this->get(route('register'))
+            ->assertOk()
+            ->assertSee('€35 Welcome Credit', false)
+            ->assertSee('New advertisers get €35 welcome credit', false)
+            ->assertDontSee('€20 Welcome Credit', false);
+
+        app(WelcomeBonusService::class)->setEnabled(false);
+        $this->get(route('register'))
+            ->assertOk()
+            ->assertSee('Create Account | SEOLinkBuildings', false)
+            ->assertSee('Free to start — no card required', false)
+            ->assertDontSee('€20 Welcome Credit', false)
+            ->assertDontSee('€35 Welcome Credit', false);
+    }
+
+    public function test_llms_txt_matches_live_grant(): void
+    {
+        $this->get('/llms.txt')
+            ->assertOk()
+            ->assertSee('€20 welcome credit for first orders', false);
+
+        app(WelcomeBonusService::class)->setAmount(35);
+        $this->get('/llms.txt')
+            ->assertOk()
+            ->assertSee('€35 welcome credit for first orders', false)
+            ->assertDontSee('€20 welcome credit for first orders', false);
+
+        app(WelcomeBonusService::class)->setEnabled(false);
+        $this->get('/llms.txt')
+            ->assertOk()
+            ->assertDontSee('€20 welcome credit', false)
+            ->assertDontSee('€35 welcome credit', false)
+            ->assertSee('not always offered', false);
+    }
 }

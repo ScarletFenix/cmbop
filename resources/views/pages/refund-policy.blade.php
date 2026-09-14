@@ -1,7 +1,7 @@
 @extends('layouts.app')
 
 @section('title', __('messages.meta_refund_title'))
-@section('description', __('messages.meta_refund_description'))
+@section('description', welcome_bonus_message('meta_refund_description', 'meta_refund_description_off'))
 @section('canonical', localized_url('refund-policy'))
 
 @php
@@ -14,7 +14,9 @@
     foreach (range(1, 4) as $i) {
         $faqEntities[] = [
             '@type' => 'Question',
-            'name' => __('messages.refund_faq_q_'.$i),
+            'name' => $i === 4
+                ? welcome_bonus_message('refund_faq_q_4', 'refund_faq_q_4_off')
+                : __('messages.refund_faq_q_'.$i),
             'acceptedAnswer' => [
                 '@type' => 'Answer',
                 'text' => __('messages.refund_faq_a_'.$i),
@@ -30,7 +32,7 @@
     '@type' => 'WebPage',
     'name' => __('messages.meta_refund_title'),
     'url' => localized_url('refund-policy'),
-    'description' => __('messages.meta_refund_description'),
+    'description' => welcome_bonus_message('meta_refund_description', 'meta_refund_description_off'),
     'inLanguage' => class_exists(\App\Support\PublicI18n::class)
         ? \App\Support\PublicI18n::htmlLang()
         : 'en-GB',
@@ -65,8 +67,12 @@
 
     @foreach(range(1, 9) as $i)
         <section class="mb-4" aria-labelledby="refund-section-{{ $i }}">
-            <h2 id="refund-section-{{ $i }}" class="h5 mt-4" style="color:#1a585e;">{{ __('messages.refund_section_'.$i.'_title') }}</h2>
-            <p class="text-muted mb-0">{{ __('messages.refund_section_'.$i.'_body') }}</p>
+            <h2 id="refund-section-{{ $i }}" class="h5 mt-4" style="color:#1a585e;">{{ $i === 2
+                ? welcome_bonus_message('refund_section_2_title', 'refund_section_2_title_off')
+                : __('messages.refund_section_'.$i.'_title') }}</h2>
+            <p class="text-muted mb-0">{{ $i === 2
+                ? welcome_bonus_message('refund_section_2_body', 'refund_section_2_body_off')
+                : __('messages.refund_section_'.$i.'_body') }}</p>
         </section>
     @endforeach
 
@@ -80,7 +86,9 @@
                                 data-bs-toggle="collapse" data-bs-target="#refundFaqCollapse{{ $i }}"
                                 aria-expanded="{{ $i === 1 ? 'true' : 'false' }}"
                                 aria-controls="refundFaqCollapse{{ $i }}">
-                            {{ __('messages.refund_faq_q_'.$i) }}
+                            {{ $i === 4
+                                ? welcome_bonus_message('refund_faq_q_4', 'refund_faq_q_4_off')
+                                : __('messages.refund_faq_q_'.$i) }}
                         </button>
                     </h3>
                     <div id="refundFaqCollapse{{ $i }}" class="accordion-collapse collapse {{ $i === 1 ? 'show' : '' }}"

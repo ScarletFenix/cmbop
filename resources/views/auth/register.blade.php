@@ -5,8 +5,8 @@
     $welcomeBonusAmount = isset($welcomeBonusAmount) ? (float) $welcomeBonusAmount : 0.0;
     $welcomeBonusEuro = '€'.rtrim(rtrim(number_format($welcomeBonusAmount, 2, '.', ''), '0'), '.');
 @endphp
-@section('title', $welcomeBonusEnabled ? __('messages.meta_register_title') : 'Create Account | SEOLinkBuildings')
-@section('description', $welcomeBonusEnabled ? __('messages.meta_register_description') : 'Register as advertiser or publisher on Seolinkbuildings.com. Free to start — no card required.')
+@section('title', welcome_bonus_message('meta_register_title', 'meta_register_title_off'))
+@section('description', welcome_bonus_message('meta_register_description', 'meta_register_description_off'))
 
 @section('content')
 <link href="{{ asset('assets/css/auth-pages.css') }}?v={{ @filemtime(public_path('assets/css/auth-pages.css')) ?: '1' }}" rel="stylesheet">

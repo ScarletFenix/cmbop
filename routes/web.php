@@ -94,6 +94,7 @@ use App\Support\LocalizedPublicPath;
 use App\Support\PublicI18n;
 use App\Support\RobotsTxt;
 use App\Support\UserMessages;
+use App\Support\WelcomeBonusCopy;
 use Illuminate\Auth\Events\Verified;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
@@ -247,7 +248,12 @@ Route::get('/llms.txt', function () {
     $path = public_path('llms.txt');
     abort_unless(is_file($path), 404);
 
-    return response((string) file_get_contents($path), 200, [
+    $body = (string) file_get_contents($path);
+    if (class_exists(WelcomeBonusCopy::class)) {
+        $body = WelcomeBonusCopy::applyToLlmsTxt($body);
+    }
+
+    return response($body, 200, [
         'Content-Type' => 'text/plain; charset=UTF-8',
         'Cache-Control' => 'public, max-age=3600',
     ]);

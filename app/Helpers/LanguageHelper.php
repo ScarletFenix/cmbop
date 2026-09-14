@@ -4,6 +4,7 @@ use App\Models\ActivityLog;
 use App\Models\User;
 use App\Support\MarketingHistoryDisplay;
 use App\Support\PublicI18n;
+use App\Support\WelcomeBonusCopy;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Request;
 
@@ -35,6 +36,27 @@ if (! function_exists('public_locale')) {
     function public_locale(): string
     {
         return App::getLocale();
+    }
+}
+
+if (! function_exists('welcome_bonus_can_grant')) {
+    function welcome_bonus_can_grant(): bool
+    {
+        return WelcomeBonusCopy::canGrant();
+    }
+}
+
+if (! function_exists('welcome_bonus_euro')) {
+    function welcome_bonus_euro(): string
+    {
+        return WelcomeBonusCopy::euro();
+    }
+}
+
+if (! function_exists('welcome_bonus_message')) {
+    function welcome_bonus_message(string $key, ?string $offKey = null): string
+    {
+        return WelcomeBonusCopy::message($key, $offKey);
     }
 }
 

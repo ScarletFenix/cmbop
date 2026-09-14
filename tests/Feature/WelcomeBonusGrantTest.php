@@ -495,7 +495,6 @@ class WelcomeBonusGrantTest extends TestCase
     {
         $this->mock(WelcomeBonusService::class, function ($mock) {
             $mock->shouldReceive('canGrant')
-                ->once()
                 ->andThrow(new \RuntimeException('SQLSTATE[HY000]: leftover'));
         });
 

@@ -1,7 +1,7 @@
 @extends('layouts.app')
 
 @section('title', __('messages.meta_home_title'))
-@section('description', __('messages.meta_home_description'))
+@section('description', welcome_bonus_message('meta_home_description', 'meta_home_description_off'))
 @section('canonical', localized_url('/'))
 
 @push('head')
