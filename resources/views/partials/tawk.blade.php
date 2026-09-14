@@ -161,9 +161,9 @@ Tawk_API.visitor = {!! json_encode($tawkVisitor, JSON_UNESCAPED_SLASHES | JSON_U
 })();
 window.slbOpenSupport = function () {
   window.slbTawkKeepOpen = true;
-  document.documentElement.classList.add('tawk-open');
   function openTawk() {
     if (window.Tawk_API && typeof window.Tawk_API.maximize === 'function') {
+      document.documentElement.classList.add('tawk-open');
       window.Tawk_API.maximize();
       window.slbPinTawk && window.slbPinTawk();
       return true;
@@ -181,6 +181,9 @@ window.slbOpenSupport = function () {
     tries += 1;
     if (openTawk() || tries > 25) {
       clearInterval(timer);
+      if (!document.documentElement.classList.contains('tawk-open')) {
+        window.slbTawkKeepOpen = false;
+      }
     }
   }, 200);
 };
