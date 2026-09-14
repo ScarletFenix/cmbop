@@ -41,7 +41,9 @@ class AdvertiserDashboardService
      *     wallet: array<string, mixed>,
      *     budgetStatus: array<string, mixed>,
      *     spendSummary: array<string, mixed>,
-     *     spendCandles: array<string, mixed>
+     *     spendCandles: array<string, mixed>,
+     *     primaryAction: string,
+     *     welcomeSituation: string
      * }
      */
     public function build(User $user): array
@@ -80,8 +82,12 @@ class AdvertiserDashboardService
             $visibility->warmFor($user, $recommendedSites);
         });
 
+        $stats = is_array($stats) ? $stats : $emptyStats;
+        $needsAction = (int) ($stats['needs_action'] ?? 0);
+        $awaitingPayment = (int) ($stats['awaiting_payment'] ?? 0);
+
         return [
-            'stats' => is_array($stats) ? $stats : $emptyStats,
+            'stats' => $stats,
             'recentOrders' => $recentOrders instanceof Collection ? $recentOrders : collect(),
             'recommendedSites' => $recommendedSites instanceof Collection ? $recommendedSites : collect(),
             'hasOrderableArticle' => (bool) $this->safe(
@@ -95,6 +101,18 @@ class AdvertiserDashboardService
             ),
             'isNewAdvertiser' => $isNewAdvertiser,
             'upcomingScheduledCount' => $upcomingScheduledCount,
+            'primaryAction' => $this->resolvePrimaryAction(
+                $isNewAdvertiser,
+                $needsAction,
+                $awaitingPayment,
+                $upcomingScheduledCount
+            ),
+            'welcomeSituation' => $this->welcomeSituation(
+                $isNewAdvertiser,
+                $needsAction,
+                $awaitingPayment,
+                $upcomingScheduledCount
+            ),
             'wallet' => $this->safe($user, 'wallet strip', fn () => $this->walletStrip($user), [
                 'spendable' => 0.0,
                 'available' => 0.0,
@@ -116,6 +134,59 @@ class AdvertiserDashboardService
                 'fill_gaps' => true,
             ]), ['has_spend' => false, 'series' => []]),
         ];
+    }
+
+    /**
+     * One home CTA. Needs-you uses AdvertiserOrderStatus via stats['needs_action'].
+     */
+    public function resolvePrimaryAction(
+        bool $isNewAdvertiser,
+        int $needsAction,
+        int $awaitingPayment,
+        int $upcomingScheduled
+    ): string {
+        if ($isNewAdvertiser) {
+            return 'get_started';
+        }
+        if ($needsAction > 0) {
+            return 'needs_action';
+        }
+        if ($awaitingPayment > 0) {
+            return 'awaiting_payment';
+        }
+        if ($upcomingScheduled > 0) {
+            return 'scheduled';
+        }
+
+        return 'catalog';
+    }
+
+    public function welcomeSituation(
+        bool $isNewAdvertiser,
+        int $needsAction,
+        int $awaitingPayment,
+        int $upcomingScheduled
+    ): string {
+        if ($isNewAdvertiser) {
+            return 'browse the catalog to buy placements';
+        }
+        if ($needsAction > 0) {
+            return $needsAction === 1
+                ? '1 order needs your attention'
+                : $needsAction.' orders need your attention';
+        }
+        if ($awaitingPayment > 0) {
+            return $awaitingPayment === 1
+                ? '1 order is awaiting payment'
+                : $awaitingPayment.' orders are awaiting payment';
+        }
+        if ($upcomingScheduled > 0) {
+            return $upcomingScheduled === 1
+                ? '1 publication is scheduled'
+                : $upcomingScheduled.' publications are scheduled';
+        }
+
+        return 'you are caught up';
     }
 
     /**

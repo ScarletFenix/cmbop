@@ -21,6 +21,8 @@
     $needsAction = (int) ($stats['needs_action'] ?? 0);
     $awaitingPayment = (int) ($stats['awaiting_payment'] ?? 0);
     $upcomingScheduledCount = (int) ($upcomingScheduledCount ?? 0);
+    $primaryAction = (string) ($primaryAction ?? 'catalog');
+    $welcomeSituation = (string) ($welcomeSituation ?? '');
     $wallet = $wallet ?? ['spendable' => 0, 'available' => 0, 'bonus' => 0, 'currency' => 'EUR'];
     $budgetStatus = $budgetStatus ?? ['has_budget' => false, 'low_balance' => false];
     $spendSummary = $spendSummary ?? ['net' => 0, 'spent' => 0, 'in_progress' => 0];
@@ -66,6 +68,7 @@
 .next-action:hover { border-color: #cbd5e1; background: rgba(15, 23, 42, 0.04); color: inherit; }
 .next-action .na-title { font-weight: 600; font-size: 14px; }
 .next-action .na-desc { font-size: 12px; color: #6b7280; margin: 0; }
+.next-action.next-action-quiet { background: transparent; border-style: dashed; }
 .order-status {
     display: inline-flex;
     align-items: center;
@@ -246,15 +249,29 @@
         <small class="text-muted">
             @if($isNewAdvertiser)
                 Browse the catalog to buy placements — or use a guided flow if you prefer step-by-step help.
-            @else
-                Your command center — KPIs, next actions, and recent orders.
+            @elseif($welcomeSituation !== '')
+                {{ ucfirst($welcomeSituation) }}.
             @endif
         </small>
     </div>
     @unless($isNewAdvertiser)
-        <a href="{{ $browseCatalogUrl }}" class="dash-primary-cta">
-            <i class="fa fa-store"></i> Browse catalog
-        </a>
+        @if($primaryAction === 'needs_action')
+            <a href="{{ route('advertiser.orders', ['status' => 'needs_action']) }}" class="dash-primary-cta" id="dashPrimaryCta">
+                <i class="fa fa-clipboard-check"></i> Open orders
+            </a>
+        @elseif($primaryAction === 'awaiting_payment')
+            <a href="{{ route('advertiser.orders', ['status' => 'awaiting_payment']) }}" class="dash-primary-cta" id="dashPrimaryCta">
+                <i class="fa fa-credit-card"></i> Complete payment
+            </a>
+        @elseif($primaryAction === 'scheduled')
+            <a href="{{ route('advertiser.scheduled-orders', ['tab' => 'upcoming']) }}" class="dash-primary-cta" id="dashPrimaryCta">
+                <i class="fa fa-calendar"></i> Upcoming scheduled
+            </a>
+        @else
+            <a href="{{ $browseCatalogUrl }}" class="dash-primary-cta" id="dashPrimaryCta">
+                <i class="fa fa-store"></i> Browse catalog
+            </a>
+        @endif
     @endunless
 </div>
 
@@ -324,28 +341,6 @@
 }
 </style>
 <div class="dash-command-surface mb-4 dash-page-end">
-    @if($needsAction > 0)
-        <div class="alert alert-warning d-flex flex-wrap align-items-center justify-content-between gap-2 mx-1 mt-1 mb-3" role="status">
-            <div>
-                <strong>{{ $needsAction }} {{ $needsAction === 1 ? 'order needs' : 'orders need' }} your attention</strong>
-                <span class="d-block small mb-0">Send a revised article if the publisher asked, or approve a live URL so they can finish.</span>
-            </div>
-            <a href="{{ route('advertiser.orders', ['status' => 'needs_action']) }}" class="btn btn-sm btn-warning">
-                Open orders
-            </a>
-        </div>
-    @elseif($awaitingPayment > 0)
-        <div class="alert alert-light border d-flex flex-wrap align-items-center justify-content-between gap-2 mx-1 mt-1 mb-3" role="status">
-            <div>
-                <strong>{{ $awaitingPayment }} {{ $awaitingPayment === 1 ? 'order is' : 'orders are' }} awaiting payment</strong>
-                <span class="d-block small text-muted mb-0">Complete payment to notify the publisher.</span>
-            </div>
-            <a href="{{ route('advertiser.orders', ['status' => 'awaiting_payment']) }}" class="btn btn-sm btn-outline-primary">
-                Open orders
-            </a>
-        </div>
-    @endif
-
     <div class="dash-wallet-strip">
         <div class="dw-item">
             <span class="dw-label">Spendable</span>
@@ -438,92 +433,100 @@
                             </div>
                             <i class="fa fa-chevron-right text-muted" aria-hidden="true"></i>
                         </a>
-                    @endif
-                    @if($awaitingPayment > 0)
-                        <a href="{{ route('advertiser.orders', ['status' => 'awaiting_payment']) }}" class="next-action">
+                        <a href="{{ $browseCatalogUrl }}" class="next-action next-action-quiet">
                             <div>
-                                <div class="na-title">Complete payment</div>
-                                <p class="na-desc">{{ $awaitingPayment }} awaiting payment</p>
-                            </div>
-                            <i class="fa fa-chevron-right text-muted" aria-hidden="true"></i>
-                        </a>
-                    @endif
-                    @if($upcomingScheduledCount > 0)
-                        <a href="{{ route('advertiser.scheduled-orders', ['tab' => 'upcoming']) }}" class="next-action" id="dashUpcomingScheduledAction">
-                            <div>
-                                <div class="na-title">Upcoming scheduled</div>
-                                <p class="na-desc">{{ $upcomingScheduledCount }} {{ $upcomingScheduledCount === 1 ? 'publication' : 'publications' }} waiting — reschedule, publish now, or cancel</p>
-                            </div>
-                            <i class="fa fa-chevron-right text-muted" aria-hidden="true"></i>
-                        </a>
-                    @endif
-                    <a href="{{ $browseCatalogUrl }}" class="next-action">
-                        <div>
-                            <div class="na-title">Browse catalog</div>
-                            <p class="na-desc">
-                                @if($hasOrderableArticle)
-                                    You have an approved article ready — pick a publisher and assign it in cart
-                                @else
-                                    Find publishers and add placements to your cart
-                                @endif
-                            </p>
-                        </div>
-                        <i class="fa fa-chevron-right text-muted" aria-hidden="true"></i>
-                    </a>
-                    @if($hasOrderableArticle)
-                        <a href="{{ route('advertiser.content-library', ['status' => 'approved', 'availability' => 'available']) }}" class="next-action" id="dashOrderableLibraryAction">
-                            <div>
-                                <div class="na-title">Content Library</div>
-                                <p class="na-desc">Review approved articles ready to place</p>
+                                <div class="na-title">Browse catalog</div>
+                                <p class="na-desc">Find more publishers when you are ready</p>
                             </div>
                             <i class="fa fa-chevron-right text-muted" aria-hidden="true"></i>
                         </a>
                     @else
-                        <a href="{{ route('advertiser.content-library', ['upload' => 1]) }}" class="next-action" id="dashUploadLibraryAction">
+                        @if($awaitingPayment > 0)
+                            <a href="{{ route('advertiser.orders', ['status' => 'awaiting_payment']) }}" class="next-action">
+                                <div>
+                                    <div class="na-title">Complete payment</div>
+                                    <p class="na-desc">{{ $awaitingPayment }} awaiting payment</p>
+                                </div>
+                                <i class="fa fa-chevron-right text-muted" aria-hidden="true"></i>
+                            </a>
+                        @endif
+                        @if($upcomingScheduledCount > 0)
+                            <a href="{{ route('advertiser.scheduled-orders', ['tab' => 'upcoming']) }}" class="next-action" id="dashUpcomingScheduledAction">
+                                <div>
+                                    <div class="na-title">Upcoming scheduled</div>
+                                    <p class="na-desc">{{ $upcomingScheduledCount }} {{ $upcomingScheduledCount === 1 ? 'publication' : 'publications' }} waiting — reschedule, publish now, or cancel</p>
+                                </div>
+                                <i class="fa fa-chevron-right text-muted" aria-hidden="true"></i>
+                            </a>
+                        @endif
+                        <a href="{{ $browseCatalogUrl }}" class="next-action">
                             <div>
-                                <div class="na-title">Upload an article</div>
-                                <p class="na-desc">Approve content in your library before checkout</p>
+                                <div class="na-title">Browse catalog</div>
+                                <p class="na-desc">
+                                    @if($hasOrderableArticle)
+                                        You have an approved article ready — pick a publisher and assign it in cart
+                                    @else
+                                        Find publishers and add placements to your cart
+                                    @endif
+                                </p>
+                            </div>
+                            <i class="fa fa-chevron-right text-muted" aria-hidden="true"></i>
+                        </a>
+                        @if($hasOrderableArticle)
+                            <a href="{{ route('advertiser.content-library', ['status' => 'approved', 'availability' => 'available']) }}" class="next-action" id="dashOrderableLibraryAction">
+                                <div>
+                                    <div class="na-title">Content Library</div>
+                                    <p class="na-desc">Review approved articles ready to place</p>
+                                </div>
+                                <i class="fa fa-chevron-right text-muted" aria-hidden="true"></i>
+                            </a>
+                        @else
+                            <a href="{{ route('advertiser.content-library', ['upload' => 1]) }}" class="next-action" id="dashUploadLibraryAction">
+                                <div>
+                                    <div class="na-title">Upload an article</div>
+                                    <p class="na-desc">Approve content in your library before checkout</p>
+                                </div>
+                                <i class="fa fa-chevron-right text-muted" aria-hidden="true"></i>
+                            </a>
+                        @endif
+                        <a href="{{ $guidedFlowUrl }}" class="next-action">
+                            <div>
+                                <div class="na-title">Guided placement</div>
+                                <p class="na-desc">Optional walkthrough: market → publishers → content → pay</p>
+                            </div>
+                            <i class="fa fa-chevron-right text-muted" aria-hidden="true"></i>
+                        </a>
+                        <a href="{{ route('advertiser.orders') }}" class="next-action">
+                            <div>
+                                <div class="na-title">Review orders</div>
+                                <p class="na-desc">{{ $stats['in_progress'] }} in progress right now</p>
+                            </div>
+                            <i class="fa fa-chevron-right text-muted" aria-hidden="true"></i>
+                        </a>
+                        <a href="{{ route('advertiser.add-funds') }}" class="next-action">
+                            <div>
+                                <div class="na-title">Add funds</div>
+                                <p class="na-desc">
+                                    @if(!empty($budgetStatus['low_balance']))
+                                        Spendable is below your alert — top up to keep checkout ready
+                                    @else
+                                        Spendable €{{ number_format((float) ($wallet['spendable'] ?? 0), 2) }}
+                                    @endif
+                                </p>
+                            </div>
+                            <i class="fa fa-chevron-right text-muted" aria-hidden="true"></i>
+                        </a>
+                        <a href="{{ route('advertiser.analytics') }}" class="next-action">
+                            <div>
+                                <div class="na-title">Spending history</div>
+                                <p class="na-desc">
+                                    Net €{{ number_format((float) ($spendSummary['net'] ?? 0), 2) }}
+                                    · in progress €{{ number_format((float) ($spendSummary['in_progress'] ?? 0), 2) }}
+                                </p>
                             </div>
                             <i class="fa fa-chevron-right text-muted" aria-hidden="true"></i>
                         </a>
                     @endif
-                    <a href="{{ $guidedFlowUrl }}" class="next-action">
-                        <div>
-                            <div class="na-title">Guided placement</div>
-                            <p class="na-desc">Optional walkthrough: market → publishers → content → pay</p>
-                        </div>
-                        <i class="fa fa-chevron-right text-muted" aria-hidden="true"></i>
-                    </a>
-                    <a href="{{ route('advertiser.orders') }}" class="next-action">
-                        <div>
-                            <div class="na-title">Review orders</div>
-                            <p class="na-desc">{{ $stats['in_progress'] }} in progress right now</p>
-                        </div>
-                        <i class="fa fa-chevron-right text-muted" aria-hidden="true"></i>
-                    </a>
-                    <a href="{{ route('advertiser.add-funds') }}" class="next-action">
-                        <div>
-                            <div class="na-title">Add funds</div>
-                            <p class="na-desc">
-                                @if(!empty($budgetStatus['low_balance']))
-                                    Spendable is below your alert — top up to keep checkout ready
-                                @else
-                                    Spendable €{{ number_format((float) ($wallet['spendable'] ?? 0), 2) }}
-                                @endif
-                            </p>
-                        </div>
-                        <i class="fa fa-chevron-right text-muted" aria-hidden="true"></i>
-                    </a>
-                    <a href="{{ route('advertiser.analytics') }}" class="next-action">
-                        <div>
-                            <div class="na-title">Spending history</div>
-                            <p class="na-desc">
-                                Net €{{ number_format((float) ($spendSummary['net'] ?? 0), 2) }}
-                                · in progress €{{ number_format((float) ($spendSummary['in_progress'] ?? 0), 2) }}
-                            </p>
-                        </div>
-                        <i class="fa fa-chevron-right text-muted" aria-hidden="true"></i>
-                    </a>
                 </div>
                 @if($recommendedSites->isNotEmpty())
                     <h6 class="mb-2">Recommended</h6>
