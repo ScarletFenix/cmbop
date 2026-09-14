@@ -71,7 +71,8 @@ class PromotionController extends Controller
         try {
             WelcomeBonusSetting::ensureTable();
             WelcomeBonusClaim::ensureTable();
-            $welcomeBonusTableReady = Schema::hasTable('welcome_bonus_settings');
+            $welcomeBonusTableReady = Schema::hasTable('welcome_bonus_settings')
+                && Schema::hasTable('welcome_bonus_claims');
         } catch (\Throwable) {
             $welcomeBonusTableReady = false;
         }

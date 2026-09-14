@@ -9,6 +9,7 @@ use App\Models\EmailNotificationSetting;
 use App\Models\Invoice;
 use App\Models\User;
 use App\Services\Billing\InvoicePdfGenerator;
+use App\Services\Wallet\WelcomeBonusService;
 use App\Support\EmailCatalog;
 use Carbon\Carbon;
 use Illuminate\Bus\Queueable;
@@ -444,6 +445,30 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
         $parts = preg_split('/\s+/', $name) ?: ['there'];
 
         return $parts[0] ?: 'there';
+    }
+
+    /**
+     * Welcome credit this recipient actually holds. Preview stand-ins use the
+     * live grant when it is on; leftover or a missing wallet is €0, not a fake €20.
+     *
+     * @return array{amount: float, euro: string}
+     */
+    protected function mentionableWelcomeCredit(?User $user = null): array
+    {
+        $user = $user ?: $this->recipientUser;
+        try {
+            $bonus = app(WelcomeBonusService::class);
+            $amount = ($user && EmailCatalog::isPreviewUser($user))
+                ? $bonus->advertisedGrantAmount()
+                : $bonus->heldAdvertiserBonus($user);
+            if ($amount <= 0) {
+                return ['amount' => 0.0, 'euro' => ''];
+            }
+
+            return ['amount' => $amount, 'euro' => $bonus->formatEuro($amount)];
+        } catch (\Throwable) {
+            return ['amount' => 0.0, 'euro' => ''];
+        }
     }
 
     /**

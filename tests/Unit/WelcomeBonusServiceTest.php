@@ -2,9 +2,12 @@
 
 namespace Tests\Unit;
 
+use App\Models\Role;
 use App\Models\User;
+use App\Models\Wallet;
 use App\Models\WelcomeBonusClaim;
 use App\Models\WelcomeBonusSetting;
+use Database\Seeders\RolesTableSeeder;
 use App\Services\Wallet\WelcomeBonusService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
@@ -55,6 +58,42 @@ class WelcomeBonusServiceTest extends TestCase
         $this->assertTrue($this->service->isEnabled());
         $this->assertFalse($this->service->canGrant());
         $this->assertSame(0.0, $this->service->amountFor($this->request('10.4.0.8'), 'advertiser'));
+        $this->assertSame(0.0, $this->service->advertisedGrantAmount());
+    }
+
+    public function test_held_advertiser_bonus_is_zero_without_a_wallet_or_leftover_columns(): void
+    {
+        $user = User::factory()->create();
+        $this->assertSame(0.0, $this->service->heldAdvertiserBonus($user));
+        $this->assertSame(0.0, $this->service->heldAdvertiserBonus(null));
+        $this->assertSame('€20', $this->service->formatEuro(20));
+        $this->assertSame('€35.5', $this->service->formatEuro(35.50));
+    }
+
+    public function test_held_advertiser_bonus_reads_wallet_and_refuses_leftover_columns(): void
+    {
+        $this->seed(RolesTableSeeder::class);
+        $role = Role::where('name', 'advertiser')->firstOrFail();
+        $user = User::factory()->create();
+        Wallet::create([
+            'user_id' => $user->id,
+            'role_id' => $role->id,
+            'balance' => 20,
+            'bonus_balance' => 20,
+            'reserved_balance' => 0,
+            'bonus_reserved' => 0,
+            'currency' => 'EUR',
+        ]);
+
+        $this->assertSame(20.0, $this->service->heldAdvertiserBonus($user));
+
+        Schema::table('wallets', function ($table) {
+            if (Schema::hasColumn('wallets', 'bonus_balance')) {
+                $table->dropColumn(['bonus_balance', 'bonus_reserved']);
+            }
+        });
+
+        $this->assertSame(0.0, $this->service->heldAdvertiserBonus($user->fresh()));
     }
 
     public function test_publisher_role_returns_zero(): void

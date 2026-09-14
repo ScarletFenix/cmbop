@@ -258,11 +258,11 @@ class PromotionService
     }
 
     /**
-     * @return array{week:int, total:int, last:?WelcomeBonusClaim}
+     * @return array{week:int, total:int, last:?WelcomeBonusClaim, available:bool}
      */
     public function welcomeBonusClaimStats(): array
     {
-        $empty = ['week' => 0, 'total' => 0, 'last' => null];
+        $empty = ['week' => 0, 'total' => 0, 'last' => null, 'available' => false];
         if (! Schema::hasTable('welcome_bonus_claims')) {
             return $empty;
         }
@@ -275,6 +275,7 @@ class PromotionService
                     ->count(),
                 'total' => (int) WelcomeBonusClaim::query()->count(),
                 'last' => WelcomeBonusClaim::query()->with('user')->latest('id')->first(),
+                'available' => true,
             ];
         } catch (\Throwable $e) {
             Log::warning('Failed to load welcome bonus claim stats', ['error' => $e->getMessage()]);

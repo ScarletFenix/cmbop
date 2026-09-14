@@ -50,7 +50,7 @@
         $welcomeBonusCanGrant = (bool) ($welcomeBonusCanGrant ?? false);
         $welcomeBonusStatusUnknown = (bool) ($welcomeBonusStatusUnknown ?? false);
         $welcomeBonusEuro = '€'.rtrim(rtrim(number_format($welcomeBonusAmount, 2, '.', ''), '0'), '.');
-        $welcomeBonusClaims = $welcomeBonusClaims ?? ['week' => 0, 'total' => 0, 'last' => null];
+        $welcomeBonusClaims = $welcomeBonusClaims ?? ['week' => 0, 'total' => 0, 'last' => null, 'available' => false];
     @endphp
     @if(auth()->user()?->isAdmin())
     <div class="card border-0 shadow-sm mb-4">
@@ -85,14 +85,18 @@
                         @endif
                     </p>
                     <div class="small text-muted">
-                        {{ (int) ($welcomeBonusClaims['week'] ?? 0) }} claims this week
-                        · {{ (int) ($welcomeBonusClaims['total'] ?? 0) }} all-time
-                        @if(!empty($welcomeBonusClaims['last']?->user))
-                            · last
-                            <a href="{{ route('admin.finance.user', $welcomeBonusClaims['last']->user) }}">
-                                {{ scalar_text($welcomeBonusClaims['last']->user->email) }}
-                            </a>
-                            {{ optional($welcomeBonusClaims['last']->created_at)->format('M j') }}
+                        @if(!empty($welcomeBonusClaims['available']))
+                            {{ (int) ($welcomeBonusClaims['week'] ?? 0) }} claims this week
+                            · {{ (int) ($welcomeBonusClaims['total'] ?? 0) }} all-time
+                            @if(!empty($welcomeBonusClaims['last']?->user))
+                                · last
+                                <a href="{{ route('admin.finance.user', $welcomeBonusClaims['last']->user) }}">
+                                    {{ scalar_text($welcomeBonusClaims['last']->user->email) }}
+                                </a>
+                                {{ optional($welcomeBonusClaims['last']->created_at)->format('M j') }}
+                            @endif
+                        @else
+                            Claims unavailable
                         @endif
                     </div>
                 </div>

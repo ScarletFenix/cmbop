@@ -23,6 +23,19 @@
     $card2Title = $t('pricing_card_2_title', 'Growth Package');
     $card3Title = $t('pricing_card_3_title', 'Authority Package');
     $contactUrl = localized_url('contact');
+
+    $welcomeBonusCanGrant = false;
+    $welcomeBonusEuro = '';
+    try {
+        $welcomeBonus = app(\App\Services\Wallet\WelcomeBonusService::class);
+        $welcomeBonusCanGrant = $welcomeBonus->canGrant();
+        if ($welcomeBonusCanGrant) {
+            $welcomeBonusEuro = $welcomeBonus->formatEuro($welcomeBonus->amount());
+        }
+    } catch (\Throwable) {
+        $welcomeBonusCanGrant = false;
+        $welcomeBonusEuro = '';
+    }
 @endphp
 
 <section class="slb-section slb-pricing">
@@ -42,7 +55,9 @@
           {{ $t('pricing_cta_browse', 'Browse after login') }}
         </a>
       </div>
-      <p class="small text-muted mt-3 mb-0">{{ $t('pricing_bonus_note', 'New advertisers get €20 free credit for first orders (not withdrawable).') }}</p>
+      @if($welcomeBonusCanGrant && $welcomeBonusEuro !== '')
+      <p class="small text-muted mt-3 mb-0">{{ str_replace('€20', $welcomeBonusEuro, $t('pricing_bonus_note', 'New advertisers get €20 free credit for first orders (not withdrawable).')) }}</p>
+      @endif
     </div>
 
     <div class="pricing-managed mx-auto mb-4">

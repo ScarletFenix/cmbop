@@ -283,4 +283,42 @@ class AdminWelcomeBonusToggleTest extends TestCase
                 'Welcome bonus amount set to €25.00. Bonus is still disabled — new advertisers will not receive it. Existing bonuses stay.'
             );
     }
+
+    public function test_promotions_hub_does_not_fake_zero_claims_when_stats_leftover(): void
+    {
+        Schema::table('welcome_bonus_claims', function ($table) {
+            $table->dropColumn('created_at');
+        });
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.promotions.index'))
+            ->assertOk()
+            ->assertSee('Claims unavailable', false)
+            ->assertDontSee('0 claims this week', false)
+            ->assertDontSee('Something went wrong');
+    }
+
+    public function test_pricing_hides_bonus_note_when_bonus_cannot_grant(): void
+    {
+        app(WelcomeBonusService::class)->setEnabled(false);
+
+        $this->get('/pricing')
+            ->assertOk()
+            ->assertDontSee('New advertisers get €20 free credit', false)
+            ->assertDontSee('free credit for first orders', false);
+
+        $this->get('/')
+            ->assertOk()
+            ->assertDontSee('New advertisers get €20 free credit', false);
+    }
+
+    public function test_pricing_shows_live_grant_amount(): void
+    {
+        app(WelcomeBonusService::class)->setAmount(35);
+
+        $this->get('/pricing')
+            ->assertOk()
+            ->assertSee('New advertisers get €35 free credit', false)
+            ->assertDontSee('New advertisers get €20 free credit', false);
+    }
 }
