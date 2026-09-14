@@ -442,7 +442,7 @@
                                         <tr class="recent-order-row">
                                             <td class="py-3">
                                                 <a href="{{ $orderFocusUrl }}" class="recent-order-num text-decoration-none stretched-link">#{{ $numericOrder }}</a>
-                                                <div class="recent-order-site">{{ $firstItem->site_name ?? '—' }}</div>
+                                                <div class="recent-order-site">{{ $firstItem?->site_name ?? '—' }}</div>
                                                 @if($canSeeRecentUrl && $recentDisplayHost && $firstItem?->site_id)
                                                     <a href="{{ route('advertiser.catalog.visit', $firstItem->site_id) }}"
                                                        target="_blank" rel="noopener" class="recent-order-url">

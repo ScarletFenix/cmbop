@@ -258,6 +258,31 @@ class AdvertiserDashboardTest extends TestCase
             ->assertDontSee('href="https://dash-site.example"', false);
     }
 
+    public function test_recent_orphan_order_does_not_500(): void
+    {
+        $user = $this->advertiser();
+        Order::create([
+            'user_id' => $user->id,
+            'order_number' => '797026',
+            'reference_code' => '83126',
+            'subtotal' => 103.50,
+            'tax' => 0,
+            'total_amount' => 103.50,
+            'payment_method' => 'card',
+            'payment_status' => 'paid',
+            'status' => 'completed',
+            'paid_at' => now()->subDays(2),
+            'completed_at' => now()->subDay(),
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('advertiser.dashboard'))
+            ->assertOk()
+            ->assertSee('Placement details are missing', false)
+            ->assertSee('Recent orders', false)
+            ->assertDontSee('Something went wrong');
+    }
+
     public function test_dashboard_survives_missing_schedule_columns(): void
     {
         $user = $this->advertiser();
