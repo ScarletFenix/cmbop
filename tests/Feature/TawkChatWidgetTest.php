@@ -34,6 +34,8 @@ class TawkChatWidgetTest extends TestCase
             ->assertOk()
             ->assertSee('https://embed.tawk.to/6aa6a3693d02a53444168308/default', false)
             ->assertSee('Tawk_API', false)
+            ->assertSee('Tawk_API.onLoad', false)
+            ->assertSee('Tawk_API.minimize', false)
             ->assertDontSee('aria-label="Open help and feedback"', false)
             ->assertSee('slbOpenSupport', false)
             ->assertDontSee("helpFeedbackToggle')?.click()", false)
@@ -84,6 +86,9 @@ class TawkChatWidgetTest extends TestCase
             ->assertSee('Tawk_API.visitor', false)
             ->assertSee($advertiser->email, false)
             ->assertSee('slbOpenSupport', false)
+            ->assertSee('Tawk_API.onLoad', false)
+            ->assertSee('Tawk_API.minimize', false)
+            ->assertSee('slbTawkKeepOpen', false)
             ->assertDontSee('aria-label="Open help and feedback"', false);
 
         $publisher = $this->userWithRole('publisher');
@@ -93,6 +98,16 @@ class TawkChatWidgetTest extends TestCase
             ->assertSee('https://embed.tawk.to/6aa6a3693d02a53444168308/default', false)
             ->assertSee('Tawk_API.visitor', false)
             ->assertSee($publisher->email, false)
+            ->assertSee('Tawk_API.onLoad', false)
+            ->assertSee('Tawk_API.minimize', false)
             ->assertDontSee('aria-label="Open help and feedback"', false);
+    }
+
+    public function test_app_shell_keeps_tawk_out_of_the_page_flex_column(): void
+    {
+        $css = (string) file_get_contents(public_path('assets/css/app-shell.css'));
+        $this->assertStringContainsString('iframe[title="chat widget"]', $css);
+        $this->assertStringContainsString('iframe[src*="tawk.to"]', $css);
+        $this->assertStringContainsString('flex: 0 0 auto', $css);
     }
 }

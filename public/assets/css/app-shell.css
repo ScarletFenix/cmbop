@@ -880,3 +880,38 @@ nav[aria-label="Pagination Navigation"] svg {
 .pagination .page-link svg {
   font-size: 0.95rem;
 }
+
+/*
+ * Tawk.to visitor chat. Body is a flex column with overflow-x:clip so
+ * Tawk's position:fixed iframe can attach to the shell instead of the
+ * viewport and paint the pre-chat card over dashboard KPIs / order totals.
+ * Keep the widget a corner overlay, never a flex item.
+ */
+body > iframe[title="chat widget"],
+body > iframe[title="Chat widget"],
+body > iframe[src*="tawk.to"] {
+  position: fixed !important;
+  z-index: var(--shell-z-fab, 1080) !important;
+  flex: 0 0 auto !important;
+  max-width: min(400px, calc(100vw - 24px)) !important;
+  max-height: min(640px, calc(100dvh - 24px)) !important;
+}
+
+body > div:has(> iframe[title="chat widget"]),
+body > div:has(> iframe[title="Chat widget"]),
+body > div:has(> iframe[src*="tawk.to"]) {
+  position: fixed !important;
+  z-index: var(--shell-z-fab, 1080) !important;
+  flex: 0 0 auto !important;
+  align-self: flex-end !important;
+  width: auto !important;
+  height: auto !important;
+  margin: 0 !important;
+  pointer-events: none;
+}
+
+body > div:has(> iframe[title="chat widget"]) iframe,
+body > div:has(> iframe[title="Chat widget"]) iframe,
+body > div:has(> iframe[src*="tawk.to"]) iframe {
+  pointer-events: auto;
+}

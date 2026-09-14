@@ -14,10 +14,24 @@
 @if ($tawkSrc)
 <script>
 var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date();
+Tawk_API.customStyle = {
+  zIndex: 1080,
+  visibility: {
+    desktop: { position: 'br', xOffset: 16, yOffset: 20 },
+    mobile: { position: 'br', xOffset: 10, yOffset: 16 }
+  }
+};
 @if ($tawkVisitor)
 Tawk_API.visitor = {!! json_encode($tawkVisitor, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) !!};
 @endif
+Tawk_API.onLoad = function () {
+  if (window.slbTawkKeepOpen) return;
+  if (window.Tawk_API && typeof window.Tawk_API.minimize === 'function') {
+    window.Tawk_API.minimize();
+  }
+};
 window.slbOpenSupport = function () {
+  window.slbTawkKeepOpen = true;
   function openTawk() {
     if (window.Tawk_API && typeof window.Tawk_API.maximize === 'function') {
       window.Tawk_API.maximize();
