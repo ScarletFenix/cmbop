@@ -141,8 +141,8 @@ class ImageOptimizationService
     public function storeSafePublicImage(UploadedFile $file, string $directory): ?string
     {
         $directory = trim($directory, '/');
-        $ext = strtolower((string) ($file->getClientOriginalExtension() ?: $file->extension() ?: ''));
-        if (! in_array($ext, ['gif', 'jpg', 'jpeg', 'png', 'webp'], true)) {
+        $ext = $this->clientUploadExtension($file);
+        if ($ext !== '' && ! in_array($ext, ['gif', 'jpg', 'png', 'webp'], true)) {
             return null;
         }
 
@@ -385,7 +385,7 @@ class ImageOptimizationService
      */
     public function storeUploadedImageAsWebp(UploadedFile $file, string $directory = 'sites'): ?string
     {
-        $ext = strtolower((string) ($file->getClientOriginalExtension() ?: $file->extension() ?: ''));
+        $ext = $this->clientUploadExtension($file);
         if ($ext === 'gif') {
             return null;
         }
@@ -401,6 +401,29 @@ class ImageOptimizationService
         }
 
         return $this->putConvertedWebp($directory, $file, $webp);
+    }
+
+    /**
+     * Prefer the original filename. guessExtension() uses finfo on PHP tmp
+     * and can throw or return empty under Hostinger open_basedir.
+     */
+    private function clientUploadExtension(UploadedFile $file): string
+    {
+        $ext = strtolower((string) $file->getClientOriginalExtension());
+        if ($ext === 'jpeg') {
+            $ext = 'jpg';
+        }
+        if ($ext !== '') {
+            return $ext;
+        }
+
+        try {
+            $ext = strtolower((string) ($file->extension() ?: ''));
+        } catch (\Throwable) {
+            return '';
+        }
+
+        return $ext === 'jpeg' ? 'jpg' : $ext;
     }
 
     /**

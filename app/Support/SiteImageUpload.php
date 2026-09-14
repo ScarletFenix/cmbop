@@ -125,13 +125,26 @@ final class SiteImageUpload
      */
     public static function fieldRules(bool $hasUploadedFile, bool $required = false): array|string
     {
-        $presence = $required ? 'required' : 'nullable';
-
         if ($hasUploadedFile) {
-            return $presence.'|file|mimes:jpeg,png,jpg,gif,webp|max:'.self::maxKilobytes();
+            return self::uploadedFileRules($required);
         }
 
+        $presence = $required ? 'required' : 'nullable';
+
         return [$presence, 'string', 'max:255', 'regex:'.self::STORED_PATH_REGEX];
+    }
+
+    /**
+     * Validate a live upload without Laravel's `mimes` rule. `mimes` calls
+     * guessExtension() → finfo on PHP's tmp file, which Hostinger open_basedir
+     * often cannot read. Filename extension plus storeSafePublicImage() bytes
+     * are enough.
+     */
+    public static function uploadedFileRules(bool $required = false): string
+    {
+        $presence = $required ? 'required' : 'nullable';
+
+        return $presence.'|file|extensions:jpeg,png,jpg,gif,webp|max:'.self::maxKilobytes();
     }
 
     public static function normalizeStoredPath(mixed $value): ?string

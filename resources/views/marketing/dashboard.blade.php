@@ -273,12 +273,14 @@
                     confirmText: 'Activate',
                     editUrl: staffBase + '/sites/' + encodeURIComponent(id) + '/edit#description',
                 })
-                : window.slbConfirm({
-                    title: 'Activate Site?',
-                    text: 'Make "' + name + '" live in the catalog?',
-                    icon: 'question',
-                    confirmText: 'Activate',
-                });
+                : (typeof window.slbConfirm === 'function')
+                    ? window.slbConfirm({
+                        title: 'Activate Site?',
+                        text: 'Make "' + name + '" live in the catalog?',
+                        icon: 'question',
+                        confirmText: 'Activate',
+                    })
+                    : Promise.resolve(false);
             go.then((ok) => {
                 if (!ok) return;
                 fetch(activateUrl.replace('__ID__', encodeURIComponent(id)), {

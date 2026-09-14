@@ -63,6 +63,14 @@ class SiteImageUploadTest extends TestCase
         $rules = SiteImageUpload::fieldRules(true);
         $this->assertIsString($rules);
         $this->assertStringContainsString('max:10240', $rules);
-        $this->assertStringContainsString('mimes:jpeg,png,jpg,gif,webp', $rules);
+        $this->assertStringContainsString('extensions:jpeg,png,jpg,gif,webp', $rules);
+        $this->assertStringNotContainsString('mimes:', $rules);
+    }
+
+    public function test_uploaded_file_rules_skip_finfo_mimes(): void
+    {
+        $rules = SiteImageUpload::uploadedFileRules(true);
+        $this->assertStringStartsWith('required|file|extensions:', $rules);
+        $this->assertStringNotContainsString('mimes:', $rules);
     }
 }
