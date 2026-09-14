@@ -30,6 +30,7 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  flex: 0 0 auto;
 }
 .slb-tawk-launcher:hover { background: var(--brand-primary-deep, #123f42); }
 .slb-tawk-launcher:focus-visible {
@@ -42,9 +43,10 @@ html:not(.tawk-open) iframe[title="Chat widget"],
 html:not(.tawk-open) iframe[src*="tawk.to"] {
   opacity: 0 !important;
   pointer-events: none !important;
+  visibility: hidden !important;
 }
 </style>
-<button type="button" class="slb-tawk-launcher" id="slbTawkLauncher" aria-label="Open customer support" title="Customer support">
+<button type="button" class="slb-tawk-launcher" id="slbTawkLauncher" aria-label="Open customer support">
   <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true" fill="currentColor">
     <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H5.17L4 17.17V4h16v12z"/>
   </svg>

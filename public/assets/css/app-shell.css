@@ -913,6 +913,7 @@ html:not(.tawk-open) div:has(> iframe[title="Chat widget"]),
 html:not(.tawk-open) div:has(> iframe[src*="tawk.to"]) {
   opacity: 0 !important;
   pointer-events: none !important;
+  visibility: hidden !important;
 }
 
 html.tawk-open iframe[title="chat widget"],
