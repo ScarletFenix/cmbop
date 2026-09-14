@@ -105,6 +105,8 @@ class OrdersStatsStripTest extends TestCase
         $this->assertStringContainsString('id="ordNeedsReview"', $html);
         $this->assertStringContainsString('id="ordInProgress"', $html);
         $this->assertStringContainsString('id="ordCompleted"', $html);
+        $this->assertStringContainsString('Marked complete', $html);
+        $this->assertStringNotContainsString('Approved &amp; live', $html);
         $this->assertStringContainsString('id="ordAwaitingPayment"', $html);
         $this->assertStringContainsString('wallet-kpi', $html);
         $this->assertStringContainsString('AdvertiserOrdersConfig', $html);
@@ -172,6 +174,91 @@ class OrdersStatsStripTest extends TestCase
             ->assertOk()
             ->json('orders');
         $this->assertCount(2, $inProgressList);
+    }
+
+    public function test_needs_review_kpi_counts_only_review_orders_with_a_live_url(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher);
+
+        $this->makeOrder($advertiser, $site, [
+            'status' => 'review',
+            'payment_status' => 'paid',
+        ], [
+            'live_url' => 'https://funnel-kpi.example/ready',
+        ]);
+        $this->makeOrder($advertiser, $site, [
+            'status' => 'review',
+            'payment_status' => 'paid',
+        ]);
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.orders.statistics'))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.needs_review', 1)
+            ->assertJsonPath('data.needs_action', 1);
+
+        $reviewRows = collect($this->actingAs($advertiser)
+            ->getJson(route('advertiser.orders.list', ['status' => 'review']))
+            ->assertOk()
+            ->json('orders'));
+        $this->assertCount(1, $reviewRows);
+        $this->assertNotEmpty($reviewRows->first()['items'][0]['live_url'] ?? null);
+    }
+
+    public function test_reports_orders_payload_is_honest_for_review_and_orphans(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher);
+
+        $this->makeOrder($advertiser, $site, [
+            'order_number' => 'ORD-REP-READY',
+            'status' => 'review',
+            'payment_status' => 'paid',
+        ], [
+            'live_url' => 'https://funnel-kpi.example/ready',
+        ]);
+        $this->makeOrder($advertiser, $site, [
+            'order_number' => 'ORD-REP-WAIT',
+            'status' => 'review',
+            'payment_status' => 'paid',
+        ]);
+        Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => '797026',
+            'reference_code' => '83126',
+            'subtotal' => 103.50,
+            'tax' => 0,
+            'total_amount' => 103.50,
+            'payment_method' => 'card',
+            'payment_status' => 'paid',
+            'status' => 'completed',
+            'paid_at' => now()->subDays(2),
+            'completed_at' => now()->subDay(),
+        ]);
+
+        $rows = collect($this->actingAs($advertiser)
+            ->getJson(route('advertiser.reports.orders'))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->json('orders'))
+            ->keyBy('order_number');
+
+        $this->assertSame('URL delivered · your review', $rows['ORD-REP-READY']['status_label']);
+        $this->assertSame('In review', $rows['ORD-REP-WAIT']['status_label']);
+        $this->assertTrue($rows['797026']['placements_missing']);
+        $this->assertSame('Completed', $rows['797026']['status_label']);
+        $this->assertSame([], $rows['797026']['items']);
+
+        $js = file_get_contents(resource_path('views/advertiser/reports.blade.php'));
+        $this->assertIsString($js);
+        $this->assertStringContainsString('function repOrderStatusBadge', $js);
+        $this->assertStringContainsString('order.status_label', $js);
+        $this->assertStringContainsString('order.placements_missing', $js);
+        $this->assertStringNotContainsString("else if (order.status === 'completed') statusBadge = '<span class=\"badge bg-success\">Completed</span>';", $js);
     }
 
     public function test_reports_page_no_longer_shows_kpi_strip(): void

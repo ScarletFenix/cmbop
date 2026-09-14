@@ -270,12 +270,8 @@ class ContentLibraryPreviewExpiryTest extends TestCase
         $this->assertSame(1, ContentSubmission::query()->where('user_id', $advertiser->id)->count());
     }
 
-    public function test_editor_image_stores_webp_on_public_disk_not_private(): void
+    public function test_editor_image_stores_on_public_disk_not_private(): void
     {
-        if (! ImageOptimizationService::canEncodeWebp()) {
-            $this->markTestSkipped('No WebP encoder (GD, Imagick, or cwebp)');
-        }
-
         $advertiser = $this->advertiser();
         $submission = $this->createApprovedSubmission($advertiser);
         Storage::fake('public');
@@ -299,13 +295,20 @@ class ContentLibraryPreviewExpiryTest extends TestCase
 
         $url = (string) $response->json('url');
         $this->assertStringStartsWith('/storage/content-articles/'.$advertiser->id.'/', $url);
-        $this->assertStringEndsWith('.webp', $url);
         $this->assertSame([], Storage::disk('local')->allFiles());
 
         $relative = ltrim(substr($url, strlen('/storage/')), '/');
         $this->assertTrue(Storage::disk('public')->exists($relative));
         $stored = Storage::disk('public')->get($relative);
-        $this->assertStringStartsWith('RIFF', $stored);
+
+        // WebP conversion needs GD/Imagick/cwebp. This VM has none; keep the original PNG.
+        if (ImageOptimizationService::canEncodeWebp()) {
+            $this->assertStringEndsWith('.webp', $url);
+            $this->assertStringStartsWith('RIFF', $stored);
+        } else {
+            $this->assertStringEndsWith('.png', $url);
+            $this->assertStringStartsWith("\x89PNG", $stored);
+        }
     }
 
     public function test_store_article_image_does_not_write_the_private_docx_disk(): void

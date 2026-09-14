@@ -158,7 +158,9 @@
 </main>
 
 @include('components.footer')
-@include('components.help-feedback-widget')
+@unless(\App\Support\TawkChat::enabled())
+    @include('components.help-feedback-widget')
+@endunless
 
 <!-- Back to Top Button -->
 <button id="backToTop" class="btn btn-primary rounded-circle shadow-lg" aria-label="Back to top">
@@ -190,6 +192,7 @@ $(document).ready(function() {
     });
 });
 </script>
+@include('partials.tawk')
 
 </body>
 </html>

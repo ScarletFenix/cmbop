@@ -317,7 +317,22 @@
                     </div>
 
                     <!-- Payment Details Section -->
-                    <div id="paymentDetailsSection" style="display: none;">
+                    <div id="paymentDetailsSection" style="display: none;" data-invoice-ready="0">
+                        <div id="invoiceReadyBar" class="alert alert-success border mb-3" style="display: none;" role="status">
+                            <div class="fw-semibold mb-1">Invoice ready — transfer this amount with the REF below.</div>
+                            <p class="small mb-2">Status stays <strong>Pending</strong> until we confirm and credit your wallet.</p>
+                            <div class="d-flex flex-wrap gap-2">
+                                <a id="invoiceReadyView" class="btn btn-sm btn-primary" href="#" target="_blank" rel="noopener">
+                                    <i class="fa fa-file-invoice me-1"></i> View / download invoice
+                                </a>
+                                <button type="button" class="btn btn-sm btn-outline-primary" id="invoiceReadyMarkPaid">
+                                    <i class="fa fa-check me-1"></i> I paid
+                                </button>
+                                <button type="button" class="btn btn-sm btn-cta-tertiary" id="invoiceChangeBtn">
+                                    Change amount or method
+                                </button>
+                            </div>
+                        </div>
                         <!-- Wise Payment Details -->
                         <div id="wisePaymentDetails" class="card border-0 shadow-sm mb-4" style="display: none;">
                             <div class="card-body">
@@ -333,7 +348,7 @@
                                 
                                 <div class="alert alert-danger py-2 px-3 mb-3" style="background-color: #fee2e2; border-left: 4px solid #dc2626;">
                                     <i class="fas fa-exclamation-triangle me-1"></i> 
-                                    <strong>Important:</strong> Please include <strong class="ref-code ref-code-display">XXXXXXXX</strong> in your payment note. Payments without this reference cannot be tracked.
+                                    <strong>Important:</strong> Please include <strong class="ref-code ref-code-display">—</strong> in your payment note. Payments without this reference cannot be tracked.
                                 </div>
                                 
                                 <div style="background: #f9fafb; border-radius: 12px; padding: 20px; border: 1px solid #e5e7eb;">
@@ -388,7 +403,7 @@
                                 
                                 <div class="alert alert-danger py-2 px-3 mb-3" style="background-color: #fee2e2; border-left: 4px solid #dc2626;">
                                     <i class="fas fa-exclamation-triangle me-1"></i> 
-                                    <strong>Important:</strong> Please include <strong class="ref-code ref-code-display">XXXXXXXX</strong> in your payment note. Payments without this reference cannot be tracked.
+                                    <strong>Important:</strong> Please include <strong class="ref-code ref-code-display">—</strong> in your payment note. Payments without this reference cannot be tracked.
                                 </div>
                                 
                                 <div style="background: #f9fafb; border-radius: 12px; padding: 20px; border: 1px solid #e5e7eb;">
@@ -426,7 +441,7 @@
                                 
                                 <div class="alert alert-danger py-2 px-3 mb-3" style="background-color: #fee2e2; border-left: 4px solid #dc2626;">
                                     <i class="fas fa-exclamation-triangle me-1"></i> 
-                                    <strong>Important:</strong> Please include <strong class="ref-code ref-code-display">XXXXXXXX</strong> in your payment note. Payments without this reference cannot be tracked.
+                                    <strong>Important:</strong> Please include <strong class="ref-code ref-code-display">—</strong> in your payment note. Payments without this reference cannot be tracked.
                                 </div>
                                 
                                 <div style="background: #f9fafb; border-radius: 12px; padding: 20px; border: 1px solid #e5e7eb;">
@@ -553,16 +568,17 @@
                         <div class="d-flex justify-content-between align-items-center">
                             <span class="small">Reference Code:</span>
                             <div>
-                                <strong id="referenceCode" class="ref-code font-monospace">XXXXXXXX</strong>
-                                <button type="button" class="btn btn-sm btn-link p-0 ms-2 copy-ref-btn" data-target="referenceCode">
+                                <strong id="referenceCode" class="ref-code font-monospace" data-placeholder="true">—</strong>
+                                <button type="button" class="btn btn-sm btn-link p-0 ms-2 copy-ref-btn" data-target="referenceCode" id="copyRefBtn" disabled>
                                     <i class="fas fa-copy"></i>
                                 </button>
                             </div>
                         </div>
                     </div>
-                    <div class="alert alert-warning py-2 px-3 mb-3">
+                    <div class="alert alert-warning py-2 px-3 mb-3" id="refHintBox">
                         <i class="fas fa-exclamation-triangle me-1"></i>
-                        <small>Include <strong id="refCodeDisplay" class="ref-code">XXXXXXXX</strong> in manual payment notes. Card and PayPal payments record the reference automatically.</small>
+                        <small id="refHintPending">Your transfer reference is created with the invoice. Card and PayPal record it automatically.</small>
+                        <small id="refHintReady" class="d-none">Include <strong id="refCodeDisplay" class="ref-code">—</strong> in the payment note. Card and PayPal record the reference automatically.</small>
                     </div>
                     <button type="button" id="proceedBtn" class="btn btn-primary w-100 mt-2 py-2">
                         <i class="fa fa-arrow-right me-2"></i> Get invoice &amp; pay

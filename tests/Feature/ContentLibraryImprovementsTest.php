@@ -21,11 +21,13 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
+use Tests\Support\CreatesBlogUploads;
 use Tests\Support\CreatesContentSubmissions;
 use Tests\TestCase;
 
 class ContentLibraryImprovementsTest extends TestCase
 {
+    use CreatesBlogUploads;
     use CreatesContentSubmissions;
     use RefreshDatabase;
 
@@ -2361,7 +2363,8 @@ class ContentLibraryImprovementsTest extends TestCase
         Storage::fake('public');
         $advertiser = $this->advertiser();
         $submission = $this->createApprovedSubmission($advertiser);
-        $file = UploadedFile::fake()->image('figure.png', 40, 40);
+        // fake()->image() needs GD; this VM (and some Hostinger images) do not have it.
+        $file = $this->fakeBlogUpload('figure.png', 40, 40);
 
         $response = $this->actingAs($advertiser)
             ->postJson(route('advertiser.content-submissions.editor-image'), [
@@ -2382,7 +2385,7 @@ class ContentLibraryImprovementsTest extends TestCase
         Storage::fake('public');
         $advertiser = $this->advertiser();
         $submission = $this->createApprovedSubmission($advertiser);
-        $file = UploadedFile::fake()->image('figure.png', 40, 40);
+        $file = $this->fakeBlogUpload('figure.png', 40, 40);
 
         $this->actingAs($advertiser)
             ->postJson(route('advertiser.content-submissions.editor-image'), [

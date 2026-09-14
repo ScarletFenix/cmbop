@@ -123,6 +123,26 @@ class DepositRequest extends Model
     }
 
     /**
+     * Six-digit unique REF for a new invoice. Never accept a client-supplied code.
+     */
+    public static function generateUniqueReferenceCode(): string
+    {
+        for ($i = 0; $i < 24; $i++) {
+            $code = str_pad((string) random_int(1, 999999), 6, '0', STR_PAD_LEFT);
+
+            try {
+                if (! static::query()->where('reference_code', $code)->exists()) {
+                    return $code;
+                }
+            } catch (\Throwable) {
+                return $code;
+            }
+        }
+
+        return str_pad((string) random_int(1, 999999), 6, '0', STR_PAD_LEFT);
+    }
+
+    /**
      * Latest completed/approved wallet top-up rail for this advertiser, or null.
      *
      * @return 'card'|'paypal'|'bank'|'wise'|'crypto'|null

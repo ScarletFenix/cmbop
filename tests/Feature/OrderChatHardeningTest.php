@@ -311,6 +311,36 @@ class OrderChatHardeningTest extends TestCase
             ->assertJsonPath('order_details.content_link', 'https://example.com/article.docx');
     }
 
+    public function test_completed_chat_without_line_items_does_not_claim_a_placement(): void
+    {
+        $advertiser = $this->advertiser();
+        $orphan = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => '797026',
+            'reference_code' => '83126',
+            'subtotal' => 103.50,
+            'tax' => 0,
+            'total_amount' => 103.50,
+            'payment_method' => 'card',
+            'payment_status' => 'paid',
+            'status' => 'completed',
+            'paid_at' => now()->subDays(2),
+            'completed_at' => now()->subDay(),
+        ]);
+
+        $payload = $this->actingAs($advertiser)
+            ->getJson(route('chat.messages', $orphan->id))
+            ->assertOk()
+            ->assertJsonPath('can_send', true)
+            ->assertJsonPath('composer_note', 'This order is completed. You can still message support about it.')
+            ->json();
+
+        $this->assertStringNotContainsString(
+            'paid for this placement',
+            (string) data_get($payload, 'order_details.next_action')
+        );
+    }
+
     public function test_order_chat_details_strip_javascript_live_url_and_block_approve(): void
     {
         $advertiser = $this->advertiser();

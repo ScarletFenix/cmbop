@@ -41,7 +41,7 @@
                 <span>
                     <span class="kpi-label">Completed</span>
                     <span class="kpi-value" id="ordCompleted">0</span>
-                    <span class="kpi-desc">Approved &amp; live</span>
+                    <span class="kpi-desc">Marked complete</span>
                 </span>
             </button>
         </div>

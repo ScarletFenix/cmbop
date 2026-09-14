@@ -39,10 +39,7 @@ class AdvertiserOrderStatus
         return $query
             ->where(function ($q) {
                 $q->where(function ($reviewReady) {
-                    $reviewReady->where('status', 'review')
-                        ->whereHas('items', function ($iq) {
-                            $iq->whereNotNull('live_url')->where('live_url', '!=', '');
-                        });
+                    static::constrainReviewReady($reviewReady);
                 });
 
                 if (Schema::hasColumn('order_items', 'content_revision_requested')) {
@@ -89,13 +86,39 @@ class AdvertiserOrderStatus
             ))";
         }
 
+        $reviewReadySql = static::liveUrlExistsSql();
+
         $query->orderByRaw(
             "CASE
                 WHEN orders.status IN ('completed', 'cancelled') THEN 2
-                WHEN (orders.status = 'review'{$revisionClause}) THEN 0
+                WHEN ((orders.status = 'review' AND {$reviewReadySql}){$revisionClause}) THEN 0
                 ELSE 1
             END"
         );
+    }
+
+    /**
+     * Advertiser “Needs review” / Live URL ready: status=review and at least one live URL.
+     *
+     * @param  Builder<Order>  $query
+     * @return Builder<Order>
+     */
+    public static function constrainReviewReady(Builder $query): Builder
+    {
+        return $query->where('status', 'review')
+            ->whereHas('items', function ($items) {
+                $items->whereNotNull('live_url')->where('live_url', '!=', '');
+            });
+    }
+
+    public static function liveUrlExistsSql(string $orderIdColumn = 'orders.id'): string
+    {
+        return "EXISTS (
+            SELECT 1 FROM order_items
+            WHERE order_items.order_id = {$orderIdColumn}
+              AND order_items.live_url IS NOT NULL
+              AND order_items.live_url != ''
+        )";
     }
 
     /**
@@ -243,12 +266,12 @@ class AdvertiserOrderStatus
 
         if ($status === 'review') {
             return [
-                'label' => 'URL delivered · your review',
+                'label' => $hasLiveUrl ? 'URL delivered · your review' : 'In review',
                 'next' => $hasLiveUrl
                     ? 'Check the live URL, then approve or request changes.'
                     : 'Waiting for live URL.',
                 'cls' => 'status-review',
-                'stage' => 'url_delivered',
+                'stage' => $hasLiveUrl ? 'url_delivered' : 'review',
                 'auto_approve_hint' => $autoHint,
             ];
         }
@@ -295,21 +318,24 @@ class AdvertiserOrderStatus
             $item = $item ?? null;
         }
         $status = (string) $order->status;
+        $hasItems = $order->items->isNotEmpty();
+        $hasLiveUrl = $order->items->contains(fn ($line) => filled($line->live_url));
         $paid = in_array($order->payment_status, ['paid', 'completed', 'refunded'], true)
             || in_array($status, ['processing', 'review', 'completed'], true);
-        $acceptedOrLater = in_array($status, ['processing', 'review', 'completed'], true)
-            || ($item && ! empty($item->accepted_at));
-        $urlDelivered = $status === 'review' || $status === 'completed'
-            || ($item && filled($item->live_url) && in_array($status, ['review', 'completed'], true));
+        $acceptedOrLater = $hasItems && (
+            in_array($status, ['processing', 'review', 'completed'], true)
+            || ($item && ! empty($item->accepted_at))
+        );
+        $urlDelivered = $hasLiveUrl && in_array($status, ['review', 'completed'], true);
         $completed = $status === 'completed';
         $modRequested = $item && (($item->modification_requested ?? 'no') === 'yes');
 
         $steps = [
             ['label' => 'Paid', 'done' => $paid, 'current' => false],
             ['label' => 'Accepted', 'done' => $acceptedOrLater, 'current' => false],
-            ['label' => 'Processing', 'done' => $urlDelivered || $completed, 'current' => false],
-            ['label' => 'URL delivered', 'done' => $completed, 'current' => false],
-            ['label' => 'Completed', 'done' => $completed, 'current' => false],
+            ['label' => 'Processing', 'done' => $hasItems && in_array($status, ['review', 'completed'], true), 'current' => false],
+            ['label' => 'URL delivered', 'done' => $urlDelivered, 'current' => false],
+            ['label' => 'Completed', 'done' => $completed && $hasItems, 'current' => false],
         ];
 
         if ($status === 'cancelled') {
@@ -331,11 +357,15 @@ class AdvertiserOrderStatus
             $steps[3]['done'] = false;
         } elseif ($status === 'processing') {
             $steps[2]['current'] = true;
-        } elseif ($status === 'review') {
+        } elseif ($status === 'review' && $hasLiveUrl) {
             $steps[3]['current'] = true;
             $steps[3]['done'] = false;
+        } elseif ($status === 'review') {
+            $steps[2]['current'] = true;
+            $steps[2]['done'] = false;
         } elseif ($status === 'completed') {
             $steps[4]['current'] = true;
+            $steps[4]['done'] = $hasItems;
         }
 
         return $steps;

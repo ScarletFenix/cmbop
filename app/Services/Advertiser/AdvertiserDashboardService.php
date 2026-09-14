@@ -150,7 +150,13 @@ class AdvertiserDashboardService
     {
         $base = Order::query()->where('user_id', $userId);
 
-        $needsReview = (clone $base)->where('status', 'review')->count();
+        $needsReview = AdvertiserOrderStatus::constrainReviewReady(clone $base)->count();
+        $reviewWaitingUrl = (clone $base)
+            ->where('status', 'review')
+            ->whereDoesntHave('items', function ($items) {
+                $items->whereNotNull('live_url')->where('live_url', '!=', '');
+            })
+            ->count();
         $needsAction = AdvertiserOrderStatus::needsActionCountForUser($userId);
 
         $inProgress = (clone $base)
@@ -178,7 +184,7 @@ class AdvertiserDashboardService
             ->count();
 
         return [
-            'total' => $completed + $inProgress + $needsReview + $upcomingScheduled,
+            'total' => $completed + $inProgress + $needsReview + $reviewWaitingUrl + $upcomingScheduled,
             'completed' => $completed,
             'in_progress' => $inProgress,
             'cancelled' => $cancelled,
@@ -193,7 +199,20 @@ class AdvertiserDashboardService
         return Order::query()
             ->where('user_id', $userId)
             ->with(['items' => function ($q) {
-                $q->select('id', 'order_id', 'site_id', 'site_name', 'site_url');
+                $cols = [
+                    'id',
+                    'order_id',
+                    'site_id',
+                    'site_name',
+                    'site_url',
+                    'live_url',
+                    'accepted_at',
+                    'modification_requested',
+                ];
+                if (Schema::hasColumn('order_items', 'content_revision_requested')) {
+                    $cols[] = 'content_revision_requested';
+                }
+                $q->select($cols);
             }, 'items.site'])
             ->latest()
             ->take(5)
