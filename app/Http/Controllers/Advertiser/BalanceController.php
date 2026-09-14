@@ -77,7 +77,13 @@ class BalanceController extends Controller
             }
 
             if (! empty($row['invoice_id'])) {
-                $invoice = Invoice::where('user_id', auth()->id())->find($row['invoice_id']);
+                try {
+                    $invoice = Invoice::tableAvailable()
+                        ? Invoice::where('user_id', auth()->id())->find($row['invoice_id'])
+                        : null;
+                } catch (\Throwable) {
+                    $invoice = null;
+                }
                 if ($invoice) {
                     $row['invoice_download_url'] = route('advertiser.billing.download', $invoice);
                     $row['invoice_view_url'] = route('advertiser.billing.show', $invoice);

@@ -97,12 +97,35 @@ class AddFundsController extends Controller
         if ($wallet) {
             try {
                 $summary = $this->overview->summary($user->id, $wallet);
-                $analytics = $this->overview->analytics($user->id, 'month');
             } catch (\Throwable $e) {
-                Log::warning('Add Funds wallet overview failed', [
+                Log::warning('Add Funds wallet summary failed', [
                     'user_id' => $user->id,
                     'error' => $e->getMessage(),
                 ]);
+            }
+            try {
+                $analytics = $this->overview->analytics($user->id, 'month');
+            } catch (\Throwable $e) {
+                Log::warning('Add Funds wallet analytics failed', [
+                    'user_id' => $user->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
+            if ($summary === []) {
+                $reserved = round((float) $wallet->reserved_balance, 2);
+                $pendingDeposits = (float) $pendingRequests->sum('amount');
+                $summary = [
+                    'spendable_balance' => round((float) $wallet->balance, 2),
+                    'available_balance' => $wallet->withdrawableBalance(),
+                    'bonus_balance' => $wallet->lockedBonusBalance(),
+                    'reserved_balance' => $reserved,
+                    'pending_deposits' => $pendingDeposits,
+                    'pending_balance' => round($reserved + $pendingDeposits, 2),
+                    'bonus_reserved' => round((float) $wallet->bonus_reserved, 2),
+                    'bonus_remaining' => $wallet->lockedBonusBalance(),
+                    'currency' => $wallet->currency ?? 'EUR',
+                ];
             }
         }
 
