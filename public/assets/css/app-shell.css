@@ -886,9 +886,8 @@ nav[aria-label="Pagination Navigation"] svg {
  * leftover top/left on the iframe paints the pre-chat card over dashboard
  * KPIs / order totals. Pin the iframe and its immediate wrapper only —
  * a descendant :has(iframe) would match #app and pin the whole page.
- * Closed state hides Tawk's iframe (clipped "Customer Support" text is not
- * an icon). .slb-tawk-launcher is the visible chat bubble; html.tawk-open
- * reveals the full panel after the user opens it.
+ * Do not hide or replace Tawk's own bubble; html.tawk-open only caps the
+ * maximized panel so leftover dimensions cannot cover the page.
  */
 iframe[title="chat widget"],
 iframe[title="Chat widget"],
@@ -903,17 +902,6 @@ iframe[src*="tawk.to"] {
   align-self: flex-end !important;
   margin: 0 !important;
   transform: none !important;
-}
-
-html:not(.tawk-open) iframe[title="chat widget"],
-html:not(.tawk-open) iframe[title="Chat widget"],
-html:not(.tawk-open) iframe[src*="tawk.to"],
-html:not(.tawk-open) div:has(> iframe[title="chat widget"]),
-html:not(.tawk-open) div:has(> iframe[title="Chat widget"]),
-html:not(.tawk-open) div:has(> iframe[src*="tawk.to"]) {
-  opacity: 0 !important;
-  pointer-events: none !important;
-  visibility: hidden !important;
 }
 
 html.tawk-open iframe[title="chat widget"],
@@ -938,34 +926,4 @@ div:has(> iframe[src*="tawk.to"]) {
   height: auto !important;
   margin: 0 !important;
   transform: none !important;
-}
-
-.slb-tawk-launcher {
-  position: fixed;
-  right: 16px;
-  bottom: 20px;
-  z-index: var(--shell-z-fab, 1080);
-  width: 56px;
-  height: 56px;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: var(--brand-primary, #1a585e);
-  color: #fff;
-  box-shadow: 0 10px 24px rgba(26, 88, 94, 0.28);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  flex: 0 0 auto;
-}
-.slb-tawk-launcher:hover {
-  background: var(--brand-primary-deep, #123f42);
-}
-.slb-tawk-launcher:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px var(--bs-focus-ring-color, rgba(58, 174, 178, 0.4)), 0 10px 24px rgba(11, 98, 102, 0.28);
-}
-html.tawk-open .slb-tawk-launcher {
-  display: none;
 }

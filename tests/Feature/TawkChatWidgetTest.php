@@ -38,9 +38,8 @@ class TawkChatWidgetTest extends TestCase
             ->assertSee('Tawk_API.minimize', false)
             ->assertSee('slbPinTawk', false)
             ->assertSee("classList.toggle('tawk-open'", false)
-            ->assertSee('slb-tawk-launcher', false)
-            ->assertSee('aria-label="Open customer support"', false)
-            ->assertDontSee('title="Customer support"', false)
+            ->assertDontSee('slb-tawk-launcher', false)
+            ->assertDontSee('aria-label="Open customer support"', false)
             ->assertSee("setProperty('top', 'auto', 'important')", false)
             ->assertSee("removeProperty('max-width')", false)
             ->assertSee('slbTawkKeepOpen = false', false)
@@ -98,8 +97,8 @@ class TawkChatWidgetTest extends TestCase
             ->assertSee('Tawk_API.minimize', false)
             ->assertSee('slbTawkKeepOpen', false)
             ->assertSee('slbPinTawk', false)
-            ->assertSee('slb-tawk-launcher', false)
-            ->assertSee('aria-label="Open customer support"', false)
+            ->assertDontSee('slb-tawk-launcher', false)
+            ->assertDontSee('aria-label="Open customer support"', false)
             ->assertDontSee('aria-label="Open help and feedback"', false);
 
         $publisher = $this->userWithRole('publisher');
@@ -112,7 +111,7 @@ class TawkChatWidgetTest extends TestCase
             ->assertSee('Tawk_API.onLoad', false)
             ->assertSee('Tawk_API.minimize', false)
             ->assertSee('slbPinTawk', false)
-            ->assertSee('slb-tawk-launcher', false)
+            ->assertDontSee('slb-tawk-launcher', false)
             ->assertDontSee('aria-label="Open help and feedback"', false);
     }
 
@@ -126,10 +125,8 @@ class TawkChatWidgetTest extends TestCase
         $this->assertStringContainsString('left: auto !important', $css);
         $this->assertStringContainsString('right: 16px !important', $css);
         $this->assertStringContainsString('bottom: 20px !important', $css);
-        $this->assertStringContainsString('.slb-tawk-launcher', $css);
-        $this->assertStringNotContainsString('body:has(.slb-tawk-launcher) #main-content', $css);
-        $this->assertStringContainsString('html:not(.tawk-open) iframe[title="chat widget"]', $css);
-        $this->assertStringContainsString('visibility: hidden', $css);
+        $this->assertStringNotContainsString('.slb-tawk-launcher', $css);
+        $this->assertStringNotContainsString('html:not(.tawk-open) iframe[title="chat widget"]', $css);
         $this->assertStringContainsString('html.tawk-open iframe[title="chat widget"]', $css);
         $this->assertStringContainsString('div:has(> iframe[title="chat widget"])', $css);
         $this->assertStringNotContainsString('div:has( iframe[src*="tawk.to"])', $css);
