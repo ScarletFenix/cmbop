@@ -119,6 +119,11 @@ class ChatPresenceTest extends TestCase
         $this->assertArrayNotHasKey('last_seen_at', $hidden->toArray());
         $this->assertNotNull($hidden->presencePayload()['last_seen_at']);
 
+        $junk = User::factory()->make();
+        $junk->setRawAttributes(array_merge($junk->getAttributes(), ['last_seen_at' => 'not-a-date']));
+        $this->assertFalse($junk->isOnline());
+        $this->assertNull($junk->lastSeenLabel());
+
         Carbon::setTestNow();
     }
 
@@ -262,6 +267,8 @@ class ChatPresenceTest extends TestCase
         $this->assertStringContainsString('chat-presence__text', $html);
         $this->assertStringContainsString('OrderChat.prototype.renderPresence', $js);
         $this->assertStringContainsString('order_details.counterpart', $js);
+        $this->assertStringContainsString('order_details.order_number', $js);
+        $this->assertStringContainsString('chatOrderNumber', $js);
         $this->assertStringContainsString('.chat-presence.is-online', $css);
         $this->assertStringContainsString('pointer-events: none', $css);
         $this->assertStringContainsString('flex: 1', $css);

@@ -175,6 +175,10 @@
         }
 
         self.currentUserId = data.current_user_id;
+        if (data.order_details && data.order_details.order_number) {
+          var numEl = document.getElementById('chatOrderNumber');
+          if (numEl) numEl.innerText = data.order_details.order_number;
+        }
         self.applyComposerState(data.can_send !== false, data.composer_note || (data.order_details && data.order_details.composer_note));
 
         if (typeof self.config.renderOrderDetails === 'function') {

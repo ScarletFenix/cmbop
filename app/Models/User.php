@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Models\Concerns\ToleratesUnparseableDates;
 use App\Notifications\VerifyEmail;
+use Carbon\CarbonInterface;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -97,11 +98,12 @@ class User extends Authenticatable implements MustVerifyEmail
      */
     public function isOnline(): bool
     {
-        if ($this->last_seen_at === null) {
+        $seen = $this->last_seen_at;
+        if (! $seen instanceof CarbonInterface) {
             return false;
         }
 
-        return $this->last_seen_at->gte(now()->subSeconds(self::ONLINE_WINDOW_SECONDS));
+        return $seen->gte(now()->subSeconds(self::ONLINE_WINDOW_SECONDS));
     }
 
     /**
@@ -109,7 +111,8 @@ class User extends Authenticatable implements MustVerifyEmail
      */
     public function lastSeenLabel(): ?string
     {
-        if ($this->last_seen_at === null) {
+        $seen = $this->last_seen_at;
+        if (! $seen instanceof CarbonInterface) {
             return null;
         }
 
@@ -117,18 +120,18 @@ class User extends Authenticatable implements MustVerifyEmail
             return 'Online';
         }
 
-        $seconds = (int) $this->last_seen_at->diffInSeconds(now());
+        $seconds = (int) abs($seen->diffInSeconds(now()));
         if ($seconds < 3600) {
             return 'Last seen '.max(1, (int) floor($seconds / 60)).'m ago';
         }
         if ($seconds < 86400) {
             return 'Last seen '.(int) floor($seconds / 3600).'h ago';
         }
-        if ($this->last_seen_at->isYesterday()) {
+        if ($seen->isYesterday()) {
             return 'Last seen yesterday';
         }
 
-        return 'Last seen '.$this->last_seen_at->format('M j');
+        return 'Last seen '.$seen->format('M j');
     }
 
     /**
@@ -152,8 +155,9 @@ class User extends Authenticatable implements MustVerifyEmail
             if (! $this->lastSeenColumnReady()) {
                 return;
             }
-            if ($this->last_seen_at !== null
-                && $this->last_seen_at->gt(now()->subSeconds(self::LAST_SEEN_THROTTLE_SECONDS))) {
+            $seen = $this->last_seen_at;
+            if ($seen instanceof CarbonInterface
+                && $seen->gt(now()->subSeconds(self::LAST_SEEN_THROTTLE_SECONDS))) {
                 return;
             }
 
