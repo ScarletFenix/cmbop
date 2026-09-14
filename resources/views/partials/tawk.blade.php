@@ -27,6 +27,7 @@ Tawk_API.visitor = {!! json_encode($tawkVisitor, JSON_UNESCAPED_SLASHES | JSON_U
 (function () {
   var pinning = false;
   var observer = null;
+  var bootCollapse = true;
   var tawkIframes = 'iframe[title="chat widget"], iframe[title="Chat widget"], iframe[src*="tawk.to"]';
 
   function pinBox(el) {
@@ -41,6 +42,10 @@ Tawk_API.visitor = {!! json_encode($tawkVisitor, JSON_UNESCAPED_SLASHES | JSON_U
     el.style.setProperty('z-index', '1080', 'important');
     el.style.setProperty('flex', '0 0 auto', 'important');
     el.style.setProperty('align-self', 'flex-end', 'important');
+  }
+
+  function setOpen(open) {
+    document.documentElement.classList.toggle('tawk-open', !!open);
   }
 
   function watchTawk() {
@@ -61,10 +66,11 @@ Tawk_API.visitor = {!! json_encode($tawkVisitor, JSON_UNESCAPED_SLASHES | JSON_U
     pinning = true;
     if (observer) observer.disconnect();
     try {
+      var open = document.documentElement.classList.contains('tawk-open');
       document.querySelectorAll(tawkIframes).forEach(function (iframe) {
         pinBox(iframe);
-        iframe.style.setProperty('max-width', 'min(400px, calc(100vw - 24px))', 'important');
-        iframe.style.setProperty('max-height', 'min(640px, calc(100dvh - 24px))', 'important');
+        iframe.style.setProperty('max-width', open ? 'min(400px, calc(100vw - 24px))' : '80px', 'important');
+        iframe.style.setProperty('max-height', open ? 'min(640px, calc(100dvh - 24px))' : '80px', 'important');
         var wrap = iframe.parentElement;
         if (wrap && wrap !== document.body && wrap !== document.documentElement) {
           pinBox(wrap);
@@ -80,6 +86,7 @@ Tawk_API.visitor = {!! json_encode($tawkVisitor, JSON_UNESCAPED_SLASHES | JSON_U
 
   function collapseUnlessRequested() {
     if (window.slbTawkKeepOpen) return;
+    setOpen(false);
     if (window.Tawk_API && typeof window.Tawk_API.minimize === 'function') {
       window.Tawk_API.minimize();
     }
@@ -94,16 +101,28 @@ Tawk_API.visitor = {!! json_encode($tawkVisitor, JSON_UNESCAPED_SLASHES | JSON_U
 
   Tawk_API.onLoad = function () {
     collapseUnlessRequested();
-    [400, 1200, 2500].forEach(function (ms) {
-      setTimeout(collapseUnlessRequested, ms);
-    });
+    setTimeout(collapseUnlessRequested, 400);
+    setTimeout(function () {
+      collapseUnlessRequested();
+      bootCollapse = false;
+    }, 1500);
+  };
+  Tawk_API.onChatMaximized = function () {
+    if (bootCollapse && !window.slbTawkKeepOpen) {
+      collapseUnlessRequested();
+      return;
+    }
+    setOpen(true);
+    window.slbPinTawk();
   };
   Tawk_API.onChatMinimized = function () {
+    if (!window.slbTawkKeepOpen) setOpen(false);
     window.slbPinTawk();
   };
 })();
 window.slbOpenSupport = function () {
   window.slbTawkKeepOpen = true;
+  document.documentElement.classList.add('tawk-open');
   function openTawk() {
     if (window.Tawk_API && typeof window.Tawk_API.maximize === 'function') {
       window.Tawk_API.maximize();

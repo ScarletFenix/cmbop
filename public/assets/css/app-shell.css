@@ -886,7 +886,8 @@ nav[aria-label="Pagination Navigation"] svg {
  * leftover top/left on the iframe paints the pre-chat card over dashboard
  * KPIs / order totals. Pin the iframe and its immediate wrapper only —
  * a descendant :has(iframe) would match #app and pin the whole page.
- * Tawk also writes inline top/left !important; slbPinTawk() overrides that.
+ * Default size is a corner bubble so a leftover maximized card cannot
+ * cover KPIs; html.tawk-open allows the full panel after the user opens it.
  */
 iframe[title="chat widget"],
 iframe[title="Chat widget"],
@@ -901,6 +902,13 @@ iframe[src*="tawk.to"] {
   align-self: flex-end !important;
   margin: 0 !important;
   transform: none !important;
+  max-width: 80px !important;
+  max-height: 80px !important;
+}
+
+html.tawk-open iframe[title="chat widget"],
+html.tawk-open iframe[title="Chat widget"],
+html.tawk-open iframe[src*="tawk.to"] {
   max-width: min(400px, calc(100vw - 24px)) !important;
   max-height: min(640px, calc(100dvh - 24px)) !important;
 }

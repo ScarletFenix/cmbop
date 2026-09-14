@@ -37,6 +37,7 @@ class TawkChatWidgetTest extends TestCase
             ->assertSee('Tawk_API.onLoad', false)
             ->assertSee('Tawk_API.minimize', false)
             ->assertSee('slbPinTawk', false)
+            ->assertSee("classList.toggle('tawk-open'", false)
             ->assertSee("setProperty('top', 'auto', 'important')", false)
             ->assertDontSee('aria-label="Open help and feedback"', false)
             ->assertSee('slbOpenSupport', false)
@@ -117,6 +118,8 @@ class TawkChatWidgetTest extends TestCase
         $this->assertStringContainsString('left: auto !important', $css);
         $this->assertStringContainsString('right: 16px !important', $css);
         $this->assertStringContainsString('bottom: 20px !important', $css);
+        $this->assertStringContainsString('max-width: 80px !important', $css);
+        $this->assertStringContainsString('html.tawk-open iframe[title="chat widget"]', $css);
         $this->assertStringContainsString('div:has(> iframe[title="chat widget"])', $css);
         $this->assertStringNotContainsString('div:has( iframe[src*="tawk.to"])', $css);
     }
