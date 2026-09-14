@@ -37,12 +37,12 @@
     @forelse($sites as $site)
         @php
             $isComplete = $site->hasDetailsComplete();
-            $open = (int) session('complete_site_id') === (int) $site->id || $errors->any() && (int) old('_site_id') === (int) $site->id;
-            $siteNiches = collect($site->categories ?? [])
-                ->map(fn ($v) => trim((string) $v))
+            $useOld = (int) old('_site_id') === (int) $site->id;
+            $siteNiches = collect($site->nicheBadgeLabels())
                 ->filter(fn ($v) => $v !== '' && strtolower($v) !== 'pending')
                 ->values()
                 ->all();
+            $bulkDescDefault = \App\Support\SiteDescriptionRules::textareaValue((string) $site->description);
         @endphp
         <div class="card border-0 shadow-sm mb-3" id="site-{{ $site->id }}">
             <div class="card-body">
@@ -82,13 +82,13 @@
                     <div class="col-md-6">
                         <label class="form-label">Example article URL *</label>
                         <input type="url" name="exampleUrl" class="form-control" required
-                               value="{{ old_text('exampleUrl', $site->example_url) }}" placeholder="https://…/sample-post">
+                               value="{{ $useOld ? old_text('exampleUrl', $site->example_url) : $site->example_url }}" placeholder="https://…/sample-post">
                     </div>
                     <div class="col-md-3">
                         <label class="form-label">Turnaround *</label>
                         <select name="turnaround_time" class="form-select" required>
                             @foreach(['24h'=>'24 Hours','48h'=>'48 Hours','3days'=>'3 Days','5days'=>'5 Days','7days'=>'7 Days'] as $val => $label)
-                                <option value="{{ $val }}" @selected(old('turnaround_time', $site->turnaround_time) === $val)>{{ $label }}</option>
+                                <option value="{{ $val }}" @selected(($useOld ? old('turnaround_time', $site->turnaround_time) : $site->turnaround_time) === $val)>{{ $label }}</option>
                             @endforeach
                         </select>
                     </div>
@@ -96,15 +96,15 @@
                         <label class="form-label">Publication *</label>
                         <select name="publicationTime" class="form-select" required>
                             @foreach(['6months'=>'6 Months','1year'=>'1 Year','permanent'=>'Permanent'] as $val => $label)
-                                <option value="{{ $val }}" @selected(old('publicationTime', $site->publication_time) === $val)>{{ $label }}</option>
+                                <option value="{{ $val }}" @selected(($useOld ? old('publicationTime', $site->publication_time) : $site->publication_time) === $val)>{{ $label }}</option>
                             @endforeach
                         </select>
                     </div>
                     <div class="col-md-4">
                         <label class="form-label">Link type *</label>
                         <select name="link_type" class="form-select" required>
-                            <option value="dofollow" @selected(old('link_type', $site->link_type) === 'dofollow')>DoFollow</option>
-                            <option value="nofollow" @selected(old('link_type', $site->link_type) === 'nofollow')>NoFollow</option>
+                            <option value="dofollow" @selected(($useOld ? old('link_type', $site->link_type) : $site->link_type) === 'dofollow')>DoFollow</option>
+                            <option value="nofollow" @selected(($useOld ? old('link_type', $site->link_type) : $site->link_type) === 'nofollow')>NoFollow</option>
                         </select>
                     </div>
                     <div class="col-md-4">
@@ -114,15 +114,14 @@
                         @endphp
                         <select name="site_tag" class="form-select">
                             @foreach(\App\Support\SiteTag::staffFormOptions() as $value => $label)
-                                <option value="{{ $value }}" @selected(old('site_tag', $defaultTag) === $value)>{{ $label }}</option>
+                                <option value="{{ $value }}" @selected(($useOld ? old('site_tag', $defaultTag) : $defaultTag) === $value)>{{ $label }}</option>
                             @endforeach
                         </select>
                     </div>
                     <div class="col-12">
                         <label class="form-label" for="siteDescription-{{ $site->id }}">Site description *</label>
                         @php
-                            $bulkDescDefault = str_starts_with((string) $site->description, 'Please replace') ? '' : $site->description;
-                            $bulkDescValue = old_text('siteDescription', $bulkDescDefault);
+                            $bulkDescValue = $useOld ? old_text('siteDescription', $bulkDescDefault) : $bulkDescDefault;
                         @endphp
                         <textarea name="siteDescription"
                                   id="siteDescription-{{ $site->id }}"
@@ -167,7 +166,13 @@
 <script>
 (function () {
     function plain(text) {
-        return String(text || '').replace(/\s+/g, ' ').trim();
+        let t = String(text || '').replace(/<[^>]+>/g, ' ');
+        t = t.replace(/&nbsp;/gi, ' ')
+            .replace(/&amp;/gi, '&')
+            .replace(/&lt;/gi, '<')
+            .replace(/&gt;/gi, '>')
+            .replace(/&quot;/gi, '"');
+        return t.replace(/\s+/g, ' ').trim();
     }
     function words(text) {
         const t = plain(text);

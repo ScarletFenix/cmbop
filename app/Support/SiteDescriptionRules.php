@@ -53,6 +53,50 @@ class SiteDescriptionRules
     }
 
     /**
+     * Readable copy for a plain textarea. Staff Quill stores list/paragraph HTML;
+     * list items and paragraphs become newlines so tags are not shown as text.
+     */
+    public static function forTextarea(string $html): string
+    {
+        if (trim($html) === '') {
+            return '';
+        }
+
+        $html = str_replace(["\r\n", "\r"], "\n", $html);
+        $html = preg_replace('/<br\s*\/?>/iu', "\n", $html) ?? $html;
+        $html = preg_replace('/<\/(p|div|h[1-6]|li|tr|blockquote)>/iu', "\n", $html) ?? $html;
+        $html = preg_replace('/<(p|div|h[1-6]|ul|ol|tr|blockquote)\b[^>]*>/iu', "\n", $html) ?? $html;
+
+        $text = html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $text = str_replace("\xC2\xA0", ' ', $text);
+        $text = preg_replace("/[ \t]+\n/u", "\n", $text) ?? $text;
+        $text = preg_replace("/\n[ \t]+/u", "\n", $text) ?? $text;
+        $text = preg_replace("/[ \t]{2,}/u", ' ', $text) ?? $text;
+        $text = preg_replace("/\n{3,}/u", "\n\n", $text) ?? $text;
+
+        return trim($text);
+    }
+
+    public static function isPlaceholder(?string $html): bool
+    {
+        $plain = self::plainText((string) $html);
+
+        return $plain === '' || str_starts_with($plain, 'Please replace');
+    }
+
+    /**
+     * Prefill for publisher complete-details: blank placeholders, else textarea copy.
+     */
+    public static function textareaValue(?string $html): string
+    {
+        if (self::isPlaceholder($html)) {
+            return '';
+        }
+
+        return self::forTextarea((string) $html);
+    }
+
+    /**
      * Quill Snow posts <p><br></p> (or similar) when the editor is empty.
      * Treat that as no description so staff saves are not blocked by min:50
      * on the raw HTML wrapper. Non-strings stay with the validator.

@@ -708,6 +708,114 @@ class BulkSiteGuidedWorkflowTest extends TestCase
         $this->assertStringNotContainsString('js/multi-select.js', $html);
     }
 
+    public function test_bulk_complete_shows_staff_html_description_as_plain_text(): void
+    {
+        $bulk = BulkSiteRequest::create([
+            'publisher_id' => $this->publisher->id,
+            'status' => BulkSiteRequest::STATUS_AWAITING_PUBLISHER,
+            'estimated_count' => 1,
+            'seeded_at' => now(),
+        ]);
+        $site = $this->makeAwaitingBulkSite($bulk, 'https://grazer-html.example', 'grazer.at');
+        $site->update([
+            'description' => '<ul><li>A regional digital magazine dedicated to the city of Graz, covering local news, culture, events, and urban lifestyle.</li><li>Connects residents and visitors with stories about their city, from politics to entertainment.</li></ul>',
+        ]);
+
+        $html = $this->actingAs($this->publisher)
+            ->get(route('publisher.bulk-sites.complete'))
+            ->assertOk()
+            ->getContent();
+
+        $value = $this->textareaValue($html, $site->id);
+        $this->assertStringNotContainsString('<ul>', $value);
+        $this->assertStringNotContainsString('<li>', $value);
+        $this->assertStringContainsString('A regional digital magazine dedicated to the city of Graz', $value);
+        $this->assertStringContainsString('Connects residents and visitors with stories about their city', $value);
+    }
+
+    public function test_bulk_complete_old_input_does_not_overwrite_other_site_fields(): void
+    {
+        $bulk = BulkSiteRequest::create([
+            'publisher_id' => $this->publisher->id,
+            'status' => BulkSiteRequest::STATUS_AWAITING_PUBLISHER,
+            'estimated_count' => 2,
+            'seeded_at' => now(),
+        ]);
+        $first = $this->makeAwaitingBulkSite($bulk, 'https://bleed-one.example', 'Bleed One');
+        $second = $this->makeAwaitingBulkSite($bulk, 'https://bleed-two.example', 'Bleed Two');
+        $second->update([
+            'example_url' => 'https://bleed-two.example/sample-article',
+            'description' => 'Second site already has a unique editorial description for advertisers here.',
+        ]);
+
+        $this->actingAs($this->publisher)
+            ->from(route('publisher.bulk-sites.complete'))
+            ->post(route('publisher.bulk-sites.complete.store', $first->id), [
+                'exampleUrl' => 'https://bleed-one.example/poisoned',
+                'turnaround_time' => '48h',
+                'publicationTime' => '1year',
+                'link_type' => 'nofollow',
+                'site_tag' => 'as_you_prefer',
+                'siteDescription' => 'Too short',
+                '_site_id' => (string) $first->id,
+            ])
+            ->assertRedirect(route('publisher.bulk-sites.complete'))
+            ->assertSessionHasErrors('siteDescription');
+
+        $page = $this->actingAs($this->publisher)
+            ->get(route('publisher.bulk-sites.complete'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('https://bleed-one.example/poisoned', $page);
+        $this->assertStringContainsString('https://bleed-two.example/sample-article', $page);
+        $this->assertSame('Too short', $this->textareaValue($page, $first->id));
+        $this->assertSame(
+            'Second site already has a unique editorial description for advertisers here.',
+            $this->textareaValue($page, $second->id)
+        );
+    }
+
+    public function test_bulk_review_does_not_show_raw_html_description_tags(): void
+    {
+        $bulk = BulkSiteRequest::create([
+            'publisher_id' => $this->publisher->id,
+            'status' => BulkSiteRequest::STATUS_AWAITING_PUBLISHER,
+            'estimated_count' => 1,
+            'seeded_at' => now(),
+        ]);
+        $site = $this->makeAwaitingBulkSite($bulk, 'https://review-html.example', 'Review Html');
+        $site->update([
+            'onboarding_status' => Site::ONBOARDING_DETAILS_COMPLETE,
+            'description' => '<ul><li>Visible listing copy about the audience and guest posts on this site.</li></ul>',
+        ]);
+
+        $html = $this->actingAs($this->publisher)
+            ->get(route('publisher.bulk-sites.review'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Visible listing copy about the audience and guest posts on this site.', $html);
+        $this->assertStringNotContainsString(
+            '<ul><li>Visible listing copy about the audience and guest posts on this site.</li></ul>',
+            $html
+        );
+    }
+
+    private function textareaValue(string $html, int $siteId): string
+    {
+        $this->assertTrue(
+            (bool) preg_match(
+                '/id="siteDescription-'.$siteId.'"[^>]*>(.*?)<\/textarea>/s',
+                $html,
+                $m
+            ),
+            'Missing site description textarea for site '.$siteId
+        );
+
+        return html_entity_decode(trim($m[1]), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    }
+
     private function makeAwaitingBulkSite(BulkSiteRequest $bulk, string $url, string $name): Site
     {
         $category = Category::query()->where('name', 'Business & Finance')->first()

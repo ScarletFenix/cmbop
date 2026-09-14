@@ -95,4 +95,27 @@ class SiteDescriptionRulesTest extends TestCase
         $this->assertStringNotContainsString('<', $excerpt);
         $this->assertStringStartsWith('Hello world', $excerpt);
     }
+
+    public function test_for_textarea_turns_list_html_into_lines(): void
+    {
+        $html = '<ul><li>A regional digital magazine dedicated to the city of Graz.</li><li>Connects residents and visitors with stories about their city.</li></ul>';
+        $text = SiteDescriptionRules::forTextarea($html);
+
+        $this->assertStringNotContainsString('<', $text);
+        $this->assertStringContainsString("A regional digital magazine dedicated to the city of Graz.\nConnects residents and visitors with stories about their city.", $text);
+    }
+
+    public function test_textarea_value_blanks_placeholder_even_when_wrapped_in_html(): void
+    {
+        $this->assertTrue(SiteDescriptionRules::isPlaceholder(
+            '<p>Please replace this placeholder with a real site description (at least 50 characters) before submitting for review.</p>'
+        ));
+        $this->assertSame('', SiteDescriptionRules::textareaValue(
+            '<p>Please replace this placeholder with a real site description (at least 50 characters) before submitting for review.</p>'
+        ));
+        $this->assertSame(
+            'A real editorial description for advertisers on this listing.',
+            SiteDescriptionRules::textareaValue('<p>A real editorial description for advertisers on this listing.</p>')
+        );
+    }
 }
