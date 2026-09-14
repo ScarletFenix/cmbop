@@ -86,9 +86,23 @@ return [
     /*
     | Public Tawk.to visitor chat (not order chat). Empty TAWK_PROPERTY_ID
     | turns the widget off. IDs appear in the page source once embedded.
+    | Ignored while services.support_chat.enabled is true.
     */
     'tawk' => [
         'property_id' => trim((string) env('TAWK_PROPERTY_ID', '6aa6a3693d02a53444168308')),
         'widget_id' => trim((string) env('TAWK_WIDGET_ID', 'default')),
+    ],
+
+    /*
+    | First-party visitor support chat. Keys stay server-side; the browser
+    | only posts to /support/chat. provider: local | http | openai
+    */
+    'support_chat' => [
+        'enabled' => filter_var(env('SUPPORT_CHAT_ENABLED', true), FILTER_VALIDATE_BOOLEAN),
+        'provider' => strtolower(trim((string) env('SUPPORT_CHAT_PROVIDER', 'local'))),
+        'endpoint' => trim((string) env('SUPPORT_CHAT_ENDPOINT', '')),
+        'api_key' => trim((string) env('SUPPORT_CHAT_API_KEY', '')),
+        'model' => trim((string) env('SUPPORT_CHAT_MODEL', 'gpt-4o-mini')),
+        'timeout' => max(3, (int) env('SUPPORT_CHAT_TIMEOUT', 12)),
     ],
 ];

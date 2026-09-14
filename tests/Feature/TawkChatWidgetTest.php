@@ -26,6 +26,7 @@ class TawkChatWidgetTest extends TestCase
     public function test_public_home_embeds_tawk_and_hides_help_fab_when_configured(): void
     {
         config([
+            'services.support_chat.enabled' => false,
             'services.tawk.property_id' => '6aa6a3693d02a53444168308',
             'services.tawk.widget_id' => 'default',
         ]);
@@ -43,6 +44,7 @@ class TawkChatWidgetTest extends TestCase
     public function test_public_home_keeps_help_fab_when_tawk_is_off(): void
     {
         config([
+            'services.support_chat.enabled' => false,
             'services.tawk.property_id' => '',
             'services.tawk.widget_id' => '',
         ]);
@@ -72,6 +74,7 @@ class TawkChatWidgetTest extends TestCase
     public function test_advertiser_and_publisher_dashboards_embed_tawk_when_configured(): void
     {
         config([
+            'services.support_chat.enabled' => false,
             'services.tawk.property_id' => '6aa6a3693d02a53444168308',
             'services.tawk.widget_id' => 'default',
         ]);

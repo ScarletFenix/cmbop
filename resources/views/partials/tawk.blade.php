@@ -1,4 +1,10 @@
 {{-- Visitor chat (public + advertiser/publisher). Order chat is separate. --}}
+@if (\App\Support\VisitorSupportChat::enabled())
+    @include('partials.visitor-support-chat')
+@php
+    $tawkSrc = null;
+@endphp
+@else
 @php
     $tawkSrc = \App\Support\TawkChat::embedSrc();
     $tawkVisitor = null;
@@ -55,4 +61,5 @@ window.slbOpenSupport = function () {
   if (toggle) toggle.click();
 };
 </script>
+@endif
 @endif

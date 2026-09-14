@@ -68,8 +68,8 @@ use App\Http\Controllers\NewsletterController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\NotificationPreferenceController;
 use App\Http\Controllers\ProfileController;
-// BlogController for public blog pages
 use App\Http\Controllers\PromotionTrackController;
+// BlogController for public blog pages
 use App\Http\Controllers\PublicMediaController;
 use App\Http\Controllers\Publisher\BalanceController;
 use App\Http\Controllers\Publisher\BillingController as PublisherBillingController;
@@ -84,6 +84,7 @@ use App\Http\Controllers\Publisher\SiteVerificationController;
 use App\Http\Controllers\Publisher\WithdrawalController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SitemapController;
+use App\Http\Controllers\VisitorSupportChatController;
 use App\Http\Middleware\RedirectMarketingFromAdmin;
 use App\Http\Middleware\RoleMiddleware;
 use App\Models\Site;
@@ -317,6 +318,9 @@ Route::get('/announcements/{announcement}/click', AnnouncementClickController::c
 Route::post('/promotions/track', PromotionTrackController::class)
     ->middleware('throttle:30,1')
     ->name('promotions.track');
+Route::post('/support/chat', [VisitorSupportChatController::class, 'store'])
+    ->middleware('throttle:20,1')
+    ->name('support.chat');
 
 // External cron fallback for hosts without a real scheduler. This completes orders
 // and releases publisher payouts, so it stays closed unless a strong secret is set
