@@ -49,6 +49,7 @@ class User extends Authenticatable implements MustVerifyEmail
      * - payout_* (PayoutProfileService)
      * - catalog_reveal_exempt* (CatalogActivityController)
      * - last_seen_at (RecordUserLastSeen)
+     * - suspended_at / suspended_reason / suspended_by (Admin\UserController)
      */
 
     /**
@@ -87,6 +88,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'catalog_copy_after_id' => 'integer',
         'catalog_hide_until' => 'datetime',
         'last_seen_at' => 'datetime',
+        'suspended_at' => 'datetime',
     ];
 
     public const ONLINE_WINDOW_SECONDS = 120;
@@ -440,6 +442,32 @@ class User extends Authenticatable implements MustVerifyEmail
     public function isAdmin(): bool
     {
         return $this->isActiveRole('admin');
+    }
+
+    /**
+     * Staff profile in the admin panel (360 view).
+     */
+    public function adminShowUrl(): string
+    {
+        return route('admin.users.show', $this);
+    }
+
+    public function isSuspended(): bool
+    {
+        if (! static::hasUsersColumn('suspended_at')) {
+            return false;
+        }
+
+        try {
+            return $this->suspended_at !== null;
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    public function adminNotes()
+    {
+        return $this->hasMany(UserAdminNote::class)->latest('id');
     }
 
     public function isMarketing(): bool

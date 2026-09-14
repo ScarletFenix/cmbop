@@ -6,6 +6,7 @@ return [
         'invalid' => 'Invalid email or password.',
         'throttled' => 'Too many login attempts. Please try again later.',
         'unverified' => 'Your email is not verified.',
+        'suspended' => 'This account has been suspended. Contact support if you think this is a mistake.',
         'success' => 'Login successful!',
     ],
 

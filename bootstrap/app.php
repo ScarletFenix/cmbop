@@ -2,6 +2,7 @@
 
 // bootstrap/app.php
 
+use App\Http\Middleware\BlockSuspendedUsers;
 use App\Http\Middleware\CanonicalHost;
 use App\Http\Middleware\DrainQueuedMail;
 use App\Http\Middleware\HealHostingerProduction;
@@ -64,6 +65,9 @@ return Application::configure(basePath: dirname(__DIR__))
         }
         if ($loadAppClass('app/Http/Middleware/SecurityHeaders.php')) {
             $webAppend[] = SecurityHeaders::class;
+        }
+        if ($loadAppClass('app/Http/Middleware/BlockSuspendedUsers.php')) {
+            $webAppend[] = BlockSuspendedUsers::class;
         }
         if ($loadAppClass('app/Http/Middleware/RecordUserLastSeen.php')) {
             $webAppend[] = RecordUserLastSeen::class;

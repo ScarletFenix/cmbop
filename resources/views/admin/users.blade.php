@@ -1,6 +1,14 @@
 @extends('admin.layouts.app')
 
 @section('content')
+@php
+    $filters = $filters ?? ['q' => '', 'role' => '', 'status' => '', 'sort' => 'newest', 'user' => 0];
+    $hasActiveFilters = ($filters['q'] ?? '') !== ''
+        || ($filters['role'] ?? '') !== ''
+        || ($filters['status'] ?? '') !== ''
+        || (($filters['sort'] ?? 'newest') !== 'newest')
+        || ((int) ($filters['user'] ?? 0) > 0);
+@endphp
 <div class="container-fluid">
 
     <h1 class="h3 mb-4">User Management</h1>
@@ -8,6 +16,7 @@
         Regular users get <strong>Advertiser</strong> + <strong>Publisher</strong> at registration.
         Only <strong>admins</strong> can grant or revoke <strong>Marketing</strong> (max {{ $maxMarketing ?? 5 }} people).
         Admin is limited to {{ $adminCount ?? 0 }}/{{ \App\Http\Controllers\Admin\UserController::MAX_ADMINS }} accounts and is not assignable here.
+        Search and filters run on the server across every page.
     </p>
     <div class="d-flex flex-wrap gap-2 mb-3">
         <span class="badge text-bg-light border px-3 py-2" id="marketingSeatsBadge">
@@ -23,13 +32,58 @@
 
 
 <!-- SEARCH -->
-<div class="mb-3 d-flex flex-wrap align-items-center gap-2" style="max-width: 520px;">
-    <div class="flex-grow-1" style="max-width: 400px;">
-        <x-slb-search-field name="user_search" id="userSearch" placeholder="Search users (name, email, company…)" input-class="form-control" mode="" />
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-body">
+        <form method="GET" action="{{ route('admin.users.index') }}" class="row g-3 align-items-end">
+            <div class="col-md-4">
+                <x-slb-search-field
+                    name="q"
+                    id="userSearch"
+                    :value="$filters['q'] ?? ''"
+                    placeholder="Search name, email, company, phone, ID…"
+                    input-class="form-control"
+                    mode="form"
+                />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label fw-semibold small text-muted mb-1" for="userRoleFilter">Role</label>
+                <select name="role" id="userRoleFilter" class="form-select">
+                    <option value="">All roles</option>
+                    <option value="advertiser" @selected(($filters['role'] ?? '') === 'advertiser')>Advertiser</option>
+                    <option value="publisher" @selected(($filters['role'] ?? '') === 'publisher')>Publisher</option>
+                    <option value="marketing" @selected(($filters['role'] ?? '') === 'marketing')>Marketing</option>
+                    <option value="admin" @selected(($filters['role'] ?? '') === 'admin')>Admin</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label fw-semibold small text-muted mb-1" for="userStatusFilter">Status</label>
+                <select name="status" id="userStatusFilter" class="form-select">
+                    <option value="">All statuses</option>
+                    <option value="active" @selected(($filters['status'] ?? '') === 'active')>Active</option>
+                    <option value="suspended" @selected(($filters['status'] ?? '') === 'suspended')>Suspended</option>
+                    <option value="verified" @selected(($filters['status'] ?? '') === 'verified')>Verified</option>
+                    <option value="unverified" @selected(($filters['status'] ?? '') === 'unverified')>Unverified</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label fw-semibold small text-muted mb-1" for="userSortFilter">Sort</label>
+                <select name="sort" id="userSortFilter" class="form-select">
+                    <option value="newest" @selected(($filters['sort'] ?? 'newest') === 'newest')>Newest</option>
+                    <option value="oldest" @selected(($filters['sort'] ?? '') === 'oldest')>Oldest</option>
+                    <option value="name" @selected(($filters['sort'] ?? '') === 'name')>Name</option>
+                    <option value="last_seen" @selected(($filters['sort'] ?? '') === 'last_seen')>Last activity</option>
+                </select>
+            </div>
+            <div class="col-md-auto d-flex gap-2">
+                <button type="submit" class="btn btn-primary">
+                    <i class="fa fa-search me-1"></i> Filter
+                </button>
+                @if($hasActiveFilters)
+                    <a href="{{ route('admin.users.index') }}" class="btn btn-outline-secondary">Clear filters</a>
+                @endif
+            </div>
+        </form>
     </div>
-    @if(request()->integer('user') > 0)
-        <a href="{{ route('admin.users.index') }}" class="btn btn-sm btn-outline-secondary">All users</a>
-    @endif
 </div>
 
 <div class="table-responsive admin-table-fit">
@@ -44,6 +98,7 @@
             <th class="admin-narrow-col">Country</th>
             <th class="admin-col-start">Role</th>
             <th class="admin-narrow-col">Joined</th>
+            <th class="admin-narrow-col">Last activity</th>
             <th class="admin-actions-col">Actions</th>
         </tr>
     </thead>
@@ -58,10 +113,11 @@
         $paidOrdersTotal = (float) ($user->paid_orders_total ?? 0);
         $isRepeatBuyer = $paidOrdersCount > 1;
         $isHighSpender = $paidOrdersTotal >= 1000;
+        $isSuspended = $user->isSuspended();
         $isHighlighted = $isRepeatBuyer || $isHighSpender;
     @endphp
 
-    <tr class="main-row {{ $isHighlighted ? 'user-highlight-row' : '' }}" id="user-{{ $user->id }}" data-id="{{ $user->id }}"
+    <tr class="main-row {{ $isHighlighted ? 'user-highlight-row' : '' }}{{ $isSuspended ? ' user-suspended-row' : '' }}" id="user-{{ $user->id }}" data-id="{{ $user->id }}"
         data-name="{{ $user->name }}"
         data-roles="{{ implode(',', $userRoleNames) }}"
         data-active-role="{{ $activeRoleName }}"
@@ -75,7 +131,12 @@
         </td>
         <td class="admin-col-identity">
             <div class="user-name-cell">
-                <span>{{ $user->name }}</span>
+                <a href="{{ $user->adminShowUrl() }}" class="link-dark text-decoration-none">{{ $user->name }}</a>
+                @if($isSuspended)
+                    <span class="badge text-bg-danger">Suspended</span>
+                @elseif(! $user->hasVerifiedEmail())
+                    <span class="badge text-bg-warning text-dark">Unverified</span>
+                @endif
                 @if($isRepeatBuyer || $isHighSpender)
                     <div class="d-flex flex-wrap gap-1">
                         @if($isRepeatBuyer)
@@ -109,6 +170,9 @@
             </div>
         </td>
         <td>{{ $user->created_at ? $user->created_at->format('d M Y') : '-' }}</td>
+        <td class="admin-narrow-col">
+            <span class="small {{ $user->isOnline() ? 'text-success' : 'text-muted' }}">{{ $user->lastSeenLabel() ?: '—' }}</span>
+        </td>
 
         <td>
             <div class="dropdown admin-manage-dropdown">
@@ -117,6 +181,11 @@
                     Manage
                 </button>
                 <ul class="dropdown-menu dropdown-menu-end">
+                    <li>
+                        <a class="dropdown-item" href="{{ $user->adminShowUrl() }}">
+                            <i class="fa fa-id-card me-2"></i>Profile
+                        </a>
+                    </li>
                     <li>
                         <button type="button" class="dropdown-item action-view" data-id="{{ $user->id }}">
                             <i class="fa fa-eye me-2"></i><span class="btn-text">View</span>
@@ -143,7 +212,7 @@
     </tr>
 
 <tr class="expand-row" id="expand-{{ $user->id }}">
-    <td colspan="8">
+    <td colspan="9">
         <div class="expand-box">
 
             <div class="row text-start">
@@ -259,6 +328,32 @@
                 </div>
 
                 <div class="detail-line">
+                    <strong>Last activity:</strong> {{ $user->lastSeenLabel() ?: 'Never recorded' }}
+                </div>
+
+                <div class="detail-line">
+                    <strong>Email:</strong>
+                    @if($user->hasVerifiedEmail())
+                        <span class="badge text-bg-success">Verified</span>
+                    @else
+                        <span class="badge text-bg-warning text-dark">Unverified</span>
+                    @endif
+                </div>
+
+                <div class="detail-line">
+                    <strong>Account:</strong>
+                    @if($user->isSuspended())
+                        <span class="badge text-bg-danger">Suspended</span>
+                        @if($user->suspended_reason)
+                            <span class="text-muted small">{{ $user->suspended_reason }}</span>
+                        @endif
+                    @else
+                        <span class="badge text-bg-success">Active</span>
+                    @endif
+                    <a href="{{ $user->adminShowUrl() }}" class="btn btn-sm btn-link p-0 ms-2">Open profile</a>
+                </div>
+
+                <div class="detail-line">
                     <strong>Last Updated:</strong> {{ $user->updated_at ? $user->updated_at->format('d M Y, h:i A') : '-' }}
                 </div>
             </div>
@@ -269,7 +364,7 @@
 
     @empty
     <tr>
-        <td colspan="8" class="text-center text-muted">
+        <td colspan="9" class="text-center text-muted">
             No users found.
         </td>
     </tr>
@@ -633,45 +728,7 @@ function updateRoleBadges(id, roles, activeRole){
     }).join(' ');
 }
 
-// SEARCH (Catalog-parity live search)
-(function initAdminUsersLiveSearch() {
-    function filterUsers(query) {
-        var value = String(query || '').toLowerCase();
-        document.querySelectorAll('tbody tr.main-row').forEach(function (row) {
-            var text = row.innerText.toLowerCase();
-            var id = row.dataset.id;
-            var expandRow = document.getElementById('expand-' + id);
-            if (text.includes(value)) {
-                row.style.display = '';
-                if (expandRow) expandRow.style.display = '';
-            } else {
-                row.style.display = 'none';
-                if (expandRow) expandRow.style.display = 'none';
-            }
-        });
-    }
-
-    function boot() {
-        if (typeof window.SlbLiveSearch !== 'undefined') {
-            window.SlbLiveSearch.init(document.getElementById('userSearch'), {
-                mode: 'client',
-                statusEl: document.getElementById('userSearchStatus'),
-                clearBtn: document.getElementById('userSearchClear'),
-                onSearch: function (detail) { filterUsers(detail.query); },
-            });
-            return;
-        }
-        document.getElementById('userSearch').addEventListener('keyup', function () {
-            filterUsers(this.value);
-        });
-    }
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', boot);
-    } else {
-        boot();
-    }
-})();
+// SEARCH is server-side (form GET via SlbLiveSearch mode=form)
 
 // Deep-link from Orders / finance: /admin/users?user={id}#user-{id}
 (function openUserFromHash() {

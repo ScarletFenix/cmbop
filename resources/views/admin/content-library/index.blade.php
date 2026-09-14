@@ -62,7 +62,7 @@
     @if($filterUser)
         <div class="alert alert-light border py-2 px-3 small mb-3 d-flex flex-wrap align-items-center gap-2">
             <span>Advertiser filter:</span>
-            <a href="{{ route('admin.users.index', ['user' => $filterUser->id]) }}#user-{{ $filterUser->id }}">
+            <a href="{{ $filterUser->adminShowUrl() }}">
                 {{ $filterUser->name ?: 'User #'.$filterUser->id }}
             </a>
             <span class="text-muted">{{ $filterUser->email }}</span>

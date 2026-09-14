@@ -68,7 +68,7 @@
                                 <td>
                                     <div>
                                         @if($item->user_id)
-                                            <a href="{{ route('admin.users.index', ['user' => $item->user_id]) }}#user-{{ $item->user_id }}">{{ $item->name ?: ($item->user?->name ?? 'User #'.$item->user_id) }}</a>
+                                            <a href="{{ route('admin.users.show', $item->user_id) }}">{{ $item->name ?: ($item->user?->name ?? 'User #'.$item->user_id) }}</a>
                                         @else
                                             {{ $item->name ?: '—' }}
                                         @endif
@@ -129,7 +129,7 @@
                                 <td>
                                     <div>
                                         @if($item->user_id)
-                                            <a href="{{ route('admin.users.index', ['user' => $item->user_id]) }}#user-{{ $item->user_id }}">{{ $item->name ?: ($item->user?->name ?? 'User #'.$item->user_id) }}</a>
+                                            <a href="{{ route('admin.users.show', $item->user_id) }}">{{ $item->name ?: ($item->user?->name ?? 'User #'.$item->user_id) }}</a>
                                         @else
                                             {{ $item->name ?: '—' }}
                                         @endif
@@ -200,7 +200,7 @@
                                 <td>
                                     <div>
                                         @if($item->user_id)
-                                            <a href="{{ route('admin.users.index', ['user' => $item->user_id]) }}#user-{{ $item->user_id }}">{{ $item->user?->name ?? 'User #'.$item->user_id }}</a>
+                                            <a href="{{ route('admin.users.show', $item->user_id) }}">{{ $item->user?->name ?? 'User #'.$item->user_id }}</a>
                                         @else
                                             —
                                         @endif
@@ -273,7 +273,7 @@
                                 <td>
                                     <div>
                                         @if($item->claimer_id)
-                                            <a href="{{ route('admin.users.index', ['user' => $item->claimer_id]) }}#user-{{ $item->claimer_id }}">{{ $item->claimer?->name ?? 'User #'.$item->claimer_id }}</a>
+                                            <a href="{{ route('admin.users.show', $item->claimer_id) }}">{{ $item->claimer?->name ?? 'User #'.$item->claimer_id }}</a>
                                         @else
                                             —
                                         @endif
@@ -283,7 +283,7 @@
                                 <td>
                                     <div>
                                         @if($item->site?->publisher_id)
-                                            <a href="{{ route('admin.users.index', ['user' => $item->site->publisher_id]) }}#user-{{ $item->site->publisher_id }}">{{ $item->site->publisher?->name ?? 'User #'.$item->site->publisher_id }}</a>
+                                            <a href="{{ route('admin.users.show', $item->site->publisher_id) }}">{{ $item->site->publisher?->name ?? 'User #'.$item->site->publisher_id }}</a>
                                         @else
                                             {{ $item->site?->publisher?->name ?? '—' }}
                                         @endif

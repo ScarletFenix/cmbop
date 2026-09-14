@@ -133,7 +133,7 @@
                         <td>
                             @if($submission->user)
                                 <div>
-                                    <a href="{{ route('admin.users.index', ['user' => $submission->user->id]) }}#user-{{ $submission->user->id }}">
+                                    <a href="{{ $submission->user->adminShowUrl() }}">
                                         {{ $submission->user->name ?: 'User #'.$submission->user->id }}
                                     </a>
                                 </div>

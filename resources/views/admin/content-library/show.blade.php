@@ -22,9 +22,7 @@
         default => 'secondary',
     };
     $indexUrl = route('admin.content-library.index', $filterQuery ?? []);
-    $advertiserUrl = $submission->user
-        ? route('admin.users.index', ['user' => $submission->user->id]).'#user-'.$submission->user->id
-        : null;
+    $advertiserUrl = $submission->user?->adminShowUrl();
     $libraryOrder = $libraryOrder ?? $submission->libraryOrder();
     $orderUrl = $libraryOrder
         ? route('admin.orders.show', $libraryOrder->id)

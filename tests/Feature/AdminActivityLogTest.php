@@ -461,7 +461,7 @@ class AdminActivityLogTest extends TestCase
 
         $lookup = AdminActivityDisplay::preload([$log]);
         $this->assertSame(
-            route('admin.users.index', ['user' => $publisher->id]),
+            route('admin.users.show', $publisher->id),
             AdminActivityDisplay::subjectUrl($log, $lookup)
         );
 
@@ -583,6 +583,7 @@ class AdminActivityLogTest extends TestCase
             ->assertDontSee('0 → 1', false)
             ->getContent();
 
+        $this->assertStringNotContainsString(route('admin.users.show', $other->id), $html);
         $this->assertStringNotContainsString(route('admin.users.index', ['user' => $other->id]), $html);
         $this->assertStringNotContainsString(route('admin.sites.edit', 999999), $html);
     }

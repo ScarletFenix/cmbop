@@ -9,7 +9,7 @@
     $statVerified = fn (string $key) => (int) ($stats[$key.'_verified'] ?? 0);
     $tabUrl = fn (string $tabSlug) => route('admin.audiences.index', array_merge($filterQuery, ['tab' => $tabSlug]));
     $exportLabel = \App\Services\AudienceInventoryService::exportLabel($tab);
-    $userUrl = fn ($user) => route('admin.users.index', ['user' => $user->id]).'#user-'.$user->id;
+    $userUrl = fn ($user) => $user->adminShowUrl();
 @endphp
 <div class="container-fluid">
     <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">

@@ -171,7 +171,7 @@ class AdminActivityDisplay
             $publisherId = (int) data_get(is_array($log->properties) ? $log->properties : [], 'publisher_id');
 
             return $publisherId > 0 && isset($lookup['existingUserIds'][$publisherId])
-                ? route('admin.users.index', ['user' => $publisherId])
+                ? route('admin.users.show', $publisherId)
                 : null;
         }
 
@@ -408,7 +408,7 @@ class AdminActivityDisplay
                 ? route('admin.bulk-site-requests.show', $id)
                 : null,
             User::class => isset($lookup['existingUserIds'][$id])
-                ? route('admin.users.index', ['user' => $id])
+                ? route('admin.users.show', $id)
                 : null,
             Order::class => isset($lookup['existingOrderIds'][$id])
                 ? route('admin.orders.show', $id)

@@ -4,9 +4,12 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Mail\PayoutProfileUpdatedBySupport;
+use App\Models\ActivityLog;
 use App\Models\Role;
 use App\Models\User;
+use App\Models\UserAdminNote;
 use App\Services\ActivityLogger;
+use App\Services\Admin\FinanceOverviewService;
 use App\Services\Wallet\PayoutProfileService;
 use App\Support\UserFacingError;
 use Illuminate\Http\Request;
@@ -31,6 +34,7 @@ class UserController extends Controller
     public function index(Request $request)
     {
         $hasRolePivot = $this->rolePivotAvailable();
+        $filters = $this->userIndexFilters($request);
         $query = User::query();
         if ($hasRolePivot) {
             $query->with('roles');
@@ -46,21 +50,15 @@ class UserController extends Controller
             }
         }
 
-        // Orders / finance deep-links: /admin/users?user=123#user-123
-        // The hash alone misses when the user is not on page 1 of 10.
-        if ($request->integer('user') > 0) {
-            $query->whereKey($request->integer('user'));
-        }
+        $this->applyUserIndexFilters($query, $filters);
 
         try {
-            $users = $query->latest('id')->paginate(10)->withQueryString();
+            $users = $query->paginate(25)->withQueryString();
         } catch (\Throwable $e) {
             report($e);
             $fallback = User::query();
-            if ($request->integer('user') > 0) {
-                $fallback->whereKey($request->integer('user'));
-            }
-            $users = $fallback->latest('id')->paginate(10)->withQueryString();
+            $this->applyUserIndexFilters($fallback, $filters);
+            $users = $fallback->paginate(25)->withQueryString();
         }
         $users->getCollection()->each(function (User $user) use ($hasRolePivot) {
             if ($user->relationLoaded('roles')) {
@@ -81,7 +79,223 @@ class UserController extends Controller
         $marketingCount = $this->marketingCount();
         $maxMarketing = self::MAX_MARKETING;
 
-        return view('admin.users', compact('users', 'adminCount', 'marketingCount', 'maxMarketing'));
+        return view('admin.users', compact('users', 'adminCount', 'marketingCount', 'maxMarketing', 'filters'));
+    }
+
+    /**
+     * User 360 — identity, money snapshot, sites, orders, notes.
+     */
+    public function show(User $user, FinanceOverviewService $finance)
+    {
+        try {
+            $user->load('roles');
+        } catch (\Throwable) {
+            $user->setRelation('roles', collect());
+        }
+
+        $dossier = [];
+        try {
+            $dossier = $finance->userDossier($user);
+        } catch (\Throwable $e) {
+            report($e);
+            $dossier = ['user' => $user, 'totals' => [], 'roles' => []];
+        }
+
+        $sites = collect();
+        try {
+            $sites = $user->sites()->latest('id')->limit(20)->get();
+        } catch (\Throwable) {
+            $sites = collect();
+        }
+
+        $notes = collect();
+        if (UserAdminNote::tableAvailable()) {
+            try {
+                $notes = UserAdminNote::query()
+                    ->with('admin:id,name,email')
+                    ->where('user_id', $user->id)
+                    ->latest('id')
+                    ->limit(50)
+                    ->get();
+            } catch (\Throwable) {
+                $notes = collect();
+            }
+        }
+
+        $activities = collect();
+        try {
+            if ($this->tableExists('activity_logs')) {
+                $activities = ActivityLog::query()
+                    ->where(function ($q) use ($user) {
+                        $q->where(function ($inner) use ($user) {
+                            $inner->where('subject_type', User::class)
+                                ->where('subject_id', $user->id);
+                        })->orWhere('user_id', $user->id);
+                    })
+                    ->latest('id')
+                    ->limit(25)
+                    ->get();
+            }
+        } catch (\Throwable) {
+            $activities = collect();
+        }
+
+        return view('admin.users.show', compact('user', 'dossier', 'sites', 'notes', 'activities'));
+    }
+
+    public function suspend(Request $request, User $user)
+    {
+        $data = $request->validate([
+            'reason' => 'required|string|min:5|max:500',
+        ]);
+
+        $blocked = $this->suspendGuard($request->user(), $user);
+        if ($blocked !== null) {
+            return $blocked;
+        }
+
+        if (! User::hasUsersColumn('suspended_at')) {
+            return back()->with('error', 'Account suspension cannot be saved on this database.');
+        }
+
+        if ($user->isSuspended()) {
+            return back()->with('error', 'This account is already suspended.');
+        }
+
+        $from = $user->suspended_at;
+        $user->forceFill(User::existingAttributes([
+            'suspended_at' => now(),
+            'suspended_reason' => $data['reason'],
+            'suspended_by' => $request->user()?->id,
+        ]))->save();
+
+        ActivityLogger::tryLog(
+            'user.suspended',
+            ($request->user()?->name ?? 'Admin').' suspended user #'.$user->id,
+            $user,
+            [
+                'from' => $from,
+                'to' => $user->suspended_at?->toIso8601String(),
+                'reason' => $data['reason'],
+            ],
+            $user->name
+        );
+
+        return back()->with('success', $user->name.' has been suspended and cannot sign in.');
+    }
+
+    public function unsuspend(Request $request, User $user)
+    {
+        $blocked = $this->suspendGuard($request->user(), $user, allowAdmins: true);
+        if ($blocked !== null) {
+            return $blocked;
+        }
+
+        if (! User::hasUsersColumn('suspended_at')) {
+            return back()->with('error', 'Account suspension cannot be saved on this database.');
+        }
+
+        if (! $user->isSuspended()) {
+            return back()->with('error', 'This account is not suspended.');
+        }
+
+        $from = $user->suspended_at;
+        $reason = $user->suspended_reason;
+        $user->forceFill(User::existingAttributes([
+            'suspended_at' => null,
+            'suspended_reason' => null,
+            'suspended_by' => null,
+        ]))->save();
+
+        ActivityLogger::tryLog(
+            'user.unsuspended',
+            ($request->user()?->name ?? 'Admin').' reactivated user #'.$user->id,
+            $user,
+            [
+                'from' => $from?->toIso8601String(),
+                'to' => null,
+                'previous_reason' => $reason,
+            ],
+            $user->name
+        );
+
+        return back()->with('success', $user->name.' can sign in again.');
+    }
+
+    public function storeNote(Request $request, User $user)
+    {
+        $data = $request->validate([
+            'body' => 'required|string|min:3|max:2000',
+        ]);
+
+        if (! UserAdminNote::tableAvailable()) {
+            return back()->with('error', 'Admin notes cannot be saved on this database.');
+        }
+
+        $note = UserAdminNote::create([
+            'user_id' => $user->id,
+            'admin_id' => $request->user()?->id,
+            'body' => trim($data['body']),
+            'created_at' => now(),
+        ]);
+
+        ActivityLogger::tryLog(
+            'user.note_added',
+            ($request->user()?->name ?? 'Admin').' added an internal note on user #'.$user->id,
+            $user,
+            ['note_id' => $note->id],
+            $user->name
+        );
+
+        return back()->with('success', 'Note saved.');
+    }
+
+    public function verifyEmail(Request $request, User $user)
+    {
+        if ($user->hasVerifiedEmail()) {
+            return back()->with('success', 'This email is already verified.');
+        }
+
+        $from = $user->email_verified_at;
+        $user->forceFill(['email_verified_at' => now()])->save();
+
+        ActivityLogger::tryLog(
+            'user.email_verified',
+            ($request->user()?->name ?? 'Admin').' marked user #'.$user->id.' as verified',
+            $user,
+            [
+                'from' => $from,
+                'to' => $user->email_verified_at?->toIso8601String(),
+            ],
+            $user->name
+        );
+
+        return back()->with('success', $user->email.' is now verified. They can sign in.');
+    }
+
+    public function resendVerification(Request $request, User $user)
+    {
+        if ($user->hasVerifiedEmail()) {
+            return back()->with('success', 'This email is already verified.');
+        }
+
+        try {
+            $user->sendEmailVerificationNotification();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return back()->with('error', UserFacingError::message($e, 'Could not send the verification email.'));
+        }
+
+        ActivityLogger::tryLog(
+            'user.verification_resent',
+            ($request->user()?->name ?? 'Admin').' resent the verification email for user #'.$user->id,
+            $user,
+            [],
+            $user->name
+        );
+
+        return back()->with('success', 'Verification email queued for '.$user->email.'.');
     }
 
     // ✅ Update Company (AJAX)
@@ -381,6 +595,113 @@ class UserController extends Controller
             'marketing_count' => $marketingCount,
             'max_marketing' => self::MAX_MARKETING,
         ]);
+    }
+
+    /**
+     * @return array{q: string, role: string, status: string, sort: string, user: int}
+     */
+    private function userIndexFilters(Request $request): array
+    {
+        $role = search_text($request->input('role'));
+        if (! in_array($role, ['advertiser', 'publisher', 'admin', 'marketing'], true)) {
+            $role = '';
+        }
+
+        $status = search_text($request->input('status'));
+        if (! in_array($status, ['verified', 'unverified', 'suspended', 'active'], true)) {
+            $status = '';
+        }
+
+        $sort = search_text($request->input('sort'));
+        if (! in_array($sort, ['oldest', 'name', 'last_seen'], true)) {
+            $sort = 'newest';
+        }
+
+        return [
+            'q' => search_text($request->input('q', $request->input('user_search'))),
+            'role' => $role,
+            'status' => $status,
+            'sort' => $sort,
+            'user' => $request->integer('user'),
+        ];
+    }
+
+    /**
+     * @param  array{q: string, role: string, status: string, sort: string, user: int}  $filters
+     */
+    private function applyUserIndexFilters($query, array $filters): void
+    {
+        if ($filters['user'] > 0) {
+            $query->whereKey($filters['user']);
+        }
+
+        $q = $filters['q'];
+        if ($q !== '') {
+            $like = like_contains($q);
+            $query->where(function ($inner) use ($like, $q) {
+                $inner->whereRaw('name LIKE ? ESCAPE ?', [$like, '\\'])
+                    ->orWhereRaw('email LIKE ? ESCAPE ?', [$like, '\\']);
+                if ($this->hasColumn('users', 'company_name')) {
+                    $inner->orWhereRaw('company_name LIKE ? ESCAPE ?', [$like, '\\']);
+                }
+                if ($this->hasColumn('users', 'phone')) {
+                    $inner->orWhereRaw('phone LIKE ? ESCAPE ?', [$like, '\\']);
+                }
+                if (ctype_digit($q)) {
+                    $inner->orWhere('id', (int) $q);
+                }
+            });
+        }
+
+        $role = $filters['role'];
+        if ($role !== '' && $this->rolePivotAvailable()) {
+            $query->whereHas('roles', fn ($r) => $r->where('name', $role));
+        }
+
+        $status = $filters['status'];
+        if ($status === 'verified') {
+            $query->where(function ($inner) {
+                $inner->whereEmailVerified()
+                    ->orWhere(function ($google) {
+                        $google->whereNotNull('google_id')->where('google_id', '!=', '');
+                    });
+            });
+        } elseif ($status === 'unverified') {
+            $query->whereEmailUnverified()
+                ->where(function ($google) {
+                    $google->whereNull('google_id')->orWhere('google_id', '');
+                });
+        } elseif ($status === 'suspended' && $this->hasColumn('users', 'suspended_at')) {
+            $query->whereNotNull('suspended_at');
+        } elseif ($status === 'active' && $this->hasColumn('users', 'suspended_at')) {
+            $query->whereNull('suspended_at');
+        }
+
+        match ($filters['sort']) {
+            'oldest' => $query->orderBy('id'),
+            'name' => $query->orderBy('name')->orderByDesc('id'),
+            'last_seen' => $this->hasColumn('users', 'last_seen_at')
+                ? $query->orderByRaw('last_seen_at IS NULL')->orderByDesc('last_seen_at')->orderByDesc('id')
+                : $query->latest('id'),
+            default => $query->latest('id'),
+        };
+    }
+
+    private function suspendGuard(?User $actor, User $target, bool $allowAdmins = false)
+    {
+        if (! $actor || (! $actor->isAdmin() && ! $actor->hasRole('admin'))) {
+            return back()->with('error', 'Only an admin can change account status.');
+        }
+
+        if ((int) $actor->id === (int) $target->id) {
+            return back()->with('error', 'You cannot change the status of your own account.');
+        }
+
+        if (! $allowAdmins && $target->hasRole('admin')) {
+            return back()->with('error', 'Admin accounts cannot be suspended from this screen.');
+        }
+
+        return null;
     }
 
     private function adminCount(): int

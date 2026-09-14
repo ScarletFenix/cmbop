@@ -654,6 +654,18 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
 
         Route::get('/users', [UserController::class, 'index'])
             ->name('users.index');
+        Route::get('/users/{user}', [UserController::class, 'show'])
+            ->name('users.show');
+        Route::post('/users/{user}/suspend', [UserController::class, 'suspend'])
+            ->name('users.suspend');
+        Route::post('/users/{user}/unsuspend', [UserController::class, 'unsuspend'])
+            ->name('users.unsuspend');
+        Route::post('/users/{user}/notes', [UserController::class, 'storeNote'])
+            ->name('users.notes.store');
+        Route::post('/users/{user}/verify-email', [UserController::class, 'verifyEmail'])
+            ->name('users.verify-email');
+        Route::post('/users/{user}/resend-verification', [UserController::class, 'resendVerification'])
+            ->name('users.resend-verification');
         Route::post('/users/{id}/update-company', [UserController::class, 'updateCompany'])
             ->name('users.updateCompany');
         Route::post('/users/{id}/payout-profile', [UserController::class, 'updatePayoutProfile'])

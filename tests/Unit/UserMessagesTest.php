@@ -13,6 +13,7 @@ class UserMessagesTest extends TestCase
             'login.invalid',
             'login.throttled',
             'login.unverified',
+            'login.suspended',
             'register.throttled',
             'register.unavailable',
             'password.throttled',
