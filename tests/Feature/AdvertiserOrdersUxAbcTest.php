@@ -791,7 +791,7 @@ class AdvertiserOrdersUxAbcTest extends TestCase
         $this->assertSame($review->id, $rows['ORD-LIST-REVIEW']['id']);
 
         $this->assertSame('Completed', $rows['797026']['status_label']);
-        $this->assertStringContainsString('no line items', $rows['797026']['next_action']);
+        $this->assertStringContainsString('Placement details are missing', $rows['797026']['next_action']);
         $this->assertStringNotContainsString('paid for this placement', $rows['797026']['next_action']);
         $this->assertTrue($rows['797026']['placements_missing']);
         $this->assertFalse($rows['797026']['has_live_url']);

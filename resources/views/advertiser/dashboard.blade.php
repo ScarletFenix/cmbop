@@ -22,7 +22,7 @@
     $recentOrders = $recentOrders ?? collect();
     $recommendedSites = $recommendedSites ?? collect();
     $hasOrderableArticle = (bool) ($hasOrderableArticle ?? false);
-    $isNewAdvertiser = (bool) ($isNewAdvertiser ?? (($stats['total'] ?? 0) === 0));
+    $isNewAdvertiser = (bool) ($isNewAdvertiser ?? false);
     $browseCatalogUrl = route('advertiser.catalog');
     $guidedFlowUrl = route('advertiser.wizard.start');
     $needsAction = (int) ($stats['needs_action'] ?? 0);
@@ -32,7 +32,12 @@
     $welcomeSituation = (string) ($welcomeSituation ?? '');
     $dashboardFailed = (bool) ($dashboardFailed ?? false);
     $statsUnavailable = (bool) ($statsUnavailable ?? false) || $dashboardFailed;
+    $recentUnavailable = (bool) ($recentUnavailable ?? false) || $dashboardFailed;
+    $walletUnavailable = (bool) ($walletUnavailable ?? false);
+    $spendUnavailable = (bool) ($spendUnavailable ?? false) || $dashboardFailed;
+    $spendChartUnavailable = (bool) ($spendChartUnavailable ?? false) || $dashboardFailed;
     $kpisUnavailable = $statsUnavailable;
+    $numbersFailed = $dashboardFailed || $statsUnavailable;
     if ($dashboardFailed) {
         $isNewAdvertiser = false;
     }
@@ -52,7 +57,7 @@
             Welcome back, {{ auth()->user()->name }}@if($welcomeSituation !== '') — {{ ucfirst($welcomeSituation) }}@endif.
         </p>
     </div>
-    @if($dashboardFailed)
+    @if($numbersFailed && ! $isNewAdvertiser)
         <a href="{{ route('advertiser.dashboard') }}" class="dash-primary-cta" id="dashPrimaryCta">
             <i class="fa fa-rotate"></i> Try again
         </a>
@@ -77,7 +82,7 @@
     @endif
 </div>
 
-@if($dashboardFailed)
+@if($numbersFailed && ! $isNewAdvertiser)
     <div class="alert alert-light border d-flex flex-wrap align-items-center justify-content-between gap-2 mb-4" role="status">
         <div>
             <strong>We could not refresh your numbers</strong>
@@ -193,7 +198,7 @@
                 </div>
             </a>
         </div>
-        @if((int) ($stats['cancelled'] ?? 0) > 0)
+        @if(! $kpisUnavailable && (int) ($stats['cancelled'] ?? 0) > 0)
             <div class="col-12">
                 <p class="small text-muted mb-0 px-1">{{ (int) $stats['cancelled'] }} cancelled — not counted in Active.</p>
             </div>
@@ -206,7 +211,7 @@
             <div class="dash-panel h-100">
                 <h5 class="mb-3">Next actions</h5>
                 <div class="d-flex flex-column gap-2 mb-3">
-                    @if($dashboardFailed)
+                    @if($numbersFailed)
                         <a href="{{ route('advertiser.dashboard') }}" class="next-action">
                             <div>
                                 <div class="na-title">Try again</div>
@@ -296,7 +301,9 @@
                             <div>
                                 <div class="na-title">Add funds</div>
                                 <p class="na-desc">
-                                    @if(!empty($budgetStatus['low_balance']))
+                                    @if($walletUnavailable)
+                                        Spendable unavailable — try again or open Add funds
+                                    @elseif(!empty($budgetStatus['low_balance']))
                                         Spendable is below your alert — top up to keep checkout ready
                                     @else
                                         Spendable €{{ number_format((float) ($wallet['spendable'] ?? 0), 2) }}
@@ -309,8 +316,12 @@
                             <div>
                                 <div class="na-title">Spending history</div>
                                 <p class="na-desc">
-                                    Net €{{ number_format((float) ($spendSummary['net'] ?? 0), 2) }}
-                                    · in progress €{{ number_format((float) ($spendSummary['in_progress'] ?? 0), 2) }}
+                                    @if($spendUnavailable)
+                                        Spend totals unavailable
+                                    @else
+                                        Net €{{ number_format((float) ($spendSummary['net'] ?? 0), 2) }}
+                                        · in progress €{{ number_format((float) ($spendSummary['in_progress'] ?? 0), 2) }}
+                                    @endif
                                 </p>
                             </div>
                             <i class="fa fa-chevron-right text-muted" aria-hidden="true"></i>
@@ -336,25 +347,32 @@
             <div class="dash-spend-strip mb-3">
                 <div class="dw-item">
                     <span class="dw-label">Net spend</span>
-                    <div class="dw-value">{{ $dashboardFailed ? '—' : '€'.number_format((float) ($spendSummary['net'] ?? 0), 2) }}</div>
+                    <div class="dw-value">{{ $spendUnavailable ? '—' : '€'.number_format((float) ($spendSummary['net'] ?? 0), 2) }}</div>
                 </div>
                 <div class="dw-item">
                     <span class="dw-label">Spent</span>
-                    <div class="dw-value">{{ $dashboardFailed ? '—' : '€'.number_format((float) ($spendSummary['spent'] ?? 0), 2) }}</div>
+                    <div class="dw-value">{{ $spendUnavailable ? '—' : '€'.number_format((float) ($spendSummary['spent'] ?? 0), 2) }}</div>
                 </div>
                 <div class="dw-item">
                     <span class="dw-label">In progress</span>
-                    <div class="dw-value">{{ $dashboardFailed ? '—' : '€'.number_format((float) ($spendSummary['in_progress'] ?? 0), 2) }}</div>
+                    <div class="dw-value">{{ $spendUnavailable ? '—' : '€'.number_format((float) ($spendSummary['in_progress'] ?? 0), 2) }}</div>
                 </div>
                 <div class="dw-item d-flex align-items-center">
                     <a href="{{ route('advertiser.analytics', ['view' => 'day']) }}" class="btn btn-sm btn-outline-primary">Full history</a>
                 </div>
-                @if($dashboardFailed)
+                @if($spendUnavailable && $spendChartUnavailable)
                     <p class="dash-spend-empty mb-0">Spend history unavailable.</p>
+                @elseif($spendUnavailable)
+                    <p class="dash-spend-empty mb-0">Spend totals unavailable.</p>
+                @elseif($spendChartUnavailable)
+                    <p class="dash-spend-empty mb-0">
+                        Chart unavailable —
+                        <a href="{{ route('advertiser.analytics', ['view' => 'day']) }}">open Full history</a>.
+                    </p>
                 @elseif(empty($spendCandles['has_spend']))
                     <p class="dash-spend-empty mb-0">No completed spend yet — paid placements will show here.</p>
                 @endif
-                @if(! $dashboardFailed && !empty($spendCandles['has_spend']))
+                @if(! $spendChartUnavailable && !empty($spendCandles['has_spend']))
                     <div class="w-100">
                         <p class="dash-spend-chart-hint" id="dashSpendChartHint">Solid = completed · Dim = still in progress</p>
                         <div class="dash-spend-chart-wrap" id="dashSpendChartWrap">
@@ -373,7 +391,7 @@
                         <h5 class="mb-0 recent-orders-title">Recent orders</h5>
                         <a href="{{ route('advertiser.orders') }}" class="small recent-orders-link">View all</a>
                     </div>
-                    @if($dashboardFailed)
+                    @if($recentUnavailable)
                         <x-ui.empty-state
                             icon="fa-receipt"
                             title="Orders unavailable"
@@ -482,7 +500,7 @@
 @endsection
 
 @push('scripts')
-@if(!($isNewAdvertiser ?? false) && !empty($spendCandles['has_spend']))
+@if(!($isNewAdvertiser ?? false) && !($spendChartUnavailable ?? false) && !empty($spendCandles['has_spend']))
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
