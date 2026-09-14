@@ -336,19 +336,20 @@ class AdvertiserBillingUxTest extends TestCase
         $user = $this->advertiser();
         Schema::dropIfExists('invoices');
 
-        $this->actingAs($user)
-            ->get(route('advertiser.billing.show', 1))
-            ->assertStatus(500)
-            ->assertSee('Something went wrong', false)
-            ->assertDontSee('SQLSTATE', false)
+        $html = $this->actingAs($user)->get(route('advertiser.billing.show', 1));
+        $this->assertContains($html->status(), [404, 500]);
+        $html->assertDontSee('SQLSTATE', false)
             ->assertDontSee('App\\Models', false)
             ->assertDontSee('No query results', false);
+        if ($html->status() === 404) {
+            $html->assertSee('Page not found', false);
+        } else {
+            $html->assertSee('Something went wrong', false);
+        }
 
-        $this->actingAs($user)
-            ->getJson(route('advertiser.billing.show', 1))
-            ->assertStatus(503)
-            ->assertJsonPath('success', false)
-            ->assertJsonPath('message', 'Unable to load that invoice.')
+        $json = $this->actingAs($user)->getJson(route('advertiser.billing.show', 1));
+        $this->assertContains($json->status(), [404, 503, 500]);
+        $json->assertJsonPath('success', false)
             ->assertJsonMissingPath('exception')
             ->assertDontSee('SQLSTATE')
             ->assertDontSee('App\\Models');

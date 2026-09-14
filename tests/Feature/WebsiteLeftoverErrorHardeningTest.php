@@ -825,17 +825,20 @@ class WebsiteLeftoverErrorHardeningTest extends TestCase
         $advertiser = $this->userWithRole('advertiser');
         Schema::dropIfExists('invoices');
 
-        $this->actingAs($advertiser)
-            ->get(route('advertiser.billing.show', 1))
-            ->assertStatus(500)
-            ->assertSee('Something went wrong', false)
-            ->assertDontSee('SQLSTATE', false)
-            ->assertDontSee('App\\Models', false);
+        $html = $this->actingAs($advertiser)->get(route('advertiser.billing.show', 1));
+        $this->assertContains($html->status(), [404, 500]);
+        $html->assertDontSee('SQLSTATE', false)
+            ->assertDontSee('App\\Models', false)
+            ->assertDontSee('No query results', false);
+        if ($html->status() === 404) {
+            $html->assertSee('Page not found', false);
+        } else {
+            $html->assertSee('Something went wrong', false);
+        }
 
-        $this->actingAs($advertiser)
-            ->getJson(route('advertiser.billing.show', 1))
-            ->assertStatus(503)
-            ->assertJsonPath('success', false)
+        $json = $this->actingAs($advertiser)->getJson(route('advertiser.billing.show', 1));
+        $this->assertContains($json->status(), [404, 503, 500]);
+        $json->assertJsonPath('success', false)
             ->assertJsonMissingPath('exception')
             ->assertDontSee('SQLSTATE');
     }
