@@ -1,5 +1,11 @@
 @extends('advertiser.layouts.app')
 
+@php
+    $snapshot = is_array($invoice->billing_snapshot) ? $invoice->billing_snapshot : [];
+    $lineItems = is_array($invoice->line_items) ? $invoice->line_items : [];
+    $canPdf = $invoice->advertiserCanDownloadPdf();
+@endphp
+
 @section('content')
 <div class="container-fluid">
     <div class="row mb-4 align-items-end g-3">
@@ -11,24 +17,44 @@
             <p class="text-muted mb-0">{{ $invoice->typeLabel() }} · {{ ucfirst($invoice->status) }}</p>
         </div>
         <div class="col-md-4 text-md-end d-flex flex-wrap gap-2 justify-content-md-end">
-            <a href="{{ route('advertiser.billing.view', $invoice) }}" class="btn btn-sm btn-outline-secondary" target="_blank">View PDF</a>
-            <a href="{{ route('advertiser.billing.download', $invoice) }}" class="btn btn-sm btn-primary">Download PDF</a>
+            @if($canPdf)
+                <a href="{{ route('advertiser.billing.view', $invoice) }}" class="btn btn-sm btn-outline-secondary" target="_blank" rel="noopener">View PDF</a>
+                <a href="{{ route('advertiser.billing.download', $invoice) }}" class="btn btn-sm btn-primary">Download PDF</a>
+            @elseif($invoice->isCancelled() && $invoice->isTaxInvoice())
+                <span class="small text-muted align-self-center">Cancelled — PDF unavailable</span>
+            @endif
+            @if(! $invoice->isCancelled())
+                <form method="POST" action="{{ route('advertiser.billing.resend', $invoice) }}">
+                    @csrf
+                    <button type="submit" class="btn btn-sm btn-outline-secondary">Email me this invoice</button>
+                </form>
+            @endif
         </div>
     </div>
+
+    @if($invoice->isCancelled() && $invoice->isTaxInvoice() && filled($invoice->cancel_reason))
+        <div class="alert alert-secondary border mb-3" role="status">{{ $invoice->cancel_reason }}</div>
+    @endif
 
     <div class="row g-3">
         <div class="col-lg-8">
             <div class="card border-0 shadow-sm mb-3">
                 <div class="card-body">
-                    <h6 class="text-muted text-uppercase small fw-semibold mb-3">Order details</h6>
+                    <h6 class="text-muted text-uppercase small fw-semibold mb-3">{{ $invoice->advertiserDetailsHeading() }}</h6>
                     <div class="row g-3 small">
-                        <div class="col-md-4"><span class="text-muted d-block">Order</span><strong>#{{ $invoice->order_number }}</strong></div>
+                        <div class="col-md-4">
+                            <span class="text-muted d-block">{{ $invoice->order_id ? 'Order' : 'Reference' }}</span>
+                            <strong>{{ $invoice->referenceLabel() }}</strong>
+                        </div>
                         <div class="col-md-4"><span class="text-muted d-block">Date</span><strong>{{ optional($invoice->invoice_date)->format('M j, Y g:i A') }}</strong></div>
                         <div class="col-md-4"><span class="text-muted d-block">Amount</span><strong>€{{ number_format((float) $invoice->total_amount, 2) }}</strong></div>
                         <div class="col-md-4"><span class="text-muted d-block">Payment method</span><strong>{{ \App\Models\Invoice::paymentMethodLabel($invoice->payment_method) }}</strong></div>
                         <div class="col-md-4"><span class="text-muted d-block">Payment status</span><strong>{{ ucfirst((string) $invoice->payment_status) }}</strong></div>
                         <div class="col-md-4"><span class="text-muted d-block">Transaction</span><strong class="text-break">{{ $invoice->transaction_id ?: '—' }}</strong></div>
                     </div>
+                    @if(filled($invoice->notes))
+                        <p class="small text-muted mb-0 mt-3">{{ $invoice->notes }}</p>
+                    @endif
                 </div>
             </div>
 
@@ -39,18 +65,22 @@
                             <thead class="table-light">
                                 <tr>
                                     <th>Service</th>
-                                    <th>Website</th>
+                                    <th>{{ $invoice->isDepositReceipt() ? 'Reference' : 'Website' }}</th>
                                     <th class="text-end">Amount</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                @foreach(($invoice->line_items ?? []) as $line)
+                                @forelse($lineItems as $line)
                                     <tr>
                                         <td>{{ $line['description'] ?? 'Service' }}</td>
-                                        <td class="small">{{ $line['publisher_website'] ?? '—' }}</td>
+                                        <td class="small">{{ $line['publisher_website'] ?? $line['reference'] ?? '—' }}</td>
                                         <td class="text-end">€{{ number_format((float) ($line['line_total'] ?? 0), 2) }}</td>
                                     </tr>
-                                @endforeach
+                                @empty
+                                    <tr>
+                                        <td colspan="3" class="small text-muted text-center py-3">No line items</td>
+                                    </tr>
+                                @endforelse
                             </tbody>
                         </table>
                     </div>
@@ -58,7 +88,7 @@
             </div>
         </div>
         <div class="col-lg-4">
-            <div class="card border-0 shadow-sm">
+            <div class="card border-0 shadow-sm mb-3">
                 <div class="card-body">
                     <h6 class="text-muted text-uppercase small fw-semibold mb-3">Totals</h6>
                     <div class="d-flex justify-content-between mb-2"><span class="text-muted">Subtotal</span><span>€{{ number_format((float) $invoice->subtotal, 2) }}</span></div>
@@ -78,8 +108,49 @@
                             {{ $invoice->parentInvoice->invoice_number }}
                         </a>
                     @endif
+                    @if($invoice->childInvoices->isNotEmpty())
+                        <hr>
+                        <div class="small text-muted mb-1">Related documents</div>
+                        <ul class="list-unstyled mb-0 small">
+                            @foreach($invoice->childInvoices as $child)
+                                <li>
+                                    <a href="{{ route('advertiser.billing.show', $child) }}">{{ $child->invoice_number }}</a>
+                                    <span class="text-muted">· {{ $child->typeLabel() }}</span>
+                                </li>
+                            @endforeach
+                        </ul>
+                    @endif
                 </div>
             </div>
+
+            @if($snapshot !== [])
+                <div class="card border-0 shadow-sm">
+                    <div class="card-body">
+                        <h6 class="text-muted text-uppercase small fw-semibold mb-3">Billed to</h6>
+                        <div class="small">
+                            <div class="fw-semibold">{{ $snapshot['name'] ?? $invoice->customer_name ?: '—' }}</div>
+                            @if(! empty($snapshot['company']))
+                                <div>{{ $snapshot['company'] }}</div>
+                            @endif
+                            @if(! empty($snapshot['address']))
+                                <div>{{ $snapshot['address'] }}</div>
+                            @endif
+                            <div>
+                                {{ collect([$snapshot['city'] ?? null, $snapshot['state'] ?? null, $snapshot['postal_code'] ?? null])->filter()->implode(', ') }}
+                            </div>
+                            @if(! empty($snapshot['country']))
+                                <div>{{ $snapshot['country'] }}</div>
+                            @endif
+                            @if(! empty($snapshot['vat_number']))
+                                <div class="mt-2 text-muted">VAT / tax ID: {{ $snapshot['vat_number'] }}</div>
+                            @endif
+                            @if(! empty($snapshot['email']) || $invoice->customer_email)
+                                <div class="text-muted">{{ $snapshot['email'] ?? $invoice->customer_email }}</div>
+                            @endif
+                        </div>
+                    </div>
+                </div>
+            @endif
         </div>
     </div>
 </div>

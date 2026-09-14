@@ -8,13 +8,17 @@ use App\Http\Middleware\HealHostingerProduction;
 use App\Http\Middleware\RecordUserLastSeen;
 use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\SetLocale;
+use App\Models\Invoice;
 use App\Services\ContentUpload\ContentUploadService;
 use App\Support\TrustedProxies;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Exceptions\PostTooLargeException;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -112,6 +116,72 @@ return Application::configure(basePath: dirname(__DIR__))
                 'success' => false,
                 'message' => $uploads->phpSizeRejectedMessage(null, $clientBytes),
             ], 422);
+        });
+
+        // Implicit {invoice} binding becomes NotFoundHttpException after
+        // prepareException(). Eloquent text leaks App\Models\Invoice on both
+        // JSON (expectsJson) and HTML (APP_DEBUG=true debug dump).
+        $exceptions->render(function (ModelNotFoundException $e, $request) {
+            if (! str_contains((string) $e->getModel(), 'Invoice')) {
+                return null;
+            }
+
+            if (class_exists(Invoice::class) && method_exists(Invoice::class, 'missingDocumentResponse')) {
+                return Invoice::missingDocumentResponse($request);
+            }
+
+            return $request->expectsJson()
+                ? response()->json(['success' => false, 'message' => 'Invoice not found.'], 404)
+                : null;
+        });
+
+        $exceptions->render(function (NotFoundHttpException $e, $request) {
+            $previous = $e->getPrevious();
+            $fromInvoice = $previous instanceof ModelNotFoundException
+                && str_contains((string) $previous->getModel(), 'Invoice');
+            $leaksModel = str_contains($e->getMessage(), 'Invoice')
+                || str_contains($e->getMessage(), 'No query results');
+            $billingDoc = str_contains($request->path(), 'billing/invoices')
+                || str_contains($request->path(), 'billing/documents');
+
+            if (! $fromInvoice && ! ($billingDoc && $leaksModel)) {
+                return null;
+            }
+
+            if (class_exists(Invoice::class) && method_exists(Invoice::class, 'missingDocumentResponse')) {
+                return Invoice::missingDocumentResponse($request);
+            }
+
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invoice not found.',
+                ], 404);
+            }
+
+            return null;
+        });
+
+        // Leftover Hostinger schema: dropped invoices table on {invoice}
+        // routes 500s with SQLSTATE before the controller try/catch runs.
+        $exceptions->render(function (QueryException $e, $request) {
+            $path = $request->path();
+            if (! str_contains($path, 'billing/invoices') && ! str_contains($path, 'billing/documents')) {
+                return null;
+            }
+
+            if (class_exists(Invoice::class) && method_exists(Invoice::class, 'unavailableDocumentResponse')) {
+                return Invoice::unavailableDocumentResponse($request);
+            }
+
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unable to load that invoice.',
+                ], 503);
+            }
+
+            return null;
         });
     })
     ->withSchedule(function (Schedule $schedule) {

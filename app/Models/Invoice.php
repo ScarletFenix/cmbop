@@ -7,9 +7,15 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\ViewErrorBag;
+use Symfony\Component\HttpKernel\Exception\HttpException;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 class Invoice extends Model
 {
@@ -244,6 +250,78 @@ class Invoice extends Model
     public function isDepositReceipt(): bool
     {
         return $this->type === self::TYPE_DEPOSIT_RECEIPT;
+    }
+
+    /**
+     * Advertiser list/show: cancelled tax invoices must not offer a PDF.
+     */
+    public function advertiserCanDownloadPdf(): bool
+    {
+        if ($this->isCancelled() && $this->isTaxInvoice()) {
+            return false;
+        }
+
+        return $this->status !== self::STATUS_PENDING || $this->hasPdf();
+    }
+
+    public function advertiserDetailsHeading(): string
+    {
+        return match ($this->type) {
+            self::TYPE_DEPOSIT_RECEIPT => 'Wallet top-up',
+            self::TYPE_REFUND_RECEIPT => 'Refund',
+            self::TYPE_PAYMENT_FAILURE => 'Failed payment',
+            self::TYPE_PAYMENT_RECEIPT => 'Payment receipt',
+            default => 'Order details',
+        };
+    }
+
+    /**
+     * Implicit {invoice} binding 404s must not leak the model class.
+     */
+    public static function missingDocumentJson(): JsonResponse
+    {
+        return response()->json([
+            'success' => false,
+            'message' => 'Invoice not found.',
+        ], 404);
+    }
+
+    /**
+     * HTML missing-{invoice} 404s must use the branded page — never the
+     * APP_DEBUG dump ("No query results for model [App\Models\Invoice]").
+     */
+    public static function missingDocumentHtml(): Response
+    {
+        return response()->view('errors.404', [
+            'errors' => new ViewErrorBag,
+            'exception' => new NotFoundHttpException('Invoice not found.'),
+        ], 404);
+    }
+
+    public static function missingDocumentResponse(Request $request): JsonResponse|Response
+    {
+        return $request->expectsJson()
+            ? self::missingDocumentJson()
+            : self::missingDocumentHtml();
+    }
+
+    /**
+     * Leftover schema crashes on {invoice} routes (dropped invoices table)
+     * must not leak SQLSTATE / exception keys.
+     */
+    public static function unavailableDocumentResponse(Request $request): JsonResponse|Response
+    {
+        if ($request->expectsJson()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unable to load that invoice.',
+            ], 503);
+        }
+
+        return response()->view('errors.500', [
+            'errors' => new ViewErrorBag,
+            'exception' => new HttpException(500, 'Unable to load that invoice.'),
+        ], 500);
     }
 
     public function hasPdf(): bool

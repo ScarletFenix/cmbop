@@ -314,7 +314,7 @@ class WalletOverviewService
                             ->first();
                         $depositMeta = [
                             'invoice_view_url' => $invoice
-                                ? route('advertiser.billing.view', $invoice)
+                                ? route('advertiser.billing.show', $invoice)
                                 : route('advertiser.invoice', $deposit->reference_code),
                             'invoice_download_url' => $invoice
                                 ? route('advertiser.billing.download', $invoice)
@@ -415,7 +415,7 @@ class WalletOverviewService
                 ->first();
             $status = $d->status === 'approved' ? 'completed' : $d->status;
             $invoicePageUrl = $invoice
-                ? route('advertiser.billing.view', $invoice)
+                ? route('advertiser.billing.show', $invoice)
                 : route('advertiser.invoice', $d->reference_code);
             $invoiceDownloadUrl = $invoice
                 ? route('advertiser.billing.download', $invoice)

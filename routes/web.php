@@ -1155,9 +1155,15 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
 
         // Billing & Invoices (automated PDF invoices / receipts)
         Route::get('/billing', [AdvertiserBillingController::class, 'index'])->name('billing.index');
+        Route::get('/billing/export', [AdvertiserBillingController::class, 'export'])
+            ->middleware('throttle:10,1')
+            ->name('billing.export');
         Route::get('/billing/invoices/{invoice}', [AdvertiserBillingController::class, 'show'])->name('billing.show');
         Route::get('/billing/invoices/{invoice}/download', [AdvertiserBillingController::class, 'download'])->name('billing.download');
         Route::get('/billing/invoices/{invoice}/view', [AdvertiserBillingController::class, 'viewPdf'])->name('billing.view');
+        Route::post('/billing/invoices/{invoice}/resend', [AdvertiserBillingController::class, 'resend'])
+            ->middleware('throttle:5,1')
+            ->name('billing.resend');
 
         // Save billing info route
         Route::post('/save-billing-info', [AddFundsController::class, 'saveBillingInfo'])->name('save-billing-info');

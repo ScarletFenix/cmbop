@@ -154,6 +154,9 @@ return [
         ?: 'Payout statement confirming an external withdrawal transfer. This is not a tax invoice.',
 
     'storage' => [
+        // Local + CI: storage/app/invoices. On Hostinger set BILLING_DISK to a
+        // durable disk (or keep local and point that disk at MEDIA_PATH sibling
+        // /persistent/invoices) so a public_html swap does not orphan pdf_path.
         'disk' => env('BILLING_DISK', 'local'),
         'directory' => 'invoices',
     ],

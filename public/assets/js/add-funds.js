@@ -10,30 +10,136 @@ document.addEventListener('DOMContentLoaded', function() {
 
     let selectedAmount = 0;
     let selectedMethod = null;
-    let referenceCode = generateReferenceCode();
+    let referenceCode = null;
+    let invoiceLocked = false;
+    let invoiceMarkPaidUrl = null;
+    let invoiceViewUrl = null;
     const prefillAmount = boot.prefillAmount || null;
     const prefillMethod = boot.prefillMethod || null;
-    
-    // Generate 6-digit reference code
-    function generateReferenceCode() {
+
+    function isManualMethod(method) {
+        return method === 'wise' || method === 'bank' || method === 'crypto';
+    }
+
+    // Instant rails only: metadata REF at proceed time. Never shown as a pay instruction.
+    function instantRailReference() {
         return Math.floor(100000 + Math.random() * 900000).toString();
     }
-    
-    function updateReferenceCode() {
-        referenceCode = generateReferenceCode();
+
+    function stampServerReference(code) {
+        referenceCode = code ? String(code) : null;
+        const label = referenceCode ? ('REF' + referenceCode) : '—';
         const refCodeDisplay = document.getElementById('referenceCode');
         const refCodeTexts = document.querySelectorAll('.ref-code-display');
         const refCodeDisplaySpan = document.getElementById('refCodeDisplay');
-        
-        if (refCodeDisplay) refCodeDisplay.innerText = referenceCode;
-        if (refCodeDisplaySpan) refCodeDisplaySpan.innerText = `REF${referenceCode}`;
+        const copyBtn = document.getElementById('copyRefBtn');
+        const hintPending = document.getElementById('refHintPending');
+        const hintReady = document.getElementById('refHintReady');
+
+        if (refCodeDisplay) {
+            refCodeDisplay.innerText = referenceCode || '—';
+            refCodeDisplay.setAttribute('data-placeholder', referenceCode ? 'false' : 'true');
+        }
+        if (refCodeDisplaySpan) refCodeDisplaySpan.innerText = label;
         refCodeTexts.forEach(el => {
-            el.innerText = `REF${referenceCode}`;
+            el.innerText = label;
         });
+        if (copyBtn) copyBtn.disabled = !referenceCode;
+        if (hintPending) hintPending.classList.toggle('d-none', !!referenceCode);
+        if (hintReady) hintReady.classList.toggle('d-none', !referenceCode);
     }
-    
-    // Initialize reference code
-    updateReferenceCode();
+
+    function hideManualPayDetails() {
+        if (wiseDetails) wiseDetails.style.display = 'none';
+        if (cryptoDetails) cryptoDetails.style.display = 'none';
+        if (bankDetails) bankDetails.style.display = 'none';
+        const qr = document.getElementById('wiseQRCode');
+        if (qr) {
+            qr.removeAttribute('src');
+            qr.style.display = 'none';
+        }
+    }
+
+    function setInvoiceLockUi(locked) {
+        const section = document.getElementById('depositSection');
+        if (section) section.classList.toggle('is-invoice-locked', !!locked);
+        document.querySelectorAll('.payment-option').forEach(opt => {
+            const method = opt.dataset.method;
+            const out = locked && method !== selectedMethod;
+            opt.classList.toggle('is-locked-out', out);
+            if (out) {
+                opt.setAttribute('aria-disabled', 'true');
+            } else if (opt.getAttribute('aria-disabled') === 'true' && opt.dataset.method) {
+                const ready = !(
+                    (method === 'card' && !stripeReady) ||
+                    (method === 'paypal' && !paypalReady) ||
+                    (method === 'crypto' && !cryptoEnabled)
+                );
+                if (ready) opt.removeAttribute('aria-disabled');
+            }
+        });
+        amountBtns.forEach(btn => { btn.disabled = !!locked; });
+        if (customAmountInput) customAmountInput.disabled = !!locked;
+    }
+
+    function clearInvoiceLock() {
+        invoiceLocked = false;
+        invoiceMarkPaidUrl = null;
+        invoiceViewUrl = null;
+        stampServerReference(null);
+        hideManualPayDetails();
+        const bar = document.getElementById('invoiceReadyBar');
+        if (bar) bar.style.display = 'none';
+        const details = document.getElementById('paymentDetailsSection');
+        if (details) {
+            details.setAttribute('data-invoice-ready', '0');
+            if (!selectedMethod || isManualMethod(selectedMethod)) {
+                details.style.display = 'none';
+            }
+        }
+        setInvoiceLockUi(false);
+        if (proceedBtn) {
+            proceedBtn.disabled = false;
+            if (typeof syncProceedLabel === 'function') syncProceedLabel();
+        }
+    }
+
+    function applyInvoice(data) {
+        const code = data && data.reference_code ? String(data.reference_code) : '';
+        if (!code) return;
+        invoiceLocked = true;
+        invoiceMarkPaidUrl = data.mark_paid_url || null;
+        invoiceViewUrl = data.invoice_url || null;
+        stampServerReference(code);
+        const details = document.getElementById('paymentDetailsSection');
+        if (details) {
+            details.style.display = 'block';
+            details.setAttribute('data-invoice-ready', '1');
+        }
+        hideManualPayDetails();
+        if (selectedMethod === 'wise' && wiseDetails) {
+            wiseDetails.style.display = 'block';
+            if (selectedAmount >= 10) syncWiseQr(selectedAmount);
+        }
+        if (selectedMethod === 'crypto' && cryptoDetails) cryptoDetails.style.display = 'block';
+        if (selectedMethod === 'bank' && bankDetails) bankDetails.style.display = 'block';
+        const bar = document.getElementById('invoiceReadyBar');
+        if (bar) bar.style.display = 'block';
+        const view = document.getElementById('invoiceReadyView');
+        if (view) {
+            if (invoiceViewUrl) {
+                view.href = invoiceViewUrl;
+                view.classList.remove('d-none');
+            } else {
+                view.classList.add('d-none');
+            }
+        }
+        setInvoiceLockUi(true);
+        if (proceedBtn) {
+            proceedBtn.disabled = true;
+            proceedBtn.innerHTML = '<i class="fa fa-check me-2"></i> Invoice created';
+        }
+    }
 
     const amountBtns = document.querySelectorAll('.amount-btn');
     const customAmountInput = document.getElementById('customAmount');
@@ -100,6 +206,16 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function syncWiseQr(amount) {
+        // Pay instructions (QR + live link) only after the invoice exists.
+        if (!invoiceLocked) {
+            const qr = document.getElementById('wiseQRCode');
+            if (qr) {
+                qr.removeAttribute('src');
+                qr.style.display = 'none';
+            }
+            return;
+        }
+
         const wiseQRCode = document.getElementById('wiseQRCode');
         const wiseQrHint = document.getElementById('wiseQrHint');
         const wiseQrFallback = document.getElementById('wiseQrFallback');
@@ -249,8 +365,10 @@ document.addEventListener('DOMContentLoaded', function() {
             el.innerText = amount;
         });
         
-        // Update Wise link and QR code
-        syncWiseQr(amount);
+        // Wise QR stays off until applyInvoice() locks a server REF.
+        if (invoiceLocked && selectedMethod === 'wise') {
+            syncWiseQr(amount);
+        }
         
         // Update crypto and bank amounts
         const cryptoAmount = document.getElementById('cryptoAmount');
@@ -267,54 +385,38 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Prefill amount/method comes from applyPrefill() above (server + ?amount=&method=).
 
-    // Payment option click
+    // Payment option click — manual rails do not reveal pay details until invoice.
     paymentOptions.forEach(option => {
         option.addEventListener('click', function() {
             if (!this.dataset.method || this.getAttribute('aria-disabled') === 'true') {
                 return;
             }
+            if (invoiceLocked) {
+                return;
+            }
 
             const method = this.dataset.method;
             selectedMethod = method;
-            
-            // Generate new reference code on payment method selection
-            updateReferenceCode();
-            
-            // Update all reference code displays in payment details
-            document.querySelectorAll('.ref-code-display').forEach(el => {
-                el.innerText = `REF${referenceCode}`;
-            });
-            const refCodeDisplaySpan = document.getElementById('refCodeDisplay');
-            if (refCodeDisplaySpan) refCodeDisplaySpan.innerText = `REF${referenceCode}`;
-            
-            // Update UI
+
             paymentOptions.forEach(opt => opt.classList.remove('selected'));
             this.classList.add('selected');
-            
-            // Hide error
+
             if (paymentError) paymentError.style.display = 'none';
-            
-            // Hide all details
-            if (wiseDetails) wiseDetails.style.display = 'none';
-            if (cryptoDetails) cryptoDetails.style.display = 'none';
-            if (bankDetails) bankDetails.style.display = 'none';
+
+            hideManualPayDetails();
             if (cardDetails) cardDetails.style.display = 'none';
             if (paypalDetails) paypalDetails.style.display = 'none';
-            
-            // Show selected
-            if (method === 'wise' && wiseDetails) {
-                wiseDetails.style.display = 'block';
-                // Re-sync if amount was chosen before Wise (image may have loaded while hidden).
-                if (selectedAmount >= 10) {
-                    syncWiseQr(selectedAmount);
-                }
+
+            if (method === 'card' && cardDetails) {
+                cardDetails.style.display = 'block';
+                if (paymentDetailsSection) paymentDetailsSection.style.display = 'block';
+            } else if (method === 'paypal' && paypalDetails) {
+                paypalDetails.style.display = 'block';
+                if (paymentDetailsSection) paymentDetailsSection.style.display = 'block';
+            } else if (paymentDetailsSection) {
+                paymentDetailsSection.style.display = 'none';
             }
-            if (method === 'crypto' && cryptoDetails) cryptoDetails.style.display = 'block';
-            if (method === 'bank' && bankDetails) bankDetails.style.display = 'block';
-            if (method === 'card' && cardDetails) cardDetails.style.display = 'block';
-            if (method === 'paypal' && paypalDetails) paypalDetails.style.display = 'block';
-            
-            if (paymentDetailsSection) paymentDetailsSection.style.display = 'block';
+
             if (typeof syncProceedLabel === 'function') syncProceedLabel();
         });
     });
@@ -338,16 +440,14 @@ document.addEventListener('DOMContentLoaded', function() {
     // Copy reference code button
     document.querySelectorAll('.copy-ref-btn').forEach(btn => {
         btn.addEventListener('click', function() {
-            const targetId = this.dataset.target;
-            const textEl = document.getElementById(targetId);
-            if (textEl) {
-                const textToCopy = `REF${textEl.innerText}`;
-                navigator.clipboard.writeText(textToCopy).then(() => {
-                    const originalHtml = this.innerHTML;
-                    this.innerHTML = '<i class="fas fa-check"></i> Copied!';
-                    setTimeout(() => this.innerHTML = originalHtml, 1500);
-                });
+            if (!referenceCode) {
+                return;
             }
+            navigator.clipboard.writeText('REF' + referenceCode).then(() => {
+                const originalHtml = this.innerHTML;
+                this.innerHTML = '<i class="fas fa-check"></i> Copied!';
+                setTimeout(() => this.innerHTML = originalHtml, 1500);
+            });
         });
     });
     
@@ -364,46 +464,21 @@ document.addEventListener('DOMContentLoaded', function() {
             },
             body: JSON.stringify({
                 amount: selectedAmount,
-                payment_method: selectedMethod,
-                reference_code: referenceCode
+                payment_method: selectedMethod
             })
         })
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                const invoiceLink = data.invoice_url
-                    ? `<a href="${data.invoice_url}" target="_blank" class="btn btn-primary mt-2 me-2">
-                           <i class="fa fa-file-invoice"></i> View / download invoice
-                       </a>`
-                    : '';
-                const markPaidBtn = data.mark_paid_url
-                    ? `<button type="button" class="btn btn-success mt-2" id="swalMarkPaidBtn">
-                           <i class="fa fa-check"></i> OK, I have made the payment
-                       </button>`
-                    : '';
+                applyInvoice(data);
                 Swal.fire({
                     title: 'Invoice ready',
                     html: `Transfer <strong>€${selectedAmount.toFixed(2)}</strong> and include<br>
                            <strong class="font-monospace">REF${data.reference_code}</strong> in the payment note.<br><br>
-                           After you send the transfer, click <strong>OK, I have made the payment</strong>.<br>
-                           Status stays <strong>Pending</strong> until we confirm and credit your wallet.<br>
-                           <div class="mt-2">${invoiceLink}${markPaidBtn}</div>`,
+                           Pay details are on this page. Status stays <strong>Pending</strong> until we confirm and credit your wallet.`,
                     icon: 'success',
-                    confirmButtonText: 'View wallet',
+                    confirmButtonText: 'Show pay details',
                     showCancelButton: false,
-                    didOpen: () => {
-                        const btn = document.getElementById('swalMarkPaidBtn');
-                        if (!btn || !data.mark_paid_url) return;
-                        btn.addEventListener('click', () => {
-                            markDepositPaid(data.mark_paid_url, {
-                                ref: 'REF' + data.reference_code,
-                                amount: selectedAmount.toFixed(2),
-                                reloadOnSuccess: true,
-                            });
-                        });
-                    }
-                }).then(() => {
-                    window.location.href = boot.routes.addFunds;
                 });
             } else if (data.requires_billing) {
                 // Show billing info modal
@@ -483,6 +558,9 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Proceed button
     proceedBtn.addEventListener('click', async function() {
+        if (invoiceLocked) {
+            return;
+        }
         if (selectedAmount < 10) {
             Swal.fire({
                 title: 'Amount Required',
@@ -527,7 +605,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     },
                     body: JSON.stringify({
                         amount: selectedAmount,
-                        reference_code: referenceCode
+                        reference_code: instantRailReference()
                     })
                 });
                 const data = await response.json();
@@ -566,6 +644,7 @@ document.addEventListener('DOMContentLoaded', function() {
             proceedBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Processing...';
             const picked = document.querySelector('input[name="deposit_saved_card"]:checked');
             const savedPm = picked && picked.value !== 'new' ? picked.value : null;
+            const cardReference = instantRailReference();
 
             try {
                 if (savedPm) {
@@ -577,7 +656,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         },
                         body: JSON.stringify({
                             amount: selectedAmount,
-                            reference_code: referenceCode,
+                            reference_code: cardReference,
                             payment_method_id: savedPm
                         })
                     });
@@ -621,7 +700,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     },
                     body: JSON.stringify({
                         amount: selectedAmount,
-                        reference_code: referenceCode
+                        reference_code: cardReference
                     })
                 });
                 
@@ -814,6 +893,41 @@ document.addEventListener('DOMContentLoaded', function() {
             reloadOnSuccess: true,
         });
     });
+
+    const invoiceChangeBtn = document.getElementById('invoiceChangeBtn');
+    if (invoiceChangeBtn) {
+        invoiceChangeBtn.addEventListener('click', function () {
+            if (!invoiceLocked) {
+                return;
+            }
+            Swal.fire({
+                icon: 'question',
+                title: 'Start a new invoice?',
+                html: 'You already have <strong>REF' + String(referenceCode || '') + '</strong>. Changing amount or method leaves that invoice pending and lets you create another.',
+                showCancelButton: true,
+                confirmButtonText: 'Change and start over',
+                cancelButtonText: 'Keep this invoice',
+            }).then(function (result) {
+                if (result.isConfirmed) {
+                    clearInvoiceLock();
+                }
+            });
+        });
+    }
+
+    const invoiceReadyMarkPaid = document.getElementById('invoiceReadyMarkPaid');
+    if (invoiceReadyMarkPaid) {
+        invoiceReadyMarkPaid.addEventListener('click', function () {
+            if (!invoiceMarkPaidUrl || !referenceCode) {
+                return;
+            }
+            markDepositPaid(invoiceMarkPaidUrl, {
+                ref: 'REF' + referenceCode,
+                amount: Number(selectedAmount || 0).toFixed(2),
+                reloadOnSuccess: true,
+            });
+        });
+    }
 
 });
 })();

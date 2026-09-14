@@ -678,7 +678,7 @@ class AddFundsController extends Controller
             $request->validate([
                 'amount' => 'required|numeric|min:10|max:100000',
                 'payment_method' => 'required|in:wise,crypto,bank',
-                'reference_code' => 'required|string',
+                'reference_code' => 'nullable|string',
             ]);
 
             $user = auth()->user();
@@ -708,16 +708,9 @@ class AddFundsController extends Controller
                 ], 503);
             }
 
-            // Use the provided reference code
-            $referenceCode = $request->reference_code;
-
-            // Check if reference code already exists
-            $existingDeposit = DepositRequest::where('reference_code', $referenceCode)->first();
-            if ($existingDeposit) {
-                do {
-                    $referenceCode = str_pad(mt_rand(1, 999999), 6, '0', STR_PAD_LEFT);
-                } while (DepositRequest::where('reference_code', $referenceCode)->exists());
-            }
+            // Server owns the REF. A client-supplied code is ignored so a copied
+            // placeholder cannot diverge from the deposit row after collision.
+            $referenceCode = DepositRequest::generateUniqueReferenceCode();
 
             $depositRequest = DepositRequest::create([
                 'user_id' => auth()->id(),

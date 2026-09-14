@@ -302,7 +302,7 @@ class OrderChatHardeningTest extends TestCase
             ->getJson(route('chat.messages', $completed->id))
             ->assertOk()
             ->assertJsonPath('can_send', true)
-            ->assertJsonPath('composer_note', 'This order is completed. You can still message about this placement.');
+            ->assertJsonPath('composer_note', 'This order is completed. You can still message the publisher.');
 
         $this->actingAs($publisher)
             ->getJson(route('chat.messages', $completed->id))

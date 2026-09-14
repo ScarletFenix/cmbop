@@ -247,16 +247,18 @@
             <div class="app-shell-footer__legal">
                 <span>© {{ date('Y') }} SEOLinkBuildings</span>
                 <span class="mx-1">·</span>
-                <button type="button" class="btn btn-link btn-sm p-0 align-baseline" onclick="document.getElementById('helpFeedbackToggle')?.click()">Report a problem</button>
+                <button type="button" class="btn btn-link btn-sm p-0 align-baseline" onclick="window.slbOpenSupport && window.slbOpenSupport()">Report a problem</button>
                 <span class="mx-1">·</span>
-                <button type="button" class="btn btn-link btn-sm p-0 align-baseline" onclick="document.getElementById('helpFeedbackToggle')?.click()">Suggestion box</button>
+                <button type="button" class="btn btn-link btn-sm p-0 align-baseline" onclick="window.slbOpenSupport && window.slbOpenSupport()">Suggestion box</button>
             </div>
             @include('partials.trustpilot-trust', ['compact' => true])
         </div>
         @include('partials.payment-trust', ['compact' => true, 'showMethods' => true, 'brief' => true])
     </div>
 </footer>
-@include('components.help-feedback-widget')
+@unless(\App\Support\TawkChat::enabled())
+    @include('components.help-feedback-widget')
+@endunless
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script src="{{ asset('assets/js/modal-stack.js') }}?v={{ @filemtime(public_path('assets/js/modal-stack.js')) ?: '1' }}"></script>
@@ -340,6 +342,7 @@
 <script src="{{ asset('js/order-chat.js') }}?v={{ @filemtime(public_path('js/order-chat.js')) ?: '1' }}" defer></script>
 <script src="{{ asset('js/notification-center.js') }}?v={{ @filemtime(public_path('js/notification-center.js')) ?: '8' }}" defer></script>
 @stack('scripts')
+@include('partials.tawk')
 
 </body>
 </html>

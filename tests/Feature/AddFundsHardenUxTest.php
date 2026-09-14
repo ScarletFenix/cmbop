@@ -102,12 +102,17 @@ class AddFundsHardenUxTest extends TestCase
                 'reference_code' => '654321',
             ])
             ->assertOk()
-            ->assertJsonPath('success', true);
+            ->assertJsonPath('success', true)
+            ->assertJsonMissing(['reference_code' => '654321']);
 
         $this->assertDatabaseHas('deposit_requests', [
             'user_id' => $user->id,
             'payment_method' => 'crypto',
             'amount' => 50,
+        ]);
+        $this->assertDatabaseMissing('deposit_requests', [
+            'user_id' => $user->id,
+            'reference_code' => '654321',
         ]);
     }
 
@@ -147,6 +152,9 @@ class AddFundsHardenUxTest extends TestCase
         $this->assertStringContainsString('SEPA usually 0–2 business days', $js);
         $this->assertStringContainsString('function syncWiseQr', $js);
         $this->assertStringContainsString('wiseQrEndpoint', $js);
+        $this->assertStringContainsString('if (!invoiceLocked)', $js);
+        $this->assertStringContainsString('invoiceReadyBar', $html);
+        $this->assertStringNotContainsString('XXXXXXXX', $html);
         $this->assertStringNotContainsString('api.qrserver.com', $js);
     }
 

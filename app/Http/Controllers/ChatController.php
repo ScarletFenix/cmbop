@@ -34,8 +34,12 @@ class ChatController extends Controller
             app(CheckoutSchemaService::class)->ensureCheckoutTables();
 
             $user = auth()->user();
-            $activeRole = $user->activeRole()
-                ?? optional($user->roles()->first())->name;
+            try {
+                $activeRole = $user->activeRole()
+                    ?? optional($user->roles()->first())->name;
+            } catch (\Throwable $e) {
+                $activeRole = null;
+            }
 
             $unreadChat = 0;
             $needsAction = 0;
@@ -60,11 +64,21 @@ class ChatController extends Controller
                 }
                 $needsAction = AdvertiserOrderStatus::needsActionCountForUser((int) $user->id);
             } elseif ($activeRole === 'publisher') {
-                $orderIds = Order::where('payment_status', 'paid')
-                    ->where('status', '!=', 'cancelled')
-                    ->whereHas('items.site', function ($q) use ($user) {
-                        $q->where('publisher_id', $user->id);
-                    })->pluck('id');
+                try {
+                    $orderIds = AdvertiserOrderStatus::itemsTableAvailable()
+                        ? Order::where('payment_status', 'paid')
+                            ->where('status', '!=', 'cancelled')
+                            ->whereHas('items.site', function ($q) use ($user) {
+                                $q->where('publisher_id', $user->id);
+                            })->pluck('id')
+                        : collect();
+                    $needsAction = AdvertiserOrderStatus::itemsTableAvailable()
+                        ? PublisherNeedsAction::needsYouCount((int) $user->id)
+                        : 0;
+                } catch (\Throwable $e) {
+                    $orderIds = collect();
+                    $needsAction = 0;
+                }
                 $unreadQuery = OrderChatMessage::whereIn('order_id', $orderIds)
                     ->where('sender_type', 'advertiser')
                     ->where('is_read', false)
@@ -80,8 +94,6 @@ class ChatController extends Controller
                         ];
                     }
                 }
-
-                $needsAction = PublisherNeedsAction::needsYouCount((int) $user->id);
             }
 
             return response()->json([
@@ -125,11 +137,9 @@ class ChatController extends Controller
             $this->applyVisibleToViewer($baseQuery, $user);
 
             if ($sinceId) {
-                $messages = (clone $baseQuery)
-                    ->with('user')
-                    ->where('id', '>', $sinceId)
-                    ->orderBy('id', 'asc')
-                    ->get();
+                $messages = $this->loadChatMessages(
+                    (clone $baseQuery)->where('id', '>', $sinceId)->orderBy('id', 'asc')
+                );
                 $hasMoreOlder = false;
             } else {
                 $base = clone $baseQuery;
@@ -137,28 +147,29 @@ class ChatController extends Controller
                     $base->where('id', '<', $beforeId);
                 }
                 $totalMatching = (clone $base)->count();
-                $messages = (clone $base)->with('user')
-                    ->orderByDesc('id')
-                    ->limit($limit)
-                    ->get()
-                    ->sortBy('id')
-                    ->values();
+                $messages = $this->loadChatMessages(
+                    (clone $base)->orderByDesc('id')->limit($limit)
+                )->sortBy('id')->values();
                 $hasMoreOlder = $totalMatching > $messages->count();
             }
 
             // Mark delivered counterpart messages as read when loading (including poll refreshes).
-            if ($isAdvertiser) {
-                OrderChatMessage::where('order_id', $orderId)
-                    ->where('sender_type', 'publisher')
-                    ->notBlocked()
-                    ->where('is_read', false)
-                    ->update(['is_read' => true, 'read_at' => now()]);
-            } else {
-                OrderChatMessage::where('order_id', $orderId)
-                    ->where('sender_type', 'advertiser')
-                    ->notBlocked()
-                    ->where('is_read', false)
-                    ->update(['is_read' => true, 'read_at' => now()]);
+            try {
+                if ($isAdvertiser) {
+                    OrderChatMessage::where('order_id', $orderId)
+                        ->where('sender_type', 'publisher')
+                        ->notBlocked()
+                        ->where('is_read', false)
+                        ->update(['is_read' => true, 'read_at' => now()]);
+                } else {
+                    OrderChatMessage::where('order_id', $orderId)
+                        ->where('sender_type', 'advertiser')
+                        ->notBlocked()
+                        ->where('is_read', false)
+                        ->update(['is_read' => true, 'read_at' => now()]);
+                }
+            } catch (\Throwable $e) {
+                // Leftover is_read / read_at must not hide the thread.
             }
 
             $order->loadMissing(['items.site.publisher', 'user']);
@@ -195,17 +206,14 @@ class ChatController extends Controller
             $order = Order::findOrFail($orderId);
             $user = auth()->user();
 
-            $isAdvertiser = (int) $order->user_id === (int) $user->id;
-            $isPublisher = $order->items()->whereHas('site', function ($q) use ($user) {
-                $q->where('publisher_id', $user->id);
-            })->exists();
-
-            if (! $isAdvertiser && ! $isPublisher) {
+            if (! $this->userCanAccessOrder($order, $user)) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Unauthorized',
                 ], 403);
             }
+
+            $isAdvertiser = (int) $order->user_id === (int) $user->id;
 
             if ($order->status === 'cancelled' || $order->payment_status !== 'paid') {
                 return response()->json([
@@ -243,7 +251,11 @@ class ChatController extends Controller
             }
 
             $message = OrderChatMessage::create($payload);
-            $message->load('user');
+            try {
+                $message->load('user');
+            } catch (\Throwable $e) {
+                // Serialize still has user_id; leftover users must not fail the send.
+            }
 
             if (! $isBlocked) {
                 foreach ($this->resolveChatReceivers($order, $isAdvertiser) as $receiver) {
@@ -264,12 +276,19 @@ class ChatController extends Controller
                         }
                     }
 
-                    app(InAppNotificationService::class)->notifyNewChatMessage(
-                        $order,
-                        $user,
-                        $receiver,
-                        $body
-                    );
+                    try {
+                        app(InAppNotificationService::class)->notifyNewChatMessage(
+                            $order,
+                            $user,
+                            $receiver,
+                            $body
+                        );
+                    } catch (\Throwable $e) {
+                        Log::warning('Chat notification failed: '.$e->getMessage(), [
+                            'order_id' => $order->id,
+                            'message_id' => $message->id,
+                        ]);
+                    }
                 }
             }
 
@@ -298,9 +317,13 @@ class ChatController extends Controller
             return true;
         }
 
-        $isPublisher = $order->items()->whereHas('site', function ($q) use ($user) {
-            $q->where('publisher_id', $user->id);
-        })->exists();
+        try {
+            $isPublisher = $order->items()->whereHas('site', function ($q) use ($user) {
+                $q->where('publisher_id', $user->id);
+            })->exists();
+        } catch (\Throwable $e) {
+            return false;
+        }
 
         if (! $isPublisher) {
             return false;
@@ -317,7 +340,16 @@ class ChatController extends Controller
     private function resolveChatReceivers(Order $order, bool $senderIsAdvertiser): array
     {
         if ($senderIsAdvertiser) {
-            $order->loadMissing('items.site.publisher');
+            if (! AdvertiserOrderStatus::itemsTableAvailable()) {
+                return [];
+            }
+
+            try {
+                $order->loadMissing('items.site.publisher');
+            } catch (\Throwable $e) {
+                return [];
+            }
+
             $publishers = [];
             foreach ($order->items as $item) {
                 $publisher = $item->site?->publisher;
@@ -350,6 +382,18 @@ class ChatController extends Controller
     }
 
     /**
+     * @return Collection<int, OrderChatMessage>
+     */
+    private function loadChatMessages(Builder $query): Collection
+    {
+        try {
+            return (clone $query)->with('user')->get();
+        } catch (\Throwable $e) {
+            return (clone $query)->get();
+        }
+    }
+
+    /**
      * @param  Collection<int, OrderChatMessage>|iterable<OrderChatMessage>  $messages
      * @return list<array<string, mixed>>
      */
@@ -368,6 +412,15 @@ class ChatController extends Controller
      */
     private function serializeMessage(OrderChatMessage $message): array
     {
+        $userId = $message->user_id;
+        $userName = 'User';
+        try {
+            $userId = $message->user?->id ?? $message->user_id;
+            $userName = $message->user?->name ?? 'User';
+        } catch (\Throwable $e) {
+            // Leftover users must not hide a delivered message.
+        }
+
         return [
             'id' => $message->id,
             'order_id' => $message->order_id,
@@ -382,8 +435,8 @@ class ChatController extends Controller
             'created_at' => optional($message->created_at)?->toIso8601String(),
             'updated_at' => optional($message->updated_at)?->toIso8601String(),
             'user' => [
-                'id' => $message->user?->id ?? $message->user_id,
-                'name' => $message->user?->name ?? 'User',
+                'id' => $userId,
+                'name' => $userName,
             ],
         ];
     }
@@ -398,14 +451,15 @@ class ChatController extends Controller
         $viewer = $viewer ?: auth()->user();
         $isAdvertiser = $viewer && (int) $order->user_id === (int) $viewer->id;
 
-        $item = null;
-        if ($viewer && ! $isAdvertiser) {
-            $item = $order->items->first(function ($candidate) use ($viewer) {
-                return (int) ($candidate->site?->publisher_id) === (int) $viewer->id;
-            });
+        $item = $this->resolveChatPlacement($order, $viewer, $isAdvertiser);
+        $site = null;
+        if ($item) {
+            try {
+                $site = $item->site;
+            } catch (\Throwable $e) {
+                $item->setRelation('site', null);
+            }
         }
-        $item = $item ?: $order->items->first();
-        $site = $item?->site;
 
         $linkType = $site?->link_type
             ?? ($item ? 'dofollow' : null);
@@ -414,7 +468,11 @@ class ChatController extends Controller
         $startedAt = $order->paid_at ?? $order->created_at;
 
         $meta = AdvertiserOrderStatus::meta($order, $item);
-        $openContentRevision = OrderItem::orderHasOpenContentRevision((int) $order->id);
+        try {
+            $openContentRevision = OrderItem::orderHasOpenContentRevision((int) $order->id);
+        } catch (\Throwable $e) {
+            $openContentRevision = false;
+        }
         $liveUrl = safe_href_url($item?->live_url);
         $contentLink = safe_href_url($item?->publisherContentLink());
         $canReview = $isAdvertiser
@@ -422,16 +480,7 @@ class ChatController extends Controller
             && filled($liveUrl)
             && ! $openContentRevision;
         $canSend = $order->status !== 'cancelled' && $order->payment_status === 'paid';
-        $composerNote = null;
-        if ($order->status === 'cancelled') {
-            $composerNote = 'This order is cancelled. Chat is read-only.';
-        } elseif ($order->payment_status !== 'paid') {
-            $composerNote = 'Chat is available after the order is paid.';
-        } elseif ($order->status === 'completed') {
-            $composerNote = AdvertiserOrderDetails::placementsMissing($order)
-                ? 'This order is completed. You can still message support about it.'
-                : 'This order is completed. You can still message about this placement.';
-        }
+        $composerNote = $this->chatComposerNote($order, $item, $isAdvertiser, $liveUrl);
 
         $modificationRequested = $item?->modification_requested === 'yes';
         $canResubmit = ! $isAdvertiser
@@ -452,8 +501,13 @@ class ChatController extends Controller
             'can_request_changes' => $canReview,
             'can_resubmit' => $canResubmit,
             'can_send' => $canSend,
+            'can_view_order' => (bool) $isAdvertiser,
+            'has_placement' => $item instanceof OrderItem,
+            'details_missing' => ! $item,
             'composer_note' => $composerNote,
-            'website_name' => $item?->site_name ?: ($site?->site_name ?: '—'),
+            'website_name' => $item
+                ? ($item->site_name ?: ($site?->site_name ?: 'Placement details'))
+                : 'Placement details are missing for this order.',
             'website_url' => $item?->site_url ?: ($site?->site_url ?: null),
             'visit_url' => CatalogVisitUrl::forSiteId($item?->site_id ?: $site?->id),
             'order_date' => optional($order->created_at)?->toIso8601String(),
@@ -517,5 +571,79 @@ class ChatController extends Controller
             'last_seen_at' => $presence['last_seen_at'],
             'label' => $presence['label'],
         ];
+    }
+
+    private function loadOrderItemsForChat(Order $order): void
+    {
+        if (! AdvertiserOrderStatus::itemsTableAvailable()) {
+            $order->setRelation('items', collect());
+
+            return;
+        }
+
+        try {
+            $order->loadMissing(['items.site']);
+        } catch (\Throwable $e) {
+            try {
+                $order->unsetRelation('items');
+                $order->loadMissing(['items']);
+                foreach ($order->items as $loaded) {
+                    if ($loaded instanceof OrderItem) {
+                        $loaded->setRelation('site', null);
+                    }
+                }
+            } catch (\Throwable $inner) {
+                $order->setRelation('items', collect());
+            }
+        }
+    }
+
+    private function resolveChatPlacement(Order $order, ?User $viewer, bool $isAdvertiser): ?OrderItem
+    {
+        try {
+            $items = $order->items;
+        } catch (\Throwable $e) {
+            $order->setRelation('items', collect());
+
+            return null;
+        }
+
+        $item = null;
+        if ($viewer && ! $isAdvertiser) {
+            $item = $items->first(function ($candidate) use ($viewer) {
+                return $candidate instanceof OrderItem
+                    && (int) ($candidate->site?->publisher_id) === (int) $viewer->id;
+            });
+        }
+        $item = $item ?: $items->first();
+
+        return $item instanceof OrderItem ? $item : null;
+    }
+
+    private function chatComposerNote(Order $order, ?OrderItem $item, bool $isAdvertiser, ?string $liveUrl): ?string
+    {
+        if ($order->status === 'cancelled') {
+            return 'This order is cancelled. Chat is read-only.';
+        }
+
+        if ($order->payment_status !== 'paid') {
+            return 'Chat is available after the order is paid.';
+        }
+
+        if ($order->status !== 'completed') {
+            return null;
+        }
+
+        if (! $item) {
+            return 'Placement details are missing for this order. You can still send a message.';
+        }
+
+        if (filled($liveUrl)) {
+            return 'This order is completed. You can still message about the live post.';
+        }
+
+        return $isAdvertiser
+            ? 'This order is completed. You can still message the publisher.'
+            : 'This order is completed. You can still message the advertiser.';
     }
 }

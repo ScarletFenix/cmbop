@@ -438,15 +438,22 @@ function bootAdvertiserOrdersPage() {
         }
 
         window._chatOrderId = details.order_id || window._chatOrderId || null;
-        const websiteName = escapeHtml(details.website_name || '—');
+        const detailsMissing = details.details_missing === true || details.has_placement === false;
+        const missingLabel = 'Placement details are missing for this order.';
+        const websiteName = escapeHtml(detailsMissing
+            ? (details.website_name && details.website_name !== '—' ? details.website_name : missingLabel)
+            : (details.website_name || 'Placement details'));
         const websiteHref = details.visit_url || details.website_url;
-        const websiteUrl = details.website_url
+        const websiteUrl = !detailsMissing && details.website_url
             ? `<a class="chat-od__url" href="${safeUrl(websiteHref)}" target="_blank" rel="noopener noreferrer">${escapeHtml(details.website_url)}</a>`
             : '';
         const statusLabel = escapeHtml(details.status_label || details.status || '—');
         const nextAction = escapeHtml(details.next_action || '');
         const autoHint = details.auto_approve_hint
             ? `<div class="chat-od__hint">${escapeHtml(details.auto_approve_hint)}</div>`
+            : '';
+        const viewBtn = details.can_view_order && details.order_id
+            ? `<button type="button" class="btn btn-sm btn-outline-info chat-od__view" data-chat-view-order="${Number(details.order_id)}">View order</button>`
             : '';
 
         // Status summary only — review actions live in the View order details modal
@@ -455,6 +462,7 @@ function bootAdvertiserOrdersPage() {
                 <div class="chat-od__site">
                     <span class="chat-detail-primary">${websiteName}</span>
                     ${websiteUrl}
+                    ${viewBtn}
                 </div>
                 <div class="chat-od__status">
                     <strong>${statusLabel}</strong>
@@ -463,6 +471,12 @@ function bootAdvertiserOrdersPage() {
                 ${autoHint}
             </div>`;
         el.classList.remove('d-none');
+        el.querySelector('[data-chat-view-order]')?.addEventListener('click', function () {
+            const id = Number(this.getAttribute('data-chat-view-order'));
+            if (id && typeof window.viewOrder === 'function') {
+                window.viewOrder(id);
+            }
+        });
     }
 
     var orderChat = null;
@@ -995,15 +1009,17 @@ function bootAdvertiserOrdersPage() {
             };
         }
         if (status === 'completed') {
-            const count = Array.isArray(order.items) ? order.items.length : (Number(order.items_count) || 0);
-            const anyLive = count > 0 && Array.isArray(order.items) && order.items.some((it) => it && it.live_url);
-            if (count < 1) {
-                return { label: 'Completed', next: 'This order is marked complete, but it has no line items. Contact support if you expected a live URL here.', cls: 'status-completed', autoHint: null };
+            if (!item) {
+                return { label: 'Completed', next: 'Placement details are missing for this order.', cls: 'status-completed', autoHint: null };
             }
-            if (!anyLive) {
-                return { label: 'Completed', next: 'This order is marked complete. If you expected a live URL, use Chat or contact support.', cls: 'status-completed', autoHint: null };
-            }
-            return { label: 'Completed', next: 'All done — the publisher has been paid for this placement.', cls: 'status-completed', autoHint: null };
+            return {
+                label: 'Completed',
+                next: hasLiveUrl
+                    ? 'Your post is live. Open the published URL.'
+                    : 'Placement finished. Open the order for details.',
+                cls: 'status-completed',
+                autoHint: null,
+            };
         }
         return { label: capitalize(status), next: '', cls: getStatusClass(status), autoHint: null };
     }
@@ -1373,7 +1389,9 @@ function bootAdvertiserOrdersPage() {
             const statusMeta = getAdvertiserStatusMeta(order);
             const items = Array.isArray(order.items) ? order.items : [];
             const firstItem = items[0] || null;
-            const siteName = firstItem ? firstItem.site_name : 'N/A';
+            const siteName = firstItem
+                ? (firstItem.site_name || firstItem.site_url || 'Placement details')
+                : 'Placement details';
             const siteUrl = firstItem ? firstItem.site_url : '';
             const siteHref = (firstItem && firstItem.visit_url) ? firstItem.visit_url : siteUrl;
             const itemsCount = Number(order.items_count) || items.length || 0;
@@ -1976,9 +1994,125 @@ function bootAdvertiserOrdersPage() {
             return rows;
         }).join('');
 
-        const placementsHtml = items.length
-            ? items.map((it, idx) => renderPlacementCard(order, it, idx, itemsCount)).join('')
-            : emptyPlacementsHtml(order);
+        const placementsHtml = items.map((it, idx) => {
+            const liveUrl = it.live_url || null;
+            const modRequested = it.modification_requested === 'yes';
+            let healthHtml = '';
+            if (liveUrl) {
+                const checked = it.live_url_checked_at
+                    ? ` · checked ${formatDate(it.live_url_checked_at)}`
+                    : '';
+                const http = it.live_url_http_status ? ` · HTTP ${it.live_url_http_status}` : '';
+                healthHtml = `
+                    <div class="d-flex flex-wrap align-items-center gap-2 mt-1">
+                        ${liveUrlHealthBadge(it)}
+                        <span class="small text-muted">Public reachability check${http}${checked}</span>
+                        <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2" id="recheckLiveUrlBtn-${it.id || idx}" onclick="recheckLiveUrl(${order.id}, ${it.id || 'null'})">
+                            <i class="fa fa-refresh me-1"></i>Recheck
+                        </button>
+                    </div>`;
+            }
+            const liveUrlHtml = liveUrl
+                ? `<div class="ov-block">
+                        <strong>Live URL</strong>
+                        <div><a href="${safeUrl(liveUrl)}" target="_blank" rel="noopener noreferrer" class="live-url">${escapeHtml(liveUrl)} <i class="fa fa-external-link fa-xs"></i></a></div>
+                        ${healthHtml}
+                   </div>`
+                : `<div class="ov-block"><strong>Live URL</strong><div class="text-muted">Not submitted yet</div></div>`;
+            const homepageDays = it.homepage_days != null ? parseInt(it.homepage_days, 10) : 0;
+            const homepageFee = euroNumber(it.homepage_price);
+            const homepageHtml = homepageDays
+                ? `<div class="ov-block">
+                        <strong>Homepage placement</strong>
+                        <div>${homepageDays} day${homepageDays === 1 ? '' : 's'}${Number.isFinite(homepageFee) && homepageFee > 0 ? ` (+${formatEuro(homepageFee)})` : ' · Free'}</div>
+                   </div>`
+                : '';
+            const socialChannels = Array.isArray(it.social_channels) ? it.social_channels : [];
+            const socialPosts = it.social_post_urls && typeof it.social_post_urls === 'object' ? it.social_post_urls : {};
+            const socialLabel = (ch) => (ch === 'x' ? 'X' : (String(ch).charAt(0).toUpperCase() + String(ch).slice(1)));
+            const socialHtml = socialChannels.length
+                ? `<div class="ov-block">
+                        <strong>Social promotion</strong>
+                        <div>${socialChannels.map(socialLabel).join(', ')} <span class="text-muted">(included)</span></div>
+                        <ul class="mb-0 ps-3 mt-1">
+                            ${socialChannels.map((ch) => {
+                                const url = socialPosts[ch];
+                                if (!url) {
+                                    return `<li class="small text-muted">${socialLabel(ch)}: not submitted yet</li>`;
+                                }
+                                return `<li class="small"><strong>${socialLabel(ch)}:</strong> <a href="${safeUrl(url)}" target="_blank" rel="noopener noreferrer" class="live-url">${escapeHtml(url)}</a></li>`;
+                            }).join('')}
+                        </ul>
+                   </div>`
+                : '';
+            const revisionHtml = modRequested && it.completion_notes
+                ? `<div class="ui-callout ui-callout--attention ui-callout--sm ui-callout--flush mb-2"><span class="ui-callout__icon" aria-hidden="true"><i class="fa-solid fa-circle-exclamation"></i></span><div class="ui-callout__body"><strong>Change request:</strong> ${escapeHtml(it.completion_notes)}</div></div>`
+                : '';
+            const heading = itemsCount > 1
+                ? `<h6 class="mt-2 mb-2">Placement ${idx + 1}${it.site_name ? ` · ${escapeHtml(it.site_name)}` : ''}</h6>`
+                : '<h6>Placement</h6>';
+
+            return `
+                ${idx > 0 ? '<hr class="my-2">' : ''}
+                ${heading}
+                ${revisionHtml}
+                <div class="ov-block">
+                    <strong>Site</strong>
+                    <div>${escapeHtml(it.site_name || '—')}</div>
+                </div>
+                <div class="ov-block">
+                    <strong>Site URL</strong>
+                    <div>${it.site_url ? `<a href="${safeUrl(it.visit_url || it.site_url)}" target="_blank" rel="noopener noreferrer" class="text-primary">${escapeHtml(it.site_url)} <i class="fa fa-external-link fa-xs"></i></a>` : '—'}</div>
+                </div>
+                <div class="ov-block">
+                    <strong>Document</strong>
+                    <div>${it.content_link ? `<a href="${safeUrl(it.content_link)}" class="text-primary" target="_blank" rel="noopener noreferrer"><i class="fa fa-download me-1"></i>${escapeHtml(it.content_original_name || 'Download article')}</a>` : '—'}</div>
+                    ${it.content_revision_requested === 'yes' ? (() => {
+                        const isLibrary = !!(it.content_submission_id);
+                        const currentLabel = it.content_original_name
+                            || it.article_title
+                            || (it.content_submission_id ? ('Library article #' + it.content_submission_id) : 'article');
+                        const siteHint = itemsCount > 1 && it.site_name
+                            ? ` for ${escapeHtml(it.site_name)}`
+                            : '';
+                        return `<div class="alert alert-warning py-2 small mt-2 mb-0">
+                            <div>Publisher asked for a revised article${it.content_revision_reason ? ': ' + escapeHtml(it.content_revision_reason) : '.'}</div>
+                            ${(order.status === 'processing' || order.status === 'review') ? `<button type="button" class="btn btn-sm btn-warning mt-2" onclick="fulfillContentRevision(${order.id}, ${it.id || 'null'}, {isLibrary: ${isLibrary ? 'true' : 'false'}, currentLabel: ${jsAttr(currentLabel)}})">
+                                <i class="fa fa-upload"></i> Send revised article${siteHint}
+                            </button>` : ''}
+                        </div>`;
+                    })() : ''}
+                </div>
+                <div class="ov-block">
+                    <strong>Anchor text</strong>
+                    <div>${escapeHtml(it.anchor_text || '—')}</div>
+                </div>
+                <div class="ov-block">
+                    <strong>Target URL</strong>
+                    <div>${it.target_url ? `<a href="${safeUrl(it.target_url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(it.target_url)}</a>` : '—'}</div>
+                </div>
+                <div class="ov-block">
+                    <strong>Feature image</strong>
+                    <div>${it.feature_image_url ? `<a href="${safeUrl(it.feature_image_url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(it.feature_image_url)}</a>` : 'Publisher may choose'}</div>
+                </div>
+                <div class="ov-block">
+                    <strong>Compliance</strong>
+                    <div>${escapeHtml(it.moderation_status || '—')}</div>
+                </div>
+                ${homepageHtml}
+                ${socialHtml}
+                ${liveUrlHtml}
+                ${order.status === 'completed' && itemsCount > 1 ? (
+                    it.can_report_link_removed
+                        ? `<div class="ov-block"><button type="button" class="btn btn-sm btn-outline-danger" onclick="reportLinkRemoved(${order.id}, ${it.id || 'null'})">
+                            <i class="fa fa-flag"></i> Report link removed${it.site_name ? ` · ${escapeHtml(it.site_name)}` : ''}
+                        </button></div>`
+                        : (it.dispute_status
+                            ? `<div class="ov-block"><span class="badge text-bg-${it.dispute_status === 'upheld' ? 'danger' : (it.dispute_status === 'dismissed' ? 'secondary' : 'warning')}">Dispute: ${escapeHtml(it.dispute_status)}</span></div>`
+                            : '')
+                ) : ''}
+            `;
+        }).join('') || '<div class="text-muted">Placement details are missing for this order.</div>';
 
         let actionButtons = '';
         const revisionItems = items.filter((it) => it && it.content_revision_requested === 'yes');
