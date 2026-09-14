@@ -42,6 +42,8 @@ class WelcomeEmail extends PlatformMailable
             $ctaLabel = 'Browse Websites';
         }
 
+        $welcomeCredit = $this->mentionableWelcomeCredit($this->user);
+
         return $this->subject('Welcome to '.config('app.name', 'SEOLinkBuildings'))
             ->markdown('emails.welcome')
             ->with([
@@ -53,6 +55,7 @@ class WelcomeEmail extends PlatformMailable
                 'ctaUrl' => $ctaUrl,
                 'ctaLabel' => $ctaLabel,
                 'needsVerification' => $needsVerification,
+                'welcomeBonusEuro' => $welcomeCredit['euro'],
                 'loginUrl' => $this->publicRoute('login'),
                 'brand' => $this->brand(),
             ]);

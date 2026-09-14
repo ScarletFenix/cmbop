@@ -1,28 +1,32 @@
 @extends('layouts.app')
 
 @section('title', __('messages.meta_how_it_works_title'))
-@section('description', __('messages.meta_how_it_works_description'))
+@section('description', welcome_bonus_message('meta_how_it_works_description', 'meta_how_it_works_description_off'))
 @section('canonical', localized_url('how-it-works'))
 
 @php
+    $welcomeBonusCanGrant = welcome_bonus_can_grant();
     $howToSteps = [];
     foreach (range(1, 5) as $i) {
         $howToSteps[] = [
             '@type' => 'HowToStep',
             'position' => $i,
             'name' => __('messages.how_page_adv_step_'.$i.'_title'),
-            'text' => __('messages.how_page_adv_step_'.$i.'_body'),
+            'text' => $i === 2
+                ? welcome_bonus_message('how_page_adv_step_2_body', 'how_page_adv_step_2_body_off')
+                : __('messages.how_page_adv_step_'.$i.'_body'),
         ];
     }
 
+    $faqIndexes = $welcomeBonusCanGrant ? range(1, 4) : [1, 3, 4];
     $faqEntities = [];
-    foreach (range(1, 4) as $i) {
+    foreach ($faqIndexes as $i) {
         $faqEntities[] = [
             '@type' => 'Question',
-            'name' => __('messages.how_page_faq_q_'.$i),
+            'name' => welcome_bonus_message('how_page_faq_q_'.$i),
             'acceptedAnswer' => [
                 '@type' => 'Answer',
-                'text' => __('messages.how_page_faq_a_'.$i),
+                'text' => welcome_bonus_message('how_page_faq_a_'.$i),
             ],
         ];
     }
@@ -34,7 +38,7 @@
     '@@context' => 'https://schema.org',
     '@type' => 'HowTo',
     'name' => __('messages.how_page_howto_name'),
-    'description' => __('messages.meta_how_it_works_description'),
+    'description' => welcome_bonus_message('meta_how_it_works_description', 'meta_how_it_works_description_off'),
     'url' => localized_url('how-it-works'),
     'inLanguage' => class_exists(\App\Support\PublicI18n::class)
         ? \App\Support\PublicI18n::htmlLang()
@@ -77,7 +81,9 @@
                         <span class="how-page-step-num" aria-hidden="true">{{ $i }}</span>
                         <div>
                             <h3 class="h5 mb-2" style="color:#1a585e;">{{ __('messages.how_page_adv_step_'.$i.'_title') }}</h3>
-                            <p class="text-muted mb-0">{{ __('messages.how_page_adv_step_'.$i.'_body') }}</p>
+                            <p class="text-muted mb-0">{{ $i === 2
+                                ? welcome_bonus_message('how_page_adv_step_2_body', 'how_page_adv_step_2_body_off')
+                                : __('messages.how_page_adv_step_'.$i.'_body') }}</p>
                         </div>
                     </div>
                 </li>
@@ -124,20 +130,20 @@
     <section class="mb-5" aria-labelledby="how-faq-heading">
         <h2 id="how-faq-heading" class="h4 mb-3" style="color:#1a585e;">{{ __('messages.how_page_faq_title') }}</h2>
         <div class="accordion" id="howFaqAccordion">
-            @foreach(range(1, 4) as $i)
+            @foreach($faqIndexes as $i)
                 <div class="accordion-item border-0 mb-3 shadow-sm rounded-3 overflow-hidden">
                     <h3 class="accordion-header" id="howFaqHeading{{ $i }}">
                         <button class="accordion-button {{ $i > 1 ? 'collapsed' : '' }}" type="button"
                                 data-bs-toggle="collapse" data-bs-target="#howFaqCollapse{{ $i }}"
                                 aria-expanded="{{ $i === 1 ? 'true' : 'false' }}"
                                 aria-controls="howFaqCollapse{{ $i }}">
-                            {{ __('messages.how_page_faq_q_'.$i) }}
+                            {{ welcome_bonus_message('how_page_faq_q_'.$i) }}
                         </button>
                     </h3>
                     <div id="howFaqCollapse{{ $i }}" class="accordion-collapse collapse {{ $i === 1 ? 'show' : '' }}"
                          aria-labelledby="howFaqHeading{{ $i }}" data-bs-parent="#howFaqAccordion">
                         <div class="accordion-body text-muted">
-                            {{ __('messages.how_page_faq_a_'.$i) }}
+                            {{ welcome_bonus_message('how_page_faq_a_'.$i) }}
                         </div>
                     </div>
                 </div>

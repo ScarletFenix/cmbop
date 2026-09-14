@@ -478,6 +478,33 @@ class WelcomeBonusGrantTest extends TestCase
         $this->assertStringNotContainsString('<strong>€20 welcome credit</strong>', $html);
     }
 
+    public function test_register_page_hides_bonus_copy_when_amount_is_zero(): void
+    {
+        app(WelcomeBonusService::class)->setAmount(0);
+        $this->assertTrue(app(WelcomeBonusService::class)->isEnabled());
+        $this->assertFalse(app(WelcomeBonusService::class)->canGrant());
+
+        $this->get(route('register'))
+            ->assertOk()
+            ->assertSee('const welcomeBonusEnabled = false', false)
+            ->assertDontSee('€0 welcome credit', false)
+            ->assertDontSee('Start with €0 free credit', false);
+    }
+
+    public function test_register_page_hides_bonus_when_status_throws(): void
+    {
+        $this->mock(WelcomeBonusService::class, function ($mock) {
+            $mock->shouldReceive('canGrant')
+                ->andThrow(new \RuntimeException('SQLSTATE[HY000]: leftover'));
+        });
+
+        $this->get(route('register'))
+            ->assertOk()
+            ->assertSee('const welcomeBonusEnabled = false', false)
+            ->assertDontSee('€20 welcome credit', false)
+            ->assertDontSee('SQLSTATE', false);
+    }
+
     private function registerPayload(string $email, string $role = 'advertiser'): array
     {
         return [

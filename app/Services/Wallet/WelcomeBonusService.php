@@ -2,7 +2,9 @@
 
 namespace App\Services\Wallet;
 
+use App\Models\Role;
 use App\Models\User;
+use App\Models\Wallet;
 use App\Models\WelcomeBonusClaim;
 use App\Models\WelcomeBonusSetting;
 use Illuminate\Contracts\Cache\LockTimeoutException;
@@ -41,7 +43,59 @@ class WelcomeBonusService
 
     public function canGrant(): bool
     {
-        return $this->isEnabled() && $this->claimsTableReady() && $this->bonusColumnsReady();
+        return $this->isEnabled()
+            && $this->amount() > 0
+            && $this->claimsTableReady()
+            && $this->bonusColumnsReady();
+    }
+
+    /**
+     * Configured grant that new advertisers actually receive. 0 when disabled,
+     * leftover, or the amount is €0 — do not advertise this as a live credit.
+     */
+    public function advertisedGrantAmount(): float
+    {
+        try {
+            return $this->canGrant() ? $this->amount() : 0.0;
+        } catch (\Throwable) {
+            return 0.0;
+        }
+    }
+
+    /**
+     * Spend-only bonus currently on this user's advertiser wallet. 0 on leftover
+     * or when the row is missing — never invent a €20 they do not have.
+     */
+    public function heldAdvertiserBonus(?User $user): float
+    {
+        if (! $user || (int) $user->id < 1) {
+            return 0.0;
+        }
+
+        try {
+            if (! Schema::hasColumn('wallets', 'bonus_balance')) {
+                return 0.0;
+            }
+
+            $roleId = Role::query()->where('name', 'advertiser')->value('id');
+            if (! $roleId) {
+                return 0.0;
+            }
+
+            $bonus = Wallet::query()
+                ->where('user_id', $user->id)
+                ->where('role_id', $roleId)
+                ->value('bonus_balance');
+
+            return is_numeric($bonus) ? round(max(0, (float) $bonus), 2) : 0.0;
+        } catch (\Throwable) {
+            return 0.0;
+        }
+    }
+
+    public function formatEuro(float $amount): string
+    {
+        return '€'.rtrim(rtrim(number_format(max(0, $amount), 2, '.', ''), '0'), '.');
     }
 
     /**

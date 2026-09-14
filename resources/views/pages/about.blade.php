@@ -32,7 +32,9 @@
             'name' => __('messages.about_page_faq_q_'.$i),
             'acceptedAnswer' => [
                 '@type' => 'Answer',
-                'text' => __('messages.about_page_faq_a_'.$i),
+                'text' => $i === 3
+                    ? welcome_bonus_message('about_page_faq_a_3', 'about_page_faq_a_3_off')
+                    : __('messages.about_page_faq_a_'.$i),
             ],
         ];
     }
@@ -130,7 +132,7 @@
         <div class="row g-4">
             <div class="col-md-6">
                 <h3 class="h6" style="color:#1a585e;">{{ __('messages.about_page_who_advertisers_title') }}</h3>
-                <p class="text-muted mb-0">{{ __('messages.about_page_who_advertisers_body') }}</p>
+                <p class="text-muted mb-0">{{ welcome_bonus_message('about_page_who_advertisers_body', 'about_page_who_advertisers_body_off') }}</p>
             </div>
             <div class="col-md-6">
                 <h3 class="h6" style="color:#1a585e;">{{ __('messages.about_page_who_publishers_title') }}</h3>
@@ -206,11 +208,13 @@
                     <span class="about-proof-label">{{ __('messages.about_page_proof_wallet') }}</span>
                 </div>
             </li>
+            @if(welcome_bonus_can_grant())
             <li class="col-sm-6 col-lg-4">
                 <div class="about-proof-item about-proof-item--text">
-                    <span class="about-proof-label">{{ __('messages.about_page_proof_bonus') }}</span>
+                    <span class="about-proof-label">{{ welcome_bonus_message('about_page_proof_bonus') }}</span>
                 </div>
             </li>
+            @endif
             <li class="col-sm-6 col-lg-4">
                 <div class="about-proof-item about-proof-item--text">
                     <span class="about-proof-label">{{ __('messages.about_page_proof_legal') }}</span>
@@ -258,7 +262,9 @@
                     <div id="aboutFaqCollapse{{ $i }}" class="accordion-collapse collapse {{ $i === 1 ? 'show' : '' }}"
                          aria-labelledby="aboutFaqHeading{{ $i }}" data-bs-parent="#aboutFaqAccordion">
                         <div class="accordion-body text-muted">
-                            {{ __('messages.about_page_faq_a_'.$i) }}
+                            {{ $i === 3
+                                ? welcome_bonus_message('about_page_faq_a_3', 'about_page_faq_a_3_off')
+                                : __('messages.about_page_faq_a_'.$i) }}
                         </div>
                     </div>
                 </div>

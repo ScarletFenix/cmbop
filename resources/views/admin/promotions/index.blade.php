@@ -45,10 +45,12 @@
     @endif
 
     @php
-        $welcomeBonusEnabled = $welcomeBonusEnabled ?? true;
-        $welcomeBonusAmount = isset($welcomeBonusAmount) ? (float) $welcomeBonusAmount : 20.0;
+        $welcomeBonusEnabled = $welcomeBonusEnabled ?? false;
+        $welcomeBonusAmount = isset($welcomeBonusAmount) ? (float) $welcomeBonusAmount : 0.0;
+        $welcomeBonusCanGrant = (bool) ($welcomeBonusCanGrant ?? false);
+        $welcomeBonusStatusUnknown = (bool) ($welcomeBonusStatusUnknown ?? false);
         $welcomeBonusEuro = '€'.rtrim(rtrim(number_format($welcomeBonusAmount, 2, '.', ''), '0'), '.');
-        $welcomeBonusClaims = $welcomeBonusClaims ?? ['week' => 0, 'total' => 0, 'last' => null];
+        $welcomeBonusClaims = $welcomeBonusClaims ?? ['week' => 0, 'total' => 0, 'last' => null, 'available' => false];
     @endphp
     @if(auth()->user()?->isAdmin())
     <div class="card border-0 shadow-sm mb-4">
@@ -57,27 +59,44 @@
                 <div>
                     <div class="d-flex align-items-center gap-2 mb-1">
                         <h2 class="h5 mb-0">{{ $welcomeBonusEuro }} welcome credit</h2>
-                        @if(empty($welcomeBonusTableReady))
+                        @if(empty($welcomeBonusTableReady) || $welcomeBonusStatusUnknown)
                             <span class="badge bg-warning text-dark">Unknown</span>
-                        @elseif($welcomeBonusEnabled)
+                        @elseif($welcomeBonusCanGrant)
                             <span class="badge bg-success">Enabled</span>
+                        @elseif($welcomeBonusEnabled)
+                            <span class="badge bg-warning text-dark">On — not granting</span>
                         @else
                             <span class="badge bg-secondary">Disabled</span>
                         @endif
                     </div>
                     <p class="text-muted small mb-2">
-                        New advertisers receive this spend-only credit once per place (signup IP).
-                        Existing bonuses are never removed. Publishers never receive it.
+                        @if($welcomeBonusCanGrant)
+                            New advertisers receive this spend-only credit once per place (signup IP).
+                            Existing bonuses are never removed. Publishers never receive it.
+                        @elseif($welcomeBonusEnabled && $welcomeBonusAmount <= 0)
+                            Enabled, but the amount is €0 so new advertisers will not receive credit.
+                            Existing bonuses stay. Publishers never receive it.
+                        @elseif($welcomeBonusEnabled)
+                            Enabled, but grants are blocked until signup storage is ready.
+                            Existing bonuses stay. Publishers never receive it.
+                        @else
+                            Disabled. New advertisers will not receive the credit.
+                            Existing bonuses stay. Publishers never receive it.
+                        @endif
                     </p>
                     <div class="small text-muted">
-                        {{ (int) ($welcomeBonusClaims['week'] ?? 0) }} claims this week
-                        · {{ (int) ($welcomeBonusClaims['total'] ?? 0) }} all-time
-                        @if(!empty($welcomeBonusClaims['last']?->user))
-                            · last
-                            <a href="{{ route('admin.finance.user', $welcomeBonusClaims['last']->user) }}">
-                                {{ scalar_text($welcomeBonusClaims['last']->user->email) }}
-                            </a>
-                            {{ optional($welcomeBonusClaims['last']->created_at)->format('M j') }}
+                        @if(!empty($welcomeBonusClaims['available']))
+                            {{ (int) ($welcomeBonusClaims['week'] ?? 0) }} claims this week
+                            · {{ (int) ($welcomeBonusClaims['total'] ?? 0) }} all-time
+                            @if(!empty($welcomeBonusClaims['last']?->user))
+                                · last
+                                <a href="{{ route('admin.finance.user', $welcomeBonusClaims['last']->user) }}">
+                                    {{ scalar_text($welcomeBonusClaims['last']->user->email) }}
+                                </a>
+                                {{ optional($welcomeBonusClaims['last']->created_at)->format('M j') }}
+                            @endif
+                        @else
+                            Claims unavailable
                         @endif
                     </div>
                 </div>

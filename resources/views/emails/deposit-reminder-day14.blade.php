@@ -7,7 +7,9 @@ It's been two weeks since you joined as an advertiser, and your wallet still has
 
 **Why deposit?**
 - Pay placements from your EUR wallet
-- Use your **€20 welcome credit** together with deposited funds at checkout
+@if(!empty($welcomeBonusEuro))
+- Use your **{{ $welcomeBonusEuro }} welcome credit** together with deposited funds at checkout
+@endif
 - Keep pricing transparent — no outreach chasing
 
 **How to deposit**

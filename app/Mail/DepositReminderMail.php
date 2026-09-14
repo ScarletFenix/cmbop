@@ -30,14 +30,20 @@ class DepositReminderMail extends PlatformMailable
     {
         $addFundsUrl = $this->publicRoute('advertiser.add-funds');
         $catalogUrl = $this->publicRoute('advertiser.catalog');
+        $welcomeCredit = $this->mentionableWelcomeCredit($this->user);
 
         if ($this->step === self::STEP_DAY7) {
-            return $this->subject('Your €20 credit is waiting — ready when you are')
+            $subject = $welcomeCredit['euro'] !== ''
+                ? 'Your '.$welcomeCredit['euro'].' credit is waiting — ready when you are'
+                : 'Ready when you are — browse publishers and add funds';
+
+            return $this->subject($subject)
                 ->markdown('emails.deposit-reminder-day7')
                 ->with([
                     'firstName' => $this->firstName($this->user),
                     'addFundsUrl' => $addFundsUrl,
                     'catalogUrl' => $catalogUrl,
+                    'welcomeBonusEuro' => $welcomeCredit['euro'],
                     'brand' => $this->brand(),
                 ]);
         }
@@ -48,6 +54,7 @@ class DepositReminderMail extends PlatformMailable
                 'firstName' => $this->firstName($this->user),
                 'addFundsUrl' => $addFundsUrl,
                 'catalogUrl' => $catalogUrl,
+                'welcomeBonusEuro' => $welcomeCredit['euro'],
                 'brand' => $this->brand(),
             ]);
     }

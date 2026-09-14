@@ -71,17 +71,22 @@ class PromotionController extends Controller
         try {
             WelcomeBonusSetting::ensureTable();
             WelcomeBonusClaim::ensureTable();
-            $welcomeBonusTableReady = Schema::hasTable('welcome_bonus_settings');
+            $welcomeBonusTableReady = Schema::hasTable('welcome_bonus_settings')
+                && Schema::hasTable('welcome_bonus_claims');
         } catch (\Throwable) {
             $welcomeBonusTableReady = false;
         }
 
-        $welcomeBonusEnabled = true;
-        $welcomeBonusAmount = 20.0;
+        $welcomeBonusEnabled = false;
+        $welcomeBonusAmount = 0.0;
+        $welcomeBonusCanGrant = false;
+        $welcomeBonusStatusUnknown = ! $welcomeBonusTableReady;
         try {
             $welcomeBonusEnabled = $welcomeBonus->isEnabled();
             $welcomeBonusAmount = $welcomeBonus->amount();
+            $welcomeBonusCanGrant = $welcomeBonus->canGrant();
         } catch (\Throwable $e) {
+            $welcomeBonusStatusUnknown = true;
             Log::warning('Admin promotions hub welcome bonus status failed', [
                 'error' => $e->getMessage(),
             ]);
@@ -101,7 +106,9 @@ class PromotionController extends Controller
             'noticeCounts',
             'welcomeBonusEnabled',
             'welcomeBonusAmount',
+            'welcomeBonusCanGrant',
             'welcomeBonusTableReady',
+            'welcomeBonusStatusUnknown',
             'announcementsTableReady',
             'bannersTableReady',
             'welcomeBonusClaims',

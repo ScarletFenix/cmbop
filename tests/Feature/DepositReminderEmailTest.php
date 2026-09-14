@@ -251,5 +251,34 @@ class DepositReminderEmailTest extends TestCase
         $this->assertStringContainsString('Add funds to place your first guest post', $day14);
         $this->assertStringContainsString('Add funds now', $day14);
         $this->assertStringContainsString('/advertiser/add-funds', $day14);
+        $this->assertStringContainsString('€20 welcome credit', $day14);
+    }
+
+    public function test_mailable_does_not_promise_credit_the_wallet_does_not_have(): void
+    {
+        $role = Role::where('name', 'advertiser')->firstOrFail();
+        $user = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $role->id,
+        ]);
+        $user->roles()->attach($role->id);
+        Wallet::create([
+            'user_id' => $user->id,
+            'role_id' => $role->id,
+            'balance' => 0,
+            'bonus_balance' => 0,
+            'reserved_balance' => 0,
+            'bonus_reserved' => 0,
+            'currency' => 'EUR',
+        ]);
+
+        $day7 = (new DepositReminderMail($user, DepositReminderMail::STEP_DAY7))->render();
+        $this->assertStringContainsString('Ready when you are', $day7);
+        $this->assertStringNotContainsString('€20 welcome credit', $day7);
+        $this->assertStringNotContainsString('credit is waiting', $day7);
+
+        $day14 = (new DepositReminderMail($user, DepositReminderMail::STEP_DAY14))->render();
+        $this->assertStringNotContainsString('€20 welcome credit', $day14);
+        $this->assertStringContainsString('Pay placements from your EUR wallet', $day14);
     }
 }

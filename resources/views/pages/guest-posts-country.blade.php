@@ -140,7 +140,9 @@
             @foreach(range(1, 4) as $i)
                 <li class="mb-2">
                     <strong>{{ __('messages.how_page_adv_step_'.$i.'_title') }}</strong>
-                    — {{ __('messages.how_page_adv_step_'.$i.'_body') }}
+                    — {{ $i === 2
+                        ? welcome_bonus_message('how_page_adv_step_2_body', 'how_page_adv_step_2_body_off')
+                        : __('messages.how_page_adv_step_'.$i.'_body') }}
                 </li>
             @endforeach
         </ol>

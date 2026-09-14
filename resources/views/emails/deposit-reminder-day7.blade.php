@@ -1,9 +1,13 @@
 @component('mail::message')
-# Your €20 credit is waiting
+@if(!empty($welcomeBonusEuro))
+# Your {{ $welcomeBonusEuro }} credit is waiting
+@else
+# Ready when you are
+@endif
 
 Hi {{ $firstName }},
 
-You've been on **{{ $brand['name'] ?? config('app.name') }}** for a week. Your advertiser wallet already includes **€20 welcome credit** toward guest posts on verified publishers.
+You've been on **{{ $brand['name'] ?? config('app.name') }}** for a week.@if(!empty($welcomeBonusEuro)) Your advertiser wallet already includes **{{ $welcomeBonusEuro }} welcome credit** toward guest posts on verified publishers.@endif
 
 To place larger orders, add funds once (card, PayPal, bank, or Wise). Your balance stays in EUR and you only spend when you checkout.
 

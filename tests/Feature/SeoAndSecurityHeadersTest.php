@@ -89,6 +89,9 @@ class SeoAndSecurityHeadersTest extends TestCase
             ->assertSee('LinkedInBot', false)
             ->assertSee('llms.txt', false);
 
+        $this->assertFileDoesNotExist(public_path('llms.txt'));
+        $this->assertFileExists(resource_path('llms.txt'));
+
         $this->get('/llms.txt')
             ->assertOk()
             ->assertSee('SEOLinkBuildings', false)

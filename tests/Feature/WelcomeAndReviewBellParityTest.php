@@ -10,6 +10,7 @@ use App\Models\OrderItem;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
+use App\Models\Wallet;
 use App\Services\InAppNotificationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
@@ -37,6 +38,7 @@ class WelcomeAndReviewBellParityTest extends TestCase
     public function test_verified_advertiser_welcome_points_at_catalog_with_bonus_copy(): void
     {
         $user = $this->userWithRole('advertiser');
+        $this->giveAdvertiserBonus($user);
 
         $mailable = new WelcomeEmail($user);
         $built = $mailable->build();
@@ -48,6 +50,16 @@ class WelcomeAndReviewBellParityTest extends TestCase
         $this->assertStringNotContainsString('/publisher/websites', (string) ($built->viewData['ctaUrl'] ?? ''));
         $this->assertStringContainsString('€20 welcome credit', $html);
         $this->assertStringNotContainsString('list your first website', strtolower($html));
+    }
+
+    public function test_verified_advertiser_welcome_does_not_promise_a_bonus_they_do_not_have(): void
+    {
+        $user = $this->userWithRole('advertiser');
+
+        $html = (new WelcomeEmail($user))->render();
+
+        $this->assertStringNotContainsString('€20 welcome credit', $html);
+        $this->assertStringContainsString('explore verified publishers', strtolower(strip_tags($html)));
     }
 
     public function test_verified_publisher_welcome_points_at_my_sites(): void
@@ -165,5 +177,19 @@ class WelcomeAndReviewBellParityTest extends TestCase
         $this->assertStringContainsString('Your link is live', (string) $bell->title);
         $this->assertStringContainsString('focus=order', (string) $bell->action_url);
         $this->assertStringContainsString('order='.$order->id, (string) $bell->action_url);
+    }
+
+    private function giveAdvertiserBonus(User $user, float $amount = 20.0): void
+    {
+        $role = Role::firstOrCreate(['name' => 'advertiser']);
+        Wallet::create([
+            'user_id' => $user->id,
+            'role_id' => $role->id,
+            'balance' => $amount,
+            'bonus_balance' => $amount,
+            'reserved_balance' => 0,
+            'bonus_reserved' => 0,
+            'currency' => 'EUR',
+        ]);
     }
 }
