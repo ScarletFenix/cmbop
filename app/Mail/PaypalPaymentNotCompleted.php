@@ -48,8 +48,8 @@ class PaypalPaymentNotCompleted extends PlatformMailable
     {
         $pending = $this->reason === self::REASON_PENDING;
         $retryUrl = $this->kind === self::KIND_DEPOSIT
-            ? $this->publicRoute('advertiser.add-funds')
-            : $this->publicRoute('advertiser.checkout');
+            ? $this->customerFacingRoute('advertiser.add-funds')
+            : $this->customerFacingRoute('advertiser.checkout');
 
         return $this->subject($pending
             ? 'PayPal payment is under review'

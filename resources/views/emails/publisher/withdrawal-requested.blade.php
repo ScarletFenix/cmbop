@@ -1,4 +1,7 @@
 @component('mail::message')
+@php
+    $withdrawUrl = $withdrawUrl ?? rtrim(function_exists('brand_public_origin') ? brand_public_origin() : url('/'), '/').'/publisher/withdraw';
+@endphp
 # Withdrawal request received
 
 Hi {{ $withdrawal->user?->name ?? 'Publisher' }},
@@ -17,10 +20,10 @@ We received your withdrawal request **WD-{{ $withdrawal->id }}**.
 
 We usually process payouts within 1–2 business days. You can cancel while the status is still **Requested**.
 
-@component('mail::button', ['url' => route('publisher.withdraw')])
+@component('mail::button', ['url' => $withdrawUrl])
 View withdrawals
 @endcomponent
 
 Thanks,<br>
-{{ config('app.name') }}
+{{ mail_brand_name() }}
 @endcomponent

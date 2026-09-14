@@ -73,10 +73,12 @@
             display: flex;
             gap: 30px;
             margin-bottom: 30px;
+            align-items: stretch;
         }
         
         .column {
             flex: 1;
+            min-width: 0;
         }
         
         .bill-to {
@@ -138,6 +140,14 @@
         td {
             padding: 12px;
             border-bottom: 1px solid #e5e7eb;
+            vertical-align: top;
+        }
+
+        th.amount,
+        td.amount {
+            text-align: right;
+            white-space: nowrap;
+            width: 150px;
         }
         
         .totals {
@@ -232,7 +242,9 @@
                 <div class="column">
                     <div class="company-section">
                         @php
-                            $company = config('billing.company', []);
+                            $company = function_exists('billing_company_for_documents')
+                                ? billing_company_for_documents()
+                                : config('billing.company', []);
                             $depositPayment = config('billing.deposit_payment', []);
                             $invoiceLogo = billing_company_logo_data_uri() ?: asset(ltrim((string) ($company['logo_path'] ?? 'assets/img/email-logo.png'), '/'));
                             $isDepositInvoice = ($invoiceType ?? '') === 'deposit';
@@ -268,6 +280,9 @@
                                 @endif
                                 @if(!empty($company['support_email']))
                                     <p><strong>Email:</strong> {{ $company['support_email'] }}</p>
+                                @endif
+                                @if(!empty($company['website_url']))
+                                    <p><strong>Website:</strong> {{ $company['website_url'] }}</p>
                                 @endif
                                 @if(!empty($company['vat_number']))
                                     <p><strong>VAT:</strong> {{ $company['vat_number'] }}</p>
@@ -305,7 +320,7 @@
                 <thead>
                     <tr>
                         <th>Description</th>
-                        <th width="150">Amount</th>
+                        <th class="amount">Amount</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -335,7 +350,7 @@
                                 </small>
                             @endif
                         </td>
-                        <td>€{{ number_format($item['price'], 2) }}</td>
+                        <td class="amount">€{{ number_format($item['price'], 2) }}</td>
                     </tr>
                     @endforeach
                 </tbody>
@@ -359,14 +374,14 @@
                 <thead>
                     <tr>
                         <th>Description</th>
-                        <th width="150">Amount</th>
+                        <th class="amount">Amount</th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr>
                         <td>Wallet Deposit - Reference: REF{{ $referenceCode }}<br>
                         </td>
-                        <td>€{{ number_format($amount, 2) }}</td>
+                        <td class="amount">€{{ number_format($amount, 2) }}</td>
                     </tr>
                 </tbody>
             </table>

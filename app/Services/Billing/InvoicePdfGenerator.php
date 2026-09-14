@@ -15,13 +15,20 @@ class InvoicePdfGenerator
 
         $disk = (string) config('billing.storage.disk', 'local');
         $directory = trim((string) config('billing.storage.directory', 'invoices'), '/');
-        $filename = sprintf(
-            '%s/%s/%s-%s.pdf',
-            $directory,
-            now()->format('Y/m'),
-            Str::slug($invoice->invoice_number),
-            Str::lower(Str::random(8))
-        );
+        $filename = (string) ($invoice->pdf_path ?? '');
+        $reuse = $filename !== ''
+            && (string) $invoice->pdf_disk === $disk
+            && Storage::disk($disk)->exists($filename);
+
+        if (! $reuse) {
+            $filename = sprintf(
+                '%s/%s/%s-%s.pdf',
+                $directory,
+                now()->format('Y/m'),
+                Str::slug($invoice->invoice_number),
+                Str::lower(Str::random(8))
+            );
+        }
 
         Storage::disk($disk)->put($filename, $binary);
 
@@ -35,6 +42,8 @@ class InvoicePdfGenerator
 
     public function stream(Invoice $invoice)
     {
+        $invoice = $this->ensureCustomerPdf($invoice);
+
         if ($invoice->pdfExists()) {
             return Storage::disk($invoice->pdfStorageDisk())->response(
                 $invoice->pdf_path,
@@ -48,6 +57,8 @@ class InvoicePdfGenerator
 
     public function download(Invoice $invoice)
     {
+        $invoice = $this->ensureCustomerPdf($invoice);
+
         if ($invoice->pdfExists()) {
             return Storage::disk($invoice->pdfStorageDisk())->download(
                 $invoice->pdf_path,
@@ -57,6 +68,31 @@ class InvoicePdfGenerator
         }
 
         return $this->renderPdf($invoice)->download($invoice->invoice_number.'.pdf');
+    }
+
+    /**
+     * Rewrite a stored PDF that still prints leftover APP_URL (localhost).
+     */
+    public function ensureCustomerPdf(Invoice $invoice): Invoice
+    {
+        if ($invoice->pdfExists() && ! $this->storedPdfHasLeftoverHost($invoice)) {
+            return $invoice;
+        }
+
+        return $this->generateAndStore($invoice);
+    }
+
+    private function storedPdfHasLeftoverHost(Invoice $invoice): bool
+    {
+        try {
+            $binary = (string) Storage::disk($invoice->pdfStorageDisk())->get($invoice->pdf_path);
+        } catch (\Throwable) {
+            return true;
+        }
+
+        return str_contains($binary, 'localhost')
+            || str_contains($binary, '127.0.0.1')
+            || str_contains($binary, '://[::1]');
     }
 
     public function absolutePath(Invoice $invoice): ?string
@@ -91,7 +127,9 @@ class InvoicePdfGenerator
     {
         $html = view('billing.pdf.invoice', [
             'invoice' => $invoice,
-            'company' => config('billing.company'),
+            'company' => function_exists('billing_company_for_documents')
+                ? billing_company_for_documents()
+                : config('billing.company'),
             'colors' => config('billing.colors'),
             'currencySymbol' => config('billing.currency_symbol', '€'),
             'includeLogo' => $includeLogo,

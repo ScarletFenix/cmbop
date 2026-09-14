@@ -45,8 +45,8 @@ class UnfulfilledCheckoutCredited extends PlatformMailable
                 'paymentMethod' => $method,
                 'methodLabel' => $methodLabel,
                 'walletBalance' => (float) ($balance ?? 0),
-                'balanceUrl' => $this->publicRoute('advertiser.balance'),
-                'catalogUrl' => $this->publicRoute('advertiser.catalog'),
+                'balanceUrl' => $this->customerFacingRoute('advertiser.balance'),
+                'catalogUrl' => $this->customerFacingRoute('advertiser.catalog'),
             ]);
     }
 }

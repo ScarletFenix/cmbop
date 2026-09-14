@@ -24,6 +24,7 @@ class PayoutProfileUpdatedBySupport extends PlatformMailable
                 'userName' => $this->user->name,
                 'method' => $this->method,
                 'supportEmail' => config('email_notifications.brand.support_email', config('mail.from.address')),
+                'withdrawUrl' => $this->customerFacingRoute('publisher.withdraw'),
             ]);
     }
 }

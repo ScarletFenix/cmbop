@@ -6,7 +6,6 @@ use App\Models\DepositRequest;
 use App\Models\Invoice;
 use App\Models\Wallet;
 use App\Services\Billing\DepositReceiptService;
-use App\Services\Billing\InvoicePdfGenerator;
 use App\Support\EmailCatalog;
 
 class DepositApproved extends PlatformMailable
@@ -54,28 +53,14 @@ class DepositApproved extends PlatformMailable
                 'isInstant' => $isInstant,
                 'receipt' => $receipt,
                 'walletBalance' => (float) ($advertiserWallet?->balance ?? 0),
-                'balanceUrl' => route('advertiser.balance'),
+                'balanceUrl' => $this->customerFacingRoute('advertiser.balance'),
                 'downloadReceiptUrl' => $receipt
                     ? $this->advertiserBillingDownloadUrl($receipt)
                     : null,
             ]);
 
         if ($receipt) {
-            $path = app(InvoicePdfGenerator::class)->absolutePath($receipt);
-            if ($path && is_readable($path)) {
-                $mail->attach($path, [
-                    'as' => $receipt->invoice_number.'.pdf',
-                    'mime' => 'application/pdf',
-                ]);
-            } elseif ($receipt->pdf_path && $receipt->pdfExists()) {
-                // Storage fakes / remote disks may not expose a readable local path.
-                $mail->attachFromStorageDisk(
-                    $receipt->pdf_disk ?: config('billing.storage.disk', 'local'),
-                    $receipt->pdf_path,
-                    $receipt->invoice_number.'.pdf',
-                    ['mime' => 'application/pdf']
-                );
-            }
+            $this->attachInvoicePdfIfLive($mail, $receipt, $receipt->invoice_number.'.pdf');
         }
 
         return $mail;

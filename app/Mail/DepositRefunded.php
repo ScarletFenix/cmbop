@@ -32,7 +32,7 @@ class DepositRefunded extends PlatformMailable
                 'deposit' => $deposit,
                 'debt' => $debt,
                 'methodLabel' => Invoice::paymentMethodLabel($deposit->payment_method),
-                'balanceUrl' => route('advertiser.balance'),
+                'balanceUrl' => $this->customerFacingRoute('advertiser.balance'),
             ]);
     }
 }

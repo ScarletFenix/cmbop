@@ -1,7 +1,8 @@
 @php
     $brand = config('email_notifications.brand', []);
     $logo = mail_brand_logo_url();
-    $siteUrl = $brand['website_url'] ?? config('app.url');
+    $siteUrl = mail_brand_website_url();
+    $brandName = mail_brand_name();
     $support = $brand['support_email'] ?? null;
     $social = array_filter($brand['social'] ?? []);
 @endphp
@@ -9,7 +10,7 @@
 {{-- Header --}}
     <x-slot:header>
 <x-mail::header :url="$siteUrl">
-<img src="{{ $logo }}" class="logo" width="240" height="52" alt="{{ $brand['name'] ?? config('app.name') }}" style="display:block;margin:12px auto 8px;max-height:52px;max-width:260px;width:auto;height:auto;border:0;">
+<img src="{{ $logo }}" class="logo" width="240" height="52" alt="{{ $brandName }}" style="display:block;margin:12px auto 8px;max-height:52px;max-width:260px;width:auto;height:auto;border:0;">
 </x-mail::header>
 </x-slot:header>
 
@@ -38,9 +39,9 @@ Need help? Contact us at [{{ $support }}](mailto:{{ $support }})
 @endforeach
 @endif
 
-[{{ $brand['name'] ?? config('app.name') }}]({{ $siteUrl }})
+[{{ $brandName }}]({{ $siteUrl }})
 
-{{ $brand['copyright'] ?? ('© ' . date('Y') . ' ' . config('app.name') . '. All rights reserved.') }}
+© {{ date('Y') }} {{ $brandName }}. All rights reserved.
 </x-mail::footer>
 </x-slot:footer>
 </x-mail::layout>

@@ -519,7 +519,9 @@ class BillingPhases46Test extends TestCase
             $data = $built->viewData;
 
             return ($data['hasStatement'] ?? false) === true
-                && ($data['statementUrl'] ?? null) === route('publisher.billing.download', $statement)
+                && str_contains((string) ($data['statementUrl'] ?? ''), '/publisher/billing/documents/'.$statement->id.'/download')
+                && ! str_contains((string) ($data['statementUrl'] ?? ''), 'localhost')
+                && ! str_contains((string) ($data['statementUrl'] ?? ''), '127.0.0.1')
                 && (float) $data['withdrawal']->net_amount === 50.0;
         });
 

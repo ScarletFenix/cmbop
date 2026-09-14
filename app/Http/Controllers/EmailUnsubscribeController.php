@@ -25,7 +25,7 @@ class EmailUnsubscribeController extends Controller
             return view('email.unsubscribe-confirm', [
                 'user' => $account,
                 'confirmAction' => $request->getRequestUri(),
-                'brand' => config('email_notifications.brand.name', config('app.name')),
+                'brand' => function_exists('mail_brand_name') ? mail_brand_name() : 'SEOLinkBuildings',
             ]);
         }
 
@@ -43,7 +43,7 @@ class EmailUnsubscribeController extends Controller
 
         return view('email.unsubscribed', [
             'user' => $account,
-            'brand' => config('email_notifications.brand.name', config('app.name')),
+            'brand' => function_exists('mail_brand_name') ? mail_brand_name() : 'SEOLinkBuildings',
         ]);
     }
 

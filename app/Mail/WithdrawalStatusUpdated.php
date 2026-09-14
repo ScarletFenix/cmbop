@@ -34,6 +34,8 @@ class WithdrawalStatusUpdated extends PlatformMailable
     {
         $statementUrl = null;
         $hasStatement = false;
+        $billingIndexUrl = $this->customerFacingRoute('publisher.billing.index');
+        $withdrawUrl = $this->customerFacingRoute('publisher.withdraw');
 
         if ($this->newStatus === 'completed') {
             try {
@@ -41,7 +43,7 @@ class WithdrawalStatusUpdated extends PlatformMailable
                     ->find($this->withdrawal);
                 if ($statement) {
                     $hasStatement = true;
-                    $statementUrl = route('publisher.billing.download', $statement);
+                    $statementUrl = $this->customerFacingRoute('publisher.billing.download', $statement);
                 }
             } catch (\Throwable) {
                 $hasStatement = false;
@@ -58,6 +60,8 @@ class WithdrawalStatusUpdated extends PlatformMailable
                 'notes' => $this->notes,
                 'statementUrl' => $statementUrl,
                 'hasStatement' => $hasStatement,
+                'billingIndexUrl' => $billingIndexUrl,
+                'withdrawUrl' => $withdrawUrl,
             ]);
     }
 }

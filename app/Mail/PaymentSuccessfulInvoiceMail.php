@@ -31,7 +31,7 @@ class PaymentSuccessfulInvoiceMail extends PlatformMailable
                 'symbol' => $symbol,
                 'viewOrderUrl' => $this->advertiserOrdersUrl($order?->id ? (int) $order->id : null),
                 'downloadInvoiceUrl' => $this->advertiserBillingDownloadUrl($this->invoice),
-                'dashboardUrl' => route('advertiser.dashboard'),
+                'dashboardUrl' => $this->customerFacingRoute('advertiser.dashboard'),
             ]);
 
         $this->attachInvoicePdfIfLive($mail, $this->invoice, $this->invoice->invoice_number.'.pdf');

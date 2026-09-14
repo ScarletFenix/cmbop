@@ -434,6 +434,9 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
     {
         $brand = config('email_notifications.brand', []);
         $brand['logo_url'] = mail_brand_logo_url();
+        $brand['website_url'] = mail_brand_website_url();
+        $brand['name'] = mail_brand_name();
+        $brand['copyright'] = '© '.date('Y').' '.$brand['name'].'. All rights reserved.';
 
         return $brand;
     }
@@ -500,16 +503,36 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
             $params['order'] = $orderId;
         }
 
-        return $this->publicRoute('advertiser.orders', $params);
+        return $this->customerFacingRoute('advertiser.orders', $params);
     }
 
     protected function advertiserBillingDownloadUrl(Invoice $invoice): string
     {
         if ((int) $invoice->id === EmailCatalog::PREVIEW_ID) {
-            return rtrim(app_public_url(), '/').'/advertiser/billing/preview';
+            return rtrim($this->customerFacingOrigin(), '/').'/advertiser/billing/preview';
         }
 
-        return $this->publicRoute('advertiser.billing.download', $invoice);
+        return $this->customerFacingRoute('advertiser.billing.download', $invoice);
+    }
+
+    /**
+     * Invoice / receipt emails are kept by the customer. Never point them at
+     * leftover APP_URL (localhost) even when the worker was started that way.
+     *
+     * @param  array<string, mixed>|int|string|null  $parameters
+     */
+    protected function customerFacingRoute(string $name, mixed $parameters = []): string
+    {
+        $path = route($name, $parameters, absolute: false);
+
+        return rtrim($this->customerFacingOrigin(), '/').$path;
+    }
+
+    protected function customerFacingOrigin(): string
+    {
+        return function_exists('brand_public_origin')
+            ? brand_public_origin()
+            : rtrim(app_public_url(), '/');
     }
 
     protected function attachInvoicePdfIfLive($mail, Invoice $invoice, string $as): void
@@ -518,12 +541,30 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
             return;
         }
 
-        $path = app(InvoicePdfGenerator::class)->absolutePath($invoice);
+        $generator = app(InvoicePdfGenerator::class);
+        try {
+            $invoice = $generator->ensureCustomerPdf($invoice);
+        } catch (\Throwable) {
+            // Fall through to whatever PDF is already stored.
+        }
+
+        $path = $generator->absolutePath($invoice);
         if ($path && is_readable($path)) {
             $mail->attach($path, [
                 'as' => $as,
                 'mime' => 'application/pdf',
             ]);
+
+            return;
+        }
+
+        if ($invoice->pdf_path && $invoice->pdfExists()) {
+            $mail->attachFromStorageDisk(
+                $invoice->pdf_disk ?: config('billing.storage.disk', 'local'),
+                $invoice->pdf_path,
+                $as,
+                ['mime' => 'application/pdf']
+            );
         }
     }
 

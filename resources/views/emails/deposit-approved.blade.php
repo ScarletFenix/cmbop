@@ -47,8 +47,8 @@ Download Receipt
 @endcomponent
 @endif
 
-Thank you for using {{ config('app.name') }}!
+Thank you for using {{ mail_brand_name() }}!
 
 Thanks,<br>
-{{ config('app.name') }} Team
+{{ mail_brand_name() }} Team
 @endcomponent
