@@ -40,8 +40,8 @@
                     <li><a href="{{ localized_url('terms-of-services') }}" class="text-dark text-decoration-none d-block mb-2">{{ __('messages.terms_of_service') }}</a></li>
                     <li><a href="{{ localized_url('cookie-policy') }}" class="text-dark text-decoration-none d-block mb-2">{{ __('messages.cookie_policy') }}</a></li>
                     <li><a href="{{ localized_url('refund-policy') }}" class="text-dark text-decoration-none d-block mb-2">{{ __('messages.refund_policy') }}</a></li>
-                    <li><button type="button" class="btn btn-link text-dark text-decoration-none d-block mb-2 p-0 small" onclick="document.getElementById('helpFeedbackToggle')?.click()">{{ __('messages.report_problem') }}</button></li>
-                    <li><button type="button" class="btn btn-link text-dark text-decoration-none d-block mb-2 p-0 small" onclick="document.getElementById('helpFeedbackToggle')?.click()">{{ __('messages.suggestion_box') }}</button></li>
+                    <li><button type="button" class="btn btn-link text-dark text-decoration-none d-block mb-2 p-0 small" onclick="window.slbOpenSupport && window.slbOpenSupport()">{{ __('messages.report_problem') }}</button></li>
+                    <li><button type="button" class="btn btn-link text-dark text-decoration-none d-block mb-2 p-0 small" onclick="window.slbOpenSupport && window.slbOpenSupport()">{{ __('messages.suggestion_box') }}</button></li>
                 </ul>
             </div>
 
