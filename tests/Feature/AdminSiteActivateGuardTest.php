@@ -560,12 +560,71 @@ class AdminSiteActivateGuardTest extends TestCase
 
         $adminBlade = (string) file_get_contents(resource_path('views/admin/sites.blade.php'));
         $mktBlade = (string) file_get_contents(resource_path('views/marketing/dashboard.blade.php'));
+        $activatePartial = (string) file_get_contents(resource_path('views/partials/staff-site-activate-button.blade.php'));
         $this->assertStringContainsString('slbConfirmActivate', $adminBlade);
         $this->assertStringContainsString('slbConfirmActivate', $mktBlade);
-        $this->assertStringContainsString('data-description-english', $adminBlade);
-        $this->assertStringContainsString('data-description-english', $mktBlade);
+        $this->assertStringContainsString('data-description-english', $activatePartial);
+        $this->assertStringContainsString('staffGoLiveBlockReason($staffIsMarketing)', $activatePartial);
+        $this->assertStringNotContainsString('marketingCanActivate()', $activatePartial);
+        $this->assertStringContainsString('staff-site-activate-button', $adminBlade);
+        $this->assertStringContainsString('staff-site-activate-button', $mktBlade);
         $this->assertStringContainsString('/edit#description', $adminBlade);
         $this->assertStringContainsString('/edit#description', $mktBlade);
         $this->assertStringNotContainsString('Promise.resolve(true)', $adminBlade);
+    }
+
+    public function test_admin_flat_queue_shows_activate_below_quality_bar(): void
+    {
+        $site = $this->site([
+            'site_name' => 'Admin Thin Queue Site',
+            'site_url' => 'https://admin-thin-queue.example',
+            'domain' => 'admin-thin-queue.example',
+            'verified' => false,
+            'onboarding_status' => Site::ONBOARDING_READY_FOR_REVIEW,
+            'da' => 10,
+            'dr' => 10,
+            'traffic' => 100,
+        ]);
+
+        $this->assertFalse($site->hasGoodMetrics());
+        $this->assertFalse($site->marketingCanActivate());
+        $this->assertTrue($site->staffCanGoLive(false));
+
+        $html = $this->actingAs($this->admin)
+            ->get(route('admin.sites.index', ['needs_review' => 1, 'flat' => 1]))
+            ->assertOk()
+            ->assertSee('Admin Thin Queue Site', false)
+            ->getContent();
+
+        $this->assertStringContainsString('js-mkt-activate', $html);
+        $this->assertStringContainsString('data-id="'.$site->id.'"', $html);
+        $this->assertStringNotContainsString('disabled', substr($html, (int) strpos($html, 'Admin Thin Queue Site'), 1200));
+    }
+
+    public function test_marketer_flat_queue_disables_activate_below_quality_bar(): void
+    {
+        $site = $this->site([
+            'site_name' => 'Mkt Thin Queue Site',
+            'site_url' => 'https://mkt-thin-queue.example',
+            'domain' => 'mkt-thin-queue.example',
+            'verified' => false,
+            'onboarding_status' => Site::ONBOARDING_READY_FOR_REVIEW,
+            'da' => 10,
+            'dr' => 10,
+            'traffic' => 100,
+        ]);
+
+        $this->assertFalse($site->marketingCanActivate());
+
+        $html = $this->actingAs($this->marketer)
+            ->get(route('marketing.sites.index', ['needs_review' => 1, 'flat' => 1]))
+            ->assertOk()
+            ->assertSee('Mkt Thin Queue Site', false)
+            ->getContent();
+
+        $slice = substr($html, (int) strpos($html, 'Mkt Thin Queue Site'), 1600);
+        $this->assertStringNotContainsString('js-mkt-activate', $slice);
+        $this->assertStringContainsString('disabled', $slice);
+        $this->assertStringContainsString('This listing is below the quality bar', $html);
     }
 }
