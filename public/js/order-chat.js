@@ -21,6 +21,14 @@
       .replace(/'/g, '&#039;');
   }
 
+  function safeChatError(message, fallback) {
+    var text = typeof message === 'string' ? message.trim() : '';
+    if (!text || text.length > 200 || /SQLSTATE|Unknown column|no such table|Integrity constraint|stack trace|\.php/i.test(text)) {
+      return fallback;
+    }
+    return text;
+  }
+
   function OrderChat(config) {
     this.config = config || {};
     this.baseUrl = (config.baseUrl || window.location.origin || '').replace(/\/$/, '');
@@ -168,7 +176,7 @@
       .then(function (data) {
         if (!data.success) {
           if (!incremental) {
-            self.showError(data.message || 'Failed to load messages. Please try again.');
+            self.showError(safeChatError(data.message, 'Failed to load messages. Please try again.'));
           }
           return;
         }
@@ -356,7 +364,7 @@
             self.load(false);
           }
         } else {
-          var msg = (res.data && res.data.message) || 'Failed to send message';
+          var msg = safeChatError(res.data && res.data.message, 'Failed to send message');
           if (res.status === 422 && res.data && res.data.can_send === false) {
             self.applyComposerState(false, msg);
           }

@@ -3,6 +3,7 @@
 namespace App\Services\Advertiser;
 
 use App\Services\Catalog\CatalogSearchQuery;
+use App\Support\AdvertiserOrderStatus;
 use Illuminate\Database\Eloquent\Builder;
 
 /**
@@ -42,24 +43,29 @@ class AdvertiserOrderSearchQuery
 
             $query->where(function (Builder $q) use ($like, $tokenHost) {
                 $q->where('order_number', 'like', $like)
-                    ->orWhere('reference_code', 'like', $like)
-                    ->orWhereHas('items', function (Builder $sub) use ($like, $tokenHost) {
-                        $sub->where(function (Builder $item) use ($like, $tokenHost) {
-                            $item->where('site_name', 'like', $like)
-                                ->orWhere('site_url', 'like', $like)
-                                ->orWhere('live_url', 'like', $like);
+                    ->orWhere('reference_code', 'like', $like);
 
-                            if ($tokenHost) {
-                                $hostEscaped = $this->escapeLike($tokenHost);
-                                if ($hostEscaped !== '') {
-                                    $hostLike = '%'.$hostEscaped.'%';
-                                    $item->orWhere('site_url', 'like', $hostLike)
-                                        ->orWhere('live_url', 'like', $hostLike)
-                                        ->orWhere('site_name', 'like', $hostLike);
-                                }
+                if (! AdvertiserOrderStatus::itemsTableAvailable()) {
+                    return;
+                }
+
+                $q->orWhereHas('items', function (Builder $sub) use ($like, $tokenHost) {
+                    $sub->where(function (Builder $item) use ($like, $tokenHost) {
+                        $item->where('site_name', 'like', $like)
+                            ->orWhere('site_url', 'like', $like)
+                            ->orWhere('live_url', 'like', $like);
+
+                        if ($tokenHost) {
+                            $hostEscaped = $this->escapeLike($tokenHost);
+                            if ($hostEscaped !== '') {
+                                $hostLike = '%'.$hostEscaped.'%';
+                                $item->orWhere('site_url', 'like', $hostLike)
+                                    ->orWhere('live_url', 'like', $hostLike)
+                                    ->orWhere('site_name', 'like', $hostLike);
                             }
-                        });
+                        }
                     });
+                });
             });
         }
 

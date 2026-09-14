@@ -13,6 +13,15 @@ use Illuminate\Support\Facades\Schema;
  */
 class AdvertiserOrderStatus
 {
+    public static function itemsTableAvailable(): bool
+    {
+        try {
+            return Schema::hasTable('order_items');
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
     /**
      * Orders that need advertiser attention: live-URL review and/or open content revisions.
      *
@@ -22,8 +31,12 @@ class AdvertiserOrderStatus
     {
         app(CheckoutSchemaService::class)->ensureCheckoutTables();
 
-        return Order::query()
-            ->where('user_id', $userId)
+        $query = Order::query()->where('user_id', $userId);
+        if (! static::itemsTableAvailable()) {
+            return $query->whereRaw('0 = 1');
+        }
+
+        return $query
             ->where(function ($q) {
                 $q->where(function ($reviewReady) {
                     static::constrainReviewReady($reviewReady);
@@ -42,7 +55,11 @@ class AdvertiserOrderStatus
 
     public static function needsActionCountForUser(int $userId): int
     {
-        return static::needsActionQuery($userId)->count();
+        try {
+            return static::needsActionQuery($userId)->count();
+        } catch (\Throwable) {
+            return 0;
+        }
     }
 
     /**
@@ -61,7 +78,7 @@ class AdvertiserOrderStatus
         }
 
         $revisionClause = '';
-        if (Schema::hasColumn('order_items', 'content_revision_requested')) {
+        if (static::itemsTableAvailable() && Schema::hasColumn('order_items', 'content_revision_requested')) {
             $revisionClause = " OR (orders.status IN ('processing', 'review') AND EXISTS (
                 SELECT 1 FROM order_items
                 WHERE order_items.order_id = orders.id
@@ -109,24 +126,27 @@ class AdvertiserOrderStatus
      */
     public static function meta(Order $order, ?OrderItem $item = null): array
     {
-        $focused = func_num_args() >= 2 && $item !== null;
-        $item = $item ?? $order->items->first();
-        $hasLiveUrl = $focused
-            ? ($item && filled($item->live_url))
-            : AdvertiserOrderDetails::hasLiveUrl($order);
-        if (! $focused && $hasLiveUrl) {
-            $item = $order->items->first(
-                fn ($line) => $line instanceof OrderItem && filled($line->live_url)
-            ) ?? $item;
+        try {
+            $item = $item ?? $order->items->first();
+        } catch (\Throwable $e) {
+            $item = null;
         }
-        $modRequested = $item && method_exists($item, 'isModificationRequested')
-            ? $item->isModificationRequested()
-            : (($item->modification_requested ?? 'no') === 'yes');
-        $contentRevisionRequested = $order->items->contains(
-            fn ($line) => method_exists($line, 'isContentRevisionRequested')
-                ? $line->isContentRevisionRequested()
-                : (($line->content_revision_requested ?? 'no') === 'yes')
-        );
+        $hasLiveUrl = $item && filled($item->live_url);
+        $modRequested = false;
+        if ($item) {
+            $modRequested = method_exists($item, 'isModificationRequested')
+                ? $item->isModificationRequested()
+                : (($item->modification_requested ?? 'no') === 'yes');
+        }
+        try {
+            $contentRevisionRequested = $order->items->contains(
+                fn ($line) => method_exists($line, 'isContentRevisionRequested')
+                    ? $line->isContentRevisionRequested()
+                    : (($line->content_revision_requested ?? 'no') === 'yes')
+            );
+        } catch (\Throwable $e) {
+            $contentRevisionRequested = false;
+        }
         if (! $contentRevisionRequested && $item) {
             $contentRevisionRequested = method_exists($item, 'isContentRevisionRequested')
                 ? $item->isContentRevisionRequested()
@@ -257,19 +277,21 @@ class AdvertiserOrderStatus
         }
 
         if ($status === 'completed') {
-            $itemsCount = $order->items->count();
-            $anyLiveUrl = $order->items->contains(fn ($line) => filled($line->live_url));
-            if ($itemsCount < 1) {
-                $next = 'This order is marked complete, but it has no line items. Contact support if you expected a live URL here.';
-            } elseif ($anyLiveUrl) {
-                $next = 'All done — the publisher has been paid for this placement.';
-            } else {
-                $next = 'This order is marked complete. If you expected a live URL, use Chat or contact support.';
+            if (! $item) {
+                return [
+                    'label' => 'Completed',
+                    'next' => 'Placement details are missing for this order.',
+                    'cls' => 'status-completed',
+                    'stage' => 'completed',
+                    'auto_approve_hint' => null,
+                ];
             }
 
             return [
                 'label' => 'Completed',
-                'next' => $next,
+                'next' => $hasLiveUrl
+                    ? 'Your post is live. Open the published URL.'
+                    : 'Placement finished. Open the order for details.',
                 'cls' => 'status-completed',
                 'stage' => 'completed',
                 'auto_approve_hint' => null,
@@ -290,7 +312,11 @@ class AdvertiserOrderStatus
      */
     public static function timelineSteps(Order $order, ?OrderItem $item = null): array
     {
-        $item = $item ?? $order->items->first();
+        try {
+            $item = $item ?? $order->items->first();
+        } catch (\Throwable $e) {
+            $item = $item ?? null;
+        }
         $status = (string) $order->status;
         $hasItems = $order->items->isNotEmpty();
         $hasLiveUrl = $order->items->contains(fn ($line) => filled($line->live_url));

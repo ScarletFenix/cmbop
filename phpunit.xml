@@ -18,32 +18,33 @@
         </include>
     </source>
     <php>
-        <env name="APP_ENV" value="testing"/>
-        <env name="APP_URL" value="http://127.0.0.1:8000"/>
-        <env name="APP_KEY" value="base64:OKLOoObWwo0Pl5b6d2wMbaqaly/aZLa0ngvaltxwC4A="/>
-        <env name="APP_MAINTENANCE_DRIVER" value="file"/>
-        <env name="BCRYPT_ROUNDS" value="4"/>
-        <env name="BROADCAST_CONNECTION" value="null"/>
-        <env name="CACHE_STORE" value="array"/>
-        <env name="DB_CONNECTION" value="sqlite"/>
-        <env name="DB_DATABASE" value=":memory:"/>
-        <env name="DB_URL" value=""/>
-        <env name="MAIL_MAILER" value="array"/>
-        <env name="QUEUE_CONNECTION" value="sync"/>
-        <env name="SESSION_DRIVER" value="array"/>
-        <env name="CRON_SECRET" value=""/>
-        <env name="PULSE_ENABLED" value="false"/>
-        <env name="TELESCOPE_ENABLED" value="false"/>
-        <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <!-- force=true: Cloud/agent shells often export APP_ENV=local and a
+             leftover DB_DATABASE file. Without force, PHPUnit keeps those,
+             runningUnitTests() is false (CSRF 419 on postJson), and leftover
+             tests can drop tables on the browser sqlite. -->
+        <env name="APP_ENV" value="testing" force="true"/>
+        <env name="APP_URL" value="http://127.0.0.1:8000" force="true"/>
+        <env name="APP_KEY" value="base64:OKLOoObWwo0Pl5b6d2wMbaqaly/aZLa0ngvaltxwC4A=" force="true"/>
+        <env name="APP_MAINTENANCE_DRIVER" value="file" force="true"/>
+        <env name="BCRYPT_ROUNDS" value="4" force="true"/>
+        <env name="BROADCAST_CONNECTION" value="null" force="true"/>
+        <env name="CACHE_STORE" value="array" force="true"/>
+        <env name="DB_CONNECTION" value="sqlite" force="true"/>
+        <env name="DB_DATABASE" value=":memory:" force="true"/>
+        <env name="DB_URL" value="" force="true"/>
+        <env name="MAIL_MAILER" value="array" force="true"/>
+        <env name="QUEUE_CONNECTION" value="sync" force="true"/>
+        <env name="SESSION_DRIVER" value="array" force="true"/>
+        <env name="CRON_SECRET" value="" force="true"/>
+        <env name="PULSE_ENABLED" value="false" force="true"/>
+        <env name="TELESCOPE_ENABLED" value="false" force="true"/>
+        <env name="NIGHTWATCH_ENABLED" value="false" force="true"/>
         <!-- Sync queue runs EnrichSiteJob inline; avoid live thum.io + log noise. -->
-        <env name="SITE_SCREENSHOT_PROVIDER" value="none"/>
+        <env name="SITE_SCREENSHOT_PROVIDER" value="none" force="true"/>
         <!-- Keep MessageLogged events for assertions; do not write laravel.log during tests. -->
-        <env name="LOG_CHANNEL" value="null"/>
+        <env name="LOG_CHANNEL" value="null" force="true"/>
         <!-- HTTP tests must not autoload EmailCampaign via DrainQueuedMail.
              Master currently fatals on compile (`continue` outside a loop). -->
-        <env name="MAIL_QUEUE_AUTO_DRAIN" value="false"/>
-        <!-- Default Tawk IDs must not leak into GET / help-FAB assertions. -->
-        <env name="TAWK_PROPERTY_ID" value="" force="true"/>
-        <env name="TAWK_WIDGET_ID" value="" force="true"/>
+        <env name="MAIL_QUEUE_AUTO_DRAIN" value="false" force="true"/>
     </php>
 </phpunit>
