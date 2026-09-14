@@ -74,12 +74,12 @@ return [
         'logo_url' => env('MAIL_LOGO_URL'),
         // Public path for the email wordmark (white-bg Final B lockup).
         'logo_path' => env('MAIL_LOGO_PATH', 'assets/img/email-logo.png'),
-        'website_url' => env('APP_URL', 'https://seolinkbuildings.com'),
+        'website_url' => env('MAIL_WEBSITE_URL') ?: env('PUBLIC_APP_URL', 'https://seolinkbuildings.com'),
         'support_email' => env('MAIL_SUPPORT_EMAIL', env('ADMIN_EMAIL', 'support@seolinkbuildings.com')),
         'reply_to' => env('MAIL_REPLY_TO_ADDRESS', env('MAIL_FROM_ADDRESS')),
         'sender_email' => env('MAIL_FROM_ADDRESS', 'hello@example.com'),
         'sender_name' => env('MAIL_FROM_NAME', env('APP_NAME', 'SEOLinkBuildings')),
-        'copyright' => '© '.date('Y').' '.env('APP_NAME', 'SEOLinkBuildings').'. All rights reserved.',
+        'copyright' => '© '.date('Y').' SEOLinkBuildings. All rights reserved.',
         'social' => [
             'twitter' => env('SOCIAL_TWITTER_URL'),
             'linkedin' => env('SOCIAL_LINKEDIN_URL'),

@@ -125,9 +125,9 @@
                 $logoDataUri = $includeLogo ? billing_company_logo_data_uri() : null;
             @endphp
             @if($logoDataUri)
-                <img src="{{ $logoDataUri }}" alt="{{ $company['name'] ?? config('app.name') }}" style="height:42px;width:auto;max-width:220px;margin:0 0 10px 0;display:block;">
+                <img src="{{ $logoDataUri }}" alt="{{ $company['name'] ?? 'SEOLinkBuildings' }}" style="height:42px;width:auto;max-width:220px;margin:0 0 10px 0;display:block;">
             @endif
-            <p class="brand-name">{{ $company['name'] ?? config('app.name') }}</p>
+            <p class="brand-name">{{ $company['name'] ?? 'SEOLinkBuildings' }}</p>
             @foreach(($company['address_lines'] ?? []) as $line)
                 <div class="muted">{{ $line }}</div>
             @endforeach
@@ -364,7 +364,7 @@
 @endif
 
 <div class="footer">
-    <div>{{ $company['legal_name'] ?? ($company['name'] ?? config('app.name')) }} · {{ $company['support_email'] ?? '' }}</div>
+    <div>{{ $company['legal_name'] ?? ($company['name'] ?? 'SEOLinkBuildings') }} · {{ $company['support_email'] ?? '' }}</div>
     <div>Document {{ $invoice->invoice_number }} · Generated {{ now()->format('M j, Y g:i A') }}</div>
 </div>
 </body>

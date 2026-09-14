@@ -27,6 +27,7 @@ class WithdrawalRequestedConfirmation extends PlatformMailable
             ->markdown('emails.publisher.withdrawal-requested')
             ->with([
                 'withdrawal' => $this->withdrawal,
+                'withdrawUrl' => $this->customerFacingRoute('publisher.withdraw'),
             ]);
     }
 }

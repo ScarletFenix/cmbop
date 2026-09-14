@@ -31,5 +31,5 @@ You can start a new PayPal payment whenever you are ready.
 @endcomponent
 
 Thanks,<br>
-{{ config('app.name') }} Team
+{{ mail_brand_name() }} Team
 @endcomponent

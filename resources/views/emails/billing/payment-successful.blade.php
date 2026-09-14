@@ -34,6 +34,6 @@ Download Invoice
 Go to Dashboard
 @endcomponent
 
-Thank you for choosing {{ config('app.name') }}.
+Thank you for choosing {{ mail_brand_name() }}.
 
 @endcomponent

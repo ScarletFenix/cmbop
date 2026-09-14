@@ -433,6 +433,9 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
     {
         $brand = config('email_notifications.brand', []);
         $brand['logo_url'] = mail_brand_logo_url();
+        $brand['website_url'] = mail_brand_website_url();
+        $brand['name'] = mail_brand_name();
+        $brand['copyright'] = '© '.date('Y').' '.$brand['name'].'. All rights reserved.';
 
         return $brand;
     }
@@ -475,7 +478,7 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
             $params['order'] = $orderId;
         }
 
-        return $this->publicRoute('advertiser.orders', $params);
+        return $this->customerFacingRoute('advertiser.orders', $params);
     }
 
     protected function advertiserBillingDownloadUrl(Invoice $invoice): string
@@ -515,7 +518,7 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
 
         $generator = app(InvoicePdfGenerator::class);
         try {
-            $invoice = $generator->generateAndStore($invoice);
+            $invoice = $generator->ensureCustomerPdf($invoice);
         } catch (\Throwable) {
             // Fall through to whatever PDF is already stored.
         }

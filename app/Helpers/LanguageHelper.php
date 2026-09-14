@@ -445,6 +445,21 @@ if (! function_exists('billing_company_for_documents')) {
     }
 }
 
+if (! function_exists('mail_brand_name')) {
+    /**
+     * Visible brand in mail chrome. Leftover APP_NAME casing is not a new name.
+     */
+    function mail_brand_name(): string
+    {
+        $name = trim((string) config('email_notifications.brand.name', ''));
+        if ($name === '' || ($name !== 'SEOLinkBuildings' && strcasecmp($name, 'SEOLinkBuildings') === 0)) {
+            return 'SEOLinkBuildings';
+        }
+
+        return $name;
+    }
+}
+
 if (! function_exists('mail_brand_website_url')) {
     /**
      * Header / footer link in HTML emails. Leftover APP_URL is not a site.

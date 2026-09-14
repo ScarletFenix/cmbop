@@ -188,6 +188,9 @@ class OrderEmailDeepLinksTest extends TestCase
 
         $successful = (new PaymentSuccessfulInvoiceMail($invoice->fresh(['user', 'order'])))->render();
         $this->assertAdvertiserOrderDeepLink($successful);
+        $this->assertStringContainsString('https://seolinkbuildings.com', $successful);
+        $this->assertStringNotContainsString('localhost', $successful);
+        $this->assertStringNotContainsString('127.0.0.1', $successful);
 
         $failed = Invoice::create([
             'user_id' => $this->advertiser->id,

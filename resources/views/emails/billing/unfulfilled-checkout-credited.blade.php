@@ -26,5 +26,5 @@ Browse catalog
 @endcomponent
 
 Thanks,<br>
-{{ config('app.name') }} Team
+{{ mail_brand_name() }} Team
 @endcomponent

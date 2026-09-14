@@ -90,7 +90,7 @@ class BillingController extends Controller
         InvoicePdfGenerator $pdfs,
         BillingDocumentService $billing,
         WithdrawalPayoutStatementService $statements,
-    ): StreamedResponse|RedirectResponse|JsonResponse {
+    ): StreamedResponse|Response|RedirectResponse|JsonResponse {
         $this->authorizePublisherPayout($invoice);
 
         try {
@@ -123,7 +123,7 @@ class BillingController extends Controller
         InvoicePdfGenerator $pdfs,
         BillingDocumentService $billing,
         WithdrawalPayoutStatementService $statements,
-    ): StreamedResponse|RedirectResponse|JsonResponse {
+    ): StreamedResponse|Response|RedirectResponse|JsonResponse {
         $this->authorizePublisherPayout($invoice);
 
         try {

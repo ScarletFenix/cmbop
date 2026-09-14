@@ -5,8 +5,10 @@ namespace Tests\Feature;
 use App\Models\Invoice;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\Billing\InvoicePdfGenerator;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class InvoiceSellerDetailsTest extends TestCase
@@ -251,5 +253,74 @@ class InvoiceSellerDetailsTest extends TestCase
 
         $this->assertStringContainsString('€100.00', $html);
         $this->assertStringNotContainsString('€0.00', $html);
+    }
+
+    public function test_ensure_customer_pdf_rewrites_stored_file_that_still_prints_localhost(): void
+    {
+        Storage::fake('local');
+
+        config([
+            'app.url' => 'http://localhost:8000',
+            'app.name' => 'Laravel leftover',
+            'billing.company.website_url' => 'http://localhost:8000',
+            'billing.company.name' => 'Seolinkbuildings',
+        ]);
+
+        $role = Role::where('name', 'advertiser')->firstOrFail();
+        $user = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $role->id,
+        ]);
+        $user->roles()->attach($role->id);
+
+        $relative = 'invoices/leftover-localhost.pdf';
+        Storage::disk('local')->put($relative, '%PDF-1.4 leftover http://localhost:8000 http://127.0.0.1:8000');
+
+        $invoice = Invoice::create([
+            'user_id' => $user->id,
+            'invoice_number' => 'RCT-2026-000099',
+            'type' => Invoice::TYPE_DEPOSIT_RECEIPT,
+            'status' => Invoice::STATUS_PAID,
+            'invoice_date' => now(),
+            'customer_name' => $user->name,
+            'customer_email' => $user->email,
+            'currency' => 'EUR',
+            'subtotal' => 25,
+            'tax_amount' => 0,
+            'discount_amount' => 0,
+            'total_amount' => 25,
+            'payment_method' => 'wise',
+            'payment_status' => 'paid',
+            'reference_code' => '337156',
+            'transaction_id' => '337156',
+            'pdf_disk' => 'local',
+            'pdf_path' => $relative,
+            'line_items' => [
+                [
+                    'description' => 'Wallet top-up',
+                    'quantity' => 1,
+                    'unit_price' => 25,
+                    'line_total' => 25,
+                ],
+            ],
+            'billing_snapshot' => [],
+        ]);
+
+        $healed = app(InvoicePdfGenerator::class)->ensureCustomerPdf($invoice->fresh());
+        $binary = (string) Storage::disk('local')->get($healed->pdf_path);
+
+        $this->assertStringStartsWith('%PDF', $binary);
+        $this->assertGreaterThan(1000, strlen($binary));
+        $this->assertStringNotContainsString('leftover http://localhost', $binary);
+        $this->assertStringNotContainsString('http://localhost:8000', $binary);
+        $this->assertStringNotContainsString('http://127.0.0.1:8000', $binary);
+
+        $html = view('billing.pdf.invoice', [
+            'invoice' => $healed,
+            'currencySymbol' => '€',
+        ])->render();
+        $this->assertStringContainsString('https://seolinkbuildings.com', $html);
+        $this->assertStringContainsString('SEOLinkBuildings', $html);
+        $this->assertStringNotContainsString('localhost', $html);
     }
 }
