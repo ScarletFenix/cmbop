@@ -281,6 +281,11 @@ class SeoAndSecurityHeadersTest extends TestCase
 
     public function test_help_widget_has_accessible_labels(): void
     {
+        config([
+            'services.tawk.property_id' => '',
+            'services.tawk.widget_id' => '',
+        ]);
+
         $this->get('/')
             ->assertOk()
             ->assertSee('aria-label="Open help and feedback"', false)
@@ -296,6 +301,7 @@ class SeoAndSecurityHeadersTest extends TestCase
         $this->assertStringContainsString('cdn.jsdelivr.net', $csp);
         $this->assertStringContainsString('js.stripe.com', $csp);
         $this->assertStringContainsString('embed.tawk.to', $csp);
+        $this->assertStringContainsString('https://*.tawk.to', $csp);
         $this->assertStringContainsString('wss://*.tawk.to', $csp);
         $this->assertStringNotContainsString('unsafe-eval', $csp);
 

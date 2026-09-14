@@ -34,6 +34,15 @@ class TawkChatWidgetTest extends TestCase
             ->assertOk()
             ->assertSee('https://embed.tawk.to/6aa6a3693d02a53444168308/default', false)
             ->assertSee('Tawk_API', false)
+            ->assertSee('Tawk_API.onLoad', false)
+            ->assertSee('Tawk_API.minimize', false)
+            ->assertSee('slbPinTawk', false)
+            ->assertSee("classList.toggle('tawk-open'", false)
+            ->assertDontSee('slb-tawk-launcher', false)
+            ->assertDontSee('aria-label="Open customer support"', false)
+            ->assertSee("setProperty('top', 'auto', 'important')", false)
+            ->assertSee("removeProperty('max-width')", false)
+            ->assertSee('slbTawkKeepOpen = false', false)
             ->assertDontSee('aria-label="Open help and feedback"', false)
             ->assertSee('slbOpenSupport', false)
             ->assertDontSee("helpFeedbackToggle')?.click()", false)
@@ -84,6 +93,12 @@ class TawkChatWidgetTest extends TestCase
             ->assertSee('Tawk_API.visitor', false)
             ->assertSee($advertiser->email, false)
             ->assertSee('slbOpenSupport', false)
+            ->assertSee('Tawk_API.onLoad', false)
+            ->assertSee('Tawk_API.minimize', false)
+            ->assertSee('slbTawkKeepOpen', false)
+            ->assertSee('slbPinTawk', false)
+            ->assertDontSee('slb-tawk-launcher', false)
+            ->assertDontSee('aria-label="Open customer support"', false)
             ->assertDontSee('aria-label="Open help and feedback"', false);
 
         $publisher = $this->userWithRole('publisher');
@@ -93,6 +108,27 @@ class TawkChatWidgetTest extends TestCase
             ->assertSee('https://embed.tawk.to/6aa6a3693d02a53444168308/default', false)
             ->assertSee('Tawk_API.visitor', false)
             ->assertSee($publisher->email, false)
+            ->assertSee('Tawk_API.onLoad', false)
+            ->assertSee('Tawk_API.minimize', false)
+            ->assertSee('slbPinTawk', false)
+            ->assertDontSee('slb-tawk-launcher', false)
             ->assertDontSee('aria-label="Open help and feedback"', false);
+    }
+
+    public function test_app_shell_keeps_tawk_out_of_the_page_flex_column(): void
+    {
+        $css = (string) file_get_contents(public_path('assets/css/app-shell.css'));
+        $this->assertStringContainsString('iframe[title="chat widget"]', $css);
+        $this->assertStringContainsString('iframe[src*="tawk.to"]', $css);
+        $this->assertStringContainsString('flex: 0 0 auto', $css);
+        $this->assertStringContainsString('top: auto !important', $css);
+        $this->assertStringContainsString('left: auto !important', $css);
+        $this->assertStringContainsString('right: 16px !important', $css);
+        $this->assertStringContainsString('bottom: 20px !important', $css);
+        $this->assertStringNotContainsString('.slb-tawk-launcher', $css);
+        $this->assertStringNotContainsString('html:not(.tawk-open) iframe[title="chat widget"]', $css);
+        $this->assertStringContainsString('html.tawk-open iframe[title="chat widget"]', $css);
+        $this->assertStringContainsString('div:has(> iframe[title="chat widget"])', $css);
+        $this->assertStringNotContainsString('div:has( iframe[src*="tawk.to"])', $css);
     }
 }

@@ -880,3 +880,50 @@ nav[aria-label="Pagination Navigation"] svg {
 .pagination .page-link svg {
   font-size: 0.95rem;
 }
+
+/*
+ * Tawk.to visitor chat. Body is a flex column with overflow-x:clip, so
+ * leftover top/left on the iframe paints the pre-chat card over dashboard
+ * KPIs / order totals. Pin the iframe and its immediate wrapper only —
+ * a descendant :has(iframe) would match #app and pin the whole page.
+ * Do not hide or replace Tawk's own bubble; html.tawk-open only caps the
+ * maximized panel so leftover dimensions cannot cover the page.
+ */
+iframe[title="chat widget"],
+iframe[title="Chat widget"],
+iframe[src*="tawk.to"] {
+  position: fixed !important;
+  top: auto !important;
+  left: auto !important;
+  right: 16px !important;
+  bottom: 20px !important;
+  z-index: var(--shell-z-fab, 1080) !important;
+  flex: 0 0 auto !important;
+  align-self: flex-end !important;
+  margin: 0 !important;
+  transform: none !important;
+}
+
+html.tawk-open iframe[title="chat widget"],
+html.tawk-open iframe[title="Chat widget"],
+html.tawk-open iframe[src*="tawk.to"] {
+  max-width: min(400px, calc(100vw - 24px)) !important;
+  max-height: min(640px, calc(100dvh - 24px)) !important;
+}
+
+div:has(> iframe[title="chat widget"]),
+div:has(> iframe[title="Chat widget"]),
+div:has(> iframe[src*="tawk.to"]) {
+  position: fixed !important;
+  top: auto !important;
+  left: auto !important;
+  right: 16px !important;
+  bottom: 20px !important;
+  z-index: var(--shell-z-fab, 1080) !important;
+  flex: 0 0 auto !important;
+  align-self: flex-end !important;
+  width: auto !important;
+  height: auto !important;
+  margin: 0 !important;
+  transform: none !important;
+}
