@@ -161,5 +161,6 @@ class ImageOptimizationUploadTest extends TestCase
         $this->assertStringContainsString('open_basedir', $src);
         $this->assertStringContainsString('$file->store($directory, \'public\')', $src);
         $this->assertStringContainsString('readUploadedFileBytes', $src);
+        $this->assertStringNotContainsString('is_file($sourcePath)', $src);
     }
 }

@@ -146,9 +146,15 @@ class ImageOptimizationService
             return null;
         }
 
-        $converted = $this->storeUploadedImageAsWebp($file, $directory);
-        if (is_string($converted) && $converted !== '') {
-            return $converted;
+        try {
+            $converted = $this->storeUploadedImageAsWebp($file, $directory);
+            if (is_string($converted) && $converted !== '') {
+                return $converted;
+            }
+        } catch (\Throwable $e) {
+            Log::notice('Staff cover WebP convert skipped', [
+                'error' => $e->getMessage(),
+            ]);
         }
 
         $disk = Storage::disk('public');
@@ -181,32 +187,39 @@ class ImageOptimizationService
             return $stored;
         }
 
-        $webp = $this->toWebp($binary, (int) config('site_enrichment.screenshots.quality', 82));
-        if (is_string($webp) && $webp !== '') {
-            $webpPath = $this->putConvertedWebp($directory, $file, $webp);
-            if ($webpPath !== null) {
-                if ($webpPath !== $stored) {
+        try {
+            $webp = $this->toWebp($binary, (int) config('site_enrichment.screenshots.quality', 82));
+            if (is_string($webp) && $webp !== '') {
+                $webpPath = $this->putConvertedWebp($directory, $file, $webp);
+                if ($webpPath !== null) {
+                    if ($webpPath !== $stored) {
+                        $this->deleteQuietly($stored);
+                    }
+
+                    return $webpPath;
+                }
+            }
+
+            if ($ext === 'webp') {
+                if (! $this->looksLikeWebp($binary)) {
                     $this->deleteQuietly($stored);
+
+                    return null;
                 }
 
-                return $webpPath;
+                return $stored;
             }
-        }
 
-        if ($ext === 'webp') {
-            if (! $this->looksLikeWebp($binary)) {
+            if (! $this->isDecodableRasterImage($binary, $ext)) {
                 $this->deleteQuietly($stored);
 
                 return null;
             }
-
-            return $stored;
-        }
-
-        if (! $this->isDecodableRasterImage($binary, $ext)) {
-            $this->deleteQuietly($stored);
-
-            return null;
+        } catch (\Throwable $e) {
+            Log::notice('Staff cover post-store convert skipped', [
+                'path' => $stored,
+                'error' => $e->getMessage(),
+            ]);
         }
 
         return $stored;
@@ -391,15 +404,26 @@ class ImageOptimizationService
     }
 
     /**
-     * Read upload bytes. Hostinger open_basedir can make is_file() false on
-     * PHP's tmp path; getContent() / file_get_contents may still work.
+     * Read upload bytes without is_file() on PHP's tmp path. Hostinger
+     * open_basedir warns (and some hosts promote that to a 500) even when
+     * move_uploaded_file / store() would still succeed.
      */
     private function readUploadedFileBytes(UploadedFile $file): ?string
     {
-        $sourcePath = $file->getRealPath() ?: $file->getPathname();
-        if (is_string($sourcePath) && $sourcePath !== '' && is_file($sourcePath)) {
-            $binary = (string) @file_get_contents($sourcePath);
-            if ($binary !== '') {
+        $sourcePath = null;
+        try {
+            $sourcePath = $file->getRealPath() ?: $file->getPathname();
+        } catch (\Throwable) {
+            try {
+                $sourcePath = $file->getPathname();
+            } catch (\Throwable) {
+                $sourcePath = null;
+            }
+        }
+
+        if (is_string($sourcePath) && $sourcePath !== '') {
+            $binary = @file_get_contents($sourcePath);
+            if (is_string($binary) && $binary !== '') {
                 return $binary;
             }
         }
