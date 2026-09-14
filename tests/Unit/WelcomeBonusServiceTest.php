@@ -48,6 +48,15 @@ class WelcomeBonusServiceTest extends TestCase
         $this->assertSame(0.0, $this->service->amountFor($this->request('1.2.3.4'), 'advertiser'));
     }
 
+    public function test_zero_amount_cannot_grant_even_when_enabled(): void
+    {
+        $this->service->setAmount(0);
+
+        $this->assertTrue($this->service->isEnabled());
+        $this->assertFalse($this->service->canGrant());
+        $this->assertSame(0.0, $this->service->amountFor($this->request('10.4.0.8'), 'advertiser'));
+    }
+
     public function test_publisher_role_returns_zero(): void
     {
         $this->assertSame(0.0, $this->service->amountFor($this->request('1.2.3.4'), 'publisher'));

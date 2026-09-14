@@ -41,7 +41,10 @@ class WelcomeBonusService
 
     public function canGrant(): bool
     {
-        return $this->isEnabled() && $this->claimsTableReady() && $this->bonusColumnsReady();
+        return $this->isEnabled()
+            && $this->amount() > 0
+            && $this->claimsTableReady()
+            && $this->bonusColumnsReady();
     }
 
     /**

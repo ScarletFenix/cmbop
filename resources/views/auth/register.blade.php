@@ -1,8 +1,8 @@
 @extends('layouts.app')
 
 @php
-    $welcomeBonusEnabled = $welcomeBonusEnabled ?? true;
-    $welcomeBonusAmount = isset($welcomeBonusAmount) ? (float) $welcomeBonusAmount : 20.0;
+    $welcomeBonusEnabled = $welcomeBonusEnabled ?? false;
+    $welcomeBonusAmount = isset($welcomeBonusAmount) ? (float) $welcomeBonusAmount : 0.0;
     $welcomeBonusEuro = '€'.rtrim(rtrim(number_format($welcomeBonusAmount, 2, '.', ''), '0'), '.');
 @endphp
 @section('title', $welcomeBonusEnabled ? __('messages.meta_register_title') : 'Create Account | SEOLinkBuildings')

@@ -45,8 +45,9 @@
     @endif
 
     @php
-        $welcomeBonusEnabled = $welcomeBonusEnabled ?? true;
-        $welcomeBonusAmount = isset($welcomeBonusAmount) ? (float) $welcomeBonusAmount : 20.0;
+        $welcomeBonusEnabled = $welcomeBonusEnabled ?? false;
+        $welcomeBonusAmount = isset($welcomeBonusAmount) ? (float) $welcomeBonusAmount : 0.0;
+        $welcomeBonusStatusUnknown = (bool) ($welcomeBonusStatusUnknown ?? false);
         $welcomeBonusEuro = '€'.rtrim(rtrim(number_format($welcomeBonusAmount, 2, '.', ''), '0'), '.');
         $welcomeBonusClaims = $welcomeBonusClaims ?? ['week' => 0, 'total' => 0, 'last' => null];
     @endphp
@@ -57,7 +58,7 @@
                 <div>
                     <div class="d-flex align-items-center gap-2 mb-1">
                         <h2 class="h5 mb-0">{{ $welcomeBonusEuro }} welcome credit</h2>
-                        @if(empty($welcomeBonusTableReady))
+                        @if(empty($welcomeBonusTableReady) || $welcomeBonusStatusUnknown)
                             <span class="badge bg-warning text-dark">Unknown</span>
                         @elseif($welcomeBonusEnabled)
                             <span class="badge bg-success">Enabled</span>

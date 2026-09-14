@@ -133,6 +133,25 @@ class AdminWelcomeBonusToggleTest extends TestCase
         $this->assertStringContainsString('value="1"', $html);
     }
 
+    public function test_promotions_hub_does_not_fake_enabled_when_status_throws(): void
+    {
+        $this->mock(WelcomeBonusService::class, function ($mock) {
+            $mock->shouldReceive('isEnabled')
+                ->once()
+                ->andThrow(new \RuntimeException('SQLSTATE[HY000]: leftover'));
+        });
+
+        $html = $this->actingAs($this->admin)
+            ->get(route('admin.promotions.index'))
+            ->assertOk()
+            ->assertSee('Unknown', false)
+            ->assertDontSee('SQLSTATE', false)
+            ->getContent();
+
+        $this->assertStringNotContainsString('>Enabled</span>', $html);
+        $this->assertStringNotContainsString('€20 welcome credit', $html);
+    }
+
     public function test_toggle_creates_settings_table_when_missing_then_disables(): void
     {
         Schema::dropIfExists('welcome_bonus_settings');
