@@ -348,6 +348,8 @@ class AdvertiserDashboardPr1Test extends TestCase
             ->assertSee('advertiser-dashboard.css', false)
             ->assertDontSee('Get started', false)
             ->assertDontSee('No orders yet', false)
+            ->assertDontSee('Guided placement', false)
+            ->assertDontSee('Spending history', false)
             ->getContent();
 
         $this->assertStringContainsString('<title>Dashboard — SEOLinkBuildings</title>', $html);

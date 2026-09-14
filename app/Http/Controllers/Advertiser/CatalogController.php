@@ -5186,7 +5186,8 @@ class CatalogController extends Controller
                 $unreadByOrder = collect();
             }
 
-            $ordersPayload = collect($orders->items())->map(function ($order) use ($unreadByOrder) {
+            $clawbacks = app(OrderClawbackService::class);
+            $ordersPayload = collect($orders->items())->map(function ($order) use ($unreadByOrder, $clawbacks) {
                 $order->unread_chat = (int) ($unreadByOrder[$order->id] ?? 0);
                 try {
                     $order->items_count = $order->items->count();

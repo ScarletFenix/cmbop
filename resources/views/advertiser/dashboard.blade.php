@@ -57,6 +57,7 @@
             <i class="fa fa-rotate"></i> Try again
         </a>
     @elseif($isNewAdvertiser)
+        {{-- Get-started panel below is the CTA --}}
     @elseif($primaryAction === 'needs_action')
         <a href="{{ route('advertiser.orders', ['status' => 'needs_action']) }}" class="dash-primary-cta" id="dashPrimaryCta">
             <i class="fa fa-clipboard-check"></i> Open orders
@@ -205,7 +206,15 @@
             <div class="dash-panel h-100">
                 <h5 class="mb-3">Next actions</h5>
                 <div class="d-flex flex-column gap-2 mb-3">
-                    @if($needsAction > 0)
+                    @if($dashboardFailed)
+                        <a href="{{ route('advertiser.dashboard') }}" class="next-action">
+                            <div>
+                                <div class="na-title">Try again</div>
+                                <p class="na-desc">Refresh the dashboard to load your next steps</p>
+                            </div>
+                            <i class="fa fa-chevron-right text-muted" aria-hidden="true"></i>
+                        </a>
+                    @elseif($needsAction > 0)
                         <a href="{{ route('advertiser.orders', ['status' => 'needs_action']) }}" class="next-action border-warning">
                             <div>
                                 <div class="na-title">Orders need attention</div>
@@ -327,15 +336,15 @@
             <div class="dash-spend-strip mb-3">
                 <div class="dw-item">
                     <span class="dw-label">Net spend</span>
-                    <div class="dw-value">€{{ number_format((float) ($spendSummary['net'] ?? 0), 2) }}</div>
+                    <div class="dw-value">{{ $dashboardFailed ? '—' : '€'.number_format((float) ($spendSummary['net'] ?? 0), 2) }}</div>
                 </div>
                 <div class="dw-item">
                     <span class="dw-label">Spent</span>
-                    <div class="dw-value">€{{ number_format((float) ($spendSummary['spent'] ?? 0), 2) }}</div>
+                    <div class="dw-value">{{ $dashboardFailed ? '—' : '€'.number_format((float) ($spendSummary['spent'] ?? 0), 2) }}</div>
                 </div>
                 <div class="dw-item">
                     <span class="dw-label">In progress</span>
-                    <div class="dw-value">€{{ number_format((float) ($spendSummary['in_progress'] ?? 0), 2) }}</div>
+                    <div class="dw-value">{{ $dashboardFailed ? '—' : '€'.number_format((float) ($spendSummary['in_progress'] ?? 0), 2) }}</div>
                 </div>
                 <div class="dw-item d-flex align-items-center">
                     <a href="{{ route('advertiser.analytics', ['view' => 'day']) }}" class="btn btn-sm btn-outline-primary">Full history</a>
