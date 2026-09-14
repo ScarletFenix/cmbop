@@ -43,12 +43,7 @@ class WelcomeBonusSettingController extends Controller
         }
 
         if ($already) {
-            return back()->with(
-                'success',
-                $enabled
-                    ? 'Welcome bonus enabled. New advertisers can receive the credit once per place.'
-                    : 'Welcome bonus disabled. New advertisers will not receive the credit. Existing bonuses stay.'
-            );
+            return back()->with('success', $this->toggleSuccessMessage($welcomeBonus, $enabled));
         }
 
         ActivityLogger::tryLog(
@@ -58,12 +53,7 @@ class WelcomeBonusSettingController extends Controller
             ['enabled' => $enabled]
         );
 
-        return back()->with(
-            'success',
-            $enabled
-                ? 'Welcome bonus enabled. New advertisers can receive the credit once per place.'
-                : 'Welcome bonus disabled. New advertisers will not receive the credit. Existing bonuses stay.'
-        );
+        return back()->with('success', $this->toggleSuccessMessage($welcomeBonus, $enabled));
     }
 
     public function updateAmount(Request $request, WelcomeBonusService $welcomeBonus): RedirectResponse
@@ -96,7 +86,7 @@ class WelcomeBonusSettingController extends Controller
         }
 
         if ($already) {
-            return back()->with('success', 'Welcome bonus amount set to €'.number_format($amount, 2).'. New advertisers receive this amount. Existing bonuses stay.');
+            return back()->with('success', $this->amountSuccessMessage($welcomeBonus, $amount));
         }
 
         ActivityLogger::tryLog(
@@ -106,6 +96,42 @@ class WelcomeBonusSettingController extends Controller
             ['amount' => $amount]
         );
 
-        return back()->with('success', 'Welcome bonus amount set to €'.number_format($amount, 2).'. New advertisers receive this amount. Existing bonuses stay.');
+        return back()->with('success', $this->amountSuccessMessage($welcomeBonus, $amount));
+    }
+
+    private function toggleSuccessMessage(WelcomeBonusService $welcomeBonus, bool $enabled): string
+    {
+        if (! $enabled) {
+            return 'Welcome bonus disabled. New advertisers will not receive the credit. Existing bonuses stay.';
+        }
+
+        if ($welcomeBonus->canGrant()) {
+            return 'Welcome bonus enabled. New advertisers can receive the credit once per place.';
+        }
+
+        if ($welcomeBonus->amount() <= 0) {
+            return 'Welcome bonus enabled. Amount is €0 — new advertisers will not receive credit.';
+        }
+
+        return 'Welcome bonus enabled. New advertisers will not receive credit until grant storage is ready.';
+    }
+
+    private function amountSuccessMessage(WelcomeBonusService $welcomeBonus, float $amount): string
+    {
+        $base = 'Welcome bonus amount set to €'.number_format($amount, 2).'.';
+
+        if (! $welcomeBonus->isEnabled()) {
+            return $base.' Bonus is still disabled — new advertisers will not receive it. Existing bonuses stay.';
+        }
+
+        if ($welcomeBonus->canGrant()) {
+            return $base.' New advertisers receive this amount. Existing bonuses stay.';
+        }
+
+        if ($amount <= 0) {
+            return $base.' New advertisers will not receive credit. Existing bonuses stay.';
+        }
+
+        return $base.' New advertisers will not receive credit until grant storage is ready. Existing bonuses stay.';
     }
 }

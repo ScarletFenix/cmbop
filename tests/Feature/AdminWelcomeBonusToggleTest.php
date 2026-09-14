@@ -240,4 +240,47 @@ class AdminWelcomeBonusToggleTest extends TestCase
         $this->assertTrue($service->isEnabled());
         $this->assertSame(0.0, $service->amount());
     }
+
+    public function test_promotions_hub_does_not_promise_grants_when_amount_is_zero(): void
+    {
+        app(WelcomeBonusService::class)->setAmount(0);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.promotions.index'))
+            ->assertOk()
+            ->assertSee('On — not granting', false)
+            ->assertSee('amount is €0 so new advertisers will not receive credit', false)
+            ->assertDontSee('New advertisers receive this spend-only credit', false)
+            ->assertDontSee('>Enabled</span>', false);
+    }
+
+    public function test_enable_flash_does_not_promise_a_zero_grant(): void
+    {
+        $service = app(WelcomeBonusService::class);
+        $service->setEnabled(false);
+        $service->setAmount(0);
+
+        $this->actingAs($this->admin)
+            ->from(route('admin.promotions.index'))
+            ->post(route('admin.promotions.welcome-bonus.toggle'), ['enabled' => 1])
+            ->assertRedirect(route('admin.promotions.index'))
+            ->assertSessionHas('success', 'Welcome bonus enabled. Amount is €0 — new advertisers will not receive credit.');
+
+        $this->assertTrue($service->isEnabled());
+        $this->assertFalse($service->canGrant());
+    }
+
+    public function test_set_amount_flash_says_disabled_bonus_does_not_grant(): void
+    {
+        app(WelcomeBonusService::class)->setEnabled(false);
+
+        $this->actingAs($this->admin)
+            ->from(route('admin.promotions.index'))
+            ->post(route('admin.promotions.welcome-bonus.amount'), ['amount' => 25])
+            ->assertRedirect(route('admin.promotions.index'))
+            ->assertSessionHas(
+                'success',
+                'Welcome bonus amount set to €25.00. Bonus is still disabled — new advertisers will not receive it. Existing bonuses stay.'
+            );
+    }
 }

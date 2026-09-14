@@ -78,10 +78,12 @@ class PromotionController extends Controller
 
         $welcomeBonusEnabled = false;
         $welcomeBonusAmount = 0.0;
+        $welcomeBonusCanGrant = false;
         $welcomeBonusStatusUnknown = ! $welcomeBonusTableReady;
         try {
             $welcomeBonusEnabled = $welcomeBonus->isEnabled();
             $welcomeBonusAmount = $welcomeBonus->amount();
+            $welcomeBonusCanGrant = $welcomeBonus->canGrant();
         } catch (\Throwable $e) {
             $welcomeBonusStatusUnknown = true;
             Log::warning('Admin promotions hub welcome bonus status failed', [
@@ -103,6 +105,7 @@ class PromotionController extends Controller
             'noticeCounts',
             'welcomeBonusEnabled',
             'welcomeBonusAmount',
+            'welcomeBonusCanGrant',
             'welcomeBonusTableReady',
             'welcomeBonusStatusUnknown',
             'announcementsTableReady',
