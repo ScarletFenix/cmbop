@@ -1,5 +1,11 @@
 @extends('advertiser.layouts.app')
 
+@section('title', 'Dashboard')
+
+@push('page-styles')
+    <link href="{{ asset('assets/css/advertiser-dashboard.css') }}?v={{ @filemtime(public_path('assets/css/advertiser-dashboard.css')) ?: '1' }}" rel="stylesheet">
+@endpush
+
 @section('content')
 
 @php
@@ -16,7 +22,7 @@
     $recentOrders = $recentOrders ?? collect();
     $recommendedSites = $recommendedSites ?? collect();
     $hasOrderableArticle = (bool) ($hasOrderableArticle ?? false);
-    $isNewAdvertiser = (bool) ($isNewAdvertiser ?? (($stats['total'] ?? 0) === 0));
+    $isNewAdvertiser = (bool) ($isNewAdvertiser ?? false);
     $browseCatalogUrl = route('advertiser.catalog');
     $guidedFlowUrl = route('advertiser.wizard.start');
     $needsAction = (int) ($stats['needs_action'] ?? 0);
@@ -24,6 +30,17 @@
     $upcomingScheduledCount = (int) ($upcomingScheduledCount ?? 0);
     $primaryAction = (string) ($primaryAction ?? 'catalog');
     $welcomeSituation = (string) ($welcomeSituation ?? '');
+    $dashboardFailed = (bool) ($dashboardFailed ?? false);
+    $statsUnavailable = (bool) ($statsUnavailable ?? false) || $dashboardFailed;
+    $recentUnavailable = (bool) ($recentUnavailable ?? false) || $dashboardFailed;
+    $walletUnavailable = (bool) ($walletUnavailable ?? false);
+    $spendUnavailable = (bool) ($spendUnavailable ?? false) || $dashboardFailed;
+    $spendChartUnavailable = (bool) ($spendChartUnavailable ?? false) || $dashboardFailed;
+    $kpisUnavailable = $statsUnavailable;
+    $numbersFailed = $dashboardFailed || $statsUnavailable;
+    if ($dashboardFailed) {
+        $isNewAdvertiser = false;
+    }
     $wallet = $wallet ?? ['spendable' => 0, 'available' => 0, 'bonus' => 0, 'currency' => 'EUR'];
     $budgetStatus = $budgetStatus ?? ['has_budget' => false, 'low_balance' => false];
     $spendSummary = $spendSummary ?? ['net' => 0, 'spent' => 0, 'in_progress' => 0];
@@ -32,258 +49,48 @@
     $urlVisibility = app(\App\Services\Catalog\SiteUrlVisibility::class);
 @endphp
 
-<style>
-.get-started-cta, .dash-primary-cta {
-    background: var(--brand-primary, #1a585e); color: #fff; border: none;
-    border-radius: 10px; padding: 12px 18px; font-weight: 600;
-    display: inline-flex; align-items: center; gap: 8px; text-decoration: none;
-    transition: background-color .2s ease, transform .2s ease;
-}
-.get-started-cta:hover, .dash-primary-cta:hover {
-    color: #fff; background: var(--brand-primary-deep, #123f42); transform: none;
-}
-.kpi-tile {
-    display: flex; align-items: center; gap: 12px; padding: 14px;
-    border: 1px solid #e5eef0; border-radius: 10px; background: #fff; height: 100%;
-}
-.kpi-tile .kpi-icon {
-    width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center;
-    justify-content: center; flex-shrink: 0;
-    background: var(--brand-primary-bg, #e6f5f5);
-    color: #fff;
-    border: 1px solid transparent;
-}
-.kpi-tile .kpi-icon i {
-    color: inherit;
-    font-size: 1.05rem;
-    line-height: 1;
-}
-.kpi-tile .kpi-label { font-size: 12px; color: #6b7280; display: block; }
-.kpi-tile .kpi-value { font-size: 1.35rem; font-weight: 700; color: var(--brand-primary, #1a585e); line-height: 1.1; }
-a.kpi-tile { text-decoration: none; color: inherit; }
-a.kpi-tile:hover { border-color: #cbd5e1; }
-.next-action {
-    display: flex; align-items: center; justify-content: space-between; gap: 12px;
-    padding: 12px 14px; border: 1px solid #e5e7eb; border-radius: 10px;
-    text-decoration: none; color: inherit; background: #f8fafb;
-    transition: border-color .2s ease, background .2s ease;
-}
-.next-action:hover { border-color: #cbd5e1; background: rgba(15, 23, 42, 0.04); color: inherit; }
-.next-action .na-title { font-weight: 600; font-size: 14px; }
-.next-action .na-desc { font-size: 12px; color: #6b7280; margin: 0; }
-.next-action.next-action-quiet { background: transparent; border-style: dashed; }
-.order-status {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 13px;
-    font-weight: 500;
-    color: #334155;
-    text-transform: capitalize;
-    background: none;
-    border: none;
-    padding: 0;
-}
-.order-status-dot {
-    --status-dot: var(--brand-live, #0ea5e9);
-    position: relative;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--status-dot);
-    flex-shrink: 0;
-}
-.order-status-dot::after {
-    content: "";
-    position: absolute;
-    inset: -4px;
-    border-radius: 50%;
-    background: var(--status-dot);
-    opacity: 0.35;
-    animation: order-status-pulse 1.8s ease-out infinite;
-}
-.order-status.pending .order-status-dot { --status-dot: var(--brand-ink-muted, #75787B); }
-.order-status.processing .order-status-dot,
-.order-status.review .order-status-dot { --status-dot: var(--brand-live, #0ea5e9); }
-.order-status.completed .order-status-dot { --status-dot: var(--brand-success, #0f766e); }
-.order-status.cancelled .order-status-dot {
-    --status-dot: #94a3b8;
-}
-.order-status.cancelled .order-status-dot::after,
-.order-status.completed .order-status-dot::after {
-    animation: none;
-    opacity: 0;
-}
-@keyframes order-status-pulse {
-    0% { transform: scale(0.7); opacity: 0.45; }
-    70% { transform: scale(1.9); opacity: 0; }
-    100% { transform: scale(1.9); opacity: 0; }
-}
-@media (prefers-reduced-motion: reduce) {
-    .order-status-dot::after { animation: none !important; opacity: 0; }
-}
-.recent-orders-glass {
-    position: relative;
-    flex: 1 1 auto;
-    border-radius: 18px;
-    border: 1px solid rgba(255, 255, 255, 0.55);
-    background: linear-gradient(145deg, rgba(255,255,255,0.72), rgba(240,251,251,0.55));
-    box-shadow:
-        0 18px 40px rgba(26, 88, 94, 0.1),
-        inset 0 1px 0 rgba(255,255,255,0.75);
-    backdrop-filter: blur(16px) saturate(1.35);
-    -webkit-backdrop-filter: blur(16px) saturate(1.35);
-    overflow: hidden;
-}
-.recent-orders-glass::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background:
-        radial-gradient(ellipse 55% 40% at 12% 0%, rgba(63, 174, 178, 0.22), transparent 60%),
-        radial-gradient(ellipse 45% 35% at 90% 100%, rgba(26, 88, 94, 0.08), transparent 55%);
-    pointer-events: none;
-}
-.recent-orders-glass .card-body { position: relative; z-index: 1; }
-.recent-orders-glass .table { --bs-table-bg: transparent; }
-.recent-orders-glass .table > :not(caption) > * > * {
-    background: transparent; border-bottom-color: rgba(26, 88, 94, 0.08);
-}
-.recent-orders-glass thead th {
-    font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
-    color: var(--brand-ink-muted, #75787B) !important; font-weight: 700; border-bottom-width: 1px;
-}
-.recent-orders-glass tbody tr {
-    transition: background .2s ease;
-}
-.recent-orders-glass tbody tr:hover {
-    background: rgba(255,255,255,0.45);
-}
-.recent-order-num {
-    font-weight: 700; font-size: 15px; color: #1a585e; letter-spacing: .02em;
-}
-.recent-order-site {
-    font-size: 13px; font-weight: 600; color: #1f2937; margin-top: 4px;
-}
-.recent-order-url {
-    font-size: 12px; color: var(--brand-ink-muted, #75787B); text-decoration: none;
-}
-.recent-order-url:hover { color: #1a585e; }
-.recent-orders-title {
-    font-weight: 700; color: #1a585e; letter-spacing: -.01em;
-}
-.recent-orders-link {
-    color: #1a585e; font-weight: 600; text-decoration: none;
-}
-.recent-orders-link:hover { color: #123f42; }
-.help-secondary {
-    border: 1px dashed #d7e7e8; border-radius: 12px; padding: 16px;
-    background: #fafcfc;
-}
-.recommended-sites { display: grid; gap: 10px; }
-.recommended-site {
-    display: flex; align-items: center; justify-content: space-between; gap: 12px;
-    padding: 12px 14px; border: 1px solid #e5e7eb; border-radius: 10px;
-    background: #fff; color: inherit;
-    transition: border-color .15s ease, background .15s ease;
-}
-.recommended-site:hover { border-color: #cbd5e1; background: rgba(15, 23, 42, 0.03); }
-.recommended-site .rs-name {
-    font-weight: 400;
-    font-size: 14px;
-    color: #1a585e;
-    text-decoration: underline;
-    text-underline-offset: 2px;
-    word-break: break-all;
-}
-.recommended-site .rs-name:hover { color: #123f42; }
-.recommended-site .rs-meta { font-size: 12px; color: var(--brand-ink-muted, #75787B); margin: 0; }
-.recommended-site .rs-price {
-    font-weight: 600;
-    color: #1a585e;
-    white-space: nowrap;
-    text-decoration: none;
-}
-.recommended-site .rs-price:hover { color: #123f42; }
-.dash-wallet-strip, .dash-spend-strip {
-    display: flex; flex-wrap: wrap; gap: 12px; align-items: stretch;
-    padding: 12px 14px; margin: 0 4px 16px; border-radius: 12px;
-    border: 1px solid #d9e7e8; background: rgba(255,255,255,.85);
-}
-.dash-wallet-strip .dw-item, .dash-spend-strip .dw-item {
-    flex: 1 1 120px; min-width: 110px;
-}
-.dash-wallet-strip .dw-label, .dash-spend-strip .dw-label {
-    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em;
-    color: #6b7280; display: block;
-}
-.dash-wallet-strip .dw-value, .dash-spend-strip .dw-value {
-    font-size: 1.2rem; font-weight: 700; color: #1a585e; line-height: 1.2;
-}
-.dash-wallet-strip .dw-warn {
-    flex: 1 1 100%; font-size: 12px; color: #92400e; margin: 0;
-    padding: 8px 10px; border-radius: 8px; background: #fffbeb; border: 1px solid #fde68a;
-}
-.dash-wallet-strip .dw-bonus-note {
-    flex: 1 1 100%; font-size: 12px; color: #1a585e; margin: 0;
-    padding: 8px 10px; border-radius: 8px; background: #f0fbfb; border: 1px solid #b8e4e4;
-}
-.dash-spend-chart-wrap {
-    position: relative;
-    width: 100%;
-    height: 140px;
-    margin-top: 4px;
-}
-.dash-spend-chart-wrap canvas { display: block; width: 100% !important; height: 100% !important; }
-.dash-spend-chart-hint {
-    font-size: 12px;
-    color: #6b7280;
-    margin: 4px 0 0;
-}
-.dash-spend-chart-fallback {
-    font-size: 13px;
-    color: #6b7280;
-    margin-top: 8px;
-}
-.recent-order-row { position: relative; }
-.recent-order-row .recent-order-num.stretched-link::after { z-index: 1; }
-.recent-order-url { position: relative; z-index: 2; }
-.recent-order-next { font-size: 12px; color: #4b5563; max-width: 220px; }
-.recent-order-hint { font-size: 11px; color: #92400e; margin: 4px 0 0; }
-.kpi-tile .kpi-icon.is-muted { background: #e2e8f0 !important; color: #64748b !important; }
-</style>
-
+{{-- Styles: public/assets/css/advertiser-dashboard.css --}}
 <div class="d-flex flex-wrap align-items-end justify-content-between gap-2 mb-4">
     <div>
-        <h4 class="mb-1">Welcome back, {{ auth()->user()->name }}!</h4>
-        <small class="text-muted">
-            @if($isNewAdvertiser)
-                Browse the catalog to buy placements — or use a guided flow if you prefer step-by-step help.
-            @elseif($welcomeSituation !== '')
-                {{ ucfirst($welcomeSituation) }}.
-            @endif
-        </small>
+        <h2 class="mb-1 fw-semibold">Dashboard</h2>
+        <p class="text-muted mb-0">
+            Welcome back, {{ auth()->user()->name }}@if($welcomeSituation !== '') — {{ ucfirst($welcomeSituation) }}@endif.
+        </p>
     </div>
-    @unless($isNewAdvertiser)
-        @if($primaryAction === 'needs_action')
-            <a href="{{ route('advertiser.orders', ['status' => 'needs_action']) }}" class="dash-primary-cta" id="dashPrimaryCta">
-                <i class="fa fa-clipboard-check"></i> Open orders
-            </a>
-        @elseif($primaryAction === 'awaiting_payment')
-            <a href="{{ route('advertiser.orders', ['status' => 'awaiting_payment']) }}" class="dash-primary-cta" id="dashPrimaryCta">
-                <i class="fa fa-credit-card"></i> Complete payment
-            </a>
-        @elseif($primaryAction === 'scheduled')
-            <a href="{{ route('advertiser.scheduled-orders', ['tab' => 'upcoming']) }}" class="dash-primary-cta" id="dashPrimaryCta">
-                <i class="fa fa-calendar"></i> Upcoming scheduled
-            </a>
-        @else
-            <a href="{{ $browseCatalogUrl }}" class="dash-primary-cta" id="dashPrimaryCta">
-                <i class="fa fa-store"></i> Browse catalog
-            </a>
-        @endif
-    @endunless
+    @if($numbersFailed && ! $isNewAdvertiser)
+        <a href="{{ route('advertiser.dashboard') }}" class="dash-primary-cta" id="dashPrimaryCta">
+            <i class="fa fa-rotate"></i> Try again
+        </a>
+    @elseif($isNewAdvertiser)
+        {{-- Get-started panel below is the CTA --}}
+    @elseif($primaryAction === 'needs_action')
+        <a href="{{ route('advertiser.orders', ['status' => 'needs_action']) }}" class="dash-primary-cta" id="dashPrimaryCta">
+            <i class="fa fa-clipboard-check"></i> Open orders
+        </a>
+    @elseif($primaryAction === 'awaiting_payment')
+        <a href="{{ route('advertiser.orders', ['status' => 'awaiting_payment']) }}" class="dash-primary-cta" id="dashPrimaryCta">
+            <i class="fa fa-credit-card"></i> Complete payment
+        </a>
+    @elseif($primaryAction === 'scheduled')
+        <a href="{{ route('advertiser.scheduled-orders', ['tab' => 'upcoming']) }}" class="dash-primary-cta" id="dashPrimaryCta">
+            <i class="fa fa-calendar"></i> Upcoming scheduled
+        </a>
+    @else
+        <a href="{{ $browseCatalogUrl }}" class="dash-primary-cta" id="dashPrimaryCta">
+            <i class="fa fa-store"></i> Browse catalog
+        </a>
+    @endif
 </div>
+
+@if($numbersFailed && ! $isNewAdvertiser)
+    <div class="alert alert-light border d-flex flex-wrap align-items-center justify-content-between gap-2 mb-4" role="status">
+        <div>
+            <strong>We could not refresh your numbers</strong>
+            <span class="d-block small text-muted mb-0">Try again, or open the catalog if you still want to browse.</span>
+        </div>
+        <a href="{{ $browseCatalogUrl }}" class="btn btn-sm btn-outline-secondary">Browse catalog</a>
+    </div>
+@endif
 
 @if($isNewAdvertiser)
     @include('advertiser.partials.dashboard-wallet-strip')
@@ -340,17 +147,6 @@ a.kpi-tile:hover { border-color: #cbd5e1; }
         </div>
     </div>
 @else
-<style>
-.dash-command-surface {
-    position: relative;
-    border-radius: 20px;
-    padding: 4px;
-    background:
-        radial-gradient(ellipse 50% 60% at 80% 20%, rgba(63, 174, 178, 0.18), transparent 55%),
-        radial-gradient(ellipse 40% 50% at 10% 80%, rgba(26, 88, 94, 0.08), transparent 50%),
-        linear-gradient(180deg, #e6f5f5 0%, #f8f9fa 100%);
-}
-</style>
 <div class="dash-command-surface mb-4 dash-page-end">
     @include('advertiser.partials.dashboard-wallet-strip')
 
@@ -361,7 +157,8 @@ a.kpi-tile:hover { border-color: #cbd5e1; }
                 <div class="kpi-icon" style="background:#3faeb2;color:#fff;"><i class="fa-solid fa-box-open" aria-hidden="true"></i></div>
                 <div>
                     <span class="kpi-label">Active</span>
-                    <div class="kpi-value">{{ $stats['total'] }}</div>
+                    <div class="kpi-value">{{ $kpisUnavailable ? '—' : $stats['total'] }}</div>
+                    @if($kpisUnavailable)<span class="small text-muted">Unavailable</span>@endif
                 </div>
             </a>
         </div>
@@ -373,7 +170,8 @@ a.kpi-tile:hover { border-color: #cbd5e1; }
                 </div>
                 <div>
                     <span class="kpi-label">Needs you</span>
-                    <div class="kpi-value">{{ $needsAction }}</div>
+                    <div class="kpi-value">{{ $kpisUnavailable ? '—' : $needsAction }}</div>
+                    @if($kpisUnavailable)<span class="small text-muted">Unavailable</span>@endif
                 </div>
             </a>
         </div>
@@ -385,7 +183,8 @@ a.kpi-tile:hover { border-color: #cbd5e1; }
                 </div>
                 <div>
                     <span class="kpi-label">Waiting on publisher</span>
-                    <div class="kpi-value">{{ (int) ($stats['waiting_on_publisher'] ?? 0) }}</div>
+                    <div class="kpi-value">{{ $kpisUnavailable ? '—' : (int) ($stats['waiting_on_publisher'] ?? 0) }}</div>
+                    @if($kpisUnavailable)<span class="small text-muted">Unavailable</span>@endif
                 </div>
             </div>
         </div>
@@ -394,11 +193,12 @@ a.kpi-tile:hover { border-color: #cbd5e1; }
                 <div class="kpi-icon" style="background:#1a585e;color:#fff;"><i class="fa-solid fa-clock" aria-hidden="true"></i></div>
                 <div>
                     <span class="kpi-label">In progress</span>
-                    <div class="kpi-value">{{ $stats['in_progress'] }}</div>
+                    <div class="kpi-value">{{ $kpisUnavailable ? '—' : $stats['in_progress'] }}</div>
+                    @if($kpisUnavailable)<span class="small text-muted">Unavailable</span>@endif
                 </div>
             </a>
         </div>
-        @if((int) ($stats['cancelled'] ?? 0) > 0)
+        @if(! $kpisUnavailable && (int) ($stats['cancelled'] ?? 0) > 0)
             <div class="col-12">
                 <p class="small text-muted mb-0 px-1">{{ (int) $stats['cancelled'] }} cancelled — not counted in Active.</p>
             </div>
@@ -411,7 +211,15 @@ a.kpi-tile:hover { border-color: #cbd5e1; }
             <div class="dash-panel h-100">
                 <h5 class="mb-3">Next actions</h5>
                 <div class="d-flex flex-column gap-2 mb-3">
-                    @if($needsAction > 0)
+                    @if($numbersFailed)
+                        <a href="{{ route('advertiser.dashboard') }}" class="next-action">
+                            <div>
+                                <div class="na-title">Try again</div>
+                                <p class="na-desc">Refresh the dashboard to load your next steps</p>
+                            </div>
+                            <i class="fa fa-chevron-right text-muted" aria-hidden="true"></i>
+                        </a>
+                    @elseif($needsAction > 0)
                         <a href="{{ route('advertiser.orders', ['status' => 'needs_action']) }}" class="next-action border-warning">
                             <div>
                                 <div class="na-title">Orders need attention</div>
@@ -493,7 +301,9 @@ a.kpi-tile:hover { border-color: #cbd5e1; }
                             <div>
                                 <div class="na-title">Add funds</div>
                                 <p class="na-desc">
-                                    @if(!empty($budgetStatus['low_balance']))
+                                    @if($walletUnavailable)
+                                        Spendable unavailable — try again or open Add funds
+                                    @elseif(!empty($budgetStatus['low_balance']))
                                         Spendable is below your alert — top up to keep checkout ready
                                     @else
                                         Spendable €{{ number_format((float) ($wallet['spendable'] ?? 0), 2) }}
@@ -506,8 +316,12 @@ a.kpi-tile:hover { border-color: #cbd5e1; }
                             <div>
                                 <div class="na-title">Spending history</div>
                                 <p class="na-desc">
-                                    Net €{{ number_format((float) ($spendSummary['net'] ?? 0), 2) }}
-                                    · in progress €{{ number_format((float) ($spendSummary['in_progress'] ?? 0), 2) }}
+                                    @if($spendUnavailable)
+                                        Spend totals unavailable
+                                    @else
+                                        Net €{{ number_format((float) ($spendSummary['net'] ?? 0), 2) }}
+                                        · in progress €{{ number_format((float) ($spendSummary['in_progress'] ?? 0), 2) }}
+                                    @endif
                                 </p>
                             </div>
                             <i class="fa fa-chevron-right text-muted" aria-hidden="true"></i>
@@ -533,20 +347,32 @@ a.kpi-tile:hover { border-color: #cbd5e1; }
             <div class="dash-spend-strip mb-3">
                 <div class="dw-item">
                     <span class="dw-label">Net spend</span>
-                    <div class="dw-value">€{{ number_format((float) ($spendSummary['net'] ?? 0), 2) }}</div>
+                    <div class="dw-value">{{ $spendUnavailable ? '—' : '€'.number_format((float) ($spendSummary['net'] ?? 0), 2) }}</div>
                 </div>
                 <div class="dw-item">
                     <span class="dw-label">Spent</span>
-                    <div class="dw-value">€{{ number_format((float) ($spendSummary['spent'] ?? 0), 2) }}</div>
+                    <div class="dw-value">{{ $spendUnavailable ? '—' : '€'.number_format((float) ($spendSummary['spent'] ?? 0), 2) }}</div>
                 </div>
                 <div class="dw-item">
                     <span class="dw-label">In progress</span>
-                    <div class="dw-value">€{{ number_format((float) ($spendSummary['in_progress'] ?? 0), 2) }}</div>
+                    <div class="dw-value">{{ $spendUnavailable ? '—' : '€'.number_format((float) ($spendSummary['in_progress'] ?? 0), 2) }}</div>
                 </div>
                 <div class="dw-item d-flex align-items-center">
                     <a href="{{ route('advertiser.analytics', ['view' => 'day']) }}" class="btn btn-sm btn-outline-primary">Full history</a>
                 </div>
-                @if(!empty($spendCandles['has_spend']))
+                @if($spendUnavailable && $spendChartUnavailable)
+                    <p class="dash-spend-empty mb-0">Spend history unavailable.</p>
+                @elseif($spendUnavailable)
+                    <p class="dash-spend-empty mb-0">Spend totals unavailable.</p>
+                @elseif($spendChartUnavailable)
+                    <p class="dash-spend-empty mb-0">
+                        Chart unavailable —
+                        <a href="{{ route('advertiser.analytics', ['view' => 'day']) }}">open Full history</a>.
+                    </p>
+                @elseif(empty($spendCandles['has_spend']))
+                    <p class="dash-spend-empty mb-0">No completed spend yet — paid placements will show here.</p>
+                @endif
+                @if(! $spendChartUnavailable && !empty($spendCandles['has_spend']))
                     <div class="w-100">
                         <p class="dash-spend-chart-hint" id="dashSpendChartHint">Solid = completed · Dim = still in progress</p>
                         <div class="dash-spend-chart-wrap" id="dashSpendChartWrap">
@@ -565,7 +391,15 @@ a.kpi-tile:hover { border-color: #cbd5e1; }
                         <h5 class="mb-0 recent-orders-title">Recent orders</h5>
                         <a href="{{ route('advertiser.orders') }}" class="small recent-orders-link">View all</a>
                     </div>
-                    @if($recentOrders->isEmpty())
+                    @if($recentUnavailable)
+                        <x-ui.empty-state
+                            icon="fa-receipt"
+                            title="Orders unavailable"
+                            message="We could not load recent orders. Try again shortly."
+                            primary-label="Try again"
+                            :primary-url="route('advertiser.dashboard')"
+                        />
+                    @elseif($recentOrders->isEmpty())
                         <x-ui.empty-state
                             icon="fa-receipt"
                             title="No orders yet"
@@ -608,7 +442,7 @@ a.kpi-tile:hover { border-color: #cbd5e1; }
                                         <tr class="recent-order-row">
                                             <td class="py-3">
                                                 <a href="{{ $orderFocusUrl }}" class="recent-order-num text-decoration-none stretched-link">#{{ $numericOrder }}</a>
-                                                <div class="recent-order-site">{{ $firstItem->site_name ?? '—' }}</div>
+                                                <div class="recent-order-site">{{ $firstItem?->site_name ?? '—' }}</div>
                                                 @if($canSeeRecentUrl && $recentDisplayHost && $firstItem?->site_id)
                                                     <a href="{{ route('advertiser.catalog.visit', $firstItem->site_id) }}"
                                                        target="_blank" rel="noopener" class="recent-order-url">
@@ -666,8 +500,8 @@ a.kpi-tile:hover { border-color: #cbd5e1; }
 @endsection
 
 @push('scripts')
-@if(!($isNewAdvertiser ?? false) && !empty($spendCandles['has_spend']))
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+@if(!($isNewAdvertiser ?? false) && !($spendChartUnavailable ?? false) && !empty($spendCandles['has_spend']))
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     const canvas = document.getElementById('dashSpendChart');

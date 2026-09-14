@@ -22,6 +22,9 @@ use Illuminate\Support\Facades\Schema;
  */
 class AdvertiserDashboardService
 {
+    /** @var list<string> */
+    private array $failedContexts = [];
+
     public function __construct(
         private AdvertiserSpendService $spend,
         private SpendBudgetService $budgets,
@@ -43,11 +46,18 @@ class AdvertiserDashboardService
      *     spendSummary: array<string, mixed>,
      *     spendCandles: array<string, mixed>,
      *     primaryAction: string,
-     *     welcomeSituation: string
+     *     welcomeSituation: string,
+     *     dashboardFailed: bool,
+     *     statsUnavailable: bool,
+     *     recentUnavailable: bool,
+     *     walletUnavailable: bool,
+     *     spendUnavailable: bool,
+     *     spendChartUnavailable: bool
      * }
      */
     public function build(User $user): array
     {
+        $this->failedContexts = [];
         $visibility = app(SiteUrlVisibility::class);
         $this->safe($user, 'url visibility schema', function () use ($visibility) {
             $visibility->ensureSchema();
@@ -69,7 +79,7 @@ class AdvertiserDashboardService
             $user,
             'new-advertiser check',
             fn () => ! Order::query()->where('user_id', $user->id)->exists(),
-            true
+            false
         );
         $upcomingScheduledCount = (int) $this->safe(
             $user,
@@ -86,6 +96,28 @@ class AdvertiserDashboardService
         $stats = is_array($stats) ? $stats : $emptyStats;
         $needsAction = (int) ($stats['needs_action'] ?? 0);
         $awaitingPayment = (int) ($stats['awaiting_payment'] ?? 0);
+        $statsUnavailable = $this->contextFailed('order stats');
+
+        $wallet = $this->safe($user, 'wallet strip', fn () => $this->walletStrip($user), [
+            'spendable' => 0.0,
+            'available' => 0.0,
+            'bonus' => 0.0,
+            'currency' => 'EUR',
+        ]);
+        $budgetStatus = $this->safe($user, 'budget status', fn () => $this->budgets->status($user), [
+            'has_budget' => false,
+            'low_balance' => false,
+        ]);
+        $spendSummary = $this->safe($user, 'spend summary', fn () => $this->spend->summary((int) $user->id), [
+            'net' => 0,
+            'spent' => 0,
+            'in_progress' => 0,
+        ]);
+        $spendCandles = $this->safe($user, 'spend candles', fn () => $this->spend->candles((int) $user->id, 'day', [
+            'from' => now()->subDays(13)->startOfDay(),
+            'to' => now()->endOfDay(),
+            'fill_gaps' => true,
+        ]), ['has_spend' => false, 'series' => []]);
 
         return [
             'stats' => $stats,
@@ -106,34 +138,71 @@ class AdvertiserDashboardService
                 $isNewAdvertiser,
                 $needsAction,
                 $awaitingPayment,
-                $upcomingScheduledCount
+                $upcomingScheduledCount,
+                $statsUnavailable
             ),
             'welcomeSituation' => $this->welcomeSituation(
                 $isNewAdvertiser,
                 $needsAction,
                 $awaitingPayment,
-                $upcomingScheduledCount
+                $upcomingScheduledCount,
+                $statsUnavailable
             ),
+            'wallet' => $wallet,
+            'budgetStatus' => $budgetStatus,
+            'spendSummary' => $spendSummary,
+            'spendCandles' => $spendCandles,
+            'dashboardFailed' => false,
+            'statsUnavailable' => $statsUnavailable,
+            'recentUnavailable' => $this->contextFailed('recent orders'),
+            'walletUnavailable' => $this->contextFailed('wallet strip'),
+            'spendUnavailable' => $this->contextFailed('spend summary'),
+            'spendChartUnavailable' => $this->contextFailed('spend candles'),
+        ];
+    }
+
+    /**
+     * Stay on Dashboard when build() throws. Wallet is loaded separately.
+     *
+     * @return array<string, mixed>
+     */
+    public function failedPayload(User $user): array
+    {
+        $this->failedContexts = [];
+
+        return [
+            'stats' => [
+                'total' => 0,
+                'completed' => 0,
+                'in_progress' => 0,
+                'cancelled' => 0,
+                'needs_review' => 0,
+                'needs_action' => 0,
+                'awaiting_payment' => 0,
+                'waiting_on_publisher' => 0,
+            ],
+            'recentOrders' => collect(),
+            'recommendedSites' => collect(),
+            'hasOrderableArticle' => false,
+            'isNewAdvertiser' => false,
+            'upcomingScheduledCount' => 0,
+            'primaryAction' => 'retry',
+            'welcomeSituation' => 'we could not refresh your numbers',
             'wallet' => $this->safe($user, 'wallet strip', fn () => $this->walletStrip($user), [
                 'spendable' => 0.0,
                 'available' => 0.0,
                 'bonus' => 0.0,
                 'currency' => 'EUR',
             ]),
-            'budgetStatus' => $this->safe($user, 'budget status', fn () => $this->budgets->status($user), [
-                'has_budget' => false,
-                'low_balance' => false,
-            ]),
-            'spendSummary' => $this->safe($user, 'spend summary', fn () => $this->spend->summary((int) $user->id), [
-                'net' => 0,
-                'spent' => 0,
-                'in_progress' => 0,
-            ]),
-            'spendCandles' => $this->safe($user, 'spend candles', fn () => $this->spend->candles((int) $user->id, 'day', [
-                'from' => now()->subDays(13)->startOfDay(),
-                'to' => now()->endOfDay(),
-                'fill_gaps' => true,
-            ]), ['has_spend' => false, 'series' => []]),
+            'budgetStatus' => ['has_budget' => false, 'low_balance' => false],
+            'spendSummary' => ['net' => 0, 'spent' => 0, 'in_progress' => 0],
+            'spendCandles' => ['has_spend' => false, 'series' => []],
+            'dashboardFailed' => true,
+            'statsUnavailable' => true,
+            'recentUnavailable' => true,
+            'walletUnavailable' => $this->contextFailed('wallet strip'),
+            'spendUnavailable' => true,
+            'spendChartUnavailable' => true,
         ];
     }
 
@@ -144,10 +213,14 @@ class AdvertiserDashboardService
         bool $isNewAdvertiser,
         int $needsAction,
         int $awaitingPayment,
-        int $upcomingScheduled
+        int $upcomingScheduled,
+        bool $statsUnavailable = false
     ): string {
         if ($isNewAdvertiser) {
             return 'get_started';
+        }
+        if ($statsUnavailable) {
+            return 'retry';
         }
         if ($needsAction > 0) {
             return 'needs_action';
@@ -166,10 +239,14 @@ class AdvertiserDashboardService
         bool $isNewAdvertiser,
         int $needsAction,
         int $awaitingPayment,
-        int $upcomingScheduled
+        int $upcomingScheduled,
+        bool $statsUnavailable = false
     ): string {
         if ($isNewAdvertiser) {
             return 'browse the catalog to buy placements';
+        }
+        if ($statsUnavailable) {
+            return 'we could not refresh your numbers';
         }
         if ($needsAction > 0) {
             return $needsAction === 1
@@ -193,11 +270,17 @@ class AdvertiserDashboardService
     /**
      * Optional dashboard strips must not 500 the home page on leftover schema.
      */
+    private function contextFailed(string $context): bool
+    {
+        return in_array($context, $this->failedContexts, true);
+    }
+
     private function safe(User $user, string $context, callable $fn, mixed $fallback = null): mixed
     {
         try {
             return $fn();
         } catch (\Throwable $e) {
+            $this->failedContexts[] = $context;
             Log::warning('Advertiser dashboard '.$context.' failed', [
                 'user_id' => $user->id,
                 'error' => $e->getMessage(),

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\AdvertiserSpendBudget;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Role;
@@ -9,6 +10,8 @@ use App\Models\Site;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Services\Advertiser\AdvertiserDashboardService;
+use App\Services\Advertiser\AdvertiserSpendService;
+use App\Services\Wallet\WalletOverviewService;
 use App\Support\AdvertiserOrderStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -322,6 +325,157 @@ class AdvertiserDashboardPr1Test extends TestCase
             ->getContent();
 
         $this->assertStringNotContainsString('>Available</span>', $html);
+    }
+
+    public function test_failed_dashboard_stays_on_page_with_unavailable_kpis(): void
+    {
+        $user = $this->advertiser();
+        $this->advertiserWallet($user, 20, 20);
+        $this->makeOrder($user, [
+            'status' => 'processing',
+            'payment_status' => 'paid',
+        ]);
+
+        $this->partialMock(AdvertiserDashboardService::class, function ($mock) {
+            $mock->shouldReceive('build')->once()->andThrow(new \RuntimeException('dash boom'));
+        });
+
+        $html = $this->actingAs($user)
+            ->get(route('advertiser.dashboard'))
+            ->assertOk()
+            ->assertSee('Dashboard', false)
+            ->assertSee('Unavailable', false)
+            ->assertSee('Try again', false)
+            ->assertSee('We could not refresh your numbers', false)
+            ->assertSee('Spendable', false)
+            ->assertSee('advertiser-dashboard.css', false)
+            ->assertDontSee('Get started', false)
+            ->assertDontSee('No orders yet', false)
+            ->assertDontSee('Guided placement', false)
+            ->assertDontSee('Spending history', false)
+            ->getContent();
+
+        $this->assertStringContainsString('<title>Dashboard — SEOLinkBuildings</title>', $html);
+        $this->assertStringNotContainsString('Location:', $html);
+    }
+
+    public function test_stats_failure_shows_retry_not_caught_up_or_new_account(): void
+    {
+        $user = $this->advertiser();
+        $this->makeOrder($user, [
+            'status' => 'processing',
+            'payment_status' => 'paid',
+        ]);
+
+        $this->partialMock(AdvertiserDashboardService::class, function ($mock) {
+            $mock->shouldReceive('orderStats')->andThrow(new \RuntimeException('stats down'));
+        });
+
+        $html = $this->actingAs($user)
+            ->get(route('advertiser.dashboard'))
+            ->assertOk()
+            ->assertSee('We could not refresh your numbers', false)
+            ->assertSee('Try again', false)
+            ->assertSee('Unavailable', false)
+            ->assertDontSee('You are caught up', false)
+            ->assertDontSee('Get started', false)
+            ->assertDontSee('Orders need attention', false)
+            ->getContent();
+
+        $this->assertStringContainsString('id="dashPrimaryCta"', $html);
+        $this->assertStringContainsString('Try again', $html);
+        $this->assertStringNotContainsString('kpi-value">0', $html);
+    }
+
+    public function test_candle_failure_keeps_spend_totals(): void
+    {
+        $user = $this->advertiser();
+        $this->makeOrder($user, [
+            'status' => 'processing',
+            'payment_status' => 'paid',
+            'total_amount' => 77,
+        ]);
+
+        $this->mock(AdvertiserSpendService::class, function ($mock) {
+            $summary = [
+                'gross' => 77.0,
+                'refunded' => 0.0,
+                'net' => 77.0,
+                'spent' => 0.0,
+                'in_progress' => 77.0,
+                'committed' => 77.0,
+                'gross_orders' => 1,
+                'refunded_orders' => 0,
+                'spent_orders' => 0,
+                'in_progress_orders' => 1,
+                'aov_net' => 77.0,
+            ];
+            $mock->shouldReceive('summary')->andReturn($summary);
+            $mock->shouldReceive('candles')->andThrow(new \RuntimeException('candles down'));
+        });
+
+        $this->actingAs($user)
+            ->get(route('advertiser.dashboard'))
+            ->assertOk()
+            ->assertSee('€77.00', false)
+            ->assertSee('Chart unavailable', false)
+            ->assertDontSee('No completed spend yet', false)
+            ->assertDontSee('Spend history unavailable', false)
+            ->assertDontSee('dash-spend-chart-wrap', false)
+            ->assertDontSee('chart.js', false);
+    }
+
+    public function test_wallet_failure_hides_spendable_and_low_balance_warning(): void
+    {
+        $user = $this->advertiser();
+        $this->advertiserWallet($user, 10, 0);
+        $this->makeOrder($user, [
+            'status' => 'processing',
+            'payment_status' => 'paid',
+        ]);
+
+        AdvertiserSpendBudget::create([
+            'user_id' => $user->id,
+            'monthly_limit' => 500,
+            'warn_at_percent' => 80,
+            'low_balance_threshold' => 25,
+            'notify_email' => false,
+            'notify_bell' => false,
+        ]);
+
+        $this->mock(WalletOverviewService::class, function ($mock) {
+            $mock->shouldReceive('summary')->andThrow(new \RuntimeException('wallet down'));
+        });
+
+        $this->actingAs($user)
+            ->get(route('advertiser.dashboard'))
+            ->assertOk()
+            ->assertSee('Spendable', false)
+            ->assertSee('Add funds', false)
+            ->assertDontSee('Top up — low balance', false)
+            ->assertDontSee('welcome bonus included in Spendable', false)
+            ->assertDontSee('Spendable is below your', false);
+    }
+
+    public function test_returning_advertiser_without_spend_skips_chart(): void
+    {
+        $user = $this->advertiser();
+        $this->makeOrder($user, [
+            'status' => 'pending',
+            'payment_status' => 'pending',
+            'paid_at' => null,
+            'payment_method' => 'card',
+        ]);
+
+        $html = $this->actingAs($user)
+            ->get(route('advertiser.dashboard'))
+            ->assertOk()
+            ->assertSee('No completed spend yet', false)
+            ->assertDontSee('dash-spend-chart-wrap', false)
+            ->assertDontSee('Get started', false)
+            ->getContent();
+
+        $this->assertStringNotContainsString('chart.js', $html);
     }
 
     public function test_returning_advertiser_bonus_is_explained_on_spendable(): void
