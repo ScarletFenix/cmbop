@@ -195,8 +195,12 @@
             $headerWalletUnavailable = false;
             try {
                 $activeWallet = auth()->user()->activeWallet();
-                $spendableBalance = (float) ($activeWallet?->balance ?? 0);
-                $reservedBalance = (float) ($activeWallet?->reserved_balance ?? 0);
+                if ($activeWallet === null) {
+                    $headerWalletUnavailable = true;
+                } else {
+                    $spendableBalance = (float) $activeWallet->balance;
+                    $reservedBalance = (float) $activeWallet->reserved_balance;
+                }
             } catch (\Throwable $e) {
                 report($e);
                 $headerWalletUnavailable = true;

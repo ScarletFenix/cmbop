@@ -302,7 +302,7 @@ class WalletOverviewService
         $rows = collect();
 
         // Prefer ledger entries
-        $ledger = WalletTransaction::where('user_id', $userId)->orderByDesc('created_at')->get();
+        $ledger = $this->leftoverCollection(fn () => WalletTransaction::where('user_id', $userId)->orderByDesc('created_at')->get());
         foreach ($ledger as $tx) {
             // Advertiser activity is the spend wallet: hide the publisher debit twin.
             if ($tx->type === WalletTransaction::TYPE_ROLE_MOVE_OUT) {

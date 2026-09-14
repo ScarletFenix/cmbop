@@ -186,6 +186,13 @@ class BalanceController extends Controller
             ]);
 
             $user = auth()->user();
+            if (! Wallet::tableAvailable() || ! Withdrawal::tableAvailable()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Withdrawals are temporarily unavailable. Please try again shortly.',
+                ], 503);
+            }
+
             $advertiserRoleId = Wallet::advertiserRoleId();
             $wallet = $advertiserRoleId
                 ? Wallet::where('user_id', $user->id)

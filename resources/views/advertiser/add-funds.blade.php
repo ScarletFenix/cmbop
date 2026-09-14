@@ -988,7 +988,12 @@
 
         $.get(routes.transactions + '?' + params)
             .done(function (res) {
-                if (!res.success) return;
+                if (!res.success) {
+                    if (!silent) {
+                        $('#activityFeed').html('<div class="text-center text-danger py-4">Failed to load activity</div>');
+                    }
+                    return;
+                }
                 renderTransactions(res.transactions || []);
                 renderPagination(res.pagination || {});
                 const p = res.pagination || {};

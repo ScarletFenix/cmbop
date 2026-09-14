@@ -85,13 +85,13 @@ class InvoiceController extends Controller
                 return $response;
             }
 
-            return redirect()->route('advertiser.dashboard')
+            return redirect()->route('advertiser.add-funds')
                 ->with('error', 'Invoice not found');
 
         } catch (\Throwable $e) {
             Log::error('Error showing invoice: '.$e->getMessage());
 
-            return redirect()->route('advertiser.dashboard')
+            return redirect()->route('advertiser.add-funds')
                 ->with('error', UserFacingError::message($e, 'Invoice not found'));
         }
     }

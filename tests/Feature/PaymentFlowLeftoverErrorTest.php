@@ -84,7 +84,7 @@ class PaymentFlowLeftoverErrorTest extends TestCase
 
         $this->actingAs($advertiser)
             ->get(route('advertiser.invoice', 'REF-LEFT'))
-            ->assertRedirect();
+            ->assertRedirect(route('advertiser.add-funds'));
         $this->assertStringNotContainsString('SQLSTATE', (string) session('error'));
     }
 

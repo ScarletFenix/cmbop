@@ -334,6 +334,73 @@ class AdvertiserAddFundsErrorTest extends TestCase
         $this->assertStringContainsString('€40.00', $html);
     }
 
+    public function test_activity_feed_survives_missing_wallet_transactions_table(): void
+    {
+        $advertiser = $this->advertiser();
+        Schema::dropIfExists('wallet_transactions');
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.balance.transactions'))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertDontSee('SQLSTATE');
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.balance.analytics'))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertDontSee('SQLSTATE');
+    }
+
+    public function test_header_hides_fake_zero_when_wallet_row_is_missing(): void
+    {
+        $advertiser = $this->advertiser();
+        Wallet::where('user_id', $advertiser->id)->delete();
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.billing.index'))
+            ->assertOk()
+            ->assertSee('Spendable balance unavailable', false)
+            ->assertDontSee('SQLSTATE', false)
+            ->getContent();
+
+        $this->assertMatchesRegularExpression('/class="balance-amount">—/', $html);
+        $this->assertStringNotContainsString('class="balance-amount">€0.00', $html);
+    }
+
+    public function test_withdraw_is_503_when_withdrawals_table_is_gone(): void
+    {
+        $advertiser = $this->advertiser();
+        Wallet::where('user_id', $advertiser->id)->update([
+            'balance' => 50,
+            'bonus_balance' => 0,
+        ]);
+        Schema::dropIfExists('withdrawals');
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.balance.withdraw'), [
+                'amount' => 10,
+                'payment_method' => 'paypal',
+                'business_name' => 'Acme Media',
+                'paypal_email' => 'user@example.com',
+            ])
+            ->assertStatus(503)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'Withdrawals are temporarily unavailable. Please try again shortly.')
+            ->assertJsonMissingPath('exception')
+            ->assertDontSee('SQLSTATE');
+    }
+
+    public function test_missing_pay_in_invoice_returns_to_add_funds(): void
+    {
+        $advertiser = $this->advertiser();
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.invoice', 'MISSING99'))
+            ->assertRedirect(route('advertiser.add-funds'));
+        $this->assertSame('Invoice not found', session('error'));
+    }
+
     private function restoreDepositRequestsTable(): void
     {
         foreach ([
