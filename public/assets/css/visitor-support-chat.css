@@ -1,0 +1,361 @@
+/**
+ * First-party visitor support chat (not order chat).
+ * Teal Trust tokens — keep chrome quiet, teal on the FAB and send only.
+ */
+.slb-live-chat {
+  --slb-live-chat-keyboard: 0px;
+  position: fixed;
+  right: 16px;
+  bottom: calc(20px + var(--slb-live-chat-keyboard));
+  top: auto;
+  left: auto;
+  z-index: var(--shell-z-fab, 1080);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+  font-family: var(--font-sans, 'Poppins', system-ui, sans-serif);
+  pointer-events: none;
+  flex: 0 0 auto;
+  align-self: flex-end;
+  margin: 0;
+}
+
+.slb-live-chat > * {
+  pointer-events: auto;
+}
+
+.slb-live-chat__launcher {
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--brand-primary, #1a585e);
+  color: #fff;
+  box-shadow: 0 10px 24px rgba(26, 88, 94, 0.28);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex: 0 0 auto;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.slb-live-chat__launcher:hover {
+  background: var(--brand-primary-deep, #134347);
+  box-shadow: 0 12px 28px rgba(26, 88, 94, 0.34);
+  transform: translateY(-1px);
+}
+
+.slb-live-chat__launcher:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 3px var(--bs-focus-ring-color, rgba(14, 165, 233, 0.4)),
+    0 10px 24px rgba(26, 88, 94, 0.28);
+}
+
+.slb-live-chat.is-open .slb-live-chat__launcher {
+  display: none;
+}
+
+.slb-live-chat__panel {
+  width: min(380px, calc(100vw - 32px));
+  max-height: min(560px, calc(100dvh - 96px - var(--slb-live-chat-keyboard)));
+  background: var(--surface-1, #fff);
+  color: var(--brand-ink, #1e293b);
+  border: 1px solid var(--border-subtle, #e2e8f0);
+  border-radius: 16px;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.16);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(8px);
+  transition: opacity 0.15s ease, transform 0.15s ease, visibility 0.15s ease;
+}
+
+.slb-live-chat.is-open .slb-live-chat__panel {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: none;
+}
+
+.slb-live-chat__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 12px 12px 14px;
+  background: #fff;
+  border-bottom: 1px solid var(--border-subtle, #e2e8f0);
+}
+
+.slb-live-chat__brand {
+  min-width: 0;
+  flex: 1;
+}
+
+.slb-live-chat__name {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--brand-ink, #1e293b);
+  line-height: 1.3;
+}
+
+.slb-live-chat__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: #0f766e;
+}
+
+.slb-live-chat__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #10b981;
+  flex: 0 0 auto;
+}
+
+.slb-live-chat__close {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm, 8px);
+  background: transparent;
+  color: var(--brand-ink-muted, #697078);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.slb-live-chat__close:hover {
+  background: var(--brand-primary-tint, #f4fbfb);
+  color: var(--brand-primary, #1a585e);
+}
+
+.slb-live-chat__close:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--bs-focus-ring-color, rgba(14, 165, 233, 0.4));
+}
+
+.slb-live-chat__messages {
+  flex: 1 1 auto;
+  min-height: 180px;
+  overflow-y: auto;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--surface-2, #f7fafb);
+}
+
+.slb-live-chat__bubble {
+  max-width: 85%;
+  padding: 8px 12px;
+  border-radius: 12px;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.slb-live-chat__bubble--user {
+  align-self: flex-end;
+  background: var(--brand-primary, #1a585e);
+  color: #fff;
+  border-bottom-right-radius: 4px;
+}
+
+.slb-live-chat__bubble--support {
+  align-self: flex-start;
+  background: #fff;
+  color: var(--brand-ink, #1e293b);
+  border: 1px solid var(--border-subtle, #e2e8f0);
+  border-bottom-left-radius: 4px;
+}
+
+.slb-live-chat__meta {
+  font-size: var(--type-meta, 0.75rem);
+  color: var(--brand-ink-muted, #697078);
+  line-height: 1.2;
+}
+
+.slb-live-chat__row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.slb-live-chat__row--user {
+  align-items: flex-end;
+}
+
+.slb-live-chat__row--user .slb-live-chat__meta {
+  color: var(--brand-ink-muted, #697078);
+}
+
+.slb-live-chat__row--support {
+  align-items: flex-start;
+}
+
+.slb-live-chat__typing {
+  display: none;
+  align-self: flex-start;
+  gap: 4px;
+  padding: 10px 12px;
+  background: #fff;
+  border: 1px solid var(--border-subtle, #e2e8f0);
+  border-radius: 12px;
+}
+
+.slb-live-chat__typing.is-on {
+  display: inline-flex;
+}
+
+.slb-live-chat__typing span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--brand-primary-soft, #3faeb2);
+  animation: slb-live-chat-dot 1s ease-in-out infinite;
+}
+
+.slb-live-chat__typing span:nth-child(2) { animation-delay: 0.15s; }
+.slb-live-chat__typing span:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes slb-live-chat-dot {
+  0%, 80%, 100% { opacity: 0.35; transform: translateY(0); }
+  40% { opacity: 1; transform: translateY(-2px); }
+}
+
+.slb-live-chat__error {
+  display: none;
+  margin: 0 14px 0;
+  font-size: 12px;
+  color: var(--brand-danger, #dc2626);
+}
+
+.slb-live-chat__error.is-on {
+  display: block;
+}
+
+.slb-live-chat__composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  background: #fff;
+  border-top: 1px solid var(--border-subtle, #e2e8f0);
+}
+
+.slb-live-chat__input {
+  flex: 1;
+  min-height: 40px;
+  max-height: 96px;
+  resize: none;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border-default, #e2e8f0);
+  border-radius: var(--radius-sm, 8px);
+  font: inherit;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: var(--brand-ink, #1e293b);
+  background: #fff;
+}
+
+.slb-live-chat__input:focus-visible {
+  outline: none;
+  border-color: var(--brand-primary-soft, #3faeb2);
+  box-shadow: 0 0 0 3px var(--bs-focus-ring-color, rgba(14, 165, 233, 0.28));
+}
+
+.slb-live-chat__send {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm, 8px);
+  background: var(--brand-primary, #1a585e);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.slb-live-chat__send:hover {
+  background: var(--brand-primary-deep, #134347);
+}
+
+.slb-live-chat__send:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--bs-focus-ring-color, rgba(14, 165, 233, 0.4));
+}
+
+.slb-live-chat__send:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+@media (max-width: 575.98px) {
+  .slb-live-chat {
+    right: 12px;
+    left: 12px;
+    align-items: stretch;
+  }
+
+  .slb-live-chat__launcher {
+    align-self: flex-end;
+  }
+
+  .slb-live-chat__panel {
+    width: 100%;
+    max-height: min(640px, calc(100dvh - 80px - var(--slb-live-chat-keyboard)));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slb-live-chat__launcher,
+  .slb-live-chat__panel,
+  .slb-live-chat__typing span {
+    transition: none;
+    animation: none;
+  }
+
+  .slb-live-chat__launcher:hover {
+    transform: none;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  [data-theme="dark"] .slb-live-chat__panel,
+  [data-theme="dark"] .slb-live-chat__header,
+  [data-theme="dark"] .slb-live-chat__composer,
+  [data-theme="dark"] .slb-live-chat__input,
+  [data-theme="dark"] .slb-live-chat__bubble--support,
+  [data-theme="dark"] .slb-live-chat__typing {
+    background: #0f172a;
+    color: #e2e8f0;
+    border-color: #334155;
+  }
+
+  [data-theme="dark"] .slb-live-chat__messages {
+    background: #020617;
+  }
+
+  [data-theme="dark"] .slb-live-chat__name {
+    color: #f8fafc;
+  }
+}

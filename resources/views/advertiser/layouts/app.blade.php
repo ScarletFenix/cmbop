@@ -336,7 +336,7 @@
         @include('partials.payment-trust', ['compact' => true, 'showMethods' => true, 'brief' => true])
     </div>
 </footer>
-@unless(\App\Support\TawkChat::enabled())
+@unless(\App\Support\VisitorSupportChat::enabled() || \App\Support\TawkChat::enabled())
     @include('components.help-feedback-widget')
 @endunless
 

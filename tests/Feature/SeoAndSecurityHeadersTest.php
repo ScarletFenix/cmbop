@@ -282,6 +282,7 @@ class SeoAndSecurityHeadersTest extends TestCase
     public function test_help_widget_has_accessible_labels(): void
     {
         config([
+            'services.support_chat.enabled' => false,
             'services.tawk.property_id' => '',
             'services.tawk.widget_id' => '',
         ]);
