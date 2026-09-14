@@ -324,6 +324,57 @@ class AdvertiserDashboardPr1Test extends TestCase
         $this->assertStringNotContainsString('>Available</span>', $html);
     }
 
+    public function test_failed_dashboard_stays_on_page_with_unavailable_kpis(): void
+    {
+        $user = $this->advertiser();
+        $this->advertiserWallet($user, 20, 20);
+        $this->makeOrder($user, [
+            'status' => 'processing',
+            'payment_status' => 'paid',
+        ]);
+
+        $this->partialMock(AdvertiserDashboardService::class, function ($mock) {
+            $mock->shouldReceive('build')->once()->andThrow(new \RuntimeException('dash boom'));
+        });
+
+        $html = $this->actingAs($user)
+            ->get(route('advertiser.dashboard'))
+            ->assertOk()
+            ->assertSee('Dashboard', false)
+            ->assertSee('Unavailable', false)
+            ->assertSee('Try again', false)
+            ->assertSee('We could not refresh your numbers', false)
+            ->assertSee('Spendable', false)
+            ->assertSee('advertiser-dashboard.css', false)
+            ->assertDontSee('Get started', false)
+            ->assertDontSee('No orders yet', false)
+            ->getContent();
+
+        $this->assertStringContainsString('<title>Dashboard — SEOLinkBuildings</title>', $html);
+        $this->assertStringNotContainsString('Location:', $html);
+    }
+
+    public function test_returning_advertiser_without_spend_skips_chart(): void
+    {
+        $user = $this->advertiser();
+        $this->makeOrder($user, [
+            'status' => 'pending',
+            'payment_status' => 'pending',
+            'paid_at' => null,
+            'payment_method' => 'card',
+        ]);
+
+        $html = $this->actingAs($user)
+            ->get(route('advertiser.dashboard'))
+            ->assertOk()
+            ->assertSee('No completed spend yet', false)
+            ->assertDontSee('dash-spend-chart-wrap', false)
+            ->assertDontSee('Get started', false)
+            ->getContent();
+
+        $this->assertStringNotContainsString('chart.js', $html);
+    }
+
     public function test_returning_advertiser_bonus_is_explained_on_spendable(): void
     {
         $user = $this->advertiser();

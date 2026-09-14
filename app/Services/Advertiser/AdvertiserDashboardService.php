@@ -22,6 +22,9 @@ use Illuminate\Support\Facades\Schema;
  */
 class AdvertiserDashboardService
 {
+    /** @var list<string> */
+    private array $failedContexts = [];
+
     public function __construct(
         private AdvertiserSpendService $spend,
         private SpendBudgetService $budgets,
@@ -43,11 +46,14 @@ class AdvertiserDashboardService
      *     spendSummary: array<string, mixed>,
      *     spendCandles: array<string, mixed>,
      *     primaryAction: string,
-     *     welcomeSituation: string
+     *     welcomeSituation: string,
+     *     dashboardFailed: bool,
+     *     statsUnavailable: bool
      * }
      */
     public function build(User $user): array
     {
+        $this->failedContexts = [];
         $visibility = app(SiteUrlVisibility::class);
         $this->safe($user, 'url visibility schema', function () use ($visibility) {
             $visibility->ensureSchema();
@@ -69,7 +75,7 @@ class AdvertiserDashboardService
             $user,
             'new-advertiser check',
             fn () => ! Order::query()->where('user_id', $user->id)->exists(),
-            true
+            false
         );
         $upcomingScheduledCount = (int) $this->safe(
             $user,
@@ -134,6 +140,49 @@ class AdvertiserDashboardService
                 'to' => now()->endOfDay(),
                 'fill_gaps' => true,
             ]), ['has_spend' => false, 'series' => []]),
+            'dashboardFailed' => false,
+            'statsUnavailable' => in_array('order stats', $this->failedContexts, true),
+        ];
+    }
+
+    /**
+     * Stay on Dashboard when build() throws. Wallet is loaded separately.
+     *
+     * @return array<string, mixed>
+     */
+    public function failedPayload(User $user): array
+    {
+        $this->failedContexts = [];
+
+        return [
+            'stats' => [
+                'total' => 0,
+                'completed' => 0,
+                'in_progress' => 0,
+                'cancelled' => 0,
+                'needs_review' => 0,
+                'needs_action' => 0,
+                'awaiting_payment' => 0,
+                'waiting_on_publisher' => 0,
+            ],
+            'recentOrders' => collect(),
+            'recommendedSites' => collect(),
+            'hasOrderableArticle' => false,
+            'isNewAdvertiser' => false,
+            'upcomingScheduledCount' => 0,
+            'primaryAction' => 'retry',
+            'welcomeSituation' => 'we could not refresh your numbers',
+            'wallet' => $this->safe($user, 'wallet strip', fn () => $this->walletStrip($user), [
+                'spendable' => 0.0,
+                'available' => 0.0,
+                'bonus' => 0.0,
+                'currency' => 'EUR',
+            ]),
+            'budgetStatus' => ['has_budget' => false, 'low_balance' => false],
+            'spendSummary' => ['net' => 0, 'spent' => 0, 'in_progress' => 0],
+            'spendCandles' => ['has_spend' => false, 'series' => []],
+            'dashboardFailed' => true,
+            'statsUnavailable' => true,
         ];
     }
 
@@ -198,6 +247,7 @@ class AdvertiserDashboardService
         try {
             return $fn();
         } catch (\Throwable $e) {
+            $this->failedContexts[] = $context;
             Log::warning('Advertiser dashboard '.$context.' failed', [
                 'user_id' => $user->id,
                 'error' => $e->getMessage(),

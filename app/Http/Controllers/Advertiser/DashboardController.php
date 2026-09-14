@@ -12,15 +12,20 @@ class DashboardController extends Controller
 
     public function index()
     {
+        $user = auth()->user();
+
         try {
-            $payload = $this->dashboard->build(auth()->user());
+            $payload = $this->dashboard->build($user);
 
             return view('advertiser.dashboard', $payload);
         } catch (\Throwable $e) {
             report($e);
+            session()->flash(
+                'error',
+                UserFacingError::message($e, 'We could not load your dashboard. Please try again shortly.')
+            );
 
-            return redirect()->route('advertiser.catalog')
-                ->with('error', UserFacingError::message($e, 'We could not load your dashboard. Please try again shortly.'));
+            return view('advertiser.dashboard', $this->dashboard->failedPayload($user));
         }
     }
 }

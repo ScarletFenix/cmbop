@@ -223,9 +223,10 @@ class UiConsistencyGuardTest extends TestCase
         $this->assertStringContainsString('.dash-page-end', $css);
 
         $advertiser = file_get_contents(resource_path('views/advertiser/dashboard.blade.php'));
+        $advertiserCss = file_get_contents(public_path('assets/css/advertiser-dashboard.css'));
         $this->assertDoesNotMatchRegularExpression(
             '/\.recent-orders-glass\s*\{[^}]*\bheight:\s*100%/',
-            $advertiser,
+            $advertiser.$advertiserCss,
             'height:100% on Recent orders overflowed the spend strip into the footer'
         );
         $this->assertStringContainsString('col-lg-8 dash-recent-col', $advertiser);
