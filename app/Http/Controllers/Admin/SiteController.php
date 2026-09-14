@@ -972,7 +972,7 @@ class SiteController extends Controller
             'publication_time' => 'required|string|max:20|in:6months,1year,permanent',
             'link_type' => 'required|in:dofollow,nofollow',
             'description' => 'nullable|string|max:20000',
-            'site_image' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
+            'site_image' => SiteImageUpload::uploadedFileRules(false),
             'site_tag' => 'nullable|in:sponsored,partner_material,as_you_prefer',
             'written_request' => 'accepted',
             'suggestion_id' => 'nullable|integer',
@@ -1364,8 +1364,10 @@ class SiteController extends Controller
         }
 
         $request->validate([
-            // Avoid flaky finfo `image` rule on Hostinger — mimes is enough.
-            'site_image' => 'required|file|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
+            // extensions = client filename. Laravel `mimes` uses finfo on
+            // PHP tmp (Hostinger open_basedir often fails). Bytes are checked
+            // in storeSafePublicImage().
+            'site_image' => SiteImageUpload::uploadedFileRules(true),
         ], $this->siteImageValidationMessages());
 
         $disk = Storage::disk('public');
@@ -2001,7 +2003,7 @@ class SiteController extends Controller
             }
 
             $request->validate([
-                'site_image' => 'file|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
+                'site_image' => SiteImageUpload::uploadedFileRules(false),
             ], $this->siteImageValidationMessages());
 
             $disk = Storage::disk('public');
@@ -2218,7 +2220,7 @@ class SiteController extends Controller
         // validate as a file when a real upload is present.
         if ($request->hasFile('site_image')) {
             $validator->addRules([
-                'site_image' => 'file|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
+                'site_image' => SiteImageUpload::uploadedFileRules(false),
             ]);
         }
 
@@ -2604,6 +2606,7 @@ class SiteController extends Controller
             'site_image.uploaded' => 'The site image failed to upload. Use JPEG, PNG, GIF, or WebP under '.$mb.' MB (check the file is not corrupted).',
             'site_image.image' => 'The site image must be a JPEG, PNG, GIF, or WebP file.',
             'site_image.mimes' => 'The site image must be a JPEG, PNG, GIF, or WebP file.',
+            'site_image.extensions' => 'The site image must be a JPEG, PNG, GIF, or WebP file.',
             'site_image.regex' => 'The site image must be a stored sites/ path or an uploaded JPEG, PNG, GIF, or WebP file.',
             'site_image.max' => 'The site image must be under '.$mb.' MB.',
             'site_image.required' => 'Choose a site image to upload.',

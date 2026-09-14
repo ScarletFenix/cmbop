@@ -133,42 +133,96 @@ class ImageOptimizationService
      * Imagick, or cwebp). GIF stays GIF (animation). JPEG/PNG/WebP keep
      * original bytes only when they decode as a real image and conversion
      * is unavailable.
+     *
+     * Convert from tmp when readable. If tmp is unreadable (Hostinger
+     * open_basedir), persist via store() then convert from the public disk.
+     * An early is_file() abort used to 500 every staff cover.
      */
     public function storeSafePublicImage(UploadedFile $file, string $directory): ?string
     {
-        $converted = $this->storeUploadedImageAsWebp($file, $directory);
-        if (is_string($converted) && $converted !== '') {
-            return $converted;
-        }
-
-        $ext = strtolower((string) ($file->getClientOriginalExtension() ?: $file->extension() ?: ''));
-        if (! in_array($ext, ['gif', 'jpg', 'jpeg', 'png', 'webp'], true)) {
+        $directory = trim($directory, '/');
+        $ext = $this->clientUploadExtension($file);
+        if ($ext !== '' && ! in_array($ext, ['gif', 'jpg', 'png', 'webp'], true)) {
             return null;
-        }
-
-        if ($ext !== 'gif') {
-            $sourcePath = $file->getRealPath() ?: $file->getPathname();
-            if (! is_string($sourcePath) || $sourcePath === '' || ! is_file($sourcePath)) {
-                return null;
-            }
-
-            $binary = (string) file_get_contents($sourcePath);
-            if ($ext === 'webp') {
-                if (! $this->looksLikeWebp($binary)) {
-                    return null;
-                }
-            } elseif (! $this->isDecodableRasterImage($binary, $ext)) {
-                return null;
-            }
         }
 
         try {
-            $stored = $file->store(trim($directory, '/'), 'public');
-        } catch (\Throwable) {
+            $converted = $this->storeUploadedImageAsWebp($file, $directory);
+            if (is_string($converted) && $converted !== '') {
+                return $converted;
+            }
+        } catch (\Throwable $e) {
+            Log::notice('Staff cover WebP convert skipped', [
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        $disk = Storage::disk('public');
+        try {
+            $stored = $file->store($directory, 'public');
+        } catch (\Throwable $e) {
+            Log::warning('Public image store failed', [
+                'directory' => $directory,
+                'error' => $e->getMessage(),
+            ]);
+
             return null;
         }
 
-        return is_string($stored) && $stored !== '' ? $stored : null;
+        if (! is_string($stored) || $stored === '') {
+            return null;
+        }
+
+        if ($ext === 'gif') {
+            return $stored;
+        }
+
+        try {
+            $binary = (string) $disk->get($stored);
+        } catch (\Throwable) {
+            $binary = '';
+        }
+
+        if ($binary === '') {
+            return $stored;
+        }
+
+        try {
+            $webp = $this->toWebp($binary, (int) config('site_enrichment.screenshots.quality', 82));
+            if (is_string($webp) && $webp !== '') {
+                $webpPath = $this->putConvertedWebp($directory, $file, $webp);
+                if ($webpPath !== null) {
+                    if ($webpPath !== $stored) {
+                        $this->deleteQuietly($stored);
+                    }
+
+                    return $webpPath;
+                }
+            }
+
+            if ($ext === 'webp') {
+                if (! $this->looksLikeWebp($binary)) {
+                    $this->deleteQuietly($stored);
+
+                    return null;
+                }
+
+                return $stored;
+            }
+
+            if (! $this->isDecodableRasterImage($binary, $ext)) {
+                $this->deleteQuietly($stored);
+
+                return null;
+            }
+        } catch (\Throwable $e) {
+            Log::notice('Staff cover post-store convert skipped', [
+                'path' => $stored,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $stored;
     }
 
     /**
@@ -331,18 +385,13 @@ class ImageOptimizationService
      */
     public function storeUploadedImageAsWebp(UploadedFile $file, string $directory = 'sites'): ?string
     {
-        $sourcePath = $file->getRealPath() ?: $file->getPathname();
-        if (! is_string($sourcePath) || $sourcePath === '' || ! is_file($sourcePath)) {
-            return null;
-        }
-
-        $binary = (string) file_get_contents($sourcePath);
-        if ($binary === '') {
-            return null;
-        }
-
-        $ext = strtolower((string) ($file->getClientOriginalExtension() ?: $file->extension() ?: ''));
+        $ext = $this->clientUploadExtension($file);
         if ($ext === 'gif') {
+            return null;
+        }
+
+        $binary = $this->readUploadedFileBytes($file);
+        if ($binary === null || $binary === '') {
             return null;
         }
 
@@ -351,6 +400,68 @@ class ImageOptimizationService
             return null;
         }
 
+        return $this->putConvertedWebp($directory, $file, $webp);
+    }
+
+    /**
+     * Prefer the original filename. guessExtension() uses finfo on PHP tmp
+     * and can throw or return empty under Hostinger open_basedir.
+     */
+    private function clientUploadExtension(UploadedFile $file): string
+    {
+        $ext = strtolower((string) $file->getClientOriginalExtension());
+        if ($ext === 'jpeg') {
+            $ext = 'jpg';
+        }
+        if ($ext !== '') {
+            return $ext;
+        }
+
+        try {
+            $ext = strtolower((string) ($file->extension() ?: ''));
+        } catch (\Throwable) {
+            return '';
+        }
+
+        return $ext === 'jpeg' ? 'jpg' : $ext;
+    }
+
+    /**
+     * Read upload bytes without is_file() on PHP's tmp path. Hostinger
+     * open_basedir warns (and some hosts promote that to a 500) even when
+     * move_uploaded_file / store() would still succeed.
+     */
+    private function readUploadedFileBytes(UploadedFile $file): ?string
+    {
+        $sourcePath = null;
+        try {
+            $sourcePath = $file->getRealPath() ?: $file->getPathname();
+        } catch (\Throwable) {
+            try {
+                $sourcePath = $file->getPathname();
+            } catch (\Throwable) {
+                $sourcePath = null;
+            }
+        }
+
+        if (is_string($sourcePath) && $sourcePath !== '') {
+            $binary = @file_get_contents($sourcePath);
+            if (is_string($binary) && $binary !== '') {
+                return $binary;
+            }
+        }
+
+        try {
+            $binary = $file->getContent();
+        } catch (\Throwable) {
+            return null;
+        }
+
+        return is_string($binary) && $binary !== '' ? $binary : null;
+    }
+
+    private function putConvertedWebp(string $directory, UploadedFile $file, string $webp): ?string
+    {
         $directory = trim($directory, '/');
         $stem = Str::slug((string) pathinfo((string) $file->getClientOriginalName(), PATHINFO_FILENAME));
         $basename = ($stem !== '' ? $stem : 'site').'-'.Str::lower(Str::random(8));
@@ -369,6 +480,14 @@ class ImageOptimizationService
         }
 
         return $disk->exists($path) ? $path : null;
+    }
+
+    private function deleteQuietly(string $path): void
+    {
+        try {
+            Storage::disk('public')->delete($path);
+        } catch (\Throwable) {
+        }
     }
 
     private static function gdWebpAvailable(): bool

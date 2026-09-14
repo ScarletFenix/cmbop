@@ -159,9 +159,7 @@
                             <div class="d-flex flex-wrap gap-1">
                                 <a href="{{ $openUrl }}" class="btn btn-sm btn-outline-secondary">Open</a>
                                 <a href="{{ staff_route('sites.edit', $site->id) }}" class="btn btn-sm btn-outline-primary">{{ auth()->user()?->isMarketing() && ! auth()->user()?->isAdmin() && $site->isLockedForMarketingEdits() && ! $site->marketingCanEditDescription() ? 'View' : 'Edit' }}</a>
-                                @if(auth()->user()?->canActivateSites() && $site->marketingCanActivate())
-                                    <button type="button" class="btn btn-sm btn-success js-mkt-activate" data-id="{{ $site->id }}" data-name="{{ $site->site_name }}" data-description-english="{{ $site->descriptionLooksLikeEnglish() ? '1' : '0' }}" data-description-excerpt="{{ site_description_excerpt($site->description, 200) }}">Activate</button>
-                                @endif
+                                @include('partials.staff-site-activate-button', ['site' => $site])
                             </div>
                         </td>
                     </tr>
@@ -1850,12 +1848,14 @@ document.addEventListener('click', function (e) {
             confirmText: 'Activate',
             editUrl: `${STAFF_BASE}/sites/${id}/edit#description`,
         })
-        : window.slbConfirm({
-            title: 'Activate Site?',
-            text: 'Make "' + name + '" live in the catalog?',
-            icon: 'question',
-            confirmText: 'Activate',
-        });
+        : (typeof window.slbConfirm === 'function')
+            ? window.slbConfirm({
+                title: 'Activate Site?',
+                text: 'Make "' + name + '" live in the catalog?',
+                icon: 'question',
+                confirmText: 'Activate',
+            })
+            : Promise.resolve(false);
     go.then((ok) => {
         if (!ok) return;
         fetch(`${STAFF_BASE}/sites/${id}/active`, {

@@ -154,4 +154,13 @@ class ImageOptimizationUploadTest extends TestCase
             $this->assertNull($stored['thumb_path']);
         }
     }
+
+    public function test_safe_store_persists_via_store_when_tmp_stat_is_unreliable(): void
+    {
+        $src = (string) file_get_contents(app_path('Services/SiteEnrichment/ImageOptimizationService.php'));
+        $this->assertStringContainsString('open_basedir', $src);
+        $this->assertStringContainsString('$file->store($directory, \'public\')', $src);
+        $this->assertStringContainsString('readUploadedFileBytes', $src);
+        $this->assertStringNotContainsString('is_file($sourcePath)', $src);
+    }
 }
