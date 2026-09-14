@@ -127,8 +127,7 @@ class TawkChatWidgetTest extends TestCase
         $this->assertStringContainsString('right: 16px !important', $css);
         $this->assertStringContainsString('bottom: 20px !important', $css);
         $this->assertStringContainsString('.slb-tawk-launcher', $css);
-        $this->assertStringContainsString('body:has(.slb-tawk-launcher) #main-content', $css);
-        $this->assertStringContainsString('padding-right: var(--shell-chat-gutter, 80px)', $css);
+        $this->assertStringNotContainsString('body:has(.slb-tawk-launcher) #main-content', $css);
         $this->assertStringContainsString('html:not(.tawk-open) iframe[title="chat widget"]', $css);
         $this->assertStringContainsString('visibility: hidden', $css);
         $this->assertStringContainsString('html.tawk-open iframe[title="chat widget"]', $css);
