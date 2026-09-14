@@ -72,7 +72,7 @@ class WelcomeBonusCopy
     }
 
     /**
-     * llms.txt is a static snapshot. Rewrite the grant line so crawlers
+     * Rewrite the grant line in the llms.txt template so crawlers
      * do not see €20 after Disable or an amount change.
      */
     public static function applyToLlmsTxt(string $body): string

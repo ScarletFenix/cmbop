@@ -245,7 +245,9 @@ Route::get('/robots.txt', function () {
     ]);
 })->name('robots');
 Route::get('/llms.txt', function () {
-    $path = public_path('llms.txt');
+    // Keep the template out of public/ so nginx / artisan serve cannot
+    // skip this route and advertise a stale €20 grant.
+    $path = resource_path('llms.txt');
     abort_unless(is_file($path), 404);
 
     $body = (string) file_get_contents($path);
