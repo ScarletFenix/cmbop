@@ -143,5 +143,113 @@ class InvoiceSellerDetailsTest extends TestCase
         $this->assertStringContainsString('Registration No: 16607074', $html);
         $this->assertStringContainsString('Not VAT registered', $html);
         $this->assertStringContainsString('20 Wenlock Road', $html);
+        $this->assertStringContainsString('https://seolinkbuildings.com', $html);
+        $this->assertStringNotContainsString('localhost', $html);
+    }
+
+    public function test_pdf_invoice_does_not_print_leftover_localhost_or_app_name(): void
+    {
+        config([
+            'app.url' => 'http://localhost:8000',
+            'app.name' => 'Seolinkbuildings',
+            'billing.company.name' => 'Seolinkbuildings',
+            'billing.company.website_url' => 'http://localhost:8000',
+            'email_notifications.brand.website_url' => 'http://localhost:8000',
+        ]);
+
+        $role = Role::where('name', 'advertiser')->firstOrFail();
+        $user = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $role->id,
+        ]);
+        $user->roles()->attach($role->id);
+
+        $invoice = Invoice::create([
+            'user_id' => $user->id,
+            'invoice_number' => 'RCT-2026-000002',
+            'type' => Invoice::TYPE_DEPOSIT_RECEIPT,
+            'status' => Invoice::STATUS_PAID,
+            'invoice_date' => now(),
+            'customer_name' => $user->name,
+            'customer_email' => $user->email,
+            'currency' => 'EUR',
+            'subtotal' => 25,
+            'tax_amount' => 0,
+            'discount_amount' => 0,
+            'total_amount' => 25,
+            'payment_method' => 'wise',
+            'payment_status' => 'paid',
+            'reference_code' => '337156',
+            'transaction_id' => '337156',
+            'line_items' => [
+                [
+                    'description' => 'Wallet top-up',
+                    'reference' => '337156',
+                    'quantity' => 1,
+                    'unit_price' => 25,
+                    'line_total' => 25,
+                ],
+            ],
+            'billing_snapshot' => [],
+        ]);
+
+        $html = view('billing.pdf.invoice', [
+            'invoice' => $invoice,
+            'company' => [
+                'name' => 'Seolinkbuildings',
+                'website_url' => 'http://localhost:8000',
+            ],
+            'colors' => config('billing.colors'),
+            'currencySymbol' => '€',
+        ])->render();
+
+        $this->assertStringContainsString('SEOLinkBuildings', $html);
+        $this->assertStringContainsString('https://seolinkbuildings.com', $html);
+        $this->assertStringNotContainsString('http://localhost:8000', $html);
+        $this->assertStringNotContainsString('localhost', $html);
+        $this->assertStringContainsString('Ref: 337156', $html);
+        $this->assertStringNotContainsString('Txn: 337156', $html);
+        $this->assertSame('https://seolinkbuildings.com', brand_public_origin());
+        $this->assertSame('https://seolinkbuildings.com', mail_brand_website_url());
+    }
+
+    public function test_pdf_line_items_accept_legacy_total_key(): void
+    {
+        $role = Role::where('name', 'advertiser')->firstOrFail();
+        $user = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $role->id,
+        ]);
+        $user->roles()->attach($role->id);
+
+        $invoice = Invoice::create([
+            'user_id' => $user->id,
+            'invoice_number' => 'INV-TEST-000003',
+            'type' => Invoice::TYPE_TAX_INVOICE,
+            'status' => Invoice::STATUS_PAID,
+            'invoice_date' => now(),
+            'customer_name' => $user->name,
+            'customer_email' => $user->email,
+            'currency' => 'EUR',
+            'subtotal' => 100,
+            'tax_amount' => 0,
+            'discount_amount' => 0,
+            'total_amount' => 100,
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'order_number' => 'ORD-TEST-3',
+            'line_items' => [
+                ['description' => 'Guest post', 'quantity' => 1, 'unit_price' => 100, 'total' => 100],
+            ],
+            'billing_snapshot' => [],
+        ]);
+
+        $html = view('billing.pdf.invoice', [
+            'invoice' => $invoice,
+            'currencySymbol' => '€',
+        ])->render();
+
+        $this->assertStringContainsString('€100.00', $html);
+        $this->assertStringNotContainsString('€0.00', $html);
     }
 }

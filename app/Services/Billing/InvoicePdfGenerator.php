@@ -15,13 +15,20 @@ class InvoicePdfGenerator
 
         $disk = (string) config('billing.storage.disk', 'local');
         $directory = trim((string) config('billing.storage.directory', 'invoices'), '/');
-        $filename = sprintf(
-            '%s/%s/%s-%s.pdf',
-            $directory,
-            now()->format('Y/m'),
-            Str::slug($invoice->invoice_number),
-            Str::lower(Str::random(8))
-        );
+        $filename = (string) ($invoice->pdf_path ?? '');
+        $reuse = $filename !== ''
+            && (string) $invoice->pdf_disk === $disk
+            && Storage::disk($disk)->exists($filename);
+
+        if (! $reuse) {
+            $filename = sprintf(
+                '%s/%s/%s-%s.pdf',
+                $directory,
+                now()->format('Y/m'),
+                Str::slug($invoice->invoice_number),
+                Str::lower(Str::random(8))
+            );
+        }
 
         Storage::disk($disk)->put($filename, $binary);
 
@@ -91,7 +98,9 @@ class InvoicePdfGenerator
     {
         $html = view('billing.pdf.invoice', [
             'invoice' => $invoice,
-            'company' => config('billing.company'),
+            'company' => function_exists('billing_company_for_documents')
+                ? billing_company_for_documents()
+                : config('billing.company'),
             'colors' => config('billing.colors'),
             'currencySymbol' => config('billing.currency_symbol', '€'),
             'includeLogo' => $includeLogo,

@@ -206,6 +206,8 @@ class DepositEmailParityTest extends TestCase
         $this->assertStringContainsString('Wallet topped up', $html);
         $this->assertStringContainsString($receipt->invoice_number, $html);
         $this->assertStringContainsString('receipt PDF is attached', $html);
+        $this->assertStringContainsString('https://seolinkbuildings.com', $html);
+        $this->assertStringNotContainsString('localhost', $html);
     }
 
     public function test_bank_deposit_approved_mail_copy_differs_from_card(): void

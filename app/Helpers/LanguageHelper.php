@@ -377,6 +377,89 @@ if (! function_exists('billing_company_logo_data_uri')) {
     }
 }
 
+if (! function_exists('url_is_loopback')) {
+    /**
+     * True when a URL (or host) is localhost / loopback — leftover APP_URL.
+     */
+    function url_is_loopback(?string $urlOrHost): bool
+    {
+        $raw = trim((string) $urlOrHost);
+        if ($raw === '') {
+            return true;
+        }
+
+        $host = strtolower((string) (parse_url($raw, PHP_URL_HOST) ?: ''));
+        if ($host === '') {
+            $host = strtolower(preg_replace('#^https?://#i', '', explode('/', $raw, 2)[0]));
+            $host = explode(':', $host)[0];
+        }
+
+        return $host === ''
+            || in_array($host, ['localhost', '127.0.0.1', '::1'], true)
+            || str_ends_with($host, '.localhost');
+    }
+}
+
+if (! function_exists('brand_public_origin')) {
+    /**
+     * Public site origin for customer documents and invoice emails.
+     * Never returns leftover loopback APP_URL (localhost / 127.0.0.1).
+     */
+    function brand_public_origin(): string
+    {
+        $fallback = 'https://seolinkbuildings.com';
+
+        foreach ([
+            config('billing.company.website_url'),
+            config('app.public_url'),
+            config('app.url'),
+            $fallback,
+        ] as $candidate) {
+            $url = rtrim(trim((string) $candidate), '/');
+            if ($url !== '' && ! url_is_loopback($url)) {
+                return $url;
+            }
+        }
+
+        return $fallback;
+    }
+}
+
+if (! function_exists('billing_company_for_documents')) {
+    /**
+     * Seller block for PDF / HTML invoices. Leftover APP_NAME casing and
+     * leftover APP_URL (localhost) must not print on a receipt a customer keeps.
+     *
+     * @return array<string, mixed>
+     */
+    function billing_company_for_documents(): array
+    {
+        $company = config('billing.company', []);
+        $name = trim((string) ($company['name'] ?? ''));
+        if ($name === '' || ($name !== 'SEOLinkBuildings' && strcasecmp($name, 'SEOLinkBuildings') === 0)) {
+            $company['name'] = 'SEOLinkBuildings';
+        }
+        $company['website_url'] = brand_public_origin();
+
+        return $company;
+    }
+}
+
+if (! function_exists('mail_brand_website_url')) {
+    /**
+     * Header / footer link in HTML emails. Leftover APP_URL is not a site.
+     */
+    function mail_brand_website_url(): string
+    {
+        $configured = rtrim(trim((string) config('email_notifications.brand.website_url', '')), '/');
+        if ($configured !== '' && ! url_is_loopback($configured)) {
+            return $configured;
+        }
+
+        return brand_public_origin();
+    }
+}
+
 if (! function_exists('mail_brand_logo_url')) {
     /**
      * Absolute logo URL for HTML emails (Final B wordmark).
@@ -405,11 +488,7 @@ if (! function_exists('mail_brand_logo_url')) {
             return $base.$sep.'v='.$version;
         }
 
-        $root = rtrim((string) config('app.url'), '/');
-        $host = strtolower((string) (parse_url($root, PHP_URL_HOST) ?: ''));
-        if ($host === '' || in_array($host, ['localhost', '127.0.0.1', '::1'], true)) {
-            $root = 'https://seolinkbuildings.com';
-        }
+        $root = brand_public_origin();
 
         return $root.'/'.$path.'?v='.$version;
     }

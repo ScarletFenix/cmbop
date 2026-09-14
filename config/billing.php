@@ -8,7 +8,7 @@ return [
     |--------------------------------------------------------------------------
     */
     'company' => [
-        'name' => env('BILLING_COMPANY_NAME') ?: env('APP_NAME', 'SEOLinkBuildings'),
+        'name' => env('BILLING_COMPANY_NAME') ?: 'SEOLinkBuildings',
         'legal_name' => env('BILLING_LEGAL_NAME') ?: 'SEOLinkBuildings Partners with (Topurlz LTD)',
         'address_lines' => array_values(array_filter([
             env('BILLING_ADDRESS_LINE1') ?: '20 Wenlock Road, London, England, N1 7GU',
@@ -19,7 +19,9 @@ return [
         'registration_no' => env('BILLING_REGISTRATION_NO') ?: '16607074',
         'support_email' => env('BILLING_SUPPORT_EMAIL')
             ?: env('MAIL_SUPPORT_EMAIL', 'support@seolinkbuildings.com'),
-        'website_url' => env('BILLING_WEBSITE_URL') ?: env('APP_URL', 'https://seolinkbuildings.com'),
+        // Never fall back to leftover APP_URL (localhost). brand_public_origin()
+        // still skips loopback if this env is set badly.
+        'website_url' => env('BILLING_WEBSITE_URL') ?: env('PUBLIC_APP_URL', 'https://seolinkbuildings.com'),
         'vat_number' => env('BILLING_VAT_NUMBER') ?: null,
         'vat_note' => env('BILLING_VAT_NOTE') ?: 'Not VAT registered – no VAT charged',
         'logo_path' => env('BILLING_LOGO_PATH') ?: 'assets/img/email-logo.png',

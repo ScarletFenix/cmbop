@@ -85,7 +85,9 @@
 </head>
 <body>
 @php
-    $company = $company ?? config('billing.company');
+    $company = function_exists('billing_company_for_documents')
+        ? billing_company_for_documents()
+        : ($company ?? config('billing.company'));
     $symbol = $currencySymbol ?? '€';
     $statusClass = match ($invoice->status) {
         'paid' => 'badge-paid',
@@ -210,7 +212,7 @@
                 @endif
                 <div style="margin-top:6px;">Method: <strong>{{ \App\Models\Invoice::paymentMethodLabel($invoice->payment_method) }}</strong></div>
                 <div>Status: <strong>{{ ucfirst((string) $invoice->payment_status) }}</strong></div>
-                @if($invoice->transaction_id)
+                @if($invoice->transaction_id && (string) $invoice->transaction_id !== (string) $invoice->reference_code)
                     <div class="muted" style="margin-top:6px;">Txn: {{ $invoice->transaction_id }}</div>
                 @endif
                 <div style="margin-top:6px;">Currency: <strong>{{ $invoice->currency }}</strong></div>
@@ -301,8 +303,8 @@
                     @endif
                 </td>
                 <td class="num">{{ $line['quantity'] ?? 1 }}</td>
-                <td class="num">{{ $symbol }}{{ number_format((float) ($line['unit_price'] ?? 0), 2) }}</td>
-                <td class="num">{{ $symbol }}{{ number_format((float) ($line['line_total'] ?? 0), 2) }}</td>
+                <td class="num">{{ $symbol }}{{ number_format((float) ($line['unit_price'] ?? $line['price'] ?? 0), 2) }}</td>
+                <td class="num">{{ $symbol }}{{ number_format((float) ($line['line_total'] ?? $line['total'] ?? 0), 2) }}</td>
             </tr>
         @empty
             <tr>

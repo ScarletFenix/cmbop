@@ -1,7 +1,7 @@
 @php
     $brand = config('email_notifications.brand', []);
     $logo = mail_brand_logo_url();
-    $siteUrl = $brand['website_url'] ?? config('app.url');
+    $siteUrl = mail_brand_website_url();
     $support = $brand['support_email'] ?? null;
     $social = array_filter($brand['social'] ?? []);
 @endphp
