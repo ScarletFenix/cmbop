@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\ActivityLog;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\PromotionService;
 use App\Services\Wallet\WelcomeBonusService;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -284,10 +285,27 @@ class AdminWelcomeBonusToggleTest extends TestCase
             );
     }
 
+    public function test_welcome_bonus_claim_stats_are_unavailable_when_table_missing(): void
+    {
+        Schema::dropIfExists('welcome_bonus_claims');
+
+        $stats = app(PromotionService::class)->welcomeBonusClaimStats();
+
+        $this->assertFalse($stats['available']);
+        $this->assertSame(0, $stats['week']);
+        $this->assertSame(0, $stats['total']);
+        $this->assertNull($stats['last']);
+    }
+
     public function test_promotions_hub_does_not_fake_zero_claims_when_stats_leftover(): void
     {
-        Schema::table('welcome_bonus_claims', function ($table) {
-            $table->dropColumn('created_at');
+        $this->partialMock(PromotionService::class, function ($mock) {
+            $mock->shouldReceive('welcomeBonusClaimStats')->andReturn([
+                'week' => 0,
+                'total' => 0,
+                'last' => null,
+                'available' => false,
+            ]);
         });
 
         $this->actingAs($this->admin)
