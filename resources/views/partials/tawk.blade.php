@@ -12,6 +12,45 @@
     }
 @endphp
 @if ($tawkSrc)
+<style>
+.slb-tawk-launcher {
+  position: fixed;
+  right: 16px;
+  bottom: 20px;
+  z-index: 1080;
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--brand-primary, #1a585e);
+  color: #fff;
+  box-shadow: 0 10px 24px rgba(26, 88, 94, 0.28);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.slb-tawk-launcher:hover { background: var(--brand-primary-deep, #123f42); }
+.slb-tawk-launcher:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(58, 174, 178, 0.4), 0 10px 24px rgba(11, 98, 102, 0.28);
+}
+html.tawk-open .slb-tawk-launcher { display: none; }
+html:not(.tawk-open) iframe[title="chat widget"],
+html:not(.tawk-open) iframe[title="Chat widget"],
+html:not(.tawk-open) iframe[src*="tawk.to"] {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  max-width: 0 !important;
+  max-height: 0 !important;
+}
+</style>
+<button type="button" class="slb-tawk-launcher" id="slbTawkLauncher" aria-label="Open customer support" title="Customer support">
+  <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true" fill="currentColor">
+    <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H5.17L4 17.17V4h16v12z"/>
+  </svg>
+</button>
 <script>
 var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date();
 Tawk_API.customStyle = {
@@ -69,8 +108,8 @@ Tawk_API.visitor = {!! json_encode($tawkVisitor, JSON_UNESCAPED_SLASHES | JSON_U
       var open = document.documentElement.classList.contains('tawk-open');
       document.querySelectorAll(tawkIframes).forEach(function (iframe) {
         pinBox(iframe);
-        iframe.style.setProperty('max-width', open ? 'min(400px, calc(100vw - 24px))' : '80px', 'important');
-        iframe.style.setProperty('max-height', open ? 'min(640px, calc(100dvh - 24px))' : '80px', 'important');
+        iframe.style.setProperty('max-width', open ? 'min(400px, calc(100vw - 24px))' : '0px', 'important');
+        iframe.style.setProperty('max-height', open ? 'min(640px, calc(100dvh - 24px))' : '0px', 'important');
         var wrap = iframe.parentElement;
         if (wrap && wrap !== document.body && wrap !== document.documentElement) {
           pinBox(wrap);
@@ -145,6 +184,9 @@ window.slbOpenSupport = function () {
     }
   }, 200);
 };
+document.getElementById('slbTawkLauncher')?.addEventListener('click', function () {
+  window.slbOpenSupport();
+});
 (function(){
 var s1=document.createElement('script'),s0=document.getElementsByTagName('script')[0];
 s1.async=true;
