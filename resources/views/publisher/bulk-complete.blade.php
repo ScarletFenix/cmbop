@@ -18,16 +18,6 @@
         @endif
     </div>
 
-    @if($errors->any())
-        <div class="alert alert-danger">
-            <ul class="mb-0">
-                @foreach($errors->all() as $error)
-                    <li>{{ $error }}</li>
-                @endforeach
-            </ul>
-        </div>
-    @endif
-
     @if(($awaitingCount ?? 0) > 0 && ($detailsCompleteCount ?? 0) > 0)
         <div class="alert alert-light border small mb-3">
             {{ $awaitingCount }} still need details · {{ $detailsCompleteCount }} ready for your final review.
@@ -126,7 +116,7 @@
                         <textarea name="siteDescription"
                                   id="siteDescription-{{ $site->id }}"
                                   class="form-control bulk-site-description"
-                                  rows="4"
+                                  rows="6"
                                   required
                                   placeholder="{{ \App\Support\SiteDescriptionRules::placeholder() }}"
                                   data-min-chars="{{ \App\Support\SiteDescriptionRules::MIN_CHARS }}"

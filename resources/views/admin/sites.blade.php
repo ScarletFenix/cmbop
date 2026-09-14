@@ -655,7 +655,7 @@ function editSiteWithImage(siteId) {
                 <input id="swal-traffic" class="swal2-input" type="number" value="${site.traffic ?? ''}" placeholder="e.g. 1500000" min="0" max="4294967295" step="1" inputmode="numeric">
 
                 <label style="font-weight:600; margin-bottom:5px; margin-top:14px; display:block;" for="swal-description">Description</label>
-                <textarea id="swal-description" class="swal2-textarea" rows="6" placeholder="Advertiser-facing brief (min 50 characters)">${escapeHtml(site.description ?? '')}</textarea>
+                <textarea id="swal-description" class="swal2-textarea" rows="6" placeholder="Advertiser-facing brief (min 50 characters)">${escapeHtml(site.description_textarea ?? site.description ?? '')}</textarea>
                 <small class="text-muted" style="display:block; margin-top:0; margin-bottom:12px;">Shown on the listing. Min 50 characters. Leave empty to keep the current brief.</small>
 
                 <label style="font-weight:600; margin-bottom:5px; margin-top:14px; display:block;">Site Image (Upload)</label>
@@ -816,7 +816,7 @@ function editSiteWithImage(siteId) {
             }
 
             const nextDescription = document.getElementById('swal-description')?.value ?? '';
-            const originalDescription = String(site.description ?? '');
+            const originalDescription = String(site.description_textarea ?? site.description ?? '');
             const payload = {
                 site_name: document.getElementById('swal-site_name').value,
                 site_url: site_url,
@@ -1712,7 +1712,7 @@ function renderSites(data){
                                     <div class="col-md-4"><strong>Link Type</strong><div>${site.link_type ?? '-'}</div></div>
                                     <div class="col-md-4"><strong>Sponsored</strong><div>${site.sponsored ? 'Yes':'No'}</div></div>
                                     <div class="col-md-4"><strong>Price</strong><div>€${site.price ?? '-'}</div></div>
-                                    <div class="col-12"><strong>Description</strong><div class="slb-text-break">${escapeHtml(site.description ?? '-')}</div><a class="small" href="${STAFF_BASE}/sites/${site.id}/edit#description">Edit description</a></div>
+                                    <div class="col-12"><strong>Description</strong><div class="slb-text-break">${escapeHtml(site.description_textarea || site.description_excerpt || site.description || '-')}</div><a class="small" href="${STAFF_BASE}/sites/${site.id}/edit#description">Edit description</a></div>
                                     ${(site.image_url || siteMediaUrl(site.site_image) || siteStorageUrl(site.site_image)) ? `<div class="col-12"><strong>Site Image</strong><div class="site-preview-detail"><img data-detail-src="${escapeHtml(site.image_url || siteMediaUrl(site.site_image) || siteStorageUrl(site.site_image))}" alt="Site image" loading="lazy" decoding="async"></div></div>` : ''}
                                 </div>
                             </div>

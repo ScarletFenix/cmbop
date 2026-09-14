@@ -126,7 +126,7 @@ class SiteDescriptionRules
         $plain = self::plainText($html);
         $errors = [];
 
-        if ($plain === '') {
+        if ($plain === '' || str_starts_with($plain, 'Please replace')) {
             $errors[] = 'Please enter a site description.';
 
             return $errors;

@@ -339,7 +339,7 @@ class BulkSiteRequestController extends Controller
         }
 
         $cleanDescription = app(SiteDescriptionSanitizer::class)
-            ->sanitize((string) $request->siteDescription);
+            ->sanitize(SiteDescriptionRules::forTextarea((string) $request->siteDescription));
 
         try {
             DB::transaction(function () use ($site, $request, $cleanDescription, $existingCategories) {

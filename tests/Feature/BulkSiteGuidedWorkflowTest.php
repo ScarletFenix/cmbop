@@ -733,6 +733,39 @@ class BulkSiteGuidedWorkflowTest extends TestCase
         $this->assertStringContainsString('Connects residents and visitors with stories about their city', $value);
     }
 
+    public function test_bulk_complete_save_strips_staff_html_tags_from_description(): void
+    {
+        $bulk = BulkSiteRequest::create([
+            'publisher_id' => $this->publisher->id,
+            'status' => BulkSiteRequest::STATUS_AWAITING_PUBLISHER,
+            'estimated_count' => 1,
+            'seeded_at' => now(),
+        ]);
+        $site = $this->makeAwaitingBulkSite($bulk, 'https://grazer-save.example', 'grazer.at');
+        $html = '<ul><li>A regional digital magazine dedicated to the city of Graz, covering local news, culture, events, and urban lifestyle.</li><li>Connects residents and visitors with stories about their city, from politics to entertainment.</li></ul>';
+        $site->update(['description' => $html]);
+
+        $this->actingAs($this->publisher)
+            ->post(route('publisher.bulk-sites.complete.store', $site->id), [
+                'exampleUrl' => 'https://grazer-save.example/guest-post',
+                'turnaround_time' => '3days',
+                'publicationTime' => 'permanent',
+                'link_type' => 'dofollow',
+                'site_tag' => 'as_you_prefer',
+                'siteDescription' => $html,
+                '_site_id' => (string) $site->id,
+            ])
+            ->assertRedirect(route('publisher.bulk-sites.review'))
+            ->assertSessionHas('success');
+
+        $site->refresh();
+        $this->assertSame(Site::ONBOARDING_DETAILS_COMPLETE, $site->onboarding_status);
+        $this->assertStringNotContainsString('<ul>', (string) $site->description);
+        $this->assertStringNotContainsString('<li>', (string) $site->description);
+        $this->assertStringContainsString('A regional digital magazine dedicated to the city of Graz', (string) $site->description);
+        $this->assertStringContainsString('Connects residents and visitors with stories about their city', (string) $site->description);
+    }
+
     public function test_bulk_complete_old_input_does_not_overwrite_other_site_fields(): void
     {
         $bulk = BulkSiteRequest::create([

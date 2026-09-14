@@ -89,6 +89,14 @@ class SiteDescriptionRulesTest extends TestCase
         $this->assertSame([], SiteDescriptionRules::errors($html));
     }
 
+    public function test_errors_reject_placeholder_copy(): void
+    {
+        $html = '<p>Please replace this placeholder with a real site description (at least 50 characters) before submitting for review.</p>';
+        $errors = SiteDescriptionRules::errors($html);
+        $this->assertNotEmpty($errors);
+        $this->assertStringContainsString('Please enter a site description.', $errors[0]);
+    }
+
     public function test_excerpt_strips_tags(): void
     {
         $excerpt = SiteDescriptionRules::excerpt('<p>Hello <b>world</b> and more text about the site.</p>', 20);
