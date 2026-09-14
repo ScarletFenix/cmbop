@@ -389,8 +389,10 @@ class PublisherDashboardTest extends TestCase
             ->assertSee('€42.00')
             ->assertSee('Pending earnings')
             ->assertSee('€100.00')
-            ->assertSee('Open tasks')
+            ->assertSee('Needs you')
             ->assertSee('id="openTasks"', false)
+            ->assertSee('Finish your listings')
+            ->assertDontSee('tasks that need you', false)
             ->assertSee('Awaiting verification')
             ->assertSee('id="unverifiedSites"', false)
             ->assertSee('Unverified Blog')
@@ -466,5 +468,79 @@ class PublisherDashboardTest extends TestCase
         $statuses = collect($recent)->pluck('status')->all();
         $this->assertContains('pending', $statuses);
         $this->assertContains('scheduled', $statuses);
+    }
+
+    public function test_review_without_modification_is_not_needs_you(): void
+    {
+        $publisher = $this->publisherWithWallet();
+        $advertiser = $this->advertiser();
+        $site = $this->site($publisher);
+
+        $this->createOrderItem($advertiser, $site, [
+            'status' => 'review',
+            'payment_status' => 'paid',
+        ]);
+
+        $this->actingAs($publisher)
+            ->getJson(route('publisher.dashboard.statistics'))
+            ->assertOk()
+            ->assertJsonPath('data.needs_you', 0)
+            ->assertJsonPath('data.waiting_on_advertiser', 1);
+
+        $this->actingAs($publisher)
+            ->get(route('publisher.dashboard'))
+            ->assertOk()
+            ->assertSee('Grow your catalog')
+            ->assertSee('1 in review with advertisers')
+            ->assertSee('id="openTasks">0', false)
+            ->assertDontSee('tasks that need you', false);
+    }
+
+    public function test_pending_and_publish_and_modification_are_needs_you(): void
+    {
+        $publisher = $this->publisherWithWallet();
+        $advertiser = $this->advertiser();
+        $site = $this->site($publisher);
+
+        $this->createOrderItem($advertiser, $site, [
+            'status' => 'pending',
+            'payment_status' => 'paid',
+        ]);
+        $this->createOrderItem($advertiser, $site, [
+            'status' => 'processing',
+            'payment_status' => 'paid',
+        ]);
+        $this->createOrderItem($advertiser, $site, [
+            'status' => 'processing',
+            'payment_status' => 'paid',
+        ], [
+            'live_url' => 'https://live.example/done',
+        ]);
+        $this->createOrderItem($advertiser, $site, [
+            'status' => 'review',
+            'payment_status' => 'paid',
+        ]);
+        $this->createOrderItem($advertiser, $site, [
+            'status' => 'processing',
+            'payment_status' => 'paid',
+        ], [
+            'live_url' => 'https://live.example/mod',
+            'modification_requested' => 'yes',
+        ]);
+
+        $this->actingAs($publisher)
+            ->getJson(route('publisher.dashboard.statistics'))
+            ->assertOk()
+            ->assertJsonPath('data.needs_you', 3)
+            ->assertJsonPath('data.waiting_on_advertiser', 1);
+
+        $html = $this->actingAs($publisher)
+            ->get(route('publisher.dashboard'))
+            ->assertOk()
+            ->assertSee('You have 3 tasks that need you')
+            ->assertSee('1 more in review, waiting on advertisers.')
+            ->assertSee('id="openTasks">3', false);
+
+        $html->assertSee(route('publisher.tasks', ['needs_action' => 1], false), false);
     }
 }
