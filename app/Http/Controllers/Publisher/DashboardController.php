@@ -8,6 +8,7 @@ use App\Models\OrderItem;
 use App\Models\OrderItemDispute;
 use App\Models\Site;
 use App\Models\WalletTransaction;
+use App\Support\PublisherNeedsAction;
 use App\Support\UserFacingError;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -44,7 +45,8 @@ class DashboardController extends Controller
         $unverifiedSiteCount = $sites->where('verified', false)->count();
 
         $stats = $this->buildStatistics($siteIds);
-        $pendingTasks = $this->countPendingTasks($siteIds);
+        $needsYou = PublisherNeedsAction::needsYouCount((int) $userId);
+        $waitingOnAdvertiser = PublisherNeedsAction::waitingOnAdvertiserCount((int) $userId);
 
         $wallet = $user->activeWallet();
         $availableBalance = $wallet ? (float) $wallet->balance : 0.0;
@@ -55,8 +57,9 @@ class DashboardController extends Controller
         return view('publisher.dashboard', [
             'siteCount' => $siteCount,
             'unverifiedSiteCount' => $unverifiedSiteCount,
-            'pendingTasks' => $pendingTasks,
-            'primaryAction' => $pendingTasks > 0 ? 'tasks' : 'add_site',
+            'needsYou' => $needsYou,
+            'waitingOnAdvertiser' => $waitingOnAdvertiser,
+            'primaryAction' => $this->resolvePrimaryAction($needsYou, $unverifiedSiteCount, $siteCount),
             'stats' => $stats,
             'metrics' => $metrics,
             'availableBalance' => $availableBalance,
@@ -78,7 +81,8 @@ class DashboardController extends Controller
         return [
             'siteCount' => 0,
             'unverifiedSiteCount' => 0,
-            'pendingTasks' => 0,
+            'needsYou' => 0,
+            'waitingOnAdvertiser' => 0,
             'primaryAction' => 'add_site',
             'stats' => $stats,
             'metrics' => $this->buildPerformanceMetrics($stats),
@@ -100,10 +104,14 @@ class DashboardController extends Controller
             $siteIds = $this->publisherSiteIds();
             $stats = $this->buildStatistics($siteIds);
             $metrics = $this->buildPerformanceMetrics($stats);
+            $userId = (int) auth()->id();
 
             return response()->json([
                 'success' => true,
-                'data' => array_merge($stats, $metrics),
+                'data' => array_merge($stats, $metrics, [
+                    'needs_you' => PublisherNeedsAction::needsYouCount($userId),
+                    'waiting_on_advertiser' => PublisherNeedsAction::waitingOnAdvertiserCount($userId),
+                ]),
             ]);
         } catch (\Throwable $e) {
             report($e);
@@ -218,6 +226,24 @@ class DashboardController extends Controller
     }
 
     /**
+     * Hero CTA: work that needs the publisher first, then listing gaps, then grow.
+     */
+    private function resolvePrimaryAction(int $needsYou, int $unverifiedSiteCount, int $siteCount): string
+    {
+        if ($needsYou > 0) {
+            return 'tasks';
+        }
+        if ($unverifiedSiteCount > 0) {
+            return 'verify_sites';
+        }
+        if ($siteCount === 0) {
+            return 'add_site';
+        }
+
+        return 'grow';
+    }
+
+    /**
      * Orders visible to publishers (paid placements only).
      *
      * @param  array<int>  $siteIds
@@ -237,24 +263,6 @@ class DashboardController extends Controller
             ->unique()
             ->values()
             ->all();
-    }
-
-    /**
-     * @param  array<int>  $siteIds
-     */
-    private function countPendingTasks(array $siteIds): int
-    {
-        if ($siteIds === []) {
-            return 0;
-        }
-
-        return OrderItem::whereIn('site_id', $siteIds)
-            ->whereHas('order', function ($q) {
-                $q->where('payment_status', 'paid')
-                    ->whereIn('status', ['pending', 'processing', 'review'])
-                    ->notAwaitingScheduledRelease();
-            })
-            ->count();
     }
 
     /**

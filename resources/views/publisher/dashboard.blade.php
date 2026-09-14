@@ -4,10 +4,11 @@
 
 @section('content')
 @php
-    $pendingTasks = $pendingTasks ?? 0;
+    $needsYou = (int) ($needsYou ?? 0);
+    $waitingOnAdvertiser = (int) ($waitingOnAdvertiser ?? 0);
     $siteCount = $siteCount ?? 0;
     $unverifiedSiteCount = $unverifiedSiteCount ?? 0;
-    $primaryAction = $primaryAction ?? (($pendingTasks > 0) ? 'tasks' : 'add_site');
+    $primaryAction = $primaryAction ?? 'add_site';
     $stats = $stats ?? [
         'total_orders' => 0,
         'pending_orders' => 0,
@@ -54,10 +55,13 @@
                     <div class="card-body d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 p-4">
                         <div>
                             <div class="text-uppercase small fw-semibold mb-1" style="color:#0b6266;letter-spacing:.04em;">Do this next</div>
-                            <h4 class="mb-1">You have {{ $pendingTasks }} task{{ $pendingTasks === 1 ? '' : 's' }} waiting</h4>
-                            <p class="text-muted mb-0">Accept, publish, or reply so advertisers keep moving.</p>
+                            <h4 class="mb-1">You have {{ $needsYou }} task{{ $needsYou === 1 ? '' : 's' }} that need you</h4>
+                            <p class="text-muted mb-0">Accept, publish a live URL, or reply to a change request.</p>
+                            @if($waitingOnAdvertiser > 0)
+                                <p class="small text-muted mb-0 mt-1">{{ $waitingOnAdvertiser }} more in review, waiting on advertisers.</p>
+                            @endif
                         </div>
-                        <a href="{{ route('publisher.tasks') }}" class="btn btn-lg btn-primary px-4">
+                        <a href="{{ route('publisher.tasks', ['needs_action' => 1]) }}" class="btn btn-lg btn-primary px-4">
                             Open tasks <i class="fa fa-arrow-right ms-1"></i>
                         </a>
                     </div>
@@ -83,18 +87,61 @@
                     <a href="{{ route('publisher.reports') }}" class="btn btn-sm btn-outline-secondary w-100">View reports</a>
                 </div>
             </div>
+        @elseif($primaryAction === 'verify_sites')
+            <div class="col-lg-7">
+                <div class="card border-0 shadow-sm h-100 publisher-primary-cta">
+                    <div class="card-body d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 p-4">
+                        <div>
+                            <div class="text-uppercase small fw-semibold mb-1" style="color:#0b6266;letter-spacing:.04em;">Do this next</div>
+                            <h4 class="mb-1">Finish your listings</h4>
+                            <p class="text-muted mb-0">
+                                {{ $unverifiedSiteCount }} site{{ $unverifiedSiteCount === 1 ? '' : 's' }} {{ $unverifiedSiteCount === 1 ? 'is' : 'are' }} not verified yet — advertisers cannot rely on {{ $unverifiedSiteCount === 1 ? 'it' : 'them' }} until {{ $unverifiedSiteCount === 1 ? 'it is' : 'they are' }}.
+                            </p>
+                            @if($waitingOnAdvertiser > 0)
+                                <p class="small text-muted mb-0 mt-1">{{ $waitingOnAdvertiser }} placement{{ $waitingOnAdvertiser === 1 ? '' : 's' }} in review, waiting on advertisers.</p>
+                            @endif
+                        </div>
+                        <a href="{{ route('publisher.websites', ['status' => 'pending']) }}" class="btn btn-lg btn-primary px-4">
+                            Review sites <i class="fa fa-arrow-right ms-1"></i>
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-lg-2 flex-lg-grow-1">
+                <div class="dash-panel h-100 publisher-secondary-cta">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <span class="secondary-icon"><i class="fa fa-tasks"></i></span>
+                        <h6 class="mb-0">Tasks</h6>
+                    </div>
+                    <p class="small text-muted mb-3">{{ $needsYou }} need you</p>
+                    <a href="{{ route('publisher.tasks') }}" class="btn btn-sm btn-outline-secondary w-100">View tasks</a>
+                </div>
+            </div>
+            <div class="col-6 col-lg-2 flex-lg-grow-1">
+                <div class="dash-panel h-100 publisher-secondary-cta">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <span class="secondary-icon"><i class="fa fa-chart-line"></i></span>
+                        <h6 class="mb-0">Reports</h6>
+                    </div>
+                    <p class="small text-muted mb-3">Earnings & performance</p>
+                    <a href="{{ route('publisher.reports') }}" class="btn btn-sm btn-outline-secondary w-100">View reports</a>
+                </div>
+            </div>
         @else
             <div class="col-lg-7">
                 <div class="card border-0 shadow-sm h-100 publisher-primary-cta">
                     <div class="card-body d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 p-4">
                         <div>
                             <div class="text-uppercase small fw-semibold mb-1" style="color:#0b6266;letter-spacing:.04em;">Do this next</div>
-                            <h4 class="mb-1">{{ $siteCount === 0 ? 'Add your first website' : 'Grow your catalog' }}</h4>
+                            <h4 class="mb-1">{{ $primaryAction === 'add_site' ? 'Add your first website' : 'Grow your catalog' }}</h4>
                             <p class="text-muted mb-0">
-                                {{ $siteCount === 0
+                                {{ $primaryAction === 'add_site'
                                     ? 'List a site to start receiving advertiser orders.'
                                     : 'You have '.$siteCount.' site'.($siteCount === 1 ? '' : 's').' listed — add another niche or market.' }}
                             </p>
+                            @if($waitingOnAdvertiser > 0)
+                                <p class="small text-muted mb-0 mt-1">{{ $waitingOnAdvertiser }} placement{{ $waitingOnAdvertiser === 1 ? '' : 's' }} in review, waiting on advertisers.</p>
+                            @endif
                         </div>
                         <a href="{{ route('publisher.websites') }}" class="btn btn-lg btn-primary px-4">
                             Add site <i class="fa fa-arrow-right ms-1"></i>
@@ -108,7 +155,7 @@
                         <span class="secondary-icon"><i class="fa fa-tasks"></i></span>
                         <h6 class="mb-0">Tasks</h6>
                     </div>
-                    <p class="small text-muted mb-3">{{ $pendingTasks }} pending</p>
+                    <p class="small text-muted mb-3">{{ $needsYou }} need you</p>
                     <a href="{{ route('publisher.tasks') }}" class="btn btn-sm btn-outline-secondary w-100">View tasks</a>
                 </div>
             </div>
@@ -158,12 +205,18 @@
             </a>
         </div>
         <div class="col">
-            <a href="{{ route('publisher.tasks') }}" class="kpi-tile">
+            <a href="{{ $needsYou > 0 ? route('publisher.tasks', ['needs_action' => 1]) : route('publisher.tasks') }}" class="kpi-tile">
                 <div class="kpi-icon" style="background:#64748b;"><i class="fa fa-tasks"></i></div>
                 <div>
-                    <span class="kpi-label">Open tasks</span>
-                    <div class="kpi-value" id="openTasks">{{ $pendingTasks }}</div>
-                    <div class="kpi-sub">{{ (int) $stats['total_orders'] }} order{{ (int) $stats['total_orders'] === 1 ? '' : 's' }} total</div>
+                    <span class="kpi-label">Needs you</span>
+                    <div class="kpi-value" id="openTasks">{{ $needsYou }}</div>
+                    <div class="kpi-sub">
+                        @if($waitingOnAdvertiser > 0)
+                            {{ $waitingOnAdvertiser }} in review with advertisers
+                        @else
+                            {{ (int) $stats['total_orders'] }} order{{ (int) $stats['total_orders'] === 1 ? '' : 's' }} total
+                        @endif
+                    </div>
                 </div>
             </a>
         </div>
