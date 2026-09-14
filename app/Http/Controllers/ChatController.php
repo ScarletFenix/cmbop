@@ -172,7 +172,7 @@ class ChatController extends Controller
                 // Leftover is_read / read_at must not hide the thread.
             }
 
-            $this->loadOrderItemsForChat($order);
+            $order->loadMissing(['items.site.publisher', 'user']);
             $details = $this->buildOrderChatDetails($order, $user);
 
             return response()->json([
@@ -530,6 +530,46 @@ class ChatController extends Controller
             'modification_requested' => $item?->modification_requested,
             'content_revision_requested' => $item?->content_revision_requested,
             'has_open_content_revision' => $openContentRevision,
+            'counterpart' => $this->chatCounterpart($order, $isAdvertiser, $site, $viewer),
+        ];
+    }
+
+    /**
+     * Presence for the other party on this order chat. Never the viewer.
+     *
+     * @return array{name: string, role: string, online: bool, last_seen_at: ?string, label: ?string}|null
+     */
+    private function chatCounterpart(Order $order, bool $isAdvertiser, $site, ?User $viewer): ?array
+    {
+        if ($isAdvertiser) {
+            $other = $site?->publisher;
+            if (! $other) {
+                foreach ($order->items as $item) {
+                    $candidate = $item->site?->publisher;
+                    if ($candidate) {
+                        $other = $candidate;
+                        break;
+                    }
+                }
+            }
+            $role = 'publisher';
+        } else {
+            $other = $order->user ?? User::query()->find($order->user_id);
+            $role = 'advertiser';
+        }
+
+        if (! $other || ($viewer && (int) $other->id === (int) $viewer->id)) {
+            return null;
+        }
+
+        $presence = $other->presencePayload();
+
+        return [
+            'name' => (string) $other->name,
+            'role' => $role,
+            'online' => $presence['online'],
+            'last_seen_at' => $presence['last_seen_at'],
+            'label' => $presence['label'],
         ];
     }
 

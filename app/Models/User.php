@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Models\Concerns\ToleratesUnparseableDates;
 use App\Notifications\VerifyEmail;
+use Carbon\CarbonInterface;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -47,6 +48,7 @@ class User extends Authenticatable implements MustVerifyEmail
      * - stripe_customer_id / stripe_default_payment_method_id (StripeCustomerService)
      * - payout_* (PayoutProfileService)
      * - catalog_reveal_exempt* (CatalogActivityController)
+     * - last_seen_at (RecordUserLastSeen)
      */
 
     /**
@@ -59,6 +61,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'remember_token',
         'google_token',
         'google_refresh_token',
+        'last_seen_at',
     ];
 
     /**
@@ -83,7 +86,110 @@ class User extends Authenticatable implements MustVerifyEmail
         'catalog_copy_warned_at' => 'datetime',
         'catalog_copy_after_id' => 'integer',
         'catalog_hide_until' => 'datetime',
+        'last_seen_at' => 'datetime',
     ];
+
+    public const ONLINE_WINDOW_SECONDS = 120;
+
+    public const LAST_SEEN_THROTTLE_SECONDS = 60;
+
+    /**
+     * Whether this account was active within the online window.
+     */
+    public function isOnline(): bool
+    {
+        $seen = $this->last_seen_at;
+        if (! $seen instanceof CarbonInterface) {
+            return false;
+        }
+
+        return $seen->gte(now()->subSeconds(self::ONLINE_WINDOW_SECONDS));
+    }
+
+    /**
+     * Chat header copy. Null when we have never recorded activity.
+     */
+    public function lastSeenLabel(): ?string
+    {
+        $seen = $this->last_seen_at;
+        if (! $seen instanceof CarbonInterface) {
+            return null;
+        }
+
+        if ($this->isOnline()) {
+            return 'Online';
+        }
+
+        $seconds = (int) abs($seen->diffInSeconds(now()));
+        if ($seconds < 3600) {
+            return 'Last seen '.max(1, (int) floor($seconds / 60)).'m ago';
+        }
+        if ($seconds < 86400) {
+            return 'Last seen '.(int) floor($seconds / 3600).'h ago';
+        }
+        if ($seen->isYesterday()) {
+            return 'Last seen yesterday';
+        }
+
+        return 'Last seen '.$seen->format('M j');
+    }
+
+    /**
+     * @return array{online: bool, last_seen_at: ?string, label: ?string}
+     */
+    public function presencePayload(): array
+    {
+        return [
+            'online' => $this->isOnline(),
+            'last_seen_at' => $this->last_seen_at?->toIso8601String(),
+            'label' => $this->lastSeenLabel(),
+        ];
+    }
+
+    /**
+     * Stamp last_seen_at at most once per throttle window.
+     */
+    public function touchLastSeen(): void
+    {
+        try {
+            if (! $this->lastSeenColumnReady()) {
+                return;
+            }
+            $seen = $this->last_seen_at;
+            if ($seen instanceof CarbonInterface
+                && $seen->gt(now()->subSeconds(self::LAST_SEEN_THROTTLE_SECONDS))) {
+                return;
+            }
+
+            // Presence is not a profile edit — leave updated_at alone.
+            $now = now();
+            $wasTimestamps = $this->timestamps;
+            $this->timestamps = false;
+            try {
+                $this->forceFill(['last_seen_at' => $now])->saveQuietly();
+            } finally {
+                $this->timestamps = $wasTimestamps;
+            }
+        } catch (\Throwable $e) {
+            report($e);
+        }
+    }
+
+    protected function lastSeenColumnReady(): bool
+    {
+        static $ready = false;
+        if ($ready) {
+            return true;
+        }
+
+        try {
+            $ready = Schema::hasColumn('users', 'last_seen_at');
+        } catch (\Throwable) {
+            return false;
+        }
+
+        return $ready;
+    }
 
     public const CATALOG_COPY_HIDDEN = 'hidden';
 
