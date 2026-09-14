@@ -43,6 +43,9 @@
      dashboard cards (Recent orders / Recent tasks) do not sit flush on it. */
   --shell-footer-clearance: 56px;
   --shell-footer-height: 72px;
+  /* Viewport gutter so the live-chat icon does not sit on table totals. */
+  --shell-chat-fab: 48px;
+  --shell-chat-gutter: 80px;
 
   --bs-backdrop-zindex: var(--shell-z-modal-backdrop);
   --bs-modal-zindex: var(--shell-z-modal);
@@ -779,6 +782,11 @@ body > footer {
   #main-content {
     padding: 20px 12px 48px;
   }
+  body:has(.slb-tawk-launcher) #content,
+  body:has(.slb-tawk-launcher) #main-content {
+    padding-right: 72px;
+    padding-bottom: 72px;
+  }
   .app-shell-footer__grid,
   .app-shell-footer__left,
   .app-shell-footer__legal {
@@ -945,8 +953,8 @@ div:has(> iframe[src*="tawk.to"]) {
   right: 16px;
   bottom: 20px;
   z-index: var(--shell-z-fab, 1080);
-  width: 56px;
-  height: 56px;
+  width: var(--shell-chat-fab, 48px);
+  height: var(--shell-chat-fab, 48px);
   padding: 0;
   border: 0;
   border-radius: 50%;
@@ -968,4 +976,10 @@ div:has(> iframe[src*="tawk.to"]) {
 }
 html.tawk-open .slb-tawk-launcher {
   display: none;
+}
+
+/* Keep dashboard tables / KPIs out from under the corner icon. */
+body:has(.slb-tawk-launcher) #content,
+body:has(.slb-tawk-launcher) #main-content {
+  padding-right: var(--shell-chat-gutter, 80px);
 }
