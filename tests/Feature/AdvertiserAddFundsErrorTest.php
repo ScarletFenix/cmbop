@@ -84,6 +84,48 @@ class AdvertiserAddFundsErrorTest extends TestCase
             ->assertJsonValidationErrors('amount');
     }
 
+    public function test_add_funds_hides_fake_zeros_when_wallets_table_is_gone(): void
+    {
+        $advertiser = $this->advertiser();
+        Schema::dropIfExists('wallets');
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.add-funds'))
+            ->assertOk()
+            ->assertSee('Add funds', false)
+            ->assertSee('We could not load your wallet', false)
+            ->assertSee('Unavailable', false)
+            ->assertDontSee('SQLSTATE', false)
+            ->getContent();
+
+        $this->assertStringContainsString('id="kpiSpendable">—', $html);
+        $this->assertStringContainsString('id="kpiAvailable">—', $html);
+        $this->assertStringNotContainsString('id="kpiSpendable">€0.00', $html);
+        $this->assertStringNotContainsString('pending deposit confirmation', $html);
+    }
+
+    public function test_activity_feed_ignores_junk_dates(): void
+    {
+        $advertiser = $this->advertiser();
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.balance.transactions', [
+                'from' => 'leftover',
+                'to' => 'not-a-date',
+            ]))
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.balance.analytics', [
+                'range' => 'custom',
+                'from' => '0000-00-00',
+                'to' => 'tomorrow',
+            ]))
+            ->assertOk()
+            ->assertJsonPath('success', true);
+    }
+
     public function test_add_funds_page_survives_leftover_deposit_dates(): void
     {
         $advertiser = $this->advertiser();

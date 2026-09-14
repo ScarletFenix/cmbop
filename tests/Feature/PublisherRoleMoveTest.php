@@ -260,7 +260,7 @@ class PublisherRoleMoveTest extends TestCase
 
         $this->assertStringContainsString('value="role_move_in"', $html);
         $this->assertStringContainsString('Earnings Moved for Spending', $html);
-        $this->assertStringContainsString('Open Balance to move earnings here for catalog spend', $html);
+        $this->assertStringContainsString('Transfers into this wallet are off', $html);
     }
 
     public function test_role_move_type_labels(): void

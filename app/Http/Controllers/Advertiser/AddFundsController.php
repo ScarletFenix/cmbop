@@ -162,6 +162,7 @@ class AddFundsController extends Controller
         return view('advertiser.add-funds', [
             'pendingRequests' => $pendingRequests,
             'wallet' => $wallet,
+            'walletUnavailable' => $wallet === null,
             'summary' => $summary,
             'analytics' => $analytics,
             'advertiserBalance' => (float) ($wallet?->balance ?? 0),

@@ -192,19 +192,23 @@
         @php
             $spendableBalance = 0.0;
             $reservedBalance = 0.0;
+            $headerWalletUnavailable = false;
             try {
                 $activeWallet = auth()->user()->activeWallet();
                 $spendableBalance = (float) ($activeWallet?->balance ?? 0);
                 $reservedBalance = (float) ($activeWallet?->reserved_balance ?? 0);
             } catch (\Throwable $e) {
                 report($e);
+                $headerWalletUnavailable = true;
             }
-            $headerBalanceTitle = 'Spendable €' . number_format($spendableBalance, 2)
-                . ($reservedBalance > 0 ? ' · On hold: €' . number_format($reservedBalance, 2) : '');
+            $headerBalanceTitle = $headerWalletUnavailable
+                ? 'Spendable unavailable'
+                : ('Spendable €' . number_format($spendableBalance, 2)
+                    . ($reservedBalance > 0 ? ' · On hold: €' . number_format($reservedBalance, 2) : ''));
         @endphp
-        <a href="{{ route('advertiser.add-funds') }}" class="balance-block text-decoration-none" data-glass-tip data-glass-tip-body="{{ $headerBalanceTitle }}" data-glass-tip-placement="bottom" aria-label="Spendable balance {{ number_format($spendableBalance, 2) }} euros">
+        <a href="{{ route('advertiser.add-funds') }}" class="balance-block text-decoration-none" data-glass-tip data-glass-tip-body="{{ $headerBalanceTitle }}" data-glass-tip-placement="bottom" aria-label="{{ $headerWalletUnavailable ? 'Spendable balance unavailable' : 'Spendable balance '.number_format($spendableBalance, 2).' euros' }}">
             <span class="balance-label">Spendable</span>
-            <span class="balance-amount">€{{ number_format($spendableBalance, 2) }}</span>
+            <span class="balance-amount">{{ $headerWalletUnavailable ? '—' : '€'.number_format($spendableBalance, 2) }}</span>
         </a>
 
         @include('partials.notification-center')

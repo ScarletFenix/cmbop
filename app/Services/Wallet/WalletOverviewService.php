@@ -276,10 +276,8 @@ class WalletOverviewService
         $search = search_text($filters['search'] ?? null);
         $type = search_text($filters['type'] ?? null);
         $status = search_text($filters['status'] ?? null);
-        $fromRaw = search_text($filters['from'] ?? null);
-        $toRaw = search_text($filters['to'] ?? null);
-        $from = $fromRaw !== '' ? Carbon::parse($fromRaw)->startOfDay() : null;
-        $to = $toRaw !== '' ? Carbon::parse($toRaw)->endOfDay() : null;
+        $from = $this->parseFilterDate($filters['from'] ?? null);
+        $to = $this->parseFilterDate($filters['to'] ?? null, true);
 
         $rows = collect();
 
@@ -662,18 +660,37 @@ class WalletOverviewService
         };
     }
 
+    private function parseFilterDate(mixed $value, bool $endOfDay = false): ?Carbon
+    {
+        $raw = search_text($value);
+        if ($raw === '' || ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $raw)) {
+            return null;
+        }
+
+        [$year, $month, $day] = array_map('intval', explode('-', $raw));
+        if (! checkdate($month, $day, $year)) {
+            return null;
+        }
+
+        $date = Carbon::create($year, $month, $day);
+
+        return $endOfDay ? $date->endOfDay() : $date->startOfDay();
+    }
+
     protected function rangeBounds(string $range, ?string $fromDate = null, ?string $toDate = null): array
     {
         if ($range === 'custom' && $fromDate && $toDate) {
-            $from = Carbon::parse($fromDate)->startOfDay();
-            $to = Carbon::parse($toDate)->endOfDay();
-            if ($from->gt($to)) {
-                [$from, $to] = [$to->copy()->startOfDay(), $from->copy()->endOfDay()];
-            }
-            $days = $from->diffInDays($to);
-            $bucket = $days > 90 ? 'month' : 'day';
+            $from = $this->parseFilterDate($fromDate);
+            $to = $this->parseFilterDate($toDate, true);
+            if ($from && $to) {
+                if ($from->gt($to)) {
+                    [$from, $to] = [$to->copy()->startOfDay(), $from->copy()->endOfDay()];
+                }
+                $days = $from->diffInDays($to);
+                $bucket = $days > 90 ? 'month' : 'day';
 
-            return [$from, $to, $bucket];
+                return [$from, $to, $bucket];
+            }
         }
 
         $to = now()->endOfDay();

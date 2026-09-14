@@ -20,6 +20,9 @@
     $canWithdraw = $available > 0 && (float) ($advertiserDebtBalance ?? 0) <= 0.009;
     $publisher = $publisher ?? \App\Models\Wallet::emptyRoleSnapshot();
     $showPublisherWallet = (bool) ($showPublisherWallet ?? false);
+    $walletUnavailable = (bool) ($walletUnavailable ?? false);
+    $pendingDeposits = (float) ($summary['pending_deposits'] ?? 0);
+    $reservedHold = (float) ($summary['reserved_balance'] ?? 0);
 @endphp
 
 
@@ -44,27 +47,37 @@
     <div class="af-spendable mb-3" role="status" aria-label="Spendable balance">
         <div class="af-spendable__main">
             <span class="af-spendable__label">Spendable</span>
-            <span class="af-spendable__value" id="kpiSpendable">€{{ number_format($spendable, 2) }}</span>
-            <div class="af-spendable__equation small text-muted">Money + Bonus</div>
+            <span class="af-spendable__value" id="kpiSpendable">{{ $walletUnavailable ? '—' : '€'.number_format($spendable, 2) }}</span>
+            <div class="af-spendable__equation small text-muted">{{ $walletUnavailable ? 'Unavailable' : 'Money + Bonus' }}</div>
         </div>
         <div class="af-spendable__breakdown">
             <div class="af-spendable__chip" title="Withdrawable funds from deposits">
                 <span class="af-spendable__chip-label">Money</span>
-                <span class="af-spendable__chip-value" id="kpiAvailable">€{{ number_format($available, 2) }}</span>
+                <span class="af-spendable__chip-value" id="kpiAvailable">{{ $walletUnavailable ? '—' : '€'.number_format($available, 2) }}</span>
             </div>
             <div class="af-spendable__chip af-spendable__chip--bonus" title="Promotional credit for marketplace purchases only">
                 <span class="af-spendable__chip-label">Bonus</span>
-                <span class="af-spendable__chip-value" id="kpiBonus">€{{ number_format($bonus, 2) }}</span>
+                <span class="af-spendable__chip-value" id="kpiBonus">{{ $walletUnavailable ? '—' : '€'.number_format($bonus, 2) }}</span>
             </div>
         </div>
-        @if($pending > 0)
+        @if(! $walletUnavailable && $pendingDeposits > 0 && $reservedHold > 0)
             <div class="af-spendable__pending">
-                <span id="kpiPending">€{{ number_format($pending, 2) }}</span> pending deposit confirmation
+                <span id="kpiPending">€{{ number_format($pending, 2) }}</span>
+                pending — €{{ number_format($pendingDeposits, 2) }} deposit confirmation
+                · €{{ number_format($reservedHold, 2) }} on hold for checkout
+            </div>
+        @elseif(! $walletUnavailable && $pendingDeposits > 0)
+            <div class="af-spendable__pending">
+                <span id="kpiPending">€{{ number_format($pendingDeposits, 2) }}</span> pending deposit confirmation
+            </div>
+        @elseif(! $walletUnavailable && $reservedHold > 0)
+            <div class="af-spendable__pending">
+                <span id="kpiPending">€{{ number_format($reservedHold, 2) }}</span> on hold for checkout
             </div>
         @else
             <span id="kpiPending" class="d-none">€{{ number_format($pending, 2) }}</span>
         @endif
-        @if($bonus > 0)
+        @if(! $walletUnavailable && $bonus > 0)
             <p class="af-spendable__note mb-0">
                 <strong>Bonus €{{ number_format($bonus, 2) }}</strong>
                 (purchases only) — {{ $promotionalBonusMessage ?? \App\Models\Wallet::PROMOTIONAL_BONUS_MESSAGE }}
@@ -77,7 +90,7 @@
             <div class="af-role-strip__main">
                 <span class="af-role-strip__label">Publisher earnings</span>
                 <span class="af-role-strip__value" id="publisherEarningsKpi">€{{ number_format((float) $publisher['withdrawable'], 2) }}</span>
-                <p class="af-role-strip__note mb-0">Withdrawable. Open Balance to move earnings here for catalog spend (no fee).</p>
+                <p class="af-role-strip__note mb-0">Withdrawable. Transfers into this wallet are off — open Balance or Withdraw.</p>
             </div>
             <div class="af-role-strip__actions">
                 <a href="{{ route('publisher.balance') }}" class="btn btn-sm btn-outline-secondary" id="publisherBalanceCta">Balance</a>
