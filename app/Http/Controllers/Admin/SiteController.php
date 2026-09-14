@@ -596,6 +596,7 @@ class SiteController extends Controller
             'link_type' => $site->link_type,
             'sponsored' => (bool) $site->sponsored,
             'description' => $site->description,
+            'description_textarea' => SiteDescriptionRules::textareaValue((string) $site->description),
             'description_looks_english' => $site->descriptionLooksLikeEnglish(),
             'description_excerpt' => SiteDescriptionRules::excerpt($site->description, 200),
             'enrichment_status' => $site->enrichment_status,

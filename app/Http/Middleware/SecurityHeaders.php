@@ -19,10 +19,10 @@ class SecurityHeaders
         $csp = implode('; ', [
             "default-src 'self'",
             // Quill (cdn.quilljs.com) powers publisher/admin rich-text editors; Chart.js/SweetAlert via jsDelivr
-            "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.quilljs.com https://code.jquery.com https://js.stripe.com https://embed.tawk.to",
-            "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.quilljs.com https://fonts.googleapis.com",
+            "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.quilljs.com https://code.jquery.com https://js.stripe.com https://embed.tawk.to https://*.tawk.to",
+            "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.quilljs.com https://fonts.googleapis.com https://*.tawk.to",
             "img-src 'self' data: blob: https:",
-            "font-src 'self' data: https://fonts.gstatic.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net",
+            "font-src 'self' data: https://fonts.gstatic.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://*.tawk.to",
             "connect-src 'self' https://js.stripe.com https://api.stripe.com https://m.stripe.com https://m.stripe.network https://q.stripe.com https://embed.tawk.to https://*.tawk.to wss://*.tawk.to",
             "frame-src 'self' https://js.stripe.com https://hooks.stripe.com https://tawk.to https://*.tawk.to https://embed.tawk.to",
             "frame-ancestors 'self'",

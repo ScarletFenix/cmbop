@@ -305,7 +305,7 @@ class BulkSiteRequestController extends Controller
             'price_sensitive.*' => 'nullable|numeric|min:0|max:99999999.99',
         ]);
 
-        $existingCategories = collect($site->categories ?? [])
+        $existingCategories = collect($site->categories_array ?? [])
             ->map(fn ($v) => trim((string) $v))
             ->filter(fn ($v) => $v !== '' && strtolower($v) !== 'pending')
             ->values()
@@ -339,7 +339,7 @@ class BulkSiteRequestController extends Controller
         }
 
         $cleanDescription = app(SiteDescriptionSanitizer::class)
-            ->sanitize((string) $request->siteDescription);
+            ->sanitize(SiteDescriptionRules::forTextarea((string) $request->siteDescription));
 
         try {
             DB::transaction(function () use ($site, $request, $cleanDescription, $existingCategories) {

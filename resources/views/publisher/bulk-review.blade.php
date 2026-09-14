@@ -66,12 +66,11 @@
 
             @foreach($sites as $site)
                 @php
-                    $niches = collect($site->categories ?? [])
-                        ->map(fn ($v) => trim((string) $v))
+                    $niches = collect($site->nicheBadgeLabels())
                         ->filter(fn ($v) => $v !== '' && strtolower($v) !== 'pending')
                         ->values()
                         ->all();
-                    $desc = trim((string) $site->description);
+                    $desc = \App\Support\SiteDescriptionRules::textareaValue((string) $site->description);
                     $tag = $site->tagLabel(\App\Support\SiteTag::NONE_LABEL);
                 @endphp
                 <div class="card border-0 shadow-sm mb-3">

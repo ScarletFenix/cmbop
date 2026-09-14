@@ -302,6 +302,7 @@ class SeoAndSecurityHeadersTest extends TestCase
         $this->assertStringContainsString('cdn.jsdelivr.net', $csp);
         $this->assertStringContainsString('js.stripe.com', $csp);
         $this->assertStringContainsString('embed.tawk.to', $csp);
+        $this->assertStringContainsString('https://*.tawk.to', $csp);
         $this->assertStringContainsString('wss://*.tawk.to', $csp);
         $this->assertStringNotContainsString('unsafe-eval', $csp);
 
