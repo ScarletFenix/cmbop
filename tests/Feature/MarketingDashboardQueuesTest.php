@@ -492,6 +492,12 @@ class MarketingDashboardQueuesTest extends TestCase
 
         $this->assertStringContainsString(route('marketing.sites.create', [], false), $html);
         $this->assertStringContainsString(route('marketing.bulk-site-requests.index', [], false), $html);
+        $this->assertStringContainsString(
+            json_encode(staff_route('sites.active', '__ID__', false)),
+            $html
+        );
+        $this->assertStringNotContainsString('Promise.resolve(true)', $html);
+        $this->assertStringContainsString('Swal.fire', $html);
     }
 
     public function test_marketer_notification_inbox_uses_marketing_shell(): void

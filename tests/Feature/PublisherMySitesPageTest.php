@@ -925,4 +925,33 @@ class PublisherMySitesPageTest extends TestCase
         $this->assertStringContainsString('Dual Role Pending', $html);
         $this->assertSame('publisher', $user->fresh()->activeRole());
     }
+
+    public function test_add_site_and_bulk_endpoints_are_same_origin_relative(): void
+    {
+        $html = $this->actingAs($this->publisher)
+            ->get(route('publisher.websites'))
+            ->assertOk()
+            ->getContent();
+
+        $store = route('publisher.sites.store', absolute: false);
+        $ajax = route('publisher.sites.ajax', absolute: false);
+        $claim = route('publisher.sites.claim', absolute: false);
+        $bulk = route('publisher.bulk-sites.request', absolute: false);
+
+        $this->assertStringStartsWith('/', $store);
+        $this->assertStringContainsString('action="'.$store.'"', $html);
+        $this->assertTrue(
+            str_contains($html, $ajax) || str_contains($html, str_replace('/', '\/', $ajax)),
+            'Sites ajax URL must be host-relative in PublisherWebsitesConfig'
+        );
+        $this->assertTrue(
+            str_contains($html, $claim) || str_contains($html, str_replace('/', '\/', $claim)),
+            'Claim URL must be host-relative in PublisherWebsitesConfig'
+        );
+        $this->assertStringContainsString('action="'.$bulk.'"', $html);
+        $this->assertStringNotContainsString(route('publisher.sites.store'), $html);
+        $this->assertStringNotContainsString(route('publisher.sites.ajax'), $html);
+        $this->assertStringContainsString('HTMLFormElement.prototype.submit.call(form)', $html);
+        $this->assertStringContainsString('same_origin_asset(\'assets/js/publisher-websites.js\')', file_get_contents(resource_path('views/publisher/websites.blade.php')));
+    }
 }

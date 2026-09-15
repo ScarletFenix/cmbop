@@ -259,7 +259,7 @@
 <script>
 (function () {
     const csrf = @json(csrf_token());
-    const activateUrl = @json(staff_route('sites.active', '__ID__'));
+    const activateUrl = @json(staff_route('sites.active', '__ID__', false));
     const staffBase = @json(staff_base_path());
     document.querySelectorAll('.js-mkt-activate').forEach((btn) => {
         btn.addEventListener('click', function () {
@@ -280,7 +280,15 @@
                         icon: 'question',
                         confirmText: 'Activate',
                     })
-                    : Promise.resolve(false);
+                    : (typeof Swal !== 'undefined' && Swal.fire)
+                        ? Swal.fire({
+                            title: 'Activate Site?',
+                            text: 'Make "' + name + '" live in the catalog?',
+                            icon: 'question',
+                            showCancelButton: true,
+                            confirmButtonText: 'Activate',
+                        }).then((r) => !!(r && r.isConfirmed))
+                        : Promise.resolve(false);
             go.then((ok) => {
                 if (!ok) return;
                 fetch(activateUrl.replace('__ID__', encodeURIComponent(id)), {

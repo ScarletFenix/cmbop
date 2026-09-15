@@ -245,7 +245,7 @@
 <script src="{{ asset('assets/js/modal-stack.js') }}?v={{ @filemtime(public_path('assets/js/modal-stack.js')) ?: '1' }}"></script>
 <script src="{{ asset('assets/js/admin-manage-dropdown.js') }}?v={{ @filemtime(public_path('assets/js/admin-manage-dropdown.js')) ?: '1' }}"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-<script src="{{ asset('js/slb-confirm.js') }}?v={{ @filemtime(public_path('js/slb-confirm.js')) ?: '1' }}"></script>
+<script src="{{ same_origin_asset('js/slb-confirm.js') }}?v={{ @filemtime(public_path('js/slb-confirm.js')) ?: '1' }}"></script>
 <script src="{{ asset('js/slb-live-search.js') }}?v={{ @filemtime(public_path('js/slb-live-search.js')) ?: '1' }}"></script>
 @include('partials.app-toast')
 <script src="{{ asset('js/slb-http.js') }}?v={{ @filemtime(public_path('js/slb-http.js')) ?: '1' }}"></script>

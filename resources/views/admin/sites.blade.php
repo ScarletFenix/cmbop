@@ -325,7 +325,7 @@
 
 
 
-<script src="{{ asset('assets/js/site-image-upload.js') }}?v={{ @filemtime(public_path('assets/js/site-image-upload.js')) ?: '1' }}"></script>
+<script src="{{ same_origin_asset('assets/js/site-image-upload.js') }}?v={{ @filemtime(public_path('assets/js/site-image-upload.js')) ?: '1' }}"></script>
 <script>
 const STAFF_BASE = @json(staff_base_path());
 const SITE_IMAGE_MAX_KB = {{ (int) \App\Support\SiteImageUpload::maxKilobytes() }};
@@ -1047,8 +1047,10 @@ document.addEventListener('click', function(e){
                 headers:{
                     'Content-Type':'application/json',
                     'Accept':'application/json',
-                    'X-CSRF-TOKEN':'{{ csrf_token() }}'
+                    'X-Requested-With':'XMLHttpRequest',
+                    'X-CSRF-TOKEN': CSRF_TOKEN
                 },
+                credentials: 'same-origin',
                 body: JSON.stringify(payload)
             })
             .then(async (res) => {
@@ -1855,7 +1857,15 @@ document.addEventListener('click', function (e) {
                 icon: 'question',
                 confirmText: 'Activate',
             })
-            : Promise.resolve(false);
+            : (typeof Swal !== 'undefined' && Swal.fire)
+                ? Swal.fire({
+                    title: 'Activate Site?',
+                    text: 'Make "' + name + '" live in the catalog?',
+                    icon: 'question',
+                    showCancelButton: true,
+                    confirmButtonText: 'Activate',
+                }).then((r) => !!(r && r.isConfirmed))
+                : Promise.resolve(false);
     go.then((ok) => {
         if (!ok) return;
         fetch(`${STAFF_BASE}/sites/${id}/active`, {

@@ -153,7 +153,7 @@ class BulkDoneRejectRowsTest extends TestCase
                 ->get(route($prefix.'.bulk-site-requests.show', $bulk))
                 ->assertOk()
                 ->assertSee('id="bulkDoneForm"', false)
-                ->assertSee(route($prefix.'.bulk-site-requests.done', $bulk), false)
+                ->assertSee(route($prefix.'.bulk-site-requests.done', $bulk, false), false)
                 ->assertSee('data-bulk-reject-row', false)
                 ->assertSee('name="rejection_note"', false)
                 ->assertSee('Note to publisher (removed sites)', false)
@@ -813,8 +813,8 @@ class BulkDoneRejectRowsTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        $this->assertStringContainsString(route('marketing.bulk-site-requests.done', $bulk), $html);
-        $this->assertStringNotContainsString(route('admin.bulk-site-requests.done', $bulk), $html);
+        $this->assertStringContainsString(route('marketing.bulk-site-requests.done', $bulk, false), $html);
+        $this->assertStringNotContainsString(route('admin.bulk-site-requests.done', $bulk, false), $html);
     }
 
     public function test_marketer_leftover_admin_done_post_replays_on_marketing_url(): void
@@ -888,8 +888,8 @@ class BulkDoneRejectRowsTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        $this->assertStringContainsString(route('marketing.bulk-site-requests.done', $bulk), $html);
-        $this->assertStringNotContainsString(route('admin.bulk-site-requests.done', $bulk), $html);
+        $this->assertStringContainsString(route('marketing.bulk-site-requests.done', $bulk, false), $html);
+        $this->assertStringNotContainsString(route('admin.bulk-site-requests.done', $bulk, false), $html);
 
         $this->actingAs($this->marketer->fresh())
             ->from(route('marketing.bulk-site-requests.show', $bulk))

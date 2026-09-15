@@ -603,10 +603,34 @@ if (! function_exists('staff_base_path')) {
 if (! function_exists('staff_route')) {
     /**
      * Named route helper that resolves to marketing.* or admin.* for the active staff role.
+     * Pass absolute: false for in-page forms/AJAX so leftover APP_URL cannot
+     * send the browser to another origin. Default stays absolute for tests
+     * and emails that assert/need a full URL.
      */
     function staff_route(string $name, mixed $parameters = [], bool $absolute = true): string
     {
         return route(staff_route_prefix().ltrim($name, '.'), $parameters, $absolute);
+    }
+}
+
+if (! function_exists('same_origin_asset')) {
+    /**
+     * Root-relative public asset URL. asset() follows APP_URL, which breaks
+     * JS when the browser host differs (localhost vs 127.0.0.1, Hostinger leftover).
+     */
+    function same_origin_asset(string $path): string
+    {
+        $url = asset($path);
+        $parts = parse_url($url);
+        $rel = $parts['path'] ?? '/'.ltrim($path, '/');
+        if ($rel === '' || $rel[0] !== '/') {
+            $rel = '/'.ltrim($rel, '/');
+        }
+        if (! empty($parts['query'])) {
+            $rel .= '?'.$parts['query'];
+        }
+
+        return $rel;
     }
 }
 
