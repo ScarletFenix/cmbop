@@ -117,8 +117,8 @@ class AdvertiserOrdersUxAbcTest extends TestCase
         $this->assertStringContainsString('value="date_desc"', $html);
         $this->assertStringContainsString('value="total_desc"', $html);
         $this->assertStringContainsString('<th class="orders-col-id">Order #</th>', $html);
-        $this->assertStringContainsString('<th>Total</th>', $html);
-        $this->assertStringContainsString('<th>Payment</th>', $html);
+        $this->assertStringContainsString('<th class="orders-col-total">Total</th>', $html);
+        $this->assertStringContainsString('<th class="orders-col-payment">Payment</th>', $html);
         $this->assertStringContainsString('<th class="orders-col-actions">Actions</th>', $html);
         $this->assertStringContainsString('orders-history-table', $html);
         $this->assertStringContainsString('orders-history-head', $html);
