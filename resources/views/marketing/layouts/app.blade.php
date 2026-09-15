@@ -198,12 +198,13 @@
     document.body.classList.remove('layout-dark');
     try { localStorage.removeItem('layoutDarkMode'); } catch (e) {}
 
-    window.refreshAdminQueueBadges = function refreshMarketingQueueBadges() {
+    window.refreshAdminQueueBadges = function refreshMarketingQueueBadges(options) {
+        options = options || {};
         fetch(@json(route('marketing.dashboard.queue-counts', absolute: false)), {
             headers: { 'Accept': 'application/json' },
             credentials: 'same-origin'
         })
-        .then((r) => r.json())
+        .then((r) => r.json().then((data) => data || {}).catch(() => ({})))
         .then((data) => {
             if (!data || !data.success) return;
             const map = { sites: data.ready_sites || 0, bulk: data.bulk_waiting || 0 };
@@ -219,6 +220,57 @@
                     el.style.display = 'none';
                 }
             });
+
+            function setCount(rootSel, attr, value) {
+                const root = document.querySelector(rootSel);
+                if (!root) return;
+                const el = root.querySelector('[' + attr + ']');
+                if (!el) return;
+                el.setAttribute(attr, String(value));
+                el.textContent = String(value);
+            }
+            setCount('[data-stat="ready-to-activate"]', 'data-stat-value', Number(data.ready_sites) || 0);
+            setCount('[data-stat="bulk-waiting-on-you"]', 'data-stat-value', Number(data.bulk_waiting) || 0);
+            setCount('[data-stat="my-tasks-today"]', 'data-stat-value', Number(data.my_tasks_today) || 0);
+            const totalEl = document.querySelector('[data-stat="my-tasks-today"] [data-stat-total]');
+            if (totalEl) {
+                const total = Number(data.my_tasks_total) || 0;
+                totalEl.setAttribute('data-stat-total', String(total));
+                totalEl.textContent = total + ' all time';
+            }
+            const sitesWaiting = Number(data.sites_waiting_on_publisher) || 0;
+            const bulkPub = Number(data.bulk_waiting_on_publisher) || 0;
+            const sitesEl = document.querySelector('[data-stat="waiting-on-publisher"] [data-stat-sites]');
+            if (sitesEl) {
+                sitesEl.setAttribute('data-stat-sites', String(sitesWaiting));
+                sitesEl.textContent = String(sitesWaiting);
+            }
+            const sitesLabel = document.querySelector('[data-stat="waiting-on-publisher"] [data-stat-sites-label]');
+            if (sitesLabel) {
+                sitesLabel.textContent = sitesWaiting === 1 ? 'site' : 'sites';
+            }
+            const bulkEl = document.querySelector('[data-stat="waiting-on-publisher"] [data-stat-bulk]');
+            if (bulkEl) {
+                bulkEl.setAttribute('data-stat-bulk', String(bulkPub));
+                bulkEl.textContent = bulkPub + (bulkPub === 1 ? ' bulk request' : ' bulk requests');
+            }
+
+            if (options.refillReady) {
+                const readyShown = document.querySelectorAll('[data-queue="ready-sites"] [data-ready-site]').length;
+                const readyTotal = Number(data.ready_sites) || 0;
+                const remainder = document.querySelector('[data-queue-remainder="ready-sites"]');
+                if (remainder) {
+                    if (readyTotal <= 0) {
+                        remainder.style.display = 'none';
+                    } else {
+                        remainder.style.display = '';
+                        remainder.textContent = 'Showing ' + readyShown + ' of ' + readyTotal;
+                    }
+                }
+                if (document.querySelector('[data-queue="ready-sites"]') && readyTotal > readyShown) {
+                    window.location.reload();
+                }
+            }
         })
         .catch(() => {});
     };

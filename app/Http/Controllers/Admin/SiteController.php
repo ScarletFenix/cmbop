@@ -70,6 +70,8 @@ class SiteController extends Controller
                 'openReviewCount' => 0,
                 'missingMarketCount' => 0,
                 'healthCounts' => CatalogHealthQueue::emptyCounts(),
+                'waitingOnPublisherFilterActive' => false,
+                'waitingOnPublisherCount' => 0,
                 'publisherSearch' => trim(scalar_text($request->query('q', ''))),
                 'flatQueue' => $request->boolean('flat'),
                 'flatQueueSites' => null,
@@ -83,6 +85,11 @@ class SiteController extends Controller
             || $request->query('verified') === '0'
             || $request->query('verified') === 0;
 
+        $waitingOnPublisherFilter = $request->boolean('waiting_on_publisher');
+        if ($waitingOnPublisherFilter) {
+            $needsReviewFilter = false;
+        }
+
         $publisherSearch = trim(scalar_text($request->query('q', '')));
         $flatQueue = $request->boolean('flat');
 
@@ -92,12 +99,25 @@ class SiteController extends Controller
 
         $unverifiedFilter = $needsReviewFilter;
         $needsReviewFilterActive = $needsReviewFilter;
+        $waitingOnPublisherFilterActive = $waitingOnPublisherFilter;
         $openReviewCount = MarketingOpsQueues::sitesReadyForStaffCount();
+        $waitingOnPublisherCount = MarketingOpsQueues::sitesWaitingOnPublisherCount();
         $healthCounts = CatalogHealthQueue::counts();
         $missingMarketCount = (int) ($healthCounts[CatalogHealthQueue::MISSING_MARKET] ?? 0);
         $flatQueueSites = null;
 
-        if ($flatQueue && $needsReviewFilter) {
+        if ($flatQueue && $waitingOnPublisherFilter) {
+            $users = new LengthAwarePaginator([], 0, 20, 1, [
+                'path' => $request->url(),
+                'query' => $request->query(),
+            ]);
+            $flatQueueSites = MarketingOpsQueues::sitesWaitingOnPublisher()
+                ->with('publisher:id,name,email')
+                ->orderBy('created_at')
+                ->orderBy('id')
+                ->paginate(30)
+                ->appends($request->query());
+        } elseif ($flatQueue && $needsReviewFilter) {
             $users = new LengthAwarePaginator([], 0, 20, 1, [
                 'path' => $request->url(),
                 'query' => $request->query(),
@@ -113,7 +133,10 @@ class SiteController extends Controller
             $query = User::query()
                 ->whereHas('roles', fn ($q) => $q->where('name', 'publisher'))
                 ->withCount(['sites' => fn ($q) => $q->notArchived()])
-                ->withCount(['sites as needs_review_sites_count' => $reviewQueue]);
+                ->withCount(['sites as needs_review_sites_count' => $reviewQueue])
+                ->withCount(['sites as waiting_on_publisher_sites_count' => function ($q) {
+                    MarketingOpsQueues::constrainSitesWaitingOnPublisher($q);
+                }]);
 
             if ($publisherSearch !== '') {
                 $query->where(function ($q) use ($publisherSearch) {
@@ -128,8 +151,14 @@ class SiteController extends Controller
                     ->withCount(['sites as unverified_sites_count' => $reviewQueue]);
             }
 
+            if ($waitingOnPublisherFilter) {
+                $query->whereHas('sites', function ($q) {
+                    MarketingOpsQueues::constrainSitesWaitingOnPublisher($q);
+                });
+            }
+
             $users = $query
-                ->orderByDesc('needs_review_sites_count')
+                ->orderByDesc($waitingOnPublisherFilter ? 'waiting_on_publisher_sites_count' : 'needs_review_sites_count')
                 ->orderByDesc('sites_count')
                 ->orderBy('name')
                 ->paginate(20)
@@ -140,7 +169,9 @@ class SiteController extends Controller
             'users',
             'unverifiedFilter',
             'needsReviewFilterActive',
+            'waitingOnPublisherFilterActive',
             'openReviewCount',
+            'waitingOnPublisherCount',
             'missingMarketCount',
             'healthCounts',
             'publisherSearch',

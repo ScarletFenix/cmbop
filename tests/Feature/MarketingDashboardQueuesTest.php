@@ -120,6 +120,18 @@ class MarketingDashboardQueuesTest extends TestCase
             e(route('marketing.sites.index', ['publisher' => $ready->publisher_id, 'site' => $ready->id], false)),
             $html
         );
+        $this->assertStringContainsString(
+            e(route('marketing.sites.index', ['waiting_on_publisher' => 1, 'flat' => 1], false)),
+            $html
+        );
+        $this->assertStringContainsString('Showing 2 of 2', $this->nodeText($html, 'data-queue', 'ready-sites'));
+        $this->assertStringContainsString('Showing 2 of 2', $this->nodeText($html, 'data-queue', 'waiting-sites'));
+        $this->assertStringContainsString('View all', $this->nodeText($html, 'data-queue', 'waiting-sites'));
+        $this->assertMatchesRegularExpression('/ago|just now/i', $this->nodeText($html, 'data-queue', 'ready-sites'));
+        $this->assertStringContainsString('slbHttpMessage', $html);
+        $this->assertStringContainsString('Find a publisher', $html);
+        $this->assertStringContainsString(route('marketing.promotions.index', [], false), $html);
+        $this->assertStringContainsString(route('marketing.staff-handbook', [], false), $html);
         $this->assertStringContainsString(route('marketing.sites.edit', $ready->id, false), $html);
         $this->assertStringNotContainsString('Awaiting Details Draft', $readyTable);
         $this->assertStringNotContainsString('Unaccepted Invite Site', $readyTable);
@@ -441,7 +453,11 @@ class MarketingDashboardQueuesTest extends TestCase
             ->assertOk()
             ->assertJsonPath('success', true)
             ->assertJsonPath('ready_sites', 1)
-            ->assertJsonPath('bulk_waiting', 1);
+            ->assertJsonPath('bulk_waiting', 1)
+            ->assertJsonPath('sites_waiting_on_publisher', 0)
+            ->assertJsonPath('bulk_waiting_on_publisher', 0)
+            ->assertJsonPath('my_tasks_today', 0)
+            ->assertJsonPath('my_tasks_total', 0);
     }
 
     public function test_legacy_sheet_batch_counts_as_waiting_on_marketer(): void
