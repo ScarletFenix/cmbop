@@ -651,7 +651,7 @@
                         <div class="d-flex flex-column gap-2">
                                 @if($hasSensitiveExtras)
                                 <p class="mb-0"><strong>Sensitive topics</strong></p>
-                                <p class="small text-muted mb-1">Additional charge on top of the base price.</p>
+                                <p class="small text-muted mb-1">Optional add-on if the article is in one of these niches.</p>
 
                                 <div class="sensitive-prices-group"
                                      data-site-id="{{ $site->id }}"
@@ -703,7 +703,7 @@
                                             <label class="form-check-label"
                                                    for="sensitive_{{ $site->id }}_{{ $loop->index }}">
                                                 <strong>{{ ucfirst($type) }}</strong>
-                                                <span class="text-danger">add-on +€{{ number_format($additionalPrice, 2) }}</span>
+                                                <span class="catalog-addon-price">add-on +€{{ number_format($additionalPrice, 2) }}</span>
                                                 <span class="text-muted">→ you pay €{{ number_format($totalPrice, 2) }}</span>
                                             </label>
                                         </div>
@@ -1142,7 +1142,8 @@
                      data-discount-percent="{{ $catalogSalePct ?? 0 }}"
                      role="radiogroup"
                      aria-label="Sensitive topic pricing">
-                    <div class="small fw-semibold mb-1">Additional charges</div>
+                    <div class="small fw-semibold mb-1">Sensitive topics</div>
+                    <p class="small text-muted mb-2">Optional add-on if the article is in one of these niches.</p>
                     {{-- Its own radio group. Sharing the table's name made the two
                          layouts one group, so the card rendered with nothing
                          selected while the hidden table row held the checked
@@ -1185,7 +1186,7 @@
                                    id="sensitive_mobile_{{ $site->id }}_{{ $loop->index }}">
                             <label class="form-check-label" for="sensitive_mobile_{{ $site->id }}_{{ $loop->index }}">
                                 <strong>{{ ucfirst($type) }}</strong>
-                                <span class="text-danger">add-on +€{{ number_format($additionalPrice, 2) }}</span>
+                                <span class="catalog-addon-price">add-on +€{{ number_format($additionalPrice, 2) }}</span>
                                 <span class="text-muted">→ you pay €{{ number_format($totalPrice, 2) }}</span>
                             </label>
                         </div>

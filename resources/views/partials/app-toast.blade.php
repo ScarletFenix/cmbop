@@ -35,27 +35,33 @@
         // The theme flattens warning/info toasts to white surfaces on purpose —
         // "the icon carries the signal". Without an icon a warning was
         // indistinguishable from an info message, so render one.
+        const quiet = !!options.quiet && !isError;
         const icon = isSuccess ? 'fa-circle-check'
             : (isError ? 'fa-circle-exclamation'
                 : (isInfo ? 'fa-circle-info' : 'fa-triangle-exclamation'));
-        const iconTone = solid ? '' : (isInfo ? ' text-brand-live' : ' text-brand-warning');
+        const iconTone = quiet ? ' text-brand-primary'
+            : (solid ? '' : (isInfo ? ' text-brand-live' : ' text-brand-warning'));
         const iconHtml = `<i class="fa-solid ${icon} app-toast-icon${iconTone}" aria-hidden="true"></i>`;
-        const delay = typeof options.delay === 'number' ? options.delay : (options.actionLabel ? 6000 : 3000);
+        const delay = typeof options.delay === 'number' ? options.delay : (options.actionLabel ? 6000 : (quiet ? 1800 : 3000));
         const actionLabel = options.actionLabel ? String(options.actionLabel) : '';
-        const actionBtnClass = solid ? 'btn btn-sm btn-light' : 'btn btn-sm btn-outline-secondary';
+        const actionBtnClass = (solid && !quiet) ? 'btn btn-sm btn-light' : 'btn btn-sm btn-outline-secondary';
         const actionHtml = actionLabel
             ? `<button type="button" class="${actionBtnClass} ms-2 py-0 px-2 app-toast-action" data-toast-action>${escapeToastHtml(actionLabel)}</button>`
             : '';
+        const toastTone = quiet
+            ? 'app-toast-quiet text-dark border'
+            : `${textClass} ${bgClass} border-0`;
+        const closeBtnClass = quiet ? 'btn-close' : closeClass;
 
         toastContainer.insertAdjacentHTML('beforeend', `
-            <div id="${toastId}" class="toast align-items-center ${textClass} ${bgClass} border-0" role="alert" data-bs-autohide="true" data-bs-delay="${delay}">
+            <div id="${toastId}" class="toast align-items-center ${toastTone}" role="${isError ? 'alert' : 'status'}" data-bs-autohide="true" data-bs-delay="${delay}">
                 <div class="d-flex align-items-center">
                     <div class="toast-body d-flex align-items-center gap-2">
                         ${iconHtml}
                         <span class="app-toast-message">${escapeToastHtml(message)}</span>
                         ${actionHtml}
                     </div>
-                    <button type="button" class="${closeClass} me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+                    <button type="button" class="${closeBtnClass} me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
                 </div>
             </div>
         `);

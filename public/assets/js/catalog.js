@@ -3509,6 +3509,176 @@ function catalogToast(message, type = 'success', options) {
 // Do not declare a top-level function addToCart / updateCartBadge — classic
 // scripts hoist those onto window and recurse until the Buy button crashes.
 
+function catalogPrefersReducedMotion() {
+    return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+}
+
+function catalogEaseInOut(t) {
+    return t < 0.5 ? 4 * t * t * t : 1 - (((-2 * t) + 2) ** 3) / 2;
+}
+
+function catalogFlyEase(t) {
+    // Cubic ease-out: leaves promptly, then settles so the path stays readable.
+    const u = 1 - t;
+    return 1 - (u * u * u);
+}
+
+function catalogSmoothstep(t) {
+    const x = Math.min(1, Math.max(0, t));
+    return x * x * (3 - (2 * x));
+}
+
+function catalogCartFlyTarget() {
+    return document.querySelector('[data-cart-fly-target]') || document.getElementById('toggleCart');
+}
+
+function catalogFlyImageForSite(siteId, originEl) {
+    const details = document.getElementById('site-details-' + siteId);
+    const card = originEl && originEl.closest ? originEl.closest('.catalog-card, .catalog-mobile-card, .bulk-deal-card') : null;
+    const scopes = [details, card].filter(Boolean);
+    for (let s = 0; s < scopes.length; s++) {
+        const imgs = scopes[s].querySelectorAll('.site-preview-zoom img, .site-image-thumbnail');
+        for (let i = 0; i < imgs.length; i++) {
+            const img = imgs[i];
+            const live = img.currentSrc || img.src || '';
+            if (live && live.indexOf('data:') !== 0) {
+                return live;
+            }
+            const deferred = img.getAttribute('data-src');
+            if (deferred) {
+                return deferred;
+            }
+        }
+    }
+    return '';
+}
+
+function catalogAnnounceCart(label) {
+    const live = document.getElementById('catalogCartLive');
+    if (live) {
+        live.textContent = '';
+        live.textContent = (label || 'Website') + ' added to cart.';
+    }
+    const cart = catalogCartFlyTarget();
+    if (!cart) {
+        return;
+    }
+    const previous = cart.getAttribute('aria-label') || 'Open cart';
+    cart.setAttribute('aria-label', 'Open cart — item added');
+    window.setTimeout(function () {
+        cart.setAttribute('aria-label', previous);
+    }, 2000);
+}
+
+/**
+ * Velora-style fly-to-cart: token travels from the Buy button to the header
+ * cart, then the cart icon pops. Returns true when motion ran (or a reduced-
+ * motion pop), so the caller can skip a blocking toast.
+ */
+function catalogFlyToCart(originEl, meta) {
+    const cart = catalogCartFlyTarget();
+    if (!cart) {
+        return false;
+    }
+
+    const popCart = function () {
+        cart.classList.remove('cart-pop');
+        // Force a style flush so a second add still replays the pop.
+        void cart.offsetWidth;
+        cart.classList.add('cart-pop');
+        window.setTimeout(function () {
+            cart.classList.remove('cart-pop');
+        }, 520);
+    };
+
+    if (catalogPrefersReducedMotion()) {
+        popCart();
+        return true;
+    }
+
+    const origin = originEl && originEl.getBoundingClientRect ? originEl : cart;
+    const startBox = origin.getBoundingClientRect();
+    const endBox = cart.getBoundingClientRect();
+    const x0 = startBox.left + (startBox.width / 2);
+    const y0 = startBox.top + (startBox.height / 2);
+    const x1 = endBox.left + (endBox.width / 2);
+    const y1 = endBox.top + (endBox.height / 2);
+    const dx = x1 - x0;
+    const dy = y1 - y0;
+    const lift = Math.min(160, Math.max(64, Math.abs(dx) * 0.28));
+    const tokenSize = 108;
+
+    const token = document.createElement('div');
+    token.className = 'cart-fly-token';
+    token.setAttribute('aria-hidden', 'true');
+
+    const arrow = document.createElement('div');
+    arrow.className = 'cart-fly-arrow';
+    arrow.innerHTML = '<i class="fa-solid fa-arrow-up" aria-hidden="true"></i>';
+
+    const windowEl = document.createElement('div');
+    windowEl.className = 'cart-fly-window';
+    windowEl.innerHTML = '<div class="cart-fly-window__bar"><span></span><span></span><span></span></div>';
+
+    const body = document.createElement('div');
+    body.className = 'cart-fly-window__body';
+    const imageUrl = catalogFlyImageForSite(meta && meta.siteId, originEl);
+    if (imageUrl) {
+        const img = document.createElement('img');
+        img.alt = '';
+        img.src = imageUrl;
+        body.appendChild(img);
+    } else {
+        body.innerHTML = '<i class="fa-regular fa-image" aria-hidden="true"></i>';
+    }
+    windowEl.appendChild(body);
+
+    token.appendChild(arrow);
+    token.appendChild(windowEl);
+    document.body.appendChild(token);
+
+    const place = function (x, y, scale, t) {
+        token.classList.toggle('is-mid', t > 0.18 && t < 0.85);
+        token.style.transform = 'translate(' + (x - (tokenSize / 2)) + 'px, ' + (y - 48) + 'px) scale(' + scale + ')';
+    };
+
+    // Hold size through mid; last stretch eases down to a tiny chip at Cart.
+    const flyScale = function (t) {
+        if (t <= 0.55) {
+            return 1.0 - (t * 0.22);
+        }
+        return 0.88 - (catalogSmoothstep((t - 0.55) / 0.45) * 0.66);
+    };
+
+    place(x0, y0, flyScale(0), 0);
+
+    const duration = 720;
+    const started = performance.now();
+
+    const frame = function (now) {
+        const progress = Math.min(1, (now - started) / duration);
+        const t = catalogFlyEase(progress);
+        const x = x0 + (dx * t);
+        const y = y0 + (dy * t) - (Math.sin(t * Math.PI) * lift);
+        place(x, y, flyScale(t), t);
+        token.style.opacity = String(1 - (t * 0.08));
+
+        if (progress < 1) {
+            requestAnimationFrame(frame);
+            return;
+        }
+
+        token.remove();
+        popCart();
+    };
+
+    requestAnimationFrame(frame);
+    return true;
+}
+
+window.catalogFlyToCart = catalogFlyToCart;
+window.catalogAnnounceCart = catalogAnnounceCart;
+
 /**
  * Round money the same way PHP round(..., 2) does for catalog prices.
  */
@@ -3879,7 +4049,7 @@ function syncSensitiveSelectionUi(siteId) {
             '<small class="text-muted">List price: <strong>€'
             + listForLabel.toFixed(2)
             + '</strong></small><br>'
-            + '<small class="text-success">Selected: <strong>' + catalogEscapeHtml(selected.type)
+            + '<small class="text-muted">Selected: <strong>' + catalogEscapeHtml(selected.type)
             + '</strong> — You pay: <strong>€' + Number(payTotal).toFixed(2)
             + '</strong> (add-on +€' + selected.additionalPrice.toFixed(2);
         if (effectiveOfferPct > 0) {
@@ -4652,7 +4822,10 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
-        const cartOptions = {};
+        const cartOptions = {
+            quiet: true,
+            flyOrigin: button
+        };
         const bulkHint = button.dataset.bulkHint === '1' || button.hasAttribute('data-bulk-hint');
         if (bulkHint) {
             const packQty = parseInt(button.dataset.bulkQty, 10);
@@ -4674,11 +4847,13 @@ document.addEventListener('DOMContentLoaded', function() {
         Promise.resolve(window.addToCart(id, name, finalPrice, sensitiveType, additionalPrice, basePrice, cartOptions))
             .then(function (result) {
                 if (result && result.ok === false) return;
+                btn.classList.add('is-added');
                 btn.innerHTML = '<i class="fa-solid fa-check" aria-hidden="true"></i> Added!';
                 setTimeout(function () {
+                    btn.classList.remove('is-added');
                     btn.innerHTML = originalText;
                     syncSensitiveSelectionUi(id);
-                }, 1000);
+                }, 1400);
             })
             .finally(function () {
                 btn.dataset.busy = '0';

@@ -68,6 +68,7 @@
 {{-- catalog-page scopes this page's stylesheet. Without it, rules for .table,
      .badge and .form-control reached the cart drawer and the shell chrome. --}}
 <div class="container-fluid catalog-page">
+    <div id="catalogCartLive" class="visually-hidden" aria-live="polite" aria-atomic="true"></div>
     @include('components.ad-banners', ['placement' => 'marketplace', 'audience' => 'advertiser'])
 
     @if(request()->boolean('wizard') && ! empty(\App\Http\Controllers\Advertiser\GuestPostWizardController::stateFromSession()['language']))

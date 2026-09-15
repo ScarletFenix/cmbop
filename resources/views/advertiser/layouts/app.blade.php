@@ -181,7 +181,7 @@
                 $headerCart
             )), 2);
         @endphp
-        <button id="toggleCart" class="btn btn-outline-secondary btn-sm topbar-action" type="button" aria-label="Open cart" title="Cart">
+        <button id="toggleCart" class="btn btn-outline-secondary btn-sm topbar-action" type="button" aria-label="Open cart" title="Cart" data-cart-fly-target>
             <i class="fa fa-shopping-cart" aria-hidden="true"></i>
             <span class="d-none d-sm-inline">Cart</span>
             <span id="cartTotalBadge" class="cart-total-label {{ $headerCartCount > 0 ? '' : 'd-none' }}">€{{ number_format($headerCartTotal, 2) }}</span>
@@ -1076,7 +1076,16 @@
             applyCartPayload(data);
             updateCartDisplay();
             const label = sensitiveType ? (name + ' + ' + sensitiveType) : name;
-            showToast(data.message || (label + ' added to cart.'), 'success');
+            const flew = typeof window.catalogFlyToCart === 'function'
+                && window.catalogFlyToCart(opts.flyOrigin, { siteId: id, name: name });
+            if (!opts.quiet) {
+                showToast(data.message || (label + ' added to cart.'), 'success');
+            } else if (!flew) {
+                showToast(label + ' added to cart.', 'success', { delay: 1800, quiet: true });
+            }
+            if (typeof window.catalogAnnounceCart === 'function') {
+                window.catalogAnnounceCart(label);
+            }
             updateCartDisplay();
             if (opts.openCart || opts.bulk || (Number.isFinite(qty) && qty > 1)) {
                 try { openCart(); } catch (_) { /* cart chrome may not be ready */ }

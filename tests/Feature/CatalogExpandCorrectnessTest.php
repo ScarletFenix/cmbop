@@ -161,6 +161,8 @@ class CatalogExpandCorrectnessTest extends TestCase
         $this->assertStringContainsString('catalog-expand-grid', $html);
         $this->assertStringContainsString('catalog-expand-pricing', $html);
         $this->assertStringContainsString('Sensitive topics', $html);
+        $this->assertStringContainsString('catalog-addon-price', $html);
+        $this->assertStringNotContainsString('text-danger">add-on', $html);
         $this->assertStringContainsString('+€23.00', $html);
         $this->assertMatchesRegularExpression('/→\s*you pay €\d+\.\d{2}/u', $html);
         $this->assertStringContainsString('Screenshot not available yet', $html);
