@@ -1350,22 +1350,22 @@ function bootAdvertiserOrdersPage() {
         const viewBtn = `
                             <button 
                                 type="button"
-                                class="btn btn-outline-secondary btn-action-sm"
+                                class="btn btn-outline-secondary btn-action-sm orders-action-icon"
                                 title="View order"
                                 aria-label="View order"
                                 onclick="viewOrder(${order.id})">
                                 <i class="fa fa-eye" aria-hidden="true"></i>
-                                <span>View</span>
+                                <span class="visually-hidden">View</span>
                             </button>`;
         const chatBtn = `
                             <button 
                                 type="button"
-                                class="${chatClass}"
+                                class="${chatClass} orders-action-icon"
                                 ${chatTitle}
                                 aria-label="Open chat"
                                 onclick="openChat(${order.id}, ${jsAttr(order.order_number || '')})">
                                 <i class="fa fa-comments" aria-hidden="true"></i>
-                                <span>Chat</span>${unreadBadge}
+                                <span class="visually-hidden">Chat</span>${unreadBadge}
                             </button>`;
 
         let primary = '';

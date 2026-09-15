@@ -496,14 +496,25 @@ button.wallet-kpi { cursor: pointer; appearance: none; }
 .action-buttons {
     display: flex;
     flex-direction: row;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     gap: 6px;
     justify-content: flex-end;
     align-items: center;
+    max-width: 16.5rem;
+    margin-left: auto;
 }
 
 .action-btn {
     justify-content: center;
+}
+
+.orders-action-icon.btn-action-sm {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    padding-left: 0;
+    padding-right: 0;
 }
 
 .orders-history-table .orders-col-id {
@@ -528,9 +539,8 @@ button.wallet-kpi { cursor: pointer; appearance: none; }
 }
 .orders-history-table .orders-col-actions {
     width: 1%;
-    min-width: 13rem;
+    min-width: 11rem;
     text-align: right;
-    white-space: nowrap;
     vertical-align: middle;
 }
 
@@ -651,8 +661,12 @@ button.wallet-kpi { cursor: pointer; appearance: none; }
     }
     .orders-site-name,
     .orders-site-url,
-    .next-step-hint {
+    .next-step-hint,
+    .orders-pay-method,
+    .orders-order-number,
+    .orders-history-table .status-badge {
         max-width: none;
+        white-space: normal;
     }
 }
 
