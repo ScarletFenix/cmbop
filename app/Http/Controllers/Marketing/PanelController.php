@@ -76,7 +76,7 @@ class PanelController extends Controller
                 'handler:id,name',
             ])
             ->withCount([
-                'items as pending_items_count' => fn ($q) => $q->whereNull('site_id'),
+                'items as pending_items_count' => fn ($q) => $q->pending(),
             ])
             ->orderBy('created_at')
             ->orderBy('id')

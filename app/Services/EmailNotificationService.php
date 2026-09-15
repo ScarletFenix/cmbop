@@ -92,8 +92,9 @@ class EmailNotificationService
     }
 
     /**
-     * Publisher submitted/updated a site that needs admin review.
-     * Bell always runs even when mail fails or no admin mailbox is configured.
+     * Publisher submitted/updated a site that needs staff review.
+     * Bell always runs even when mail fails or no staff mailbox is configured.
+     * Marketing gets the same mail as admin, with a /marketing sites search URL.
      */
     public function notifyAdminsNewSite(Site $site, string $action = 'create', bool $sendEmail = true): void
     {

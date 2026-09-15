@@ -12,7 +12,13 @@
             ({{ $bulkRequest->publisher?->email ?? '—' }})
             · Status: <strong>{{ $bulkRequest->statusLabel() }}</strong>
             · Sites submitted: {{ $bulkRequest->items->count() ?: ($bulkRequest->estimated_count ?? '—') }}
-            · Pending to add: {{ $pendingItems->count() }}
+        </p>
+        <p class="small mb-0" data-bulk-progress>
+            Added {{ $bulkRequest->addedItemsCount() }}
+            · Rejected {{ $bulkRequest->rejectedItemsCount() }}
+            · Still to Done {{ $pendingItems->count() }}
+            · Publisher filling {{ $bulkRequest->pendingPublisherCount() }}
+            · Ready {{ $bulkRequest->readyForReviewCount() }}
         </p>
     </div>
 
@@ -109,12 +115,13 @@
                                     <th>Website URL</th>
                                     <th>Price</th>
                                     <th>Domain</th>
-                                    <th>Added?</th>
+                                    <th>Status</th>
+                                    <th></th>
                                 </tr>
                             </thead>
                             <tbody>
                                 @forelse($bulkRequest->items as $item)
-                                    <tr>
+                                    <tr id="bulk-item-{{ $item->id }}">
                                         <td>
                                             <a href="{{ $item->site_url }}" target="_blank" rel="noopener noreferrer">
                                                 {{ $item->site_url }}
@@ -131,10 +138,31 @@
                                                 <span class="badge text-bg-light border">Pending</span>
                                             @endif
                                         </td>
+                                        <td class="text-end">
+                                            @if($item->isPending() && $bulkRequest->status !== \App\Models\BulkSiteRequest::STATUS_CANCELLED)
+                                                <form method="POST"
+                                                      action="{{ staff_route('bulk-site-requests.items.reject', [$bulkRequest->id, $item->id]) }}"
+                                                      class="d-flex flex-column flex-sm-row gap-1 justify-content-end"
+                                                      data-slb-confirm="Reject this site only. The rest of the batch stays open."
+                                                      data-slb-confirm-title="Reject this website?"
+                                                      data-slb-confirm-text="Reject site"
+                                                      data-slb-confirm-danger="1">
+                                                    @csrf
+                                                    <input type="text"
+                                                           name="reason"
+                                                           class="form-control form-control-sm"
+                                                           required
+                                                           maxlength="500"
+                                                           placeholder="Reason"
+                                                           aria-label="Reject reason for {{ $item->domain }}">
+                                                    <button type="submit" class="btn btn-sm btn-outline-danger">Reject</button>
+                                                </form>
+                                            @endif
+                                        </td>
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="4" class="text-muted text-center py-3">
+                                        <td colspan="5" class="text-muted text-center py-3">
                                             No URL + price rows (legacy request before in-app submission).
                                         </td>
                                     </tr>
@@ -489,35 +517,28 @@
                 <div class="card-body">
                     <h6 class="fw-semibold mb-1">Advanced: seed with per-row metrics</h6>
                     <p class="small text-muted mb-3">
-                        Optional. Paste custom rows when metrics differ per site.
+                        Legacy requests only (no URL + price list). Paste one site per line.
                         Columns: <code>url,price,da,dr,traffic,country,language[,site_name]</code>
                         @if($pendingItems->isNotEmpty())
                             Only pending URL + price domains from this request can be seeded here.
                         @endif
                     </p>
-                    @php
-                        $seedStarter = $pendingItems->map(function ($item) {
-                            return $item->site_url.','.$item->price.',0,0,0,country,lang';
-                        })->implode("\n");
-                    @endphp
-                    @if($seedStarter !== '')
-                        <div class="small mb-2">
-                            <span class="text-muted">Starter from pending URL + price (replace country/lang and metrics):</span>
-                            <pre class="bg-light border rounded p-2 small mb-2 mt-1" id="bulkSeedStarter" style="max-height:8rem;overflow:auto;">{{ $seedStarter }}</pre>
-                            <button type="button" class="btn btn-sm btn-outline-secondary" id="bulkCopySeedStarter">Copy starter into box</button>
-                        </div>
-                    @endif
-                    <form method="POST" action="{{ staff_route('bulk-site-requests.seed', $bulkRequest) }}">
+                    <form method="POST"
+                          action="{{ staff_route('bulk-site-requests.seed', $bulkRequest) }}"
+                          data-slb-confirm="Seed these pasted rows as drafts and notify the publisher?"
+                          data-slb-confirm-title="Seed draft sites?"
+                          data-slb-confirm-text="Seed">
                         @csrf
                         <textarea name="rows" id="bulkSeedRows" class="form-control font-monospace small @error('rows') is-invalid @enderror" rows="8"
-                                  placeholder="https://example.com,99,40,45,12000,de,de,Example Blog">{{ old_text('rows', $seedStarter) }}</textarea>
+                                  placeholder="https://example.com,99,40,45,12000,de,de,Example Blog">{{ old_text('rows') }}</textarea>
                         @error('rows')<div class="invalid-feedback">{{ $message }}</div>@enderror
-                        <button type="submit" class="btn btn-outline-primary btn-sm mt-2" @disabled(! $bulkRequest->canAddDraftSites())>
+                        <button type="submit" class="btn btn-outline-primary btn-sm mt-2">
                             Seed from pasted rows &amp; notify publisher
                         </button>
                     </form>
                 </div>
             </div>
+            @endif
 
             <div class="card border-0 shadow-sm">
                 <div class="card-body">
@@ -579,14 +600,6 @@
 <script src="{{ asset('assets/js/jquery-3.6.0.min.js') }}?v={{ @filemtime(public_path('assets/js/jquery-3.6.0.min.js')) ?: '1' }}"></script>
 <script src="{{ asset('js/multi-select.js') }}?v={{ @filemtime(public_path('js/multi-select.js')) ?: '1' }}"></script>
 <script>
-document.getElementById('bulkCopySeedStarter')?.addEventListener('click', function () {
-    const starter = document.getElementById('bulkSeedStarter');
-    const box = document.getElementById('bulkSeedRows');
-    if (!starter || !box) return;
-    box.value = starter.textContent.trim();
-    box.focus();
-});
-
 (function () {
     const form = document.getElementById('bulkDoneForm');
     if (!form) return;

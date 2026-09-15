@@ -26,7 +26,7 @@ class ActionConfirmDialogsTest extends TestCase
         $this->assertStringContainsString("opts.looksEnglish !== 'false'", $js);
 
         // Capture-phase listener must only consume slbAllowSubmit for declarative confirms.
-        // Otherwise imperative callers (bulk Done "Add drafts") lose their allow flag.
+        // Otherwise imperative callers (bulk Done confirm) lose their allow flag.
         $this->assertMatchesRegularExpression(
             '/if\s*\(\s*!source\s*\)\s*return;[\s\S]*?slbAllowSubmit[\s\S]*?delete form\.dataset\.slbAllowSubmit/',
             $js
@@ -89,7 +89,7 @@ class ActionConfirmDialogsTest extends TestCase
         $this->assertStringNotContainsString('onclick="return confirm(', $libraryJs);
     }
 
-    public function test_bulk_done_form_wires_seed_drafts_confirm_handshake(): void
+    public function test_bulk_done_form_wires_done_drafts_confirm_handshake(): void
     {
         $path = resource_path('views/admin/bulk-site-requests/show.blade.php');
         $this->assertFileExists($path);

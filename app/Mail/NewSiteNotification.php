@@ -18,6 +18,7 @@ class NewSiteNotification extends PlatformMailable
         parent::__construct();
         $this->site = $site;
         $this->action = $action;
+        $this->recipientUser = $recipient;
     }
 
     /**

@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\BulkSiteRequest;
+use App\Models\BulkSiteRequestItem;
 use App\Models\DepositRequest;
 use App\Models\InAppNotification;
 use App\Models\Order;
@@ -1849,7 +1850,11 @@ class InAppNotificationService
         $created = collect();
 
         foreach ($this->usersWithRoles($roles) as $admin) {
-            $note = $this->notify($admin, $type, $title, $message, $options);
+            $opts = $options;
+            if (array_key_exists('action_url', $opts)) {
+                $opts['action_url'] = staff_ops_url_for($admin, $opts['action_url']);
+            }
+            $note = $this->notify($admin, $type, $title, $message, $opts);
             if ($note) {
                 $created->push($note);
             }
@@ -2572,6 +2577,7 @@ class InAppNotificationService
 
         return User::query()
             ->whereHas('roles', fn ($q) => $q->whereIn('name', $roleNames))
+            ->with('roles')
             ->get();
     }
 

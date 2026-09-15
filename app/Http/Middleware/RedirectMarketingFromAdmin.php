@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Models\Role;
+use App\Support\StaffWorkspace;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -32,7 +33,7 @@ class RedirectMarketingFromAdmin
 
         $rest = ltrim((string) preg_replace('#^admin/?#', '', $request->path()), '/');
 
-        if ($this->isMarketingOpsPath($rest)) {
+        if (StaffWorkspace::isMarketingOpsPath($rest)) {
             $target = '/marketing/'.($rest !== '' ? $rest : 'dashboard');
             if ($qs = $request->getQueryString()) {
                 $target .= '?'.$qs;
