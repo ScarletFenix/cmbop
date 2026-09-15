@@ -369,7 +369,7 @@
                             setTimeout(function () { window.location.reload(); }, 1600);
                             return;
                         }
-                        const row = document.querySelector('[data-ready-site="' + CSS.escape(String(id)) + '"]');
+                        const row = document.querySelector('[data-ready-site="' + String(id).replace(/[^0-9]/g, '') + '"]');
                         if (row) row.remove();
                         if (typeof window.refreshAdminQueueBadges === 'function') {
                             window.refreshAdminQueueBadges({ refillReady: true });

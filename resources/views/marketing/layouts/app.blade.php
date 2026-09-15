@@ -258,6 +258,15 @@
             if (options.refillReady) {
                 const readyShown = document.querySelectorAll('[data-queue="ready-sites"] [data-ready-site]').length;
                 const readyTotal = Number(data.ready_sites) || 0;
+                const remainder = document.querySelector('[data-queue-remainder="ready-sites"]');
+                if (remainder) {
+                    if (readyTotal <= 0) {
+                        remainder.style.display = 'none';
+                    } else {
+                        remainder.style.display = '';
+                        remainder.textContent = 'Showing ' + readyShown + ' of ' + readyTotal;
+                    }
+                }
                 if (document.querySelector('[data-queue="ready-sites"]') && readyTotal > readyShown) {
                     window.location.reload();
                 }

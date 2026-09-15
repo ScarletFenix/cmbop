@@ -140,6 +140,22 @@ class WebsiteLeftoverErrorHardeningTest extends TestCase
         $this->assertStringNotContainsString('SQLSTATE', (string) session('error'));
     }
 
+    public function test_marketing_dashboard_still_renders_when_activity_logs_table_is_gone(): void
+    {
+        $marketer = $this->userWithRole('marketing');
+        Schema::dropIfExists('activity_logs');
+
+        $response = $this->actingAs($marketer)->get(route('marketing.dashboard'));
+
+        $this->assertNotSame(500, $response->status());
+        $response->assertOk()->assertDontSee('SQLSTATE');
+        $this->assertStringNotContainsString('SQLSTATE', (string) session('error'));
+
+        $this->assertSafeJsonFailure(
+            $this->actingAs($marketer)->getJson(route('marketing.dashboard.queue-counts'))
+        );
+    }
+
     public function test_order_timeline_returns_json_when_activities_table_is_gone(): void
     {
         $advertiser = $this->userWithRole('advertiser');
