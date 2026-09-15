@@ -1869,7 +1869,7 @@ function bootAdvertiserOrdersPage() {
         const msg = order.empty_items_message
             || (missing
                 ? `This order has no line items on file, so there is no live URL to show. If you expected a placement here, contact support and mention order ${order.order_number || ('#' + order.id)}.`
-                : 'No placements on this order.');
+                : 'Placement details are missing for this order.');
         if (missing) {
             return `<div class="ov-empty-placements ui-callout ui-callout--info ui-callout--sm ui-callout--flush">
                 <span class="ui-callout__icon" aria-hidden="true"><i class="fa-solid fa-circle-info"></i></span>

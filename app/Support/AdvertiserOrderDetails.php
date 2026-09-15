@@ -53,7 +53,7 @@ final class AdvertiserOrderDetails
             return 'If a published link is later removed, use Report link removed.';
         }
 
-        if ($status === 'cancelled' || $payment === 'refunded') {
+        if ($status === 'cancelled' || $payment === 'refunded' || $payment === 'failed') {
             return '';
         }
 

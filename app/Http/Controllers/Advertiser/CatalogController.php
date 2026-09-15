@@ -4852,14 +4852,16 @@ class CatalogController extends Controller
             && $items->contains(function ($line) {
                 return $line instanceof OrderItem && $line->isContentRevisionRequested();
             });
-        $canReview = $order->status === 'review' && $hasLiveUrl && ! $needsRevision;
+        $liveWork = AdvertiserOrderStatus::isLiveAdvertiserWork($order);
+        $canReview = $liveWork && $order->status === 'review' && $hasLiveUrl && ! $needsRevision;
 
         $order->can_retry_payment = $this->orderCanRetryPayment($order);
-        $order->needs_content_revision = (bool) $needsRevision;
+        $order->needs_content_revision = $liveWork && $needsRevision;
         $order->can_approve = $canReview;
         $order->can_request_changes = $canReview;
         $order->chat_readonly = $order->status === 'cancelled'
-            || $order->payment_status !== 'paid';
+            || ($order->payment_status !== 'paid'
+                && ! ($order->status === 'completed' && $order->payment_status === 'refunded'));
     }
 
     /**
@@ -4906,20 +4908,24 @@ class CatalogController extends Controller
      */
     private function advertiserNeedsActionCount(Request $request, int $userId): int
     {
-        $query = AdvertiserOrderStatus::needsActionQuery($userId);
         $projectId = (int) (filter_number($request->input('project')) ?? 0);
         if ($projectId <= 0) {
-            return $query->count();
+            return AdvertiserOrderStatus::needsActionCountForUser($userId);
         }
 
-        $project = $this->advertiserOwnedProject($request, $userId);
-        if (! $project) {
+        try {
+            $project = $this->advertiserOwnedProject($request, $userId);
+            if (! $project) {
+                return 0;
+            }
+
+            $query = AdvertiserOrderStatus::needsActionQuery($userId);
+            Project::constrainOrdersByHost($query, (string) $project->project_url);
+
+            return $query->count();
+        } catch (\Throwable) {
             return 0;
         }
-
-        Project::constrainOrdersByHost($query, (string) $project->project_url);
-
-        return $query->count();
     }
 
     private function applyAdvertiserProjectOrderFilters($query, Request $request, int $userId): void
@@ -5099,25 +5105,23 @@ class CatalogController extends Controller
             $userId = auth()->id();
             $base = Order::where('user_id', $userId);
 
-            $needsReview = AdvertiserOrderStatus::constrainReviewReady(clone $base)->count();
+            $needsReview = 0;
+            $inProgress = 0;
+            if (AdvertiserOrderStatus::itemsTableAvailable()) {
+                try {
+                    $needsReview = AdvertiserOrderStatus::constrainReviewReady(clone $base)->count();
+                } catch (\Throwable) {
+                    $needsReview = 0;
+                }
+            }
+            try {
+                $inProgress = AdvertiserOrderStatus::constrainInProgress(clone $base)->count();
+            } catch (\Throwable) {
+                $inProgress = 0;
+            }
             $needsAction = AdvertiserOrderStatus::needsActionCountForUser((int) $userId);
-            $inProgress = (clone $base)
-                ->where(function ($q) {
-                    $q->where(function ($pendingPaid) {
-                        $pendingPaid->where('status', 'pending')
-                            ->where('payment_status', 'paid')
-                            ->notAwaitingScheduledRelease();
-                    })->orWhere('status', 'processing');
-                })
-                ->count();
             $completed = (clone $base)->where('status', 'completed')->count();
-            $awaitingPayment = (clone $base)
-                ->where('status', 'pending')
-                ->where(function ($q) {
-                    $q->whereNull('payment_status')
-                        ->orWhere('payment_status', '!=', 'paid');
-                })
-                ->count();
+            $awaitingPayment = AdvertiserOrderStatus::constrainAwaitingPayment(clone $base)->count();
 
             return response()->json([
                 'success' => true,
@@ -5168,24 +5172,14 @@ class CatalogController extends Controller
             if ($statusFilter !== '') {
                 $status = $statusFilter;
                 if ($status === 'awaiting_payment') {
-                    $query->where('status', 'pending')
-                        ->where(function ($q) {
-                            $q->whereNull('payment_status')
-                                ->orWhere('payment_status', '!=', 'paid');
-                        });
+                    AdvertiserOrderStatus::constrainAwaitingPayment($query);
                 } elseif ($status === 'awaiting_publisher') {
                     $query->where('status', 'pending')
                         ->where('payment_status', 'paid')
                         ->notAwaitingScheduledRelease();
                 } elseif ($status === 'in_progress') {
                     // Matches funnel KPI: paid·waiting publisher + publisher working.
-                    $query->where(function ($q) {
-                        $q->where(function ($pendingPaid) {
-                            $pendingPaid->where('status', 'pending')
-                                ->where('payment_status', 'paid')
-                                ->notAwaitingScheduledRelease();
-                        })->orWhere('status', 'processing');
-                    });
+                    AdvertiserOrderStatus::constrainInProgress($query);
                 } elseif ($status === 'needs_action') {
                     $query->whereIn(
                         'id',
@@ -5194,6 +5188,9 @@ class CatalogController extends Controller
                 } elseif ($status === 'review') {
                     // Matches the Needs review KPI: live URL ready, not “in review” without a URL.
                     AdvertiserOrderStatus::constrainReviewReady($query);
+                } elseif ($status === 'processing') {
+                    $query->where('status', 'processing');
+                    AdvertiserOrderStatus::constrainWithoutFailedPayment($query);
                 } else {
                     $query->where('status', $status);
                 }
@@ -5284,7 +5281,7 @@ class CatalogController extends Controller
                 $this->sanitizeAdvertiserOrderItemUrls($order);
                 $this->attachAdvertiserOrderActionFlags($order);
                 $item = $firstItem instanceof OrderItem ? $firstItem : null;
-                if ($item) {
+                if ($item && AdvertiserOrderStatus::isLiveAdvertiserWork($order)) {
                     $item->auto_approve_hours_remaining = (int) $item->getAutoApproveHoursRemaining();
                 }
                 $this->attachDisputeMeta($order, $item, $clawbacks);
@@ -5352,7 +5349,7 @@ class CatalogController extends Controller
             $this->sanitizeAdvertiserOrderItemUrls($order);
             $this->attachAdvertiserOrderActionFlags($order);
             $item = $firstItem instanceof OrderItem ? $firstItem : null;
-            if ($item) {
+            if ($item && AdvertiserOrderStatus::isLiveAdvertiserWork($order)) {
                 $item->auto_approve_hours_remaining = (int) $item->getAutoApproveHoursRemaining();
             }
 
@@ -5486,6 +5483,13 @@ class CatalogController extends Controller
                 ], 400);
             }
 
+            if ($order->payment_status === 'refunded') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This order was refunded and cannot be approved.',
+                ], 422);
+            }
+
             if ($order->payment_status !== 'paid') {
                 return response()->json([
                     'success' => false,
@@ -5515,6 +5519,15 @@ class CatalogController extends Controller
                     'success' => false,
                     'message' => 'Order must be under review to approve (current status: '.$order->status.').',
                 ], 400);
+            }
+
+            if ($order->payment_status === 'refunded') {
+                DB::rollBack();
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This order was refunded and cannot be approved.',
+                ], 422);
             }
 
             if ($order->payment_status !== 'paid') {
@@ -5852,7 +5865,7 @@ class CatalogController extends Controller
         $this->sanitizeAdvertiserOrderItemUrls($order);
         $this->attachAdvertiserOrderActionFlags($order);
         foreach ($order->items as $line) {
-            if (method_exists($line, 'getAutoApproveHoursRemaining')) {
+            if (AdvertiserOrderStatus::isLiveAdvertiserWork($order) && method_exists($line, 'getAutoApproveHoursRemaining')) {
                 $line->auto_approve_hours_remaining = (int) $line->getAutoApproveHoursRemaining();
             }
         }
