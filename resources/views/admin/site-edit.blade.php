@@ -50,7 +50,7 @@
     </div>
 
     @if($site->metrics_manual && ! $marketingListingLocked)
-        <form id="allow-api-overwrite-form" method="POST" action="{{ staff_route('sites.allow-api-metrics', $site->id) }}">
+        <form id="allow-api-overwrite-form" method="POST" action="{{ staff_route('sites.allow-api-metrics', $site->id, false) }}">
             @csrf
         </form>
     @endif
@@ -121,7 +121,7 @@
                         </div>
                         <div class="col-12">
                             @if($site->marketingCanEditDescription())
-                                <form method="POST" action="{{ staff_route('sites.update', $site->id) }}">
+                                <form method="POST" action="{{ staff_route('sites.update', $site->id, false) }}">
                                     @csrf
                                     @method('PUT')
                                     @include('partials.site-description-editor', [
@@ -147,7 +147,7 @@
                         </div>
                     </div>
                 @else
-                <form method="POST" action="{{ staff_route('sites.update', $site->id) }}" enctype="multipart/form-data">
+                <form method="POST" action="{{ staff_route('sites.update', $site->id, false) }}" enctype="multipart/form-data">
                     @csrf
                     @method('PUT')
 
@@ -306,9 +306,9 @@
                     </div>
                 </form>
 
-                <link href="{{ asset('assets/css/multi-select.css') }}?v={{ @filemtime(public_path('assets/css/multi-select.css')) ?: '1' }}" rel="stylesheet">
-                <script src="{{ asset('assets/js/jquery-3.6.0.min.js') }}?v={{ @filemtime(public_path('assets/js/jquery-3.6.0.min.js')) ?: '1' }}"></script>
-                <script src="{{ asset('js/multi-select.js') }}?v={{ @filemtime(public_path('js/multi-select.js')) ?: '1' }}"></script>
+                <link href="{{ same_origin_asset('assets/css/multi-select.css') }}?v={{ @filemtime(public_path('assets/css/multi-select.css')) ?: '1' }}" rel="stylesheet">
+                <script src="{{ same_origin_asset('assets/js/jquery-3.6.0.min.js') }}?v={{ @filemtime(public_path('assets/js/jquery-3.6.0.min.js')) ?: '1' }}"></script>
+                <script src="{{ same_origin_asset('js/multi-select.js') }}?v={{ @filemtime(public_path('js/multi-select.js')) ?: '1' }}"></script>
                 <script>
                 (function () {
                     const prefills = @json($marketingNiches);
@@ -366,7 +366,7 @@
                         Save the advertiser brief, then use Activate. Save does not change status.
                     </div>
                 @endif
-                <form method="POST" action="{{ staff_route('sites.update', $site->id) }}" enctype="multipart/form-data">
+                <form method="POST" action="{{ staff_route('sites.update', $site->id, false) }}" enctype="multipart/form-data">
                     @csrf
                     @method('PUT')
 
@@ -595,7 +595,7 @@
     }
 })();
 </script>
-<script src="{{ asset('assets/js/site-image-upload.js') }}?v={{ @filemtime(public_path('assets/js/site-image-upload.js')) ?: '1' }}"></script>
+<script src="{{ same_origin_asset('assets/js/site-image-upload.js') }}?v={{ @filemtime(public_path('assets/js/site-image-upload.js')) ?: '1' }}"></script>
 <script>
 (function () {
     const imageInput = document.getElementById('site_image');

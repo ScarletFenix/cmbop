@@ -47,7 +47,7 @@
             </div>
         </div>
     @else
-        <form method="POST" action="{{ route('publisher.bulk-sites.review.submit') }}" id="bulkReviewForm">
+        <form method="POST" action="{{ route('publisher.bulk-sites.review.submit', absolute: false) }}" id="bulkReviewForm">
             @csrf
             <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
                 <div class="form-check">

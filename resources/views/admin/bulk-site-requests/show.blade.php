@@ -39,7 +39,7 @@
             <div class="card border-0 shadow-sm bulk-request-ops">
                 <div class="card-body">
                     <h6 class="fw-semibold">Ops actions</h6>
-                    <form method="POST" action="{{ staff_route('bulk-site-requests.notes', $bulkRequest) }}">
+                    <form method="POST" action="{{ staff_route('bulk-site-requests.notes', $bulkRequest, false) }}">
                         @csrf
                         <label class="form-label small mb-1">Internal notes</label>
                         <textarea name="admin_notes" class="form-control form-control-sm" rows="3">{{ old_text('admin_notes', $bulkRequest->admin_notes) }}</textarea>
@@ -47,7 +47,7 @@
                     </form>
 
                     @if($bulkRequest->canMarkSheetSent())
-                        <form method="POST" action="{{ staff_route('bulk-site-requests.sheet-sent', $bulkRequest) }}">
+                        <form method="POST" action="{{ staff_route('bulk-site-requests.sheet-sent', $bulkRequest, false) }}">
                             @csrf
                             <button type="submit" class="btn btn-sm btn-outline-secondary w-100">
                                 Mark sheet emailed (optional)
@@ -55,7 +55,7 @@
                         </form>
                     @endif
                     @if($bulkRequest->canCancel())
-                        <form method="POST" action="{{ staff_route('bulk-site-requests.cancel', $bulkRequest) }}"
+                        <form method="POST" action="{{ staff_route('bulk-site-requests.cancel', $bulkRequest, false) }}"
                               class="bulk-request-cancel">
                             @csrf
                             <input type="hidden" name="reason" value="">
@@ -195,7 +195,7 @@
                         </div>
                     @else
                         <form method="POST"
-                              action="{{ staff_route('bulk-site-requests.done', $bulkRequest) }}"
+                              action="{{ staff_route('bulk-site-requests.done', $bulkRequest, false) }}"
                               id="bulkDoneForm"
                               enctype="multipart/form-data"
                               novalidate
@@ -507,7 +507,7 @@
                             <button type="button" class="btn btn-sm btn-outline-secondary" id="bulkCopySeedStarter">Copy starter into box</button>
                         </div>
                     @endif
-                    <form method="POST" action="{{ staff_route('bulk-site-requests.seed', $bulkRequest) }}">
+                    <form method="POST" action="{{ staff_route('bulk-site-requests.seed', $bulkRequest, false) }}">
                         @csrf
                         <textarea name="rows" id="bulkSeedRows" class="form-control font-monospace small @error('rows') is-invalid @enderror" rows="8"
                                   placeholder="https://example.com,99,40,45,12000,de,de,Example Blog">{{ old_text('rows', $seedStarter) }}</textarea>

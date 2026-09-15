@@ -2434,7 +2434,7 @@ window.showSiteListingPreview = function showSiteListingPreview() {
     const modalEl = document.getElementById('sitePreviewModal');
     if (!body || !modalEl || !window.bootstrap) {
         console.warn('Site listing preview modal is missing');
-        return;
+        return false;
     }
     body.innerHTML = buildSitePreview();
     const previewModal = bootstrap.Modal.getOrCreateInstance(modalEl);
@@ -2442,6 +2442,7 @@ window.showSiteListingPreview = function showSiteListingPreview() {
     requestAnimationFrame(function () {
         syncSitePreviewDescToggles(body);
     });
+    return true;
 };
 
 function resetPublisherSubmitButton() {

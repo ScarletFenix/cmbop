@@ -65,7 +65,7 @@
                     @endif
                 </div>
 
-                <form method="POST" action="{{ route('publisher.bulk-sites.complete.store', $site->id) }}" class="row g-3">
+                <form method="POST" action="{{ route('publisher.bulk-sites.complete.store', $site->id, false) }}" class="row g-3">
                     @csrf
                     <input type="hidden" name="_site_id" value="{{ $site->id }}">
 

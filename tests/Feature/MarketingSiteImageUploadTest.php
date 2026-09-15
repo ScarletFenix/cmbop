@@ -247,7 +247,7 @@ class MarketingSiteImageUploadTest extends TestCase
     {
         Mail::fake();
         $this->mock(ImageOptimizationService::class, function ($mock) {
-            $mock->shouldReceive('storeSafePublicImage')->andReturn('sites/missing-cover.webp');
+            $mock->shouldReceive('storeSafePublicImage')->andReturn(null);
         });
 
         $this->actingAs($this->admin)

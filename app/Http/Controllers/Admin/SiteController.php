@@ -2653,10 +2653,12 @@ class SiteController extends Controller
 
             $stored = app(ImageOptimizationService::class)->storeSafePublicImage($file, 'sites');
 
-            if (! is_string($stored) || $stored === '' || ! $disk->exists($stored)) {
+            if (! is_string($stored) || $stored === '') {
                 return null;
             }
 
+            // Hostinger open_basedir can make exists() false after a good store()
+            // (same class of leftover as is_file() on PHP tmp). Trust the path.
             return $stored;
         } catch (\Throwable $e) {
             Log::error('Staff site image store failed', [

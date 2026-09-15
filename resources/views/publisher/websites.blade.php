@@ -722,7 +722,7 @@
     {{-- Guided bulk: publisher submits URL + price only (marketing fills metrics) --}}
     <div class="modal fade" id="bulkRequestModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-xl modal-dialog-scrollable">
-            <form method="POST" action="{{ route('publisher.bulk-sites.request') }}" class="modal-content" id="bulkRequestForm" novalidate>
+            <form method="POST" action="{{ route('publisher.bulk-sites.request', absolute: false) }}" class="modal-content" id="bulkRequestForm" novalidate>
                 @csrf
                 <div class="modal-header">
                     <h5 class="modal-title">Add many websites</h5>
@@ -1000,7 +1000,7 @@
                         Each site still needs admin approval before it goes live.
                     </p>
                 </div>
-                <a href="{{ route('publisher.sites.bulk-template') }}" class="btn btn-sm btn-outline-secondary">
+                <a href="{{ route('publisher.sites.bulk-template', absolute: false) }}" class="btn btn-sm btn-outline-secondary">
                     <i class="fa fa-download me-1"></i> Download CSV template
                 </a>
             </div>
@@ -1019,7 +1019,7 @@
                 </ul>
             </div>
 
-            <form method="POST" action="{{ route('publisher.sites.bulk-import') }}" enctype="multipart/form-data">
+            <form method="POST" action="{{ route('publisher.sites.bulk-import', absolute: false) }}" enctype="multipart/form-data">
                 @csrf
                 <div class="row g-3 align-items-end">
                     <div class="col-md-7">
@@ -1045,7 +1045,7 @@
 
     <div class="card shadow-sm border-0 d-none" id="formCard">
         <div class="card-body">
-            <form id="addSiteForm" class="needs-validation" novalidate method="POST" action="{{ route('publisher.sites.store') }}">
+            <form id="addSiteForm" class="needs-validation" novalidate method="POST" action="{{ route('publisher.sites.store', absolute: false) }}">
                 @csrf
                 <input type="hidden" name="_method" id="methodField" value="POST">
 
@@ -1535,11 +1535,12 @@ window.PublisherWebsitesConfig = {
         categories: @json($pwOldCategories),
     },
     routes: {
-        ajax: @json(route('publisher.sites.ajax')),
-        store: @json(route('publisher.sites.store')),
-        login: @json(route('login')),
-        balance: @json(route('publisher.balance')),
-        promotionsWallet: @json(route('publisher.promotions.wallet')),
+        ajax: @json(route('publisher.sites.ajax', absolute: false)),
+        store: @json(route('publisher.sites.store', absolute: false)),
+        login: @json(route('login', absolute: false)),
+        balance: @json(route('publisher.balance', absolute: false)),
+        promotionsWallet: @json(route('publisher.promotions.wallet', absolute: false)),
+        claim: @json(route('publisher.sites.claim', absolute: false)),
     },
     bulkMinPercent: {{ (int) config('site_promotions.bulk.min_percent', 10) }},
     bulkMaxPercent: {{ (int) config('site_promotions.bulk.max_percent', 80) }},
@@ -2364,7 +2365,7 @@ addBtn.on('click', function() {
         } else {
             $('#methodField').val('POST');
         }
-        $('#addSiteForm').attr('action', "{{ route('publisher.sites.store') }}");
+        $('#addSiteForm').attr('action', (window.PublisherWebsitesConfig && window.PublisherWebsitesConfig.routes.store) || '/publisher/websites/store');
         if (quill) quill.root.innerHTML = '';
         submitBtn.prop('disabled', false).text('Review & submit');
         window.sitePreviewConfirmed = false;
@@ -2436,8 +2437,11 @@ $('#addSiteForm').submit(function(e){
         setWizardStep(wizardStep);
     } else if (!window.sitePreviewConfirmed) {
         e.preventDefault();
-        if (typeof window.showSiteListingPreview === 'function') {
-            window.showSiteListingPreview();
+        const shown = typeof window.showSiteListingPreview === 'function'
+            && window.showSiteListingPreview();
+        if (!shown) {
+            window.sitePreviewConfirmed = true;
+            HTMLFormElement.prototype.submit.call(form);
         }
     } else {
         if ($('#methodField').val() !== 'PUT') {
@@ -2732,7 +2736,7 @@ function fetchSites(page = 1, query = '', opts = {}) {
     $('#sitesTableWrapper').html('<div class="text-muted">Loading...</div>');
 
     $.ajax({
-        url: '{{ route("publisher.sites.ajax") }}',
+        url: (window.PublisherWebsitesConfig && window.PublisherWebsitesConfig.routes.ajax) || '/publisher/websites/ajax',
         method: 'GET',
         dataType: 'html',
         data: { page: page, query: query, status: sitesStatusFilter },
@@ -2744,7 +2748,7 @@ function fetchSites(page = 1, query = '', opts = {}) {
                 $('#sitesTableWrapper').html(
                     '<div class="text-center py-4">' +
                     '<div class="text-danger mb-2">Your session expired. Please refresh and sign in again.</div>' +
-                    '<a class="btn btn-sm btn-primary" href="' + @json(route('login')) + '">Sign in</a>' +
+                    '<a class="btn btn-sm btn-primary" href="' + ((window.PublisherWebsitesConfig && window.PublisherWebsitesConfig.routes.login) || '/login') + '">Sign in</a>' +
                     '</div>'
                 );
                 return;
@@ -3161,7 +3165,7 @@ closeBtn.on('click', function(){
     $('.readonly-note').remove();
     setWizardStep(1);
     $('#wizardDraftHint').text('');
-    $('#addSiteForm').attr('action', "{{ route('publisher.sites.store') }}");
+    $('#addSiteForm').attr('action', (window.PublisherWebsitesConfig && window.PublisherWebsitesConfig.routes.store) || '/publisher/websites/store');
     $('#methodField').remove();
     $('#addSiteForm').append('<input type="hidden" name="_method" id="methodField" value="POST">');
     $('#submitBtn').text('Review & submit');
@@ -3215,7 +3219,7 @@ $('#claimWebsiteForm').on('submit', async function (e) {
     e.preventDefault();
     const fd = new FormData(this);
     const payload = Object.fromEntries(fd.entries());
-    const res = await fetch(`{{ route('publisher.sites.claim') }}`, {
+    const res = await fetch((window.PublisherWebsitesConfig && window.PublisherWebsitesConfig.routes.claim) || '/publisher/sites/claim', {
         method: 'POST',
         headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Accept': 'application/json', 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -3230,8 +3234,8 @@ $('#claimWebsiteForm').on('submit', async function (e) {
     }
 });
 </script>
-<script src="{{ asset('js/multi-select.js') }}?v={{ @filemtime(public_path('js/multi-select.js')) ?: '1' }}"></script>
-<script src="{{ asset('assets/js/publisher-websites-bulk.js') }}?v={{ @filemtime(public_path('assets/js/publisher-websites-bulk.js')) ?: '1' }}"></script>
-<script src="{{ asset('assets/js/publisher-websites.js') }}?v={{ @filemtime(public_path('assets/js/publisher-websites.js')) ?: '1' }}"></script>
+<script src="{{ same_origin_asset('js/multi-select.js') }}?v={{ @filemtime(public_path('js/multi-select.js')) ?: '1' }}"></script>
+<script src="{{ same_origin_asset('assets/js/publisher-websites-bulk.js') }}?v={{ @filemtime(public_path('assets/js/publisher-websites-bulk.js')) ?: '1' }}"></script>
+<script src="{{ same_origin_asset('assets/js/publisher-websites.js') }}?v={{ @filemtime(public_path('assets/js/publisher-websites.js')) ?: '1' }}"></script>
 
 @endsection

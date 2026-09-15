@@ -2,6 +2,7 @@
 
 // bootstrap/app.php
 
+use App\Http\Middleware\AlignGeneratedUrlsWithRequest;
 use App\Http\Middleware\BlockSuspendedUsers;
 use App\Http\Middleware\CanonicalHost;
 use App\Http\Middleware\DrainQueuedMail;
@@ -60,6 +61,9 @@ return Application::configure(basePath: dirname(__DIR__))
             $middleware->prependToGroup('web', CanonicalHost::class);
         }
         $webAppend = [];
+        if ($loadAppClass('app/Http/Middleware/AlignGeneratedUrlsWithRequest.php')) {
+            $webAppend[] = AlignGeneratedUrlsWithRequest::class;
+        }
         if ($loadAppClass('app/Http/Middleware/SetLocale.php')) {
             $webAppend[] = SetLocale::class;
         }
