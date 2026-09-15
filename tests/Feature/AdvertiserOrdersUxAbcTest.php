@@ -116,10 +116,12 @@ class AdvertiserOrdersUxAbcTest extends TestCase
         $this->assertStringContainsString('Needs attention first', $html);
         $this->assertStringContainsString('value="date_desc"', $html);
         $this->assertStringContainsString('value="total_desc"', $html);
-        $this->assertStringContainsString('<th>Order #</th>', $html);
+        $this->assertStringContainsString('<th class="orders-col-id">Order #</th>', $html);
         $this->assertStringContainsString('<th>Total</th>', $html);
         $this->assertStringContainsString('<th>Payment</th>', $html);
-        $this->assertStringContainsString('<th width="240">Actions</th>', $html);
+        $this->assertStringContainsString('<th class="orders-col-actions">Actions</th>', $html);
+        $this->assertStringContainsString('orders-history-table', $html);
+        $this->assertStringContainsString('orders-history-head', $html);
         $this->assertStringNotContainsString('<th>Order ID</th>', $html);
         $this->assertStringNotContainsString('<th>Sensitive Price</th>', $html);
         $this->assertStringNotContainsString('<th>Reference Code</th>', $html);
@@ -138,7 +140,29 @@ class AdvertiserOrdersUxAbcTest extends TestCase
         $this->assertStringContainsString('.orders-more-sites', $css);
         $this->assertStringContainsString('.orders-sort-select', $css);
         $this->assertStringContainsString('.orders-project-chip', $css);
+        $this->assertStringContainsString('.orders-history-table', $css);
+        $this->assertStringContainsString('.orders-site-url', $css);
         $this->assertStringContainsString('min-width: 9.75rem', $css);
+        $this->assertMatchesRegularExpression(
+            '/\.action-buttons\s*\{[^}]*flex-direction:\s*row/s',
+            $css
+        );
+        $this->assertMatchesRegularExpression(
+            '/\.action-buttons\s*\{[^}]*flex-wrap:\s*nowrap/s',
+            $css
+        );
+        $this->assertMatchesRegularExpression(
+            '/\.btn-action-sm\s*\{[^}]*white-space:\s*nowrap/s',
+            $css
+        );
+        $this->assertMatchesRegularExpression(
+            '/\.next-step-hint\s*\{[^}]*text-overflow:\s*ellipsis/s',
+            $css
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/\.action-buttons\s*\{[^}]*flex-direction:\s*column/s',
+            $css
+        );
         $this->assertStringContainsString('type="search"', $html);
         $this->assertStringContainsString('id="ordersSearchStatus"', $html);
         $this->assertStringContainsString('id="ordersSearchClear"', $html);
@@ -250,6 +274,11 @@ class AdvertiserOrdersUxAbcTest extends TestCase
         $this->assertStringContainsString('orders-total--refunded', $renderOrdersFn[1]);
         $this->assertStringContainsString('formatEuro(order.total_amount)', $renderOrdersFn[1]);
         $this->assertStringContainsString('renderOrderRowActions(order)', $renderOrdersFn[1]);
+        $this->assertStringContainsString('ordersSiteHost', $renderOrdersFn[1]);
+        $this->assertStringContainsString('orders-site-url', $renderOrdersFn[1]);
+        $this->assertStringContainsString('orders-row', $renderOrdersFn[1]);
+        $this->assertStringContainsString('function ordersSiteHost', $js);
+        $this->assertStringContainsString('btn-action-sm', $rowActionsFn[1]);
         $this->assertStringContainsString('orders-total--refunded', $js);
         $this->assertStringContainsString('formatEuro(order.total_amount)', $js);
         $this->assertStringNotContainsString('reportLinkRemoved', $renderOrdersFn[1]);

@@ -1,5 +1,9 @@
 @extends('advertiser.layouts.app')
 
+@push('page-styles')
+<link rel="stylesheet" href="{{ same_origin_asset('assets/css/advertiser-orders.css') }}?v={{ @filemtime(public_path('assets/css/advertiser-orders.css')) ?: '1' }}">
+@endpush
+
 @section('content')
 <div class="container-fluid">
     
@@ -198,15 +202,15 @@
 
     <!-- Orders Table -->
     <div class="card border-0 shadow-sm" id="ordersResultsCard">
-        <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
-            <div class="d-flex align-items-center gap-2">
-                <span><i class="fa fa-shopping-bag me-2"></i> Order History</span>
+        <div class="card-header bg-white orders-history-head">
+            <div class="orders-history-head__title">
+                <span class="fw-semibold"><i class="fa fa-shopping-bag me-2" aria-hidden="true"></i>Order History</span>
+                <span id="ordersAttentionChip" class="badge rounded-pill text-bg-light border orders-attention-chip{{ in_array(search_text(request('sort')), ['date_desc', 'date_asc', 'total_desc'], true) ? ' d-none' : '' }}">Needs attention first</span>
                 <span id="ordersSearchBusy" class="orders-search-busy d-none text-muted small" aria-hidden="true">
                     <i class="fa fa-spinner fa-spin me-1"></i>Searching…
                 </span>
             </div>
-            <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
-                <span id="ordersAttentionChip" class="badge rounded-pill text-bg-light border orders-attention-chip{{ in_array(search_text(request('sort')), ['date_desc', 'date_asc', 'total_desc'], true) ? ' d-none' : '' }}">Needs attention first</span>
+            <div class="orders-history-head__meta">
                 <label class="small text-muted mb-0" for="ordersSort">Sort</label>
                 <select id="ordersSort" name="sort" class="form-select form-select-sm orders-sort-select" aria-label="Sort orders">
                     <option value="attention" {{ search_text(request('sort')) === '' || search_text(request('sort')) === 'attention' ? 'selected' : '' }}>Needs attention first</option>
@@ -219,16 +223,16 @@
         </div>
         <div class="card-body p-0">
             <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0 data-table">
+                <table class="table table-hover align-middle mb-0 data-table orders-history-table">
                     <thead class="table-light">
                         <tr>
-                            <th>Order #</th>
-                            <th>Site</th>
-                            <th>Date</th>
-                            <th>Total</th>
-                            <th>Payment</th>
-                            <th>Status</th>
-                            <th width="240">Actions</th>
+                            <th class="orders-col-id">Order #</th>
+                            <th class="orders-col-site">Site</th>
+                            <th class="orders-col-date">Date</th>
+                            <th class="orders-col-total">Total</th>
+                            <th class="orders-col-payment">Payment</th>
+                            <th class="orders-col-status">Status</th>
+                            <th class="orders-col-actions">Actions</th>
                         </tr>
                     </thead>
                     <tbody id="ordersTableBody">
@@ -293,8 +297,6 @@
 </div>
 
 @include('partials.order-chat-modal')
-
-<link rel="stylesheet" href="{{ same_origin_asset('assets/css/advertiser-orders.css') }}?v={{ @filemtime(public_path('assets/css/advertiser-orders.css')) ?: '1' }}">
 @endsection
 
 @push('scripts')
