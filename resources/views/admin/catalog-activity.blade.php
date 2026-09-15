@@ -237,7 +237,7 @@
                                 <tr>
                                     <td>
                                         <div class="fw-semibold">
-                                            <a href="{{ route('admin.users.index', ['user' => $uid]) }}#user-{{ $uid }}" class="link-dark">{{ $row['user']->name ?: '—' }}</a>
+                                            <a href="{{ route('admin.users.show', $uid) }}" class="link-dark">{{ $row['user']->name ?: '—' }}</a>
                                         </div>
                                         <div class="small text-muted">{{ $row['user']->email }}</div>
                                         <div class="small text-muted">{{ $row['account_age_days'] }} days old</div>

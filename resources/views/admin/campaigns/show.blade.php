@@ -101,7 +101,7 @@
                             <tr>
                                 <td>
                                     @if($recipient->user)
-                                        <a href="{{ route('admin.users.index', ['user' => $recipient->user_id]) }}#user-{{ $recipient->user_id }}" class="link-dark">{{ $recipient->user->name }}</a>
+                                        <a href="{{ route('admin.users.show', $recipient->user_id) }}" class="link-dark">{{ $recipient->user->name }}</a>
                                     @else
                                         <span class="text-muted">User #{{ $recipient->user_id }}</span>
                                     @endif

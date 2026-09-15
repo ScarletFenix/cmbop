@@ -133,7 +133,7 @@
                             <td class="small">
                                 <div>
                                     @if($invoice->user_id)
-                                        <a href="{{ route('admin.users.index', ['user' => $invoice->user_id]) }}">{{ $invoice->customer_name ?: $invoice->user?->name ?: '—' }}</a>
+                                        <a href="{{ route('admin.users.show', $invoice->user_id) }}">{{ $invoice->customer_name ?: $invoice->user?->name ?: '—' }}</a>
                                     @else
                                         {{ $invoice->customer_name ?: '—' }}
                                     @endif

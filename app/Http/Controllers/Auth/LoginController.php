@@ -79,6 +79,17 @@ class LoginController extends Controller
             return $this->invalidCredentialsResponse();
         }
 
+        if ($user->isSuspended()) {
+            Auth::logout();
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+
+            return response()->json([
+                'status' => 'error',
+                'message' => UserMessages::get('login.suspended'),
+            ]);
+        }
+
         $request->session()->regenerate();
 
         // Relative dashboard path — survives APP_URL=localhost misconfig

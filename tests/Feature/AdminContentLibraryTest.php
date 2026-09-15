@@ -738,7 +738,7 @@ class AdminContentLibraryTest extends TestCase
             ->assertOk()
             ->assertSee('Support Detail Piece')
             ->assertSee($advertiser->email)
-            ->assertSee(route('admin.users.index', ['user' => $advertiser->id]), false)
+            ->assertSee(route('admin.users.show', $advertiser), false)
             ->assertSee(route('admin.orders.show', $order), false)
             ->assertSee('Library Staff Site')
             ->assertSee('Images are not covered by a rights claim')

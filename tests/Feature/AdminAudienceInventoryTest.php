@@ -159,7 +159,7 @@ class AdminAudienceInventoryTest extends TestCase
         $this->actingAs($admin)
             ->get(route('admin.audiences.index'))
             ->assertOk()
-            ->assertSee(route('admin.users.index', ['user' => $advertiser->id], false), false);
+            ->assertSee(route('admin.users.show', $advertiser, false), false);
     }
 
     public function test_paid_and_deposited_intersection_tabs(): void

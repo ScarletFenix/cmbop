@@ -14,7 +14,7 @@
                     <div class="text-muted">{{ $item->email ?: $item->user?->email }}</div>
                 @endif
                 @if($item->user_id)
-                    <a href="{{ route('admin.users.index', ['user' => $item->user_id]) }}#user-{{ $item->user_id }}">Open user</a>
+                    <a href="{{ route('admin.users.show', $item->user_id) }}">Open user</a>
                 @endif
             </dd>
             @if($tab === 'problems')
@@ -52,7 +52,7 @@
                 {{ $item->user?->name ?? '—' }}
                 <div class="text-muted">{{ $item->user?->email ?? '' }}</div>
                 @if($item->user_id)
-                    <a href="{{ route('admin.users.index', ['user' => $item->user_id]) }}#user-{{ $item->user_id }}">Open user</a>
+                    <a href="{{ route('admin.users.show', $item->user_id) }}">Open user</a>
                 @endif
             </dd>
             <dt class="col-sm-4">Search</dt>
@@ -77,7 +77,7 @@
                 {{ $item->claimer?->name ?? '—' }}
                 <div class="text-muted">{{ $item->contact_email ?: ($item->claimer?->email ?? '') }}</div>
                 @if($item->claimer_id)
-                    <a href="{{ route('admin.users.index', ['user' => $item->claimer_id]) }}#user-{{ $item->claimer_id }}">Open user</a>
+                    <a href="{{ route('admin.users.show', $item->claimer_id) }}">Open user</a>
                 @endif
                 <div>{{ !empty($ctx['claimer_has_publisher_role']) ? 'Has publisher role' : 'No publisher role yet' }}</div>
             </dd>
@@ -86,7 +86,7 @@
                 {{ $item->site?->publisher?->name ?? '—' }}
                 <div class="text-muted">{{ $item->site?->publisher?->email ?? '' }}</div>
                 @if($item->site?->publisher_id)
-                    <a href="{{ route('admin.users.index', ['user' => $item->site->publisher_id]) }}#user-{{ $item->site->publisher_id }}">Open user</a>
+                    <a href="{{ route('admin.users.show', $item->site->publisher_id) }}">Open user</a>
                 @endif
             </dd>
             <dt class="col-sm-4">Verification</dt>

@@ -33,12 +33,8 @@
     $scheduleTimezone = $hasPublicationSchedule
         ? $order->scheduleTimezoneOrUtc()
         : null;
-    $advertiserAdminUrl = $order->user
-        ? route('admin.users.index', ['user' => $order->user->id]).'#user-'.$order->user->id
-        : null;
-    $publisherAdminUrl = $publisher
-        ? route('admin.users.index', ['user' => $publisher->id]).'#user-'.$publisher->id
-        : null;
+    $advertiserAdminUrl = $order->user?->adminShowUrl();
+    $publisherAdminUrl = $publisher?->adminShowUrl();
 @endphp
 <div class="container-fluid">
     @include('admin.partials.page-header', [
@@ -241,7 +237,7 @@
                                 @if($linePublisher && $loop->count > 1)
                                     <div class="small text-muted">
                                         Publisher:
-                                        <a href="{{ route('admin.users.index', ['user' => $linePublisher->id]) }}#user-{{ $linePublisher->id }}" class="link-dark">{{ $linePublisher->name }}</a>
+                                        <a href="{{ route('admin.users.show', $linePublisher) }}" class="link-dark">{{ $linePublisher->name }}</a>
                                     </div>
                                 @endif
                             @empty

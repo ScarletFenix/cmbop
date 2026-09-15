@@ -337,7 +337,7 @@ class OrderController extends Controller
             return null;
         }
 
-        return route('admin.users.index', ['user' => $user->id]).'#user-'.$user->id;
+        return $user->adminShowUrl();
     }
 
     /**

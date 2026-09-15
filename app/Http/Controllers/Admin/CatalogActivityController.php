@@ -825,7 +825,7 @@ class CatalogActivityController extends Controller
 
     private function userUrl(int $userId): string
     {
-        return route('admin.users.index', ['user' => $userId]).'#user-'.$userId;
+        return route('admin.users.show', $userId);
     }
 
     private function copyStrikeColumnsReady(): bool

@@ -82,6 +82,14 @@
   background: var(--hover-tint-strong, #d7f0f0) !important;
 }
 
+.user-suspended-row {
+  background: #fde8e8 !important;
+}
+
+.user-suspended-row:hover {
+  background: #f8d4e0 !important;
+}
+
 .user-value-badge {
   font-size: 0.7rem;
   font-weight: 600;

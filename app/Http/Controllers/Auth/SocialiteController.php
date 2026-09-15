@@ -332,6 +332,10 @@ class SocialiteController extends Controller
 
     private function loginAndRedirect(User $user): RedirectResponse
     {
+        if ($user->isSuspended()) {
+            return $this->loginRedirect(UserMessages::get('login.suspended'));
+        }
+
         Auth::login($user, true);
         request()->session()->regenerate();
 

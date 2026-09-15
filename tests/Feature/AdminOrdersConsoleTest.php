@@ -710,8 +710,8 @@ class AdminOrdersConsoleTest extends TestCase
             'reason' => 'Live link was removed after approval.',
         ]);
 
-        $advertiserUrl = route('admin.users.index', ['user' => $advertiser->id]).'#user-'.$advertiser->id;
-        $publisherUrl = route('admin.users.index', ['user' => $publisher->id]).'#user-'.$publisher->id;
+        $advertiserUrl = route('admin.users.show', $advertiser);
+        $publisherUrl = route('admin.users.show', $publisher);
         $siteUrl = route('admin.sites.edit', $site->id);
 
         $this->actingAs($admin)
@@ -1128,8 +1128,8 @@ class AdminOrdersConsoleTest extends TestCase
         $site = $this->siteFor($publisher);
         $order = $this->orderFor($advertiser, $site);
 
-        $advertiserUrl = route('admin.users.index', ['user' => $advertiser->id]).'#user-'.$advertiser->id;
-        $publisherUrl = route('admin.users.index', ['user' => $publisher->id]).'#user-'.$publisher->id;
+        $advertiserUrl = route('admin.users.show', $advertiser);
+        $publisherUrl = route('admin.users.show', $publisher);
         $siteUrl = route('admin.sites.edit', $site->id);
 
         $this->actingAs($admin)
