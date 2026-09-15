@@ -20,6 +20,52 @@ function ordersUrl(pathSuffix) {
     return base + pathSuffix;
 }
 
+function ordersProjectFilterValues() {
+    return {
+        project: String(document.getElementById('projectFilter')?.value || '').trim(),
+        project_stage: String(document.getElementById('projectStageFilter')?.value || '').trim(),
+    };
+}
+
+function ordersProjectStageLabel(stage) {
+    const labels = (OrdersCfg && OrdersCfg.projectStageLabels) || {};
+    return labels[stage] || '';
+}
+
+function updateOrdersProjectChip() {
+    const chip = document.getElementById('ordersProjectChip');
+    const labelEl = document.getElementById('ordersProjectChipLabel');
+    if (!chip) return;
+    const { project, project_stage } = ordersProjectFilterValues();
+    if (!project) {
+        chip.classList.add('d-none');
+        return;
+    }
+    const namedId = String(chip.getAttribute('data-project-id') || '');
+    const name = (namedId && namedId === project)
+        ? (chip.getAttribute('data-project-name') || OrdersCfg.projectName || 'Project')
+        : 'Project';
+    const stageLabel = ordersProjectStageLabel(project_stage);
+    if (labelEl) {
+        labelEl.textContent = stageLabel ? `Project: ${name} · ${stageLabel}` : `Project: ${name}`;
+    }
+    chip.classList.remove('d-none');
+}
+
+function clearOrdersProjectStageFilter() {
+    const stageEl = document.getElementById('projectStageFilter');
+    if (stageEl) stageEl.value = '';
+    updateOrdersProjectChip();
+}
+
+function clearOrdersProjectFilter() {
+    const projectEl = document.getElementById('projectFilter');
+    const stageEl = document.getElementById('projectStageFilter');
+    if (projectEl) projectEl.value = '';
+    if (stageEl) stageEl.value = '';
+    updateOrdersProjectChip();
+}
+
 let currentPage = 1;
 let currentChatOrderId = null;
 
@@ -65,6 +111,9 @@ function applyOrdersStatusFilter(status) {
     const sel = document.getElementById('statusFilter');
     if (!sel) return;
     sel.value = status || '';
+    if (status) {
+        clearOrdersProjectStageFilter();
+    }
     currentPage = 1;
     if (typeof window.fetchOrders === 'function') {
         window.fetchOrders(1, { historyMode: 'push' });
@@ -257,12 +306,19 @@ function bootAdvertiserOrdersPage() {
         document.getElementById('dateTo').value = '';
         const sortEl = document.getElementById('ordersSort');
         if (sortEl) sortEl.value = 'attention';
+        clearOrdersProjectFilter();
         updateOrdersSearchClearVisibility();
         currentPage = 1;
         if (ordersSearchTimer) {
             clearTimeout(ordersSearchTimer);
             ordersSearchTimer = null;
         }
+        fetchOrders(1, { historyMode: 'push' });
+    });
+
+    document.getElementById('ordersProjectChipClear')?.addEventListener('click', function () {
+        clearOrdersProjectFilter();
+        currentPage = 1;
         fetchOrders(1, { historyMode: 'push' });
     });
 
@@ -283,6 +339,9 @@ function bootAdvertiserOrdersPage() {
     // Dropdown / date filters live-refresh the table (catalog-style), not only on Filter click.
     ['statusFilter', 'paymentStatusFilter', 'paymentMethodFilter', 'dateFrom', 'dateTo', 'ordersSort'].forEach(function (id) {
         document.getElementById(id)?.addEventListener('change', function () {
+            if (id === 'statusFilter' && (document.getElementById('statusFilter')?.value || '')) {
+                clearOrdersProjectStageFilter();
+            }
             currentPage = 1;
             fetchOrders(1, { historyMode: 'replace', intent: 'search' });
         });
@@ -301,8 +360,10 @@ function bootAdvertiserOrdersPage() {
         setVal('dateFrom', 'date_from');
         setVal('dateTo', 'date_to');
         setVal('ordersSort', 'sort');
+        setVal('projectFilter', 'project');
+        setVal('projectStageFilter', 'project_stage');
         // Clear fields that are no longer in the URL (browser back/forward)
-        ['searchInput', 'statusFilter', 'paymentStatusFilter', 'paymentMethodFilter', 'dateFrom', 'dateTo', 'ordersSort'].forEach((id) => {
+        ['searchInput', 'statusFilter', 'paymentStatusFilter', 'paymentMethodFilter', 'dateFrom', 'dateTo', 'ordersSort', 'projectFilter', 'projectStageFilter'].forEach((id) => {
             const el = document.getElementById(id);
             if (!el) return;
             const key = id === 'searchInput' ? 'search'
@@ -311,6 +372,8 @@ function bootAdvertiserOrdersPage() {
                 : id === 'paymentMethodFilter' ? 'payment_method'
                 : id === 'dateFrom' ? 'date_from'
                 : id === 'dateTo' ? 'date_to'
+                : id === 'projectFilter' ? 'project'
+                : id === 'projectStageFilter' ? 'project_stage'
                 : 'sort';
             if (!params.has(key)) el.value = id === 'ordersSort' ? 'attention' : '';
         });
@@ -324,6 +387,7 @@ function bootAdvertiserOrdersPage() {
         if (typeof updateOrdersAttentionChip === 'function') {
             updateOrdersAttentionChip();
         }
+        updateOrdersProjectChip();
     }
     window.hydrateOrdersFiltersFromUrl = hydrateOrdersFiltersFromUrl;
 
@@ -337,6 +401,8 @@ function bootAdvertiserOrdersPage() {
             date_from: document.getElementById('dateFrom')?.value || '',
             date_to: document.getElementById('dateTo')?.value || '',
             sort: ordersListSort() === 'attention' ? '' : ordersListSort(),
+            project: ordersProjectFilterValues().project,
+            project_stage: ordersProjectFilterValues().project_stage,
         };
         Object.keys(map).forEach((key) => {
             if (map[key]) url.searchParams.set(key, map[key]);
@@ -764,6 +830,7 @@ function bootAdvertiserOrdersPage() {
     };
 
     function ordersHaveActiveFilters() {
+        const projectFilters = ordersProjectFilterValues();
         return !!(
             (document.getElementById('searchInput')?.value || '').trim()
             || document.getElementById('statusFilter')?.value
@@ -771,6 +838,8 @@ function bootAdvertiserOrdersPage() {
             || document.getElementById('paymentMethodFilter')?.value
             || document.getElementById('dateFrom')?.value
             || document.getElementById('dateTo')?.value
+            || projectFilters.project
+            || projectFilters.project_stage
             || ordersListSort() !== 'attention'
         );
     }
@@ -804,6 +873,7 @@ function bootAdvertiserOrdersPage() {
         const dateFrom = document.getElementById('dateFrom')?.value || '';
         const dateTo = document.getElementById('dateTo')?.value || '';
         const sort = ordersListSort();
+        const projectFilters = ordersProjectFilterValues();
 
         const listUrl = ordersRoute('list');
         if (!listUrl) {
@@ -819,7 +889,10 @@ function bootAdvertiserOrdersPage() {
         if (dateFrom) url += `&date_from=${encodeURIComponent(dateFrom)}`;
         if (dateTo) url += `&date_to=${encodeURIComponent(dateTo)}`;
         if (sort && sort !== 'attention') url += `&sort=${encodeURIComponent(sort)}`;
+        if (projectFilters.project) url += `&project=${encodeURIComponent(projectFilters.project)}`;
+        if (projectFilters.project_stage) url += `&project_stage=${encodeURIComponent(projectFilters.project_stage)}`;
         updateOrdersAttentionChip();
+        updateOrdersProjectChip();
 
         if (syncUrl && typeof window.syncOrdersFiltersToUrl === 'function') {
             window.syncOrdersFiltersToUrl(page, { historyMode: historyMode === 'none' ? 'push' : historyMode });
@@ -1255,31 +1328,44 @@ function bootAdvertiserOrdersPage() {
         return items.find((it) => it && it.content_revision_requested === 'yes') || items[0] || null;
     }
 
+    function ordersSiteHost(url) {
+        if (!url) return '';
+        try {
+            const host = new URL(url, window.location.origin).hostname;
+            return host || String(url);
+        } catch (err) {
+            return String(url).replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
+        }
+    }
+
     function renderOrderRowActions(order) {
         const unreadBadge = order.unread_chat > 0
             ? `<span class="chat-unread-dot">${order.unread_chat}</span>`
             : '';
         const chatReadonly = orderChatReadonly(order);
         const chatClass = chatReadonly
-            ? 'btn btn-sm btn-link text-muted action-btn d-flex align-items-center'
-            : 'btn btn-sm btn-outline-success action-btn d-flex align-items-center';
-        const chatTitle = chatReadonly ? ' title="Chat is read-only"' : '';
+            ? 'btn btn-outline-secondary btn-action-sm'
+            : 'btn btn-outline-success btn-action-sm';
+        const chatTitle = chatReadonly ? ' title="Chat is read-only"' : ' title="Chat"';
         const viewBtn = `
                             <button 
                                 type="button"
-                                class="btn btn-sm btn-outline-info action-btn d-flex align-items-center"
+                                class="btn btn-outline-secondary btn-action-sm orders-action-icon"
+                                title="View order"
+                                aria-label="View order"
                                 onclick="viewOrder(${order.id})">
-                                <i class="fa fa-eye me-1"></i>
-                                <span>View</span>
+                                <i class="fa fa-eye" aria-hidden="true"></i>
+                                <span class="visually-hidden">View</span>
                             </button>`;
         const chatBtn = `
                             <button 
                                 type="button"
-                                class="${chatClass}"
+                                class="${chatClass} orders-action-icon"
                                 ${chatTitle}
+                                aria-label="Open chat"
                                 onclick="openChat(${order.id}, ${jsAttr(order.order_number || '')})">
-                                <i class="fa fa-comments me-1"></i>
-                                <span>Chat</span>${unreadBadge}
+                                <i class="fa fa-comments" aria-hidden="true"></i>
+                                <span class="visually-hidden">Chat</span>${unreadBadge}
                             </button>`;
 
         let primary = '';
@@ -1287,9 +1373,9 @@ function bootAdvertiserOrdersPage() {
             primary = `
                             <button
                                 type="button"
-                                class="btn btn-sm btn-primary action-btn d-flex align-items-center"
+                                class="btn btn-primary btn-action-sm"
                                 onclick="retryOrderPayment(${order.id})">
-                                <i class="fa fa-credit-card me-1"></i>
+                                <i class="fa fa-credit-card" aria-hidden="true"></i>
                                 <span>Pay again</span>
                             </button>`;
         } else if (orderNeedsContentRevision(order) && (order.status === 'processing' || order.status === 'review')) {
@@ -1300,34 +1386,34 @@ function bootAdvertiserOrdersPage() {
             primary = `
                             <button
                                 type="button"
-                                class="btn btn-sm btn-warning action-btn d-flex align-items-center"
+                                class="btn btn-warning btn-action-sm"
                                 onclick="fulfillContentRevision(${order.id}, ${revisionItem && revisionItem.id ? revisionItem.id : 'null'}, {isLibrary: ${isLibrary ? 'true' : 'false'}, currentLabel: ${jsAttr(currentLabel)}})">
-                                <i class="fa fa-upload me-1"></i>
+                                <i class="fa fa-upload" aria-hidden="true"></i>
                                 <span>Send revised article</span>
                             </button>`;
         } else if (orderCanApprove(order)) {
             primary = `
                             <button
                                 type="button"
-                                class="btn btn-sm btn-success action-btn d-flex align-items-center"
+                                class="btn btn-success btn-action-sm"
                                 onclick="approveOrder(${order.id})">
-                                <i class="fa fa-check-circle me-1"></i>
+                                <i class="fa fa-check-circle" aria-hidden="true"></i>
                                 <span>Approve</span>
                             </button>`;
             if (orderCanRequestChanges(order)) {
                 primary += `
                             <button
                                 type="button"
-                                class="btn btn-sm btn-outline-warning action-btn d-flex align-items-center"
+                                class="btn btn-outline-warning btn-action-sm"
                                 onclick="requestModification(${order.id})">
-                                <i class="fa fa-edit me-1"></i>
+                                <i class="fa fa-edit" aria-hidden="true"></i>
                                 <span>Request changes</span>
                             </button>`;
             }
         }
 
         return `
-                        <div class="action-buttons d-flex align-items-center gap-2 flex-wrap">
+                        <div class="action-buttons">
                             ${primary}${viewBtn}${chatBtn}
                         </div>`;
     }
@@ -1400,8 +1486,9 @@ function bootAdvertiserOrdersPage() {
             
             const paymentMethodName = getPaymentMethodName(order.payment_method);
             const paymentStatusClass = getPaymentStatusClass(order.payment_status);
+            const siteHost = ordersSiteHost(siteUrl);
             const siteUrlHtml = siteUrl
-                ? `<div class="text-muted small"><a href="${safeUrl(siteHref)}" target="_blank" rel="noopener noreferrer">${escapeHtml(siteUrl)}</a></div>`
+                ? `<a class="orders-site-url" href="${safeUrl(siteHref)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(siteUrl)}">${escapeHtml(siteHost || siteUrl)}</a>`
                 : '';
             const siteNames = items.map((it) => it && it.site_name).filter(Boolean);
             const moreTitle = siteNames.length ? escapeHtml(siteNames.join(', ')) : '';
@@ -1412,32 +1499,32 @@ function bootAdvertiserOrdersPage() {
                 ? `<div class="mt-1"><span class="badge text-bg-${order.dispute_status === 'upheld' ? 'danger' : (order.dispute_status === 'dismissed' ? 'secondary' : 'warning')}">Dispute: ${escapeHtml(order.dispute_status)}</span></div>`
                 : '';
             const totalHtml = orderPaymentRefunded(order)
-                ? `<td class="fw-semibold orders-total--refunded"><s>${totalLabel}</s> <span class="small">Refunded</span></td>`
-                : `<td class="fw-semibold text-primary">${totalLabel}</td>`;
+                ? `<td data-label="Total" class="fw-semibold orders-col-total orders-total--refunded"><s>${totalLabel}</s> <span class="small">Refunded</span></td>`
+                : `<td data-label="Total" class="fw-semibold text-primary orders-col-total">${totalLabel}</td>`;
+            const statusHint = [statusMeta.next, statusMeta.autoHint].filter(Boolean).join(' — ');
             
             html += `
-                <tr>
-                    <td>
+                <tr class="orders-row">
+                    <td data-label="Order #" class="orders-col-id">
                         <button type="button" class="btn btn-link p-0 fw-semibold orders-order-number" onclick="viewOrder(${order.id})">${escapeHtml(order.order_number)}</button>
                     </td>
-                    <td>
-                        <div class="fw-semibold">${escapeHtml(siteName)}</div>
+                    <td data-label="Site" class="orders-col-site">
+                        <div class="fw-semibold orders-site-name" title="${escapeHtml(siteName)}">${escapeHtml(siteName)}</div>
                         ${siteUrlHtml}
                         ${moreHtml}
                     </td>
-                    <td>${formatDate(order.created_at)}</td>
+                    <td data-label="Date" class="orders-col-date">${formatDate(order.created_at)}</td>
                     ${totalHtml}
-                    <td>
-                        <div class="small mb-1">${escapeHtml(paymentMethodName)}</div>
+                    <td data-label="Payment" class="orders-col-payment">
+                        <div class="orders-pay-method">${escapeHtml(paymentMethodName)}</div>
                         <span class="status-badge ${paymentStatusClass}">${capitalize(order.payment_status)}</span>
                     </td>
-                    <td>
-                        <span class="status-badge ${statusMeta.cls}">${statusMeta.label}</span>
-                        <div class="next-step-hint">${escapeHtml(statusMeta.next)}</div>
-                        ${statusMeta.autoHint ? `<div class="next-step-hint text-muted"><i class="fa fa-clock-o me-1"></i>${escapeHtml(statusMeta.autoHint)}</div>` : ''}
+                    <td data-label="Status" class="orders-col-status">
+                        <span class="status-badge ${statusMeta.cls}" title="${escapeHtml(statusHint || statusMeta.label)}">${escapeHtml(statusMeta.label)}</span>
+                        <div class="next-step-hint" title="${escapeHtml(statusHint)}">${escapeHtml(statusMeta.next)}</div>
                         ${disputeHtml}
                     </td>
-                    <td>
+                    <td data-label="Actions" class="orders-col-actions">
                         ${renderOrderRowActions(order)}
                     </td>
                 </tr>
@@ -1796,7 +1883,7 @@ function bootAdvertiserOrdersPage() {
         const msg = order.empty_items_message
             || (missing
                 ? `This order has no line items on file, so there is no live URL to show. If you expected a placement here, contact support and mention order ${order.order_number || ('#' + order.id)}.`
-                : 'No placements on this order.');
+                : 'Placement details are missing for this order.');
         if (missing) {
             return `<div class="ov-empty-placements ui-callout ui-callout--info ui-callout--sm ui-callout--flush">
                 <span class="ui-callout__icon" aria-hidden="true"><i class="fa-solid fa-circle-info"></i></span>
@@ -2256,6 +2343,8 @@ function bootAdvertiserOrdersPage() {
             date_from: document.getElementById('dateFrom')?.value || '',
             date_to: document.getElementById('dateTo')?.value || '',
             sort: ordersListSort() === 'attention' ? '' : ordersListSort(),
+            project: ordersProjectFilterValues().project,
+            project_stage: ordersProjectFilterValues().project_stage,
         };
         Object.keys(map).forEach((key) => {
             if (map[key]) url.searchParams.set(key, map[key]);

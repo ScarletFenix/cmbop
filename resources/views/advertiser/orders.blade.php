@@ -1,5 +1,9 @@
 @extends('advertiser.layouts.app')
 
+@push('page-styles')
+<link rel="stylesheet" href="{{ same_origin_asset('assets/css/advertiser-orders.css') }}?v={{ @filemtime(public_path('assets/css/advertiser-orders.css')) ?: '1' }}">
+@endpush
+
 @section('content')
 <div class="container-fluid">
     
@@ -166,6 +170,30 @@
                         </button>
                     </div>
                 </div>
+                @php
+                    $filterProject = $filterProject ?? null;
+                    $filterProjectStage = (string) ($filterProjectStage ?? '');
+                    $projectFilterValue = $filterProject?->id ?? search_text(request('project'));
+                    $projectStageLabel = \App\Models\Project::stageLabel($filterProjectStage);
+                    $showProjectChip = $filterProject !== null;
+                @endphp
+                <input type="hidden" name="project" id="projectFilter" value="{{ $projectFilterValue }}">
+                <input type="hidden" name="project_stage" id="projectStageFilter" value="{{ $filterProjectStage }}">
+                <div id="ordersProjectChip"
+                     class="orders-project-chip{{ $showProjectChip ? '' : ' d-none' }}"
+                     data-project-id="{{ $filterProject?->id }}"
+                     data-project-name="{{ $filterProject?->project_name }}">
+                    <span id="ordersProjectChipLabel">
+                        @if($filterProject)
+                            Project: {{ $filterProject->project_name }}@if($projectStageLabel !== '' && $filterProjectStage !== '') · {{ $projectStageLabel }}@endif
+                        @else
+                            Project
+                        @endif
+                    </span>
+                    <button type="button" id="ordersProjectChipClear" class="orders-project-chip__clear" aria-label="Clear project filter">
+                        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                    </button>
+                </div>
                 <div id="ordersSearchHint" class="form-text orders-search-hint">Results update as you type.</div>
                 <div id="ordersSearchStatus" class="form-text orders-search-status" role="status" aria-live="polite"></div>
             </form>
@@ -174,15 +202,15 @@
 
     <!-- Orders Table -->
     <div class="card border-0 shadow-sm" id="ordersResultsCard">
-        <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
-            <div class="d-flex align-items-center gap-2">
-                <span><i class="fa fa-shopping-bag me-2"></i> Order History</span>
+        <div class="card-header bg-white orders-history-head">
+            <div class="orders-history-head__title">
+                <span class="fw-semibold"><i class="fa fa-shopping-bag me-2" aria-hidden="true"></i>Order History</span>
+                <span id="ordersAttentionChip" class="badge rounded-pill text-bg-light border orders-attention-chip{{ in_array(search_text(request('sort')), ['date_desc', 'date_asc', 'total_desc'], true) ? ' d-none' : '' }}">Needs attention first</span>
                 <span id="ordersSearchBusy" class="orders-search-busy d-none text-muted small" aria-hidden="true">
                     <i class="fa fa-spinner fa-spin me-1"></i>Searching…
                 </span>
             </div>
-            <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
-                <span id="ordersAttentionChip" class="badge rounded-pill text-bg-light border orders-attention-chip{{ in_array(search_text(request('sort')), ['date_desc', 'date_asc', 'total_desc'], true) ? ' d-none' : '' }}">Needs attention first</span>
+            <div class="orders-history-head__meta">
                 <label class="small text-muted mb-0" for="ordersSort">Sort</label>
                 <select id="ordersSort" name="sort" class="form-select form-select-sm orders-sort-select" aria-label="Sort orders">
                     <option value="attention" {{ search_text(request('sort')) === '' || search_text(request('sort')) === 'attention' ? 'selected' : '' }}>Needs attention first</option>
@@ -195,16 +223,16 @@
         </div>
         <div class="card-body p-0">
             <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0 data-table">
+                <table class="table table-hover align-middle mb-0 data-table orders-history-table">
                     <thead class="table-light">
                         <tr>
-                            <th>Order #</th>
-                            <th>Site</th>
-                            <th>Date</th>
-                            <th>Total</th>
-                            <th>Payment</th>
-                            <th>Status</th>
-                            <th width="240">Actions</th>
+                            <th class="orders-col-id">Order #</th>
+                            <th class="orders-col-site">Site</th>
+                            <th class="orders-col-date">Date</th>
+                            <th class="orders-col-total">Total</th>
+                            <th class="orders-col-payment">Payment</th>
+                            <th class="orders-col-status">Status</th>
+                            <th class="orders-col-actions">Actions</th>
                         </tr>
                     </thead>
                     <tbody id="ordersTableBody">
@@ -269,14 +297,14 @@
 </div>
 
 @include('partials.order-chat-modal')
-
-<link rel="stylesheet" href="{{ asset('assets/css/advertiser-orders.css') }}?v={{ @filemtime(public_path('assets/css/advertiser-orders.css')) ?: '1' }}">
 @endsection
 
 @push('scripts')
 <script>
 window.AdvertiserOrdersConfig = {
     csrfToken: @json(csrf_token()),
+    projectName: @json($filterProject?->project_name),
+    projectStageLabels: @json(\App\Models\Project::STAGE_LABELS),
     routes: {
         // Relative paths avoid APP_URL host mismatches (Hostinger) breaking live search fetch.
         list: @json(route('advertiser.orders.list', absolute: false)),
@@ -290,5 +318,5 @@ window.AdvertiserOrdersConfig = {
     },
 };
 </script>
-<script src="{{ asset('assets/js/advertiser-orders.js') }}?v={{ @filemtime(public_path('assets/js/advertiser-orders.js')) ?: '1' }}" defer></script>
+<script src="{{ same_origin_asset('assets/js/advertiser-orders.js') }}?v={{ @filemtime(public_path('assets/js/advertiser-orders.js')) ?: '1' }}" defer></script>
 @endpush
