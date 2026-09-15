@@ -170,3 +170,29 @@ body.role-shell-marketing .mkt-history-table__details [data-history-changes] {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+body.role-shell-marketing .mkt-dashboard-toolbar {
+  align-items: center;
+}
+body.role-shell-marketing .mkt-dashboard-jump {
+  min-width: 12rem;
+  max-width: 16rem;
+}
+body.role-shell-marketing .mkt-dashboard-actions-col {
+  width: 220px;
+}
+@media (max-width: 767.98px) {
+  body.role-shell-marketing .mkt-dashboard-jump {
+    min-width: 100%;
+    max-width: none;
+  }
+  body.role-shell-marketing .mkt-dashboard-actions-col {
+    width: auto;
+  }
+  body.role-shell-marketing .mkt-dashboard-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  body.role-shell-marketing .mkt-dashboard-queue .table-responsive {
+    max-width: 100%;
+  }
+}

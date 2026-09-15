@@ -121,7 +121,23 @@ class WebsiteLeftoverErrorHardeningTest extends TestCase
 
         $this->assertSafeJsonFailure($response);
         $response->assertJsonPath('ready_sites', 0)
-            ->assertJsonPath('bulk_waiting', 0);
+            ->assertJsonPath('bulk_waiting', 0)
+            ->assertJsonPath('sites_waiting_on_publisher', 0)
+            ->assertJsonPath('bulk_waiting_on_publisher', 0)
+            ->assertJsonPath('my_tasks_today', 0)
+            ->assertJsonPath('my_tasks_total', 0);
+    }
+
+    public function test_marketing_dashboard_still_renders_when_sites_table_is_gone(): void
+    {
+        $marketer = $this->userWithRole('marketing');
+        Schema::dropIfExists('sites');
+
+        $response = $this->actingAs($marketer)->get(route('marketing.dashboard'));
+
+        $this->assertNotSame(500, $response->status());
+        $response->assertOk()->assertDontSee('SQLSTATE');
+        $this->assertStringNotContainsString('SQLSTATE', (string) session('error'));
     }
 
     public function test_order_timeline_returns_json_when_activities_table_is_gone(): void

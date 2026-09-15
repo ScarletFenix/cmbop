@@ -58,6 +58,19 @@
                         Site queue
                     </a>
                 @endif
+            @elseif(!empty($waitingOnPublisherFilterActive))
+                <a href="{{ staff_route('sites.index', $publisherSearchQuery) }}" class="btn btn-sm btn-outline-dark">
+                    Show all publishers
+                </a>
+                @if(!empty($flatQueue))
+                    <a href="{{ staff_route('sites.index', array_filter(['waiting_on_publisher' => 1] + $publisherSearchQuery)) }}" class="btn btn-sm btn-outline-secondary">
+                        By publisher
+                    </a>
+                @else
+                    <a href="{{ staff_route('sites.index', array_filter(['waiting_on_publisher' => 1, 'flat' => 1] + $publisherSearchQuery)) }}" class="btn btn-sm btn-outline-secondary">
+                        Site queue
+                    </a>
+                @endif
             @else
                 <a href="{{ staff_route('sites.index', array_filter(['needs_review' => 1] + $publisherSearchQuery)) }}" class="btn btn-sm btn-warning">
                     <i class="fa fa-bell me-1"></i> Needs review
@@ -67,6 +80,12 @@
                 </a>
                 <a href="{{ staff_route('sites.index', array_filter(['needs_review' => 1, 'flat' => 1] + $publisherSearchQuery)) }}" class="btn btn-sm btn-outline-warning">
                     Site queue
+                </a>
+                <a href="{{ staff_route('sites.index', array_filter(['waiting_on_publisher' => 1, 'flat' => 1] + $publisherSearchQuery)) }}" class="btn btn-sm btn-outline-secondary">
+                    Waiting on publisher
+                    @if(($waitingOnPublisherCount ?? 0) > 0)
+                        <span class="badge text-bg-dark ms-1">{{ $waitingOnPublisherCount }}</span>
+                    @endif
                 </a>
             @endif
             @if(auth()->user()?->isAdmin())
@@ -86,6 +105,22 @@
             </a>
         </div>
     </div>
+
+    @if(!empty($waitingOnPublisherFilterActive))
+        <div class="alert alert-secondary border-0 shadow-sm d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <div>
+                <strong>Waiting on publisher</strong>
+                <span class="ms-1">
+                    @if(!empty($flatQueue))
+                        Listings still with the publisher (details or accept). Not staff work yet.
+                    @else
+                        Publishers with listings still filling details or waiting to accept.
+                    @endif
+                </span>
+            </div>
+            <a href="{{ staff_route('sites.index', $publisherSearchQuery) }}" class="btn btn-sm btn-outline-dark">Show all publishers</a>
+        </div>
+    @endif
 
     @if(!empty($needsReviewFilterActive) || !empty($unverifiedFilter))
         <div class="alert alert-warning border-0 shadow-sm d-flex flex-wrap justify-content-between align-items-center gap-2">
@@ -112,7 +147,7 @@
     @if(!empty($flatQueue) && $flatQueueSites)
     <div class="card shadow-sm border-0 mb-3 admin-table-fit" data-flat-queue="1">
         <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
-            <span>Sites needing review</span>
+            <span>{{ !empty($waitingOnPublisherFilterActive) ? 'Waiting on publisher' : 'Sites needing review' }}</span>
             <span class="small text-muted">{{ $flatQueueSites->total() }} in queue</span>
         </div>
         <div class="table-responsive">
@@ -159,13 +194,15 @@
                             <div class="d-flex flex-wrap gap-1">
                                 <a href="{{ $openUrl }}" class="btn btn-sm btn-outline-secondary">Open</a>
                                 <a href="{{ staff_route('sites.edit', $site->id) }}" class="btn btn-sm btn-outline-primary">{{ auth()->user()?->isMarketing() && ! auth()->user()?->isAdmin() && $site->isLockedForMarketingEdits() && ! $site->marketingCanEditDescription() ? 'View' : 'Edit' }}</a>
-                                @include('partials.staff-site-activate-button', ['site' => $site])
+                                @if(empty($waitingOnPublisherFilterActive))
+                                    @include('partials.staff-site-activate-button', ['site' => $site])
+                                @endif
                             </div>
                         </td>
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="6" class="text-center text-muted py-4">No sites in the review queue.</td>
+                        <td colspan="6" class="text-center text-muted py-4">{{ !empty($waitingOnPublisherFilterActive) ? 'No listings waiting on a publisher.' : 'No sites in the review queue.' }}</td>
                     </tr>
                 @endforelse
                 </tbody>
@@ -184,6 +221,9 @@
             @if(!empty($needsReviewFilterActive) || !empty($unverifiedFilter))
                 <input type="hidden" name="needs_review" value="1">
             @endif
+            @if(!empty($waitingOnPublisherFilterActive))
+                <input type="hidden" name="waiting_on_publisher" value="1">
+            @endif
             @if(!empty($flatQueue))
                 <input type="hidden" name="flat" value="1">
             @endif
@@ -199,7 +239,9 @@
 
         <div class="card shadow-sm border-0 mb-3 admin-table-fit">
             <div class="card-header bg-white fw-semibold">
-                {{ !empty($needsReviewFilterActive) || !empty($unverifiedFilter) ? 'Publishers with sites needing review' : 'Publishers' }}
+                {{ !empty($waitingOnPublisherFilterActive)
+                    ? 'Publishers with listings waiting on the publisher'
+                    : (!empty($needsReviewFilterActive) || !empty($unverifiedFilter) ? 'Publishers with sites needing review' : 'Publishers') }}
             </div>
 
             <div class="table-responsive">
@@ -226,12 +268,18 @@
                                     $needsReviewCount = (int) ($user->needs_review_sites_count
                                         ?? $user->unverified_sites_count
                                         ?? 0);
+                                    $waitingCount = (int) ($user->waiting_on_publisher_sites_count ?? 0);
                                     $totalSitesCount = (int) ($user->sites_count ?? 0);
                                 @endphp
                                 <div class="admin-sites-count-badges">
                                     @if($needsReviewCount > 0)
                                         <span class="badge rounded-pill text-bg-warning" title="Sites waiting for admin decision">
                                             {{ number_format($needsReviewCount) }} new
+                                        </span>
+                                    @endif
+                                    @if($waitingCount > 0)
+                                        <span class="badge rounded-pill text-bg-secondary" title="Listings waiting on the publisher">
+                                            {{ number_format($waitingCount) }} waiting
                                         </span>
                                     @endif
                                     <span class="badge rounded-pill bg-secondary" title="Total sites: {{ number_format($totalSitesCount) }}">
@@ -1801,7 +1849,7 @@ window.addEventListener('DOMContentLoaded',()=>{
     // memory was also restored here — so clicking "Needs review" fetched the
     // queue, then immediately covered it with whichever publisher you happened
     // to open last, and the button looked dead.
-    const wantsReviewQueue = params.has('needs_review') || params.get('verified') === '0';
+    const wantsReviewQueue = params.has('needs_review') || params.get('verified') === '0' || params.has('waiting_on_publisher');
     if (wantsReviewQueue && !params.get('publisher') && !siteId) {
         sessionStorage.removeItem('selected_user');
     }

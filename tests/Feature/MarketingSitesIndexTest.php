@@ -334,4 +334,44 @@ class MarketingSitesIndexTest extends TestCase
         $this->assertStringContainsString('This listing is below the quality bar', $html);
         $this->assertStringContainsString('Set a marketplace country before activating', $html);
     }
+
+    public function test_waiting_on_publisher_flat_queue_lists_publisher_owned_drafts(): void
+    {
+        $first = $this->userWithRole('publisher', [
+            'name' => 'Waiting First Publisher',
+            'email' => 'waiting-first-publisher@example.test',
+        ]);
+        $second = $this->userWithRole('publisher', [
+            'name' => 'Waiting Second Publisher',
+            'email' => 'waiting-second-publisher@example.test',
+        ]);
+        $waiting = $this->makeSite($first, [
+            'site_name' => 'Waiting Details Draft',
+            'domain' => 'waiting-details-draft.example',
+            'onboarding_status' => Site::ONBOARDING_AWAITING_DETAILS,
+        ]);
+        $this->makeSite($second, [
+            'site_name' => 'Ready Should Hide',
+            'domain' => 'ready-should-hide.example',
+            'onboarding_status' => Site::ONBOARDING_READY_FOR_REVIEW,
+            'da' => 30,
+            'dr' => 30,
+            'traffic' => 10000,
+        ]);
+
+        $html = $this->actingAs($this->marketer)
+            ->get(route('marketing.sites.index', ['waiting_on_publisher' => 1, 'flat' => 1]))
+            ->assertOk()
+            ->assertSee('Waiting on publisher', false)
+            ->assertSee('Listings still with the publisher', false)
+            ->assertSee('Waiting Details Draft', false)
+            ->assertDontSee('Ready Should Hide', false)
+            ->assertDontSee('js-mkt-activate', false)
+            ->getContent();
+
+        $this->assertStringContainsString(
+            e(route('marketing.sites.index', ['publisher' => $waiting->publisher_id, 'site' => $waiting->id], false)),
+            $html
+        );
+    }
 }

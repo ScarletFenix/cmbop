@@ -39,84 +39,46 @@ class PanelController extends Controller
         'site.enrichment_rerun_queued',
     ];
 
+    public const READY_PREVIEW = 8;
+
+    public const WAITING_PREVIEW = 5;
+
+    public const BULK_PREVIEW = 5;
+
+    public const HISTORY_PREVIEW = 12;
+
     public function dashboard()
     {
-        $userId = (int) auth()->id();
+        try {
+            return $this->renderDashboard();
+        } catch (\Throwable $e) {
+            report($e);
+            session()->flash(
+                'error',
+                UserFacingError::message($e, 'Unable to load the marketing dashboard. Please refresh and try again.')
+            );
 
-        [$todayStart, $todayEnd] = ActivityLogDateBounds::todayBounds();
-
-        $stats = [
-            'ready_to_activate' => MarketingOpsQueues::sitesReadyForStaffCount(),
-            'bulk_waiting_on_you' => MarketingOpsQueues::bulkWaitingOnMarketerCount(),
-            'sites_waiting_on_publisher' => MarketingOpsQueues::sitesWaitingOnPublisher()->count(),
-            'bulk_waiting_on_publisher' => MarketingOpsQueues::bulkWaitingOnPublisher()->count(),
-            'my_tasks_today' => $this->marketerHistoryQuery($userId)
-                ->whereBetween('created_at', [$todayStart, $todayEnd])
-                ->count(),
-            'my_tasks_total' => $this->marketerHistoryQuery($userId)->count(),
-        ];
-
-        $readySites = MarketingOpsQueues::sitesReadyForStaff()
-            ->with('publisher:id,name,email')
-            ->orderBy('created_at')
-            ->orderBy('id')
-            ->take(8)
-            ->get();
-
-        $waitingSites = MarketingOpsQueues::sitesWaitingOnPublisher()
-            ->with('publisher:id,name,email')
-            ->orderBy('created_at')
-            ->orderBy('id')
-            ->take(5)
-            ->get();
-
-        $openBulk = MarketingOpsQueues::bulkWaitingOnMarketer()
-            ->with([
-                'publisher:id,name,email',
-                'handler:id,name',
-            ])
-            ->withCount([
-                'items as pending_items_count' => fn ($q) => $q->whereNull('site_id'),
-            ])
-            ->orderBy('created_at')
-            ->orderBy('id')
-            ->take(5)
-            ->get();
-
-        $recentHistory = $this->marketerHistoryQuery($userId)
-            ->latest('id')
-            ->take(12)
-            ->get();
-
-        $historyToday = ActivityLogDateBounds::todayDateString();
-
-        return view('marketing.dashboard', compact(
-            'stats',
-            'readySites',
-            'waitingSites',
-            'openBulk',
-            'recentHistory',
-            'historyToday'
-        ));
+            return view('marketing.dashboard', $this->emptyDashboardPayload());
+        }
     }
 
     public function queueCounts()
     {
         try {
-            return response()->json([
-                'success' => true,
-                'ready_sites' => MarketingOpsQueues::sitesReadyForStaffCount(),
-                'bulk_waiting' => MarketingOpsQueues::bulkWaitingOnMarketerCount(),
-            ]);
+            return response()->json(array_merge(
+                ['success' => true],
+                $this->queueCountPayload((int) auth()->id())
+            ));
         } catch (\Throwable $e) {
             report($e);
 
-            return response()->json([
-                'success' => false,
-                'message' => UserFacingError::message($e, 'We could not load queue counts. Please try again.'),
-                'ready_sites' => 0,
-                'bulk_waiting' => 0,
-            ], 500);
+            return response()->json(array_merge(
+                [
+                    'success' => false,
+                    'message' => UserFacingError::message($e, 'We could not load queue counts. Please try again.'),
+                ],
+                $this->emptyQueueCountPayload()
+            ), 500);
         }
     }
 
@@ -192,5 +154,140 @@ class PanelController extends Controller
             ->where('user_id', $userId)
             ->where('role', 'marketing')
             ->whereIn('action', self::TRACKED_ACTIONS);
+    }
+
+    private function renderDashboard()
+    {
+        $userId = (int) auth()->id();
+        $stats = $this->dashboardStats($userId);
+
+        $readySites = MarketingOpsQueues::sitesReadyForStaff()
+            ->with('publisher:id,name,email')
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->take(self::READY_PREVIEW)
+            ->get();
+
+        $waitingSites = MarketingOpsQueues::sitesWaitingOnPublisher()
+            ->with('publisher:id,name,email')
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->take(self::WAITING_PREVIEW)
+            ->get();
+
+        $openBulk = MarketingOpsQueues::bulkWaitingOnMarketer()
+            ->with([
+                'publisher:id,name,email',
+                'handler:id,name',
+            ])
+            ->withCount([
+                'items as pending_items_count' => fn ($q) => $q->whereNull('site_id'),
+            ])
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->take(self::BULK_PREVIEW)
+            ->get();
+
+        $recentHistory = $this->marketerHistoryQuery($userId)
+            ->latest('id')
+            ->take(self::HISTORY_PREVIEW)
+            ->get();
+
+        return view('marketing.dashboard', [
+            'stats' => $stats,
+            'readySites' => $readySites,
+            'waitingSites' => $waitingSites,
+            'openBulk' => $openBulk,
+            'recentHistory' => $recentHistory,
+            'historyToday' => ActivityLogDateBounds::todayDateString(),
+            'readyPreviewCap' => self::READY_PREVIEW,
+            'waitingPreviewCap' => self::WAITING_PREVIEW,
+            'bulkPreviewCap' => self::BULK_PREVIEW,
+            'historyPreviewCap' => self::HISTORY_PREVIEW,
+        ]);
+    }
+
+    /**
+     * @return array{
+     *     ready_to_activate: int,
+     *     bulk_waiting_on_you: int,
+     *     sites_waiting_on_publisher: int,
+     *     bulk_waiting_on_publisher: int,
+     *     my_tasks_today: int,
+     *     my_tasks_total: int
+     * }
+     */
+    private function dashboardStats(int $userId): array
+    {
+        [$todayStart, $todayEnd] = ActivityLogDateBounds::todayBounds();
+
+        return [
+            'ready_to_activate' => MarketingOpsQueues::sitesReadyForStaffCount(),
+            'bulk_waiting_on_you' => MarketingOpsQueues::bulkWaitingOnMarketerCount(),
+            'sites_waiting_on_publisher' => MarketingOpsQueues::sitesWaitingOnPublisherCount(),
+            'bulk_waiting_on_publisher' => MarketingOpsQueues::bulkWaitingOnPublisherCount(),
+            'my_tasks_today' => $this->marketerHistoryQuery($userId)
+                ->whereBetween('created_at', [$todayStart, $todayEnd])
+                ->count(),
+            'my_tasks_total' => $this->marketerHistoryQuery($userId)->count(),
+        ];
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private function queueCountPayload(int $userId): array
+    {
+        $stats = $this->dashboardStats($userId);
+
+        return [
+            'ready_sites' => $stats['ready_to_activate'],
+            'bulk_waiting' => $stats['bulk_waiting_on_you'],
+            'sites_waiting_on_publisher' => $stats['sites_waiting_on_publisher'],
+            'bulk_waiting_on_publisher' => $stats['bulk_waiting_on_publisher'],
+            'my_tasks_today' => $stats['my_tasks_today'],
+            'my_tasks_total' => $stats['my_tasks_total'],
+        ];
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private function emptyQueueCountPayload(): array
+    {
+        return [
+            'ready_sites' => 0,
+            'bulk_waiting' => 0,
+            'sites_waiting_on_publisher' => 0,
+            'bulk_waiting_on_publisher' => 0,
+            'my_tasks_today' => 0,
+            'my_tasks_total' => 0,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function emptyDashboardPayload(): array
+    {
+        return [
+            'stats' => [
+                'ready_to_activate' => 0,
+                'bulk_waiting_on_you' => 0,
+                'sites_waiting_on_publisher' => 0,
+                'bulk_waiting_on_publisher' => 0,
+                'my_tasks_today' => 0,
+                'my_tasks_total' => 0,
+            ],
+            'readySites' => collect(),
+            'waitingSites' => collect(),
+            'openBulk' => collect(),
+            'recentHistory' => collect(),
+            'historyToday' => ActivityLogDateBounds::todayDateString(),
+            'readyPreviewCap' => self::READY_PREVIEW,
+            'waitingPreviewCap' => self::WAITING_PREVIEW,
+            'bulkPreviewCap' => self::BULK_PREVIEW,
+            'historyPreviewCap' => self::HISTORY_PREVIEW,
+        ];
     }
 }

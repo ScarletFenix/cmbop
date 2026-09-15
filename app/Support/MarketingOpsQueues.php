@@ -46,6 +46,14 @@ class MarketingOpsQueues
         return (int) app($key);
     }
 
+    public static function sitesWaitingOnPublisherCount(): int
+    {
+        return self::rememberCount(
+            'marketing.ops.waiting_publisher_sites_count',
+            fn () => self::sitesWaitingOnPublisher()->count()
+        );
+    }
+
     /**
      * Unpublished listings still with the publisher (details or accept).
      *
@@ -53,23 +61,33 @@ class MarketingOpsQueues
      */
     public static function sitesWaitingOnPublisher(): Builder
     {
-        return Site::query()
-            ->notArchived()
-            ->where(function ($q) {
-                $q->where('verified', 0)->orWhereNull('verified');
+        $query = Site::query();
+        self::constrainSitesWaitingOnPublisher($query);
+
+        return $query;
+    }
+
+    /**
+     * @param  Builder<Site>  $q
+     */
+    public static function constrainSitesWaitingOnPublisher(Builder $q): void
+    {
+        $q->notArchived()
+            ->where(function ($inner) {
+                $inner->where('verified', 0)->orWhereNull('verified');
             })
-            ->where(function ($q) {
-                $q->where('active', 0)->orWhereNull('active');
+            ->where(function ($inner) {
+                $inner->where('active', 0)->orWhereNull('active');
             })
-            ->where(function ($q) {
-                $q->whereIn('onboarding_status', [
+            ->where(function ($inner) {
+                $inner->whereIn('onboarding_status', [
                     Site::ONBOARDING_AWAITING_DETAILS,
                     Site::ONBOARDING_DETAILS_COMPLETE,
                 ]);
 
                 if (Site::hasSitesColumn('publisher_accepted_at')
                     && Site::hasSitesColumn('assigned_by_user_id')) {
-                    $q->orWhere(function ($invite) {
+                    $inner->orWhere(function ($invite) {
                         $invite->wherePublisherAcceptanceIsMissing()
                             ->whereNotNull('assigned_by_user_id');
                     });
@@ -149,6 +167,14 @@ class MarketingOpsQueues
                             ->whereDoesntHave('sites', fn ($sites) => $sites->notArchived());
                     });
             });
+    }
+
+    public static function bulkWaitingOnPublisherCount(): int
+    {
+        return self::rememberCount(
+            'marketing.ops.waiting_publisher_bulk_count',
+            fn () => self::bulkWaitingOnPublisher()->count()
+        );
     }
 
     /**
