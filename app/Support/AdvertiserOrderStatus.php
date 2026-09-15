@@ -111,6 +111,27 @@ class AdvertiserOrderStatus
             });
     }
 
+    /**
+     * Failed and refunded charges are not live work (same as meta()).
+     *
+     * Completed clawbacks stay `payment_status=refunded` with `status=completed`
+     * — pass `$alsoRefunded = false` so those rows remain in the Completed filter.
+     *
+     * @param  Builder<Order>  $query
+     */
+    public static function constrainWithoutFailedPayment(Builder $query, bool $alsoRefunded = true): void
+    {
+        $query->where(function ($q) use ($alsoRefunded) {
+            $q->whereNull('payment_status')
+                ->orWhere(function ($live) use ($alsoRefunded) {
+                    $live->where('payment_status', '!=', 'failed');
+                    if ($alsoRefunded) {
+                        $live->where('payment_status', '!=', 'refunded');
+                    }
+                });
+        });
+    }
+
     public static function liveUrlExistsSql(string $orderIdColumn = 'orders.id'): string
     {
         return "EXISTS (
@@ -122,9 +143,12 @@ class AdvertiserOrderStatus
     }
 
     /**
+     * Order-level by default so chat/list still see a sibling content-revision.
+     * Pass `$itemScoped = true` for per-line Project counts.
+     *
      * @return array{label: string, next: string, cls: string, stage: string, auto_approve_hint: ?string}
      */
-    public static function meta(Order $order, ?OrderItem $item = null): array
+    public static function meta(Order $order, ?OrderItem $item = null, bool $itemScoped = false): array
     {
         try {
             $item = $item ?? $order->items->first();
@@ -138,19 +162,26 @@ class AdvertiserOrderStatus
                 ? $item->isModificationRequested()
                 : (($item->modification_requested ?? 'no') === 'yes');
         }
-        try {
-            $contentRevisionRequested = $order->items->contains(
-                fn ($line) => method_exists($line, 'isContentRevisionRequested')
-                    ? $line->isContentRevisionRequested()
-                    : (($line->content_revision_requested ?? 'no') === 'yes')
-            );
-        } catch (\Throwable $e) {
-            $contentRevisionRequested = false;
-        }
-        if (! $contentRevisionRequested && $item) {
-            $contentRevisionRequested = method_exists($item, 'isContentRevisionRequested')
-                ? $item->isContentRevisionRequested()
-                : (($item->content_revision_requested ?? 'no') === 'yes');
+        $lineNeedsContentRevision = function ($line): bool {
+            if (! $line) {
+                return false;
+            }
+
+            return method_exists($line, 'isContentRevisionRequested')
+                ? $line->isContentRevisionRequested()
+                : (($line->content_revision_requested ?? 'no') === 'yes');
+        };
+        if ($itemScoped) {
+            $contentRevisionRequested = $lineNeedsContentRevision($item);
+        } else {
+            try {
+                $contentRevisionRequested = $order->items->contains($lineNeedsContentRevision);
+            } catch (\Throwable $e) {
+                $contentRevisionRequested = false;
+            }
+            if (! $contentRevisionRequested && $item) {
+                $contentRevisionRequested = $lineNeedsContentRevision($item);
+            }
         }
         $payment = (string) $order->payment_status;
         $status = (string) $order->status;

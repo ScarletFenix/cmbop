@@ -15,6 +15,7 @@ use App\Models\Order;
 use App\Models\OrderChatMessage;
 use App\Models\OrderItem;
 use App\Models\OrderItemDispute;
+use App\Models\Project;
 use App\Models\Site;
 use App\Models\SiteUrlReveal;
 use App\Models\User;
@@ -4882,6 +4883,68 @@ class CatalogController extends Controller
     }
 
     /**
+     * Restrict the advertiser order list to a project destination host
+     * (and optional Projects stage). Unknown or foreign project ids yield
+     * an empty list — they must not leak another advertiser's placements.
+     */
+    private function advertiserOwnedProject(Request $request, int $userId): ?Project
+    {
+        $projectId = (int) (filter_number($request->input('project')) ?? 0);
+        if ($projectId <= 0) {
+            return null;
+        }
+
+        return Project::query()
+            ->where('user_id', $userId)
+            ->whereKey($projectId)
+            ->first();
+    }
+
+    /**
+     * When a project filter is on, the attention banner must match that
+     * destination — not the account-wide My Orders count.
+     */
+    private function advertiserNeedsActionCount(Request $request, int $userId): int
+    {
+        $query = AdvertiserOrderStatus::needsActionQuery($userId);
+        $projectId = (int) (filter_number($request->input('project')) ?? 0);
+        if ($projectId <= 0) {
+            return $query->count();
+        }
+
+        $project = $this->advertiserOwnedProject($request, $userId);
+        if (! $project) {
+            return 0;
+        }
+
+        Project::constrainOrdersByHost($query, (string) $project->project_url);
+
+        return $query->count();
+    }
+
+    private function applyAdvertiserProjectOrderFilters($query, Request $request, int $userId): void
+    {
+        $projectId = (int) (filter_number($request->input('project')) ?? 0);
+        if ($projectId <= 0) {
+            return;
+        }
+
+        $project = $this->advertiserOwnedProject($request, $userId);
+
+        if (! $project) {
+            $query->whereRaw('0 = 1');
+
+            return;
+        }
+
+        $stage = strtolower(search_text($request->input('project_stage')));
+        Project::constrainOrdersByHost($query, (string) $project->project_url);
+        if (Project::isKnownStageFilter($stage)) {
+            Project::constrainOrdersByStage($query, $stage, (string) $project->project_url);
+        }
+    }
+
+    /**
      * @return 'attention'|'date_desc'|'date_asc'|'total_desc'
      */
     private function advertiserOrdersListSort(Request $request): string
@@ -5009,7 +5072,21 @@ class CatalogController extends Controller
             }
         }
 
-        return view('advertiser.orders');
+        $filterProject = null;
+        $projectId = (int) (filter_number($request->query('project')) ?? 0);
+        if ($projectId > 0) {
+            $filterProject = Project::query()
+                ->where('user_id', auth()->id())
+                ->whereKey($projectId)
+                ->first();
+        }
+
+        $filterProjectStage = strtolower(search_text($request->query('project_stage')));
+        if (! Project::isKnownStageFilter($filterProjectStage)) {
+            $filterProjectStage = '';
+        }
+
+        return view('advertiser.orders', compact('filterProject', 'filterProjectStage'));
     }
 
     /**
@@ -5145,6 +5222,8 @@ class CatalogController extends Controller
                 $query->whereDate('created_at', '<=', $dateTo);
             }
 
+            $this->applyAdvertiserProjectOrderFilters($query, $request, (int) $userId);
+
             $sort = $this->advertiserOrdersListSort($request);
             if ($sort === 'attention') {
                 AdvertiserOrderStatus::applyQueueOrder($query, $statusFilter);
@@ -5186,7 +5265,8 @@ class CatalogController extends Controller
                 $unreadByOrder = collect();
             }
 
-            $ordersPayload = collect($orders->items())->map(function ($order) use ($unreadByOrder) {
+            $clawbacks = app(OrderClawbackService::class);
+            $ordersPayload = collect($orders->items())->map(function ($order) use ($unreadByOrder, $clawbacks) {
                 $order->unread_chat = (int) ($unreadByOrder[$order->id] ?? 0);
                 try {
                     $order->items_count = $order->items->count();
@@ -5213,7 +5293,7 @@ class CatalogController extends Controller
                 return $this->advertiserOrderDetailPayload($order);
             });
 
-            $needsAction = AdvertiserOrderStatus::needsActionCountForUser((int) $userId);
+            $needsAction = $this->advertiserNeedsActionCount($request, (int) $userId);
 
             return response()->json([
                 'success' => true,

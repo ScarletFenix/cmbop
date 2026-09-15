@@ -38,7 +38,7 @@ button.wallet-kpi { cursor: pointer; appearance: none; }
 }
 .orders-filter-bar__row {
     display: grid;
-    grid-template-columns: minmax(11rem, 1.5fr) repeat(3, minmax(8rem, 1fr)) minmax(12rem, 1.2fr) auto;
+    grid-template-columns: minmax(11rem, 1.5fr) repeat(3, minmax(8rem, 1fr)) minmax(20rem, 1.4fr) auto;
     align-items: end;
     gap: .65rem .75rem;
 }
@@ -84,8 +84,8 @@ button.wallet-kpi { cursor: pointer; appearance: none; }
         min-width: 8.5rem;
     }
     .orders-filter-bar__dates {
-        flex: 1 1 14rem;
-        min-width: 12rem;
+        flex: 1 1 20rem;
+        min-width: 20rem;
     }
     .orders-filter-bar__actions {
         flex: 0 0 auto;
@@ -149,8 +149,8 @@ button.wallet-kpi { cursor: pointer; appearance: none; }
 }
 
 .orders-date-range > .form-control {
-    min-width: 0;
-    flex: 1 1 0;
+    min-width: 9.75rem;
+    flex: 1 1 9.75rem;
 }
 .table td, .table th {
     padding: 12px 15px;
@@ -526,5 +526,38 @@ td a {
 }
 #chatMessages::-webkit-scrollbar-thumb:hover {
     background: #a8a8a8;
+}
+
+.orders-project-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-top: 0.65rem;
+    padding: 0.25rem 0.55rem 0.25rem 0.7rem;
+    border: 1px solid var(--border-subtle, #e2e8f0);
+    border-radius: 999px;
+    background: var(--brand-neutral-bg, #f1f5f9);
+    color: var(--brand-ink, #334155);
+    font-size: 0.8125rem;
+    font-weight: 600;
+}
+
+.orders-project-chip__clear {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.35rem;
+    height: 1.35rem;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--brand-ink-muted, #64748b);
+    line-height: 1;
+}
+
+.orders-project-chip__clear:hover {
+    background: #fff;
+    color: var(--brand-ink, #334155);
 }
 

@@ -20,6 +20,52 @@ function ordersUrl(pathSuffix) {
     return base + pathSuffix;
 }
 
+function ordersProjectFilterValues() {
+    return {
+        project: String(document.getElementById('projectFilter')?.value || '').trim(),
+        project_stage: String(document.getElementById('projectStageFilter')?.value || '').trim(),
+    };
+}
+
+function ordersProjectStageLabel(stage) {
+    const labels = (OrdersCfg && OrdersCfg.projectStageLabels) || {};
+    return labels[stage] || '';
+}
+
+function updateOrdersProjectChip() {
+    const chip = document.getElementById('ordersProjectChip');
+    const labelEl = document.getElementById('ordersProjectChipLabel');
+    if (!chip) return;
+    const { project, project_stage } = ordersProjectFilterValues();
+    if (!project) {
+        chip.classList.add('d-none');
+        return;
+    }
+    const namedId = String(chip.getAttribute('data-project-id') || '');
+    const name = (namedId && namedId === project)
+        ? (chip.getAttribute('data-project-name') || OrdersCfg.projectName || 'Project')
+        : 'Project';
+    const stageLabel = ordersProjectStageLabel(project_stage);
+    if (labelEl) {
+        labelEl.textContent = stageLabel ? `Project: ${name} · ${stageLabel}` : `Project: ${name}`;
+    }
+    chip.classList.remove('d-none');
+}
+
+function clearOrdersProjectStageFilter() {
+    const stageEl = document.getElementById('projectStageFilter');
+    if (stageEl) stageEl.value = '';
+    updateOrdersProjectChip();
+}
+
+function clearOrdersProjectFilter() {
+    const projectEl = document.getElementById('projectFilter');
+    const stageEl = document.getElementById('projectStageFilter');
+    if (projectEl) projectEl.value = '';
+    if (stageEl) stageEl.value = '';
+    updateOrdersProjectChip();
+}
+
 let currentPage = 1;
 let currentChatOrderId = null;
 
@@ -65,6 +111,9 @@ function applyOrdersStatusFilter(status) {
     const sel = document.getElementById('statusFilter');
     if (!sel) return;
     sel.value = status || '';
+    if (status) {
+        clearOrdersProjectStageFilter();
+    }
     currentPage = 1;
     if (typeof window.fetchOrders === 'function') {
         window.fetchOrders(1, { historyMode: 'push' });
@@ -257,12 +306,19 @@ function bootAdvertiserOrdersPage() {
         document.getElementById('dateTo').value = '';
         const sortEl = document.getElementById('ordersSort');
         if (sortEl) sortEl.value = 'attention';
+        clearOrdersProjectFilter();
         updateOrdersSearchClearVisibility();
         currentPage = 1;
         if (ordersSearchTimer) {
             clearTimeout(ordersSearchTimer);
             ordersSearchTimer = null;
         }
+        fetchOrders(1, { historyMode: 'push' });
+    });
+
+    document.getElementById('ordersProjectChipClear')?.addEventListener('click', function () {
+        clearOrdersProjectFilter();
+        currentPage = 1;
         fetchOrders(1, { historyMode: 'push' });
     });
 
@@ -283,6 +339,9 @@ function bootAdvertiserOrdersPage() {
     // Dropdown / date filters live-refresh the table (catalog-style), not only on Filter click.
     ['statusFilter', 'paymentStatusFilter', 'paymentMethodFilter', 'dateFrom', 'dateTo', 'ordersSort'].forEach(function (id) {
         document.getElementById(id)?.addEventListener('change', function () {
+            if (id === 'statusFilter' && (document.getElementById('statusFilter')?.value || '')) {
+                clearOrdersProjectStageFilter();
+            }
             currentPage = 1;
             fetchOrders(1, { historyMode: 'replace', intent: 'search' });
         });
@@ -301,8 +360,10 @@ function bootAdvertiserOrdersPage() {
         setVal('dateFrom', 'date_from');
         setVal('dateTo', 'date_to');
         setVal('ordersSort', 'sort');
+        setVal('projectFilter', 'project');
+        setVal('projectStageFilter', 'project_stage');
         // Clear fields that are no longer in the URL (browser back/forward)
-        ['searchInput', 'statusFilter', 'paymentStatusFilter', 'paymentMethodFilter', 'dateFrom', 'dateTo', 'ordersSort'].forEach((id) => {
+        ['searchInput', 'statusFilter', 'paymentStatusFilter', 'paymentMethodFilter', 'dateFrom', 'dateTo', 'ordersSort', 'projectFilter', 'projectStageFilter'].forEach((id) => {
             const el = document.getElementById(id);
             if (!el) return;
             const key = id === 'searchInput' ? 'search'
@@ -311,6 +372,8 @@ function bootAdvertiserOrdersPage() {
                 : id === 'paymentMethodFilter' ? 'payment_method'
                 : id === 'dateFrom' ? 'date_from'
                 : id === 'dateTo' ? 'date_to'
+                : id === 'projectFilter' ? 'project'
+                : id === 'projectStageFilter' ? 'project_stage'
                 : 'sort';
             if (!params.has(key)) el.value = id === 'ordersSort' ? 'attention' : '';
         });
@@ -324,6 +387,7 @@ function bootAdvertiserOrdersPage() {
         if (typeof updateOrdersAttentionChip === 'function') {
             updateOrdersAttentionChip();
         }
+        updateOrdersProjectChip();
     }
     window.hydrateOrdersFiltersFromUrl = hydrateOrdersFiltersFromUrl;
 
@@ -337,6 +401,8 @@ function bootAdvertiserOrdersPage() {
             date_from: document.getElementById('dateFrom')?.value || '',
             date_to: document.getElementById('dateTo')?.value || '',
             sort: ordersListSort() === 'attention' ? '' : ordersListSort(),
+            project: ordersProjectFilterValues().project,
+            project_stage: ordersProjectFilterValues().project_stage,
         };
         Object.keys(map).forEach((key) => {
             if (map[key]) url.searchParams.set(key, map[key]);
@@ -764,6 +830,7 @@ function bootAdvertiserOrdersPage() {
     };
 
     function ordersHaveActiveFilters() {
+        const projectFilters = ordersProjectFilterValues();
         return !!(
             (document.getElementById('searchInput')?.value || '').trim()
             || document.getElementById('statusFilter')?.value
@@ -771,6 +838,8 @@ function bootAdvertiserOrdersPage() {
             || document.getElementById('paymentMethodFilter')?.value
             || document.getElementById('dateFrom')?.value
             || document.getElementById('dateTo')?.value
+            || projectFilters.project
+            || projectFilters.project_stage
             || ordersListSort() !== 'attention'
         );
     }
@@ -804,6 +873,7 @@ function bootAdvertiserOrdersPage() {
         const dateFrom = document.getElementById('dateFrom')?.value || '';
         const dateTo = document.getElementById('dateTo')?.value || '';
         const sort = ordersListSort();
+        const projectFilters = ordersProjectFilterValues();
 
         const listUrl = ordersRoute('list');
         if (!listUrl) {
@@ -819,7 +889,10 @@ function bootAdvertiserOrdersPage() {
         if (dateFrom) url += `&date_from=${encodeURIComponent(dateFrom)}`;
         if (dateTo) url += `&date_to=${encodeURIComponent(dateTo)}`;
         if (sort && sort !== 'attention') url += `&sort=${encodeURIComponent(sort)}`;
+        if (projectFilters.project) url += `&project=${encodeURIComponent(projectFilters.project)}`;
+        if (projectFilters.project_stage) url += `&project_stage=${encodeURIComponent(projectFilters.project_stage)}`;
         updateOrdersAttentionChip();
+        updateOrdersProjectChip();
 
         if (syncUrl && typeof window.syncOrdersFiltersToUrl === 'function') {
             window.syncOrdersFiltersToUrl(page, { historyMode: historyMode === 'none' ? 'push' : historyMode });
@@ -2256,6 +2329,8 @@ function bootAdvertiserOrdersPage() {
             date_from: document.getElementById('dateFrom')?.value || '',
             date_to: document.getElementById('dateTo')?.value || '',
             sort: ordersListSort() === 'attention' ? '' : ordersListSort(),
+            project: ordersProjectFilterValues().project,
+            project_stage: ordersProjectFilterValues().project_stage,
         };
         Object.keys(map).forEach((key) => {
             if (map[key]) url.searchParams.set(key, map[key]);

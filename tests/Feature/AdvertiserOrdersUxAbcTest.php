@@ -137,6 +137,8 @@ class AdvertiserOrdersUxAbcTest extends TestCase
         $this->assertStringContainsString('.orders-total--refunded', $css);
         $this->assertStringContainsString('.orders-more-sites', $css);
         $this->assertStringContainsString('.orders-sort-select', $css);
+        $this->assertStringContainsString('.orders-project-chip', $css);
+        $this->assertStringContainsString('min-width: 9.75rem', $css);
         $this->assertStringContainsString('type="search"', $html);
         $this->assertStringContainsString('id="ordersSearchStatus"', $html);
         $this->assertStringContainsString('id="ordersSearchClear"', $html);
@@ -144,6 +146,10 @@ class AdvertiserOrdersUxAbcTest extends TestCase
         $this->assertStringContainsString('Results update as you type.', $html);
         $this->assertStringContainsString('data-orders-live-search="1"', $html);
         $this->assertStringContainsString('id="ordersSearchHint"', $html);
+        $this->assertStringContainsString('id="projectFilter"', $html);
+        $this->assertStringContainsString('id="projectStageFilter"', $html);
+        $this->assertStringContainsString('id="ordersProjectChip"', $html);
+        $this->assertStringContainsString('projectStageLabels', $html);
         $this->assertStringContainsString('orders-filter-bar', $html);
         $this->assertStringContainsString('orders-filter-bar__row', $html);
         $this->assertStringContainsString('orders-filter-bar__actions', $html);
@@ -181,6 +187,8 @@ class AdvertiserOrdersUxAbcTest extends TestCase
         $this->assertIsString($js);
         $this->assertStringContainsString('Please provide at least 10 characters', $js);
         $this->assertStringContainsString('No matching orders', $js);
+        $this->assertStringContainsString('projectFilters.project', $js);
+        $this->assertStringContainsString('project_stage', $js);
         $this->assertStringContainsString('payment-refunded', $js);
         $this->assertStringContainsString('paginationPageWindow', $js);
         $this->assertStringContainsString('ordersPageHref', $js);
