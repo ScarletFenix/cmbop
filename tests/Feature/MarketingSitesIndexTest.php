@@ -366,8 +366,13 @@ class MarketingSitesIndexTest extends TestCase
             ->assertSee('Listings still with the publisher', false)
             ->assertSee('Waiting Details Draft', false)
             ->assertDontSee('Ready Should Hide', false)
-            ->assertDontSee('js-mkt-activate', false)
             ->getContent();
+
+        $flatStart = strpos($html, 'data-flat-queue="1"');
+        $this->assertNotFalse($flatStart);
+        $flatSlice = substr($html, $flatStart, 4000);
+        $this->assertStringContainsString('Waiting Details Draft', $flatSlice);
+        $this->assertStringNotContainsString('js-mkt-activate', $flatSlice);
 
         $this->assertStringContainsString(
             e(route('marketing.sites.index', ['publisher' => $waiting->publisher_id, 'site' => $waiting->id], false)),
