@@ -148,7 +148,7 @@ class AdvertiserOrdersUxAbcTest extends TestCase
             $css
         );
         $this->assertMatchesRegularExpression(
-            '/\.action-buttons\s*\{[^}]*flex-wrap:\s*wrap/s',
+            '/\.action-buttons\s*\{[^}]*flex-wrap:\s*nowrap/s',
             $css
         );
         $this->assertMatchesRegularExpression(

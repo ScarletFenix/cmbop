@@ -1520,7 +1520,7 @@ function bootAdvertiserOrdersPage() {
                         <span class="status-badge ${paymentStatusClass}">${capitalize(order.payment_status)}</span>
                     </td>
                     <td data-label="Status" class="orders-col-status">
-                        <span class="status-badge ${statusMeta.cls}" title="${escapeHtml(statusMeta.label)}">${escapeHtml(statusMeta.label)}</span>
+                        <span class="status-badge ${statusMeta.cls}" title="${escapeHtml(statusHint || statusMeta.label)}">${escapeHtml(statusMeta.label)}</span>
                         <div class="next-step-hint" title="${escapeHtml(statusHint)}">${escapeHtml(statusMeta.next)}</div>
                         ${disputeHtml}
                     </td>

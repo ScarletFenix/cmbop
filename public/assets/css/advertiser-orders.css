@@ -456,10 +456,14 @@ button.wallet-kpi { cursor: pointer; appearance: none; }
 
 .orders-history-table .status-badge {
     white-space: nowrap;
-    max-width: 14rem;
+    max-width: 11rem;
     overflow: hidden;
     text-overflow: ellipsis;
     vertical-align: bottom;
+}
+
+.orders-history-table .next-step-hint {
+    display: none;
 }
 
 .next-step-hint {
@@ -496,12 +500,10 @@ button.wallet-kpi { cursor: pointer; appearance: none; }
 .action-buttons {
     display: flex;
     flex-direction: row;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 6px;
     justify-content: flex-end;
     align-items: center;
-    max-width: 16.5rem;
-    margin-left: auto;
 }
 
 .action-btn {
@@ -518,12 +520,12 @@ button.wallet-kpi { cursor: pointer; appearance: none; }
 }
 
 .orders-history-table .orders-col-id {
-    width: 8.5rem;
+    width: 7.5rem;
     white-space: nowrap;
 }
 .orders-history-table .orders-col-site {
-    min-width: 10rem;
-    max-width: 16rem;
+    min-width: 8rem;
+    max-width: 12rem;
 }
 .orders-history-table .orders-col-date,
 .orders-history-table .orders-col-total,
@@ -531,17 +533,22 @@ button.wallet-kpi { cursor: pointer; appearance: none; }
     white-space: nowrap;
 }
 .orders-history-table .orders-col-total {
-    width: 5.5rem;
+    width: 5rem;
 }
 .orders-history-table .orders-col-status {
-    min-width: 9rem;
-    max-width: 14rem;
+    min-width: 7rem;
+    max-width: 11rem;
 }
 .orders-history-table .orders-col-actions {
     width: 1%;
-    min-width: 11rem;
+    white-space: nowrap;
     text-align: right;
     vertical-align: middle;
+}
+
+#ordersResultsCard .table-responsive {
+    max-width: 100%;
+    overflow-x: auto;
 }
 
 .orders-order-number {
@@ -658,6 +665,12 @@ button.wallet-kpi { cursor: pointer; appearance: none; }
     .orders-history-table tbody tr.orders-row .action-buttons {
         flex-wrap: wrap;
         justify-content: flex-end;
+        max-width: none;
+    }
+    .orders-history-table .next-step-hint {
+        display: block;
+        max-width: none;
+        white-space: normal;
     }
     .orders-site-name,
     .orders-site-url,
