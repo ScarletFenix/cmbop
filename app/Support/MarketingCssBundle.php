@@ -38,6 +38,13 @@ class MarketingCssBundle
         return asset(self::RELATIVE_PATH).'?v='.$version;
     }
 
+    public static function urlIfReady(): ?string
+    {
+        self::ensure();
+
+        return is_file(self::absolutePath()) ? self::url() : null;
+    }
+
     public static function ensure(): void
     {
         try {
@@ -71,11 +78,15 @@ class MarketingCssBundle
     {
         $css = self::compile();
         $dir = dirname(self::absolutePath());
-        if (! is_dir($dir)) {
-            mkdir($dir, 0755, true);
+        if (! is_dir($dir) && ! mkdir($dir, 0755, true) && ! is_dir($dir)) {
+            return $css;
         }
 
-        file_put_contents(self::absolutePath(), $css, LOCK_EX);
+        try {
+            file_put_contents(self::absolutePath(), $css, LOCK_EX);
+        } catch (\Throwable) {
+            // Hostinger leftovers can leave public/assets unwritable.
+        }
 
         return $css;
     }
@@ -88,7 +99,12 @@ class MarketingCssBundle
             if (! is_file($path)) {
                 continue;
             }
-            $chunks[] = self::minify((string) file_get_contents($path));
+            try {
+                $raw = (string) file_get_contents($path);
+            } catch (\Throwable) {
+                continue;
+            }
+            $chunks[] = self::minify($raw);
         }
 
         return implode('', $chunks);

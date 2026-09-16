@@ -96,7 +96,6 @@ class SitewideLiveSearchFlowTest extends TestCase
             resource_path('views/admin/orders/index.blade.php'),
             resource_path('views/admin/withdrawals.blade.php'),
             resource_path('views/admin/sites.blade.php'),
-            resource_path('views/admin/users.blade.php'),
         ];
         foreach ($mustWaitForHelper as $path) {
             $body = (string) file_get_contents($path);
@@ -117,6 +116,7 @@ class SitewideLiveSearchFlowTest extends TestCase
             resource_path('views/admin/finance-ledger.blade.php'),
             resource_path('views/marketing/history.blade.php'),
             resource_path('views/admin/content-library/index.blade.php'),
+            resource_path('views/admin/users.blade.php'),
         ];
 
         foreach ($forms as $path) {

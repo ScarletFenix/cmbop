@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Http\Middleware\CanonicalHost;
 use App\Models\Blog;
 use App\Models\BlogTranslation;
+use App\Support\BrandOrganization;
 use App\Support\RobotsTxt;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -177,6 +178,21 @@ class SeoAndSecurityHeadersTest extends TestCase
             ->assertSee('https://www.instagram.com/seolinkbuildings', false)
             ->assertSee('https://x.com/seolinbuildings', false)
             ->assertSee('https://www.youtube.com/@seolinkbuildingss', false);
+    }
+
+    public function test_layout_json_ld_escapes_script_breakout_in_page_title(): void
+    {
+        $json = BrandOrganization::pageGraphJson(
+            'Break</script><script>alert(1)</script>',
+            'Description',
+            'https://seolinkbuildings.com/login'
+        );
+
+        $this->assertStringContainsString('\\u003C/script\\u003E', $json);
+        $this->assertStringNotContainsString('</script><script>alert(1)</script>', $json);
+        $decoded = json_decode($json, true);
+        $this->assertIsArray($decoded);
+        $this->assertSame('https://schema.org', $decoded['@context'] ?? null);
     }
 
     public function test_sitemap_index_uses_request_origin_when_app_url_is_loopback(): void

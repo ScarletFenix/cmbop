@@ -45,4 +45,9 @@ class MarketingCssBundleTest extends TestCase
         $this->assertFileExists($path);
         $this->assertGreaterThan(1000, filesize($path));
     }
+
+    public function test_url_if_ready_returns_the_bundle_when_present(): void
+    {
+        $this->assertNotNull(MarketingCssBundle::urlIfReady());
+    }
 }

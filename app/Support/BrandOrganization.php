@@ -85,10 +85,16 @@ class BrandOrganization
 
     public static function pageGraphJson(string $name, string $description, string $url): string
     {
-        return (string) json_encode(
-            self::pageGraph($name, $description, $url),
-            JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
-        );
+        try {
+            $json = json_encode(
+                self::pageGraph($name, $description, $url),
+                JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_INVALID_UTF8_SUBSTITUTE
+            );
+        } catch (\Throwable) {
+            return '';
+        }
+
+        return is_string($json) && $json !== '' && $json !== 'null' ? $json : '';
     }
 
     /**

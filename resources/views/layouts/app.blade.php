@@ -68,9 +68,14 @@
         <link rel="alternate" hreflang="{{ $tag['hreflang'] }}" href="{{ $tag['href'] }}">
     @endforeach
     @if(class_exists(\App\Support\BrandOrganization::class))
+        @php
+            $organizationJsonLd = \App\Support\BrandOrganization::pageGraphJson($pageTitle, $pageDescription, $pageCanonical);
+        @endphp
+        @if($organizationJsonLd !== '')
     <script type="application/ld+json">
-{!! \App\Support\BrandOrganization::pageGraphJson($pageTitle, $pageDescription, $pageCanonical) !!}
+{!! $organizationJsonLd !!}
     </script>
+        @endif
     @endif
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
     <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
@@ -102,8 +107,10 @@
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     @if(class_exists(\App\Support\MarketingCssBundle::class))
-        @php \App\Support\MarketingCssBundle::ensure(); @endphp
-        <link href="{{ \App\Support\MarketingCssBundle::url() }}" rel="stylesheet">
+        @php $marketingCssUrl = \App\Support\MarketingCssBundle::urlIfReady(); @endphp
+        @if($marketingCssUrl)
+        <link href="{{ $marketingCssUrl }}" rel="stylesheet">
+        @endif
     @endif
     <script src="{{ asset('assets/js/glass-tip.js') }}?v={{ @filemtime(public_path('assets/js/glass-tip.js')) ?: '1' }}" defer></script>
     <style>
