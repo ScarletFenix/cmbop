@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
@@ -170,6 +172,49 @@ class CatalogExpandCorrectnessTest extends TestCase
         $this->assertStringNotContainsString('Not available</a>', $html);
         $this->assertStringNotContainsString('No extra pricing options for this listing.', $html);
         $this->assertStringNotContainsString('Base guest post only', $html);
+    }
+
+    public function test_sensitive_topics_show_last_completed_order_time(): void
+    {
+        $site = $this->makeSite([
+            'site_name' => 'Completed Expand Blog',
+            'site_url' => 'https://completed-expand.example',
+            'domain' => 'completed-expand.example',
+            'sensitive_prices' => ['crypto' => 23],
+        ]);
+
+        $completedAt = now()->subDays(2);
+        $order = Order::create([
+            'user_id' => $this->advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'CAT-LAST-COMPLETED',
+            'subtotal' => 90,
+            'tax' => 0,
+            'total_amount' => 90,
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'paid_at' => $completedAt->copy()->subDay(),
+            'status' => 'completed',
+            'completed_at' => $completedAt,
+        ]);
+        OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://completed-expand.example/post',
+            'price' => 90,
+            'publisher_status' => 'completed',
+            'completed_at' => $completedAt,
+        ]);
+
+        $html = $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Sensitive topics', $html);
+        $this->assertStringContainsString('Last published', $html);
     }
 
     public function test_homepage_only_details_shows_advertiser_you_pay_not_publisher_base(): void

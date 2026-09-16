@@ -131,6 +131,11 @@ class CatalogUiHardeningTest extends TestCase
         $this->assertStringContainsString('data-cart-fly-target', $layout);
         $this->assertStringContainsString('opts.quiet', $layout);
         $this->assertStringContainsString('catalog-addon-price', $this->catalogBlade());
+        $this->assertStringContainsString('lastPublicationLabel()', (string) file_get_contents(
+            resource_path('views/advertiser/partials/catalog-site-trust.blade.php')
+        ));
+        $this->assertStringContainsString('catalog-expand-trust', $this->catalogBlade());
+        $this->assertStringNotContainsString('catalog-site-trust--row', $this->catalogBlade());
 
         $css = (string) file_get_contents(public_path('assets/css/catalog.css'));
         $this->assertStringContainsString('.form-check-input.sensitive-price-checkbox', $css);

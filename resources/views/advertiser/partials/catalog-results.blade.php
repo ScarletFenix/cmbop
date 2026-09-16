@@ -420,7 +420,6 @@
                         @include('advertiser.partials.catalog-meta-chips', [
                             'site' => $site,
                         ])
-                        @include('advertiser.partials.catalog-site-trust', ['site' => $site, 'compactClass' => 'catalog-site-trust--row mt-1'])
                         </div>
                     </div>
                 </td>
@@ -631,11 +630,6 @@
                                 <span>No description yet</span>
                             @endif
                         </div>
-                        @if($site->lastPublicationLabel())
-                            <p class="text-muted small mb-0 mt-1" style="color:#94a3b8 !important;">
-                                {{ $site->lastPublicationLabel() }}
-                            </p>
-                        @endif
                         @unless($hasListingExtras)
                             <p class="text-muted small mb-0 mt-2">Base guest post only — no homepage, social, or sensitive add-ons.</p>
                         @endunless
@@ -1085,7 +1079,6 @@
                     @include('advertiser.partials.catalog-meta-chips', [
                         'site' => $site,
                     ])
-                    @include('advertiser.partials.catalog-site-trust', ['site' => $site, 'compactClass' => 'catalog-site-trust--row mt-1'])
                     </div>
                 </div>
                 {{-- Eye only in copy-strike hide mode (normals see full identity). --}}

@@ -795,6 +795,9 @@ class CatalogController extends Controller
         // Pagination links always target the full catalog page (not /results),
         // and only carry the allowlisted listing query (URL source of truth).
         $perPage = CatalogUrlQuery::perPage($request);
+        if (Schema::hasColumn('order_items', 'completed_at')) {
+            $query->withMax('orderItems as last_completed_at', 'completed_at');
+        }
         $sites = $query->paginate($perPage);
         $sites->appends(CatalogUrlQuery::fromRequest($request));
         $sites->setPath(route('advertiser.catalog', absolute: false));
