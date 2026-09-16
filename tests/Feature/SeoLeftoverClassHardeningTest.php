@@ -65,6 +65,7 @@ class SeoLeftoverClassHardeningTest extends TestCase
         $this->assertStringContainsString('class_exists(\\App\\Support\\BrandOrganization::class)', $about);
         $this->assertStringContainsString('class_exists(\\App\\Support\\BrandOrganization::class)', $prices);
         $this->assertStringContainsString('class_exists(\\App\\Support\\BrandOrganization::class)', $layout);
+        $this->assertStringContainsString('pageGraphJson', $layout);
         $this->assertStringContainsString('class_exists(\\App\\Support\\PublicI18n::class)', $layout);
         $this->assertStringContainsString('class_exists(PublicI18n::class)', $helper);
 

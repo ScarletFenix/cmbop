@@ -69,9 +69,7 @@
     @endforeach
     @if(class_exists(\App\Support\BrandOrganization::class))
     <script type="application/ld+json">
-{!! json_encode(array_merge([
-    '@@context' => 'https://schema.org',
-], \App\Support\BrandOrganization::schema()), JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) !!}
+{!! \App\Support\BrandOrganization::pageGraphJson($pageTitle, $pageDescription, $pageCanonical) !!}
     </script>
     @endif
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>

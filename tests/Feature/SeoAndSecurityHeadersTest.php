@@ -116,6 +116,8 @@ class SeoAndSecurityHeadersTest extends TestCase
             ->assertSee('name="robots" content="noindex, nofollow', false)
             ->assertSee('application/ld+json', false)
             ->assertSee('"@type":"Organization"', false)
+            ->assertSee('"@type":"WebPage"', false)
+            ->assertSee('"@graph"', false)
             ->assertSee('hreflang="en-GB"', false)
             ->assertSee('hreflang="x-default"', false)
             ->assertDontSee('hreflang="de"', false);
@@ -125,6 +127,20 @@ class SeoAndSecurityHeadersTest extends TestCase
             ->assertSee('€20 Welcome Credit', false)
             ->assertSee('name="robots" content="noindex, nofollow', false)
             ->assertDontSee('meta_register_title');
+    }
+
+    public function test_login_schema_graph_is_valid_json_ld(): void
+    {
+        $html = $this->get('/login')->assertOk()->getContent();
+        preg_match_all('#<script type="application/ld\+json">\s*(.*?)\s*</script>#s', $html, $matches);
+        $this->assertNotEmpty($matches[1]);
+        $payload = json_decode($matches[1][0], true);
+        $this->assertIsArray($payload);
+        $this->assertSame(JSON_ERROR_NONE, json_last_error());
+        $this->assertSame('https://schema.org', $payload['@context'] ?? null);
+        $types = array_column($payload['@graph'] ?? [], '@type');
+        $this->assertContains('Organization', $types);
+        $this->assertContains('WebPage', $types);
     }
 
     public function test_login_title_length_meets_on_page_band_in_every_locale(): void
@@ -143,7 +159,8 @@ class SeoAndSecurityHeadersTest extends TestCase
             $this->get($path)
                 ->assertOk()
                 ->assertSee('application/ld+json', false)
-                ->assertSee('"@type":"Organization"', false);
+                ->assertSee('"@type":"Organization"', false)
+                ->assertSee('"@type":"WebPage"', false);
         }
     }
 
