@@ -118,6 +118,17 @@ class SeoAndSecurityHeadersTest extends TestCase
             ->assertDontSee('meta_register_title');
     }
 
+    public function test_auth_recovery_pages_have_an_h1(): void
+    {
+        $forgot = $this->get('/forgot-password')->assertOk()->getContent();
+        $this->assertMatchesRegularExpression('/<h1\b/i', $forgot);
+        $this->assertStringContainsString('Forgot Password', $forgot);
+
+        $reset = $this->get('/reset-password/test-token')->assertOk()->getContent();
+        $this->assertMatchesRegularExpression('/<h1\b/i', $reset);
+        $this->assertStringContainsString('Reset Password', $reset);
+    }
+
     public function test_home_includes_website_and_organization_schema(): void
     {
         $html = $this->get('/')->assertOk()->getContent();
