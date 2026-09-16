@@ -7,6 +7,7 @@ use App\Models\Blog;
 use App\Models\BlogTranslation;
 use App\Support\RobotsTxt;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class SeoAndSecurityHeadersTest extends TestCase
@@ -231,6 +232,7 @@ class SeoAndSecurityHeadersTest extends TestCase
             'excerpt' => 'A short excerpt for SEO.',
             'featured_image' => 'blogs/featured/structured-data.jpg',
         ]);
+        Storage::disk('public')->put('blogs/featured/structured-data.jpg', 'fake-image');
         BlogTranslation::create([
             'blog_id' => $blog->id,
             'locale' => 'en',

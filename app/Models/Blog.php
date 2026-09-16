@@ -291,11 +291,72 @@ class Blog extends Model
     }
 
     /**
+     * Public <img> / JSON-LD URL only when the file is actually on the public disk.
+     */
+    public function publicFeaturedImageUrl(): ?string
+    {
+        $relative = $this->featuredImageUrl();
+        if ($relative === null) {
+            return null;
+        }
+
+        $path = $this->featured_image;
+        if (! is_string($path) || trim($path) === '') {
+            return null;
+        }
+
+        $path = trim($path);
+        $urlPath = $path;
+        if (preg_match('#^(https?:)?//#i', $path) === 1) {
+            $parsed = parse_url($path, PHP_URL_PATH);
+            $urlPath = is_string($parsed) && $parsed !== '' ? $parsed : $path;
+        }
+
+        $normalized = ltrim(str_replace('\\', '/', $urlPath), '/');
+        if (preg_match('#(?:^|/)assets/img/blog/([^/]+)$#i', $normalized, $matches)) {
+            $filename = $matches[1];
+            $featured = 'blogs/featured/'.$filename;
+            $content = 'blogs/content/'.$filename;
+            $disk = Storage::disk('public');
+            $normalized = $disk->exists($featured) ? $featured : ($disk->exists($content) ? $content : '');
+        } elseif (preg_match('#(?:storage|media)/(blogs/(?:content|featured)/.+)$#i', $normalized, $matches)) {
+            $normalized = $matches[1];
+        } else {
+            foreach (['storage/', 'media/'] as $prefix) {
+                if (str_starts_with($normalized, $prefix)) {
+                    $normalized = ltrim(substr($normalized, strlen($prefix)), '/');
+                }
+            }
+        }
+
+        if ($normalized === '') {
+            return null;
+        }
+
+        try {
+            if (! Storage::disk('public')->exists($normalized)) {
+                return null;
+            }
+        } catch (\Throwable) {
+            return null;
+        }
+
+        return $relative;
+    }
+
+    /**
      * Absolute featured-image URL for Open Graph / JSON-LD.
      */
     public function featuredImageAbsoluteUrl(): ?string
     {
         $relative = $this->featuredImageUrl();
+
+        return $relative ? url($relative) : null;
+    }
+
+    public function publicFeaturedImageAbsoluteUrl(): ?string
+    {
+        $relative = $this->publicFeaturedImageUrl();
 
         return $relative ? url($relative) : null;
     }

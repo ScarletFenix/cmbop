@@ -109,10 +109,10 @@
                             <div class="blog-item mb-4" data-title="{{ strtolower($post->title) }}" data-content="{{ strtolower(strip_tags($post->content)) }}" data-author="{{ strtolower($post->author) }}" data-tags="{{ $post->tags ? implode(',', is_array($post->tags) ? $post->tags : json_decode($post->tags, true) ?? []) : '' }}">
                                 <div class="card border-0 shadow-sm rounded-4 overflow-hidden" style="transition: all 0.3s ease;">
                                     <div class="row g-0">
-                                        @if($post->featured_image)
+                                        @if($post->publicFeaturedImageUrl())
                                             <div class="col-md-4">
                                                 <div style="height: 100%; overflow: hidden;">
-                                                    <img src="{{ $post->featuredImageUrl() }}" 
+                                                    <img src="{{ $post->publicFeaturedImageUrl() }}" 
                                                          class="img-fluid w-100 h-100" 
                                                          alt="{{ $post->title }}"
                                                          style="object-fit: cover; transition: transform 0.3s;">
@@ -202,8 +202,8 @@
                         @foreach($recentPosts as $recent)
                             <a href="{{ localized_url('blog/'.$recent->slug) }}" class="text-decoration-none d-block mb-3">
                                 <div class="d-flex gap-3 align-items-start">
-                                    @if($recent->featured_image)
-                                        <img src="{{ $recent->featuredImageUrl() }}" 
+                                    @if($recent->publicFeaturedImageUrl())
+                                        <img src="{{ $recent->publicFeaturedImageUrl() }}" 
                                              alt="{{ $recent->title }}" 
                                              style="width: 60px; height: 60px; object-fit: cover; border-radius: 12px;">
                                     @else

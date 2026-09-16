@@ -20,6 +20,7 @@
     'applicationCategory' => 'BusinessApplication',
     'operatingSystem' => 'Web',
     'url' => url('/'),
+    'image' => asset('assets/img/logo1.png'),
     'offers' => [
         '@type' => 'Offer',
         'price' => '0',

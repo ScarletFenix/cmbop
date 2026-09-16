@@ -50,4 +50,12 @@ class PublicI18nLocaleMapTest extends TestCase
         $this->assertSame('US', PublicI18n::shortLabel('us'));
         $this->assertSame('ES', PublicI18n::shortLabel('es'));
     }
+
+    public function test_english_only_marketing_slugs_cover_landers_and_price_index(): void
+    {
+        $slugs = PublicI18n::englishOnlyMarketingSlugs();
+        $this->assertContains('guest-post-prices-europe', $slugs);
+        $this->assertContains('guest-posts-germany', $slugs);
+        $this->assertContains('guest-posts-uk', $slugs);
+    }
 }

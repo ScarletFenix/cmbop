@@ -145,6 +145,32 @@ class BlogTranslationFeatureTest extends TestCase
             ->assertDontSee(url('/de/blog/english-title'), false);
     }
 
+    public function test_language_switcher_on_untranslated_post_goes_to_locale_blog_index(): void
+    {
+        $blog = Blog::factory()->published()->create([
+            'title' => 'English title',
+            'slug' => 'english-title',
+            'content' => '<p>English body</p>',
+        ]);
+
+        BlogTranslation::create([
+            'blog_id' => $blog->id,
+            'locale' => 'en',
+            'title' => 'English title',
+            'slug' => 'english-title',
+            'excerpt' => 'English excerpt',
+            'content' => '<p>English body</p>',
+            'is_published' => true,
+        ]);
+
+        $this->assertSame('blog', PublicI18n::blogPathForLocale('english-title', 'de'));
+
+        $this->get('/blog/english-title')
+            ->assertOk()
+            ->assertSee(url('/de/blog'), false)
+            ->assertDontSee(url('/de/blog/english-title'), false);
+    }
+
     public function test_copied_translation_slugs_are_localized_from_title(): void
     {
         $blog = Blog::factory()->published()->create([
@@ -253,10 +279,8 @@ class BlogTranslationFeatureTest extends TestCase
         ]);
 
         $this->get('/de/blog/english-fallback')
-            ->assertOk()
-            ->assertSee('English title', false)
-            ->assertSee('translation is not yet available', false)
-            ->assertSee('rel="canonical" href="'.url('/blog/english-fallback').'"', false);
+            ->assertRedirect(url('/blog/english-fallback'));
+        $this->assertSame(301, $this->get('/de/blog/english-fallback')->status());
     }
 
     public function test_canonical_url_falls_back_to_primary_locale_when_english_is_missing(): void
