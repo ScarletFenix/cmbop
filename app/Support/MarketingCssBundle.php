@@ -33,7 +33,7 @@ class MarketingCssBundle
     public static function url(): string
     {
         $path = self::absolutePath();
-        $version = is_file($path) ? (string) filemtime($path) : '1';
+        $version = is_file($path) ? (string) (@filemtime($path) ?: '1') : '1';
 
         return asset(self::RELATIVE_PATH).'?v='.$version;
     }
@@ -63,10 +63,10 @@ class MarketingCssBundle
             return true;
         }
 
-        $bundleMtime = (int) filemtime($bundle);
+        $bundleMtime = (int) (@filemtime($bundle) ?: 0);
         foreach (self::FILES as $file) {
             $source = public_path('assets/css/'.$file);
-            if (! is_file($source) || (int) filemtime($source) > $bundleMtime) {
+            if (! is_file($source) || (int) (@filemtime($source) ?: 0) > $bundleMtime) {
                 return true;
             }
         }

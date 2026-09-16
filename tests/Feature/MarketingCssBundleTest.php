@@ -50,4 +50,22 @@ class MarketingCssBundleTest extends TestCase
     {
         $this->assertNotNull(MarketingCssBundle::urlIfReady());
     }
+
+    public function test_public_layout_keeps_source_sheets_as_leftover_fallback(): void
+    {
+        $layout = (string) file_get_contents(resource_path('views/layouts/app.blade.php'));
+
+        $this->assertStringContainsString("method_exists(\\App\\Support\\MarketingCssBundle::class, 'urlIfReady')", $layout);
+        foreach (MarketingCssBundle::FILES as $file) {
+            $this->assertStringContainsString('assets/css/'.$file, $layout);
+        }
+
+        $hover = 'assets/css/hover-system.css';
+        $type = 'assets/css/type-system.css';
+        $this->assertGreaterThan(
+            strrpos($layout, $type),
+            strrpos($layout, $hover),
+            'hover-system.css must remain last in the leftover source-sheet fallback'
+        );
+    }
 }

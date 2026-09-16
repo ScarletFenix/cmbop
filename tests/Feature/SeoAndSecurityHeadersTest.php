@@ -195,6 +195,18 @@ class SeoAndSecurityHeadersTest extends TestCase
         $this->assertSame('https://schema.org', $decoded['@context'] ?? null);
     }
 
+    public function test_json_ld_helper_escapes_script_breakout(): void
+    {
+        $json = BrandOrganization::jsonLd([
+            '@context' => 'https://schema.org',
+            '@type' => 'WebPage',
+            'name' => 'Break</script><script>alert(1)</script>',
+        ]);
+
+        $this->assertStringContainsString('\\u003C/script\\u003E', $json);
+        $this->assertStringNotContainsString('</script>', $json);
+    }
+
     public function test_sitemap_index_uses_request_origin_when_app_url_is_loopback(): void
     {
         config(['app.url' => 'http://localhost:8000']);
