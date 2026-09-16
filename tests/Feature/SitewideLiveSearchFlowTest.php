@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Support\MarketingCssBundle;
 use Tests\TestCase;
 
 /**
@@ -42,6 +43,16 @@ class SitewideLiveSearchFlowTest extends TestCase
         foreach ($layouts as $layout) {
             $markup = (string) file_get_contents(resource_path('views/'.$layout));
             $this->assertStringContainsString('js/slb-live-search.js', $markup, $layout);
+
+            if ($layout === 'layouts/app.blade.php') {
+                $this->assertStringContainsString('MarketingCssBundle', $markup, $layout);
+                $this->assertContains('slb-live-search.css', MarketingCssBundle::FILES);
+                $files = MarketingCssBundle::FILES;
+                $this->assertSame('hover-system.css', $files[array_key_last($files)]);
+
+                continue;
+            }
+
             $this->assertStringContainsString('assets/css/slb-live-search.css', $markup, $layout);
 
             preg_match_all('/<link[^>]+assets\/css\/([a-z-]+)\.css/', $markup, $matches);

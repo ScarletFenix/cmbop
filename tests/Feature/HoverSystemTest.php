@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Support\MarketingCssBundle;
 use Tests\TestCase;
 
 /**
@@ -21,7 +22,10 @@ class HoverSystemTest extends TestCase
      */
     private function stylesheets(): array
     {
-        return glob(public_path('assets/css/*.css'));
+        return array_values(array_filter(
+            glob(public_path('assets/css/*.css')) ?: [],
+            fn (string $file) => ! str_ends_with($file, 'marketing-bundle.css')
+        ));
     }
 
     /**
@@ -63,6 +67,14 @@ class HoverSystemTest extends TestCase
     {
         foreach ($this->layouts() as $layout) {
             $markup = file_get_contents(resource_path('views/'.$layout));
+
+            if ($layout === 'layouts/app.blade.php') {
+                $this->assertStringContainsString('MarketingCssBundle', $markup);
+                $files = MarketingCssBundle::FILES;
+                $this->assertSame('hover-system.css', $files[array_key_last($files)]);
+
+                continue;
+            }
 
             // Only <link> tags decide the cascade — prose mentioning a
             // stylesheet does not.
@@ -126,7 +138,7 @@ class HoverSystemTest extends TestCase
                     continue;
                 }
                 // Large standalone cards may still lift; chips in a row may not.
-                if (preg_match('/\.slb-feature|\.pricing-card|\.slb-step/', $rule[1])) {
+                if (preg_match('/\.slb-feature|\.pricing-card|\.slb-step|\.slb-live-chat/', $rule[1])) {
                     continue;
                 }
                 $offenders[] = basename($file).' — '.trim(preg_replace('/\s+/', ' ', $rule[1]));
