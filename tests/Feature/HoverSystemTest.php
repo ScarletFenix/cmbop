@@ -171,6 +171,7 @@ class HoverSystemTest extends TestCase
         $this->assertStringContainsString('--auth-card: #ffffff', $auth);
         $this->assertDoesNotMatchRegularExpression('/\.auth-card\s*\{[^}]*backdrop-filter/', $auth);
         $this->assertStringNotContainsString('filter: blur(40px)', $auth);
+        $this->assertStringNotContainsString('authFadeIn', $auth);
         $this->assertStringContainsString('background-color: #1a585e', $auth);
         $this->assertStringContainsString('linear-gradient(160deg, #134347', $auth);
     }
