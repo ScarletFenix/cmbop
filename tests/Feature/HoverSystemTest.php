@@ -168,6 +168,9 @@ class HoverSystemTest extends TestCase
             $auth
         );
         $this->assertMatchesRegularExpression('/\.auth-cta:hover\s*\{[^}]*box-shadow/', $auth);
+        $this->assertStringContainsString('--auth-card: #ffffff', $auth);
+        $this->assertDoesNotMatchRegularExpression('/\.auth-card\s*\{[^}]*backdrop-filter/', $auth);
+        $this->assertStringNotContainsString('filter: blur(40px)', $auth);
     }
 
     public function test_focus_mirrors_hover_on_the_controls_that_had_none(): void
