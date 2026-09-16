@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Support\PublicI18n;
+use Illuminate\Http\Request;
 use Tests\TestCase;
 
 class PublicI18nLocaleMapTest extends TestCase
@@ -57,5 +58,24 @@ class PublicI18nLocaleMapTest extends TestCase
         $this->assertContains('guest-post-prices-europe', $slugs);
         $this->assertContains('guest-posts-germany', $slugs);
         $this->assertContains('guest-posts-uk', $slugs);
+    }
+
+    public function test_hreflang_tags_restrict_english_only_marketing_without_view_override(): void
+    {
+        $request = Request::create('/guest-posts-germany', 'GET');
+        $tags = PublicI18n::hreflangTags($request);
+        $cluster = [];
+        foreach ($tags as $tag) {
+            $cluster[$tag['hreflang']] = $tag['href'];
+        }
+
+        $canonical = url('/guest-posts-germany');
+        $this->assertSame(
+            [
+                'en-GB' => $canonical,
+                'x-default' => $canonical,
+            ],
+            $cluster
+        );
     }
 }

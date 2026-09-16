@@ -20,6 +20,7 @@
     'applicationCategory' => 'BusinessApplication',
     'operatingSystem' => 'Web',
     'url' => url('/'),
+    'description' => 'Guest-post and backlink marketplace connecting advertisers with publishers across Europe.',
     'image' => asset('assets/img/logo1.png'),
     'offers' => [
         '@type' => 'Offer',
@@ -42,11 +43,8 @@
     'alternateName' => ['SEO Link Buildings', 'Seolink Buildings'],
     'url' => url('/'),
     'inLanguage' => class_exists(\App\Support\PublicI18n::class)
-        ? array_map(
-            fn (string $locale) => \App\Support\PublicI18n::htmlLang($locale),
-            \App\Support\PublicI18n::supported()
-        )
-        : ['en-GB'],
+        ? \App\Support\PublicI18n::htmlLang()
+        : 'en-GB',
     'publisher' => [
         '@type' => 'Organization',
         'name' => 'SEOLinkBuildings',

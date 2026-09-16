@@ -73,11 +73,16 @@
         '@type' => 'Place',
         'name' => 'Europe',
     ],
-    'variableMeasured' => [
+    'variableMeasured' => array_filter([
         '@type' => 'PropertyValue',
         'name' => 'Median advertiser guest-post checkout price',
+        'description' => 'Median of advertiser checkout prices on catalog-visible listings whose primary country is in Europe.',
         'unitText' => 'EUR',
-    ],
+        'unitCode' => 'EUR',
+        'value' => isset($index['europe']['median']) && $index['europe']['median'] !== null
+            ? $index['europe']['median']
+            : null,
+    ], static fn ($value) => $value !== null),
     'measurementTechnique' => 'Median of advertiser checkout prices on catalog-visible listings, grouped by primary country. Country rows require at least 3 listings.',
 ], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) !!}
 </script>

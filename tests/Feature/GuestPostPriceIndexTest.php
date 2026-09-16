@@ -68,6 +68,9 @@ class GuestPostPriceIndexTest extends TestCase
         $this->assertStringContainsString('How this index is calculated', $html);
         $this->assertStringContainsString('FAQPage', $html);
         $this->assertStringContainsString('Dataset', $html);
+        $this->assertStringContainsString('"@type":"Place"', $html);
+        $this->assertStringContainsString('"@type":"PropertyValue"', $html);
+        $this->assertStringContainsString('"unitCode":"EUR"', $html);
         $this->assertStringContainsString('rel="canonical" href="'.url('/guest-post-prices-europe').'"', $html);
         $this->assertStringContainsString('hreflang="en-GB"', $html);
         $this->assertStringContainsString(url('/register'), $html);

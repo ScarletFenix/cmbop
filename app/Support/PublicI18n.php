@@ -324,6 +324,13 @@ class PublicI18n
         if (class_exists(LocalizedPublicPath::class)) {
             $path = LocalizedPublicPath::canonicalize($path);
         }
+
+        $first = $path === '' ? '' : explode('/', $path, 2)[0];
+        if ($locales === null && $first !== '' && in_array($first, self::englishOnlyMarketingSlugs(), true)) {
+            $locales = [self::default()];
+            $xDefaultLocale = self::default();
+        }
+
         $tags = [];
         $targetLocales = $locales ?: self::supported();
         $targetLocales = array_values(array_filter($targetLocales, fn ($locale) => self::isSupported($locale)));
