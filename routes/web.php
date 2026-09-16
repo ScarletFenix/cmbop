@@ -158,7 +158,7 @@ $registerPublicMarketingRoutes = function (string $locale = 'en') {
         $catalogPreview = collect();
         if (class_exists(CatalogTeaserService::class)) {
             try {
-                $catalogPreview = app(CatalogTeaserService::class)->teasers(8);
+                $catalogPreview = app(CatalogTeaserService::class)->teasersForCountries(['de'], 8);
             } catch (Throwable) {
                 $catalogPreview = collect();
             }
@@ -766,6 +766,9 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
         Route::post('/campaigns/preview', [AdminCampaignController::class, 'preview'])
             ->middleware('throttle:20,1')
             ->name('campaigns.preview');
+        Route::post('/campaigns/from-template', [AdminCampaignController::class, 'fromTemplate'])
+            ->middleware('throttle:20,1')
+            ->name('campaigns.from-template');
         Route::post('/campaigns/send', [AdminCampaignController::class, 'send'])
             ->middleware('throttle:6,1')
             ->name('campaigns.send');

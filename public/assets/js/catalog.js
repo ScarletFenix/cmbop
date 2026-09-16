@@ -4298,16 +4298,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
         if (radio.classList.contains('sensitive-price-checkbox')) {
             const selected = getSelectedSensitiveForSite(siteId);
-            const homepage = getSelectedHomepageForSite(siteId);
             if (selected.type && selected.additionalPrice > 0) {
-                const article = selected.totalPrice != null
-                    ? selected.totalPrice
-                    : (selected.basePrice + selected.additionalPrice);
-                const total = catalogRoundMoney(Number(article) + (homepage.price || 0));
                 catalogToast(
-                    selected.type + ' selected: +€' + selected.additionalPrice.toFixed(2)
-                    + ' — Total: €' + Number(total).toFixed(2),
-                    'success'
+                    selected.type + ' +€' + selected.additionalPrice.toFixed(2),
+                    'success',
+                    { delay: 1200 }
                 );
             }
         }

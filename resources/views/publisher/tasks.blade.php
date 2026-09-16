@@ -15,16 +15,16 @@
         </div>
     </div>
 
-    <div id="needsActionBanner" class="ui-callout ui-callout--attention ui-callout--banner d-none mb-4" role="status">
-        <div class="ui-callout__main">
-            <span class="ui-callout__icon" aria-hidden="true"><i class="fa-solid fa-circle-exclamation"></i></span>
-            <div class="ui-callout__body">
+    <div id="needsActionBanner" class="publisher-needs-alert d-none mb-4" role="alert" tabindex="-1" aria-labelledby="needsActionLabel">
+        <div class="d-md-flex justify-content-md-between">
+            <p id="needsActionLabel" class="publisher-needs-alert__copy mb-0">
+                <svg class="publisher-needs-alert__icon" xmlns="http://www.w3.org/2000/svg" viewBox="118 4 72 244" fill="currentColor" aria-hidden="true" focusable="false"><g transform="translate(1.4065934065934016 1.4065934065934016) scale(2.81 2.81)"><path d="M 49.083 71.489 l 5.776 -21.96 l 4.186 -15.247 c 3.497 -16.18 -32.704 -2.439 -38.002 1.695 l 0.425 4.853 c 4.824 -3.395 23.091 -7.744 19.449 4.275 l -1.634 6.135 l 0 0 l -8.329 31.071 c -3.497 16.18 32.704 2.439 38.002 -1.695 l -0.425 -4.853 C 63.708 79.159 45.441 83.508 49.083 71.489 z"/><circle cx="53.871" cy="11.201" r="11.201"/></g></svg>
                 <strong>Needs your action</strong>
                 <span class="ms-1" id="needsActionText"></span>
-            </div>
-        </div>
-        <div class="ui-callout__actions">
-            <button type="button" class="btn btn-sm btn-primary" id="showNeedsActionBtn">Show tasks that need me</button>
+            </p>
+            <p class="mb-0 mt-3 mt-md-0 ms-md-4">
+                <button type="button" class="publisher-needs-alert__link" id="showNeedsActionBtn">Show tasks that need me</button>
+            </p>
         </div>
     </div>
 

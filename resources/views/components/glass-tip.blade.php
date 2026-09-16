@@ -19,21 +19,17 @@
     data-glass-tip-placement="{{ $placement }}"
     aria-label="{{ $label }}"
 >
-    {{-- Lucide "Info" — stroke inherits currentColor --}}
     <svg
         xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
+        viewBox="118 4 72 244"
+        fill="currentColor"
         class="glass-tip-icon"
         aria-hidden="true"
         focusable="false"
     >
-        <circle cx="12" cy="12" r="10"></circle>
-        <path d="M12 16v-4"></path>
-        <path d="M12 8h.01"></path>
+        <g transform="translate(1.4065934065934016 1.4065934065934016) scale(2.81 2.81)">
+            <path d="M 49.083 71.489 l 5.776 -21.96 l 4.186 -15.247 c 3.497 -16.18 -32.704 -2.439 -38.002 1.695 l 0.425 4.853 c 4.824 -3.395 23.091 -7.744 19.449 4.275 l -1.634 6.135 l 0 0 l -8.329 31.071 c -3.497 16.18 32.704 2.439 38.002 -1.695 l -0.425 -4.853 C 63.708 79.159 45.441 83.508 49.083 71.489 z"/>
+            <circle cx="53.871" cy="11.201" r="11.201"/>
+        </g>
     </svg>
 </button>

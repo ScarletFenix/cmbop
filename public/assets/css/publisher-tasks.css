@@ -1,4 +1,60 @@
 /* Publisher My Tasks */
+.publisher-needs-alert {
+    background: #e0e0e3;
+    border: 0;
+    color: #5c5c64;
+    font-size: 0.875rem;
+    line-height: 1.45;
+    border-radius: var(--radius-md, 0.5rem);
+    padding: 1rem;
+}
+
+.publisher-needs-alert__icon {
+    display: inline-block;
+    width: 13px;
+    height: 13px;
+    margin-right: 0.4rem;
+    vertical-align: 0.05em;
+    color: var(--brand-danger, #dc2626);
+}
+
+.publisher-needs-alert__copy {
+    color: inherit;
+}
+
+.publisher-needs-alert__copy strong {
+    color: #3f3f46;
+    font-weight: 600;
+}
+
+.publisher-needs-alert__link {
+    display: inline-block;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: #3f3f46;
+    font-size: 0.875rem;
+    font-weight: 600;
+    line-height: 1.45;
+    white-space: nowrap;
+    cursor: pointer;
+    transform: translateZ(0);
+    transform-origin: center;
+    backface-visibility: hidden;
+    -webkit-font-smoothing: antialiased;
+    transition: color 0.22s ease, transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.publisher-needs-alert__link:hover,
+.publisher-needs-alert__link:focus-visible {
+    color: var(--brand-primary, #1a585e);
+    transform: translateZ(0) scale(1.025);
+}
+
+.publisher-needs-alert__link:focus-visible {
+    outline: 2px solid var(--brand-primary-soft, #3faeb2);
+    outline-offset: 2px;
+}
 .table td, .table th {
     padding: 12px 15px;
     vertical-align: middle;

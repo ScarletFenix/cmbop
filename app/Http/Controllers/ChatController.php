@@ -179,6 +179,7 @@ class ChatController extends Controller
                 'success' => true,
                 'messages' => $this->serializeMessages($messages),
                 'has_more_older' => $hasMoreOlder,
+                'own_read_ids' => $this->ownReadMessageIds((int) $orderId, (int) $user->id),
                 'current_user_id' => $user->id,
                 'order_details' => $details,
                 'can_send' => $details['can_send'],
@@ -379,6 +380,25 @@ class ChatController extends Controller
             $inner->where('is_blocked', false)
                 ->orWhere('user_id', $user->id);
         });
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function ownReadMessageIds(int $orderId, int $userId): array
+    {
+        try {
+            return OrderChatMessage::query()
+                ->where('order_id', $orderId)
+                ->where('user_id', $userId)
+                ->where('is_read', true)
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->values()
+                ->all();
+        } catch (\Throwable $e) {
+            return [];
+        }
     }
 
     /**

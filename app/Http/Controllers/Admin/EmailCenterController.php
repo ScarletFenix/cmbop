@@ -188,17 +188,11 @@ class EmailCenterController extends Controller
         $template = EmailCatalog::get($key);
         abort_unless($template, 404);
 
-        if ($html = $this->frameworkPreviewHtml($key)) {
-            return response($html);
-        }
-
         $audience = $request->query('audience');
-        $mailable = EmailCatalog::makeMailable($key, array_filter([
-            'audience' => is_string($audience) ? $audience : null,
-        ]));
-        abort_unless($mailable, 404);
+        $html = EmailCatalog::previewHtml($key, is_string($audience) ? $audience : null);
+        abort_unless($html, 404);
 
-        return response($mailable->render());
+        return response($html);
     }
 
     public function showLog(EmailLog $emailLog)
@@ -1541,15 +1535,7 @@ class EmailCenterController extends Controller
 
     protected function frameworkPreviewHtml(string $key): ?string
     {
-        return match ($key) {
-            'password_reset' => $this->renderMarkdown('emails.password-reset-preview', [
-                'resetUrl' => rtrim(app_public_url(), '/').'/password/reset/preview-token',
-            ]),
-            'email_verification' => $this->renderMarkdown('emails.email-verification-preview', [
-                'verifyUrl' => EmailCatalog::previewVerificationUrl(),
-            ]),
-            default => null,
-        };
+        return EmailCatalog::frameworkPreviewHtml($key);
     }
 
     protected function renderMarkdown(string $view, array $data = []): string

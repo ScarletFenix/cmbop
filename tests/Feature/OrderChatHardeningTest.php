@@ -396,6 +396,36 @@ class OrderChatHardeningTest extends TestCase
         $this->assertFalse($response->json('has_more_older'));
     }
 
+    public function test_own_read_ids_turn_blue_after_counterpart_opens_chat(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher);
+        $order = $this->orderFor($advertiser, $site);
+
+        $mine = OrderChatMessage::create([
+            'order_id' => $order->id,
+            'user_id' => $advertiser->id,
+            'sender_type' => 'advertiser',
+            'message' => 'Please check',
+            'is_read' => false,
+        ]);
+
+        $this->actingAs($advertiser)
+            ->getJson(route('chat.messages', $order->id))
+            ->assertOk()
+            ->assertJsonPath('own_read_ids', []);
+
+        $this->actingAs($publisher)
+            ->getJson(route('chat.messages', $order->id))
+            ->assertOk();
+
+        $this->actingAs($advertiser)
+            ->getJson(route('chat.messages', $order->id))
+            ->assertOk()
+            ->assertJsonPath('own_read_ids.0', $mine->id);
+    }
+
     public function test_messages_ok_when_created_at_is_unparseable(): void
     {
         $advertiser = $this->advertiser();

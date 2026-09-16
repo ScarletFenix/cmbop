@@ -27,10 +27,6 @@
 @endphp
 <div class="site-trust-compact {{ $compactClass ?? 'mt-2' }}"
      data-site-id="{{ $site->id }}"
-     data-glass-tip
-     data-glass-tip-title="Publisher trust"
-     data-glass-tip-body="Ratings from advertisers after completed orders. Completion rate is successful vs cancelled placements. Last published is the most recent completed placement on this site."
-     data-glass-tip-placement="top"
      role="group"
      aria-label="{{ implode('. ', $ariaParts) }}">
     <div class="site-trust-compact__row">

@@ -34,23 +34,7 @@
       </a>
     </div>
 
-    <div class="slb-hero-visual">
-      <a href="{{ $marketplaceHref }}" class="slb-hero-catalog-link" aria-label="{{ __('messages.nav_marketplace') }}">
-        <picture>
-          <source srcset="{{ asset('assets/img/dashboard.webp') }}" type="image/webp">
-          <img
-            src="{{ asset('assets/img/dashboard.png') }}"
-            alt="{{ __('messages.hero_product_alt') }}"
-            class="slb-hero-product"
-            width="1200"
-            height="518"
-            fetchpriority="high"
-            loading="eager"
-            decoding="async"
-          >
-        </picture>
-      </a>
-    </div>
+    @include('components.hero-catalog-preview')
   </div>
 </section>
 
@@ -93,19 +77,18 @@
     position: relative;
     z-index: 2;
     display: grid;
-    grid-template-columns: minmax(240px, 0.78fr) minmax(0, 1.45fr);
-    gap: 28px;
+    grid-template-columns: minmax(220px, 0.62fr) minmax(0, 1.85fr);
+    gap: 20px;
     align-items: center;
     width: 100%;
-    max-width: 1440px;
+    max-width: 1600px;
     margin: 0 auto;
     padding-left: clamp(16px, 4vw, 56px);
     padding-right: 0;
     min-width: 0;
   }
 
-  .slb-hero-copy,
-  .slb-hero-visual {
+  .slb-hero-copy {
     min-width: 0;
     max-width: 100%;
   }
@@ -237,159 +220,104 @@
   .slb-hero-visual {
     position: relative;
     align-self: end;
-    width: 100%;
+    justify-self: end;
+    width: 1340px;
+    max-width: none;
+    zoom: 0.74;
     animation: slbHeroRise 0.9s ease 0.18s both;
-  }
-
-  .slb-hero-catalog-link {
-    display: block;
-    position: relative;
-    text-decoration: none;
-    color: inherit;
-    transform-origin: bottom right;
-  }
-
-  .slb-hero-product {
-    display: block;
-    width: 100%;
-    height: auto;
-    min-height: 0;
-    max-height: none;
-    aspect-ratio: 1200 / 518;
-    /* contain (not cover) so DR/DA/Traffic stay in frame on laptop columns */
-    object-fit: contain;
-    object-position: left top;
+    overflow: hidden;
     border-radius: 18px 0 0 0;
     box-shadow: -18px 24px 70px rgba(26, 88, 94, 0.18);
     border: 1px solid rgba(26, 88, 94, 0.1);
     border-right: none;
-    transition: transform 0.35s ease, box-shadow 0.35s ease;
-    background: #fff;
+    background: #f7fafb;
   }
 
-  .slb-hero-live-catalog {
-    display: flex;
-    flex-direction: column;
-    object-fit: unset;
-    overflow: hidden;
-    max-height: min(68vh, 620px);
-    min-height: min(48vh, 440px);
-  }
-
-  .slb-hero-live-catalog__chrome {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 10px 14px;
-    background: linear-gradient(180deg, #f7fafb 0%, #eef4f5 100%);
-    border-bottom: 1px solid rgba(26, 88, 94, 0.1);
-  }
-
-  .slb-hero-live-catalog__dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: #cbd5e1;
-  }
-
-  .slb-hero-live-catalog__dot:nth-child(1) { background: #f87171; }
-  .slb-hero-live-catalog__dot:nth-child(2) { background: #fbbf24; }
-  .slb-hero-live-catalog__dot:nth-child(3) { background: #34d399; }
-
-  .slb-hero-live-catalog__label {
-    margin-left: 8px;
-    font-size: 0.78rem;
-    font-weight: 600;
-    color: #64748b;
-    letter-spacing: 0.01em;
-  }
-
-  .slb-hero-live-catalog__table {
+  .slb-hero-catalog-clone {
+    pointer-events: none;
+    padding: 10px 8px 6px 10px;
+    background: transparent;
     width: 100%;
-    border-collapse: collapse;
-    font-size: 0.82rem;
-    flex: 1;
-  }
-
-  .slb-hero-live-catalog__table thead th {
-    text-align: left;
-    padding: 10px 12px;
-    font-size: 0.7rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: #64748b;
-    background: #f8fafc;
-    border-bottom: 1px solid rgba(26, 88, 94, 0.08);
-    white-space: nowrap;
-  }
-
-  .slb-hero-live-catalog__table tbody td {
-    padding: 10px 12px;
-    border-bottom: 1px solid rgba(148, 163, 184, 0.18);
-    color: #1e293b;
-    vertical-align: middle;
-    white-space: nowrap;
-  }
-
-  .slb-hero-live-catalog__table tbody tr:last-child td {
-    border-bottom: none;
-  }
-
-  .slb-hero-live-catalog__site {
-    display: flex;
-    align-items: center;
-    gap: 10px;
     min-width: 0;
   }
 
-  .slb-hero-live-catalog__thumb {
-    width: 36px;
-    height: 36px;
-    border-radius: 8px;
-    object-fit: cover;
-    flex-shrink: 0;
-    background: #eef4f5;
-    border: 1px solid rgba(26, 88, 94, 0.1);
+  .slb-hero-catalog-clone .catalog-filters-card .row {
+    flex-wrap: nowrap;
   }
 
-  .slb-hero-live-catalog__thumb--placeholder {
+  .slb-hero-catalog-clone .catalog-tag-quick {
+    flex-wrap: nowrap;
+    white-space: nowrap;
+  }
+
+  .slb-hero-catalog-clone .catalog-table-scroll {
+    display: block !important;
+    overflow: visible;
+  }
+
+  .slb-hero-catalog-clone .catalog-metric {
     display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    min-width: 3.5rem;
+  }
+
+  .slb-hero-catalog-clone .catalog-metric__bar {
+    display: block;
+    width: 3.25rem;
+    max-width: 100%;
+    height: 6px;
+    border-radius: 999px;
+    background: #d5dbe3;
+    overflow: hidden;
+  }
+
+  .slb-hero-catalog-clone .catalog-metric__fill {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: #3faeb2;
+  }
+
+  .slb-hero-catalog-clone .catalog-metric--da .catalog-metric__fill {
+    background: #24abe2;
+  }
+
+  .slb-hero-catalog-clone .catalog-country {
+    display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
-    color: #94a3b8;
-    font-size: 0.9rem;
+    gap: 2px;
   }
 
-  .slb-hero-live-catalog__name {
-    font-weight: 600;
-    color: #0f172a;
-    max-width: 18ch;
-    overflow: hidden;
-    text-overflow: ellipsis;
+  .slb-hero-catalog-clone__flag-tile {
+    font-size: 1.15rem;
+    background: #e6f5f5;
   }
 
-  .slb-hero-live-catalog__domain {
-    font-size: 0.72rem;
-    color: #64748b;
+  .slb-hero-live-catalog__url-blur {
+    filter: blur(3.5px);
+    user-select: none;
+    pointer-events: none;
   }
 
-  .slb-hero-live-catalog__country {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-weight: 600;
-    color: #334155;
+  .slb-hero-catalog-hit {
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    text-decoration: none;
   }
 
-  .slb-hero-live-catalog__price {
-    font-weight: 700;
-    color: var(--brand-primary, #1a585e);
+  /* catalog.css body:has(.catalog-page) opts out of shell overflow clip. */
+  body:has(.slb-hero-catalog-clone) {
+    overflow-x: clip;
+    scrollbar-gutter: auto;
   }
-
-  .slb-hero-catalog-link:hover .slb-hero-product {
-    transform: translateY(-4px);
-    box-shadow: -20px 28px 72px rgba(26, 88, 94, 0.22);
+  body:has(.slb-hero-catalog-clone) #main-content,
+  body:has(.slb-hero-catalog-clone) #content {
+    overflow-x: clip;
   }
 
   @keyframes slbHeroFade {
@@ -441,6 +369,8 @@
     .slb-hero-visual {
       width: 100%;
       max-width: 100%;
+      zoom: 1;
+      justify-self: stretch;
       align-self: stretch;
       overflow-x: auto;
       overflow-y: hidden;
@@ -448,40 +378,14 @@
       overscroll-behavior-x: contain;
       border-radius: 16px;
       box-shadow: 0 18px 48px rgba(26, 88, 94, 0.14);
-      background: #fff;
+      background: #f7fafb;
       border: 1px solid rgba(26, 88, 94, 0.1);
       scrollbar-width: thin;
     }
-    .slb-hero-catalog-link {
-      display: block;
-      width: max-content;
-      min-width: 100%;
-      transform-origin: center bottom;
-    }
-    .slb-hero-product {
-      width: min(920px, 235vw);
-      max-width: none;
-      min-width: 720px;
-      height: auto;
-      aspect-ratio: 1200 / 518;
-      object-fit: contain;
-      object-position: left top;
-      border-radius: 0;
-      border: 0;
-      box-shadow: none;
-    }
-    .slb-hero-live-catalog {
-      min-height: 0;
-      max-height: none;
-      height: auto;
+    .slb-hero-catalog-clone {
       width: min(920px, 235vw);
       min-width: 720px;
       max-width: none;
-      overflow: visible;
-      border-radius: 0;
-      aspect-ratio: auto;
-      box-shadow: none;
-      border: 0;
     }
   }
 
@@ -500,7 +404,7 @@
     .slb-hero-visual {
       border-radius: 14px;
     }
-    .slb-hero-product {
+    .slb-hero-catalog-clone {
       width: min(860px, 230vw);
       min-width: 680px;
     }
@@ -513,7 +417,7 @@
     .slb-hero-cta-group,
     .slb-hero-catalog-text,
     .slb-hero-visual,
-    .slb-hero-product {
+    .slb-hero-catalog-clone {
       animation: none !important;
       transition: none !important;
     }

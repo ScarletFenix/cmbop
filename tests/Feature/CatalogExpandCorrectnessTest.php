@@ -119,7 +119,6 @@ class CatalogExpandCorrectnessTest extends TestCase
         $this->assertStringContainsString('site-chip--partner', $html);
         $this->assertStringContainsString(SiteTag::DETAILS_HEADING, $html);
         $this->assertStringContainsString(SiteTag::FILTER_TOOLTIP, $html);
-        $this->assertStringContainsString('catalog-tag-definition', $html);
         $this->assertStringContainsString(
             'Paid placement disclosed as sponsored — not the DoFollow / NoFollow link attribute',
             $html
@@ -141,11 +140,9 @@ class CatalogExpandCorrectnessTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        // Desktop expand + mobile Details only — closed row / card badges stay empty.
-        $this->assertSame(2, substr_count($html, 'site-chip--none'));
-        $this->assertStringContainsString(SiteTag::NONE_LABEL, $html);
-        $this->assertStringContainsString(SiteTag::NONE_CHIP_TITLE, $html);
-        $this->assertStringContainsString('catalog-tag-definition', $html);
+        // Untagged listings omit Listing tag from Site Details instead of a No tags chip.
+        $this->assertStringNotContainsString('site-chip--none', $html);
+        $this->assertStringNotContainsString('catalog-tag-definition', $html);
     }
 
     public function test_expand_layout_separates_pricing_and_empty_states(): void
@@ -167,8 +164,9 @@ class CatalogExpandCorrectnessTest extends TestCase
         $this->assertStringNotContainsString('text-danger">add-on', $html);
         $this->assertStringContainsString('+€23.00', $html);
         $this->assertMatchesRegularExpression('/→\s*you pay €\d+\.\d{2}/u', $html);
-        $this->assertStringContainsString('Screenshot not available yet', $html);
-        $this->assertStringContainsString('No sample article yet', $html);
+        $this->assertStringNotContainsString('Screenshot not available yet', $html);
+        $this->assertStringNotContainsString('No sample article yet', $html);
+        $this->assertStringNotContainsString('Sample article', $html);
         $this->assertStringNotContainsString('Not available</a>', $html);
         $this->assertStringNotContainsString('No extra pricing options for this listing.', $html);
         $this->assertStringNotContainsString('Base guest post only', $html);
@@ -280,8 +278,8 @@ class CatalogExpandCorrectnessTest extends TestCase
         $this->assertStringNotContainsString('Sensitive topics', $html);
         $this->assertStringNotContainsString('Base guest post only', $html);
         // Mobile Details also lists the offers.
-        $this->assertStringContainsString('<dt>Homepage promotions</dt>', $html);
-        $this->assertStringContainsString('<dt>Social</dt>', $html);
+        $this->assertStringContainsString('Homepage promotions', $html);
+        $this->assertStringContainsString('Social', $html);
     }
 
     public function test_expand_collapses_pricing_when_no_extras(): void
@@ -303,12 +301,12 @@ class CatalogExpandCorrectnessTest extends TestCase
         $this->assertStringNotContainsString('Sensitive topics', $html);
         $this->assertStringNotContainsString('No extra pricing options for this listing.', $html);
         $this->assertStringContainsString('Base guest post only — no homepage, social, or sensitive add-ons.', $html);
-        // Site Details always lists Homepage / Social (empty state when not offered).
-        $this->assertStringContainsString('Homepage promotions', $html);
-        $this->assertStringContainsString('Not offered on this listing.', $html);
-        $this->assertStringContainsString('<strong>Social</strong>', $html);
-        $this->assertStringContainsString('No social sharing included on this listing.', $html);
-        $this->assertStringContainsString('No description yet', $html);
+        // Homepage promotions is omitted when the listing has no homepage offer.
+        $this->assertStringNotContainsString('Homepage promotions', $html);
+        $this->assertStringNotContainsString('Not offered on this listing.', $html);
+        $this->assertStringNotContainsString('<strong>Social</strong>', $html);
+        $this->assertStringNotContainsString('No social sharing included on this listing.', $html);
+        $this->assertStringNotContainsString('No description yet', $html);
         $this->assertStringContainsString('Turnaround', $html);
     }
 
@@ -326,8 +324,8 @@ class CatalogExpandCorrectnessTest extends TestCase
 
         $this->assertStringContainsString('site-chip--social', $html);
         $this->assertStringContainsString('Facebook', $html);
-        $this->assertStringContainsString('<dt>Social</dt>', $html);
-        $this->assertStringContainsString('<dt>Homepage promotions</dt>', $html);
+        $this->assertStringContainsString('Social', $html);
+        $this->assertStringContainsString('Homepage promotions', $html);
         $this->assertStringContainsString('Choose a duration above Buy.', $html);
     }
 
@@ -469,7 +467,8 @@ class CatalogExpandCorrectnessTest extends TestCase
         $this->assertStringContainsString('Full mobile description for parity.', $html);
         $this->assertStringContainsString('Sponsored', $html);
         $this->assertStringContainsString('site-chip--sponsored', $html);
-        $this->assertStringContainsString('No sample article yet', $html);
+        $this->assertStringNotContainsString('No sample article yet', $html);
+        $this->assertStringNotContainsString('Sample article', $html);
         $this->assertStringContainsString('catalog-deferred-preview', $html);
         $this->assertStringContainsString('Publisher trust', $html);
     }

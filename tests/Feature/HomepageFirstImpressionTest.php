@@ -35,9 +35,12 @@ class HomepageFirstImpressionTest extends TestCase
         $response->assertSee('slb-bottom-cta', false);
         $response->assertSee('btn btn-primary', false);
 
-        // Hero uses the static German-flag catalog screenshot.
-        $this->assertStringContainsString('dashboard.png', $html);
-        $this->assertStringNotContainsString('Live publisher catalog', $html);
+        // Hero uses the advertiser catalog chrome (German-only country, blurred URLs).
+        $this->assertStringContainsString('Publisher catalog preview', $html);
+        $this->assertStringContainsString('Add to cart', $html);
+        $this->assertStringContainsString('Germany', $html);
+        $this->assertStringContainsString('slb-hero-live-catalog__url-blur', $html);
+        $this->assertStringNotContainsString('dashboard.png', $html);
     }
 
     public function test_managed_package_ctas_point_to_contact(): void

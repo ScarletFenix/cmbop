@@ -10,7 +10,6 @@ use App\Services\CuratedBlogWriter;
 use App\Services\Marketing\CatalogTeaserService;
 use App\Services\Marketing\GuestPostPriceIndex;
 use App\Support\CountryLander;
-use Illuminate\Support\Collection;
 use Throwable;
 
 class MarketingPageController extends Controller
@@ -41,7 +40,6 @@ class MarketingPageController extends Controller
     public function marketplace()
     {
         return view('pages.marketplace', [
-            'teasers' => $this->catalogTeasers(8),
             'countryLanders' => $this->countryLanderSiblings(),
         ]);
     }
@@ -94,23 +92,6 @@ class MarketingPageController extends Controller
             'index' => $snapshot,
             'countryLanders' => $this->countryLanderSiblings(),
         ]);
-    }
-
-    /**
-     * @return Collection<int, array<string, mixed>>
-     */
-    private function catalogTeasers(int $limit): Collection
-    {
-        $service = $this->catalogTeaserService();
-        if ($service === null) {
-            return collect();
-        }
-
-        try {
-            return $service->teasers($limit);
-        } catch (Throwable) {
-            return collect();
-        }
     }
 
     private function catalogTeaserService(): ?CatalogTeaserService
