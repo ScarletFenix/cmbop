@@ -171,6 +171,30 @@ class PublicI18n
         return false;
     }
 
+    /**
+     * Guest auth entry points (English-only; not a translated marketing cluster).
+     */
+    public static function isPublicAuthEntryPath(Request $request): bool
+    {
+        return in_array(self::firstPathSegment($request), [
+            'login',
+            'register',
+            'forgot-password',
+            'reset-password',
+            'email',
+            'auth',
+        ], true);
+    }
+
+    public static function robotsContent(Request $request): string
+    {
+        if (self::isPublicAuthEntryPath($request)) {
+            return 'noindex, nofollow';
+        }
+
+        return 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1';
+    }
+
     public static function isPublicMarketingPath(Request $request): bool
     {
         if (self::isEnglishOnlyPath($request)) {
@@ -288,7 +312,17 @@ class PublicI18n
         ?array $pathByLocale = null
     ): array {
         if (! self::isPublicMarketingPath($request)) {
-            return [];
+            if (! self::isPublicAuthEntryPath($request)) {
+                return [];
+            }
+
+            $authPath = ltrim(self::pathWithoutLocale($request), '/');
+            $href = url('/'.$authPath);
+
+            return [
+                ['hreflang' => self::hreflang(self::default()), 'href' => $href],
+                ['hreflang' => 'x-default', 'href' => $href],
+            ];
         }
 
         $path = $pathOverride !== null ? ltrim($pathOverride, '/') : self::pathWithoutLocale($request);

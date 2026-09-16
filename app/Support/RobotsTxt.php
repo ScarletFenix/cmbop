@@ -64,6 +64,12 @@ class RobotsTxt
             '/profile',
             '/chat/',
             '/notifications',
+            '/login',
+            '/register',
+            '/forgot-password',
+            '/reset-password',
+            '/email/',
+            '/auth/',
         ];
     }
 

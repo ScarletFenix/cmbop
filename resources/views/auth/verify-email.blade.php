@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'Verify Email - SEOLinkBuildings')
+@section('title', 'Verify Your Email | SEOLinkBuildings Marketplace')
 
 @section('content')
 <div class="container py-5">

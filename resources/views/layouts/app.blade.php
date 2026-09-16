@@ -49,11 +49,15 @@
                 $hreflangPathByLocale !== [] ? $hreflangPathByLocale : null
             )
             : [];
+        $pageRobots = trim($__env->yieldContent('robots'))
+            ?: (class_exists(\App\Support\PublicI18n::class)
+                ? \App\Support\PublicI18n::robotsContent(request())
+                : 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1');
     @endphp
     @include('components.favicon')
     <title>{{ $pageTitle }}</title>
     <meta name="description" content="{{ $pageDescription }}">
-    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+    <meta name="robots" content="{{ $pageRobots }}">
     <meta name="author" content="SEOLinkBuildings">
     <meta name="application-name" content="SEOLinkBuildings">
     @if(($googleSiteVerification = trim((string) config('services.google.site_verification'))) !== '')
@@ -63,6 +67,13 @@
     @foreach($hreflangTags as $tag)
         <link rel="alternate" hreflang="{{ $tag['hreflang'] }}" href="{{ $tag['href'] }}">
     @endforeach
+    @if(class_exists(\App\Support\BrandOrganization::class))
+    <script type="application/ld+json">
+{!! json_encode(array_merge([
+    '@@context' => 'https://schema.org',
+], \App\Support\BrandOrganization::schema()), JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) !!}
+    </script>
+    @endif
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
     <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
     <link rel="preconnect" href="https://fonts.googleapis.com">

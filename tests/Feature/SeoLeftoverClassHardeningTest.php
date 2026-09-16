@@ -58,14 +58,13 @@ class SeoLeftoverClassHardeningTest extends TestCase
         $i18n = (string) file_get_contents(base_path('app/Support/PublicI18n.php'));
         $this->assertStringContainsString('class_exists(LocalizedPublicPath::class)', $i18n);
 
-        $home = (string) file_get_contents(base_path('resources/views/home.blade.php'));
         $about = (string) file_get_contents(base_path('resources/views/pages/about.blade.php'));
         $prices = (string) file_get_contents(base_path('resources/views/pages/guest-post-prices-europe.blade.php'));
         $layout = (string) file_get_contents(base_path('resources/views/layouts/app.blade.php'));
         $helper = (string) file_get_contents(base_path('app/Helpers/LanguageHelper.php'));
-        $this->assertStringContainsString('class_exists(\\App\\Support\\BrandOrganization::class)', $home);
         $this->assertStringContainsString('class_exists(\\App\\Support\\BrandOrganization::class)', $about);
         $this->assertStringContainsString('class_exists(\\App\\Support\\BrandOrganization::class)', $prices);
+        $this->assertStringContainsString('class_exists(\\App\\Support\\BrandOrganization::class)', $layout);
         $this->assertStringContainsString('class_exists(\\App\\Support\\PublicI18n::class)', $layout);
         $this->assertStringContainsString('class_exists(PublicI18n::class)', $helper);
 

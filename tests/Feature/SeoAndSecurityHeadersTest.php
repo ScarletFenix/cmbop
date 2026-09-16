@@ -66,7 +66,9 @@ class SeoAndSecurityHeadersTest extends TestCase
         $this->get('/sitemap-en.xml')
             ->assertOk()
             ->assertSee('/blog/sitemap-post', false)
-            ->assertSee('/contact', false);
+            ->assertSee('/contact', false)
+            ->assertDontSee('/login', false)
+            ->assertDontSee('/register', false);
 
         $this->get('/robots.txt')
             ->assertOk()
@@ -76,6 +78,8 @@ class SeoAndSecurityHeadersTest extends TestCase
             ->assertSee('Allow: /become-a-publisher', false)
             ->assertSee('Disallow: /admin/', false)
             ->assertSee('Disallow: /marketing/', false)
+            ->assertSee('Disallow: /login', false)
+            ->assertSee('Disallow: /register', false)
             ->assertSee('Googlebot', false)
             ->assertSee('bingbot', false)
             ->assertSee('Slurp', false)
@@ -108,13 +112,39 @@ class SeoAndSecurityHeadersTest extends TestCase
     {
         $this->get('/login')
             ->assertOk()
-            ->assertSee('Sign In | SEOLinkBuildings', false)
-            ->assertSee('name="robots" content="index, follow', false);
+            ->assertSee('Sign In to Your Guest Post Account | SEOLinkBuildings', false)
+            ->assertSee('name="robots" content="noindex, nofollow', false)
+            ->assertSee('application/ld+json', false)
+            ->assertSee('"@type":"Organization"', false)
+            ->assertSee('hreflang="en-GB"', false)
+            ->assertSee('hreflang="x-default"', false)
+            ->assertDontSee('hreflang="de"', false);
 
         $this->get('/register')
             ->assertOk()
             ->assertSee('€20 Welcome Credit', false)
+            ->assertSee('name="robots" content="noindex, nofollow', false)
             ->assertDontSee('meta_register_title');
+    }
+
+    public function test_login_title_length_meets_on_page_band_in_every_locale(): void
+    {
+        foreach (['en', 'us', 'de', 'fr', 'nl', 'es', 'it'] as $locale) {
+            $title = trans('messages.meta_login_title', [], $locale);
+            $len = mb_strlen($title);
+            $this->assertGreaterThanOrEqual(30, $len, $locale.': '.$title);
+            $this->assertLessThanOrEqual(60, $len, $locale.': '.$title);
+        }
+    }
+
+    public function test_contact_and_marketplace_include_organization_schema(): void
+    {
+        foreach (['/contact', '/marketplace', '/privacy-policy'] as $path) {
+            $this->get($path)
+                ->assertOk()
+                ->assertSee('application/ld+json', false)
+                ->assertSee('"@type":"Organization"', false);
+        }
     }
 
     public function test_home_includes_website_and_organization_schema(): void

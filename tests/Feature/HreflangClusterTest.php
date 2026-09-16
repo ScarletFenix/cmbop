@@ -140,11 +140,14 @@ class HreflangClusterTest extends TestCase
         }
     }
 
-    public function test_auth_pages_are_outside_the_hreflang_cluster(): void
+    public function test_auth_pages_use_english_only_self_hreflang(): void
     {
         foreach (['/login', '/register'] as $path) {
             $html = $this->get($path)->assertOk()->getContent();
-            $this->assertSame([], $this->hreflangCluster($html), $path);
+            $this->assertSame([
+                'en-GB' => url($path),
+                'x-default' => url($path),
+            ], $this->hreflangCluster($html), $path);
         }
     }
 
