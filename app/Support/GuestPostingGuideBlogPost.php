@@ -9,6 +9,12 @@ class GuestPostingGuideBlogPost
 {
     public const SLUG = 'guest-posting-guide';
 
+    public const FEATURED_ASSET = 'assets/img/blog/guest-posting-guide-featured.jpg';
+
+    public const FEATURED_STORAGE = 'blogs/featured/guest-posting-guide-featured.jpg';
+
+    public const IMAGE_WORKFLOW = 'guest-posting-guide-workflow.jpg';
+
     /**
      * @return array{
      *     title: string,
@@ -35,9 +41,11 @@ class GuestPostingGuideBlogPost
             'author' => 'Arslan Jason',
             'tags' => ['Guest posting', 'Guest blogging', 'Outreach', 'Backlinks', 'SEO'],
             'status' => 'published',
+            'featured_image' => self::FEATURED_STORAGE,
             'meta_title' => 'Guest Posting Guide: Pitch, Write, Publish',
             'meta_description' => 'A practical guest posting guide: find relevant publishers, pitch and write for their readers, handle anchors, and avoid cheap guest-post networks.',
             'faq' => self::faqItems(),
+            'translations' => self::translations(),
         ];
     }
 
@@ -50,6 +58,16 @@ class GuestPostingGuideBlogPost
     public static function faqItems(): array
     {
         return [];
+    }
+
+    /**
+     * @return array<string, array<string, string>>
+     */
+    public static function translations(): array
+    {
+        return class_exists(GuestPostingGuideI18n::class)
+            ? GuestPostingGuideI18n::all()
+            : [];
     }
 
     public static function contentHtml(): string
@@ -67,6 +85,7 @@ class GuestPostingGuideBlogPost
         $live = '/blog/what-to-check-after-the-live-link-indexation-attributes-rankings';
         $catalog = '/marketplace';
         $how = '/how-it-works';
+        $imgWorkflow = BlogInlineImages::publicUrl(self::IMAGE_WORKFLOW);
 
         return <<<HTML
 <p>Guest posting is contributing an article to a website you do not own, usually with a byline and, when the host allows it, a link back to a page you care about.</p>
@@ -224,6 +243,10 @@ class GuestPostingGuideBlogPost
 
 <h2>Guest-post campaign workflow</h2>
 <p>Pick one landing page. Map ten hosts you would be proud to show a client. Split them: some unpaid pitches, some marketplace listings with clear rules, none from a bulk “DA pack.”</p>
+<figure>
+<img src="{$imgWorkflow}" alt="Guest-post workflow: find sites, evaluate, pitch, write, publish, recheck the live URL" loading="lazy" width="1200" height="675">
+<figcaption>Do not scale the campaign until the first live URLs are indexed and still match the brief.</figcaption>
+</figure>
 <ol>
 <li>Fix the landing page so a referred reader gets the next step without hunting.</li>
 <li>Write two pitch angles that would still make sense if your URL were removed.</li>

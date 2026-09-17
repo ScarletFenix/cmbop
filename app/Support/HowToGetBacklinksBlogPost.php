@@ -9,6 +9,12 @@ class HowToGetBacklinksBlogPost
 {
     public const SLUG = 'how-to-get-backlinks';
 
+    public const FEATURED_ASSET = 'assets/img/blog/how-to-get-backlinks-featured.jpg';
+
+    public const FEATURED_STORAGE = 'blogs/featured/how-to-get-backlinks-featured.jpg';
+
+    public const IMAGE_METHODS = 'how-to-get-backlinks-methods.jpg';
+
     /**
      * @return array{
      *     title: string,
@@ -35,9 +41,11 @@ class HowToGetBacklinksBlogPost
             'author' => 'Arslan Jason',
             'tags' => ['Backlinks', 'Link building', 'Guest posts', 'Outreach', 'SEO'],
             'status' => 'published',
+            'featured_image' => self::FEATURED_STORAGE,
             'meta_title' => 'How to Get Backlinks: Practical Guide',
             'meta_description' => 'Learn how to get backlinks that are worth having: relevance, referring domains, guest posts, digital PR, and how paid placements differ from earned links.',
             'faq' => self::faqItems(),
+            'translations' => self::translations(),
         ];
     }
 
@@ -52,6 +60,16 @@ class HowToGetBacklinksBlogPost
         return [];
     }
 
+    /**
+     * @return array<string, array<string, string>>
+     */
+    public static function translations(): array
+    {
+        return class_exists(HowToGetBacklinksI18n::class)
+            ? HowToGetBacklinksI18n::all()
+            : [];
+    }
+
     public static function contentHtml(): string
     {
         $guest = '/blog/guest-posting-guide';
@@ -63,6 +81,7 @@ class HowToGetBacklinksBlogPost
         $outreach = '/blog/marketplace-vs-cold-outreach-vs-digital-pr';
         $catalog = '/marketplace';
         $how = '/how-it-works';
+        $imgMethods = BlogInlineImages::publicUrl(self::IMAGE_METHODS);
 
         return <<<HTML
 <p>A backlink is a hyperlink from one website to another. Search engines use those links, among many other signals, to understand how pages relate and which sources other sites consider worth citing.</p>
@@ -108,6 +127,10 @@ class HowToGetBacklinksBlogPost
 
 <h2>Different ways to get backlinks</h2>
 <p>Most teams mix several of these. None of them replace a page that deserves to be cited.</p>
+<figure>
+<img src="{$imgMethods}" alt="Five ways to get backlinks: digital PR, guest post, resource page, broken link, and sponsored placement" loading="lazy" width="1200" height="675">
+<figcaption>Useful backlinks come from methods that match the page — not from a volume quota.</figcaption>
+</figure>
 <table>
 <thead>
 <tr><th>Method</th><th>Typical speed</th><th>Editorial control</th><th>Main risk</th></tr>

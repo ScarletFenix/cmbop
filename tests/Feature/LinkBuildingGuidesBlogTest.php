@@ -57,6 +57,20 @@ class LinkBuildingGuidesBlogTest extends TestCase
             $this->assertLessThanOrEqual(70, mb_strlen((string) $translation->meta_title));
             $this->assertLessThanOrEqual(180, mb_strlen((string) $translation->meta_description));
             $this->assertSame([], $class::faqItems());
+            $this->assertSame($class::FEATURED_STORAGE, $blog->featured_image);
+
+            foreach ($class::translations() as $locale => $localePayload) {
+                $row = BlogTranslation::query()
+                    ->where('blog_id', $blog->id)
+                    ->where('locale', $locale)
+                    ->first();
+                $this->assertNotNull($row, $class::SLUG.' missing '.$locale);
+                $this->assertTrue((bool) $row->is_published);
+                $this->assertSame($localePayload['slug'], $row->slug);
+                $this->assertSame($localePayload['title'], $row->title);
+                $this->assertLessThanOrEqual(70, mb_strlen((string) $row->meta_title));
+                $this->assertLessThanOrEqual(180, mb_strlen((string) $row->meta_description));
+            }
         }
     }
 
@@ -85,10 +99,15 @@ class LinkBuildingGuidesBlogTest extends TestCase
                 ->assertSee('BlogPosting', false)
                 ->assertDontSee('"@type":"FAQPage"', false)
                 ->assertSee('/marketplace', false)
-                ->assertSee('/how-it-works', false);
+                ->assertSee('/how-it-works', false)
+                ->assertSee(basename($class::FEATURED_STORAGE), false);
 
             $html = $response->getContent();
             $this->assertIsString($html);
+            $this->assertTrue(
+                str_contains($html, '/storage/blogs/content/') || str_contains($html, '/media/blogs/content/'),
+                $slug.' should include the inline diagram'
+            );
 
             foreach ($this->postClasses() as $other) {
                 if ($other::SLUG === $slug) {
@@ -102,10 +121,46 @@ class LinkBuildingGuidesBlogTest extends TestCase
         $sponsored->assertSee('rel="sponsored"', false);
         $sponsored->assertSee('https://developers.google.com/search/docs/essentials/spam-policies', false);
         $sponsored->assertSee('https://www.ftc.gov/business-guidance/resources/ftcs-endorsement-guides-what-people-are-asking', false);
+    }
+
+    public function test_locale_translations_render_and_english_slug_301s_to_localized_slug(): void
+    {
+        $this->seed(LinkBuildingGuidesBlogsSeeder::class);
+
+        $de = HowToGetBacklinksBlogPost::translations()['de'];
+        $fr = HowToGetBacklinksBlogPost::translations()['fr'];
+
+        $this->get('/de/blog/'.$de['slug'])
+            ->assertOk()
+            ->assertSee($de['title'], false)
+            ->assertSee('rel="canonical" href="'.PublicI18n::urlForLocale('blog/'.$de['slug'], 'de').'"', false)
+            ->assertDontSee('FAQPage', false);
 
         $this->get('/fr/blog/'.HowToGetBacklinksBlogPost::SLUG)
-            ->assertOk()
-            ->assertSee('rel="canonical" href="'.PublicI18n::urlForLocale('blog/'.HowToGetBacklinksBlogPost::SLUG, 'en').'"', false);
+            ->assertStatus(301)
+            ->assertRedirect(PublicI18n::urlForLocale('blog/'.$fr['slug'], 'fr'));
+    }
+
+    public function test_thin_blog_seeder_slugs_301_onto_the_pillars(): void
+    {
+        $this->seed(LinkBuildingGuidesBlogsSeeder::class);
+
+        $this->get('/blog/how-to-build-high-quality-backlinks-in-2026')
+            ->assertStatus(301)
+            ->assertRedirect(PublicI18n::urlForLocale('blog/'.HowToGetBacklinksBlogPost::SLUG, 'en'));
+
+        $this->get('/blog/guest-posting-checklist-for-advertisers')
+            ->assertStatus(301)
+            ->assertRedirect(PublicI18n::urlForLocale('blog/'.GuestPostingGuideBlogPost::SLUG, 'en'));
+
+        $this->get('/blog/digital-pr-ideas-that-earn-coverage-and-links')
+            ->assertStatus(301)
+            ->assertRedirect(PublicI18n::urlForLocale('blog/'.LinkBuildingGuideBlogPost::SLUG, 'en'));
+
+        $deSlug = HowToGetBacklinksBlogPost::translations()['de']['slug'];
+        $this->get('/de/blog/how-to-build-high-quality-backlinks-in-2026')
+            ->assertStatus(301)
+            ->assertRedirect(PublicI18n::urlForLocale('blog/'.$deSlug, 'de'));
     }
 
     public function test_blog_upsert_curated_includes_link_building_guides(): void

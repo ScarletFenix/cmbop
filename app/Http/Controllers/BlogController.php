@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Blog;
 use App\Models\BlogTranslation;
 use App\Services\CuratedBlogSync;
+use App\Support\ThinBlogRedirects;
 use App\Support\UserFacingError;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
@@ -76,6 +77,19 @@ class BlogController extends Controller
         $fallbackLocale = 'en';
 
         $slug = (string) $request->route('slug');
+
+        try {
+            if (class_exists(ThinBlogRedirects::class)) {
+                $legacyTarget = ThinBlogRedirects::redirectUrl($slug, $requestedLocale);
+                if (is_string($legacyTarget) && $legacyTarget !== '') {
+                    $query = $request->getQueryString();
+
+                    return redirect($query ? $legacyTarget.'?'.$query : $legacyTarget, 301);
+                }
+            }
+        } catch (\Throwable) {
+            // Missing schema or catalog class: fall through to the normal show path.
+        }
 
         $translation = BlogTranslation::query()
             ->where('locale', $requestedLocale)

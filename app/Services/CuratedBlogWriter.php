@@ -56,7 +56,8 @@ class CuratedBlogWriter
         unset($payload['faq']);
         $metaTitle = trim((string) ($payload['meta_title'] ?? ''));
         $metaDescription = trim((string) ($payload['meta_description'] ?? ''));
-        unset($payload['meta_title'], $payload['meta_description']);
+        $localeTranslations = is_array($payload['translations'] ?? null) ? $payload['translations'] : [];
+        unset($payload['meta_title'], $payload['meta_description'], $payload['translations']);
 
         if (self::isTombstoned($slug)) {
             return null;
@@ -112,12 +113,14 @@ class CuratedBlogWriter
             $existing->fill($data);
             $existing->save();
             self::syncPrimaryTranslation($existing, $metaTitle, $metaDescription);
+            self::syncLocaleTranslations($existing, $localeTranslations);
 
             return $existing;
         }
 
         $created = Blog::create($data);
         self::syncPrimaryTranslation($created, $metaTitle, $metaDescription);
+        self::syncLocaleTranslations($created, $localeTranslations);
 
         return $created;
     }
@@ -238,6 +241,85 @@ class CuratedBlogWriter
             ],
             $row
         );
+    }
+
+    /**
+     * Extra locales on the same pillar (hreflang), leftover-safe.
+     *
+     * @param  array<string, mixed>  $translations
+     */
+    public static function syncLocaleTranslations(Blog $blog, array $translations): void
+    {
+        if ($translations === [] || ! Schema::hasTable('blog_translations')) {
+            return;
+        }
+
+        $primary = (class_exists(PublicI18n::class) && PublicI18n::isSupported($blog->primary_locale))
+            ? $blog->primary_locale
+            : 'en';
+
+        foreach ($translations as $locale => $fields) {
+            try {
+                $locale = strtolower(trim((string) $locale));
+                if ($locale === '' || $locale === $primary) {
+                    continue;
+                }
+                if (class_exists(PublicI18n::class) && ! PublicI18n::isSupported($locale)) {
+                    continue;
+                }
+                if (! is_array($fields)) {
+                    continue;
+                }
+
+                $title = trim((string) ($fields['title'] ?? ''));
+                $content = (string) ($fields['content'] ?? '');
+                if ($title === '' || $content === '') {
+                    continue;
+                }
+
+                $slug = trim((string) ($fields['slug'] ?? ''));
+                if ($slug === '') {
+                    $slug = ($blog->slug ?: 'post-'.$blog->id).'-'.$locale;
+                }
+                if (self::translationSlugTaken($slug, $blog->id, $locale)) {
+                    $existingSlug = BlogTranslation::query()
+                        ->where('blog_id', $blog->id)
+                        ->where('locale', $locale)
+                        ->value('slug');
+                    $slug = is_string($existingSlug) && $existingSlug !== ''
+                        && ! self::translationSlugTaken($existingSlug, $blog->id, $locale)
+                        ? $existingSlug
+                        : self::uniqueTranslationSlug($slug, $blog->id, $locale);
+                }
+
+                $row = [
+                    'title' => $title,
+                    'slug' => $slug,
+                    'excerpt' => (string) ($fields['excerpt'] ?? ''),
+                    'content' => $content,
+                    'is_published' => true,
+                ];
+
+                $metaTitle = trim((string) ($fields['meta_title'] ?? ''));
+                $metaDescription = trim((string) ($fields['meta_description'] ?? ''));
+                if (Schema::hasColumn('blog_translations', 'meta_title') && $metaTitle !== '') {
+                    $row['meta_title'] = $metaTitle;
+                }
+                if (Schema::hasColumn('blog_translations', 'meta_description') && $metaDescription !== '') {
+                    $row['meta_description'] = $metaDescription;
+                }
+
+                BlogTranslation::query()->updateOrCreate(
+                    [
+                        'blog_id' => $blog->id,
+                        'locale' => $locale,
+                    ],
+                    $row
+                );
+            } catch (\Throwable) {
+                continue;
+            }
+        }
     }
 
     private static function translationSlugTaken(string $slug, int $blogId, string $locale): bool

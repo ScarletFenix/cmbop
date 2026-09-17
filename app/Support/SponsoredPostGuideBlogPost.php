@@ -9,6 +9,12 @@ class SponsoredPostGuideBlogPost
 {
     public const SLUG = 'sponsored-post-guide';
 
+    public const FEATURED_ASSET = 'assets/img/blog/sponsored-post-guide-featured.jpg';
+
+    public const FEATURED_STORAGE = 'blogs/featured/sponsored-post-guide-featured.jpg';
+
+    public const IMAGE_COMPARE = 'sponsored-post-guide-compare.jpg';
+
     /**
      * @return array{
      *     title: string,
@@ -35,9 +41,11 @@ class SponsoredPostGuideBlogPost
             'author' => 'Arslan Jason',
             'tags' => ['Sponsored posts', 'Native advertising', 'Guest posts', 'Paid links', 'SEO'],
             'status' => 'published',
+            'featured_image' => self::FEATURED_STORAGE,
             'meta_title' => 'Sponsored Posts: What Advertisers Should Know',
             'meta_description' => 'Sponsored posts explained: how they differ from guest posts, how to choose publishers, and how paid links should be labelled. A checklist for advertisers.',
             'faq' => self::faqItems(),
+            'translations' => self::translations(),
         ];
     }
 
@@ -50,6 +58,16 @@ class SponsoredPostGuideBlogPost
     public static function faqItems(): array
     {
         return [];
+    }
+
+    /**
+     * @return array<string, array<string, string>>
+     */
+    public static function translations(): array
+    {
+        return class_exists(SponsoredPostGuideI18n::class)
+            ? SponsoredPostGuideI18n::all()
+            : [];
     }
 
     public static function contentHtml(): string
@@ -66,6 +84,7 @@ class SponsoredPostGuideBlogPost
         $removed = '/blog/what-happens-if-a-live-link-is-removed';
         $catalog = '/marketplace';
         $how = '/how-it-works';
+        $imgCompare = BlogInlineImages::publicUrl(self::IMAGE_COMPARE);
 
         return <<<HTML
 <p>A sponsored post is an article (or a section of an article) that a publisher runs because someone paid, bartered, or otherwise compensated them for the placement. It is advertising that looks like editorial content. That is allowed. Pretending it is an unpaid endorsement is not.</p>
@@ -90,6 +109,10 @@ class SponsoredPostGuideBlogPost
 </tbody>
 </table>
 <p>People blur these on purpose. A “guest post” invoice for an exact-match dofollow link is a sponsored placement wearing a friendlier name. Keep the vocabulary honest in your own reports, even if a vendor does not.</p>
+<figure>
+<img src="{$imgCompare}" alt="Comparison of editorial articles, guest posts, and sponsored posts: who starts, payment, disclosure, and link labelling" loading="lazy" width="1200" height="675">
+<figcaption>Paid placements are allowed. Selling an unqualified ranking link is the problem Google’s spam policies describe.</figcaption>
+</figure>
 
 <h2>How sponsored publishing works</h2>
 <p>Typical path:</p>

@@ -9,6 +9,12 @@ class LinkBuildingGuideBlogPost
 {
     public const SLUG = 'link-building-guide';
 
+    public const FEATURED_ASSET = 'assets/img/blog/link-building-guide-featured.jpg';
+
+    public const FEATURED_STORAGE = 'blogs/featured/link-building-guide-featured.jpg';
+
+    public const IMAGE_ROADMAP = 'link-building-guide-roadmap.jpg';
+
     /**
      * @return array{
      *     title: string,
@@ -35,9 +41,11 @@ class LinkBuildingGuideBlogPost
             'author' => 'Arslan Jason',
             'tags' => ['Link building', 'Backlinks', 'SEO strategy', 'Digital PR', 'Outreach'],
             'status' => 'published',
+            'featured_image' => self::FEATURED_STORAGE,
             'meta_title' => 'Link Building Guide: Practical SEO Strategy',
             'meta_description' => 'A practical link-building strategy: types of links, content and PR, guest posts, outreach, anchors, measurement, and risky tactics to skip.',
             'faq' => self::faqItems(),
+            'translations' => self::translations(),
         ];
     }
 
@@ -50,6 +58,16 @@ class LinkBuildingGuideBlogPost
     public static function faqItems(): array
     {
         return [];
+    }
+
+    /**
+     * @return array<string, array<string, string>>
+     */
+    public static function translations(): array
+    {
+        return class_exists(LinkBuildingGuideI18n::class)
+            ? LinkBuildingGuideI18n::all()
+            : [];
     }
 
     public static function contentHtml(): string
@@ -65,6 +83,7 @@ class LinkBuildingGuideBlogPost
         $buyGuide = '/blog/how-to-buy-guest-posts-on-seolinkbuildings-advertiser-guide';
         $catalog = '/marketplace';
         $how = '/how-it-works';
+        $imgRoadmap = BlogInlineImages::publicUrl(self::IMAGE_ROADMAP);
 
         return <<<HTML
 <p>Link building is the work of earning or placing hyperlinks from other websites to yours. Search engines use links, among other signals, to discover pages and to interpret how sites relate. That is the mechanism. It is not a promise that ten new hrefs will move a keyword.</p>
@@ -194,6 +213,10 @@ class LinkBuildingGuideBlogPost
 <p>Marketplaces are a procurement tool inside that mix. They are not a substitute for the mix. Ordering notes: <a href="{$buyGuide}">how to buy guest posts on SEOLinkBuildings</a>.</p>
 
 <h2>Beginner roadmap</h2>
+<figure>
+<img src="{$imgRoadmap}" alt="Link-building roadmap from beginner to advanced: one URL first, then assets and mixed tactics, then a publication roster" loading="lazy" width="1200" height="675">
+<figcaption>Learn host quality before you add volume. A broken pattern scaled is still a broken pattern.</figcaption>
+</figure>
 <ol>
 <li>Choose one URL. Make it the best page you have on that topic.</li>
 <li>Add internal links to it from related articles.</li>
