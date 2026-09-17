@@ -40,6 +40,10 @@ class CuratedBlogCatalog
             HowToPriceYourSiteBlogPost::class,
             WhySitesGetRejectedBlogPost::class,
             FasterPublisherPayoutsBlogPost::class,
+            HowToGetBacklinksBlogPost::class,
+            GuestPostingGuideBlogPost::class,
+            SponsoredPostGuideBlogPost::class,
+            LinkBuildingGuideBlogPost::class,
         ];
     }
 

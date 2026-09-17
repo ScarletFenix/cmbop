@@ -14,11 +14,15 @@ use App\Support\ChoosePublisherSiteBlogPost;
 use App\Support\CuratedBlogCatalog;
 use App\Support\FasterPublisherPayoutsBlogPost;
 use App\Support\GastbeitraegeEuropaBlogPost;
+use App\Support\GuestPostingGuideBlogPost;
 use App\Support\GuestPostsEuropeEnBlogPost;
 use App\Support\GuestPostsUkUsBlogPost;
+use App\Support\HowToGetBacklinksBlogPost;
 use App\Support\HowToPriceYourSiteBlogPost;
+use App\Support\LinkBuildingGuideBlogPost;
 use App\Support\LiveLinkChecklistBlogPost;
 use App\Support\PublisherPlatformGuideBlogPost;
+use App\Support\SponsoredPostGuideBlogPost;
 use App\Support\WalletEscrowRefundsBlogPost;
 use App\Support\WhySitesGetRejectedBlogPost;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -102,6 +106,10 @@ class AdminBlogCuratedSyncTest extends TestCase
         $this->assertTrue(Blog::query()->where('slug', HowToPriceYourSiteBlogPost::SLUG)->exists());
         $this->assertTrue(Blog::query()->where('slug', WhySitesGetRejectedBlogPost::SLUG)->exists());
         $this->assertTrue(Blog::query()->where('slug', FasterPublisherPayoutsBlogPost::SLUG)->exists());
+        $this->assertTrue(Blog::query()->where('slug', HowToGetBacklinksBlogPost::SLUG)->exists());
+        $this->assertTrue(Blog::query()->where('slug', GuestPostingGuideBlogPost::SLUG)->exists());
+        $this->assertTrue(Blog::query()->where('slug', SponsoredPostGuideBlogPost::SLUG)->exists());
+        $this->assertTrue(Blog::query()->where('slug', LinkBuildingGuideBlogPost::SLUG)->exists());
 
         $europe = Blog::query()->where('slug', GastbeitraegeEuropaBlogPost::SLUG)->first();
         $this->assertNotNull($europe);

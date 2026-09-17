@@ -54,6 +54,9 @@ class CuratedBlogWriter
     public static function upsert(string $slug, array $payload, ?int $actorId = null): ?Blog
     {
         unset($payload['faq']);
+        $metaTitle = trim((string) ($payload['meta_title'] ?? ''));
+        $metaDescription = trim((string) ($payload['meta_description'] ?? ''));
+        unset($payload['meta_title'], $payload['meta_description']);
 
         if (self::isTombstoned($slug)) {
             return null;
@@ -108,13 +111,13 @@ class CuratedBlogWriter
         if ($existing) {
             $existing->fill($data);
             $existing->save();
-            self::syncPrimaryTranslation($existing);
+            self::syncPrimaryTranslation($existing, $metaTitle, $metaDescription);
 
             return $existing;
         }
 
         $created = Blog::create($data);
-        self::syncPrimaryTranslation($created);
+        self::syncPrimaryTranslation($created, $metaTitle, $metaDescription);
 
         return $created;
     }
@@ -187,7 +190,7 @@ class CuratedBlogWriter
      * Upsert commands that only write blogs.* leave DE/FR/NL pillars stale
      * after a deploy until an admin full-saves the post.
      */
-    public static function syncPrimaryTranslation(Blog $blog): void
+    public static function syncPrimaryTranslation(Blog $blog, string $metaTitle = '', string $metaDescription = ''): void
     {
         if (! Schema::hasTable('blog_translations')) {
             return;
@@ -209,18 +212,31 @@ class CuratedBlogWriter
                 : self::uniqueTranslationSlug($slug, $blog->id, $locale);
         }
 
+        $row = [
+            'title' => $blog->title,
+            'slug' => $slug,
+            'excerpt' => $blog->excerpt,
+            'content' => $blog->content,
+            'is_published' => $blog->status === 'published',
+        ];
+
+        try {
+            if (Schema::hasColumn('blog_translations', 'meta_title') && $metaTitle !== '') {
+                $row['meta_title'] = $metaTitle;
+            }
+            if (Schema::hasColumn('blog_translations', 'meta_description') && $metaDescription !== '') {
+                $row['meta_description'] = $metaDescription;
+            }
+        } catch (\Throwable) {
+            // Leftover sqlite/host schema without meta columns.
+        }
+
         BlogTranslation::query()->updateOrCreate(
             [
                 'blog_id' => $blog->id,
                 'locale' => $locale,
             ],
-            [
-                'title' => $blog->title,
-                'slug' => $slug,
-                'excerpt' => $blog->excerpt,
-                'content' => $blog->content,
-                'is_published' => $blog->status === 'published',
-            ]
+            $row
         );
     }
 
