@@ -19,6 +19,7 @@ use App\Http\Controllers\Admin\EmailCenterController as AdminEmailCenterControll
 // Publisher and Advertiser controllers
 use App\Http\Controllers\Admin\FinanceController as AdminFinanceController;
 use App\Http\Controllers\Admin\InvoiceController as AdminInvoiceController;
+use App\Http\Controllers\Admin\OnDemandContactController;
 use App\Http\Controllers\Admin\OrderController as AdminOrderController;
 use App\Http\Controllers\Admin\OrderDisputeController as AdminOrderDisputeController;
 use App\Http\Controllers\Admin\PaymentController as AdminPaymentController;
@@ -593,6 +594,14 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
             ->name('sites.records');
         Route::get('/sites/records/export', [AdminSiteController::class, 'exportRecords'])
             ->name('sites.records.export');
+        Route::get('/sites/on-demand', [OnDemandContactController::class, 'index'])
+            ->name('sites.on-demand.index');
+        Route::post('/sites/on-demand', [OnDemandContactController::class, 'store'])
+            ->name('sites.on-demand.store');
+        Route::put('/sites/on-demand/{onDemandContact}', [OnDemandContactController::class, 'update'])
+            ->name('sites.on-demand.update');
+        Route::delete('/sites/on-demand/{onDemandContact}', [OnDemandContactController::class, 'destroy'])
+            ->name('sites.on-demand.destroy');
 
         Route::post('/sites/{id}/verify', [AdminSiteController::class, 'verify'])
             ->name('sites.verify');

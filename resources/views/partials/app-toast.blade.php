@@ -85,5 +85,21 @@
     window.showToast = function (message, type, options) {
         return window.showAppToast(message, type, options);
     };
+
+    // Shared flash banners: success is a quiet toast everywhere (save / update / delete).
+    try {
+        document.querySelectorAll('[data-slb-flash-toast]').forEach(function (el) {
+            var type = el.getAttribute('data-slb-flash-toast') || 'success';
+            var body = el.querySelector('.flex-grow-1');
+            var message = body ? body.textContent.trim() : '';
+            if (!message || typeof bootstrap === 'undefined' || !bootstrap.Toast) return;
+            window.showAppToast(message, type, { quiet: type === 'success' });
+            el.remove();
+            var stack = document.querySelector('[data-slb-flash]');
+            if (stack && !stack.querySelector('.alert')) {
+                stack.remove();
+            }
+        });
+    } catch (e) {}
 })();
 </script>
