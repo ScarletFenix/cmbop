@@ -46,6 +46,7 @@
     $recentWithdrawals = $recentWithdrawals ?? collect();
 @endphp
 
+<link rel="stylesheet" href="{{ asset('assets/css/publisher-notice.css') }}?v={{ @filemtime(public_path('assets/css/publisher-notice.css')) ?: '1' }}">
 <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.all.min.js"></script>
 
@@ -63,16 +64,30 @@
     </div>
 
     @if($hasDebt)
-        <div class="alert alert-danger border-0 shadow-sm mb-4" role="alert">
-            <strong>Withdrawals blocked</strong> — you have outstanding clawback debt of
-            <strong>€{{ number_format($debtBalance, 2) }}</strong> from a removed post-completion placement.
-            Contact support at {{ $supportEmail }} to resolve this before withdrawing.
+        <div class="publisher-needs-alert mb-4" role="alert">
+            <div class="d-md-flex justify-content-md-between">
+                <p class="publisher-needs-alert__copy mb-0">
+                    <svg class="publisher-needs-alert__icon" xmlns="http://www.w3.org/2000/svg" viewBox="118 4 72 244" fill="currentColor" aria-hidden="true" focusable="false"><g transform="translate(1.4065934065934016 1.4065934065934016) scale(2.81 2.81)"><path d="M 49.083 71.489 l 5.776 -21.96 l 4.186 -15.247 c 3.497 -16.18 -32.704 -2.439 -38.002 1.695 l 0.425 4.853 c 4.824 -3.395 23.091 -7.744 19.449 4.275 l -1.634 6.135 l 0 0 l -8.329 31.071 c -3.497 16.18 32.704 2.439 38.002 -1.695 l -0.425 -4.853 C 63.708 79.159 45.441 83.508 49.083 71.489 z"/><circle cx="53.871" cy="11.201" r="11.201"/></g></svg>
+                    <strong>Withdrawals blocked</strong>
+                    <span class="ms-1">you have outstanding clawback debt of <strong>€{{ number_format($debtBalance, 2) }}</strong> from a removed post-completion placement. Contact support at {{ $supportEmail }} to resolve this before withdrawing.</span>
+                </p>
+                <p class="mb-0 mt-3 mt-md-0 ms-md-4">
+                    <a class="publisher-needs-alert__link" href="mailto:{{ $supportEmail }}">Contact support</a>
+                </p>
+            </div>
         </div>
     @elseif($availableBalance < $minWithdrawalAmount)
-        <div class="alert alert-warning border-0 shadow-sm mb-4" role="alert">
-            <strong>Below minimum</strong> — you need at least
-            <strong>€{{ number_format($minWithdrawalAmount, 2) }}</strong> withdrawable balance to request a payout.
-            Available now: €{{ number_format($availableBalance, 2) }}.
+        <div class="publisher-needs-alert mb-4" role="alert">
+            <div class="d-md-flex justify-content-md-between">
+                <p class="publisher-needs-alert__copy mb-0">
+                    <svg class="publisher-needs-alert__icon" xmlns="http://www.w3.org/2000/svg" viewBox="118 4 72 244" fill="currentColor" aria-hidden="true" focusable="false"><g transform="translate(1.4065934065934016 1.4065934065934016) scale(2.81 2.81)"><path d="M 49.083 71.489 l 5.776 -21.96 l 4.186 -15.247 c 3.497 -16.18 -32.704 -2.439 -38.002 1.695 l 0.425 4.853 c 4.824 -3.395 23.091 -7.744 19.449 4.275 l -1.634 6.135 l 0 0 l -8.329 31.071 c -3.497 16.18 32.704 2.439 38.002 -1.695 l -0.425 -4.853 C 63.708 79.159 45.441 83.508 49.083 71.489 z"/><circle cx="53.871" cy="11.201" r="11.201"/></g></svg>
+                    <strong>Below minimum</strong>
+                    <span class="ms-1">you need at least <strong>€{{ number_format($minWithdrawalAmount, 2) }}</strong> withdrawable balance to request a payout. Available now: €{{ number_format($availableBalance, 2) }}.</span>
+                </p>
+                <p class="mb-0 mt-3 mt-md-0 ms-md-4">
+                    <a class="publisher-needs-alert__link" href="{{ route('publisher.balance') }}">View balance</a>
+                </p>
+            </div>
         </div>
     @endif
 
@@ -129,13 +144,16 @@
     @endif
 
     @if($payoutLocked)
-        <div class="ui-callout ui-callout--attention mb-4">
-            <span class="ui-callout__icon" aria-hidden="true"><i class="fa-solid fa-circle-exclamation"></i></span>
-            <div class="ui-callout__body">
-                <strong>Choose a saved payout method.</strong>
-                Details are locked — contact
-                <a href="mailto:{{ $supportEmail }}">{{ $supportEmail }}</a>
-                to change them or add a new destination.
+        <div class="publisher-needs-alert mb-4" role="alert">
+            <div class="d-md-flex justify-content-md-between">
+                <p class="publisher-needs-alert__copy mb-0">
+                    <svg class="publisher-needs-alert__icon" xmlns="http://www.w3.org/2000/svg" viewBox="118 4 72 244" fill="currentColor" aria-hidden="true" focusable="false"><g transform="translate(1.4065934065934016 1.4065934065934016) scale(2.81 2.81)"><path d="M 49.083 71.489 l 5.776 -21.96 l 4.186 -15.247 c 3.497 -16.18 -32.704 -2.439 -38.002 1.695 l 0.425 4.853 c 4.824 -3.395 23.091 -7.744 19.449 4.275 l -1.634 6.135 l 0 0 l -8.329 31.071 c -3.497 16.18 32.704 2.439 38.002 -1.695 l -0.425 -4.853 C 63.708 79.159 45.441 83.508 49.083 71.489 z"/><circle cx="53.871" cy="11.201" r="11.201"/></g></svg>
+                    <strong>Choose a saved payout method.</strong>
+                    <span class="ms-1">Details are locked — contact {{ $supportEmail }} to change them or add a new destination.</span>
+                </p>
+                <p class="mb-0 mt-3 mt-md-0 ms-md-4">
+                    <a class="publisher-needs-alert__link" href="mailto:{{ $supportEmail }}">Contact support</a>
+                </p>
             </div>
         </div>
     @else

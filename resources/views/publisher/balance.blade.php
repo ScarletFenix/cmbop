@@ -18,7 +18,9 @@
     $moveDisabledReason = $publisherDebt > 0
         ? 'Moves are blocked while you have outstanding clawback debt of €'.number_format($publisherDebt, 2).'. Contact support to resolve this before moving earnings.'
         : 'No withdrawable earnings to move. Bonus credit cannot be moved.';
+    $supportEmail = $supportEmail ?? config('email_notifications.brand.support_email', config('mail.from.address'));
 @endphp
+<link rel="stylesheet" href="{{ asset('assets/css/publisher-notice.css') }}?v={{ @filemtime(public_path('assets/css/publisher-notice.css')) ?: '1' }}">
 <link rel="stylesheet" href="{{ asset('assets/css/publisher-balance.css') }}?v={{ @filemtime(public_path('assets/css/publisher-balance.css')) ?: '1' }}">
 
 <div class="container-fluid">
@@ -36,9 +38,17 @@
     </div>
 
     @if($publisherDebt > 0)
-        <div class="alert alert-danger border-0 shadow-sm mb-4" role="alert">
-            <strong>Outstanding clawback debt:</strong> €{{ number_format($publisherDebt, 2) }}.
-            Withdrawals and moves to your advertiser wallet are blocked until support clears this debt.
+        <div class="publisher-needs-alert mb-4" role="alert">
+            <div class="d-md-flex justify-content-md-between">
+                <p class="publisher-needs-alert__copy mb-0">
+                    <svg class="publisher-needs-alert__icon" xmlns="http://www.w3.org/2000/svg" viewBox="118 4 72 244" fill="currentColor" aria-hidden="true" focusable="false"><g transform="translate(1.4065934065934016 1.4065934065934016) scale(2.81 2.81)"><path d="M 49.083 71.489 l 5.776 -21.96 l 4.186 -15.247 c 3.497 -16.18 -32.704 -2.439 -38.002 1.695 l 0.425 4.853 c 4.824 -3.395 23.091 -7.744 19.449 4.275 l -1.634 6.135 l 0 0 l -8.329 31.071 c -3.497 16.18 32.704 2.439 38.002 -1.695 l -0.425 -4.853 C 63.708 79.159 45.441 83.508 49.083 71.489 z"/><circle cx="53.871" cy="11.201" r="11.201"/></g></svg>
+                    <strong>Outstanding clawback debt</strong>
+                    <span class="ms-1">€{{ number_format($publisherDebt, 2) }}. Withdrawals and moves to your advertiser wallet are blocked until support clears this debt.</span>
+                </p>
+                <p class="mb-0 mt-3 mt-md-0 ms-md-4">
+                    <a class="publisher-needs-alert__link" href="mailto:{{ $supportEmail }}">Contact support</a>
+                </p>
+            </div>
         </div>
     @endif
 
@@ -81,7 +91,12 @@
             @if($canWithdraw)
                 <p class="pb-wallet-card__status pb-wallet-card__status--ready">Ready to withdraw</p>
             @else
-                <p class="pb-wallet-card__status" id="withdrawBlockedReason">{{ $withdrawDisabledReason }}</p>
+                <div class="publisher-needs-alert mb-0" role="status">
+                    <p class="publisher-needs-alert__copy mb-0" id="withdrawBlockedReason">
+                        <svg class="publisher-needs-alert__icon" xmlns="http://www.w3.org/2000/svg" viewBox="118 4 72 244" fill="currentColor" aria-hidden="true" focusable="false"><g transform="translate(1.4065934065934016 1.4065934065934016) scale(2.81 2.81)"><path d="M 49.083 71.489 l 5.776 -21.96 l 4.186 -15.247 c 3.497 -16.18 -32.704 -2.439 -38.002 1.695 l 0.425 4.853 c 4.824 -3.395 23.091 -7.744 19.449 4.275 l -1.634 6.135 l 0 0 l -8.329 31.071 c -3.497 16.18 32.704 2.439 38.002 -1.695 l -0.425 -4.853 C 63.708 79.159 45.441 83.508 49.083 71.489 z"/><circle cx="53.871" cy="11.201" r="11.201"/></g></svg>
+                        {{ $withdrawDisabledReason }}
+                    </p>
+                </div>
             @endif
 
             <div class="pb-wallet-card__actions">

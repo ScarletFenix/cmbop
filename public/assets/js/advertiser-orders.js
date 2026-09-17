@@ -1344,28 +1344,27 @@ function bootAdvertiserOrdersPage() {
             : '';
         const chatReadonly = orderChatReadonly(order);
         const chatClass = chatReadonly
-            ? 'btn btn-outline-secondary btn-action-sm'
-            : 'btn btn-outline-success btn-action-sm';
+            ? 'btn btn-action-sm orders-action-icon'
+            : 'btn btn-action-sm orders-action-icon orders-action-icon--chat';
         const chatTitle = chatReadonly ? ' title="Chat is read-only"' : ' title="Chat"';
         const viewBtn = `
                             <button 
                                 type="button"
-                                class="btn btn-outline-secondary btn-action-sm orders-action-icon"
+                                class="btn btn-action-sm orders-action-icon"
                                 title="View order"
-                                aria-label="View order"
+                                aria-label="View order details"
                                 onclick="viewOrder(${order.id})">
                                 <i class="fa fa-eye" aria-hidden="true"></i>
-                                <span class="visually-hidden">View</span>
                             </button>`;
         const chatBtn = `
                             <button 
                                 type="button"
-                                class="${chatClass} orders-action-icon"
+                                class="${chatClass}"
                                 ${chatTitle}
                                 aria-label="Open chat"
                                 onclick="openChat(${order.id}, ${jsAttr(order.order_number || '')})">
                                 <i class="fa fa-comments" aria-hidden="true"></i>
-                                <span class="visually-hidden">Chat</span>${unreadBadge}
+                                ${unreadBadge}
                             </button>`;
 
         let primary = '';

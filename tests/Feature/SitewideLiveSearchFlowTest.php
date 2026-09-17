@@ -27,6 +27,9 @@ class SitewideLiveSearchFlowTest extends TestCase
         $this->assertStringContainsString('Type at least 2 characters to search', $js);
         $this->assertStringContainsString('slb:livesearch', $js);
         $this->assertStringContainsString("reason === 'enter' || reason === 'clear'", $js);
+        $this->assertStringContainsString('isAdminPanel', $js);
+        $this->assertStringContainsString('form-live', $js);
+        $this->assertStringContainsString('role-shell-admin', $js);
     }
 
     public function test_every_layout_loads_the_shared_live_search_assets(): void
@@ -85,7 +88,6 @@ class SitewideLiveSearchFlowTest extends TestCase
             resource_path('views/admin/orders/index.blade.php'),
             resource_path('views/admin/withdrawals.blade.php'),
             resource_path('views/admin/sites.blade.php'),
-            resource_path('views/admin/users.blade.php'),
         ];
         foreach ($mustWaitForHelper as $path) {
             $body = (string) file_get_contents($path);
@@ -106,6 +108,10 @@ class SitewideLiveSearchFlowTest extends TestCase
             resource_path('views/admin/finance-ledger.blade.php'),
             resource_path('views/marketing/history.blade.php'),
             resource_path('views/admin/content-library/index.blade.php'),
+            resource_path('views/admin/users.blade.php'),
+            resource_path('views/admin/catalog-activity.blade.php'),
+            resource_path('views/admin/promotions/banners/index.blade.php'),
+            resource_path('views/admin/promotions/announcements/index.blade.php'),
         ];
 
         foreach ($forms as $path) {
@@ -135,6 +141,13 @@ class SitewideLiveSearchFlowTest extends TestCase
         $this->assertStringContainsString("route('advertiser.content-library.results', absolute: false)", $library);
         $this->assertStringContainsString("route('advertiser.content-library.upload', absolute: false)", $library);
         $this->assertStringNotContainsString('this.form.submit()', $library);
+    }
+
+    public function test_admin_sites_soft_success_is_only_a_flash_fallback(): void
+    {
+        $blade = (string) file_get_contents(resource_path('views/admin/sites.blade.php'));
+        $this->assertStringContainsString("! session('success') && (int) request()->query('site') > 0", $blade);
+        $this->assertStringContainsString('Site added. The publisher must open My Sites → Invites and Accept before it appears under Pending.', $blade);
     }
 
     public function test_shared_search_field_component_has_catalog_chrome(): void
