@@ -143,11 +143,11 @@ class SitewideLiveSearchFlowTest extends TestCase
         $this->assertStringNotContainsString('this.form.submit()', $library);
     }
 
-    public function test_admin_sites_soft_success_is_only_a_flash_fallback(): void
+    public function test_admin_sites_does_not_persist_add_message_from_query_string(): void
     {
         $blade = (string) file_get_contents(resource_path('views/admin/sites.blade.php'));
-        $this->assertStringContainsString("! session('success') && (int) request()->query('site') > 0", $blade);
-        $this->assertStringContainsString('Site added. The publisher must open My Sites → Invites and Accept before it appears under Pending.', $blade);
+        $this->assertStringNotContainsString("request()->query('site') > 0 && (int) request()->query('publisher') > 0", $blade);
+        $this->assertStringNotContainsString('Site added. The publisher must open My Sites → Invites and Accept before it appears under Pending.', $blade);
     }
 
     public function test_shared_search_field_component_has_catalog_chrome(): void

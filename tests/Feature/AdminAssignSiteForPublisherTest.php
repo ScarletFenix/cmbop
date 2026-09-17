@@ -1020,32 +1020,4 @@ class AdminAssignSiteForPublisherTest extends TestCase
 
         $this->assertNotNull(Site::where('domain', 'staff-added-news.example')->first());
     }
-
-    public function test_sites_index_shows_soft_success_when_add_site_flash_is_missing(): void
-    {
-        $soft = 'Site added. The publisher must open My Sites → Invites and Accept before it appears under Pending.';
-
-        $this->actingAs($this->admin)
-            ->get(route('admin.sites.index'))
-            ->assertOk()
-            ->assertDontSee($soft, false);
-
-        $this->actingAs($this->admin)
-            ->get(route('admin.sites.index', [
-                'publisher' => $this->publisher->id,
-                'site' => 42,
-            ]))
-            ->assertOk()
-            ->assertSee($soft, false);
-
-        $this->actingAs($this->admin)
-            ->withSession(['success' => 'Site added (DA 40 / DR 45). Publisher was notified — they must open My Sites → Invites and Accept before it appears under Pending.'])
-            ->get(route('admin.sites.index', [
-                'publisher' => $this->publisher->id,
-                'site' => 42,
-            ]))
-            ->assertOk()
-            ->assertSee('Publisher was notified', false)
-            ->assertDontSee($soft, false);
-    }
 }

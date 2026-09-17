@@ -106,14 +106,6 @@
         </div>
     </div>
 
-    @if(! session('success') && (int) request()->query('site') > 0 && (int) request()->query('publisher') > 0)
-        <div class="alert alert-success alert-dismissible fade show d-flex align-items-start gap-2" role="status" aria-live="polite">
-            <i class="fa fa-circle-check mt-1" aria-hidden="true"></i>
-            <div class="flex-grow-1">Site added. The publisher must open My Sites → Invites and Accept before it appears under Pending.</div>
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Dismiss message"></button>
-        </div>
-    @endif
-
     @if(!empty($waitingOnPublisherFilterActive))
         <div class="alert alert-secondary border-0 shadow-sm d-flex flex-wrap justify-content-between align-items-center gap-2">
             <div>
