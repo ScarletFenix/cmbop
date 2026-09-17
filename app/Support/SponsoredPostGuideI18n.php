@@ -33,7 +33,7 @@ class SponsoredPostGuideI18n
                 'title' => 'Gesponsorde posts: wat ze zijn, hoe ze werken, wat adverteerders moeten weten',
                 'slug' => 'gesponsorde-posts-gids',
                 'excerpt' => 'Een gesponsorde post is een betaalde plaatsing. Verschil met gastposts, publisher kiezen, labeling van betaalde links.',
-                'meta_title' => 'Gesponsorde posts: wat adverteerders moeten weten',
+                'meta_title' => 'Gesponsorde artikelen: wat adverteerders moeten weten',
                 'meta_description' => 'Gesponsorde posts uitgelegd: verschil met gastposts, publishers kiezen, en hoe betaalde links gelabeld moeten worden.',
                 'content' => self::nl(),
             ],

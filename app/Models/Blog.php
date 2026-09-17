@@ -7,9 +7,11 @@ namespace App\Models;
 use App\Models\Concerns\ToleratesMissingSchema;
 use App\Models\Concerns\ToleratesUnparseableDates;
 use App\Support\PublicI18n;
+use App\Support\ThinBlogRedirects;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -180,6 +182,37 @@ class Blog extends Model
             ->where('published_at', '>=', static::PLAUSIBLE_SQL_DATETIME_FLOOR)
             ->where('published_at', '<=', now())
             ->where('published_at', '<=', static::PLAUSIBLE_SQL_DATETIME_CEIL);
+    }
+
+    /**
+     * Drop thin BlogSeeder stubs that 301 onto ranking pillars.
+     */
+    public function scopeWithoutLegacyRedirects($query)
+    {
+        try {
+            if (! class_exists(ThinBlogRedirects::class) || ! method_exists(ThinBlogRedirects::class, 'legacySlugs')) {
+                return $query;
+            }
+
+            $slugs = ThinBlogRedirects::legacySlugs();
+            if ($slugs === []) {
+                return $query;
+            }
+
+            $query->whereNotIn($this->qualifyColumn('slug'), $slugs);
+
+            if (Schema::hasTable('blog_translations')) {
+                $query->whereNotIn($this->getQualifiedKeyName(), function ($sub) use ($slugs) {
+                    $sub->select('blog_id')
+                        ->from('blog_translations')
+                        ->whereIn('slug', $slugs);
+                });
+            }
+        } catch (\Throwable) {
+            return $query;
+        }
+
+        return $query;
     }
 
     /**

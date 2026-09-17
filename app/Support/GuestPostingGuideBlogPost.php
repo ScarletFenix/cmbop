@@ -42,7 +42,7 @@ class GuestPostingGuideBlogPost
             'tags' => ['Guest posting', 'Guest blogging', 'Outreach', 'Backlinks', 'SEO'],
             'status' => 'published',
             'featured_image' => self::FEATURED_STORAGE,
-            'meta_title' => 'Guest Posting Guide: Pitch, Write, Publish',
+            'meta_title' => 'Guest Posting Guide: Pitch, Write and Publish for SEO',
             'meta_description' => 'A practical guest posting guide: find relevant publishers, pitch and write for their readers, handle anchors, and avoid cheap guest-post networks.',
             'faq' => self::faqItems(),
             'translations' => self::translations(),

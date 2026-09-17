@@ -42,7 +42,7 @@ class SponsoredPostGuideBlogPost
             'tags' => ['Sponsored posts', 'Native advertising', 'Guest posts', 'Paid links', 'SEO'],
             'status' => 'published',
             'featured_image' => self::FEATURED_STORAGE,
-            'meta_title' => 'Sponsored Posts: What Advertisers Should Know',
+            'meta_title' => 'Sponsored Posts Guide: What Advertisers Should Know',
             'meta_description' => 'Sponsored posts explained: how they differ from guest posts, how to choose publishers, and how paid links should be labelled. A checklist for advertisers.',
             'faq' => self::faqItems(),
             'translations' => self::translations(),

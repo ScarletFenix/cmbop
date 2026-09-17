@@ -42,7 +42,7 @@ class LinkBuildingGuideBlogPost
             'tags' => ['Link building', 'Backlinks', 'SEO strategy', 'Digital PR', 'Outreach'],
             'status' => 'published',
             'featured_image' => self::FEATURED_STORAGE,
-            'meta_title' => 'Link Building Guide: Practical SEO Strategy',
+            'meta_title' => 'Link Building Guide: A Practical SEO Authority Plan',
             'meta_description' => 'A practical link-building strategy: types of links, content and PR, guest posts, outreach, anchors, measurement, and risky tactics to skip.',
             'faq' => self::faqItems(),
             'translations' => self::translations(),

@@ -18,6 +18,15 @@
         );
         $pageCanonical = trim($__env->yieldContent('canonical')) ?: url()->current();
         $pageImage = trim($__env->yieldContent('og_image')) ?: asset('assets/brand/web/og-share-1200x630.png');
+        $pageImagePath = strtolower((string) (parse_url($pageImage, PHP_URL_PATH) ?: $pageImage));
+        $pageImageType = str_ends_with($pageImagePath, '.jpg') || str_ends_with($pageImagePath, '.jpeg')
+            ? 'image/jpeg'
+            : 'image/png';
+        $pageImageAlt = html_entity_decode(
+            trim($__env->yieldContent('og_image_alt')) ?: 'SEOLinkBuildings — Guest post & backlink marketplace',
+            ENT_QUOTES | ENT_HTML5,
+            'UTF-8'
+        );
         $pageLogo = asset('assets/img/logo1.png');
         $pageType = trim($__env->yieldContent('og_type')) ?: 'website';
         $hreflangXDefault = trim($__env->yieldContent('hreflang_x_default')) ?: null;
@@ -78,16 +87,16 @@
     <meta property="og:description" content="{{ $pageDescription }}">
     <meta property="og:url" content="{{ $pageCanonical }}">
     <meta property="og:image" content="{{ $pageImage }}">
-    <meta property="og:image:type" content="image/png">
+    <meta property="og:image:type" content="{{ $pageImageType }}">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
-    <meta property="og:image:alt" content="SEOLinkBuildings — Guest post & backlink marketplace">
+    <meta property="og:image:alt" content="{{ $pageImageAlt }}">
     <meta property="og:logo" content="{{ $pageLogo }}">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="{{ $pageTitle }}">
     <meta name="twitter:description" content="{{ $pageDescription }}">
     <meta name="twitter:image" content="{{ $pageImage }}">
-    <meta name="twitter:image:alt" content="SEOLinkBuildings">
+    <meta name="twitter:image:alt" content="{{ $pageImageAlt }}">
     @stack('head')
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet">

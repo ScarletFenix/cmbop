@@ -25,6 +25,14 @@ class ThinBlogRedirects
         ];
     }
 
+    /**
+     * @return list<string>
+     */
+    public static function legacySlugs(): array
+    {
+        return array_keys(self::map());
+    }
+
     public static function targetSlug(string $slug): ?string
     {
         $slug = strtolower(trim($slug));
@@ -64,6 +72,7 @@ class ThinBlogRedirects
 
     /**
      * Hide leftover BlogSeeder rows from the index. URLs still 301.
+     * Matches both blogs.slug and leftover translation slugs.
      */
     public static function unpublishLegacy(): int
     {
@@ -72,18 +81,38 @@ class ThinBlogRedirects
                 return 0;
             }
 
-            $slugs = array_keys(self::map());
-            $query = Blog::query()->whereIn('slug', $slugs)->where('status', 'published');
-            $ids = $query->pluck('id')->all();
-            if ($ids === []) {
+            $slugs = self::legacySlugs();
+            if ($slugs === []) {
                 return 0;
             }
 
-            $updated = Blog::query()->whereIn('id', $ids)->update(['status' => 'draft']);
+            $ids = Blog::query()->whereIn('slug', $slugs)->pluck('id')->all();
 
             if (Schema::hasTable('blog_translations')) {
-                BlogTranslation::query()
-                    ->whereIn('blog_id', $ids)
+                $fromTranslations = BlogTranslation::query()
+                    ->whereIn('slug', $slugs)
+                    ->pluck('blog_id')
+                    ->all();
+                $ids = array_values(array_unique(array_merge($ids, $fromTranslations)));
+            }
+
+            $updated = 0;
+
+            if ($ids !== []) {
+                $updated += Blog::query()
+                    ->whereIn('id', $ids)
+                    ->where('status', 'published')
+                    ->update(['status' => 'draft']);
+            }
+
+            if (Schema::hasTable('blog_translations')) {
+                $updated += BlogTranslation::query()
+                    ->where(function ($query) use ($ids, $slugs) {
+                        if ($ids !== []) {
+                            $query->whereIn('blog_id', $ids);
+                        }
+                        $query->orWhereIn('slug', $slugs);
+                    })
                     ->update(['is_published' => false]);
             }
 

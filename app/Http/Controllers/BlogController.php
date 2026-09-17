@@ -22,7 +22,12 @@ class BlogController extends Controller
             CuratedBlogSync::ensurePresent();
             $requestedLocale = public_locale();
 
-            $blog = Blog::published()
+            $listing = Blog::published();
+            if (method_exists(Blog::class, 'scopeWithoutLegacyRedirects')) {
+                $listing = $listing->withoutLegacyRedirects();
+            }
+
+            $blog = $listing
                 ->withPublishedLocale($requestedLocale)
                 ->orderByDesc('published_at')
                 ->paginate(12);
@@ -174,7 +179,11 @@ class BlogController extends Controller
         }
         $hreflangPath = 'blog/'.$translation->slug;
 
-        $related = Blog::published()
+        $related = Blog::published();
+        if (method_exists(Blog::class, 'scopeWithoutLegacyRedirects')) {
+            $related = $related->withoutLegacyRedirects();
+        }
+        $related = $related
             ->withPublishedLocale($requestedLocale)
             ->where('id', '!=', $blog->id)
             ->orderByDesc('published_at')

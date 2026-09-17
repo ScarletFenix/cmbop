@@ -9,6 +9,7 @@ use App\Support\HowToGetBacklinksBlogPost;
 use App\Support\LinkBuildingGuideBlogPost;
 use App\Support\PublicI18n;
 use App\Support\SponsoredPostGuideBlogPost;
+use App\Support\ThinBlogRedirects;
 use Database\Seeders\LinkBuildingGuidesBlogsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -54,10 +55,13 @@ class LinkBuildingGuidesBlogTest extends TestCase
             $this->assertTrue((bool) $translation->is_published);
             $this->assertSame($payload['meta_title'], $translation->meta_title);
             $this->assertSame($payload['meta_description'], $translation->meta_description);
+            $this->assertGreaterThanOrEqual(50, mb_strlen((string) $translation->meta_title));
             $this->assertLessThanOrEqual(70, mb_strlen((string) $translation->meta_title));
             $this->assertLessThanOrEqual(180, mb_strlen((string) $translation->meta_description));
             $this->assertSame([], $class::faqItems());
             $this->assertSame($class::FEATURED_STORAGE, $blog->featured_image);
+            $this->assertFileExists(public_path($class::FEATURED_ASSET));
+            $this->assertFileExists(storage_path('app/public/'.$class::FEATURED_STORAGE));
 
             foreach ($class::translations() as $locale => $localePayload) {
                 $row = BlogTranslation::query()
@@ -68,6 +72,7 @@ class LinkBuildingGuidesBlogTest extends TestCase
                 $this->assertTrue((bool) $row->is_published);
                 $this->assertSame($localePayload['slug'], $row->slug);
                 $this->assertSame($localePayload['title'], $row->title);
+                $this->assertGreaterThanOrEqual(50, mb_strlen((string) $row->meta_title));
                 $this->assertLessThanOrEqual(70, mb_strlen((string) $row->meta_title));
                 $this->assertLessThanOrEqual(180, mb_strlen((string) $row->meta_description));
             }
@@ -107,6 +112,18 @@ class LinkBuildingGuidesBlogTest extends TestCase
             $this->assertTrue(
                 str_contains($html, '/storage/blogs/content/') || str_contains($html, '/media/blogs/content/'),
                 $slug.' should include the inline diagram'
+            );
+            $this->assertStringContainsString(basename($class::FEATURED_STORAGE), $html);
+            $this->assertStringNotContainsString('og-share-1200x630.png', $html);
+            $this->assertStringContainsString('og:image:type" content="image/jpeg"', $html);
+            $featured = preg_quote(basename($class::FEATURED_STORAGE), '#');
+            $this->assertMatchesRegularExpression(
+                '#property="og:image" content="[^"]*'.$featured.'"#',
+                $html
+            );
+            $this->assertMatchesRegularExpression(
+                '#name="twitter:image" content="[^"]*'.$featured.'"#',
+                $html
             );
 
             foreach ($this->postClasses() as $other) {
@@ -161,6 +178,55 @@ class LinkBuildingGuidesBlogTest extends TestCase
         $this->get('/de/blog/how-to-build-high-quality-backlinks-in-2026')
             ->assertStatus(301)
             ->assertRedirect(PublicI18n::urlForLocale('blog/'.$deSlug, 'de'));
+    }
+
+    public function test_legacy_stubs_are_unpublished_and_omitted_from_sitemap_and_index(): void
+    {
+        $this->seed(LinkBuildingGuidesBlogsSeeder::class);
+
+        $stubs = [
+            'how-to-build-high-quality-backlinks-in-2026' => 'Thin backlinks stub',
+            'guest-posting-checklist-for-advertisers' => 'Thin guest-post stub',
+        ];
+
+        foreach ($stubs as $slug => $title) {
+            $blog = Blog::factory()->published()->create([
+                'title' => $title,
+                'slug' => $slug,
+                'content' => '<p>Short leftover seeder body.</p>',
+                'primary_locale' => 'en',
+            ]);
+            BlogTranslation::create([
+                'blog_id' => $blog->id,
+                'locale' => 'en',
+                'title' => $title,
+                'slug' => $slug,
+                'excerpt' => 'Short leftover excerpt.',
+                'content' => '<p>Short leftover seeder body.</p>',
+                'is_published' => true,
+            ]);
+        }
+
+        ThinBlogRedirects::unpublishLegacy();
+
+        foreach ($stubs as $slug => $title) {
+            $row = Blog::query()->where('slug', $slug)->first();
+            $this->assertNotNull($row);
+            $this->assertSame('draft', $row->status);
+            $this->assertFalse((bool) BlogTranslation::query()->where('blog_id', $row->id)->value('is_published'));
+        }
+
+        $sitemap = $this->get('/sitemap-en.xml')->assertOk()->getContent();
+        foreach (array_keys($stubs) as $slug) {
+            $this->assertStringNotContainsString('/blog/'.$slug, $sitemap);
+        }
+        $this->assertStringContainsString('/blog/'.HowToGetBacklinksBlogPost::SLUG, $sitemap);
+        $this->assertStringContainsString('/blog/'.GuestPostingGuideBlogPost::SLUG, $sitemap);
+
+        $index = $this->get('/blog')->assertOk();
+        $index->assertDontSee('Thin backlinks stub', false);
+        $index->assertDontSee('Thin guest-post stub', false);
+        $index->assertSee('How to Get Backlinks', false);
     }
 
     public function test_blog_upsert_curated_includes_link_building_guides(): void

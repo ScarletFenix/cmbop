@@ -32,6 +32,7 @@
 @section('hreflang_path_map', collect($hreflangPathByLocale)->map(fn ($path, $locale) => $locale.'='.$path)->implode(','))
 @section('og_type', 'article')
 @section('og_image', $blog->featuredImageAbsoluteUrl() ?: asset('assets/brand/web/og-share-1200x630.png'))
+@section('og_image_alt', $resolvedTitle)
 
 @push('head')
 <script type="application/ld+json">
@@ -217,9 +218,13 @@
 
 <!-- ==================== RECOMMENDED POSTS SECTION ==================== -->
 @php
+    $recommendedQuery = \App\Models\Blog::published();
+    if (method_exists(\App\Models\Blog::class, 'scopeWithoutLegacyRedirects')) {
+        $recommendedQuery = $recommendedQuery->withoutLegacyRedirects();
+    }
     $recommendedPosts = isset($related)
         ? $related
-        : \App\Models\Blog::published()
+        : $recommendedQuery
             ->withPublishedLocale(public_locale())
             ->where('id', '!=', $blog->id)
             ->orderByDesc('published_at')

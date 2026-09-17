@@ -259,7 +259,11 @@ class AppServiceProvider extends ServiceProvider
             try {
                 if (Schema::hasTable('blogs')) {
                     $locale = public_locale();
-                    $posts = Blog::published()
+                    $posts = Blog::published();
+                    if (method_exists(Blog::class, 'scopeWithoutLegacyRedirects')) {
+                        $posts = $posts->withoutLegacyRedirects();
+                    }
+                    $posts = $posts
                         ->withPublishedLocale($locale)
                         ->orderByDesc('published_at')
                         ->limit(4)

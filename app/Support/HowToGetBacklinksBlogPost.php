@@ -42,7 +42,7 @@ class HowToGetBacklinksBlogPost
             'tags' => ['Backlinks', 'Link building', 'Guest posts', 'Outreach', 'SEO'],
             'status' => 'published',
             'featured_image' => self::FEATURED_STORAGE,
-            'meta_title' => 'How to Get Backlinks: Practical Guide',
+            'meta_title' => 'How to Get Backlinks: Practical Guide to SEO Links',
             'meta_description' => 'Learn how to get backlinks that are worth having: relevance, referring domains, guest posts, digital PR, and how paid placements differ from earned links.',
             'faq' => self::faqItems(),
             'translations' => self::translations(),
