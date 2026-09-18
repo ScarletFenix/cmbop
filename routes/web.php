@@ -1001,6 +1001,9 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
             ->middleware('throttle:10,1')
             ->name('sites.claim');
 
+        Route::get('/site-claims', [SiteClaimController::class, 'index'])
+            ->name('site-claims');
+
         // Favorites
         Route::post('/favorites/save', [CatalogController::class, 'saveFavorites'])->name('favorites.save');
 

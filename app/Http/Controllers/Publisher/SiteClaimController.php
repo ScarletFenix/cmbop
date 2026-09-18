@@ -46,8 +46,12 @@ class SiteClaimController extends Controller
                 ], 500);
             }
 
+            $fallback = $request->routeIs('advertiser.site-claims')
+                ? 'advertiser.dashboard'
+                : 'publisher.websites';
+
             return redirect()
-                ->route('publisher.websites')
+                ->route($fallback)
                 ->with('error', $message);
         }
 
@@ -67,7 +71,11 @@ class SiteClaimController extends Controller
             ]);
         }
 
-        return view('publisher.site-claims', compact('claims'));
+        $view = $request->routeIs('advertiser.site-claims')
+            ? 'advertiser.site-claims'
+            : 'publisher.site-claims';
+
+        return view($view, compact('claims'));
     }
 
     public function store(Request $request)

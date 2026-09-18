@@ -111,6 +111,9 @@ function applyOrdersStatusFilter(status) {
     const sel = document.getElementById('statusFilter');
     if (!sel) return;
     sel.value = status || '';
+    if (typeof window.refreshThemeSelects === 'function') {
+        window.refreshThemeSelects();
+    }
     if (status) {
         clearOrdersProjectStageFilter();
     }
@@ -123,6 +126,63 @@ function applyOrdersStatusFilter(status) {
     });
 }
 window.applyOrdersStatusFilter = applyOrdersStatusFilter;
+
+function refreshThemeSelects() {
+    document.querySelectorAll('[data-theme-select]').forEach(function (wrap) {
+        const select = wrap.querySelector('select');
+        const valueEl = wrap.querySelector('.single-select-value');
+        if (!select || !valueEl) return;
+        const val = String(select.value);
+        wrap.querySelectorAll('.single-select-option').forEach(function (opt) {
+            const on = String(opt.getAttribute('data-value')) === val;
+            opt.classList.toggle('selected', on);
+            opt.setAttribute('aria-selected', on ? 'true' : 'false');
+        });
+        const selected = wrap.querySelector('.single-select-option.selected');
+        valueEl.textContent = selected
+            ? String(selected.getAttribute('data-label') || selected.textContent || '').trim()
+            : String((select.options[select.selectedIndex] && select.options[select.selectedIndex].text) || '').trim();
+    });
+}
+window.refreshThemeSelects = refreshThemeSelects;
+
+function bindThemeSelects() {
+    document.querySelectorAll('[data-theme-select]').forEach(function (wrap) {
+        if (wrap.dataset.bound === '1') return;
+        wrap.dataset.bound = '1';
+        const select = wrap.querySelector('select');
+        const trigger = wrap.querySelector('.single-select-input');
+        const dropdown = wrap.querySelector('.single-select-dropdown');
+        if (!select || !trigger || !dropdown) return;
+
+        trigger.addEventListener('click', function (e) {
+            e.preventDefault();
+            const willOpen = !dropdown.classList.contains('show');
+            document.querySelectorAll('.theme-select .single-select-dropdown.show').forEach(function (dd) {
+                if (dd === dropdown) return;
+                dd.classList.remove('show');
+                const other = dd.previousElementSibling;
+                if (other) other.setAttribute('aria-expanded', 'false');
+            });
+            dropdown.classList.toggle('show', willOpen);
+            trigger.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+        });
+
+        wrap.querySelectorAll('.single-select-option').forEach(function (opt) {
+            opt.addEventListener('click', function () {
+                const next = String(opt.getAttribute('data-value') || '');
+                if (select.value !== next) {
+                    select.value = next;
+                    select.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+                refreshThemeSelects();
+                dropdown.classList.remove('show');
+                trigger.setAttribute('aria-expanded', 'false');
+            });
+        });
+    });
+    refreshThemeSelects();
+}
 
 const ORDERS_SEARCH_LIVE_MS = 350;
 const ORDERS_SEARCH_MIN_CHARS = 2;
@@ -175,6 +235,10 @@ function setOrdersSearchBusy(busy) {
     if (badge) badge.classList.toggle('d-none', !busy);
     if (input) input.setAttribute('aria-busy', busy ? 'true' : 'false');
     setOrdersSearchStatus(busy ? 'Searching…' : '');
+    if (window.SlbLoader) {
+        if (busy) window.SlbLoader.show();
+        else window.SlbLoader.hide();
+    }
 }
 
 function updateOrdersSearchClearVisibility() {
@@ -308,6 +372,7 @@ function bootAdvertiserOrdersPage() {
         document.getElementById('dateTo').value = '';
         const sortEl = document.getElementById('ordersSort');
         if (sortEl) sortEl.value = 'attention';
+        refreshThemeSelects();
         clearOrdersProjectFilter();
         updateOrdersSearchClearVisibility();
         currentPage = 1;
@@ -337,6 +402,8 @@ function bootAdvertiserOrdersPage() {
         }
         fetchOrders(1, { historyMode: 'push' });
     });
+
+    bindThemeSelects();
 
     // Dropdown / date filters live-refresh the table (catalog-style), not only on Filter click.
     ['statusFilter', 'paymentStatusFilter', 'paymentMethodFilter', 'dateFrom', 'dateTo', 'ordersSort'].forEach(function (id) {
@@ -390,6 +457,7 @@ function bootAdvertiserOrdersPage() {
             updateOrdersAttentionChip();
         }
         updateOrdersProjectChip();
+        refreshThemeSelects();
     }
     window.hydrateOrdersFiltersFromUrl = hydrateOrdersFiltersFromUrl;
 

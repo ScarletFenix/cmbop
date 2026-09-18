@@ -2488,7 +2488,9 @@ class InAppNotificationService
                 $message .= ' Note: '.$notes;
             }
             $actionLabel = 'View my claims';
-            $actionUrl = route('site-claims.index', [], false);
+            $actionUrl = $claim->claimer?->hasRole('advertiser')
+                ? route('advertiser.site-claims', [], false)
+                : route('site-claims.index', [], false);
         }
 
         $this->notify(

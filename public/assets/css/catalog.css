@@ -10,6 +10,37 @@
  * shell's --shell-z-dropdown layer instead of sliding under the topbar.
  */
 
+.catalog-page .catalog-plain-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    padding: 6px 8px;
+    border: none;
+    box-shadow: none;
+    background: transparent;
+    color: #1a585e;
+    font-size: 0.875rem;
+    font-weight: 600;
+    line-height: 1.2;
+    text-decoration: none;
+    border-radius: 8px;
+    cursor: pointer;
+}
+.catalog-page .catalog-plain-action i {
+    width: 16px;
+    height: 16px;
+    min-width: 16px;
+    font-size: 16px;
+    flex: 0 0 16px;
+}
+.catalog-page .catalog-plain-action:hover,
+.catalog-page .catalog-plain-action:focus-visible {
+    background: transparent;
+    color: #123f42;
+    text-decoration: none;
+}
+
 .filter-chip {
     background: var(--brand-primary-bg, #e6f5f5);
     color: var(--brand-primary, #1a585e);
@@ -337,6 +368,51 @@
 
 .catalog-mobile-metrics .catalog-metric__bar {
     width: 100%;
+}
+
+.catalog-metric--traffic .catalog-metric__spark {
+    display: block;
+    width: 5.75rem;
+    height: 36px;
+    padding: 0;
+    margin: 0;
+    box-sizing: border-box;
+    background: none;
+}
+
+.catalog-metric--traffic .catalog-metric__spark svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+}
+
+.catalog-metric--traffic .catalog-metric__spark-line {
+    fill: none;
+    stroke: #0b6266;
+    stroke-width: 2.35;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.catalog-metric--traffic .catalog-metric__spark-halo {
+    fill: rgba(78, 205, 203, 0.35);
+}
+
+.catalog-metric--traffic .catalog-metric__spark-end {
+    fill: #0b6266;
+    stroke: #fff;
+    stroke-width: 1.1;
+}
+
+.catalog-metric--traffic.is-standout .catalog-metric__spark {
+    background: none;
+}
+
+.catalog-mobile-metrics .catalog-metric--traffic .catalog-metric__spark {
+    width: 100%;
+    max-width: 9rem;
+    height: 38px;
 }
 
 /* ------------------------------------------------------------- identity tile */
@@ -930,7 +1006,7 @@ body:has(.catalog-page) {
     }
 
     .catalog-table .site-chip--verified {
-        padding: 0 7px;
+        padding: 0;
     }
 }
 
@@ -1464,6 +1540,31 @@ body:has(.catalog-page) {
     transition: transform 560ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+/* First paint: only the first 6-up page is visible. Extra cards used to sit
+   in one flex row and squash until JS rebuilt the panels. */
+.catalog-bulk-rail:not(.is-enhanced) {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 12px;
+    transform: none !important;
+    transition: none;
+    will-change: auto;
+}
+.catalog-bulk-rail:not(.is-enhanced) > [data-bulk-card]:nth-child(n + 7) {
+    display: none;
+}
+.catalog-bulk-rail:not(.is-enhanced) > [data-bulk-page-panel] {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 12px;
+    width: 100%;
+    min-width: 0;
+    flex: none;
+}
+.catalog-bulk-rail:not(.is-enhanced) > [data-bulk-page-panel] ~ [data-bulk-page-panel] {
+    display: none;
+}
+
 .catalog-bulk-rail:focus-visible {
     outline: 2px solid var(--brand-primary, #1a585e);
     outline-offset: 2px;
@@ -1865,16 +1966,9 @@ body:has(.catalog-page) {
     inset: 0;
     z-index: 4;
     display: none;
-    align-items: flex-start;
-    justify-content: center;
-    gap: 10px;
-    padding-top: 4.5rem;
+    pointer-events: none;
     border-radius: inherit;
-    background: rgba(255, 255, 255, 0.72);
-    backdrop-filter: blur(1px);
-    font-size: 0.875rem;
-    font-weight: 600;
-    color: var(--brand-primary, #1a585e);
+    background: rgba(255, 255, 255, 0.28);
 }
 
 /* Belt-and-suspenders: without catalog.css a plain div is display:block and
@@ -1898,26 +1992,7 @@ body:has(.catalog-page) {
     opacity: 0.55;
 }
 
-.catalog-results-busy__spinner {
-    width: 1.05rem;
-    height: 1.05rem;
-    border-radius: 50%;
-    border: 2px solid var(--brand-primary-border, #b8e4e4);
-    border-top-color: var(--brand-primary, #1a585e);
-    animation: catalogResultsSpin 700ms linear infinite;
-}
-
-@keyframes catalogResultsSpin {
-    to { transform: rotate(360deg); }
-}
-
 @media (prefers-reduced-motion: reduce) {
-    .catalog-results-busy__spinner {
-        animation: none;
-        border-top-color: var(--brand-primary-border, #b8e4e4);
-        opacity: 0.7;
-    }
-
     .catalog-results-card.is-busy > .card-body {
         opacity: 0.7;
     }
@@ -2106,6 +2181,10 @@ a.catalog-site-rooted-url.site-open-link::after {
     gap: 4px;
     min-width: 0;
     width: 100%;
+}
+
+.catalog-table .catalog-site-title-row + .catalog-site-identity {
+    margin-top: 8px;
 }
 
 /* NEW · Verified · eye — snug cluster immediately after the name. */
@@ -2338,20 +2417,45 @@ button.site-chip {
 /* Chips no longer lift. A row can carry several, so translating each one on
    hover read as jitter — and most of them are labels, not controls. */
 
-.site-chip--verified {
-    background: linear-gradient(180deg, #ecfdf5 0%, #d1fae5 100%);
+.site-chip--verified,
+button.site-chip.site-chip--verified {
+    height: auto;
+    min-height: 0;
+    padding: 0;
+    margin: 0;
+    gap: 0;
+    line-height: 0;
+    background: none;
+    border: 0;
+    box-shadow: none;
     color: #0f766e;
-    border-color: rgba(15, 118, 110, 0.22);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 .site-chip--verified:hover,
 .site-chip--verified:focus-visible {
-    box-shadow: 0 2px 8px rgba(15, 118, 110, 0.14);
+    background: none;
+    box-shadow: none;
 }
 
 .site-chip--verified i {
     color: #0d9488;
+}
+
+.site-chip--verified .catalog-verified-lottie {
+    display: block;
+    width: 52px;
+    height: 52px;
+    flex: 0 0 52px;
+    margin: 0 -8px;
+    overflow: hidden;
+}
+
+.site-chip--verified .catalog-verified-lottie svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    transform: scale(1.42);
+    transform-origin: center;
 }
 
 .site-chip--blacklist {

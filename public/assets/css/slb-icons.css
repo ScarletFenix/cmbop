@@ -1,0 +1,210 @@
+/* Local Lucide + brand icons. Replaces Font Awesome CDN. Do not load FA from a CDN. */
+.fa,.fas,.far,.fal,.fab,.fa-solid,.fa-regular,.fa-brands,.fa-classic{
+  --slb-icon:url("../icons/lucide/circle-help.svg");
+  display:inline-block;width:1em;height:1em;flex:0 0 1em;box-sizing:border-box;
+  font-style:normal;font-variant:normal;line-height:1;vertical-align:middle;
+  background-color:currentColor;
+  -webkit-mask:var(--slb-icon) center/contain no-repeat;mask:var(--slb-icon) center/contain no-repeat;
+  speak:never;
+}
+.fa:before,.fas:before,.far:before,.fal:before,.fab:before,.fa-solid:before,.fa-regular:before,.fa-brands:before{content:none!important}
+.fa-fw{width:1.25em}
+.fa-sm{width:.875em;height:.875em}
+.fa-lg{width:1.333em;height:1.333em}
+.fa-xl{width:1.5em;height:1.5em}
+.fa-2x{width:2em;height:2em}
+.fa-3x{width:3em;height:3em}
+@keyframes slb-icon-spin{to{transform:rotate(360deg)}}
+@keyframes slb-icon-draw{from{stroke-dashoffset:64}to{stroke-dashoffset:0}}
+.fa-spin{-webkit-animation:slb-icon-spin 1.2s linear infinite;animation:slb-icon-spin 1.2s linear infinite}
+.fa.slb-icon-svg,.fas.slb-icon-svg,.far.slb-icon-svg,.fal.slb-icon-svg,.fab.slb-icon-svg,
+.fa-solid.slb-icon-svg,.fa-regular.slb-icon-svg,.fa-brands.slb-icon-svg,.fa-classic.slb-icon-svg{
+  background:none!important;-webkit-mask:none!important;mask:none!important;
+}
+.fa.slb-icon-svg svg,.fas.slb-icon-svg svg,.far.slb-icon-svg svg,.fab.slb-icon-svg svg,
+.fa-solid.slb-icon-svg svg,.fa-regular.slb-icon-svg svg,.fa-brands.slb-icon-svg svg{
+  width:100%;height:100%;display:block;overflow:visible;stroke:currentColor;fill:none;
+}
+/* Same hover-draw as /icon-sheet-animated.html (.m-draw) */
+.m-draw svg path,.m-draw svg circle,.m-draw svg line,.m-draw svg polyline,.m-draw svg rect,.m-draw svg ellipse,.m-draw svg polygon{
+  stroke:currentColor;fill:none;stroke-dasharray:64;stroke-dashoffset:0;
+}
+.m-draw:hover svg path,.m-draw:hover svg circle,.m-draw:hover svg line,
+.m-draw:hover svg polyline,.m-draw:hover svg rect,.m-draw:hover svg ellipse,.m-draw:hover svg polygon{
+  -webkit-animation:slb-icon-draw .85s ease both;
+  animation:slb-icon-draw .85s ease both;
+}
+@media (prefers-reduced-motion:reduce){
+  .m-draw:hover svg path,.m-draw:hover svg circle,.m-draw:hover svg line,
+  .m-draw:hover svg polyline,.m-draw:hover svg rect,.m-draw:hover svg ellipse{animation:none}
+}
+.fa-plus,.fa-solid.fa-plus,.fa-regular.fa-plus,.fas.fa-plus,.far.fa-plus{--slb-icon:url("../icons/lucide/plus.svg")}
+.fa-plus-circle,.fa-solid.fa-plus-circle,.fa-regular.fa-plus-circle,.fas.fa-plus-circle,.far.fa-plus-circle{--slb-icon:url("../icons/lucide/circle-plus.svg")}
+.fa-minus,.fa-solid.fa-minus,.fa-regular.fa-minus,.fas.fa-minus,.far.fa-minus{--slb-icon:url("../icons/lucide/minus.svg")}
+.fa-trash,.fa-solid.fa-trash,.fa-regular.fa-trash,.fas.fa-trash,.far.fa-trash{--slb-icon:url("../icons/lucide/trash-2.svg")}
+.fa-save,.fa-solid.fa-save,.fa-regular.fa-save,.fas.fa-save,.far.fa-save{--slb-icon:url("../icons/lucide/save.svg")}
+.fa-copy,.fa-solid.fa-copy,.fa-regular.fa-copy,.fas.fa-copy,.far.fa-copy{--slb-icon:url("../icons/lucide/copy.svg")}
+.fa-clone,.fa-solid.fa-clone,.fa-regular.fa-clone,.fas.fa-clone,.far.fa-clone{--slb-icon:url("../icons/lucide/copy.svg")}
+.fa-download,.fa-solid.fa-download,.fa-regular.fa-download,.fas.fa-download,.far.fa-download{--slb-icon:url("../icons/lucide/download.svg")}
+.fa-upload,.fa-solid.fa-upload,.fa-regular.fa-upload,.fas.fa-upload,.far.fa-upload{--slb-icon:url("../icons/lucide/upload.svg")}
+.fa-filter,.fa-solid.fa-filter,.fa-regular.fa-filter,.fas.fa-filter,.far.fa-filter{--slb-icon:url("../icons/lucide/list-filter.svg")}
+.fa-filter-circle-xmark,.fa-solid.fa-filter-circle-xmark,.fa-regular.fa-filter-circle-xmark,.fas.fa-filter-circle-xmark,.far.fa-filter-circle-xmark{--slb-icon:url("../icons/lucide/filter-x.svg")}
+.fa-ban,.fa-solid.fa-ban,.fa-regular.fa-ban,.fas.fa-ban,.far.fa-ban{--slb-icon:url("../icons/lucide/ban.svg")}
+.fa-undo,.fa-solid.fa-undo,.fa-regular.fa-undo,.fas.fa-undo,.far.fa-undo{--slb-icon:url("../icons/lucide/undo-2.svg")}
+.fa-play,.fa-solid.fa-play,.fa-regular.fa-play,.fas.fa-play,.far.fa-play{--slb-icon:url("../icons/lucide/play.svg")}
+.fa-circle-play,.fa-solid.fa-circle-play,.fa-regular.fa-circle-play,.fas.fa-circle-play,.far.fa-circle-play{--slb-icon:url("../icons/lucide/circle-play.svg")}
+.fa-pause,.fa-solid.fa-pause,.fa-regular.fa-pause,.fas.fa-pause,.far.fa-pause{--slb-icon:url("../icons/lucide/pause.svg")}
+.fa-shuffle,.fa-solid.fa-shuffle,.fa-regular.fa-shuffle,.fas.fa-shuffle,.far.fa-shuffle{--slb-icon:url("../icons/lucide/shuffle.svg")}
+.fa-key,.fa-solid.fa-key,.fa-regular.fa-key,.fas.fa-key,.far.fa-key{--slb-icon:url("../icons/lucide/key.svg")}
+.fa-edit,.fa-solid.fa-edit,.fa-regular.fa-edit,.fas.fa-edit,.far.fa-edit{--slb-icon:url("../icons/lucide/pencil.svg")}
+.fa-pencil,.fa-solid.fa-pencil,.fa-regular.fa-pencil,.fas.fa-pencil,.far.fa-pencil{--slb-icon:url("../icons/lucide/pencil.svg")}
+.fa-pen,.fa-solid.fa-pen,.fa-regular.fa-pen,.fas.fa-pen,.far.fa-pen{--slb-icon:url("../icons/lucide/pencil.svg")}
+.fa-pen-to-square,.fa-solid.fa-pen-to-square,.fa-regular.fa-pen-to-square,.fas.fa-pen-to-square,.far.fa-pen-to-square{--slb-icon:url("../icons/lucide/square-pen.svg")}
+.fa-user-edit,.fa-solid.fa-user-edit,.fa-regular.fa-user-edit,.fas.fa-user-edit,.far.fa-user-edit{--slb-icon:url("../icons/lucide/user-pen.svg")}
+.fa-user-pen,.fa-solid.fa-user-pen,.fa-regular.fa-user-pen,.fas.fa-user-pen,.far.fa-user-pen{--slb-icon:url("../icons/lucide/user-pen.svg")}
+.fa-check,.fa-solid.fa-check,.fa-regular.fa-check,.fas.fa-check,.far.fa-check{--slb-icon:url("../icons/lucide/check.svg")}
+.fa-check-circle,.fa-solid.fa-check-circle,.fa-regular.fa-check-circle,.fas.fa-check-circle,.far.fa-check-circle{--slb-icon:url("../icons/lucide/circle-check.svg")}
+.fa-circle-check,.fa-solid.fa-circle-check,.fa-regular.fa-circle-check,.fas.fa-circle-check,.far.fa-circle-check{--slb-icon:url("../icons/lucide/circle-check.svg")}
+.fa-check-double,.fa-solid.fa-check-double,.fa-regular.fa-check-double,.fas.fa-check-double,.far.fa-check-double{--slb-icon:url("../icons/lucide/check-check.svg")}
+.fa-times,.fa-solid.fa-times,.fa-regular.fa-times,.fas.fa-times,.far.fa-times{--slb-icon:url("../icons/lucide/x.svg")}
+.fa-xmark,.fa-solid.fa-xmark,.fa-regular.fa-xmark,.fas.fa-xmark,.far.fa-xmark{--slb-icon:url("../icons/lucide/x.svg")}
+.fa-xmark-circle,.fa-solid.fa-xmark-circle,.fa-regular.fa-xmark-circle,.fas.fa-xmark-circle,.far.fa-xmark-circle{--slb-icon:url("../icons/lucide/circle-x.svg")}
+.fa-circle-exclamation,.fa-solid.fa-circle-exclamation,.fa-regular.fa-circle-exclamation,.fas.fa-circle-exclamation,.far.fa-circle-exclamation{--slb-icon:url("../icons/lucide/circle-alert.svg")}
+.fa-exclamation-circle,.fa-solid.fa-exclamation-circle,.fa-regular.fa-exclamation-circle,.fas.fa-exclamation-circle,.far.fa-exclamation-circle{--slb-icon:url("../icons/lucide/circle-alert.svg")}
+.fa-triangle-exclamation,.fa-solid.fa-triangle-exclamation,.fa-regular.fa-triangle-exclamation,.fas.fa-triangle-exclamation,.far.fa-triangle-exclamation{--slb-icon:url("../icons/lucide/triangle-alert.svg")}
+.fa-exclamation-triangle,.fa-solid.fa-exclamation-triangle,.fa-regular.fa-exclamation-triangle,.fas.fa-exclamation-triangle,.far.fa-exclamation-triangle{--slb-icon:url("../icons/lucide/triangle-alert.svg")}
+.fa-circle-info,.fa-solid.fa-circle-info,.fa-regular.fa-circle-info,.fas.fa-circle-info,.far.fa-circle-info{--slb-icon:url("../icons/lucide/info.svg")}
+.fa-info-circle,.fa-solid.fa-info-circle,.fa-regular.fa-info-circle,.fas.fa-info-circle,.far.fa-info-circle{--slb-icon:url("../icons/lucide/info.svg")}
+.fa-circle-question,.fa-solid.fa-circle-question,.fa-regular.fa-circle-question,.fas.fa-circle-question,.far.fa-circle-question{--slb-icon:url("../icons/lucide/circle-help.svg")}
+.fa-question-circle,.fa-solid.fa-question-circle,.fa-regular.fa-question-circle,.fas.fa-question-circle,.far.fa-question-circle{--slb-icon:url("../icons/lucide/circle-help.svg")}
+.fa-spinner,.fa-solid.fa-spinner,.fa-regular.fa-spinner,.fas.fa-spinner,.far.fa-spinner{--slb-icon:url("../icons/lucide/loader-circle.svg")}
+.fa-tachometer-alt,.fa-solid.fa-tachometer-alt,.fa-regular.fa-tachometer-alt,.fas.fa-tachometer-alt,.far.fa-tachometer-alt{--slb-icon:url("../icons/lucide/layout-dashboard.svg")}
+.fa-tachometer,.fa-solid.fa-tachometer,.fa-regular.fa-tachometer,.fas.fa-tachometer,.far.fa-tachometer{--slb-icon:url("../icons/lucide/layout-dashboard.svg")}
+.fa-house,.fa-solid.fa-house,.fa-regular.fa-house,.fas.fa-house,.far.fa-house{--slb-icon:url("../icons/lucide/house.svg")}
+.fa-list,.fa-solid.fa-list,.fa-regular.fa-list,.fas.fa-list,.far.fa-list{--slb-icon:url("../icons/lucide/rows-3.svg")}
+.fa-layer-group,.fa-solid.fa-layer-group,.fa-regular.fa-layer-group,.fas.fa-layer-group,.far.fa-layer-group{--slb-icon:url("../icons/lucide/layers.svg")}
+.fa-store,.fa-solid.fa-store,.fa-regular.fa-store,.fas.fa-store,.far.fa-store{--slb-icon:url("../icons/lucide/store.svg")}
+.fa-tasks,.fa-solid.fa-tasks,.fa-regular.fa-tasks,.fas.fa-tasks,.far.fa-tasks{--slb-icon:url("../icons/lucide/list-checks.svg")}
+.fa-folder-open,.fa-solid.fa-folder-open,.fa-regular.fa-folder-open,.fas.fa-folder-open,.far.fa-folder-open{--slb-icon:url("../icons/lucide/folder-open.svg")}
+.fa-table,.fa-solid.fa-table,.fa-regular.fa-table,.fas.fa-table,.far.fa-table{--slb-icon:url("../icons/lucide/table.svg")}
+.fa-blog,.fa-solid.fa-blog,.fa-regular.fa-blog,.fas.fa-blog,.far.fa-blog{--slb-icon:url("../icons/lucide/newspaper.svg")}
+.fa-newspaper-o,.fa-solid.fa-newspaper-o,.fa-regular.fa-newspaper-o,.fas.fa-newspaper-o,.far.fa-newspaper-o{--slb-icon:url("../icons/lucide/newspaper.svg")}
+.fa-book,.fa-solid.fa-book,.fa-regular.fa-book,.fas.fa-book,.far.fa-book{--slb-icon:url("../icons/lucide/book-open.svg")}
+.fa-address-book,.fa-solid.fa-address-book,.fa-regular.fa-address-book,.fas.fa-address-book,.far.fa-address-book{--slb-icon:url("../icons/lucide/contact.svg")}
+.fa-bullhorn,.fa-solid.fa-bullhorn,.fa-regular.fa-bullhorn,.fas.fa-bullhorn,.far.fa-bullhorn{--slb-icon:url("../icons/lucide/megaphone.svg")}
+.fa-bell,.fa-solid.fa-bell,.fa-regular.fa-bell,.fas.fa-bell,.far.fa-bell{--slb-icon:url("../icons/lucide/bell.svg")}
+.fa-life-ring,.fa-solid.fa-life-ring,.fa-regular.fa-life-ring,.fas.fa-life-ring,.far.fa-life-ring{--slb-icon:url("../icons/lucide/life-buoy.svg")}
+.fa-compass,.fa-solid.fa-compass,.fa-regular.fa-compass,.fas.fa-compass,.far.fa-compass{--slb-icon:url("../icons/lucide/compass.svg")}
+.fa-tools,.fa-solid.fa-tools,.fa-regular.fa-tools,.fas.fa-tools,.far.fa-tools{--slb-icon:url("../icons/lucide/wrench.svg")}
+.fa-screwdriver-wrench,.fa-solid.fa-screwdriver-wrench,.fa-regular.fa-screwdriver-wrench,.fas.fa-screwdriver-wrench,.far.fa-screwdriver-wrench{--slb-icon:url("../icons/lucide/wrench.svg")}
+.fa-sign-out-alt,.fa-solid.fa-sign-out-alt,.fa-regular.fa-sign-out-alt,.fas.fa-sign-out-alt,.far.fa-sign-out-alt{--slb-icon:url("../icons/lucide/log-out.svg")}
+.fa-search,.fa-solid.fa-search,.fa-regular.fa-search,.fas.fa-search,.far.fa-search{--slb-icon:url("../icons/lucide/search.svg")}
+.fa-magnifying-glass,.fa-solid.fa-magnifying-glass,.fa-regular.fa-magnifying-glass,.fas.fa-magnifying-glass,.far.fa-magnifying-glass{--slb-icon:url("../icons/lucide/search.svg")}
+.fa-shopping-cart,.fa-solid.fa-shopping-cart,.fa-regular.fa-shopping-cart,.fas.fa-shopping-cart,.far.fa-shopping-cart{--slb-icon:url("../icons/lucide/shopping-bag.svg")}
+.fa-cart-plus,.fa-solid.fa-cart-plus,.fa-regular.fa-cart-plus,.fas.fa-cart-plus,.far.fa-cart-plus{--slb-icon:url("../icons/lucide/shopping-bag.svg")}
+.fa-shopping-bag,.fa-solid.fa-shopping-bag,.fa-regular.fa-shopping-bag,.fas.fa-shopping-bag,.far.fa-shopping-bag{--slb-icon:url("../icons/lucide/shopping-bag.svg")}
+.fa-wallet,.fa-solid.fa-wallet,.fa-regular.fa-wallet,.fas.fa-wallet,.far.fa-wallet{--slb-icon:url("../icons/lucide/wallet.svg")}
+.fa-credit-card,.fa-solid.fa-credit-card,.fa-regular.fa-credit-card,.fas.fa-credit-card,.far.fa-credit-card{--slb-icon:url("../icons/lucide/credit-card.svg")}
+.fa-coins,.fa-solid.fa-coins,.fa-regular.fa-coins,.fas.fa-coins,.far.fa-coins{--slb-icon:url("../icons/lucide/coins.svg")}
+.fa-money-bill,.fa-solid.fa-money-bill,.fa-regular.fa-money-bill,.fas.fa-money-bill,.far.fa-money-bill{--slb-icon:url("../icons/lucide/banknote.svg")}
+.fa-money-bill-wave,.fa-solid.fa-money-bill-wave,.fa-regular.fa-money-bill-wave,.fas.fa-money-bill-wave,.far.fa-money-bill-wave{--slb-icon:url("../icons/lucide/banknote.svg")}
+.fa-euro-sign,.fa-solid.fa-euro-sign,.fa-regular.fa-euro-sign,.fas.fa-euro-sign,.far.fa-euro-sign{--slb-icon:url("../icons/lucide/euro.svg")}
+.fa-file-invoice,.fa-solid.fa-file-invoice,.fa-regular.fa-file-invoice,.fas.fa-file-invoice,.far.fa-file-invoice{--slb-icon:url("../icons/lucide/receipt.svg")}
+.fa-file-invoice-dollar,.fa-solid.fa-file-invoice-dollar,.fa-regular.fa-file-invoice-dollar,.fas.fa-file-invoice-dollar,.far.fa-file-invoice-dollar{--slb-icon:url("../icons/lucide/receipt.svg")}
+.fa-receipt,.fa-solid.fa-receipt,.fa-regular.fa-receipt,.fas.fa-receipt,.far.fa-receipt{--slb-icon:url("../icons/lucide/receipt.svg")}
+.fa-money-check-dollar,.fa-solid.fa-money-check-dollar,.fa-regular.fa-money-check-dollar,.fas.fa-money-check-dollar,.far.fa-money-check-dollar{--slb-icon:url("../icons/lucide/receipt.svg")}
+.fa-calculator,.fa-solid.fa-calculator,.fa-regular.fa-calculator,.fas.fa-calculator,.far.fa-calculator{--slb-icon:url("../icons/lucide/calculator.svg")}
+.fa-percent,.fa-solid.fa-percent,.fa-regular.fa-percent,.fas.fa-percent,.far.fa-percent{--slb-icon:url("../icons/lucide/percent.svg")}
+.fa-tag,.fa-solid.fa-tag,.fa-regular.fa-tag,.fas.fa-tag,.far.fa-tag{--slb-icon:url("../icons/lucide/tag.svg")}
+.fa-tags,.fa-solid.fa-tags,.fa-regular.fa-tags,.fas.fa-tags,.far.fa-tags{--slb-icon:url("../icons/lucide/tags.svg")}
+.fa-gift,.fa-solid.fa-gift,.fa-regular.fa-gift,.fas.fa-gift,.far.fa-gift{--slb-icon:url("../icons/lucide/gift.svg")}
+.fa-university,.fa-solid.fa-university,.fa-regular.fa-university,.fas.fa-university,.far.fa-university{--slb-icon:url("../icons/lucide/landmark.svg")}
+.fa-user,.fa-solid.fa-user,.fa-regular.fa-user,.fas.fa-user,.far.fa-user{--slb-icon:url("../icons/lucide/user.svg")}
+.fa-user-circle,.fa-solid.fa-user-circle,.fa-regular.fa-user-circle,.fas.fa-user-circle,.far.fa-user-circle{--slb-icon:url("../icons/lucide/circle-user.svg")}
+.fa-users,.fa-solid.fa-users,.fa-regular.fa-users,.fas.fa-users,.far.fa-users{--slb-icon:url("../icons/lucide/users.svg")}
+.fa-user-plus,.fa-solid.fa-user-plus,.fa-regular.fa-user-plus,.fas.fa-user-plus,.far.fa-user-plus{--slb-icon:url("../icons/lucide/user-plus.svg")}
+.fa-user-check,.fa-solid.fa-user-check,.fa-regular.fa-user-check,.fas.fa-user-check,.far.fa-user-check{--slb-icon:url("../icons/lucide/user-check.svg")}
+.fa-comments,.fa-solid.fa-comments,.fa-regular.fa-comments,.fas.fa-comments,.far.fa-comments{--slb-icon:url("../icons/lucide/message-circle.svg")}
+.fa-message,.fa-solid.fa-message,.fa-regular.fa-message,.fas.fa-message,.far.fa-message{--slb-icon:url("../icons/lucide/message-circle.svg")}
+.fa-paper-plane,.fa-solid.fa-paper-plane,.fa-regular.fa-paper-plane,.fas.fa-paper-plane,.far.fa-paper-plane{--slb-icon:url("../icons/lucide/send.svg")}
+.fa-envelope,.fa-solid.fa-envelope,.fa-regular.fa-envelope,.fas.fa-envelope,.far.fa-envelope{--slb-icon:url("../icons/lucide/mail.svg")}
+.fa-envelope-open-text,.fa-solid.fa-envelope-open-text,.fa-regular.fa-envelope-open-text,.fas.fa-envelope-open-text,.far.fa-envelope-open-text{--slb-icon:url("../icons/lucide/mail-open.svg")}
+.fa-envelope-circle-check,.fa-solid.fa-envelope-circle-check,.fa-regular.fa-envelope-circle-check,.fas.fa-envelope-circle-check,.far.fa-envelope-circle-check{--slb-icon:url("../icons/lucide/mail-check.svg")}
+.fa-inbox,.fa-solid.fa-inbox,.fa-regular.fa-inbox,.fas.fa-inbox,.far.fa-inbox{--slb-icon:url("../icons/lucide/inbox.svg")}
+.fa-lock,.fa-solid.fa-lock,.fa-regular.fa-lock,.fas.fa-lock,.far.fa-lock{--slb-icon:url("../icons/lucide/lock.svg")}
+.fa-unlock,.fa-solid.fa-unlock,.fa-regular.fa-unlock,.fas.fa-unlock,.far.fa-unlock{--slb-icon:url("../icons/lucide/lock-open.svg")}
+.fa-shield-alt,.fa-solid.fa-shield-alt,.fa-regular.fa-shield-alt,.fas.fa-shield-alt,.far.fa-shield-alt{--slb-icon:url("../icons/lucide/shield.svg")}
+.fa-star,.fa-solid.fa-star,.fa-regular.fa-star,.fas.fa-star,.far.fa-star{--slb-icon:url("../icons/lucide/star.svg")}
+.fa-star-half-stroke,.fa-solid.fa-star-half-stroke,.fa-regular.fa-star-half-stroke,.fas.fa-star-half-stroke,.far.fa-star-half-stroke{--slb-icon:url("../icons/lucide/star-half.svg")}
+.fa-heart,.fa-solid.fa-heart,.fa-regular.fa-heart,.fas.fa-heart,.far.fa-heart{--slb-icon:url("../icons/lucide/heart.svg")}
+.fa-bolt,.fa-solid.fa-bolt,.fa-regular.fa-bolt,.fas.fa-bolt,.far.fa-bolt{--slb-icon:url("../icons/lucide/zap.svg")}
+.fa-lightbulb,.fa-solid.fa-lightbulb,.fa-regular.fa-lightbulb,.fas.fa-lightbulb,.far.fa-lightbulb{--slb-icon:url("../icons/lucide/lightbulb.svg")}
+.fa-flag,.fa-solid.fa-flag,.fa-regular.fa-flag,.fas.fa-flag,.far.fa-flag{--slb-icon:url("../icons/lucide/flag.svg")}
+.fa-bullseye,.fa-solid.fa-bullseye,.fa-regular.fa-bullseye,.fas.fa-bullseye,.far.fa-bullseye{--slb-icon:url("../icons/lucide/target.svg")}
+.fa-hourglass-half,.fa-solid.fa-hourglass-half,.fa-regular.fa-hourglass-half,.fas.fa-hourglass-half,.far.fa-hourglass-half{--slb-icon:url("../icons/lucide/hourglass.svg")}
+.fa-globe,.fa-solid.fa-globe,.fa-regular.fa-globe,.fas.fa-globe,.far.fa-globe{--slb-icon:url("../icons/lucide/globe.svg")}
+.fa-link,.fa-solid.fa-link,.fa-regular.fa-link,.fas.fa-link,.far.fa-link{--slb-icon:url("../icons/lucide/link.svg")}
+.fa-image,.fa-solid.fa-image,.fa-regular.fa-image,.fas.fa-image,.far.fa-image{--slb-icon:url("../icons/lucide/image.svg")}
+.fa-camera,.fa-solid.fa-camera,.fa-regular.fa-camera,.fas.fa-camera,.far.fa-camera{--slb-icon:url("../icons/lucide/camera.svg")}
+.fa-file-csv,.fa-solid.fa-file-csv,.fa-regular.fa-file-csv,.fas.fa-file-csv,.far.fa-file-csv{--slb-icon:url("../icons/lucide/file-spreadsheet.svg")}
+.fa-file-word,.fa-solid.fa-file-word,.fa-regular.fa-file-word,.fas.fa-file-word,.far.fa-file-word{--slb-icon:url("../icons/lucide/file-type.svg")}
+.fa-file-alt,.fa-solid.fa-file-alt,.fa-regular.fa-file-alt,.fas.fa-file-alt,.far.fa-file-alt{--slb-icon:url("../icons/lucide/file-text.svg")}
+.fa-file-lines,.fa-solid.fa-file-lines,.fa-regular.fa-file-lines,.fas.fa-file-lines,.far.fa-file-lines{--slb-icon:url("../icons/lucide/file-text.svg")}
+.fa-file-text,.fa-solid.fa-file-text,.fa-regular.fa-file-text,.fas.fa-file-text,.far.fa-file-text{--slb-icon:url("../icons/lucide/file-text.svg")}
+.fa-file-text-o,.fa-solid.fa-file-text-o,.fa-regular.fa-file-text-o,.fas.fa-file-text-o,.far.fa-file-text-o{--slb-icon:url("../icons/lucide/file-text.svg")}
+.fa-clipboard-check,.fa-solid.fa-clipboard-check,.fa-regular.fa-clipboard-check,.fas.fa-clipboard-check,.far.fa-clipboard-check{--slb-icon:url("../icons/lucide/clipboard-check.svg")}
+.fa-clipboard-list,.fa-solid.fa-clipboard-list,.fa-regular.fa-clipboard-list,.fas.fa-clipboard-list,.far.fa-clipboard-list{--slb-icon:url("../icons/lucide/clipboard-list.svg")}
+.fa-hashtag,.fa-solid.fa-hashtag,.fa-regular.fa-hashtag,.fas.fa-hashtag,.far.fa-hashtag{--slb-icon:url("../icons/lucide/hash.svg")}
+.fa-archive,.fa-solid.fa-archive,.fa-regular.fa-archive,.fas.fa-archive,.far.fa-archive{--slb-icon:url("../icons/lucide/archive.svg")}
+.fa-box-archive,.fa-solid.fa-box-archive,.fa-regular.fa-box-archive,.fas.fa-box-archive,.far.fa-box-archive{--slb-icon:url("../icons/lucide/archive.svg")}
+.fa-box-open,.fa-solid.fa-box-open,.fa-regular.fa-box-open,.fas.fa-box-open,.far.fa-box-open{--slb-icon:url("../icons/lucide/package-open.svg")}
+.fa-building,.fa-solid.fa-building,.fa-regular.fa-building,.fas.fa-building,.far.fa-building{--slb-icon:url("../icons/lucide/building-2.svg")}
+.fa-id-card,.fa-solid.fa-id-card,.fa-regular.fa-id-card,.fas.fa-id-card,.far.fa-id-card{--slb-icon:url("../icons/lucide/id-card.svg")}
+.fa-gavel,.fa-solid.fa-gavel,.fa-regular.fa-gavel,.fas.fa-gavel,.far.fa-gavel{--slb-icon:url("../icons/lucide/gavel.svg")}
+.fa-server,.fa-solid.fa-server,.fa-regular.fa-server,.fas.fa-server,.far.fa-server{--slb-icon:url("../icons/lucide/server.svg")}
+.fa-ruler-combined,.fa-solid.fa-ruler-combined,.fa-regular.fa-ruler-combined,.fas.fa-ruler-combined,.far.fa-ruler-combined{--slb-icon:url("../icons/lucide/ruler.svg")}
+.fa-chart-line,.fa-solid.fa-chart-line,.fa-regular.fa-chart-line,.fas.fa-chart-line,.far.fa-chart-line{--slb-icon:url("../icons/lucide/trending-up.svg")}
+.fa-chart-pie,.fa-solid.fa-chart-pie,.fa-regular.fa-chart-pie,.fas.fa-chart-pie,.far.fa-chart-pie{--slb-icon:url("../icons/lucide/chart-pie.svg")}
+.fa-chart-area,.fa-solid.fa-chart-area,.fa-regular.fa-chart-area,.fas.fa-chart-area,.far.fa-chart-area{--slb-icon:url("../icons/lucide/chart-area.svg")}
+.fa-chart-bar,.fa-solid.fa-chart-bar,.fa-regular.fa-chart-bar,.fas.fa-chart-bar,.far.fa-chart-bar{--slb-icon:url("../icons/lucide/chart-column.svg")}
+.fa-clock,.fa-solid.fa-clock,.fa-regular.fa-clock,.fas.fa-clock,.far.fa-clock{--slb-icon:url("../icons/lucide/clock.svg")}
+.fa-clock-o,.fa-solid.fa-clock-o,.fa-regular.fa-clock-o,.fas.fa-clock-o,.far.fa-clock-o{--slb-icon:url("../icons/lucide/clock.svg")}
+.fa-history,.fa-solid.fa-history,.fa-regular.fa-history,.fas.fa-history,.far.fa-history{--slb-icon:url("../icons/lucide/history.svg")}
+.fa-clock-rotate-left,.fa-solid.fa-clock-rotate-left,.fa-regular.fa-clock-rotate-left,.fas.fa-clock-rotate-left,.far.fa-clock-rotate-left{--slb-icon:url("../icons/lucide/history.svg")}
+.fa-calendar,.fa-solid.fa-calendar,.fa-regular.fa-calendar,.fas.fa-calendar,.far.fa-calendar{--slb-icon:url("../icons/lucide/calendar.svg")}
+.fa-calendar-alt,.fa-solid.fa-calendar-alt,.fa-regular.fa-calendar-alt,.fas.fa-calendar-alt,.far.fa-calendar-alt{--slb-icon:url("../icons/lucide/calendar.svg")}
+.fa-arrow-right,.fa-solid.fa-arrow-right,.fa-regular.fa-arrow-right,.fas.fa-arrow-right,.far.fa-arrow-right{--slb-icon:url("../icons/lucide/arrow-right.svg")}
+.fa-arrow-left,.fa-solid.fa-arrow-left,.fa-regular.fa-arrow-left,.fas.fa-arrow-left,.far.fa-arrow-left{--slb-icon:url("../icons/lucide/arrow-left.svg")}
+.fa-arrow-up,.fa-solid.fa-arrow-up,.fa-regular.fa-arrow-up,.fas.fa-arrow-up,.far.fa-arrow-up{--slb-icon:url("../icons/lucide/arrow-up.svg")}
+.fa-chevron-down,.fa-solid.fa-chevron-down,.fa-regular.fa-chevron-down,.fas.fa-chevron-down,.far.fa-chevron-down{--slb-icon:url("../icons/lucide/chevron-down.svg")}
+.fa-chevron-up,.fa-solid.fa-chevron-up,.fa-regular.fa-chevron-up,.fas.fa-chevron-up,.far.fa-chevron-up{--slb-icon:url("../icons/lucide/chevron-up.svg")}
+.fa-chevron-left,.fa-solid.fa-chevron-left,.fa-regular.fa-chevron-left,.fas.fa-chevron-left,.far.fa-chevron-left{--slb-icon:url("../icons/lucide/chevron-left.svg")}
+.fa-chevron-right,.fa-solid.fa-chevron-right,.fa-regular.fa-chevron-right,.fas.fa-chevron-right,.far.fa-chevron-right{--slb-icon:url("../icons/lucide/chevron-right.svg")}
+.fa-external-link,.fa-solid.fa-external-link,.fa-regular.fa-external-link,.fas.fa-external-link,.far.fa-external-link{--slb-icon:url("../icons/lucide/external-link.svg")}
+.fa-arrow-up-right-from-square,.fa-solid.fa-arrow-up-right-from-square,.fa-regular.fa-arrow-up-right-from-square,.fas.fa-arrow-up-right-from-square,.far.fa-arrow-up-right-from-square{--slb-icon:url("../icons/lucide/external-link.svg")}
+.fa-exchange,.fa-solid.fa-exchange,.fa-regular.fa-exchange,.fas.fa-exchange,.far.fa-exchange{--slb-icon:url("../icons/lucide/arrow-left-right.svg")}
+.fa-exchange-alt,.fa-solid.fa-exchange-alt,.fa-regular.fa-exchange-alt,.fas.fa-exchange-alt,.far.fa-exchange-alt{--slb-icon:url("../icons/lucide/arrow-left-right.svg")}
+.fa-share-nodes,.fa-solid.fa-share-nodes,.fa-regular.fa-share-nodes,.fas.fa-share-nodes,.far.fa-share-nodes{--slb-icon:url("../icons/lucide/share-2.svg")}
+.fa-share-alt,.fa-solid.fa-share-alt,.fa-regular.fa-share-alt,.fas.fa-share-alt,.far.fa-share-alt{--slb-icon:url("../icons/lucide/share-2.svg")}
+.fa-eye,.fa-solid.fa-eye,.fa-regular.fa-eye,.fas.fa-eye,.far.fa-eye{--slb-icon:url("../icons/lucide/eye.svg")}
+.fa-eye-slash,.fa-solid.fa-eye-slash,.fa-regular.fa-eye-slash,.fas.fa-eye-slash,.far.fa-eye-slash{--slb-icon:url("../icons/lucide/eye-off.svg")}
+.fa-refresh,.fa-solid.fa-refresh,.fa-regular.fa-refresh,.fas.fa-refresh,.far.fa-refresh{--slb-icon:url("../icons/lucide/refresh-cw.svg")}
+.fa-sync,.fa-solid.fa-sync,.fa-regular.fa-sync,.fas.fa-sync,.far.fa-sync{--slb-icon:url("../icons/lucide/refresh-cw.svg")}
+.fa-redo,.fa-solid.fa-redo,.fa-regular.fa-redo,.fas.fa-redo,.far.fa-redo{--slb-icon:url("../icons/lucide/refresh-cw.svg")}
+.fa-rotate-right,.fa-solid.fa-rotate-right,.fa-regular.fa-rotate-right,.fas.fa-rotate-right,.far.fa-rotate-right{--slb-icon:url("../icons/lucide/refresh-cw.svg")}
+.fa-bitcoin,.fab.fa-bitcoin,.fa-brands.fa-bitcoin{--slb-icon:url("../icons/brands/bitcoin.svg")}
+.fa-paypal,.fab.fa-paypal,.fa-brands.fa-paypal{--slb-icon:url("../icons/brands/paypal.svg")}
+.fa-cc-visa,.fab.fa-cc-visa,.fa-brands.fa-cc-visa{--slb-icon:url("../icons/brands/cc-visa.svg")}
+.fa-cc-mastercard,.fab.fa-cc-mastercard,.fa-brands.fa-cc-mastercard{--slb-icon:url("../icons/brands/cc-mastercard.svg")}
+.fa-cc-amex,.fab.fa-cc-amex,.fa-brands.fa-cc-amex{--slb-icon:url("../icons/brands/cc-amex.svg")}
+.fa-cc-discover,.fab.fa-cc-discover,.fa-brands.fa-cc-discover{--slb-icon:url("../icons/brands/credit-card.svg")}
+.fa-cc-diners-club,.fab.fa-cc-diners-club,.fa-brands.fa-cc-diners-club{--slb-icon:url("../icons/brands/credit-card.svg")}
+.fa-cc-jcb,.fab.fa-cc-jcb,.fa-brands.fa-cc-jcb{--slb-icon:url("../icons/brands/credit-card.svg")}
+.fa-facebook,.fab.fa-facebook,.fa-brands.fa-facebook{--slb-icon:url("../icons/brands/facebook.svg")}
+.fa-facebook-f,.fab.fa-facebook-f,.fa-brands.fa-facebook-f{--slb-icon:url("../icons/brands/facebook.svg")}
+.fa-instagram,.fab.fa-instagram,.fa-brands.fa-instagram{--slb-icon:url("../icons/brands/instagram.svg")}
+.fa-linkedin,.fab.fa-linkedin,.fa-brands.fa-linkedin{--slb-icon:url("../icons/brands/linkedin.svg")}
+.fa-linkedin-in,.fab.fa-linkedin-in,.fa-brands.fa-linkedin-in{--slb-icon:url("../icons/brands/linkedin.svg")}
+.fa-twitter,.fab.fa-twitter,.fa-brands.fa-twitter{--slb-icon:url("../icons/brands/x.svg")}
+.fa-x-twitter,.fab.fa-x-twitter,.fa-brands.fa-x-twitter{--slb-icon:url("../icons/brands/x.svg")}
+.fa-youtube,.fab.fa-youtube,.fa-brands.fa-youtube{--slb-icon:url("../icons/brands/youtube.svg")}

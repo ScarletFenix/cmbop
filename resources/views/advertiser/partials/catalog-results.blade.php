@@ -68,8 +68,7 @@
                  data-status-text="{{ $catalogResultsStatus['text'] }}"
                  data-status-announce="{{ $catalogResultsStatus['announce'] }}">
                 <div class="catalog-results-busy" hidden aria-hidden="true">
-                    <span class="catalog-results-busy__spinner"></span>
-                    <span class="catalog-results-busy__label">Updating results…</span>
+                    <span class="catalog-results-busy__label visually-hidden">Updating results…</span>
                 </div>
                 <div class="card-body p-0">
                     
@@ -296,8 +295,8 @@
                                                 data-glass-tip-body="This publisher has successfully completed our verification process and meets our platform's quality standards."
                                                 data-glass-tip-placement="top"
                                                 aria-label="Verified publisher">
-                                            <i class="fa-solid fa-circle-check" aria-hidden="true"></i>
-                                            <span>Verified</span>
+                                            <span class="catalog-verified-lottie" data-lottie="{{ asset('assets/vendor/lottie/verified.json') }}" aria-hidden="true"></span>
+                                            <span class="visually-hidden">Verified</span>
                                         </button>
                                     @endif
                                 </span>
@@ -1075,7 +1074,7 @@
                        @endif>{{ $displayRootedUrl }}</a>
                     <div class="catalog-site-badges catalog-site-badges--mobile mt-1">
                         @if($site->verified)
-                            <span class="site-chip site-chip--verified site-chip--status"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>Verified</span></span>
+                            <span class="site-chip site-chip--verified site-chip--status"><span class="catalog-verified-lottie" data-lottie="{{ asset('assets/vendor/lottie/verified.json') }}" aria-hidden="true"></span><span class="visually-hidden">Verified</span></span>
                         @endif
                         @include('advertiser.partials.catalog-tag-chip', ['site' => $site])
                         @if($isNew)

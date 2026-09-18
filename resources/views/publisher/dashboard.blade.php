@@ -37,13 +37,17 @@
 
 <div class="container-fluid dash-page-end publisher-dashboard">
 
-    <!-- HEADER -->
-    <div class="row mb-4">
-        <div class="col-md-12">
-            <h2 class="mb-1 fw-semibold">Publisher Dashboard</h2>
-            <p class="text-muted mb-0">
+    <div class="pub-dash-header">
+        <div>
+            <h2 class="pub-dash-title">Publisher Dashboard</h2>
+            <p class="pub-dash-sub">
                 Welcome back! Here's your performance summary and recent activity.
             </p>
+        </div>
+        <div class="pub-dash-links">
+            <a href="{{ route('publisher.websites') }}" class="btn btn-sm btn-cta-secondary">My Sites</a>
+            <a href="{{ route('publisher.tasks') }}" class="btn btn-sm btn-cta-secondary">Tasks</a>
+            <a href="{{ route('publisher.withdraw') }}" class="btn btn-sm btn-cta-secondary">Withdraw</a>
         </div>
     </div>
 
@@ -51,17 +55,17 @@
     <div class="row g-3 mb-3">
         @if($primaryAction === 'tasks')
             <div class="col-lg-7">
-                <div class="card border-0 shadow-sm h-100 publisher-primary-cta">
-                    <div class="card-body d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 p-4">
+                <div class="card h-100 publisher-primary-cta">
+                    <div class="card-body d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3">
                         <div>
-                            <div class="text-uppercase small fw-semibold mb-1" style="color:#0b6266;letter-spacing:.04em;">Do this next</div>
+                            <div class="text-uppercase small fw-semibold mb-1 pub-kicker">Do this next</div>
                             <h4 class="mb-1">You have {{ $needsYou }} task{{ $needsYou === 1 ? '' : 's' }} that need you</h4>
                             <p class="text-muted mb-0">Accept, publish a live URL, or reply to a change request.</p>
                             @if($waitingOnAdvertiser > 0)
                                 <p class="small text-muted mb-0 mt-1">{{ $waitingOnAdvertiser }} more in review, waiting on advertisers.</p>
                             @endif
                         </div>
-                        <a href="{{ route('publisher.tasks', ['needs_action' => 1]) }}" class="btn btn-lg btn-primary px-4">
+                        <a href="{{ route('publisher.tasks', ['needs_action' => 1]) }}" class="btn btn-primary pub-cta-btn">
                             Open tasks <i class="fa fa-arrow-right ms-1"></i>
                         </a>
                     </div>
@@ -74,7 +78,7 @@
                         <h6 class="mb-0">Add site</h6>
                     </div>
                     <p class="small text-muted mb-3">{{ $siteCount }} site{{ $siteCount === 1 ? '' : 's' }} listed</p>
-                    <a href="{{ route('publisher.websites') }}" class="btn btn-sm btn-outline-secondary w-100">Add site</a>
+                    <a href="{{ route('publisher.websites') }}" class="btn btn-sm btn-cta-secondary w-100">Add site</a>
                 </div>
             </div>
             <div class="col-6 col-lg-2 flex-lg-grow-1">
@@ -84,15 +88,15 @@
                         <h6 class="mb-0">Reports</h6>
                     </div>
                     <p class="small text-muted mb-3">Earnings & performance</p>
-                    <a href="{{ route('publisher.reports') }}" class="btn btn-sm btn-outline-secondary w-100">View reports</a>
+                    <a href="{{ route('publisher.reports') }}" class="btn btn-sm btn-cta-secondary w-100">View reports</a>
                 </div>
             </div>
         @elseif($primaryAction === 'verify_sites')
             <div class="col-lg-7">
-                <div class="card border-0 shadow-sm h-100 publisher-primary-cta">
-                    <div class="card-body d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 p-4">
+                <div class="card h-100 publisher-primary-cta">
+                    <div class="card-body d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3">
                         <div>
-                            <div class="text-uppercase small fw-semibold mb-1" style="color:#0b6266;letter-spacing:.04em;">Do this next</div>
+                            <div class="text-uppercase small fw-semibold mb-1 pub-kicker">Do this next</div>
                             <h4 class="mb-1">Finish your listings</h4>
                             <p class="text-muted mb-0">
                                 {{ $unverifiedSiteCount }} site{{ $unverifiedSiteCount === 1 ? '' : 's' }} {{ $unverifiedSiteCount === 1 ? 'is' : 'are' }} not verified yet — advertisers cannot rely on {{ $unverifiedSiteCount === 1 ? 'it' : 'them' }} until {{ $unverifiedSiteCount === 1 ? 'it is' : 'they are' }}.
@@ -101,7 +105,7 @@
                                 <p class="small text-muted mb-0 mt-1">{{ $waitingOnAdvertiser }} placement{{ $waitingOnAdvertiser === 1 ? '' : 's' }} in review, waiting on advertisers.</p>
                             @endif
                         </div>
-                        <a href="{{ route('publisher.websites', ['status' => 'pending']) }}" class="btn btn-lg btn-primary px-4">
+                        <a href="{{ route('publisher.websites', ['status' => 'pending']) }}" class="btn btn-primary pub-cta-btn">
                             Review sites <i class="fa fa-arrow-right ms-1"></i>
                         </a>
                     </div>
@@ -114,7 +118,7 @@
                         <h6 class="mb-0">Tasks</h6>
                     </div>
                     <p class="small text-muted mb-3">{{ $needsYou }} need you</p>
-                    <a href="{{ route('publisher.tasks') }}" class="btn btn-sm btn-outline-secondary w-100">View tasks</a>
+                    <a href="{{ route('publisher.tasks') }}" class="btn btn-sm btn-cta-secondary w-100">View tasks</a>
                 </div>
             </div>
             <div class="col-6 col-lg-2 flex-lg-grow-1">
@@ -124,15 +128,15 @@
                         <h6 class="mb-0">Reports</h6>
                     </div>
                     <p class="small text-muted mb-3">Earnings & performance</p>
-                    <a href="{{ route('publisher.reports') }}" class="btn btn-sm btn-outline-secondary w-100">View reports</a>
+                    <a href="{{ route('publisher.reports') }}" class="btn btn-sm btn-cta-secondary w-100">View reports</a>
                 </div>
             </div>
         @else
             <div class="col-lg-7">
-                <div class="card border-0 shadow-sm h-100 publisher-primary-cta">
-                    <div class="card-body d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 p-4">
+                <div class="card h-100 publisher-primary-cta">
+                    <div class="card-body d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3">
                         <div>
-                            <div class="text-uppercase small fw-semibold mb-1" style="color:#0b6266;letter-spacing:.04em;">Do this next</div>
+                            <div class="text-uppercase small fw-semibold mb-1 pub-kicker">Do this next</div>
                             <h4 class="mb-1">{{ $primaryAction === 'add_site' ? 'Add your first website' : 'Grow your catalog' }}</h4>
                             <p class="text-muted mb-0">
                                 {{ $primaryAction === 'add_site'
@@ -143,7 +147,7 @@
                                 <p class="small text-muted mb-0 mt-1">{{ $waitingOnAdvertiser }} placement{{ $waitingOnAdvertiser === 1 ? '' : 's' }} in review, waiting on advertisers.</p>
                             @endif
                         </div>
-                        <a href="{{ route('publisher.websites') }}" class="btn btn-lg btn-primary px-4">
+                        <a href="{{ route('publisher.websites') }}" class="btn btn-primary pub-cta-btn">
                             Add site <i class="fa fa-arrow-right ms-1"></i>
                         </a>
                     </div>
@@ -156,7 +160,7 @@
                         <h6 class="mb-0">Tasks</h6>
                     </div>
                     <p class="small text-muted mb-3">{{ $needsYou }} need you</p>
-                    <a href="{{ route('publisher.tasks') }}" class="btn btn-sm btn-outline-secondary w-100">View tasks</a>
+                    <a href="{{ route('publisher.tasks') }}" class="btn btn-sm btn-cta-secondary w-100">View tasks</a>
                 </div>
             </div>
             <div class="col-6 col-lg-2 flex-lg-grow-1">
@@ -166,7 +170,7 @@
                         <h6 class="mb-0">Reports</h6>
                     </div>
                     <p class="small text-muted mb-3">Earnings & performance</p>
-                    <a href="{{ route('publisher.reports') }}" class="btn btn-sm btn-outline-secondary w-100">View reports</a>
+                    <a href="{{ route('publisher.reports') }}" class="btn btn-sm btn-cta-secondary w-100">View reports</a>
                 </div>
             </div>
         @endif
@@ -176,7 +180,7 @@
     <div class="row g-3 mb-4 row-cols-2 row-cols-lg-3 row-cols-xl-5">
         <div class="col">
             <div class="kpi-tile">
-                <div class="kpi-icon" style="background:#0b6266;"><i class="fa fa-euro-sign"></i></div>
+                <div class="kpi-icon kpi-icon--earnings"><i class="fa fa-euro-sign"></i></div>
                 <div>
                     <span class="kpi-label">Total earnings</span>
                     <div class="kpi-value" id="totalEarnings">€{{ number_format((float) $stats['total_earnings'], 2) }}</div>
@@ -186,7 +190,7 @@
         </div>
         <div class="col">
             <div class="kpi-tile">
-                <div class="kpi-icon" style="background:#3aaeb2;"><i class="fa fa-hourglass-half"></i></div>
+                <div class="kpi-icon kpi-icon--pending"><i class="fa fa-hourglass-half"></i></div>
                 <div>
                     <span class="kpi-label">Pending earnings</span>
                     <div class="kpi-value" id="pendingEarnings">€{{ number_format((float) $stats['pending_earnings'], 2) }}</div>
@@ -196,7 +200,7 @@
         </div>
         <div class="col">
             <a href="{{ route('publisher.withdraw') }}" class="kpi-tile">
-                <div class="kpi-icon" style="background:#c45c26;"><i class="fa fa-wallet"></i></div>
+                <div class="kpi-icon kpi-icon--wallet"><i class="fa fa-wallet"></i></div>
                 <div>
                     <span class="kpi-label">Available balance</span>
                     <div class="kpi-value" id="availableBalance">€{{ number_format((float) $availableBalance, 2) }}</div>
@@ -206,7 +210,7 @@
         </div>
         <div class="col">
             <a href="{{ $needsYou > 0 ? route('publisher.tasks', ['needs_action' => 1]) : route('publisher.tasks') }}" class="kpi-tile">
-                <div class="kpi-icon" style="background:#64748b;"><i class="fa fa-tasks"></i></div>
+                <div class="kpi-icon kpi-icon--tasks"><i class="fa fa-tasks"></i></div>
                 <div>
                     <span class="kpi-label">Needs you</span>
                     <div class="kpi-value" id="openTasks">{{ $needsYou }}</div>
@@ -222,7 +226,7 @@
         </div>
         <div class="col">
             <a href="{{ route('publisher.websites') }}" class="kpi-tile">
-                <div class="kpi-icon" style="background:{{ $unverifiedSiteCount > 0 ? '#b45309' : '#0f766e' }};"><i class="fa fa-{{ $unverifiedSiteCount > 0 ? 'exclamation' : 'check' }}"></i></div>
+                <div class="kpi-icon {{ $unverifiedSiteCount > 0 ? 'kpi-icon--warn' : 'kpi-icon--ok' }}"><i class="fa fa-{{ $unverifiedSiteCount > 0 ? 'exclamation' : 'check' }}"></i></div>
                 <div>
                     <span class="kpi-label">Awaiting verification</span>
                     <div class="kpi-value" id="unverifiedSites">{{ $unverifiedSiteCount }}</div>
@@ -249,7 +253,7 @@
                                 Charts and metrics appear after you list a website and start receiving orders.
                             </p>
                         </div>
-                        <a href="{{ route('publisher.websites') }}" class="btn btn-primary">
+                        <a href="{{ route('publisher.websites') }}" class="btn btn-primary pub-cta-btn">
                             Add your first site
                         </a>
                     </div>
@@ -265,10 +269,10 @@
         <!-- Charts + metrics -->
         <div class="row mb-4">
             <div class="col-md-4 mb-3">
-                <div class="card border-0 shadow-sm h-100">
-                    <div class="card-header bg-white fw-semibold">
-                        <i class="fa fa-chart-line me-2 text-primary"></i> Weekly Earnings
-                        <span class="float-end text-muted small">Last 7 days</span>
+                <div class="card pub-card h-100">
+                    <div class="card-header pub-card-head">
+                        <span><i class="fa fa-chart-line me-2"></i> Weekly Earnings</span>
+                        <span class="pub-card-meta">Last 7 days</span>
                     </div>
                     <div class="card-body pb-2">
                         <canvas id="weeklyEarningsChart" height="200"></canvas>
@@ -277,10 +281,10 @@
                 </div>
             </div>
             <div class="col-md-4 mb-3">
-                <div class="card border-0 shadow-sm h-100">
-                    <div class="card-header bg-white fw-semibold">
-                        <i class="fa fa-chart-area me-2 text-info"></i> Monthly Earnings
-                        <span class="float-end text-muted small">Last 6 months</span>
+                <div class="card pub-card h-100">
+                    <div class="card-header pub-card-head">
+                        <span><i class="fa fa-chart-area me-2"></i> Monthly Earnings</span>
+                        <span class="pub-card-meta">Last 6 months</span>
                     </div>
                     <div class="card-body">
                         <canvas id="monthlyEarningsChart" height="200"></canvas>
@@ -288,10 +292,10 @@
                 </div>
             </div>
             <div class="col-md-4 mb-3">
-                <div class="card border-0 shadow-sm h-100">
-                    <div class="card-header bg-white fw-semibold">
-                        <i class="fa fa-chart-pie me-2 text-warning"></i> Order Status
-                        <span class="float-end text-muted small">All time</span>
+                <div class="card pub-card h-100">
+                    <div class="card-header pub-card-head">
+                        <span><i class="fa fa-chart-pie me-2"></i> Order Status</span>
+                        <span class="pub-card-meta">All time</span>
                     </div>
                     <div class="card-body">
                         @if($statusHasOrders)
@@ -306,17 +310,17 @@
 
         <div class="row mb-4">
             <div class="col-md-4 mb-3">
-                <div class="card border-0 shadow-sm h-100">
-                    <div class="card-header bg-white fw-semibold">
-                        <i class="fa fa-tachometer me-2 text-warning"></i> Performance Metrics
-                        <span class="float-end text-muted small">All time</span>
+                <div class="card pub-card h-100">
+                    <div class="card-header pub-card-head">
+                        <span><i class="fa fa-tachometer me-2"></i> Performance Metrics</span>
+                        <span class="pub-card-meta">All time</span>
                     </div>
                     <div class="card-body">
                         <div class="row text-center">
                             <div class="col-6 mb-3">
                                 <div class="small text-muted">Success Rate</div>
                                 <h4 class="mb-0" id="successRate">{{ number_format((float) $metrics['success_rate'], 1) }}%</h4>
-                                <div class="progress mt-2" style="height: 4px;">
+                                <div class="progress pub-metric-bar mt-2">
                                     <div id="successProgress" class="progress-bar bg-primary" style="width: {{ min(100, (float) $metrics['success_rate']) }}%"></div>
                                 </div>
                                 <div class="small text-muted mt-1">Of completed + cancelled</div>
@@ -329,7 +333,7 @@
                             <div class="col-6">
                                 <div class="small text-muted">Completion Rate</div>
                                 <h4 class="mb-0" id="completionRate">{{ number_format((float) $metrics['completion_rate'], 1) }}%</h4>
-                                <div class="progress mt-2" style="height: 4px;">
+                                <div class="progress pub-metric-bar mt-2">
                                     <div id="completionProgress" class="progress-bar bg-info" style="width: {{ min(100, (float) $metrics['completion_rate']) }}%"></div>
                                 </div>
                                 <div class="small text-muted mt-1">Completed / all orders</div>
@@ -337,7 +341,7 @@
                             <div class="col-6">
                                 <div class="small text-muted">Open Rate</div>
                                 <h4 class="mb-0" id="openRate">{{ number_format((float) $metrics['open_rate'], 1) }}%</h4>
-                                <div class="progress mt-2" style="height: 4px;">
+                                <div class="progress pub-metric-bar mt-2">
                                     <div id="openProgress" class="progress-bar bg-warning" style="width: {{ min(100, (float) $metrics['open_rate']) }}%"></div>
                                 </div>
                                 <div class="small text-muted mt-1">Pending / processing / review / scheduled</div>
@@ -347,10 +351,10 @@
                 </div>
             </div>
             <div class="col-md-8 mb-3 dash-recent-col">
-                <div class="card border-0 shadow-sm h-100">
-                    <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
-                        <span><i class="fa fa-list me-2 text-primary"></i> Recent tasks</span>
-                        <a href="{{ route('publisher.tasks') }}" class="small text-decoration-none" style="color:#0b6266;">View all</a>
+                <div class="card pub-card h-100">
+                    <div class="card-header pub-card-head">
+                        <span><i class="fa fa-list me-2"></i> Recent tasks</span>
+                        <a href="{{ route('publisher.tasks') }}" class="small pub-text-link">View all</a>
                     </div>
                     <div class="card-body p-0">
                         @if(count($recentTasks) === 0)
@@ -390,13 +394,13 @@
                                                 <td>
                                                     <div>{{ $task['site_name'] }}</div>
                                                     @if(!empty($task['site_url']))
-                                                        <div class="small text-muted text-truncate" style="max-width:180px;">{{ $task['site_url'] }}</div>
+                                                        <div class="small text-muted text-truncate recent-tasks-url">{{ $task['site_url'] }}</div>
                                                     @endif
                                                 </td>
                                                 <td><span class="status-badge {{ $badgeClass }}">{{ ucfirst($status === 'review' ? 'In review' : $status) }}</span></td>
                                                 <td class="text-end fw-semibold">€{{ number_format((float) ($task['payout'] ?? 0), 2) }}</td>
                                                 <td class="text-end">
-                                                    <a href="{{ route('publisher.tasks') }}" class="btn btn-sm btn-outline-secondary">Open</a>
+                                                    <a href="{{ route('publisher.tasks') }}" class="btn btn-sm btn-cta-secondary">Open</a>
                                                 </td>
                                             </tr>
                                         @endforeach
