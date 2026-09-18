@@ -3,10 +3,10 @@
 
 Hi {{ $firstName }},
 
-We have cancelled bulk request **#{{ $bulkRequest->id }}**@if($count > 0), which covered {{ $count }} {{ $count === 1 ? 'website' : 'websites' }}@endif. Those sites will not be prepared for listing.
+We have cancelled bulk request #{{ $bulkRequest->id }}@if($count > 0), which covered {{ $count }} {{ $count === 1 ? 'website' : 'websites' }}@endif. Those sites will not be prepared for listing.
 
 @if($reason)
-**Reason:** {{ $reason }}
+Reason: {{ $reason }}
 @endif
 
 Nothing else on your account is affected, and any websites already listed stay exactly as they were.

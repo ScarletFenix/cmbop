@@ -3,7 +3,7 @@
 
 Dear Publisher,
 
-The advertiser sent a revised article for order **#{{ $order->order_number }}** on **{{ $site->site_name }}**.
+The advertiser sent a revised article for order #{{ $order->order_number }} on {{ $site->site_name }}.
 
 ## Next steps
 1. Download the updated article from the task

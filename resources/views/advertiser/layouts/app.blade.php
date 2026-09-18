@@ -184,7 +184,7 @@
         <button id="toggleCart" class="btn btn-outline-secondary btn-sm topbar-action" type="button" aria-label="Open cart" title="Cart" data-cart-fly-target>
             <i class="fa fa-shopping-cart" aria-hidden="true"></i>
             <span class="d-none d-sm-inline">Cart</span>
-            <span id="cartTotalBadge" class="cart-total-label {{ $headerCartCount > 0 ? '' : 'd-none' }}">€{{ number_format($headerCartTotal, 2) }}</span>
+            <span id="cartTotalBadge" class="cart-total-label {{ $headerCartCount > 0 ? '' : 'd-none' }}">{{ format_money_pay($headerCartTotal) }}</span>
             <span id="cartBadge" class="cart-badge" style="{{ $headerCartCount > 0 ? 'display:flex;' : 'display:none;' }}">{{ $headerCartCount > 0 ? $headerCartCount : 0 }}</span>
         </button>
 
@@ -207,12 +207,12 @@
             }
             $headerBalanceTitle = $headerWalletUnavailable
                 ? 'Spendable unavailable'
-                : ('Spendable €' . number_format($spendableBalance, 2)
-                    . ($reservedBalance > 0 ? ' · On hold: €' . number_format($reservedBalance, 2) : ''));
+                : ('Spendable ' . format_money($spendableBalance)
+                    . ($reservedBalance > 0 ? ' · On hold: ' . format_money($reservedBalance) : ''));
         @endphp
         <a href="{{ route('advertiser.add-funds') }}" class="balance-block text-decoration-none" data-glass-tip data-glass-tip-body="{{ $headerBalanceTitle }}" data-glass-tip-placement="bottom" aria-label="{{ $headerWalletUnavailable ? 'Spendable balance unavailable' : 'Spendable balance '.number_format($spendableBalance, 2).' euros' }}">
             <span class="balance-label">Spendable</span>
-            <span class="balance-amount">{{ $headerWalletUnavailable ? '—' : '€'.number_format($spendableBalance, 2) }}</span>
+            <span class="balance-amount">{{ $headerWalletUnavailable ? '—' : format_money($spendableBalance) }}</span>
         </a>
 
         @include('partials.notification-center')
@@ -343,6 +343,7 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script src="{{ asset('assets/js/modal-stack.js') }}?v={{ @filemtime(public_path('assets/js/modal-stack.js')) ?: '1' }}"></script>
 <script src="{{ asset('assets/js/jquery-3.6.0.min.js') }}?v={{ @filemtime(public_path('assets/js/jquery-3.6.0.min.js')) ?: '1' }}"></script>
+@include('partials.money-display')
 @include('partials.app-toast')
 
 <script>
@@ -457,6 +458,16 @@
         cartSchedule = data?.schedule && data.schedule.mode === 'scheduled' ? data.schedule : null;
         if (data?.content_library_url) {
             contentLibraryUploadUrl = data.content_library_url;
+        }
+        if (window.__slbMoney) {
+            if (data?.fx && data.fx.rate) {
+                window.__slbMoney.cart_rate = Number(data.fx.rate);
+                window.__slbMoney.currency = data.fx.currency || window.__slbMoney.currency;
+                window.__slbMoney.symbol = data.fx.symbol || window.__slbMoney.symbol;
+                window.__slbMoney.guide = (window.__slbMoney.currency || 'EUR') !== 'EUR';
+            } else if (!Array.isArray(cart) || cart.length === 0) {
+                window.__slbMoney.cart_rate = window.__slbMoney.rate;
+            }
         }
         toastRemovedCartNames(
             Array.isArray(data?.removed_inactive) ? data.removed_inactive : [],
@@ -695,10 +706,10 @@
         if (totalBadge) {
             if (cartCount > 0) {
                 totalBadge.classList.remove('d-none');
-                totalBadge.textContent = '€' + cartTotal.toFixed(2);
+                totalBadge.textContent = slbFormatPay(cartTotal);
             } else {
                 totalBadge.classList.add('d-none');
-                totalBadge.textContent = '€0.00';
+                totalBadge.textContent = slbFormatPay(0);
             }
         }
         
@@ -826,11 +837,11 @@
             if (heldNote) {
                 if (readyCount === 0) {
                     heldNote.classList.remove('d-none');
-                    heldNote.textContent = 'In cart €' + cartTotal.toFixed(2);
+                    heldNote.textContent = 'In cart ' + slbFormatPay(cartTotal);
                 } else if (missing > 0) {
                     heldNote.classList.remove('d-none');
                     heldNote.textContent = missing + ' site' + (missing === 1 ? '' : 's')
-                        + ' stay' + (missing === 1 ? 's' : '') + ' in cart (€' + heldTotal.toFixed(2) + ')';
+                        + ' stay' + (missing === 1 ? 's' : '') + ' in cart (' + slbFormatPay(heldTotal) + ')';
                 } else {
                     heldNote.classList.add('d-none');
                     heldNote.textContent = '';
@@ -867,13 +878,13 @@
                 const placementIds = lineContentIds(item);
                 const qty = Math.max(1, parseInt(item.quantity, 10) || 1);
                 const unitPrice = (parseFloat(item.price) || 0).toFixed(2);
-                const priceLabel = qty > 1 ? ('€' + unitPrice + ' × ' + qty) : ('€' + unitPrice);
+                const priceLabel = qty > 1 ? (slbFormatPay(unitPrice) + ' × ' + qty) : slbFormatPay(unitPrice);
                 const sensitiveDisplay = item.sensitive_type ? 
-                    `<div class="cart-item-sensitive"><small>+ ${escapeHtml(item.sensitive_type)} (€${(parseFloat(item.additional_price) || 0).toFixed(2)})</small></div>` : '';
+                    `<div class="cart-item-sensitive"><small>+ ${escapeHtml(item.sensitive_type)} (${slbFormatPay(item.additional_price)})</small></div>` : '';
                 const homepageDays = item.homepage_days != null && item.homepage_days !== '' ? parseInt(item.homepage_days, 10) : null;
                 const homepageFee = parseFloat(item.homepage_price) || 0;
                 const homepageDisplay = homepageDays
-                    ? `<div class="cart-item-homepage"><small>Homepage ${homepageDays} day${homepageDays === 1 ? '' : 's'}${homepageFee > 0 ? ' (+€' + homepageFee.toFixed(2) + ')' : ' (Free)'}</small></div>`
+                    ? `<div class="cart-item-homepage"><small>Homepage ${homepageDays} day${homepageDays === 1 ? '' : 's'}${homepageFee > 0 ? ' (' + slbFormatPay(homepageFee, { signed: true }) + ')' : ' (Free)'}</small></div>`
                     : '';
                 const socialList = Array.isArray(item.social_channels) ? item.social_channels : [];
                 const socialDisplay = socialList.length
@@ -988,7 +999,7 @@
             const payNow = cart.length === 0 ? 0 : cart
                 .filter((item) => lineFullyAssigned(item))
                 .reduce((sum, item) => sum + ((parseFloat(item.price) || 0) * (parseInt(item.quantity, 10) || 0)), 0);
-            payEl.innerHTML = `€${payNow.toFixed(2)}`;
+            payEl.innerHTML = slbFormatPay(payNow);
         }
     }
     

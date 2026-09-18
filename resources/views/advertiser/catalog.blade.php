@@ -168,9 +168,9 @@
 
     @if(($catalogBonusBalance ?? 0) > 0)
         <p class="small text-muted mb-3">
-            Spendable <strong>€{{ number_format((float) ($catalogSpendableBalance ?? 0), 2) }}</strong>
-            (cash €{{ number_format((float) ($catalogCashBalance ?? 0), 2) }}
-            + bonus €{{ number_format((float) $catalogBonusBalance, 2) }}).
+            Spendable <strong>{{ format_money($catalogSpendableBalance ?? 0) }}</strong>
+            (cash {{ format_money($catalogCashBalance ?? 0) }}
+            + bonus {{ format_money($catalogBonusBalance) }}).
             Apply bonus at checkout.
         </p>
     @endif
@@ -261,7 +261,7 @@
             <strong class="text-dark">{{ number_format($inventoryTotal) }}</strong>
             {{ Str::plural('placement', $inventoryTotal) }} available
             @if($inventoryFrom !== null)
-                · from <strong class="catalog-inventory-teaser__price">€{{ number_format($inventoryFrom, 2) }}</strong>
+                · from <strong class="catalog-inventory-teaser__price">{{ format_money($inventoryFrom) }}</strong>
             @endif
         @else
             <span class="text-muted">No placements match yet — broaden filters below</span>

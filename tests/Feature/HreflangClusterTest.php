@@ -12,8 +12,19 @@ class HreflangClusterTest extends TestCase
 {
     use RefreshDatabase;
 
-    /** @var list<string> */
-    private const CLUSTER = ['en-GB', 'de', 'fr', 'nl', 'es', 'it', 'en-US', 'x-default'];
+    /**
+     * @return list<string>
+     */
+    private function clusterKeys(): array
+    {
+        $keys = array_map(
+            static fn (string $locale) => PublicI18n::hreflang($locale),
+            PublicI18n::supported()
+        );
+        $keys[] = 'x-default';
+
+        return $keys;
+    }
 
     /**
      * @return array<string, string>
@@ -81,13 +92,18 @@ class HreflangClusterTest extends TestCase
     public function test_locale_homes_share_one_reciprocal_cluster_with_uk_x_default(): void
     {
         $expected = $this->expectedHomeCluster();
-        $this->assertSame(self::CLUSTER, array_keys($expected));
+        $this->assertSame($this->clusterKeys(), array_keys($expected));
         $this->assertSame(url('/'), $expected['en-GB']);
         $this->assertSame(url('/us'), $expected['en-US']);
+        $this->assertSame(url('/at'), $expected['de-AT']);
         $this->assertSame(url('/'), $expected['x-default']);
         $this->assertNotSame($expected['en-US'], $expected['x-default']);
 
-        foreach (['/', '/us', '/de', '/fr', '/nl', '/es', '/it'] as $path) {
+        $homePaths = ['/'];
+        foreach (PublicI18n::prefixed() as $locale) {
+            $homePaths[] = '/'.$locale;
+        }
+        foreach ($homePaths as $path) {
             $html = $this->get($path)->assertOk()->getContent();
             $cluster = $this->hreflangCluster($html);
 
@@ -100,7 +116,7 @@ class HreflangClusterTest extends TestCase
     {
         foreach (['marketplace', 'about'] as $englishPath) {
             $expected = $this->expectedPageCluster($englishPath);
-            $this->assertSame(self::CLUSTER, array_keys($expected));
+            $this->assertSame($this->clusterKeys(), array_keys($expected));
             $this->assertSame(url('/'.$englishPath), $expected['x-default']);
 
             foreach (PublicI18n::supported() as $locale) {

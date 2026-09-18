@@ -3,13 +3,13 @@
 
 Dear Customer,
 
-The publisher has submitted the live URL for your order **#{{ $order->order_number }}**.
+The publisher has submitted the live URL for your order #{{ $order->order_number }}.
 
 ## Order Details:
 
-- **Site:** {{ $site->site_name }}
-- **Order Number:** {{ $order->order_number }}
-- **Reference Code:** {{ $order->reference_code }}
+- Site: {{ $site->site_name }}
+- Order Number: {{ $order->order_number }}
+- Reference Code: {{ $order->reference_code }}
 
 ## Live URL:
 <a href="{{ $liveUrl }}">{{ $liveUrl }}</a>
@@ -31,7 +31,7 @@ The publisher has submitted the live URL for your order **#{{ $order->order_numb
 ## Social promotion:
 {{ collect($mailItem->enabledSocialChannels())->map(fn ($c) => $mailItem->socialChannelLabel($c))->implode(', ') }} (included)
 @foreach($mailItem->socialPostUrls() as $channel => $url)
-- **{{ $mailItem->socialChannelLabel($channel) }}:** [{{ $url }}]({{ $url }})
+- {{ $mailItem->socialChannelLabel($channel) }}: [{{ $url }}]({{ $url }})
 @endforeach
 @endif
 

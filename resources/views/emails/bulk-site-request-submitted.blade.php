@@ -1,17 +1,17 @@
 @component('mail::message')
 # New bulk site request
 
-**Publisher:** {{ $publisherName }} ({{ $publisherEmail }})  
-**Sites submitted:** {{ $bulkRequest->items->count() ?: ($bulkRequest->estimated_count ?? '—') }}  
-**Status:** {{ $bulkRequest->status }}
+Publisher: {{ $publisherName }} ({{ $publisherEmail }})  
+Sites submitted: {{ $bulkRequest->items->count() ?: ($bulkRequest->estimated_count ?? '—') }}  
+Status: {{ $bulkRequest->status }}
 
 @if($bulkRequest->publisher_note)
-**Note from publisher:**  
+Note from publisher:  
 {{ $bulkRequest->publisher_note }}
 @endif
 
 @if($bulkRequest->items->isNotEmpty())
-**URL + price (from publisher):**
+URL + price (from publisher):
 
 @foreach($bulkRequest->items as $item)
 - {{ $item->site_url }} — €{{ number_format((float) $item->price, 2) }}

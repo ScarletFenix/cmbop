@@ -151,7 +151,9 @@ function euroNumber(amount) {
 function formatEuro(amount) {
     const n = euroNumber(amount);
 
-    return Number.isFinite(n) ? ('€' + n.toFixed(2)) : '—';
+    return Number.isFinite(n)
+        ? ((window.slbFormatMoney || function (v) { return '€' + Number(v).toFixed(2); })(n))
+        : '—';
 }
 let ordersSearchTimer = null;
 let ordersFetchController = null;

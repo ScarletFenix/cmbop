@@ -4,16 +4,16 @@
 
 Dear Publisher,
 
-The advertiser has requested modifications for Order **#{{ $order->order_number }}**.
+The advertiser has requested modifications for Order #{{ $order->order_number }}.
 
 ## Reason for Modification:
 > {{ $reason }}
 
 ## Order Details:
-- **Order Number:** {{ $order->order_number }}
-- **Reference Code:** {{ $order->reference_code }}
-- **Total Amount:** €{{ number_format($order->total_amount, 2) }}
-- **Status:** Processing (awaiting your updates)
+- Order Number: {{ $order->order_number }}
+- Reference Code: {{ $order->reference_code }}
+- Total Amount: €{{ number_format($order->total_amount, 2) }}
+- Status: Processing (awaiting your updates)
 
 ## Next Steps:
 1. Please review the modification request above

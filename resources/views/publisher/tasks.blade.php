@@ -839,7 +839,7 @@ $(document).ready(function() {
                     $('#statPendingOrders').text(response.data.pending_orders || 0);
                     $('#statProcessingOrders').text(response.data.accepted_orders || 0);
                     $('#statReviewOrders').text(response.data.review_orders || 0);
-                    $('#statTotalEarnings').html('€' + (response.data.total_earnings || 0).toFixed(2));
+                    $('#statTotalEarnings').html((window.slbFormatMoney || function (n) { return '€' + Number(n).toFixed(2); })(response.data.total_earnings || 0));
                 }
             },
             error: function() {

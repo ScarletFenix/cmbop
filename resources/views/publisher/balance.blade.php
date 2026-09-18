@@ -43,7 +43,7 @@
                 <p class="publisher-needs-alert__copy mb-0">
                     <svg class="publisher-needs-alert__icon" xmlns="http://www.w3.org/2000/svg" viewBox="118 4 72 244" fill="currentColor" aria-hidden="true" focusable="false"><g transform="translate(1.4065934065934016 1.4065934065934016) scale(2.81 2.81)"><path d="M 49.083 71.489 l 5.776 -21.96 l 4.186 -15.247 c 3.497 -16.18 -32.704 -2.439 -38.002 1.695 l 0.425 4.853 c 4.824 -3.395 23.091 -7.744 19.449 4.275 l -1.634 6.135 l 0 0 l -8.329 31.071 c -3.497 16.18 32.704 2.439 38.002 -1.695 l -0.425 -4.853 C 63.708 79.159 45.441 83.508 49.083 71.489 z"/><circle cx="53.871" cy="11.201" r="11.201"/></g></svg>
                     <strong>Outstanding clawback debt</strong>
-                    <span class="ms-1">€{{ number_format($publisherDebt, 2) }}. Withdrawals and moves to your advertiser wallet are blocked until support clears this debt.</span>
+                    <span class="ms-1">{{ format_money($publisherDebt) }}. Withdrawals and moves to your advertiser wallet are blocked until support clears this debt.</span>
                 </p>
                 <p class="mb-0 mt-3 mt-md-0 ms-md-4">
                     <a class="publisher-needs-alert__link" href="mailto:{{ $supportEmail }}">Contact support</a>
@@ -62,7 +62,7 @@
                     label="About publisher earnings"
                     placement="top" />
             </div>
-            <div class="pb-wallet-card__value" id="publisherBalance">€{{ number_format((float) $publisher['withdrawable'], 2) }}</div>
+            <div class="pb-wallet-card__value" id="publisherBalance">{{ format_money($publisher['withdrawable']) }}</div>
             <p class="pb-wallet-card__sub">Withdrawable</p>
 
             @if((float) $publisher['reserved'] > 0 || (float) $publisher['bonus'] > 0 || (float) $publisher['debt'] > 0)
@@ -70,19 +70,19 @@
                     @if((float) $publisher['reserved'] > 0)
                         <div class="pb-wallet-card__chip">
                             <span class="pb-wallet-card__chip-label">On hold</span>
-                            <span class="pb-wallet-card__chip-value">€{{ number_format((float) $publisher['reserved'], 2) }}</span>
+                            <span class="pb-wallet-card__chip-value">{{ format_money($publisher['reserved']) }}</span>
                         </div>
                     @endif
                     @if((float) $publisher['bonus'] > 0)
                         <div class="pb-wallet-card__chip pb-wallet-card__chip--bonus">
                             <span class="pb-wallet-card__chip-label">Bonus</span>
-                            <span class="pb-wallet-card__chip-value">€{{ number_format((float) $publisher['bonus'], 2) }}</span>
+                            <span class="pb-wallet-card__chip-value">{{ format_money($publisher['bonus']) }}</span>
                         </div>
                     @endif
                     @if((float) $publisher['debt'] > 0)
                         <div class="pb-wallet-card__chip pb-wallet-card__chip--debt">
                             <span class="pb-wallet-card__chip-label">Debt</span>
-                            <span class="pb-wallet-card__chip-value">€{{ number_format((float) $publisher['debt'], 2) }}</span>
+                            <span class="pb-wallet-card__chip-value">{{ format_money($publisher['debt']) }}</span>
                         </div>
                     @endif
                 </div>
@@ -177,23 +177,23 @@
                         label="About advertiser spendable"
                         placement="top" />
                 </div>
-                <div class="pb-wallet-card__value" id="advertiserBalance">€{{ number_format((float) $advertiser['spendable'], 2) }}</div>
+                <div class="pb-wallet-card__value" id="advertiserBalance">{{ format_money($advertiser['spendable']) }}</div>
                 <p class="pb-wallet-card__sub">Spendable</p>
 
                 <div class="pb-wallet-card__chips">
                     <div class="pb-wallet-card__chip">
                         <span class="pb-wallet-card__chip-label">Money</span>
-                        <span class="pb-wallet-card__chip-value">€{{ number_format((float) $advertiser['withdrawable'], 2) }}</span>
+                        <span class="pb-wallet-card__chip-value">{{ format_money($advertiser['withdrawable']) }}</span>
                     </div>
                     <div class="pb-wallet-card__chip pb-wallet-card__chip--bonus">
                         <span class="pb-wallet-card__chip-label">Bonus</span>
-                        <span class="pb-wallet-card__chip-value">€{{ number_format((float) $advertiser['bonus'], 2) }}</span>
+                        <span class="pb-wallet-card__chip-value">{{ format_money($advertiser['bonus']) }}</span>
                     </div>
                 </div>
 
                 @if((float) $advertiser['bonus'] > 0)
                     <p class="pb-wallet-card__note">
-                        <strong>Bonus €{{ number_format((float) $advertiser['bonus'], 2) }}</strong>
+                        <strong>Bonus {{ format_money($advertiser['bonus']) }}</strong>
                         (purchases only) — {{ \App\Models\Wallet::PROMOTIONAL_BONUS_MESSAGE }}
                     </p>
                 @endif

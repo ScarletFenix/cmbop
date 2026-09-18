@@ -107,23 +107,29 @@ use Illuminate\Support\Facades\Route;
 /*
 |--------------------------------------------------------------------------
 | Public marketing routes (multilingual: en unprefixed UK English,
-| de|fr|nl|es|it|us prefixed). Authenticated SaaS + login/register stay English-only.
+| de|fr|nl|es|it|us|at|ch|ro|gr|dk|se|no|bg|hu|ee prefixed). Authenticated SaaS + login/register stay English-only.
 |--------------------------------------------------------------------------
 */
 
 $prefixedLocales = class_exists(PublicI18n::class)
     ? PublicI18n::prefixed()
-    : (array) config('i18n.prefixed', ['de', 'fr', 'nl', 'es', 'it', 'us']);
+    : (array) config('i18n.prefixed', [
+        'de', 'fr', 'nl', 'es', 'it', 'us',
+        'at', 'ch', 'ro', 'gr', 'dk', 'se', 'no', 'bg', 'hu', 'ee',
+    ]);
 $supportedLocales = class_exists(PublicI18n::class)
     ? PublicI18n::supported()
-    : (array) config('i18n.supported', ['en', 'de', 'fr', 'nl', 'es', 'it', 'us']);
+    : (array) config('i18n.supported', [
+        'en', 'de', 'fr', 'nl', 'es', 'it', 'us',
+        'at', 'ch', 'ro', 'gr', 'dk', 'se', 'no', 'bg', 'hu', 'ee',
+    ]);
 $prefixedLocalePattern = implode('|', array_values(array_filter($prefixedLocales, 'strlen')));
 $supportedLocalePattern = implode('|', array_values(array_filter($supportedLocales, 'strlen')));
 if ($prefixedLocalePattern === '') {
-    $prefixedLocalePattern = 'de|fr|nl|es|it|us';
+    $prefixedLocalePattern = 'de|fr|nl|es|it|us|at|ch|ro|gr|dk|se|no|bg|hu|ee';
 }
 if ($supportedLocalePattern === '') {
-    $supportedLocalePattern = 'en|de|fr|nl|es|it|us';
+    $supportedLocalePattern = 'en|de|fr|nl|es|it|us|at|ch|ro|gr|dk|se|no|bg|hu|ee';
 }
 
 // Stacked locale cleanup: /nl/fr → /nl
@@ -159,7 +165,10 @@ $registerPublicMarketingRoutes = function (string $locale = 'en') {
         $catalogPreview = collect();
         if (class_exists(CatalogTeaserService::class)) {
             try {
-                $catalogPreview = app(CatalogTeaserService::class)->teasersForCountries(['de'], 8);
+                $teaserCountries = class_exists(PublicI18n::class)
+                    ? PublicI18n::catalogTeaserCountries((string) app()->getLocale())
+                    : ['de'];
+                $catalogPreview = app(CatalogTeaserService::class)->teasersForCountries($teaserCountries, 8);
             } catch (Throwable) {
                 $catalogPreview = collect();
             }

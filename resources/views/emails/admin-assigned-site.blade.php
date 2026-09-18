@@ -3,10 +3,10 @@
 
 Hi {{ $publisherName }},
 
-Our team added **{{ $domain }}** to your account. Please review it and **accept** it so it appears in your My Sites list.
+Our team added {{ $domain }} to your account. Please review it and accept it so it appears in your My Sites list.
 
 After you accept:
-- The site shows under **My Sites**
+- The site shows under My Sites
 - Staff review the listing. The Verified badge is a separate TXT step
 - Catalog Activate is not automatic
 

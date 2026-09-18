@@ -47,7 +47,7 @@ class CartDrawerDensityTest extends TestCase
         $this->assertStringNotContainsString('1 site needs an article', $layout);
         $this->assertStringContainsString('id="cartTotalLabel"', $layout);
         $this->assertStringContainsString('Pay now', $layout);
-        $this->assertStringContainsString('In cart €', $layout);
+        $this->assertStringContainsString('In cart \' + slbFormatPay(cartTotal)', $layout);
         $this->assertStringContainsString('cart-checklist__status', $layout);
         $this->assertStringContainsString('Pay sites that have an article. Others stay in the cart.', $layout);
         $this->assertStringNotContainsString('Assign a document to each website', $layout);
@@ -75,7 +75,7 @@ class CartDrawerDensityTest extends TestCase
         $this->assertStringContainsString("metricBits.push('DA '", $layout);
         $this->assertStringContainsString('Number(item.da) !== 0', $layout);
         $this->assertStringContainsString('function languagePrimaryTag', $layout);
-        $this->assertStringContainsString("€' + unitPrice + ' × '", $layout);
+        $this->assertStringContainsString('slbFormatPay(unitPrice) + \' × \'', $layout);
         $this->assertStringNotContainsString('each</div>', $layout);
         $this->assertStringContainsString('cart-keep-browsing', $layout);
         $this->assertStringContainsString("document.body.classList.add('cart-open')", $layout);

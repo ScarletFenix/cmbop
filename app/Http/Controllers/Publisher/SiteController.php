@@ -17,6 +17,7 @@ use App\Services\EmailNotificationService;
 use App\Services\InAppNotificationService;
 use App\Services\Marketplace\CountryLanguagePairs;
 use App\Services\Marketplace\LanguageCountryMap;
+use App\Support\MoneyDisplay;
 use App\Support\NormalizesHttpUrls;
 use App\Support\SiteDescriptionRules;
 use App\Support\SiteImageUpload;
@@ -285,8 +286,8 @@ class SiteController extends Controller
 
                 $site = new Site;
 
-                $sensitivePrices = $this->collectSensitivePrices($request);
-                $homepagePrices = $this->collectHomepagePlacementPrices($request);
+                $sensitivePrices = $this->collectSensitivePrices($request, $countryCodes[0] ?? null);
+                $homepagePrices = $this->collectHomepagePlacementPrices($request, $countryCodes[0] ?? null);
                 $socialPromotion = $this->collectSocialPromotion($request);
 
                 // Manual publisher metrics — never auto-fetched/overwritten.
@@ -312,7 +313,7 @@ class SiteController extends Controller
                     'languages' => $languageCodes,
                     'category' => $primaryCategory,
                     'categories' => $categoriesArray,
-                    'price' => $request->price,
+                    'price' => $this->listingToEuros($request->price, $countryCodes[0] ?? null),
                     'turnaround_time' => $request->turnaround_time,
                     'publication_time' => $request->publicationTime,
                     'link_type' => $request->link_type,
@@ -375,7 +376,7 @@ class SiteController extends Controller
             }
         }
 
-        return redirect()->back()->with('success', 'Site submitted successfully! Admin will review and activate it within 24-48 hours. A homepage screenshot is being generated automatically.');
+        return redirect()->back()->with('success', 'Site submitted successfully! Admin will review and activate it within 24-48 hours. A homepage screenshot is being generated automatically.'.$this->listingSavedNote($request->price, (float) ($site?->price ?? 0), $countryCodes[0] ?? null));
     }
 
     public function ajax(Request $request)
@@ -733,7 +734,7 @@ class SiteController extends Controller
                 'languages' => $site->languages,
                 'category' => $site->category,
                 'categories' => $categories,
-                'price' => (float) $site->price,
+                'price' => $this->listingFromEuros((float) $site->price, $site->country),
                 'turnaround_time' => $site->turnaround_time,
                 'publication_time' => $site->publication_time,
                 'link_type' => $site->link_type,
@@ -741,8 +742,8 @@ class SiteController extends Controller
                 'sponsored' => (bool) $site->sponsored,
                 'partner_material' => (bool) $site->partner_material,
                 'as_you_prefer' => (bool) $site->as_you_prefer,
-                'sensitive_prices' => $site->sensitive_prices ?: new \stdClass,
-                'homepage_placement_prices' => $site->homepage_placement_prices ?: new \stdClass,
+                'sensitive_prices' => $this->listingMapFromEuros($site->sensitive_prices, $site->country),
+                'homepage_placement_prices' => $this->listingMapFromEuros($site->homepage_placement_prices, $site->country),
                 'social_promotion' => $site->social_promotion ?: new \stdClass,
                 'verified' => (bool) $site->verified,
                 'active' => (bool) $site->active,
@@ -882,8 +883,8 @@ class SiteController extends Controller
 
         try {
             DB::transaction(function () use ($site, $request, $cleanDescription, $categoriesArray, $primaryCategory, $countryCodes, $languageCodes, $needsRereview, $keepAsBulkDraft) {
-                $sensitivePrices = $this->collectSensitivePrices($request);
-                $homepagePrices = $this->collectHomepagePlacementPrices($request);
+                $sensitivePrices = $this->collectSensitivePrices($request, $countryCodes[0] ?? null);
+                $homepagePrices = $this->collectHomepagePlacementPrices($request, $countryCodes[0] ?? null);
                 $socialPromotion = $this->collectSocialPromotion($request);
 
                 $payload = [
@@ -899,7 +900,7 @@ class SiteController extends Controller
                     'languages' => $languageCodes,
                     'category' => $primaryCategory,
                     'categories' => $categoriesArray,
-                    'price' => $request->price,
+                    'price' => $this->listingToEuros($request->price, $countryCodes[0] ?? null),
                     'turnaround_time' => $request->turnaround_time,
                     'publication_time' => $request->publicationTime,
                     'link_type' => $request->link_type,
@@ -979,21 +980,21 @@ class SiteController extends Controller
                 $site->site_name
             );
 
-            return redirect()->back()->with('success', 'Site updated. Market/niche changes require re-review — it is offline until an admin approves it again.');
+            return redirect()->back()->with('success', 'Site updated. Market/niche changes require re-review — it is offline until an admin approves it again.'.$this->listingSavedNote($request->price, (float) $site->price, $countryCodes[0] ?? null));
         }
 
         if ($needsRereview) {
-            return redirect()->back()->with('success', 'Site updated and queued for review.');
+            return redirect()->back()->with('success', 'Site updated and queued for review.'.$this->listingSavedNote($request->price, (float) $site->price, $countryCodes[0] ?? null));
         }
 
         // Bulk drafts return to the review sheet (PUT has no reliable referrer).
         if ($site->fresh()->hasDetailsComplete()) {
             return redirect()
                 ->route('publisher.bulk-sites.review')
-                ->with('success', 'Website details saved. Review your sites, then submit them for approval.');
+                ->with('success', 'Website details saved. Review your sites, then submit them for approval.'.$this->listingSavedNote($request->price, (float) $site->price, $countryCodes[0] ?? null));
         }
 
-        return redirect()->back()->with('success', 'Site updated successfully.');
+        return redirect()->back()->with('success', 'Site updated successfully.'.$this->listingSavedNote($request->price, (float) $site->price, $countryCodes[0] ?? null));
     }
 
     public function destroy($id)
@@ -1224,7 +1225,7 @@ class SiteController extends Controller
     /**
      * @return array<string, float>
      */
-    private function collectSensitivePrices(Request $request): array
+    private function collectSensitivePrices(Request $request, ?string $country = null): array
     {
         $sensitivePrices = [];
         foreach (['crypto', 'trading', 'CBD', 'forex'] as $topic) {
@@ -1237,7 +1238,7 @@ class SiteController extends Controller
                 continue;
             }
 
-            $sensitivePrices[$topic] = (float) $price;
+            $sensitivePrices[$topic] = $this->listingToEuros($price, $country);
         }
 
         return $sensitivePrices;
@@ -1248,7 +1249,7 @@ class SiteController extends Controller
      *
      * @return array<string, float> days (string keys) => fee
      */
-    private function collectHomepagePlacementPrices(Request $request): array
+    private function collectHomepagePlacementPrices(Request $request, ?string $country = null): array
     {
         $out = [];
         foreach (config('site_placement.homepage_days', [1, 7, 30]) as $days) {
@@ -1262,10 +1263,63 @@ class SiteController extends Controller
                 continue;
             }
 
-            $out[(string) $days] = round($price, 2);
+            $out[(string) $days] = $this->listingToEuros($price, $country);
         }
 
         return $out;
+    }
+
+    private function listingSavedNote(mixed $typedLocal, float $storedEuros, ?string $country): string
+    {
+        $money = app(MoneyDisplay::class);
+        $currency = $money->currencyForCountry($country);
+        if ($currency === 'EUR') {
+            return '';
+        }
+
+        return ' Saved €'.number_format($storedEuros, 2)
+            .' (from '.$money->symbolFor($currency).number_format((float) $typedLocal, 2).').';
+    }
+
+    private function listingToEuros(mixed $local, ?string $country): float
+    {
+        $money = app(MoneyDisplay::class);
+
+        return $money->toEuros($local, $money->currencyForCountry($country));
+    }
+
+    private function listingFromEuros(mixed $euros, ?string $country): float
+    {
+        $money = app(MoneyDisplay::class);
+
+        return $money->fromEuros($euros, $money->currencyForCountry($country));
+    }
+
+    /**
+     * @param  array<string, mixed>|object|string|null  $map
+     * @return array<string, float>|\stdClass
+     */
+    private function listingMapFromEuros(mixed $map, ?string $country): array|\stdClass
+    {
+        if (is_string($map)) {
+            $map = json_decode($map, true);
+        }
+        if (is_object($map)) {
+            $map = (array) $map;
+        }
+        if (! is_array($map) || $map === []) {
+            return new \stdClass;
+        }
+
+        $out = [];
+        foreach ($map as $key => $value) {
+            if (! is_numeric($value)) {
+                continue;
+            }
+            $out[(string) $key] = $this->listingFromEuros($value, $country);
+        }
+
+        return $out === [] ? new \stdClass : $out;
     }
 
     /**

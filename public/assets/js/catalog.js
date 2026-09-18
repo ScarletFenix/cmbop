@@ -3970,12 +3970,12 @@ function updateBuyButtonPrice(siteId, basePrice, additionalPrice = 0, sensitiveT
         const price = catalogPriceDisplaysFor(buyButton);
 
         if (price.pay) {
-            price.pay.textContent = '€' + totalPrice.toFixed(2);
+            price.pay.textContent = (window.slbFormatMoney || function (n) { return '€' + Number(n).toFixed(2); })(totalPrice);
         }
 
         // Strike-through shows the pre-discount list total when a sale is active.
         if (price.list) {
-            price.list.textContent = '€' + displayList.toFixed(2);
+            price.list.textContent = (window.slbFormatMoney || function (n) { return '€' + Number(n).toFixed(2); })(displayList);
             price.list.hidden = !(pct > 0);
         }
 
