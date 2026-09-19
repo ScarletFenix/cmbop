@@ -89,12 +89,22 @@ class AddFundsUiGuardTest extends TestCase
         $this->assertStringNotContainsString('#9333ea', $view);
         $this->assertStringNotContainsString('balance.blade.php', $view);
         $this->assertStringNotContainsString('XXXXXXXX', $view);
+        $this->assertStringNotContainsString('alert-danger', $view);
+        $this->assertStringNotContainsString('Payments without this reference cannot be tracked', $view);
+        $this->assertStringContainsString('js-manual-ref-alert', $view);
+        $this->assertStringContainsString('Select an amount', $view);
         $this->assertStringContainsString('invoiceReadyBar', $view);
         $this->assertStringContainsString('data-invoice-ready="0"', $view);
         $this->assertStringContainsString('Your transfer reference is created with the invoice', $view);
         $this->assertStringContainsString('function applyInvoice', $js);
         $this->assertStringContainsString('function stampServerReference', $js);
-        $this->assertStringContainsString('if (!invoiceLocked)', $js);
+        $this->assertStringContainsString('function isRealReference', $js);
+        $this->assertStringContainsString('function amountReady', $js);
+        $this->assertStringContainsString('Select an amount', $js);
+        $this->assertStringContainsString('selectedAmount) >= 10', $js);
+        $this->assertDoesNotMatchRegularExpression("/formatted = '€' \\+ \\(amt \\|\\| 0\\)\\.toFixed/", $js);
+        $this->assertStringContainsString('applyPrefill();', $js);
+        $this->assertStringContainsString('stampServerReference(referenceCode)', $js);
         $this->assertStringNotContainsString('function updateReferenceCode', $js);
         $this->assertStringNotContainsString('function generateReferenceCode', $js);
         $this->assertDoesNotMatchRegularExpression(

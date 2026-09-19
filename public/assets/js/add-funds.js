@@ -21,13 +21,25 @@ document.addEventListener('DOMContentLoaded', function() {
         return method === 'wise' || method === 'bank' || method === 'crypto';
     }
 
+    function isRealReference(code) {
+        const s = String(code || '').trim().replace(/^REF/i, '');
+        if (!s || s === '—' || s === '-') {
+            return false;
+        }
+        // Leftover dummy placeholders (XXXXXXXX) must never become a pay instruction.
+        if (/^x+$/i.test(s)) {
+            return false;
+        }
+        return /^\d{6,}$/.test(s);
+    }
+
     // Instant rails only: metadata REF at proceed time. Never shown as a pay instruction.
     function instantRailReference() {
         return Math.floor(100000 + Math.random() * 900000).toString();
     }
 
     function stampServerReference(code) {
-        referenceCode = code ? String(code) : null;
+        referenceCode = isRealReference(code) ? String(code).trim().replace(/^REF/i, '') : null;
         const label = referenceCode ? ('REF' + referenceCode) : '—';
         const refCodeDisplay = document.getElementById('referenceCode');
         const refCodeTexts = document.querySelectorAll('.ref-code-display');
@@ -35,6 +47,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const copyBtn = document.getElementById('copyRefBtn');
         const hintPending = document.getElementById('refHintPending');
         const hintReady = document.getElementById('refHintReady');
+        const hintBox = document.getElementById('refHintBox');
 
         if (refCodeDisplay) {
             refCodeDisplay.innerText = referenceCode || '—';
@@ -47,6 +60,13 @@ document.addEventListener('DOMContentLoaded', function() {
         if (copyBtn) copyBtn.disabled = !referenceCode;
         if (hintPending) hintPending.classList.toggle('d-none', !!referenceCode);
         if (hintReady) hintReady.classList.toggle('d-none', !referenceCode);
+        document.querySelectorAll('.js-manual-ref-alert').forEach(el => {
+            el.classList.toggle('d-none', !referenceCode);
+        });
+        if (hintBox) {
+            const instantRail = selectedMethod === 'card' || selectedMethod === 'paypal';
+            hintBox.classList.toggle('d-none', instantRail && !referenceCode);
+        }
     }
 
     function hideManualPayDetails() {
@@ -98,15 +118,14 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
         setInvoiceLockUi(false);
-        if (proceedBtn) {
-            proceedBtn.disabled = false;
-            if (typeof syncProceedLabel === 'function') syncProceedLabel();
+        if (typeof setProceedBusy === 'function') {
+            setProceedBusy(false);
         }
     }
 
     function applyInvoice(data) {
         const code = data && data.reference_code ? String(data.reference_code) : '';
-        if (!code) return;
+        if (!isRealReference(code)) return;
         invoiceLocked = true;
         invoiceMarkPaidUrl = data.mark_paid_url || null;
         invoiceViewUrl = data.invoice_url || null;
@@ -135,10 +154,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
         setInvoiceLockUi(true);
-        if (proceedBtn) {
-            proceedBtn.disabled = true;
-            proceedBtn.innerHTML = '<i class="fa fa-check me-2"></i> Invoice created';
-        }
+        setProceedBusy(false);
     }
 
     const amountBtns = document.querySelectorAll('.amount-btn');
@@ -184,6 +200,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const cardDetails = document.getElementById('cardPaymentDetails');
     const paypalDetails = document.getElementById('paypalPaymentDetails');
     const proceedBtn = document.getElementById('proceedBtn');
+    let proceedBusy = false;
     const depositFeeNote = document.getElementById('depositFeeNote');
     const depositFeeNotes = {
         card: 'No extra deposit fee — we cover card processing.',
@@ -274,20 +291,46 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    function amountReady() {
+        return Number.isFinite(Number(selectedAmount)) && Number(selectedAmount) >= 10;
+    }
+
+    function setProceedBusy(busy) {
+        proceedBusy = !!busy;
+        if (!proceedBtn) return;
+        if (busy) {
+            proceedBtn.disabled = true;
+            proceedBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Processing...';
+            return;
+        }
+        if (invoiceLocked) {
+            proceedBtn.disabled = true;
+            proceedBtn.innerHTML = '<i class="fa fa-check me-2"></i> Invoice created';
+            return;
+        }
+        syncProceedLabel();
+    }
+
     window.__afProceedLabel = function () {
-        const amt = (typeof selectedAmount !== 'undefined' && selectedAmount) ? Number(selectedAmount) : 0;
-        const formatted = '€' + (amt || 0).toFixed(2);
+        if (!amountReady()) {
+            return '<i class="fa fa-arrow-right me-2"></i> Select an amount';
+        }
+        const formatted = '€' + Number(selectedAmount).toFixed(2);
         if (selectedMethod === 'card') {
             return '<i class="fa fa-credit-card me-2"></i> Pay ' + formatted + ' with card';
         }
         if (selectedMethod === 'paypal') {
             return '<i class="fab fa-paypal me-2"></i> Pay ' + formatted + ' with PayPal';
         }
-        return '<i class="fa fa-file-invoice me-2"></i> Get invoice & pay ' + formatted;
+        if (selectedMethod) {
+            return '<i class="fa fa-file-invoice me-2"></i> Get invoice & pay ' + formatted;
+        }
+        return '<i class="fa fa-arrow-right me-2"></i> Select a payment method';
     };
     function syncProceedLabel() {
-        if (!proceedBtn || proceedBtn.disabled) return;
+        if (!proceedBtn || invoiceLocked || proceedBusy) return;
         proceedBtn.innerHTML = window.__afProceedLabel();
+        proceedBtn.disabled = !amountReady() || !selectedMethod;
         syncFeeNote();
     };
 
@@ -418,6 +461,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             if (typeof syncProceedLabel === 'function') syncProceedLabel();
+            if (typeof stampServerReference === 'function') stampServerReference(referenceCode);
         });
     });
     
@@ -453,8 +497,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Function to submit deposit
     function submitDeposit() {
-        proceedBtn.disabled = true;
-        proceedBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Processing...';
+        setProceedBusy(true);
         
         fetch(boot.routes.store, {
             method: 'POST',
@@ -484,8 +527,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Show billing info modal
                 const modal = new bootstrap.Modal(document.getElementById('billingInfoModal'));
                 modal.show();
-                proceedBtn.disabled = false;
-                proceedBtn.innerHTML = window.__afProceedLabel ? window.__afProceedLabel() : '<i class="fa fa-arrow-right me-2"></i> Get invoice &amp; pay';
+                setProceedBusy(false);
             } else {
                 Swal.fire({
                     title: 'Error', 
@@ -493,8 +535,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     icon: 'error',
                     confirmButtonText: 'OK'
                 });
-                proceedBtn.disabled = false;
-                proceedBtn.innerHTML = window.__afProceedLabel ? window.__afProceedLabel() : '<i class="fa fa-arrow-right me-2"></i> Get invoice &amp; pay';
+                setProceedBusy(false);
             }
         })
         .catch(error => {
@@ -505,8 +546,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 icon: 'error',
                 confirmButtonText: 'OK'
             });
-            proceedBtn.disabled = false;
-            proceedBtn.innerHTML = window.__afProceedLabel ? window.__afProceedLabel() : '<i class="fa fa-arrow-right me-2"></i> Get invoice &amp; pay';
+            setProceedBusy(false);
         });
     }
     
@@ -593,8 +633,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
 
-            proceedBtn.disabled = true;
-            proceedBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Processing...';
+            setProceedBusy(true);
 
             try {
                 const response = await fetch(boot.routes.createPaypal, {
@@ -622,8 +661,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     icon: 'error',
                     confirmButtonText: 'OK'
                 });
-                proceedBtn.disabled = false;
-                proceedBtn.innerHTML = window.__afProceedLabel ? window.__afProceedLabel() : '<i class="fa fa-arrow-right me-2"></i> Get invoice &amp; pay';
+                setProceedBusy(false);
             }
             return;
         }
@@ -640,8 +678,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
 
-            proceedBtn.disabled = true;
-            proceedBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Processing...';
+            setProceedBusy(true);
             const picked = document.querySelector('input[name="deposit_saved_card"]:checked');
             const savedPm = picked && picked.value !== 'new' ? picked.value : null;
             const cardReference = instantRailReference();
@@ -719,8 +756,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     icon: 'error',
                     confirmButtonText: 'OK'
                 });
-                proceedBtn.disabled = false;
-                proceedBtn.innerHTML = window.__afProceedLabel ? window.__afProceedLabel() : '<i class="fa fa-arrow-right me-2"></i> Get invoice &amp; pay';
+                setProceedBusy(false);
             }
         } else {
             // Bank / Wise / crypto invoices need company billing details
@@ -752,6 +788,8 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     applyPrefill();
+    if (typeof stampServerReference === 'function') stampServerReference(referenceCode);
+    if (typeof syncProceedLabel === 'function') syncProceedLabel();
 
     if (boot.openCardsTab) {
         const cardsSection = document.getElementById('savedCardsSection');

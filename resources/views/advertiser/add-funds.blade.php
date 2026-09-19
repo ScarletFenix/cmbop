@@ -359,9 +359,8 @@
                                     </div>
                                 </div>
                                 
-                                <div class="alert alert-danger py-2 px-3 mb-3" style="background-color: #fee2e2; border-left: 4px solid #dc2626;">
-                                    <i class="fas fa-exclamation-triangle me-1"></i> 
-                                    <strong>Important:</strong> Please include <strong class="ref-code ref-code-display">—</strong> in your payment note. Payments without this reference cannot be tracked.
+                                <div class="alert alert-info py-2 px-3 mb-3 js-manual-ref-alert d-none" role="status">
+                                    Include <strong class="ref-code ref-code-display">—</strong> in the payment note so we can match your transfer.
                                 </div>
                                 
                                 <div style="background: #f9fafb; border-radius: 12px; padding: 20px; border: 1px solid #e5e7eb;">
@@ -414,9 +413,8 @@
                                     </div>
                                 </div>
                                 
-                                <div class="alert alert-danger py-2 px-3 mb-3" style="background-color: #fee2e2; border-left: 4px solid #dc2626;">
-                                    <i class="fas fa-exclamation-triangle me-1"></i> 
-                                    <strong>Important:</strong> Please include <strong class="ref-code ref-code-display">—</strong> in your payment note. Payments without this reference cannot be tracked.
+                                <div class="alert alert-info py-2 px-3 mb-3 js-manual-ref-alert d-none" role="status">
+                                    Include <strong class="ref-code ref-code-display">—</strong> in the payment note so we can match your transfer.
                                 </div>
                                 
                                 <div style="background: #f9fafb; border-radius: 12px; padding: 20px; border: 1px solid #e5e7eb;">
@@ -452,9 +450,8 @@
                                     </div>
                                 </div>
                                 
-                                <div class="alert alert-danger py-2 px-3 mb-3" style="background-color: #fee2e2; border-left: 4px solid #dc2626;">
-                                    <i class="fas fa-exclamation-triangle me-1"></i> 
-                                    <strong>Important:</strong> Please include <strong class="ref-code ref-code-display">—</strong> in your payment note. Payments without this reference cannot be tracked.
+                                <div class="alert alert-info py-2 px-3 mb-3 js-manual-ref-alert d-none" role="status">
+                                    Include <strong class="ref-code ref-code-display">—</strong> in the payment note so we can match your transfer.
                                 </div>
                                 
                                 <div style="background: #f9fafb; border-radius: 12px; padding: 20px; border: 1px solid #e5e7eb;">
@@ -588,13 +585,12 @@
                             </div>
                         </div>
                     </div>
-                    <div class="alert alert-warning py-2 px-3 mb-3" id="refHintBox">
-                        <i class="fas fa-exclamation-triangle me-1"></i>
+                    <div class="alert alert-light border py-2 px-3 mb-3" id="refHintBox">
                         <small id="refHintPending">Your transfer reference is created with the invoice. Card and PayPal record it automatically.</small>
-                        <small id="refHintReady" class="d-none">Include <strong id="refCodeDisplay" class="ref-code">—</strong> in the payment note. Card and PayPal record the reference automatically.</small>
+                        <small id="refHintReady" class="d-none">Include <strong id="refCodeDisplay" class="ref-code">—</strong> in the payment note.</small>
                     </div>
-                    <button type="button" id="proceedBtn" class="btn btn-primary w-100 mt-2 py-2">
-                        <i class="fa fa-arrow-right me-2"></i> Get invoice &amp; pay
+                    <button type="button" id="proceedBtn" class="btn btn-primary w-100 mt-2 py-2" disabled>
+                        <i class="fa fa-arrow-right me-2"></i> Select an amount
                     </button>
                     <div class="mt-3">
                         @include('partials.payment-trust', ['compact' => true])
