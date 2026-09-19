@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Support\EnglishOnlyMarketingSlugs;
 use App\Support\PublicI18n;
 use Illuminate\Http\Request;
 use Tests\TestCase;
@@ -82,6 +83,10 @@ class PublicI18nLocaleMapTest extends TestCase
         $this->assertContains('guest-post-prices-europe', $slugs);
         $this->assertContains('guest-posts-germany', $slugs);
         $this->assertContains('guest-posts-uk', $slugs);
+        $this->assertSame(
+            $slugs,
+            EnglishOnlyMarketingSlugs::all()
+        );
     }
 
     public function test_hreflang_tags_restrict_english_only_marketing_without_view_override(): void

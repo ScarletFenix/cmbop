@@ -20,27 +20,38 @@ class SetLocale
             return $next($request);
         }
 
+        $defaultLocale = method_exists(PublicI18n::class, 'default')
+            ? PublicI18n::default()
+            : (string) config('i18n.default', 'en');
+
         // Authenticated SaaS + English-only auth pages always stay English.
-        if (PublicI18n::isEnglishOnlyPath($request) || $this->isAuthenticatedAppPath($request)) {
-            App::setLocale(PublicI18n::default());
-            Session::put('locale', PublicI18n::default());
+        $englishOnly = method_exists(PublicI18n::class, 'isEnglishOnlyPath')
+            && PublicI18n::isEnglishOnlyPath($request);
+        if ($englishOnly || $this->isAuthenticatedAppPath($request)) {
+            App::setLocale($defaultLocale);
+            Session::put('locale', $defaultLocale);
 
             return $next($request);
         }
 
-        [$urlLocale] = PublicI18n::splitPath($request);
+        $urlLocale = null;
+        if (method_exists(PublicI18n::class, 'splitPath')) {
+            [$urlLocale] = PublicI18n::splitPath($request);
+        }
 
-        if (PublicI18n::isPrefixed($urlLocale)) {
+        if (method_exists(PublicI18n::class, 'isPrefixed') && PublicI18n::isPrefixed($urlLocale)) {
             $locale = $urlLocale;
-        } elseif (PublicI18n::isPublicMarketingPath($request)) {
+        } elseif (method_exists(PublicI18n::class, 'isPublicMarketingPath') && PublicI18n::isPublicMarketingPath($request)) {
             // Unprefixed public URL = English (canonical)
-            $locale = PublicI18n::default();
+            $locale = $defaultLocale;
         } else {
-            $locale = PublicI18n::default();
+            $locale = $defaultLocale;
         }
 
         App::setLocale($locale);
-        $messagesFallback = PublicI18n::messagesFallback($locale);
+        $messagesFallback = method_exists(PublicI18n::class, 'messagesFallback')
+            ? PublicI18n::messagesFallback($locale)
+            : null;
         if ($messagesFallback !== null && $messagesFallback !== $locale) {
             App::setFallbackLocale($messagesFallback);
         }
@@ -50,7 +61,10 @@ class SetLocale
         $response = $next($request);
 
         // Remember public browsing language for logo/home links after English auth.
-        if (PublicI18n::isPublicMarketingPath($request) && PublicI18n::isSupported($locale)) {
+        if (method_exists(PublicI18n::class, 'isPublicMarketingPath')
+            && method_exists(PublicI18n::class, 'isSupported')
+            && PublicI18n::isPublicMarketingPath($request)
+            && PublicI18n::isSupported($locale)) {
             $response->headers->setCookie(
                 Cookie::make(
                     config('i18n.cookie', 'public_locale'),
