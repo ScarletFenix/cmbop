@@ -92,6 +92,7 @@ use App\Models\Site;
 use App\Models\User;
 use App\Services\Marketing\CatalogTeaserService;
 use App\Support\CountryLander;
+use App\Support\EnglishOnlyMarketingSlugs;
 use App\Support\LocalizedPublicPath;
 use App\Support\PublicI18n;
 use App\Support\RobotsTxt;
@@ -197,10 +198,23 @@ $registerPublicMarketingRoutes = function (string $locale = 'en') {
         ->name('newsletter.subscribe');
 };
 
-$englishOnlyMarketingSlugs = (class_exists(PublicI18n::class)
-        && method_exists(PublicI18n::class, 'englishOnlyMarketingSlugs'))
-    ? PublicI18n::englishOnlyMarketingSlugs()
-    : ['guest-post-prices-europe'];
+$englishOnlyMarketingSlugs = ['guest-post-prices-europe'];
+try {
+    if (class_exists(EnglishOnlyMarketingSlugs::class)
+        && method_exists(EnglishOnlyMarketingSlugs::class, 'all')) {
+        $englishOnlyMarketingSlugs = EnglishOnlyMarketingSlugs::all();
+    } elseif (class_exists(PublicI18n::class)
+        && method_exists(PublicI18n::class, 'englishOnlyMarketingSlugs')) {
+        $englishOnlyMarketingSlugs = PublicI18n::englishOnlyMarketingSlugs();
+    } elseif (class_exists(CountryLander::class) && method_exists(CountryLander::class, 'slugs')) {
+        $englishOnlyMarketingSlugs = array_values(array_unique(array_merge(
+            $englishOnlyMarketingSlugs,
+            CountryLander::slugs()
+        )));
+    }
+} catch (Throwable) {
+    $englishOnlyMarketingSlugs = ['guest-post-prices-europe'];
+}
 
 $registerEnglishOnlyMarketingRoutes = function () {
     $landers = class_exists(CountryLander::class) ? CountryLander::all() : [];

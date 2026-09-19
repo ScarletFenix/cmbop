@@ -4,7 +4,6 @@ namespace App\Support;
 
 use App\Models\Blog;
 use App\Models\BlogTranslation;
-use App\Services\Marketing\GuestPostPriceIndex;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Schema;
@@ -259,36 +258,14 @@ class PublicI18n
      */
     public static function englishOnlyMarketingSlugs(): array
     {
-        $slugs = ['guest-post-prices-europe'];
-
-        try {
-            if (
-                class_exists(GuestPostPriceIndex::class)
-                && defined(GuestPostPriceIndex::class.'::SLUG')
-            ) {
-                $indexSlug = trim((string) GuestPostPriceIndex::SLUG);
-                if ($indexSlug !== '') {
-                    $slugs = [$indexSlug];
-                }
+        if (class_exists(EnglishOnlyMarketingSlugs::class) && method_exists(EnglishOnlyMarketingSlugs::class, 'all')) {
+            try {
+                return EnglishOnlyMarketingSlugs::all();
+            } catch (\Throwable) {
             }
-        } catch (\Throwable) {
-            // Keep the hardcoded price-index slug.
         }
 
-        try {
-            if (class_exists(CountryLander::class) && method_exists(CountryLander::class, 'slugs')) {
-                foreach (CountryLander::slugs() as $slug) {
-                    $slug = trim((string) $slug);
-                    if ($slug !== '') {
-                        $slugs[] = $slug;
-                    }
-                }
-            }
-        } catch (\Throwable) {
-            // Leftover Hostinger can miss CountryLander.
-        }
-
-        return array_values(array_unique($slugs));
+        return ['guest-post-prices-europe'];
     }
 
     /**

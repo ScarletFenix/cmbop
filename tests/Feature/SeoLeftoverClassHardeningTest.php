@@ -27,6 +27,8 @@ class SeoLeftoverClassHardeningTest extends TestCase
         $this->assertStringContainsString('class_exists(LocalizedPublicPath::class)', $web);
         $this->assertStringContainsString('class_exists(PublicI18n::class)', $web);
         $this->assertStringContainsString("method_exists(PublicI18n::class, 'englishOnlyMarketingSlugs')", $web);
+        $this->assertStringContainsString('class_exists(EnglishOnlyMarketingSlugs::class)', $web);
+        $this->assertStringContainsString('} catch (Throwable)', $web);
         $this->assertStringContainsString('class_exists(RobotsTxt::class)', $web);
 
         $controller = (string) file_get_contents(base_path('app/Http/Controllers/MarketingPageController.php'));
@@ -98,6 +100,7 @@ class SeoLeftoverClassHardeningTest extends TestCase
 
         $setLocale = (string) file_get_contents(base_path('app/Http/Middleware/SetLocale.php'));
         $this->assertStringContainsString('class_exists(PublicI18n::class)', $setLocale);
+        $this->assertStringContainsString("method_exists(PublicI18n::class, 'isEnglishOnlyPath')", $setLocale);
 
         $blogModel = (string) file_get_contents(base_path('app/Models/Blog.php'));
         $catalog = (string) file_get_contents(base_path('app/Support/CuratedBlogCatalog.php'));
