@@ -145,6 +145,44 @@ class CatalogController extends Controller
     }
 
     /**
+     * Leftover fallback when CatalogCountryInventory cannot build picker sections
+     * (missing class, missing sites.countries JSON, etc.). Same shape as the view.
+     *
+     * @return list<array{key: string, label: string, options: list<array{code: string, name: string, count: int}>}>
+     */
+    private function staticCountryPickerSections(): array
+    {
+        $options = [];
+        foreach ($this->getAvailableCountries() as $code => $name) {
+            $options[] = [
+                'code' => strtolower((string) $code),
+                'name' => (string) $name,
+                'count' => 0,
+            ];
+        }
+
+        if ($options === [] && function_exists('marketplace_countries')) {
+            foreach (marketplace_countries() as $code => $name) {
+                $options[] = [
+                    'code' => strtolower((string) $code),
+                    'name' => (string) $name,
+                    'count' => 0,
+                ];
+            }
+        }
+
+        if ($options === []) {
+            return [];
+        }
+
+        return [[
+            'key' => 'all_other',
+            'label' => 'Countries',
+            'options' => $options,
+        ]];
+    }
+
+    /**
      * Marketplace languages.
      */
     private function getAvailableLanguages()

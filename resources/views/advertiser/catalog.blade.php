@@ -410,9 +410,22 @@
                                             </div>
                                         @endforeach
                                         @if(empty($countryPickerSections) || collect($countryPickerSections)->every(fn ($s) => ($s['key'] ?? '') === 'recent' || empty($s['options'])))
-                                            <div class="multi-select-section" data-section="empty-inventory">
-                                                <div class="text-muted small px-2 py-1">No markets with listings yet</div>
-                                            </div>
+                                            @forelse(($availableCountries ?? []) as $code => $name)
+                                                <label class="option-item" role="option" aria-selected="false" tabindex="-1">
+                                                    <input type="checkbox"
+                                                           value="{{ $code }}"
+                                                           data-type="country"
+                                                           data-name="{{ $name }}"
+                                                           data-count="0"
+                                                           onchange="updateMultiFilter(this)"
+                                                           tabindex="-1">
+                                                    <span>{{ $name }}</span>
+                                                </label>
+                                            @empty
+                                                <div class="multi-select-section" data-section="empty-inventory">
+                                                    <div class="text-muted small px-2 py-1">No markets with listings yet</div>
+                                                </div>
+                                            @endforelse
                                         @endif
                                     </div>
                                     <div class="multi-select-empty d-none">No countries found</div>
