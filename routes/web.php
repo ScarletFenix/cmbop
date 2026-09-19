@@ -197,9 +197,25 @@ $registerPublicMarketingRoutes = function (string $locale = 'en') {
         ->name('newsletter.subscribe');
 };
 
-$englishOnlyMarketingSlugs = class_exists(PublicI18n::class)
-    ? PublicI18n::englishOnlyMarketingSlugs()
-    : ['guest-post-prices-europe'];
+$englishOnlyMarketingSlugs = ['guest-post-prices-europe'];
+try {
+    if (class_exists(PublicI18n::class) && method_exists(PublicI18n::class, 'englishOnlyMarketingSlugs')) {
+        $resolved = PublicI18n::englishOnlyMarketingSlugs();
+        if (is_array($resolved) && $resolved !== []) {
+            $englishOnlyMarketingSlugs = array_values(array_filter(
+                $resolved,
+                static fn ($slug) => is_string($slug) && trim($slug) !== ''
+            ));
+        }
+    } elseif (class_exists(CountryLander::class) && method_exists(CountryLander::class, 'slugs')) {
+        $englishOnlyMarketingSlugs = array_values(array_unique(array_merge(
+            $englishOnlyMarketingSlugs,
+            CountryLander::slugs()
+        )));
+    }
+} catch (Throwable) {
+    // Leftover PublicI18n without englishOnlyMarketingSlugs must not 500 route boot.
+}
 
 $registerEnglishOnlyMarketingRoutes = function () {
     $landers = class_exists(CountryLander::class) ? CountryLander::all() : [];
