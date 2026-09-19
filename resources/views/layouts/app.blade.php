@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="{{ class_exists(\App\Support\PublicI18n::class) ? \App\Support\PublicI18n::htmlLang() : 'en-GB' }}">
+<html lang="{{ (class_exists(\App\Support\PublicI18n::class) && method_exists(\App\Support\PublicI18n::class, 'htmlLang')) ? \App\Support\PublicI18n::htmlLang() : 'en-GB' }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -40,7 +40,7 @@
                 }
             }
         }
-        $hreflangTags = class_exists(\App\Support\PublicI18n::class)
+        $hreflangTags = (class_exists(\App\Support\PublicI18n::class) && method_exists(\App\Support\PublicI18n::class, 'hreflangTags'))
             ? \App\Support\PublicI18n::hreflangTags(
                 request(),
                 $hreflangXDefault,
@@ -49,11 +49,15 @@
                 $hreflangPathByLocale !== [] ? $hreflangPathByLocale : null
             )
             : [];
+        $pageRobots = trim($__env->yieldContent('robots'))
+            ?: ((class_exists(\App\Support\PublicI18n::class) && method_exists(\App\Support\PublicI18n::class, 'robotsContent'))
+                ? \App\Support\PublicI18n::robotsContent(request())
+                : 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1');
     @endphp
     @include('components.favicon')
     <title>{{ $pageTitle }}</title>
     <meta name="description" content="{{ $pageDescription }}">
-    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+    <meta name="robots" content="{{ $pageRobots }}">
     <meta name="author" content="SEOLinkBuildings">
     <meta name="application-name" content="SEOLinkBuildings">
     @if(($googleSiteVerification = trim((string) config('services.google.site_verification'))) !== '')
@@ -63,6 +67,29 @@
     @foreach($hreflangTags as $tag)
         <link rel="alternate" hreflang="{{ $tag['hreflang'] }}" href="{{ $tag['href'] }}">
     @endforeach
+    @if(class_exists(\App\Support\BrandOrganization::class))
+        @php
+            $organizationJsonLd = '';
+            try {
+                if (method_exists(\App\Support\BrandOrganization::class, 'pageGraphJson')) {
+                    $organizationJsonLd = (string) \App\Support\BrandOrganization::pageGraphJson($pageTitle, $pageDescription, $pageCanonical);
+                } elseif (method_exists(\App\Support\BrandOrganization::class, 'schema')) {
+                    $encoded = json_encode(
+                        array_merge(['@context' => 'https://schema.org'], \App\Support\BrandOrganization::schema()),
+                        JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_INVALID_UTF8_SUBSTITUTE
+                    );
+                    $organizationJsonLd = is_string($encoded) && $encoded !== '' && $encoded !== 'null' ? $encoded : '';
+                }
+            } catch (\Throwable) {
+                $organizationJsonLd = '';
+            }
+        @endphp
+        @if($organizationJsonLd !== '')
+    <script type="application/ld+json">
+{!! $organizationJsonLd !!}
+    </script>
+        @endif
+    @endif
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
     <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -71,7 +98,7 @@
     <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com">
     <link rel="dns-prefetch" href="https://fonts.googleapis.com">
     <link rel="dns-prefetch" href="https://fonts.gstatic.com">
-    <meta property="og:locale" content="{{ class_exists(\App\Support\PublicI18n::class) ? \App\Support\PublicI18n::ogLocale() : 'en_GB' }}">
+    <meta property="og:locale" content="{{ (class_exists(\App\Support\PublicI18n::class) && method_exists(\App\Support\PublicI18n::class, 'ogLocale')) ? \App\Support\PublicI18n::ogLocale() : 'en_GB' }}">
     <meta property="og:type" content="{{ $pageType }}">
     <meta property="og:site_name" content="SEOLinkBuildings">
     <meta property="og:title" content="{{ $pageTitle }}">
@@ -91,18 +118,27 @@
     @stack('head')
     <link href="{{ asset('assets/vendor/bootstrap-5.3.0/bootstrap.min.css') }}?v={{ @filemtime(public_path('assets/vendor/bootstrap-5.3.0/bootstrap.min.css')) ?: '1' }}" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet">
-    <link href="{{ asset('assets/css/slb-icons.css') }}?v={{ @filemtime(public_path('assets/css/slb-icons.css')) ?: '1' }}" rel="stylesheet">
-    <link href="{{ asset('assets/css/type-system.css') }}?v={{ @filemtime(public_path('assets/css/type-system.css')) ?: '1' }}" rel="stylesheet">
-    <link href="{{ asset('assets/css/brand-colors.css') }}?v={{ @filemtime(public_path('assets/css/brand-colors.css')) ?: '1' }}" rel="stylesheet">
-    <link href="{{ asset('assets/css/spacing-system.css') }}?v={{ @filemtime(public_path('assets/css/spacing-system.css')) ?: '1' }}" rel="stylesheet">
-    <link href="{{ asset('assets/css/button-system.css') }}?v={{ @filemtime(public_path('assets/css/button-system.css')) ?: '1' }}" rel="stylesheet">
-    <link href="{{ asset('assets/css/form-system.css') }}?v={{ @filemtime(public_path('assets/css/form-system.css')) ?: '1' }}" rel="stylesheet">
-    <link href="{{ asset('assets/css/glass-tip.css') }}?v={{ @filemtime(public_path('assets/css/glass-tip.css')) ?: '1' }}" rel="stylesheet">
-    <link href="{{ asset('assets/css/marketing-saas.css') }}?v={{ @filemtime(public_path('assets/css/marketing-saas.css')) ?: '1' }}" rel="stylesheet">
-    <link href="{{ asset('assets/css/interaction.css') }}?v={{ @filemtime(public_path('assets/css/interaction.css')) ?: '1' }}" rel="stylesheet">
-    <link href="{{ asset('assets/css/dialog-system.css') }}?v={{ @filemtime(public_path('assets/css/dialog-system.css')) ?: '1' }}" rel="stylesheet">
-    <link href="{{ asset('assets/css/slb-live-search.css') }}?v={{ @filemtime(public_path('assets/css/slb-live-search.css')) ?: '1' }}" rel="stylesheet">
-    <link href="{{ asset('assets/css/hover-system.css') }}?v={{ @filemtime(public_path('assets/css/hover-system.css')) ?: '1' }}" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    @php
+        $marketingCssUrl = (class_exists(\App\Support\MarketingCssBundle::class) && method_exists(\App\Support\MarketingCssBundle::class, 'urlIfReady'))
+            ? \App\Support\MarketingCssBundle::urlIfReady()
+            : null;
+    @endphp
+    @if($marketingCssUrl)
+        <link href="{{ $marketingCssUrl }}" rel="stylesheet">
+    @else
+        <link href="{{ asset('assets/css/type-system.css') }}?v={{ @filemtime(public_path('assets/css/type-system.css')) ?: '1' }}" rel="stylesheet">
+        <link href="{{ asset('assets/css/brand-colors.css') }}?v={{ @filemtime(public_path('assets/css/brand-colors.css')) ?: '1' }}" rel="stylesheet">
+        <link href="{{ asset('assets/css/spacing-system.css') }}?v={{ @filemtime(public_path('assets/css/spacing-system.css')) ?: '1' }}" rel="stylesheet">
+        <link href="{{ asset('assets/css/button-system.css') }}?v={{ @filemtime(public_path('assets/css/button-system.css')) ?: '1' }}" rel="stylesheet">
+        <link href="{{ asset('assets/css/form-system.css') }}?v={{ @filemtime(public_path('assets/css/form-system.css')) ?: '1' }}" rel="stylesheet">
+        <link href="{{ asset('assets/css/glass-tip.css') }}?v={{ @filemtime(public_path('assets/css/glass-tip.css')) ?: '1' }}" rel="stylesheet">
+        <link href="{{ asset('assets/css/marketing-saas.css') }}?v={{ @filemtime(public_path('assets/css/marketing-saas.css')) ?: '1' }}" rel="stylesheet">
+        <link href="{{ asset('assets/css/interaction.css') }}?v={{ @filemtime(public_path('assets/css/interaction.css')) ?: '1' }}" rel="stylesheet">
+        <link href="{{ asset('assets/css/dialog-system.css') }}?v={{ @filemtime(public_path('assets/css/dialog-system.css')) ?: '1' }}" rel="stylesheet">
+        <link href="{{ asset('assets/css/slb-live-search.css') }}?v={{ @filemtime(public_path('assets/css/slb-live-search.css')) ?: '1' }}" rel="stylesheet">
+        <link href="{{ asset('assets/css/hover-system.css') }}?v={{ @filemtime(public_path('assets/css/hover-system.css')) ?: '1' }}" rel="stylesheet">
+    @endif
     <script src="{{ asset('assets/js/glass-tip.js') }}?v={{ @filemtime(public_path('assets/js/glass-tip.js')) ?: '1' }}" defer></script>
     <style>
         html, body {

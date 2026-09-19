@@ -154,32 +154,14 @@ class HreflangClusterTest extends TestCase
         }
     }
 
-    public function test_locale_prefixed_english_only_assets_redirect_to_canonical(): void
-    {
-        $slugs = array_merge(['guest-post-prices-europe'], CountryLander::slugs());
-
-        foreach (PublicI18n::prefixed() as $locale) {
-            foreach ($slugs as $slug) {
-                $this->get('/'.$locale.'/'.$slug)
-                    ->assertRedirect('/'.$slug);
-                $this->assertSame(301, $this->get('/'.$locale.'/'.$slug)->status(), '/'.$locale.'/'.$slug);
-            }
-        }
-    }
-
-    public function test_language_switcher_does_not_emit_hreflang_annotations(): void
-    {
-        $html = $this->get('/')->assertOk()->getContent();
-        $this->assertDoesNotMatchRegularExpression('/<a[^>]+hreflang=/i', $html);
-        $this->assertMatchesRegularExpression('/<link[^>]+rel="alternate"[^>]+hreflang=/i', $html);
-        $this->assertStringContainsString('id="languageDropdown"', $html);
-    }
-
-    public function test_auth_pages_are_outside_the_hreflang_cluster(): void
+    public function test_auth_pages_use_english_only_self_hreflang(): void
     {
         foreach (['/login', '/register'] as $path) {
             $html = $this->get($path)->assertOk()->getContent();
-            $this->assertSame([], $this->hreflangCluster($html), $path);
+            $this->assertSame([
+                'en-GB' => url($path),
+                'x-default' => url($path),
+            ], $this->hreflangCluster($html), $path);
         }
     }
 

@@ -251,25 +251,27 @@ class PublicI18n
     }
 
     /**
-     * Public English landers / indexes that must not grow locale-prefixed copies.
-     *
-     * @return list<string>
+     * Guest auth entry points (English-only; not a translated marketing cluster).
      */
-    public static function englishOnlyMarketingSlugs(): array
+    public static function isPublicAuthEntryPath(Request $request): bool
     {
-        $slugs = ['guest-post-prices-europe'];
-        if (class_exists(CountryLander::class)) {
-            $slugs = array_merge($slugs, CountryLander::slugs());
-        }
-
-        return array_values(array_unique(array_filter($slugs, fn ($slug) => is_string($slug) && $slug !== '')));
+        return in_array(self::firstPathSegment($request), [
+            'login',
+            'register',
+            'forgot-password',
+            'reset-password',
+            'email',
+            'auth',
+        ], true);
     }
 
-    public static function isEnglishOnlyMarketingPath(Request $request): bool
+    public static function robotsContent(Request $request): string
     {
-        $first = self::firstPathSegment($request);
+        if (self::isPublicAuthEntryPath($request)) {
+            return 'noindex, nofollow';
+        }
 
-        return $first !== '' && in_array($first, self::englishOnlyMarketingSlugs(), true);
+        return 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1';
     }
 
     public static function isPublicMarketingPath(Request $request): bool
@@ -396,7 +398,17 @@ class PublicI18n
         ?array $pathByLocale = null
     ): array {
         if (! self::isPublicMarketingPath($request)) {
-            return [];
+            if (! self::isPublicAuthEntryPath($request)) {
+                return [];
+            }
+
+            $authPath = ltrim(self::pathWithoutLocale($request), '/');
+            $href = url('/'.$authPath);
+
+            return [
+                ['hreflang' => self::hreflang(self::default()), 'href' => $href],
+                ['hreflang' => 'x-default', 'href' => $href],
+            ];
         }
 
         $path = $pathOverride !== null ? ltrim($pathOverride, '/') : self::pathWithoutLocale($request);

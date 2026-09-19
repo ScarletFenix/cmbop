@@ -58,15 +58,26 @@ class SeoLeftoverClassHardeningTest extends TestCase
         $i18n = (string) file_get_contents(base_path('app/Support/PublicI18n.php'));
         $this->assertStringContainsString('class_exists(LocalizedPublicPath::class)', $i18n);
 
-        $home = (string) file_get_contents(base_path('resources/views/home.blade.php'));
         $about = (string) file_get_contents(base_path('resources/views/pages/about.blade.php'));
         $prices = (string) file_get_contents(base_path('resources/views/pages/guest-post-prices-europe.blade.php'));
         $layout = (string) file_get_contents(base_path('resources/views/layouts/app.blade.php'));
         $helper = (string) file_get_contents(base_path('app/Helpers/LanguageHelper.php'));
-        $this->assertStringContainsString('class_exists(\\App\\Support\\BrandOrganization::class)', $home);
         $this->assertStringContainsString('class_exists(\\App\\Support\\BrandOrganization::class)', $about);
         $this->assertStringContainsString('class_exists(\\App\\Support\\BrandOrganization::class)', $prices);
+        $this->assertStringContainsString('class_exists(\\App\\Support\\BrandOrganization::class)', $layout);
+        $this->assertStringContainsString('class_exists(\\App\\Support\\MarketingCssBundle::class)', $layout);
+        $this->assertStringContainsString("method_exists(\\App\\Support\\BrandOrganization::class, 'pageGraphJson')", $layout);
+        $this->assertStringContainsString("method_exists(\\App\\Support\\MarketingCssBundle::class, 'urlIfReady')", $layout);
+        $this->assertStringContainsString("method_exists(\\App\\Support\\PublicI18n::class, 'robotsContent')", $layout);
+        $this->assertStringContainsString('urlIfReady', $layout);
+        $this->assertStringContainsString('pageGraphJson', $layout);
+        $this->assertStringContainsString('jsonLd', (string) file_get_contents(base_path('app/Support/BrandOrganization.php')));
+        $this->assertStringContainsString('assets/css/type-system.css', $layout);
+        $this->assertStringContainsString('assets/css/hover-system.css', $layout);
         $this->assertStringContainsString('class_exists(\\App\\Support\\PublicI18n::class)', $layout);
+        $this->assertStringContainsString('JSON_HEX_TAG', (string) file_get_contents(resource_path('views/home.blade.php')));
+        $this->assertStringContainsString('JSON_HEX_TAG', (string) file_get_contents(resource_path('views/pages/about.blade.php')));
+        $this->assertStringContainsString('JSON_HEX_TAG', (string) file_get_contents(resource_path('views/components/breadcrumbs.blade.php')));
         $this->assertStringContainsString('class_exists(PublicI18n::class)', $helper);
 
         $marketplace = (string) file_get_contents(base_path('resources/views/pages/marketplace.blade.php'));
@@ -94,16 +105,14 @@ class SeoLeftoverClassHardeningTest extends TestCase
 
     public function test_public_money_pages_and_admin_login_stay_up(): void
     {
-        $this->get('/')->assertOk();
-        $this->get('/about')->assertOk();
-        $this->get('/marketplace')->assertOk();
-        $this->get('/guest-posts-germany')->assertOk();
-        $this->get('/guest-post-prices-europe')->assertOk();
-        $this->get('/how-it-works')->assertOk();
-        $this->get('/refund-policy')->assertOk();
+        foreach (['/', '/about', '/marketplace', '/guest-posts-germany', '/guest-post-prices-europe', '/how-it-works', '/refund-policy', '/login'] as $path) {
+            $this->get($path)
+                ->assertOk()
+                ->assertDontSee('SQLSTATE')
+                ->assertDontSee('App\\Models');
+        }
         $this->get('/sitemap-en.xml')->assertOk();
         $this->get('/robots.txt')->assertOk();
-        $this->get('/login')->assertOk();
 
         $this->assertNull(Site::forgetMarketingCaches());
     }

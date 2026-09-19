@@ -52,6 +52,67 @@ class BrandOrganization
     }
 
     /**
+     * Page-level JSON-LD graph (Organization + WebPage) so crawlers detect
+     * schema.org types on every public layout, including auth.
+     *
+     * @return array<string, mixed>
+     */
+    public static function pageGraph(string $name, string $description, string $url): array
+    {
+        $orgId = rtrim((string) url('/'), '/').'/#organization';
+        $org = self::schema(['@id' => $orgId]);
+
+        $page = [
+            '@type' => 'WebPage',
+            '@id' => $url.'#webpage',
+            'url' => $url,
+            'name' => $name,
+            'description' => $description,
+            'isPartOf' => ['@id' => $orgId],
+            'about' => ['@id' => $orgId],
+            'publisher' => ['@id' => $orgId],
+        ];
+
+        if (class_exists(PublicI18n::class) && method_exists(PublicI18n::class, 'htmlLang')) {
+            $page['inLanguage'] = PublicI18n::htmlLang();
+        }
+
+        return [
+            '@context' => 'https://schema.org',
+            '@graph' => [$org, $page],
+        ];
+    }
+
+    /**
+     * Leftover-safe JSON-LD for a <script type="application/ld+json"> block.
+     * HEX_TAG stops </script> in titles/copy from breaking the page.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    public static function jsonLd(array $data): string
+    {
+        try {
+            $json = json_encode(
+                $data,
+                JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_INVALID_UTF8_SUBSTITUTE
+            );
+        } catch (\Throwable) {
+            return '';
+        }
+
+        return is_string($json) && $json !== '' && $json !== 'null' && $json !== 'false' ? $json : '';
+    }
+
+    public static function pageGraphJson(string $name, string $description, string $url): string
+    {
+        try {
+            return self::jsonLd(self::pageGraph($name, $description, $url));
+        } catch (\Throwable) {
+            return '';
+        }
+    }
+
+    /**
      * Official identities for brand SERP: social profiles, Trustpilot, Companies House.
      *
      * @return list<string>

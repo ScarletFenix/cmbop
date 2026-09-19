@@ -567,7 +567,7 @@ return [
     'meta_privacy_description' => 'Wie SEOLinkBuildings personenbezogene Daten von Advertisern, Publishern und Besuchern auf Seolinkbuildings.com erhebt, nutzt und schützt.',
     'meta_terms_title' => 'Nutzungsbedingungen | SEOLinkBuildings',
     'meta_terms_description' => 'Bedingungen für die Nutzung des SEOLinkBuildings-Guest-Post-Marktplatzes, Wallets, Aufträge und Publisher-Placements auf Seolinkbuildings.com.',
-    'meta_login_title' => 'Anmelden | SEOLinkBuildings',
+    'meta_login_title' => 'Anmelden bei Ihrem Guest-Post-Konto | SEOLinkBuildings',
     'meta_login_description' => 'Melden Sie sich bei SEOLinkBuildings an, um Guest-Post-Aufträge, Publisher-Sites, Wallet-Saldo und Kampagnen zu verwalten.',
     'meta_register_title' => 'Konto erstellen — €20 Willkommensguthaben | SEOLinkBuildings',
     'meta_register_title_off' => 'Konto erstellen | SEOLinkBuildings',

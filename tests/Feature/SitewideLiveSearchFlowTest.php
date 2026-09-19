@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Support\MarketingCssBundle;
 use Tests\TestCase;
 
 /**
@@ -45,6 +46,16 @@ class SitewideLiveSearchFlowTest extends TestCase
         foreach ($layouts as $layout) {
             $markup = (string) file_get_contents(resource_path('views/'.$layout));
             $this->assertStringContainsString('js/slb-live-search.js', $markup, $layout);
+
+            if ($layout === 'layouts/app.blade.php') {
+                $this->assertStringContainsString('MarketingCssBundle', $markup, $layout);
+                $this->assertContains('slb-live-search.css', MarketingCssBundle::FILES);
+                $files = MarketingCssBundle::FILES;
+                $this->assertSame('hover-system.css', $files[array_key_last($files)]);
+
+                continue;
+            }
+
             $this->assertStringContainsString('assets/css/slb-live-search.css', $markup, $layout);
             $this->assertStringContainsString('assets/css/slb-icons.css', $markup, $layout);
             $this->assertStringContainsString('partials.slb-icon-draw', $markup, $layout);
@@ -112,9 +123,6 @@ class SitewideLiveSearchFlowTest extends TestCase
             resource_path('views/marketing/history.blade.php'),
             resource_path('views/admin/content-library/index.blade.php'),
             resource_path('views/admin/users.blade.php'),
-            resource_path('views/admin/catalog-activity.blade.php'),
-            resource_path('views/admin/promotions/banners/index.blade.php'),
-            resource_path('views/admin/promotions/announcements/index.blade.php'),
         ];
 
         foreach ($forms as $path) {

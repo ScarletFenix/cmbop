@@ -6,13 +6,6 @@
 
 @push('head')
 <script type="application/ld+json">
-{!! json_encode(array_merge([
-    '@@context' => 'https://schema.org',
-], class_exists(\App\Support\BrandOrganization::class)
-    ? \App\Support\BrandOrganization::schema()
-    : ['@type' => 'Organization', 'name' => 'SEOLinkBuildings']), JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) !!}
-</script>
-<script type="application/ld+json">
 {!! json_encode([
     '@@context' => 'https://schema.org',
     '@type' => 'SoftwareApplication',
@@ -33,7 +26,7 @@
         'legalName' => config('billing.company.legal_name'),
         'identifier' => config('billing.company.registration_no', '16607074'),
     ],
-], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) !!}
+], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_HEX_TAG|JSON_HEX_AMP|JSON_INVALID_UTF8_SUBSTITUTE) ?: '{}' !!}
 </script>
 <script type="application/ld+json">
 {!! json_encode([
@@ -57,7 +50,7 @@
             'url' => localized_url('about'),
         ],
     ],
-], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) !!}
+], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_HEX_TAG|JSON_HEX_AMP|JSON_INVALID_UTF8_SUBSTITUTE) ?: '{}' !!}
 </script>
 @endpush
 

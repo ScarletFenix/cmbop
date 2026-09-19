@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'Reset Password')
+@section('title', 'Reset Password | SEOLinkBuildings Guest Post Marketplace')
 
 @section('content')
 <div class="container py-5">
