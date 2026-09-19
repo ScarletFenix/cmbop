@@ -131,6 +131,7 @@
         )->contains(fn ($row) => filled($row->expires_at ?? null));
 @endphp
 
+    <div class="library-toolbar">
     <nav class="library-status-row" aria-label="Library status filter">
         @foreach($libraryStatusChips as $key => $chip)
             @php
@@ -158,7 +159,7 @@
         <p class="library-table-note" role="note">Unused originals are removed after expiry; preview stays.</p>
     @endif
 
-    <form method="POST" action="{{ route('advertiser.content-submissions.bulk-archive') }}" id="libraryBulkForm" class="d-flex flex-wrap gap-2 mb-2">
+    <form method="POST" action="{{ route('advertiser.content-submissions.bulk-archive') }}" id="libraryBulkForm" class="library-bulk-bar">
         @csrf
         <button type="submit" class="btn btn-sm btn-outline-secondary" id="libraryBulkArchiveBtn"
                 data-slb-confirm="Archive the selected unused articles?"
@@ -176,6 +177,7 @@
         </button>
         <span class="small text-muted align-self-center">Unused articles only · up to 50</span>
     </form>
+    </div>
 
     <div class="library-table border shadow-sm">
         <div class="table-responsive">
@@ -430,10 +432,11 @@
                         </td>
                         <td class="text-end library-actions">
                             @if($availability === 'published')
-                            <div class="d-inline-flex flex-wrap gap-1 justify-content-end">
+                            <div class="library-actions-group">
                                 <div class="dropdown">
                                     <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
-                                            data-bs-toggle="dropdown" data-bs-display="static"
+                                            data-bs-toggle="dropdown"
+                                            data-bs-popper-config='{"strategy":"fixed"}'
                                             data-bs-auto-close="true" aria-expanded="false" aria-haspopup="true">
                                         More
                                     </button>
@@ -455,7 +458,7 @@
                                 </div>
                             </div>
                             @else
-                            <div class="d-inline-flex flex-wrap gap-1 justify-content-end">
+                            <div class="library-actions-group">
                                 @if($submission->canOrderFromLibrary())
                                     <a class="btn btn-sm btn-primary"
                                        href="{{ route('advertiser.content-library.order', $submission, false) }}">
@@ -475,13 +478,6 @@
                                             Resubmit
                                         </a>
                                     @endif
-                                @elseif($submission->canDuplicateForLibrary())
-                                    <button type="button"
-                                            class="btn btn-sm btn-outline-secondary js-library-duplicate"
-                                            data-submission-id="{{ $submission->id }}"
-                                            data-title="{{ $submission->title ?: $submission->original_filename }}">
-                                        Duplicate
-                                    </button>
                                 @endif
                                 @if($availability === 'in_progress'
                                     || ($submission->libraryOrder() && ! $submission->isPublished() && $availability !== 'available'))
@@ -490,7 +486,8 @@
 
                                 <div class="dropdown">
                                     <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
-                                            data-bs-toggle="dropdown" data-bs-display="static"
+                                            data-bs-toggle="dropdown"
+                                            data-bs-popper-config='{"strategy":"fixed"}'
                                             data-bs-auto-close="true" aria-expanded="false" aria-haspopup="true">
                                         More
                                     </button>

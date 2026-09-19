@@ -37,7 +37,7 @@
                 <i class="fa fa-info-circle me-1"></i>
                 Paying {{ (int) ($payableCount ?? 0) }} ready site{{ (int) ($payableCount ?? 0) === 1 ? '' : 's' }}
                 @if((float) $total > 0)
-                    · €{{ number_format($total, 2) }}
+                    · {{ format_money_pay($total) }}
                 @endif
             </div>
             <div class="small text-muted mb-0">
@@ -132,9 +132,9 @@
                                             <div class="site-summary-price text-end">
                                                 <div class="site-summary-price-label">{{ !empty($item['paying_now']) ? 'Charged now' : 'Not charged yet' }}</div>
                                                 @if(!empty($item['discount_amount']) && $item['discount_amount'] > 0)
-                                                    <div class="small text-muted text-decoration-line-through">€{{ number_format(($item['list_total'] ?? $item['price']) + (float) ($item['homepage_price'] ?? 0), 2) }}</div>
+                                                    <div class="small text-muted text-decoration-line-through">{{ format_money_pay(($item['list_total'] ?? $item['price']) + (float) ($item['homepage_price'] ?? 0)) }}</div>
                                                 @endif
-                                                <div class="site-summary-price-value {{ empty($item['paying_now']) ? 'text-muted' : '' }}">€{{ number_format($item['price'], 2) }}</div>
+                                                <div class="site-summary-price-value {{ empty($item['paying_now']) ? 'text-muted' : '' }}">{{ format_money_pay($item['price']) }}</div>
                                                 @if(!empty($item['discount_labels']))
                                                     <div class="small text-success">{{ implode(' · ', $item['discount_labels']) }}</div>
                                                 @endif
@@ -144,12 +144,12 @@
                                         <div class="site-summary-details">
                                             <div class="site-summary-row">
                                                 <span>Base price</span>
-                                                <span class="site-summary-amount">€{{ number_format($item['base_price'], 2) }}</span>
+                                                <span class="site-summary-amount">{{ format_money_pay($item['base_price']) }}</span>
                                             </div>
                                             @if(!empty($item['discount_amount']) && $item['discount_amount'] > 0)
                                             <div class="site-summary-row">
                                                 <span>Discount savings</span>
-                                                <span class="site-summary-amount text-success">−€{{ number_format($item['discount_amount'], 2) }}</span>
+                                                <span class="site-summary-amount text-success">−{{ format_money_pay($item['discount_amount']) }}</span>
                                             </div>
                                             @endif
                                             @if($hasSensitive)
@@ -158,7 +158,7 @@
                                                         Sensitive topic
                                                         <strong>{{ ucfirst($item['sensitive_type']) }}</strong>
                                                     </span>
-                                                    <span class="site-summary-amount site-summary-amount-accent">+€{{ number_format($item['additional_price'], 2) }}</span>
+                                                    <span class="site-summary-amount site-summary-amount-accent">{{ format_money_pay($item['additional_price'], ['signed' => true]) }}</span>
                                                 </div>
                                             @endif
                                             @if(!empty($item['homepage_days']))
@@ -169,7 +169,7 @@
                                                     </span>
                                                     <span class="site-summary-amount">
                                                         @if(($item['homepage_price'] ?? 0) > 0)
-                                                            +€{{ number_format($item['homepage_price'], 2) }}
+                                                            {{ format_money_pay($item['homepage_price'], ['signed' => true]) }}
                                                         @else
                                                             Free
                                                         @endif
@@ -477,7 +477,7 @@
                                     <div style="margin-bottom: 16px;">
                                         <p style="font-size: 14px; color: #6b7280; margin-bottom: 8px;">Amount to Pay:</p>
                                         <p style="font-size: 20px; font-weight: 600; color: #1f2937; margin: 0;" id="walletAmountDue">
-                                            €{{ number_format($total, 2) }}
+                                            {{ format_money_pay($total) }}
                                         </p>
                                     </div>
                                     
@@ -713,7 +713,7 @@
                         <div class="card-body">
                             <div class="d-flex justify-content-between mb-2">
                                 <span class="text-muted">Subtotal:</span>
-                                <span id="subtotal">€{{ number_format($total, 2) }}</span>
+                                <span id="subtotal">{{ format_money_pay($total) }}</span>
                             </div>
                             <div class="d-flex justify-content-between mb-2">
                                 <span class="text-muted">Tax (0%):</span>
@@ -741,10 +741,10 @@
                             <hr>
                             <div class="d-flex justify-content-between mb-1">
                                 <strong>Amount due:</strong>
-                                <strong class="checkout-theme-price fs-5" id="grandTotal">€{{ number_format($total, 2) }}</strong>
+                                <strong class="checkout-theme-price fs-5" id="grandTotal">{{ format_money_pay($total) }}</strong>
                             </div>
                             @if(!empty($savings) && $savings > 0)
-                                <div class="small text-success mb-3">You save €{{ number_format($savings, 2) }} with active discounts</div>
+                                <div class="small text-success mb-3">You save {{ format_money_pay($savings) }} with active discounts</div>
                             @else
                                 <div class="mb-3"></div>
                             @endif
@@ -1308,7 +1308,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function moneyFmt(n) {
-        return '€' + Number(n || 0).toFixed(2);
+        return (window.slbFormatPay || function (v) { return '€' + Number(v || 0).toFixed(2); })(n);
     }
 
     function refreshBonusUi() {
@@ -1742,8 +1742,9 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 
 <!-- SweetAlert2 for better alerts -->  
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="{{ asset('assets/vendor/sweetalert2/sweetalert2.min.js') }}?v={{ @filemtime(public_path('assets/vendor/sweetalert2/sweetalert2.min.js')) ?: '1' }}"></script>
 <!-- Font Awesome -->
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+<link href="{{ asset('assets/css/slb-icons.css') }}?v={{ @filemtime(public_path('assets/css/slb-icons.css')) ?: '1' }}" rel="stylesheet">
+@include('partials.slb-icon-draw')
 
 @endsection

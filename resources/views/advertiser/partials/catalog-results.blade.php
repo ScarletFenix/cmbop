@@ -68,8 +68,7 @@
                  data-status-text="{{ $catalogResultsStatus['text'] }}"
                  data-status-announce="{{ $catalogResultsStatus['announce'] }}">
                 <div class="catalog-results-busy" hidden aria-hidden="true">
-                    <span class="catalog-results-busy__spinner"></span>
-                    <span class="catalog-results-busy__label">Updating results…</span>
+                    <span class="catalog-results-busy__label visually-hidden">Updating results…</span>
                 </div>
                 <div class="card-body p-0">
                     
@@ -296,8 +295,8 @@
                                                 data-glass-tip-body="This publisher has successfully completed our verification process and meets our platform's quality standards."
                                                 data-glass-tip-placement="top"
                                                 aria-label="Verified publisher">
-                                            <i class="fa-solid fa-circle-check" aria-hidden="true"></i>
-                                            <span>Verified</span>
+                                            <span class="catalog-verified-lottie" data-lottie="{{ asset('assets/vendor/lottie/verified.json') }}" aria-hidden="true"></span>
+                                            <span class="visually-hidden">Verified</span>
                                         </button>
                                     @endif
                                 </span>
@@ -420,7 +419,6 @@
                         @include('advertiser.partials.catalog-meta-chips', [
                             'site' => $site,
                         ])
-                        @include('advertiser.partials.catalog-site-trust', ['site' => $site, 'compactClass' => 'catalog-site-trust--row mt-1'])
                         </div>
                     </div>
                 </td>
@@ -578,19 +576,26 @@
                 {{-- Preview | Description | Pricing | Tags + sample --}}
                 <div class="row align-items-start g-4 catalog-expand-grid">
 
+                    @php
+                        // Full capture → thumb → upload; /media then /storage (Hostinger).
+                        $previewPaths = $site->homepagePreviewUrlChain();
+                        $previewUrl = $previewPaths[0] ?? null;
+                        $expandZoomPaths = $site->zoomPreviewUrlChain();
+                        if ($expandZoomPaths === [] && $previewPaths !== []) {
+                            $expandZoomPaths = $previewPaths;
+                        }
+                        $expandZoomUrl = $expandZoomPaths[0] ?? $previewUrl;
+                    @endphp
+                    @if($previewUrl)
                     <div class="col-12 catalog-expand-preview">
-                        <p class="small text-muted mb-2"><strong>Homepage preview</strong></p>
-                        @php
-                            // Full capture → thumb → upload; /media then /storage (Hostinger).
-                            $previewPaths = $site->homepagePreviewUrlChain();
-                            $previewUrl = $previewPaths[0] ?? null;
-                            $expandZoomPaths = $site->zoomPreviewUrlChain();
-                            if ($expandZoomPaths === [] && $previewPaths !== []) {
-                                $expandZoomPaths = $previewPaths;
-                            }
-                            $expandZoomUrl = $expandZoomPaths[0] ?? $previewUrl;
-                        @endphp
-                        @if($previewUrl)
+                        <p class="small text-muted mb-2 catalog-details-heading">
+                            <strong>Homepage preview</strong>
+                            <x-glass-tip
+                                title="Homepage preview"
+                                body="Recent screenshot of the publisher homepage so you can judge layout and brand before you buy."
+                                label="About Homepage preview"
+                                placement="top" />
+                        </p>
                             <div class="site-preview-zoom"
                                  tabindex="0"
                                  role="img"
@@ -612,36 +617,40 @@
                                 <i class="fa-solid fa-image text-muted" style="font-size: 28px;" aria-hidden="true"></i>
                                 <span class="small text-muted">Screenshot not available yet</span>
                             </div>
-                        @else
-                            <div class="site-preview-fallback bg-light border rounded d-inline-flex flex-column align-items-center justify-content-center gap-2 px-3" role="img" aria-label="Screenshot not available yet">
-                                <i class="fa-solid fa-image text-muted" style="font-size: 28px;" aria-hidden="true"></i>
-                                <span class="small text-muted">Screenshot not available yet</span>
-                            </div>
-                        @endif
                     </div>
+                    @endif
 
                     <div class="{{ $hasPricingExtras ? 'col-lg-3' : ($hasPlacementExtras ? 'col-lg-4' : 'col-lg-5') }} col-md-6 catalog-expand-description">
-                        <p class="mb-1"><strong class="small">Description</strong></p>
+                        @if($hasExpandDescription)
+                        <p class="mb-1 catalog-details-heading">
+                            <strong class="small">Description</strong>
+                            <x-glass-tip
+                                title="Description"
+                                body="The publisher’s listing copy for this site — niche, audience, and what they accept."
+                                label="About Description"
+                                placement="top" />
+                        </p>
                         <div class="text-muted small">
                             @if($inCatalogHideMode && ! $showsIdentity)
                                 <span>Use the eye to show this listing’s name and URL, then the description appears.</span>
-                            @elseif($hasExpandDescription)
-                                {!! $expandDescriptionHtml !!}
                             @else
-                                <span>No description yet</span>
+                                {!! $expandDescriptionHtml !!}
                             @endif
                         </div>
-                        @if($site->lastPublicationLabel())
-                            <p class="text-muted small mb-0 mt-1" style="color:#94a3b8 !important;">
-                                {{ $site->lastPublicationLabel() }}
-                            </p>
                         @endif
                         @unless($hasListingExtras)
                             <p class="text-muted small mb-0 mt-2">Base guest post only — no homepage, social, or sensitive add-ons.</p>
                         @endunless
 
                         <div class="catalog-expand-trust mt-3">
-                            <p class="mb-1"><strong class="small">Publisher trust</strong></p>
+                            <p class="mb-1 catalog-details-heading">
+                                <strong class="small">Publisher trust</strong>
+                                <x-glass-tip
+                                    title="Publisher trust"
+                                    body="Ratings from advertisers after completed orders. Completion rate is successful vs cancelled placements. Last published is the most recent completed placement on this site."
+                                    label="About Publisher trust"
+                                    placement="top" />
+                            </p>
                             @include('advertiser.partials.catalog-site-trust', ['site' => $site, 'compactClass' => ''])
                         </div>
                     </div>
@@ -650,8 +659,14 @@
                     <div class="col-lg-3 col-md-6 catalog-expand-pricing">
                         <div class="d-flex flex-column gap-2">
                                 @if($hasSensitiveExtras)
-                                <p class="mb-0"><strong>Sensitive topics</strong></p>
-                                <p class="small text-muted mb-1">Optional add-on if the article is in one of these niches.</p>
+                                <p class="mb-0 catalog-details-heading">
+                                    <strong>Sensitive topics</strong>
+                                    <x-glass-tip
+                                        title="Sensitive topics"
+                                        body="Optional add-on if the article is in one of these niches."
+                                        label="About Sensitive topics"
+                                        placement="top" />
+                                </p>
 
                                 <div class="sensitive-prices-group"
                                      data-site-id="{{ $site->id }}"
@@ -674,7 +689,7 @@
                                                checked>
                                         <label class="form-check-label" for="sensitive_{{ $site->id }}_none">
                                             <strong>No sensitive topic</strong>
-                                            <span class="text-muted">€{{ number_format($articlePay, 2) }}</span>
+                                            <span class="text-muted">{{ format_money($articlePay) }}</span>
                                         </label>
                                     </div>
 
@@ -703,8 +718,8 @@
                                             <label class="form-check-label"
                                                    for="sensitive_{{ $site->id }}_{{ $loop->index }}">
                                                 <strong>{{ ucfirst($type) }}</strong>
-                                                <span class="catalog-addon-price">add-on +€{{ number_format($additionalPrice, 2) }}</span>
-                                                <span class="text-muted">→ you pay €{{ number_format($totalPrice, 2) }}</span>
+                                                <span class="catalog-addon-price">add-on {{ format_money($additionalPrice, ['signed' => true]) }}</span>
+                                                <span class="text-muted">→ you pay {{ format_money($totalPrice) }}</span>
                                             </label>
                                         </div>
                                     @endforeach
@@ -716,9 +731,9 @@
                                      id="price-info-{{ $site->id }}">
                                     <small class="text-muted">
                                         You pay:
-                                        <strong>€{{ number_format($articlePay, 2) }}</strong>
+                                        <strong>{{ format_money($articlePay) }}</strong>
                                         @if($catalogSalePrice !== null)
-                                            <span class="text-decoration-line-through">€{{ number_format($catalogListPrice, 2) }}</span>
+                                            <span class="text-decoration-line-through">{{ format_money($catalogListPrice) }}</span>
                                             (offer price)
                                         @else
                                             (base price)
@@ -731,35 +746,50 @@
                     @endif
 
                     <div class="{{ $hasPricingExtras ? 'col-lg-3' : ($hasPlacementExtras ? 'col-lg-5' : 'col-lg-4') }} col-md-6 catalog-expand-meta">
-                        <p class="mb-1"><strong>Link type</strong></p>
+                        @if($site->linkTypeLabel())
+                        <p class="mb-1 catalog-details-heading">
+                            <strong>Link type</strong>
+                            <x-glass-tip
+                                title="Link type"
+                                body="Link attribute on the published placement."
+                                label="About Link type"
+                                placement="top" />
+                        </p>
                         <div class="mb-3">
-                            @if($site->linkTypeLabel())
                                 <span class="badge bg-secondary-subtle text-secondary border px-2 py-1"
-                                      style="font-size: 11px;"
-                                      title="Link attribute on the published placement">
+                                      style="font-size: 11px;">
                                     <i class="fa-solid fa-link me-1" aria-hidden="true"></i>{{ $site->linkTypeLabel() }}
                                 </span>
-                            @else
-                                <span class="text-muted small">No link type specified</span>
-                            @endif
                         </div>
+                        @endif
 
-                        <p class="mb-1">
-                            <strong>
-                                <abbr class="metric-abbr text-decoration-none" title="{{ \App\Support\SiteTag::FILTER_TOOLTIP }}">{{ \App\Support\SiteTag::DETAILS_HEADING }}</abbr>
-                            </strong>
+                        @if($site->tagValue() !== null)
+                        <p class="mb-1 catalog-details-heading">
+                            <strong>{{ \App\Support\SiteTag::DETAILS_HEADING }}</strong>
+                            <x-glass-tip
+                                title="{{ \App\Support\SiteTag::DETAILS_HEADING }}"
+                                body="{{ \App\Support\SiteTag::FILTER_TOOLTIP }}"
+                                label="About {{ \App\Support\SiteTag::DETAILS_HEADING }}"
+                                placement="top" />
                         </p>
                         <div class="mb-3">
                             @include('advertiser.partials.catalog-tag-chip', [
                                 'site' => $site,
-                                'showNone' => true,
-                                'showDefinition' => true,
+                                'showNone' => false,
+                                'showDefinition' => false,
                             ])
                         </div>
+                        @endif
 
-                        <p class="mb-1"><strong>Homepage promotions</strong> <span class="text-muted fw-normal">(optional)</span></p>
                         @if($homepageOptions !== [])
-                            <p class="small text-muted mb-2">Put the article on the publisher homepage for a set duration. Sale/bulk discounts do not apply to this fee.</p>
+                        <p class="mb-1 catalog-details-heading">
+                            <strong>Homepage promotions</strong>
+                            <x-glass-tip
+                                title="Homepage promotions"
+                                body="Put the article on the publisher homepage for a set duration. Sale/bulk discounts do not apply to this fee."
+                                label="About Homepage promotions"
+                                placement="top" />
+                        </p>
                             <div class="homepage-placement-group mb-3"
                                  data-site-id="{{ $site->id }}"
                                  role="radiogroup"
@@ -795,32 +825,47 @@
                                             @if($isFreeHome)
                                                 <span class="text-success">Free</span>
                                             @else
-                                                <span class="text-muted">add-on +€{{ number_format($fee, 2) }}</span>
+                                                <span class="text-muted">add-on {{ format_money($fee, ['signed' => true]) }}</span>
                                             @endif
                                             @if($showAdvertiserPay)
-                                                <span class="text-muted">→ you pay €{{ number_format(round($articlePay + (float) $fee, 2), 2) }}</span>
+                                                <span class="text-muted">→ you pay {{ format_money(round($articlePay + (float) $fee, 2)) }}</span>
                                             @endif
                                         </label>
                                     </div>
                                 @endforeach
                             </div>
-                        @else
-                            <p class="small text-muted mb-3">Not offered on this listing.</p>
                         @endif
 
-                        <p class="mb-1"><strong>Social</strong></p>
                         @if($socialChannels !== [])
-                            <p class="small text-muted mb-2">Publisher will share the live post on these channels at no extra cost.</p>
+                        <p class="mb-1 catalog-details-heading">
+                            <strong>Social</strong>
+                            <x-glass-tip
+                                title="Social"
+                                body="Publisher will share the live post on these channels at no extra cost."
+                                label="About Social"
+                                placement="top" />
+                        </p>
                             <div class="d-flex flex-wrap gap-1 mb-3" aria-label="Included social channels">
                                 @foreach($socialChannels as $channel)
                                     <span class="badge bg-light text-dark border">{{ $socialChannelLabels[$channel] ?? ucfirst($channel) }}</span>
                                 @endforeach
                             </div>
-                        @else
-                            <p class="small text-muted mb-3">No social sharing included on this listing.</p>
                         @endif
 
-                        <p class="mb-1"><strong>Sample article</strong></p>
+                        @php
+                            $sampleUrl = safe_external_url($site->example_url);
+                            $sampleVisit = route('advertiser.catalog.visit', ['site' => $site->id, 'sample' => 1]);
+                            $hasSampleArticle = $sampleUrl !== '#';
+                        @endphp
+                        @if($hasSampleArticle)
+                        <p class="mb-1 catalog-details-heading">
+                            <strong>Sample article</strong>
+                            <x-glass-tip
+                                title="Sample article"
+                                body="An example live placement from this publisher so you can review their writing and link style."
+                                label="About Sample article"
+                                placement="top" />
+                        </p>
                         {{-- Sample URLs share the listing domain — only show when
                              identity is visible (always outside hide mode; after eye inside). --}}
                         <div class="d-flex flex-column gap-2 mb-3">
@@ -835,11 +880,6 @@
                                     Use the eye to show this listing’s name and URL, then the sample article link appears.
                                 </span>
                             @else
-                                @php
-                                    $sampleUrl = safe_external_url($site->example_url);
-                                    $sampleVisit = route('advertiser.catalog.visit', ['site' => $site->id, 'sample' => 1]);
-                                @endphp
-                                @if($sampleUrl !== '#')
                                     <div class="d-flex align-items-center gap-2">
                                         <a href="{{ $sampleVisit }}"
                                            target="_blank"
@@ -866,34 +906,40 @@
                                             style="width: fit-content;">
                                         <i class="fa-regular fa-copy" aria-hidden="true"></i> Copy URL
                                     </button>
-                                @else
-                                    <span class="text-muted small">No sample article yet</span>
-                                @endif
                             @endif
                         </div>
+                        @endif
 
-                        <p class="mb-1"><strong title="Typical publisher turnaround once an order is accepted">Turnaround</strong></p>
                         @if($site->turnaroundLabel())
+                        <p class="mb-1 catalog-details-heading">
+                            <strong>Turnaround</strong>
+                            <x-glass-tip
+                                title="Turnaround"
+                                body="Typical publisher turnaround once an order is accepted."
+                                label="About Turnaround"
+                                placement="top" />
+                        </p>
                             <span class="badge text-muted border px-2 py-1 mb-3"
-                                  style="font-size: 11px;"
-                                  title="Typical publisher turnaround once an order is accepted">
+                                  style="font-size: 11px;">
                                 <i class="fa-solid fa-hourglass-half me-1" aria-hidden="true"></i>
                                 {{ $site->turnaroundLabel() }}
                             </span>
-                        @else
-                            <span class="text-muted small d-block mb-3">Not specified</span>
                         @endif
 
-                        <p class="mb-1"><strong title="How long the published article stays live">Publication duration</strong></p>
                         @if($site->publicationDurationLabel())
+                        <p class="mb-1 catalog-details-heading">
+                            <strong>Publication duration</strong>
+                            <x-glass-tip
+                                title="Publication duration"
+                                body="How long the published article stays live."
+                                label="About Publication duration"
+                                placement="top" />
+                        </p>
                             <span class="badge text-muted border px-2 py-1"
-                                  style="font-size: 11px;"
-                                  title="How long the published article stays live">
+                                  style="font-size: 11px;">
                                 <i class="fa-solid fa-clock me-1" aria-hidden="true"></i>
                                 {{ $site->publicationDurationLabel() }}
                             </span>
-                        @else
-                            <span class="text-muted small">Not specified</span>
                         @endif
                     </div>
 
@@ -1028,7 +1074,7 @@
                        @endif>{{ $displayRootedUrl }}</a>
                     <div class="catalog-site-badges catalog-site-badges--mobile mt-1">
                         @if($site->verified)
-                            <span class="site-chip site-chip--verified site-chip--status"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>Verified</span></span>
+                            <span class="site-chip site-chip--verified site-chip--status"><span class="catalog-verified-lottie" data-lottie="{{ asset('assets/vendor/lottie/verified.json') }}" aria-hidden="true"></span><span class="visually-hidden">Verified</span></span>
                         @endif
                         @include('advertiser.partials.catalog-tag-chip', ['site' => $site])
                         @if($isNew)
@@ -1085,7 +1131,6 @@
                     @include('advertiser.partials.catalog-meta-chips', [
                         'site' => $site,
                     ])
-                    @include('advertiser.partials.catalog-site-trust', ['site' => $site, 'compactClass' => 'catalog-site-trust--row mt-1'])
                     </div>
                 </div>
                 {{-- Eye only in copy-strike hide mode (normals see full identity). --}}
@@ -1142,8 +1187,14 @@
                      data-discount-percent="{{ $catalogSalePct ?? 0 }}"
                      role="radiogroup"
                      aria-label="Sensitive topic pricing">
-                    <div class="small fw-semibold mb-1">Sensitive topics</div>
-                    <p class="small text-muted mb-2">Optional add-on if the article is in one of these niches.</p>
+                    <div class="small fw-semibold mb-1 catalog-details-heading">
+                        Sensitive topics
+                        <x-glass-tip
+                            title="Sensitive topics"
+                            body="Optional add-on if the article is in one of these niches."
+                            label="About Sensitive topics"
+                            placement="top" />
+                    </div>
                     {{-- Its own radio group. Sharing the table's name made the two
                          layouts one group, so the card rendered with nothing
                          selected while the hidden table row held the checked
@@ -1161,7 +1212,7 @@
                                checked>
                         <label class="form-check-label" for="sensitive_mobile_{{ $site->id }}_none">
                             <strong>No sensitive topic</strong>
-                            <span class="text-muted">€{{ number_format($articlePay, 2) }}</span>
+                            <span class="text-muted">{{ format_money($articlePay) }}</span>
                         </label>
                     </div>
                     @foreach($mobileSensitivePrices as $type => $additionalPrice)
@@ -1186,8 +1237,8 @@
                                    id="sensitive_mobile_{{ $site->id }}_{{ $loop->index }}">
                             <label class="form-check-label" for="sensitive_mobile_{{ $site->id }}_{{ $loop->index }}">
                                 <strong>{{ ucfirst($type) }}</strong>
-                                <span class="catalog-addon-price">add-on +€{{ number_format($additionalPrice, 2) }}</span>
-                                <span class="text-muted">→ you pay €{{ number_format($totalPrice, 2) }}</span>
+                                <span class="catalog-addon-price">add-on {{ format_money($additionalPrice, ['signed' => true]) }}</span>
+                                <span class="text-muted">→ you pay {{ format_money($totalPrice) }}</span>
                             </label>
                         </div>
                     @endforeach
@@ -1199,9 +1250,9 @@
                 <div class="selected-price-info mt-1" id="price-info-mobile-{{ $site->id }}">
                     <small class="text-muted">
                         You pay:
-                        <strong>€{{ number_format($articlePay, 2) }}</strong>
+                        <strong>{{ format_money($articlePay) }}</strong>
                         @if($catalogSalePrice !== null)
-                            <span class="text-decoration-line-through">€{{ number_format($catalogListPrice, 2) }}</span>
+                            <span class="text-decoration-line-through">{{ format_money($catalogListPrice) }}</span>
                             (offer price)
                         @else
                             (base price)
@@ -1214,8 +1265,14 @@
                      data-site-id="{{ $site->id }}"
                      role="radiogroup"
                      aria-label="Homepage placement duration">
-                    <div class="small fw-semibold mb-1">Homepage promotions (optional)</div>
-                    <p class="small text-muted mb-2">Sale/bulk discounts do not apply to this fee.</p>
+                    <div class="small fw-semibold mb-1 catalog-details-heading">
+                        Homepage promotions
+                        <x-glass-tip
+                            title="Homepage promotions"
+                            body="Put the article on the publisher homepage for a set duration. Sale/bulk discounts do not apply to this fee."
+                            label="About Homepage promotions"
+                            placement="top" />
+                    </div>
                     <div class="form-check mb-1">
                         <input class="form-check-input homepage-placement-radio"
                                type="radio"
@@ -1247,10 +1304,10 @@
                                 @if($isFreeHome)
                                     <span class="text-success">Free</span>
                                 @else
-                                    <span class="text-muted">add-on +€{{ number_format($fee, 2) }}</span>
+                                    <span class="text-muted">add-on {{ format_money($fee, ['signed' => true]) }}</span>
                                 @endif
                                 @if($showAdvertiserPay)
-                                    <span class="text-muted">→ you pay €{{ number_format(round($articlePay + (float) $fee, 2), 2) }}</span>
+                                    <span class="text-muted">→ you pay {{ format_money(round($articlePay + (float) $fee, 2)) }}</span>
                                 @endif
                             </label>
                         </div>
@@ -1353,10 +1410,17 @@
                     }
                     $mobileZoomUrl = $mobileZoomPaths[0] ?? $mobilePreviewUrl;
                 @endphp
+                @if($mobilePreviewUrl)
                 <div class="catalog-card-details__row">
-                    <dt>Homepage preview</dt>
+                    <dt>
+                        Homepage preview
+                        <x-glass-tip
+                            title="Homepage preview"
+                            body="Recent screenshot of the publisher homepage so you can judge layout and brand before you buy."
+                            label="About Homepage preview"
+                            placement="top" />
+                    </dt>
                     <dd>
-                        @if($mobilePreviewUrl)
                             <div class="site-preview-zoom catalog-card-preview"
                                  tabindex="0"
                                  role="img"
@@ -1376,43 +1440,89 @@
                                 <i class="fa-solid fa-image text-muted" style="font-size: 24px;" aria-hidden="true"></i>
                                 <span class="small text-muted">Screenshot not available yet</span>
                             </div>
-                        @else
-                            <span class="text-muted small">Screenshot not available yet</span>
-                        @endif
                     </dd>
                 </div>
-                <div class="catalog-card-details__row">
-                    <dt>Trust</dt>
-                    <dd>@include('advertiser.partials.catalog-site-trust', ['site' => $site, 'compactClass' => ''])</dd>
-                </div>
-                <div class="catalog-card-details__row">
-                    <dt>Turnaround</dt>
-                    <dd>{{ $site->turnaroundLabel('Not specified') }}</dd>
-                </div>
-                <div class="catalog-card-details__row">
-                    <dt>Publication duration</dt>
-                    <dd>{{ $site->publicationDurationLabel('Not specified') }}</dd>
-                </div>
-                <div class="catalog-card-details__row">
-                    <dt>Link type</dt>
-                    <dd>{{ $site->linkTypeLabel('Not specified') }}</dd>
-                </div>
+                @endif
                 <div class="catalog-card-details__row">
                     <dt>
-                        <abbr class="metric-abbr text-decoration-none" title="{{ \App\Support\SiteTag::FILTER_TOOLTIP }}">{{ \App\Support\SiteTag::DETAILS_HEADING }}</abbr>
+                        Trust
+                        <x-glass-tip
+                            title="Publisher trust"
+                            body="Ratings from advertisers after completed orders. Completion rate is successful vs cancelled placements. Last published is the most recent completed placement on this site."
+                            label="About Publisher trust"
+                            placement="top" />
+                    </dt>
+                    <dd>@include('advertiser.partials.catalog-site-trust', ['site' => $site, 'compactClass' => ''])</dd>
+                </div>
+                @if($site->turnaroundLabel())
+                <div class="catalog-card-details__row">
+                    <dt>
+                        Turnaround
+                        <x-glass-tip
+                            title="Turnaround"
+                            body="Typical publisher turnaround once an order is accepted."
+                            label="About Turnaround"
+                            placement="top" />
+                    </dt>
+                    <dd>{{ $site->turnaroundLabel() }}</dd>
+                </div>
+                @endif
+                @if($site->publicationDurationLabel())
+                <div class="catalog-card-details__row">
+                    <dt>
+                        Publication duration
+                        <x-glass-tip
+                            title="Publication duration"
+                            body="How long the published article stays live."
+                            label="About Publication duration"
+                            placement="top" />
+                    </dt>
+                    <dd>{{ $site->publicationDurationLabel() }}</dd>
+                </div>
+                @endif
+                @if($site->linkTypeLabel())
+                <div class="catalog-card-details__row">
+                    <dt>
+                        Link type
+                        <x-glass-tip
+                            title="Link type"
+                            body="Link attribute on the published placement."
+                            label="About Link type"
+                            placement="top" />
+                    </dt>
+                    <dd>{{ $site->linkTypeLabel() }}</dd>
+                </div>
+                @endif
+                @if($site->tagValue() !== null)
+                <div class="catalog-card-details__row">
+                    <dt>
+                        {{ \App\Support\SiteTag::DETAILS_HEADING }}
+                        <x-glass-tip
+                            title="{{ \App\Support\SiteTag::DETAILS_HEADING }}"
+                            body="{{ \App\Support\SiteTag::FILTER_TOOLTIP }}"
+                            label="About {{ \App\Support\SiteTag::DETAILS_HEADING }}"
+                            placement="top" />
                     </dt>
                     <dd>
                         @include('advertiser.partials.catalog-tag-chip', [
                             'site' => $site,
-                            'showNone' => true,
-                            'showDefinition' => true,
+                            'showNone' => false,
+                            'showDefinition' => false,
                         ])
                     </dd>
                 </div>
+                @endif
+                @if($homepageOptions !== [])
                 <div class="catalog-card-details__row">
-                    <dt>Homepage promotions</dt>
+                    <dt>
+                        Homepage promotions
+                        <x-glass-tip
+                            title="Homepage promotions"
+                            body="Put the article on the publisher homepage for a set duration. Sale/bulk discounts do not apply to this fee."
+                            label="About Homepage promotions"
+                            placement="top" />
+                    </dt>
                     <dd>
-                        @if($homepageOptions !== [])
                             <ul class="list-unstyled mb-0 small">
                                 @foreach($homepageOptions as $days => $fee)
                                     <li>
@@ -1420,37 +1530,47 @@
                                         @if((float) $fee <= 0)
                                             — <span class="text-success">Free</span>
                                         @else
-                                            — add-on +€{{ number_format((float) $fee, 2) }}
+                                            — add-on {{ format_money($fee, ['signed' => true]) }}
                                         @endif
                                         @if($showAdvertiserPay)
-                                            → you pay €{{ number_format(round($articlePay + (float) $fee, 2), 2) }}
+                                            → you pay {{ format_money(round($articlePay + (float) $fee, 2)) }}
                                         @endif
                                     </li>
                                 @endforeach
                             </ul>
                             <span class="text-muted small">Choose a duration above Buy.</span>
-                        @else
-                            <span class="text-muted small">Not offered on this listing.</span>
-                        @endif
                     </dd>
                 </div>
+                @endif
+                @if($socialChannels !== [])
                 <div class="catalog-card-details__row">
-                    <dt>Social</dt>
+                    <dt>
+                        Social
+                        <x-glass-tip
+                            title="Social"
+                            body="Publisher will share the live post on these channels at no extra cost."
+                            label="About Social"
+                            placement="top" />
+                    </dt>
                     <dd>
-                        @if($socialChannels !== [])
                             <div class="d-flex flex-wrap gap-1">
                                 @foreach($socialChannels as $channel)
                                     <span class="badge bg-light text-dark border">{{ $socialChannelLabels[$channel] ?? ucfirst($channel) }}</span>
                                 @endforeach
                             </div>
-                        @else
-                            <span class="text-muted small">No social sharing included on this listing.</span>
-                        @endif
                     </dd>
                 </div>
+                @endif
                 @if($site->description)
                     <div class="catalog-card-details__row">
-                        <dt>About this site</dt>
+                        <dt>
+                            About this site
+                            <x-glass-tip
+                                title="About this site"
+                                body="The publisher’s listing copy for this site — niche, audience, and what they accept."
+                                label="About this site"
+                                placement="top" />
+                        </dt>
                         {{-- Cards stay plain-text; desktop expand keeps rich HTML via safeDescriptionHtml().
                              Hide-mode rows stay gated — publishers often paste the listing URL here. --}}
                         <dd class="catalog-card-details__description text-muted small">
@@ -1462,24 +1582,31 @@
                         </dd>
                     </div>
                 @endif
+                @if($site->example_url && ($mobileSampleUrl = safe_external_url($site->example_url)) !== '#')
                 <div class="catalog-card-details__row">
-                    <dt>Sample article</dt>
+                    <dt>
+                        Sample article
+                        <x-glass-tip
+                            title="Sample article"
+                            body="An example live placement from this publisher so you can review their writing and link style."
+                            label="About Sample article"
+                            placement="top" />
+                    </dt>
                     <dd>
                         {{-- Sample shares the listing domain — gate on identity. --}}
                         @if($inCatalogHideMode && ! $showsIdentity)
                             Use the eye to show this listing’s name and URL, then the sample article link appears.
-                        @elseif($site->example_url && ($mobileSampleUrl = safe_external_url($site->example_url)) !== '#')
+                        @else
                             <a href="{{ route('advertiser.catalog.visit', ['site' => $site->id, 'sample' => 1]) }}"
                                target="_blank"
                                rel="noopener noreferrer"
                                class="catalog-site-url">
                                 {{ Str::limit($site->example_url, 46) }}
                             </a>
-                        @else
-                            No sample article yet
                         @endif
                     </dd>
                 </div>
+                @endif
             </dl>
         </article>
     @empty

@@ -197,6 +197,7 @@
 }
 
 .chat-bubble {
+  position: relative;
   max-width: 72%;
   border-radius: 12px;
   padding: 0.65rem 0.85rem;
@@ -206,11 +207,66 @@
 }
 
 .chat-bubble--own {
+  padding-bottom: 1.15rem;
   background: #fff;
   color: var(--brand-ink, #1e293b);
   border: 1px solid var(--brand-primary-border, #b8e4e4);
   box-shadow: 0 1px 0 rgba(26, 88, 94, 0.04);
   margin-left: auto;
+}
+
+.chat-ticks {
+  position: absolute;
+  right: 0.55rem;
+  bottom: 0.28rem;
+  font-size: 0.72rem;
+  line-height: 1;
+  color: #94a3b8;
+  opacity: 0.55;
+}
+
+.chat-ticks--read {
+  color: #34b7f1;
+  opacity: 1;
+}
+
+.chat-emoji-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.15rem;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 0 0.55rem;
+  padding: 0.2rem;
+  border-radius: 999px;
+  background: #f4f2ee;
+}
+
+.chat-emoji-strip button {
+  width: 2.15rem;
+  height: 2.15rem;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+  transition: background-color 0.15s ease, transform 0.15s ease;
+}
+
+.chat-emoji-strip button:hover,
+.chat-emoji-strip button:focus-visible {
+  background: #fff;
+  transform: translateY(-1px);
+}
+
+.chat-emoji-strip button:disabled {
+  opacity: 0.4;
+  cursor: default;
+  transform: none;
 }
 
 .chat-bubble--other {

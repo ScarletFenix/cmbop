@@ -26,21 +26,21 @@
 @endphp
 
 
-<div class="container-fluid">
+<div class="container-fluid add-funds-page">
 
-    <div class="row mb-3 align-items-end g-3">
-        <div class="col-lg-8">
-            <h2 class="mb-1 fw-semibold">Add funds</h2>
-            <p class="text-muted mb-0">Top up your wallet. Minimum €10.</p>
+    <div class="af-page-header">
+        <div>
+            <h2 class="af-page-title">Add funds</h2>
+            <p class="af-page-sub">Top up your wallet. Minimum €10.</p>
         </div>
-        <div class="col-lg-4 text-lg-end">
-            <button type="button" class="btn btn-sm btn-cta-tertiary" id="withdrawOpenBtn"
+        <div class="af-page-links">
+            <button type="button" class="af-text-link" id="withdrawOpenBtn"
                     data-bs-toggle="modal" data-bs-target="#withdrawModal"
                     @disabled(! $canWithdraw)>
                 Withdraw
             </button>
-            <a href="{{ route('advertiser.billing.index') }}" class="btn btn-sm btn-cta-tertiary">Billing &amp; invoices</a>
-            <a href="{{ route('advertiser.analytics') }}" class="btn btn-sm btn-cta-tertiary">Spending</a>
+            <a href="{{ route('advertiser.billing.index') }}" class="af-text-link">Billing &amp; invoices</a>
+            <a href="{{ route('advertiser.analytics') }}" class="af-text-link">Spending</a>
         </div>
     </div>
 
@@ -93,8 +93,8 @@
                 <p class="af-role-strip__note mb-0">Withdrawable. Transfers into this wallet are off — open Balance or Withdraw.</p>
             </div>
             <div class="af-role-strip__actions">
-                <a href="{{ route('publisher.balance') }}" class="btn btn-sm btn-outline-secondary" id="publisherBalanceCta">Balance</a>
-                <a href="{{ route('publisher.withdraw') }}" class="btn btn-sm btn-outline-secondary" id="publisherWithdrawCta">Withdraw</a>
+                <a href="{{ route('publisher.balance') }}" class="af-text-link" id="publisherBalanceCta">Balance</a>
+                <a href="{{ route('publisher.withdraw') }}" class="af-text-link" id="publisherWithdrawCta">Withdraw</a>
             </div>
         </aside>
     @endif
@@ -852,8 +852,8 @@
     </div>
 </div>
 
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="{{ asset('assets/js/jquery-3.6.0.min.js') }}?v={{ @filemtime(public_path('assets/js/jquery-3.6.0.min.js')) ?: '1' }}"></script>
+<script src="{{ asset('assets/vendor/sweetalert2/sweetalert2.min.js') }}?v={{ @filemtime(public_path('assets/vendor/sweetalert2/sweetalert2.min.js')) ?: '1' }}"></script>
 <script>
 (function () {
     const csrf = '{{ csrf_token() }}';

@@ -19,6 +19,7 @@ use App\Http\Controllers\Admin\EmailCenterController as AdminEmailCenterControll
 // Publisher and Advertiser controllers
 use App\Http\Controllers\Admin\FinanceController as AdminFinanceController;
 use App\Http\Controllers\Admin\InvoiceController as AdminInvoiceController;
+use App\Http\Controllers\Admin\OnDemandContactController;
 use App\Http\Controllers\Admin\OrderController as AdminOrderController;
 use App\Http\Controllers\Admin\OrderDisputeController as AdminOrderDisputeController;
 use App\Http\Controllers\Admin\PaymentController as AdminPaymentController;
@@ -106,23 +107,29 @@ use Illuminate\Support\Facades\Route;
 /*
 |--------------------------------------------------------------------------
 | Public marketing routes (multilingual: en unprefixed UK English,
-| de|fr|nl|es|it|us prefixed). Authenticated SaaS + login/register stay English-only.
+| de|fr|nl|es|it|us|at|ch|ro|gr|dk|se|no|bg|hu|ee prefixed). Authenticated SaaS + login/register stay English-only.
 |--------------------------------------------------------------------------
 */
 
 $prefixedLocales = class_exists(PublicI18n::class)
     ? PublicI18n::prefixed()
-    : (array) config('i18n.prefixed', ['de', 'fr', 'nl', 'es', 'it', 'us']);
+    : (array) config('i18n.prefixed', [
+        'de', 'fr', 'nl', 'es', 'it', 'us',
+        'at', 'ch', 'ro', 'gr', 'dk', 'se', 'no', 'bg', 'hu', 'ee',
+    ]);
 $supportedLocales = class_exists(PublicI18n::class)
     ? PublicI18n::supported()
-    : (array) config('i18n.supported', ['en', 'de', 'fr', 'nl', 'es', 'it', 'us']);
+    : (array) config('i18n.supported', [
+        'en', 'de', 'fr', 'nl', 'es', 'it', 'us',
+        'at', 'ch', 'ro', 'gr', 'dk', 'se', 'no', 'bg', 'hu', 'ee',
+    ]);
 $prefixedLocalePattern = implode('|', array_values(array_filter($prefixedLocales, 'strlen')));
 $supportedLocalePattern = implode('|', array_values(array_filter($supportedLocales, 'strlen')));
 if ($prefixedLocalePattern === '') {
-    $prefixedLocalePattern = 'de|fr|nl|es|it|us';
+    $prefixedLocalePattern = 'de|fr|nl|es|it|us|at|ch|ro|gr|dk|se|no|bg|hu|ee';
 }
 if ($supportedLocalePattern === '') {
-    $supportedLocalePattern = 'en|de|fr|nl|es|it|us';
+    $supportedLocalePattern = 'en|de|fr|nl|es|it|us|at|ch|ro|gr|dk|se|no|bg|hu|ee';
 }
 
 // Stacked locale cleanup: /nl/fr → /nl
@@ -158,7 +165,10 @@ $registerPublicMarketingRoutes = function (string $locale = 'en') {
         $catalogPreview = collect();
         if (class_exists(CatalogTeaserService::class)) {
             try {
-                $catalogPreview = app(CatalogTeaserService::class)->teasers(8);
+                $teaserCountries = class_exists(PublicI18n::class)
+                    ? PublicI18n::catalogTeaserCountries((string) app()->getLocale())
+                    : ['de'];
+                $catalogPreview = app(CatalogTeaserService::class)->teasersForCountries($teaserCountries, 8);
             } catch (Throwable) {
                 $catalogPreview = collect();
             }
@@ -593,6 +603,14 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
             ->name('sites.records');
         Route::get('/sites/records/export', [AdminSiteController::class, 'exportRecords'])
             ->name('sites.records.export');
+        Route::get('/sites/on-demand', [OnDemandContactController::class, 'index'])
+            ->name('sites.on-demand.index');
+        Route::post('/sites/on-demand', [OnDemandContactController::class, 'store'])
+            ->name('sites.on-demand.store');
+        Route::put('/sites/on-demand/{onDemandContact}', [OnDemandContactController::class, 'update'])
+            ->name('sites.on-demand.update');
+        Route::delete('/sites/on-demand/{onDemandContact}', [OnDemandContactController::class, 'destroy'])
+            ->name('sites.on-demand.destroy');
 
         Route::post('/sites/{id}/verify', [AdminSiteController::class, 'verify'])
             ->name('sites.verify');
@@ -766,6 +784,9 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
         Route::post('/campaigns/preview', [AdminCampaignController::class, 'preview'])
             ->middleware('throttle:20,1')
             ->name('campaigns.preview');
+        Route::post('/campaigns/from-template', [AdminCampaignController::class, 'fromTemplate'])
+            ->middleware('throttle:20,1')
+            ->name('campaigns.from-template');
         Route::post('/campaigns/send', [AdminCampaignController::class, 'send'])
             ->middleware('throttle:6,1')
             ->name('campaigns.send');
@@ -979,6 +1000,9 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
         Route::post('/sites/claim', [SiteClaimController::class, 'store'])
             ->middleware('throttle:10,1')
             ->name('sites.claim');
+
+        Route::get('/site-claims', [SiteClaimController::class, 'index'])
+            ->name('site-claims');
 
         // Favorites
         Route::post('/favorites/save', [CatalogController::class, 'saveFavorites'])->name('favorites.save');

@@ -32,6 +32,16 @@
                     <div id="chatComposerNote" class="small text-muted pb-2 d-none" role="status"></div>
                     <form id="chatForm">
                         <input type="hidden" id="chatOrderId">
+                        <div id="chatEmojiStrip" class="chat-emoji-strip" role="toolbar" aria-label="Professional reactions">
+                            <button type="button" data-emoji="👍" aria-label="+1">👍</button>
+                            <button type="button" data-emoji="👏" aria-label=":clap:">👏</button>
+                            <button type="button" data-emoji="❤️" aria-label="<3">❤️</button>
+                            <button type="button" data-emoji="💡" aria-label=":idea:">💡</button>
+                            <button type="button" data-emoji="🤔" aria-label=":think:">🤔</button>
+                            <button type="button" data-emoji="😊" aria-label=":)">😊</button>
+                            <button type="button" data-emoji="👋" aria-label=":wave:">👋</button>
+                            <button type="button" data-emoji="🙏" aria-label=":pray:">🙏</button>
+                        </div>
                         <div class="input-group align-items-stretch">
                             <textarea id="chatMessageInput" class="form-control" rows="2" placeholder="Write a message…" aria-label="Chat message"></textarea>
                             <button type="submit" class="btn btn-primary">

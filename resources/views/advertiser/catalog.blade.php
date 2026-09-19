@@ -92,8 +92,8 @@
             'subtitle' => 'One job here: pick publishers. Keep browsing with items in your cart — finish payment when ready. Prefer steps? Use Guided.',
             'linkAll' => true,
             'contentRoute' => route('advertiser.content-library'),
-            'actions' => '<button type="button" class="btn btn-sm btn-outline-primary" onclick="openCart()">Open cart</button>'
-                .'<a href="'.e(route('advertiser.wizard.start')).'" class="btn btn-sm btn-outline-secondary">Guided</a>',
+            'actions' => '<button type="button" class="catalog-plain-action" onclick="openCart()"><i class="fa fa-shopping-cart" aria-hidden="true"></i> Open cart</button>'
+                .'<a href="'.e(route('advertiser.wizard.start')).'" class="catalog-plain-action"><i class="fa fa-compass" aria-hidden="true"></i> Guided</a>',
         ])
     @endif
 
@@ -139,8 +139,8 @@
                 You have <strong>{{ $catalogCartCount }}</strong> {{ Str::plural('site', $catalogCartCount) }} in your cart.
                 Keep browsing anytime — open the cart when you are ready to assign articles and pay.
             </div>
-            <button type="button" class="btn btn-sm btn-outline-primary" onclick="openCart()">
-                <i class="fa fa-shopping-cart me-1" aria-hidden="true"></i> Open cart
+            <button type="button" class="catalog-plain-action" onclick="openCart()">
+                <i class="fa fa-shopping-cart" aria-hidden="true"></i> Open cart
             </button>
         </div>
     @endif
@@ -168,9 +168,9 @@
 
     @if(($catalogBonusBalance ?? 0) > 0)
         <p class="small text-muted mb-3">
-            Spendable <strong>€{{ number_format((float) ($catalogSpendableBalance ?? 0), 2) }}</strong>
-            (cash €{{ number_format((float) ($catalogCashBalance ?? 0), 2) }}
-            + bonus €{{ number_format((float) $catalogBonusBalance, 2) }}).
+            Spendable <strong>{{ format_money($catalogSpendableBalance ?? 0) }}</strong>
+            (cash {{ format_money($catalogCashBalance ?? 0) }}
+            + bonus {{ format_money($catalogBonusBalance) }}).
             Apply bonus at checkout.
         </p>
     @endif
@@ -261,7 +261,7 @@
             <strong class="text-dark">{{ number_format($inventoryTotal) }}</strong>
             {{ Str::plural('placement', $inventoryTotal) }} available
             @if($inventoryFrom !== null)
-                · from <strong class="catalog-inventory-teaser__price">€{{ number_format($inventoryFrom, 2) }}</strong>
+                · from <strong class="catalog-inventory-teaser__price">{{ format_money($inventoryFrom) }}</strong>
             @endif
         @else
             <span class="text-muted">No placements match yet — broaden filters below</span>
@@ -771,7 +771,7 @@ window.CatalogConfig = {
         blacklistSave: @json(route('advertiser.blacklist.save')),
         websiteSuggestionsStore: @json(route('advertiser.website-suggestions.store')),
         siteClaim: @json(route('advertiser.sites.claim')),
-        siteClaimsIndex: @json(route('site-claims.index')),
+        siteClaimsIndex: @json(route('advertiser.site-claims')),
         revealUrl: @json(route('advertiser.catalog.reveal-url', ['site' => '__SITE__'])),
         hideUrl: @json(route('advertiser.catalog.hide-url', ['site' => '__SITE__'])),
         copyTrack: @json(route('advertiser.catalog.copy-track')),

@@ -40,6 +40,10 @@ class SetLocale
         }
 
         App::setLocale($locale);
+        $messagesFallback = PublicI18n::messagesFallback($locale);
+        if ($messagesFallback !== null && $messagesFallback !== $locale) {
+            App::setFallbackLocale($messagesFallback);
+        }
         Session::put('locale', $locale);
 
         /** @var Response $response */

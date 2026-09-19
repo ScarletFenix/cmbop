@@ -28,7 +28,8 @@
             "app/Helpers/LanguageHelper.php",
             "app/Helpers/FormHelper.php",
             "app/Helpers/UrlHelper.php",
-            "app/Helpers/SiteDescriptionHelper.php"
+            "app/Helpers/SiteDescriptionHelper.php",
+            "app/Helpers/MoneyHelper.php"
         ],
         "psr-4": {
             "App\\": "app/",

@@ -202,8 +202,14 @@ body.role-shell-marketing #sidebar {
 
 #sidebar a i {
   width: 18px;
+  height: 18px;
+  min-width: 18px;
+  min-height: 18px;
+  flex: 0 0 18px;
+  font-size: 18px;
+  line-height: 1;
   text-align: center;
-  font-size: 15px;
+  vertical-align: middle;
   color: var(--brand-ink-muted, #697078);
   transition: color var(--motion-fast, 150ms ease);
 }
@@ -279,7 +285,11 @@ body.role-shell-marketing #sidebar {
 
 #sidebar .nav-sub-link i {
   color: var(--brand-primary-soft, #3faeb2);
-  width: 14px;
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  flex: 0 0 18px;
+  font-size: 18px;
   text-align: center;
 }
 
@@ -313,7 +323,13 @@ body.role-shell-marketing #sidebar {
   max-width: var(--shell-sidebar-collapsed);
 }
 #sidebar.collapsed a { justify-content: center; margin: 2px 6px; padding: 10px; gap: 0; position: relative; }
-#sidebar.collapsed a i { font-size: 18px; width: auto; }
+#sidebar.collapsed a i {
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  flex: 0 0 18px;
+  font-size: 18px;
+}
 /* Prefer clip over font-size:0 so labels stay in the accessibility tree */
 #sidebar.collapsed a .nav-label,
 #sidebar.collapsed a > span:not(.arrow):not(.badge):not(.nc-nav-badge) {
@@ -451,6 +467,12 @@ body.role-shell-marketing #sidebar {
   background: var(--hover-overlay, rgba(15, 23, 42, 0.06));
   color: #334155;
   border-color: transparent;
+}
+body.role-shell-advertiser .topbar-icon-btn,
+body.role-shell-advertiser .top-navbar .btn,
+body.role-shell-advertiser .top-navbar .dropdown-toggle {
+  border: none;
+  box-shadow: none;
 }
 .topbar-icon-btn .notif-badge {
   position: absolute;

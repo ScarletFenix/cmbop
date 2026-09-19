@@ -4,58 +4,58 @@ Dear {{ $site->publisher?->name ?? 'Publisher' }},
 
 @switch($action)
     @case('update')
-        Your site **{{ $site->site_name }}** has been updated by our team.
+        Your site {{ $site->site_name }} has been updated by our team.
         
         @if($oldData)
-        **Changes made:**
+        Changes made:
         
         @if($oldData['site_name'] != $site->site_name)
-        - **Site Name:** {{ $oldData['site_name'] }} → {{ $site->site_name }}
+        - Site Name: {{ $oldData['site_name'] }} → {{ $site->site_name }}
         @endif
         
         @if($oldData['site_url'] != $site->site_url)
-        - **Site URL:** {{ $oldData['site_url'] }} → {{ $site->site_url }}
+        - Site URL: {{ $oldData['site_url'] }} → {{ $site->site_url }}
         @endif
         
         @if(($oldData['da'] ?? null) != $site->da)
-        - **DA:** {{ $oldData['da'] ?? 'N/A' }} → {{ $site->da }}
+        - DA: {{ $oldData['da'] ?? 'N/A' }} → {{ $site->da }}
         @endif
         
         @if(($oldData['dr'] ?? null) != $site->dr)
-        - **DR:** {{ $oldData['dr'] ?? 'N/A' }} → {{ $site->dr }}
+        - DR: {{ $oldData['dr'] ?? 'N/A' }} → {{ $site->dr }}
         @endif
         
         @if(($oldData['traffic'] ?? null) != $site->traffic)
-        - **Traffic:** {{ number_format($oldData['traffic'] ?? 0) }} → {{ number_format($site->traffic) }}
+        - Traffic: {{ number_format($oldData['traffic'] ?? 0) }} → {{ number_format($site->traffic) }}
         @endif
         @endif
         @break
     
     @case('activated')
         @if($site->isCatalogVisible())
-        Your site **{{ $site->site_name }}** has been **approved** and is now live on our platform.
+        Your site {{ $site->site_name }} has been approved and is now live on our platform.
         
-        **Next steps:**
+        Next steps:
         - Your site will appear in our catalog
         - Advertisers can now view and purchase placements
         - You will receive notifications when orders are placed
         @else
-        Your site **{{ $site->site_name }}** was marked active, but it is **not listed in the catalog**.
+        Your site {{ $site->site_name }} was marked active, but it is not listed in the catalog.
         
         This usually means the bulk request for this listing was cancelled. Contact support if you think this is a mistake.
         @endif
         @break
     
     @case('deactivated')
-        Your site **{{ $site->site_name }}** has been **deactivated**.
+        Your site {{ $site->site_name }} has been deactivated.
         
-        **What this means:**
+        What this means:
         - Your site is no longer visible in our catalog
         - New orders cannot be placed
         - Existing orders will be fulfilled as agreed
 
         @if(!empty($reason))
-        **Reason:**
+        Reason:
         {{ $reason }}
         @endif
         
@@ -63,21 +63,21 @@ Dear {{ $site->publisher?->name ?? 'Publisher' }},
         @break
     
     @case('verified')
-        Congratulations! Your site **{{ $site->site_name }}** has been **verified**.
+        Congratulations! Your site {{ $site->site_name }} has been verified.
         
-        **Benefits of verification:**
+        Benefits of verification:
         - Higher trust from advertisers
         - Priority placement in search results
         - Verified badge displayed on your site listing
         @break
     
     @case('unverified')
-        Your site **{{ $site->site_name }}** has been **unverified**.
+        Your site {{ $site->site_name }} has been unverified.
         
         Please review your site information and ensure it meets our quality guidelines.
 
         @if(!empty($reason))
-        **Reason:**
+        Reason:
         {{ $reason }}
         @endif
         
@@ -85,10 +85,10 @@ Dear {{ $site->publisher?->name ?? 'Publisher' }},
         @break
     
     @case('removed')
-        Your submission for **{{ $site->site_name }}** has been **removed** and will not be listed.
+        Your submission for {{ $site->site_name }} has been removed and will not be listed.
 
         @if(!empty($reason))
-        **Reason:**
+        Reason:
         {{ $reason }}
         @endif
 
@@ -96,15 +96,15 @@ Dear {{ $site->publisher?->name ?? 'Publisher' }},
         @break
 
     @case('archived')
-        Your site **{{ $site->site_name }}** has been **archived** and is hidden from the catalog.
+        Your site {{ $site->site_name }} has been archived and is hidden from the catalog.
 
-        **What this means:**
+        What this means:
         - Your site is no longer visible to advertisers
         - New orders cannot be placed
         - Existing orders are unchanged
 
         @if(!empty($reason))
-        **Reason:**
+        Reason:
         {{ $reason }}
         @endif
 
@@ -112,17 +112,17 @@ Dear {{ $site->publisher?->name ?? 'Publisher' }},
         @break
 
     @default
-        There has been a status change for your site **{{ $site->site_name }}**.
+        There has been a status change for your site {{ $site->site_name }}.
 @endswitch
 
 ### Current Site Details
 
-- **Site Name:** {{ $site->site_name }}
-- **Site URL:** {{ $site->site_url }}
-- **Category:** {{ $site->category }}
-- **Price:** €{{ number_format($site->price, 2) }}
-- **DA/DR:** {{ $site->da }}/{{ $site->dr }}
-- **Traffic:** {{ number_format($site->traffic) }} monthly visitors
+- Site Name: {{ $site->site_name }}
+- Site URL: {{ $site->site_url }}
+- Category: {{ $site->category }}
+- Price: €{{ number_format($site->price, 2) }}
+- DA/DR: {{ $site->da }}/{{ $site->dr }}
+- Traffic: {{ number_format($site->traffic) }} monthly visitors
 
 @component('mail::button', ['url' => route('publisher.websites')])
 View Your Sites

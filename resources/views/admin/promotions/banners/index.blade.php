@@ -21,7 +21,7 @@
     <form method="GET" class="row g-2 mb-3">
         <input type="hidden" name="status" value="{{ search_text(request('status')) }}">
         <div class="col-md-4">
-            <input type="search" name="q" class="form-control form-control-sm" value="{{ search_text(request('q')) }}" placeholder="Search name">
+            <x-slb-search-field name="q" id="adminPromoBannersSearch" :value="search_text(request('q'))" placeholder="Search name" :show-label="false" />
         </div>
         <div class="col-md-3">
             <select name="audience" class="form-select form-select-sm">

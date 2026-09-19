@@ -199,11 +199,66 @@
     #walletChartWrap { height: 260px !important; }
 }
 
+.af-page-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: .75rem 1.25rem;
+    margin-bottom: 1.25rem;
+}
+.af-page-title {
+    margin: 0;
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: #1a585e;
+    letter-spacing: -.01em;
+}
+.af-page-sub {
+    margin: .35rem 0 0;
+    color: var(--brand-ink-muted, #75787B);
+    font-size: .9rem;
+}
+.af-page-links {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: .35rem .15rem;
+}
+.af-text-link {
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.25rem;
+    padding: .35rem .75rem;
+    border: none;
+    background: transparent;
+    color: #1a585e;
+    font-size: .85rem;
+    font-weight: 600;
+    text-decoration: none;
+    border-radius: 999px;
+}
+.af-text-link:hover,
+.af-text-link:focus-visible {
+    color: #123f42;
+    background: var(--brand-primary-bg, #e6f5f5);
+}
+.af-text-link:disabled,
+.af-text-link[disabled] {
+    opacity: .45;
+    cursor: not-allowed;
+    background: transparent;
+}
+
 .af-spendable {
-    display: flex; flex-direction: column; gap: 10px;
-    padding: 16px 18px; border: 1px solid var(--border-subtle, #e2e8f0);
-    border-radius: var(--radius-lg, 12px); background: var(--surface-1, #fff);
-    max-width: 32rem;
+    display: flex; flex-direction: column; gap: 12px;
+    padding: 1.15rem 1.25rem;
+    border: 1px solid #d9e7e8;
+    border-radius: 14px;
+    background: #fff;
+    box-shadow: 0 8px 24px rgba(26, 88, 94, 0.05);
 }
 .af-spendable__label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: var(--brand-primary-soft, #3faeb2); }
 .af-spendable__value { font-size: 1.6rem; font-weight: 700; color: var(--brand-primary, #1a585e); line-height: 1.1; }
@@ -214,9 +269,9 @@
 .af-spendable__chip {
     display: inline-flex; flex-direction: column; gap: 2px;
     min-width: 7.5rem; padding: 8px 12px;
-    border-radius: var(--radius-md, 10px);
-    border: 1px solid var(--border-subtle, #e2e8f0);
-    background: var(--surface-2, #f8fafc);
+    border-radius: 10px;
+    border: 1px solid #d9e7e8;
+    background: #f8fbfb;
 }
 .af-spendable__chip--bonus {
     background: var(--brand-primary-bg, #e6f5f5);
@@ -248,11 +303,11 @@
     align-items: flex-end;
     justify-content: space-between;
     gap: 12px;
-    max-width: 32rem;
-    padding: 14px 18px;
-    border: 1px solid var(--border-subtle, #e2e8f0);
-    border-radius: var(--radius-lg, 12px);
-    background: var(--surface-2, #f8fafc);
+    padding: 1.15rem 1.25rem;
+    border: 1px solid #d9e7e8;
+    border-radius: 14px;
+    background: #fff;
+    box-shadow: 0 8px 24px rgba(26, 88, 94, 0.05);
 }
 .af-role-strip__label {
     font-size: 11px;

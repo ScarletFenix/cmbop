@@ -19,8 +19,8 @@ We could not complete this PayPal payment. No guest-post order was created and y
 
 ## Payment details
 
-- **Reference:** {{ $referenceCode }}
-- **Type:** {{ $kind === 'deposit' ? 'Wallet top-up' : 'Checkout' }}
+- Reference: {{ $referenceCode }}
+- Type: {{ $kind === 'deposit' ? 'Wallet top-up' : 'Checkout' }}
 
 @if(! $pending)
 You can start a new PayPal payment whenever you are ready.

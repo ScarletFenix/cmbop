@@ -77,6 +77,7 @@ use App\Models\User;
 use App\Models\WebsiteSuggestion;
 use App\Models\Withdrawal;
 use Illuminate\Mail\Mailable;
+use Illuminate\Mail\Markdown;
 use Illuminate\Support\Str;
 
 class EmailCatalog
@@ -586,6 +587,39 @@ class EmailCatalog
     public static function get(string $key): ?array
     {
         return self::templates()[$key] ?? null;
+    }
+
+    /**
+     * Exact HTML used by Admin → Emails → Preview.
+     */
+    public static function previewHtml(string $key, ?string $audience = null): ?string
+    {
+        if (! self::get($key)) {
+            return null;
+        }
+
+        if ($html = self::frameworkPreviewHtml($key)) {
+            return $html;
+        }
+
+        $mailable = self::makeMailable($key, array_filter([
+            'audience' => is_string($audience) && $audience !== '' ? $audience : null,
+        ]));
+
+        return $mailable?->render();
+    }
+
+    public static function frameworkPreviewHtml(string $key): ?string
+    {
+        return match ($key) {
+            'password_reset' => app(Markdown::class)->render('emails.password-reset-preview', [
+                'resetUrl' => rtrim(app_public_url(), '/').'/password/reset/preview-token',
+            ]),
+            'email_verification' => app(Markdown::class)->render('emails.email-verification-preview', [
+                'verifyUrl' => self::previewVerificationUrl(),
+            ]),
+            default => null,
+        };
     }
 
     public static function keyFromMailable(?string $class): ?string

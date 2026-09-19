@@ -97,6 +97,6 @@ class PerformanceUiWeightTest extends TestCase
             ->getContent();
 
         $this->assertStringNotContainsString('bootstrap@5.1.3', $html);
-        $this->assertStringContainsString('bootstrap@5.3.0', $html);
+        $this->assertStringContainsString('bootstrap-5.3.0', $html);
     }
 }

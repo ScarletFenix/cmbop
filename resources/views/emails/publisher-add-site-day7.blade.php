@@ -7,8 +7,8 @@ It's been a week since you joined as a publisher, and you still haven't listed a
 
 Without a site in the catalog, advertisers can't order placements from you — and you won't earn through your publisher wallet.
 
-**What to do next**
-1. Open **My Websites**
+What to do next
+1. Open My Websites
 2. Add your domain, niche, and guest-post price
 3. Complete verification so your listing can go live
 

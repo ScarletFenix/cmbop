@@ -4,23 +4,23 @@
 
 Hello {{ $user->name }},
 
-Great news! Your payment for Order **#{{ $order->order_number }}** has been confirmed.
+Great news! Your payment for Order #{{ $order->order_number }} has been confirmed.
 
 ## Order Details
 
 | Detail | Information |
 |--------|-------------|
-| **Order Number** | #{{ $order->order_number }} |
-| **Reference Code** | {{ $order->reference_code }} |   
-| **Order Date** | {{ $orderDate }} |   
-| **Payment Date** | {{ $paidDate }} |
-| **Payment Method** | {{ \App\Models\Invoice::paymentMethodLabel($order->payment_method) }} |
-| **Total Amount** | €{{ number_format($totalAmount, 2) }} |
+| Order Number | #{{ $order->order_number }} |
+| Reference Code | {{ $order->reference_code }} |   
+| Order Date | {{ $orderDate }} |   
+| Payment Date | {{ $paidDate }} |
+| Payment Method | {{ \App\Models\Invoice::paymentMethodLabel($order->payment_method) }} |
+| Total Amount | €{{ number_format($totalAmount, 2) }} |
 
 ## Items Ordered
 
 @foreach($orderItems as $item)
-- **{{ $item->site_name }}**
+- {{ $item->site_name }}
   - URL: {{ $item->site_url }}
   - Price: €{{ number_format($item->price, 2) }}
   @if($item->content_link)

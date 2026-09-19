@@ -1,5 +1,9 @@
 @extends('advertiser.layouts.app')
 
+@push('page-styles')
+<link href="{{ asset('assets/css/saved-sites.css') }}?v={{ @filemtime(public_path('assets/css/saved-sites.css')) ?: '1' }}" rel="stylesheet">
+@endpush
+
 @section('content')
 @php
     $tab = $tab ?? 'favorites';
@@ -9,133 +13,36 @@
     $blacklistCount = $blacklistCount ?? $blacklist->count();
 @endphp
 
-<style>
-.saved-kpi {
-    display: flex; align-items: center; gap: 12px; width: 100%;
-    padding: 14px 16px; border: 1px solid #e5eef0; border-radius: 10px;
-    background: #fff; text-decoration: none; color: inherit; height: 100%;
-    transition: border-color .2s ease, background .2s ease, box-shadow .2s ease;
-}
-.saved-kpi:hover { border-color: #5bc4c7; background: #f0fbfb; color: inherit; }
-.saved-kpi.is-active {
-    border-color: #1a585e;
-    background: #e6f5f5;
-    box-shadow: 0 0 0 1px rgba(26, 88, 94, 0.12);
-}
-.saved-kpi .kpi-icon {
-    width: 40px; height: 40px; border-radius: 10px; display: flex;
-    align-items: center; justify-content: center; color: #fff; flex-shrink: 0;
-}
-.saved-kpi .kpi-icon--heart { background: linear-gradient(135deg, #f87171, #dc2626); }
-.saved-kpi .kpi-icon--ban { background: linear-gradient(135deg, #94a3b8, #475569); }
-.saved-kpi .kpi-label { font-size: 12px; color: #6b7280; display: block; }
-.saved-kpi .kpi-value { font-size: 1.35rem; font-weight: 700; color: #1a585e; line-height: 1.1; }
-
-.saved-tabs {
-    display: flex; gap: 8px; flex-wrap: wrap;
-    border-bottom: 1px solid #e5e7eb; margin-bottom: 0;
-}
-.saved-tab {
-    appearance: none; border: 0; background: transparent;
-    padding: 10px 14px; font-weight: 600; font-size: 14px; color: var(--brand-ink-muted, #75787B);
-    border-bottom: 2px solid transparent; margin-bottom: -1px;
-    text-decoration: none; display: inline-flex; align-items: center; gap: 8px;
-}
-.saved-tab:hover { color: #1a585e; }
-.saved-tab.is-active { color: #1a585e; border-bottom-color: #1a585e; }
-.saved-tab .count-pill {
-    min-width: 22px; height: 22px; padding: 0 7px; border-radius: 999px;
-    background: #e6f5f5; color: #1a585e; font-size: 12px; font-weight: 700;
-    display: inline-flex; align-items: center; justify-content: center;
-}
-
-.saved-site-url { font-weight: 600; color: #0f172a; letter-spacing: .01em; }
-.saved-metrics {
-    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px;
-}
-.saved-metrics div { display: flex; flex-direction: column; gap: 2px; }
-.saved-metrics span { font-size: 11px; color: #94a3b8; }
-.saved-metrics strong { font-size: 13px; color: #0f172a; }
-
-.saved-mobile-card {
-    border: 1px solid #e5eef0; border-radius: 12px; padding: 14px;
-    background: #fff;
-}
-.saved-mobile-card + .saved-mobile-card { margin-top: 12px; }
-
-.saved-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
-
-@media (max-width: 767.98px) {
-    .saved-desktop-only { display: none !important; }
-}
-@media (min-width: 768px) {
-    .saved-mobile-only { display: none !important; }
-}
-</style>
-
-<div class="container-fluid">
-    <div class="row mb-4 align-items-end g-3">
-        <div class="col-md-8">
-            <h2 class="mb-1 fw-semibold">Saved Sites</h2>
-            <p class="text-muted mb-0">
-                Manage favorites you plan to order and sites you’ve already used (blacklist).
+<div class="container-fluid saved-page">
+    <div class="saved-page-header">
+        <div>
+            <h2 class="saved-page-title">Saved Sites</h2>
+            <p class="saved-page-sub">
+                Favorites you plan to order, and sites you’ve blocked from the catalog.
             </p>
         </div>
-        <div class="col-md-4 text-md-end">
-            <a href="{{ route('advertiser.catalog') }}" class="btn btn-sm btn-primary">
-                <i class="fa-solid fa-list me-1"></i> Browse catalog
-            </a>
-        </div>
+        <a href="{{ route('advertiser.catalog') }}" class="btn btn-sm btn-primary saved-browse">
+            Browse catalog
+        </a>
     </div>
 
-    <div class="row g-3 mb-4">
-        <div class="col-md-6">
+    <div class="saved-card">
+        <div class="saved-tabs" role="tablist">
             <a href="{{ route('advertiser.saved-sites', ['tab' => 'favorites']) }}"
-               class="saved-kpi {{ $tab === 'favorites' ? 'is-active' : '' }}">
-                <span class="kpi-icon kpi-icon--heart" aria-hidden="true">
-                    <i class="fa-solid fa-heart"></i>
-                </span>
-                <span>
-                    <span class="kpi-label">Favorites</span>
-                    <span class="kpi-value" id="favoritesCountLabel">{{ $favoritesCount }}</span>
-                </span>
+               class="saved-tab {{ $tab === 'favorites' ? 'is-active' : '' }}"
+               role="tab" aria-selected="{{ $tab === 'favorites' ? 'true' : 'false' }}">
+                Favorites
+                <span class="count-pill" id="favoritesTabCount">{{ $favoritesCount }}</span>
             </a>
-        </div>
-        <div class="col-md-6">
             <a href="{{ route('advertiser.saved-sites', ['tab' => 'blacklist']) }}"
-               class="saved-kpi {{ $tab === 'blacklist' ? 'is-active' : '' }}">
-                <span class="kpi-icon kpi-icon--ban" aria-hidden="true">
-                    <i class="fa-solid fa-ban"></i>
-                </span>
-                <span>
-                    <span class="kpi-label">Blacklisted</span>
-                    <span class="kpi-value" id="blacklistCountLabel">{{ $blacklistCount }}</span>
-                </span>
+               class="saved-tab {{ $tab === 'blacklist' ? 'is-active' : '' }}"
+               role="tab" aria-selected="{{ $tab === 'blacklist' ? 'true' : 'false' }}">
+                Blacklist
+                <span class="count-pill" id="blacklistTabCount">{{ $blacklistCount }}</span>
             </a>
         </div>
-    </div>
 
-    <div class="card border-0 shadow-sm">
-        <div class="card-body pb-0">
-            <div class="saved-tabs" role="tablist">
-                <a href="{{ route('advertiser.saved-sites', ['tab' => 'favorites']) }}"
-                   class="saved-tab {{ $tab === 'favorites' ? 'is-active' : '' }}"
-                   role="tab" aria-selected="{{ $tab === 'favorites' ? 'true' : 'false' }}">
-                    <i class="fa-regular fa-heart" aria-hidden="true"></i>
-                    Favorites
-                    <span class="count-pill" id="favoritesTabCount">{{ $favoritesCount }}</span>
-                </a>
-                <a href="{{ route('advertiser.saved-sites', ['tab' => 'blacklist']) }}"
-                   class="saved-tab {{ $tab === 'blacklist' ? 'is-active' : '' }}"
-                   role="tab" aria-selected="{{ $tab === 'blacklist' ? 'true' : 'false' }}">
-                    <i class="fa-solid fa-ban" aria-hidden="true"></i>
-                    Blacklist
-                    <span class="count-pill" id="blacklistTabCount">{{ $blacklistCount }}</span>
-                </a>
-            </div>
-        </div>
-
-        <div class="card-body p-0">
+        <div>
             @if($tab === 'favorites')
                 @if($favorites->isEmpty())
                     <div class="p-4">
@@ -194,16 +101,20 @@
                                                     </a>
                                                 @endif
                                                 <button type="button"
-                                                        class="btn btn-sm btn-outline-secondary js-move-blacklist"
+                                                        class="saved-action-icon js-move-blacklist"
                                                         data-id="{{ $site->id }}"
-                                                        data-name="{{ $site->display_name }}">
-                                                    <i class="fa-solid fa-ban me-1"></i> Block
+                                                        data-name="{{ $site->display_name }}"
+                                                        title="Block"
+                                                        aria-label="Block {{ $site->display_name }}">
+                                                    <i class="fa-solid fa-ban" aria-hidden="true"></i>
                                                 </button>
                                                 <button type="button"
-                                                        class="btn btn-sm btn-cta-tertiary js-remove-favorite"
+                                                        class="saved-action-icon saved-action-icon--danger js-remove-favorite"
                                                         data-id="{{ $site->id }}"
-                                                        data-name="{{ $site->display_name }}">
-                                                    Remove
+                                                        data-name="{{ $site->display_name }}"
+                                                        title="Remove"
+                                                        aria-label="Remove {{ $site->display_name }}">
+                                                    <i class="fa-solid fa-xmark" aria-hidden="true"></i>
                                                 </button>
                                             </div>
                                         </td>
@@ -241,10 +152,16 @@
                                     @else
                                         <a href="{{ route('advertiser.catalog', ['site' => $site->id]) }}" class="btn btn-sm btn-primary">Order</a>
                                     @endif
-                                    <button type="button" class="btn btn-sm btn-outline-secondary js-move-blacklist"
-                                            data-id="{{ $site->id }}" data-name="{{ $site->display_name }}">Block</button>
-                                    <button type="button" class="btn btn-sm btn-cta-tertiary js-remove-favorite"
-                                            data-id="{{ $site->id }}" data-name="{{ $site->display_name }}">Remove</button>
+                                    <button type="button" class="saved-action-icon js-move-blacklist"
+                                            data-id="{{ $site->id }}" data-name="{{ $site->display_name }}"
+                                            title="Block" aria-label="Block {{ $site->display_name }}">
+                                        <i class="fa-solid fa-ban" aria-hidden="true"></i>
+                                    </button>
+                                    <button type="button" class="saved-action-icon saved-action-icon--danger js-remove-favorite"
+                                            data-id="{{ $site->id }}" data-name="{{ $site->display_name }}"
+                                            title="Remove" aria-label="Remove {{ $site->display_name }}">
+                                        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                                    </button>
                                 </div>
                             </div>
                         @endforeach
@@ -298,13 +215,15 @@
                                                         class="btn btn-sm btn-primary js-move-favorite"
                                                         data-id="{{ $site->id }}"
                                                         data-name="{{ $site->display_name }}">
-                                                    <i class="fa-regular fa-heart me-1"></i> Favorite
+                                                    Favorite
                                                 </button>
                                                 <button type="button"
-                                                        class="btn btn-sm btn-outline-secondary js-remove-blacklist"
+                                                        class="saved-action-icon js-remove-blacklist"
                                                         data-id="{{ $site->id }}"
-                                                        data-name="{{ $site->display_name }}">
-                                                    Unblock
+                                                        data-name="{{ $site->display_name }}"
+                                                        title="Unblock"
+                                                        aria-label="Unblock {{ $site->display_name }}">
+                                                    <i class="fa-solid fa-ban" aria-hidden="true"></i>
                                                 </button>
                                             </div>
                                         </td>
@@ -336,8 +255,11 @@
                                 <div class="saved-actions justify-content-start">
                                     <button type="button" class="btn btn-sm btn-primary js-move-favorite"
                                             data-id="{{ $site->id }}" data-name="{{ $site->display_name }}">Favorite</button>
-                                    <button type="button" class="btn btn-sm btn-outline-secondary js-remove-blacklist"
-                                            data-id="{{ $site->id }}" data-name="{{ $site->display_name }}">Unblock</button>
+                                    <button type="button" class="saved-action-icon js-remove-blacklist"
+                                            data-id="{{ $site->id }}" data-name="{{ $site->display_name }}"
+                                            title="Unblock" aria-label="Unblock {{ $site->display_name }}">
+                                        <i class="fa-solid fa-ban" aria-hidden="true"></i>
+                                    </button>
                                 </div>
                             </div>
                         @endforeach

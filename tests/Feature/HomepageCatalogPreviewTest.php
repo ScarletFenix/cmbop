@@ -49,7 +49,7 @@ class HomepageCatalogPreviewTest extends TestCase
         ], $overrides));
     }
 
-    public function test_homepage_hero_uses_static_german_catalog_image(): void
+    public function test_homepage_hero_uses_german_catalog_table(): void
     {
         $publisher = $this->publisher();
         $this->makeSite($publisher, [
@@ -75,41 +75,44 @@ class HomepageCatalogPreviewTest extends TestCase
             'da' => 55,
         ]);
 
-        $this->get('/')
+        $html = $this->get('/')
             ->assertOk()
-            ->assertSee('dashboard.png', false)
-            ->assertSee('dashboard.webp', false)
-            ->assertDontSee('Live publisher catalog', false)
-            ->assertDontSee('German News Hub', false)
-            ->assertDontSee('advertiser/catalog', false);
+            ->assertSee('Publisher catalog preview', false)
+            ->assertSee('Add to cart', false)
+            ->assertSee('German News Hub', false)
+            ->assertSee('Germany', false)
+            ->assertSee('slb-hero-live-catalog__url-blur', false)
+            ->assertDontSee('dashboard.png', false)
+            ->assertDontSee('French Lifestyle', false)
+            ->assertDontSee('french-lifestyle.fr', false)
+            ->assertDontSee('german-news-hub.de', false)
+            ->assertDontSee('advertiser/catalog', false)
+            ->getContent();
+
+        $this->assertStringContainsString('g', $html);
+        $this->assertStringContainsString('*', $html);
     }
 
-    public function test_homepage_always_shows_static_catalog_image_even_without_sites(): void
+    public function test_homepage_always_shows_catalog_table_even_without_sites(): void
     {
         $this->get('/')
             ->assertOk()
-            ->assertSee('dashboard.png', false)
-            ->assertDontSee('Live publisher catalog', false)
+            ->assertSee('Publisher catalog preview', false)
+            ->assertSee('Add to cart', false)
+            ->assertSee('Germany', false)
+            ->assertSee('slb-hero-live-catalog__url-blur', false)
+            ->assertDontSee('dashboard.png', false)
             ->assertDontSee('advertiser/catalog', false);
     }
 
-    public function test_hero_catalog_image_uses_contain_so_metrics_are_not_cropped(): void
+    public function test_hero_catalog_preview_keeps_full_table_readable_on_narrow_viewports(): void
     {
         $html = $this->get('/')
             ->assertOk()
             ->getContent();
 
-        $this->assertMatchesRegularExpression(
-            '/\.slb-hero-product\s*\{[^}]*object-fit:\s*contain/s',
-            $html
-        );
-        $this->assertStringContainsString('aspect-ratio: 1200 / 518', $html);
-        // Desktop used to force cover on .slb-hero-product (cropping metrics).
-        $this->assertDoesNotMatchRegularExpression(
-            '/\.slb-hero-product\s*\{[^}]*object-fit:\s*cover/s',
-            $html
-        );
-        // Mobile/tablet: readable pan inside the visual, not a stamped-down full frame.
+        $this->assertStringContainsString('catalog-table', $html);
+        $this->assertStringContainsString('slb-hero-catalog-clone', $html);
         $this->assertStringContainsString('min-width: 720px', $html);
         $this->assertStringContainsString('overscroll-behavior-x: contain', $html);
     }

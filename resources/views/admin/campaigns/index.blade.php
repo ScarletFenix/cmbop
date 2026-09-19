@@ -7,7 +7,25 @@
     if (!in_array($preselect, \App\Services\AudienceInventoryService::audienceKeys(), true)) {
         $preselect = 'advertisers';
     }
+    $audienceOptions = [
+        'advertisers' => 'All Advertisers ('.$stats['advertisers'].')',
+        'publishers' => 'All Publishers ('.$stats['publishers'].')',
+        'both' => 'Advertisers + Publishers ('.$stats['both_unique'].' unique)',
+        'advertisers_no_orders' => 'Advertisers: never checked out ('.($stats['advertisers_never_checked_out'] ?? $stats['advertisers_no_orders'] ?? 0).')',
+        'advertisers_no_paid_orders' => 'Advertisers: no paid orders ('.($stats['advertisers_no_paid_orders'] ?? 0).')',
+        'publishers_no_sites' => 'Publishers: no sites ('.($stats['publishers_no_sites'] ?? 0).')',
+        'advertisers_never_deposited' => 'Advertisers: never deposited ('.($stats['advertisers_never_deposited'] ?? 0).')',
+        'advertisers_paid_orders' => 'Advertisers: paid customers ('.($stats['advertisers_paid_orders'] ?? 0).')',
+        'advertisers_deposited_no_orders' => 'Advertisers: deposited, no paid orders ('.($stats['advertisers_deposited_no_orders'] ?? 0).')',
+        'publishers_no_active_sites' => 'Publishers: no active sites ('.($stats['publishers_no_active_sites'] ?? 0).')',
+        'selected' => 'Select specific users…',
+    ];
+    $audienceCurrent = old('audience', $preselect);
+    if (! isset($audienceOptions[$audienceCurrent])) {
+        $audienceCurrent = $preselect;
+    }
 @endphp
+<link href="{{ asset('assets/css/single-select.css') }}?v={{ @filemtime(public_path('assets/css/single-select.css')) ?: '1' }}" rel="stylesheet">
 <div class="container-fluid">
     <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
         <div>
@@ -128,34 +146,21 @@
                                 <input type="text" name="name" class="form-control" value="{{ old_text('name') }}" maxlength="120" placeholder="BF25 advertiser blast">
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label">Audience</label>
-                                <select name="audience" id="campaignAudience" class="form-select" required>
-                                    <option value="advertisers" @selected(old('audience', $preselect) === 'advertisers')>All Advertisers ({{ $stats['advertisers'] }})</option>
-                                    <option value="publishers" @selected(old('audience', $preselect) === 'publishers')>All Publishers ({{ $stats['publishers'] }})</option>
-                                    <option value="both" @selected(old('audience', $preselect) === 'both')>Advertisers + Publishers ({{ $stats['both_unique'] }} unique)</option>
-                                    <option value="advertisers_no_orders" @selected(old('audience', $preselect) === 'advertisers_no_orders')>
-                                        Advertisers: never checked out ({{ $stats['advertisers_never_checked_out'] ?? $stats['advertisers_no_orders'] ?? 0 }})
-                                    </option>
-                                    <option value="advertisers_no_paid_orders" @selected(old('audience', $preselect) === 'advertisers_no_paid_orders')>
-                                        Advertisers: no paid orders ({{ $stats['advertisers_no_paid_orders'] ?? 0 }})
-                                    </option>
-                                    <option value="publishers_no_sites" @selected(old('audience', $preselect) === 'publishers_no_sites')>
-                                        Publishers: no sites ({{ $stats['publishers_no_sites'] ?? 0 }})
-                                    </option>
-                                    <option value="advertisers_never_deposited" @selected(old('audience', $preselect) === 'advertisers_never_deposited')>
-                                        Advertisers: never deposited ({{ $stats['advertisers_never_deposited'] ?? 0 }})
-                                    </option>
-                                    <option value="advertisers_paid_orders" @selected(old('audience', $preselect) === 'advertisers_paid_orders')>
-                                        Advertisers: paid customers ({{ $stats['advertisers_paid_orders'] ?? 0 }})
-                                    </option>
-                                    <option value="advertisers_deposited_no_orders" @selected(old('audience', $preselect) === 'advertisers_deposited_no_orders')>
-                                        Advertisers: deposited, no paid orders ({{ $stats['advertisers_deposited_no_orders'] ?? 0 }})
-                                    </option>
-                                    <option value="publishers_no_active_sites" @selected(old('audience', $preselect) === 'publishers_no_active_sites')>
-                                        Publishers: no active sites ({{ $stats['publishers_no_active_sites'] ?? 0 }})
-                                    </option>
-                                    <option value="selected" @selected(old('audience', $preselect) === 'selected')>Select specific users…</option>
-                                </select>
+                                <label class="form-label" for="campaignAudienceTrigger">Audience</label>
+                                <input type="hidden" name="audience" id="campaignAudience" value="{{ $audienceCurrent }}" required>
+                                <div class="single-select-wrapper" id="campaignAudienceWrap">
+                                    <div class="single-select-input" id="campaignAudienceTrigger" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false" aria-label="Audience">
+                                        <span class="single-select-value" id="campaignAudienceValue">{{ $audienceOptions[$audienceCurrent] }}</span>
+                                        <i class="fa fa-chevron-down single-select-arrow" aria-hidden="true"></i>
+                                    </div>
+                                    <div class="single-select-dropdown" id="campaignAudienceDropdown">
+                                        <div class="single-select-options" role="listbox">
+                                            @foreach($audienceOptions as $value => $label)
+                                                <div class="single-select-option{{ $audienceCurrent === $value ? ' selected' : '' }}" role="option" data-value="{{ $value }}" data-label="{{ $label }}">{{ $label }}</div>
+                                            @endforeach
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
 
                             <div class="col-12" id="selectedUsersWrap" style="display:none;">
@@ -205,6 +210,35 @@
                                 </div>
                             </div>
 
+                            <div class="col-12">
+                                <label class="form-label" for="emailTemplateTrigger">Email Center templates</label>
+                                <div class="d-flex flex-wrap gap-2 align-items-end">
+                                    <div class="single-select-wrapper flex-grow-1" id="emailTemplateWrap" style="min-width:min(100%,18rem); max-width:28rem;">
+                                        <input type="hidden" id="emailTemplatePicker" value="">
+                                        <div class="single-select-input" id="emailTemplateTrigger" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false" aria-label="Email Center templates">
+                                            <span class="single-select-value" id="emailTemplateValue"><span class="single-select-placeholder">Use an Email Center template…</span></span>
+                                            <i class="fa fa-chevron-down single-select-arrow" aria-hidden="true"></i>
+                                        </div>
+                                        <div class="single-select-dropdown" id="emailTemplateDropdown">
+                                            <div class="single-select-search">
+                                                <input type="search" id="emailTemplateSearch" placeholder="Search templates…" autocomplete="off" aria-label="Search templates">
+                                            </div>
+                                            <div class="single-select-options" role="listbox">
+                                                @foreach(($emailTemplates ?? collect()) as $category => $templates)
+                                                    <div class="single-select-option-group">{{ $category }}</div>
+                                                    @foreach($templates as $tpl)
+                                                        <div class="single-select-option" role="option" data-value="{{ $tpl['key'] }}" data-label="{{ $tpl['name'] }}">{{ $tpl['name'] }}</div>
+                                                    @endforeach
+                                                @endforeach
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" id="applyEmailTemplateBtn">
+                                        Load template
+                                    </button>
+                                </div>
+                                <div class="form-text">Select a template, then click Load template to fill subject, message, and CTA. Preview shows the exact Email Center sample.</div>
+                            </div>
                             <div class="col-12">
                                 <label class="form-label">Quick templates</label>
                                 <div class="d-flex flex-wrap gap-2">
@@ -290,7 +324,7 @@
                     <strong><i class="fa fa-eye me-2 text-primary"></i>Preview</strong>
                 </div>
                 <div class="card-body">
-                    <iframe id="previewFrame" title="Campaign preview" sandbox referrerpolicy="no-referrer" style="width:100%; min-height:360px; border:1px solid #e2e8f0; border-radius:12px; background:#fff;"></iframe>
+                    <iframe id="previewFrame" title="Campaign preview" sandbox referrerpolicy="no-referrer" src="about:blank" style="width:100%; min-height:360px; border:1px solid #e2e8f0; border-radius:12px; background:#fff;"></iframe>
                     <div class="small text-muted mt-2" id="previewStatus">Click “Preview email” to render the branded message.</div>
                 </div>
             </div>
@@ -362,6 +396,67 @@
         countEl.textContent = document.querySelectorAll('.user-check:checked:not(:disabled)').length;
     }
 
+    function bindThemedSelect(wrapId, hiddenId, valueId) {
+        const wrap = document.getElementById(wrapId);
+        const hidden = document.getElementById(hiddenId);
+        const valueEl = document.getElementById(valueId);
+        if (!wrap || !hidden || !valueEl) {
+            return;
+        }
+        const trigger = wrap.querySelector('.single-select-input');
+        const dropdown = wrap.querySelector('.single-select-dropdown');
+        if (!trigger || !dropdown) {
+            return;
+        }
+        trigger.addEventListener('click', function () {
+            const open = !dropdown.classList.contains('show');
+            document.querySelectorAll('.single-select-dropdown.show').forEach(function (dd) {
+                if (dd !== dropdown) {
+                    dd.classList.remove('show');
+                    const other = dd.previousElementSibling;
+                    if (other) {
+                        other.setAttribute('aria-expanded', 'false');
+                    }
+                }
+            });
+            dropdown.classList.toggle('show', open);
+            trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+            if (open) {
+                const search = dropdown.querySelector('.single-select-search input');
+                if (search) {
+                    setTimeout(function () { search.focus(); }, 10);
+                }
+            }
+        });
+        wrap.querySelectorAll('.single-select-option').forEach(function (opt) {
+            opt.addEventListener('click', function () {
+                hidden.value = opt.getAttribute('data-value') || '';
+                valueEl.textContent = opt.getAttribute('data-label') || '';
+                wrap.querySelectorAll('.single-select-option').forEach(function (o) {
+                    o.classList.remove('selected');
+                });
+                opt.classList.add('selected');
+                dropdown.classList.remove('show');
+                trigger.setAttribute('aria-expanded', 'false');
+                hidden.dispatchEvent(new Event('change', { bubbles: true }));
+            });
+        });
+    }
+
+    bindThemedSelect('campaignAudienceWrap', 'campaignAudience', 'campaignAudienceValue');
+    bindThemedSelect('emailTemplateWrap', 'emailTemplatePicker', 'emailTemplateValue');
+
+    const templateSearch = document.getElementById('emailTemplateSearch');
+    if (templateSearch) {
+        templateSearch.addEventListener('input', function () {
+            const q = this.value.trim().toLowerCase();
+            document.querySelectorAll('#emailTemplateDropdown .single-select-option').forEach(function (opt) {
+                const label = (opt.getAttribute('data-label') || '').toLowerCase();
+                opt.classList.toggle('hidden', q !== '' && label.indexOf(q) === -1);
+            });
+        });
+    }
+
     audience.addEventListener('change', syncAudience);
     document.querySelectorAll('.user-check').forEach(function (el) {
         el.addEventListener('change', updateCount);
@@ -379,12 +474,88 @@
         updateCount();
     });
 
+    const templatePicker = document.getElementById('emailTemplatePicker');
+    const applyTemplateBtn = document.getElementById('applyEmailTemplateBtn');
+    const fromTemplateUrl = @json(route('admin.campaigns.from-template'));
+    const campaignSubject = document.getElementById('campaignSubject');
+    const campaignBody = document.getElementById('campaignBody');
+    let emailTemplateDirty = true;
+
+    function markEmailTemplateDirty() {
+        emailTemplateDirty = true;
+    }
+
+    [campaignSubject, campaignBody, form.querySelector('[name=cta_label]'), form.querySelector('[name=cta_url]')].forEach(function (el) {
+        if (el) {
+            el.addEventListener('input', markEmailTemplateDirty);
+        }
+    });
+
+    async function applyEmailTemplate() {
+        const key = templatePicker ? templatePicker.value : '';
+        if (!key) {
+            setPreviewStatus('Choose an Email Center template first.', true);
+            return;
+        }
+
+        setPreviewStatus('Loading template…', false);
+        try {
+            const params = new URLSearchParams();
+            params.set('_token', form.querySelector('[name=_token]').value);
+            params.set('template', key);
+            params.set('audience', audience.value);
+            const res = await fetch(fromTemplateUrl, {
+                method: 'POST',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+                    'X-CSRF-TOKEN': form.querySelector('[name=_token]').value,
+                },
+                body: params.toString(),
+                credentials: 'same-origin',
+            });
+            const data = await res.json().catch(function () { return {}; });
+            if (!res.ok) {
+                setPreviewStatus(data.message || 'Could not load that template.', true);
+                return;
+            }
+            campaignSubject.value = data.subject || '';
+            campaignBody.value = data.body_html || '';
+            form.querySelector('[name=cta_label]').value = data.cta_label || '';
+            form.querySelector('[name=cta_url]').value = data.cta_url || '';
+            emailTemplateDirty = false;
+            const frame = document.getElementById('previewFrame');
+            if (frame && data.html) {
+                frame.srcdoc = data.html;
+            }
+            setPreviewStatus('Exact Email Center sample loaded.', false);
+        } catch (err) {
+            setPreviewStatus('Could not load that template.', true);
+        }
+    }
+
+    if (applyTemplateBtn) {
+        applyTemplateBtn.addEventListener('click', applyEmailTemplate);
+    }
+
     document.querySelectorAll('.campaign-template').forEach(function (btn) {
         btn.addEventListener('click', function () {
-            document.getElementById('campaignSubject').value = btn.dataset.subject || '';
-            document.getElementById('campaignBody').value = btn.dataset.body || '';
+            campaignSubject.value = btn.dataset.subject || '';
+            campaignBody.value = btn.dataset.body || '';
             form.querySelector('[name=cta_label]').value = btn.dataset.cta || '';
             form.querySelector('[name=cta_url]').value = btn.dataset.url || '';
+            if (templatePicker) {
+                templatePicker.value = '';
+            }
+            const templateValue = document.getElementById('emailTemplateValue');
+            if (templateValue) {
+                templateValue.innerHTML = '<span class="single-select-placeholder">Use an Email Center template…</span>';
+            }
+            document.querySelectorAll('#emailTemplateDropdown .single-select-option').forEach(function (o) {
+                o.classList.remove('selected');
+            });
+            emailTemplateDirty = true;
         });
     });
 
@@ -519,12 +690,18 @@
     document.getElementById('previewBtn').addEventListener('click', async function () {
         const fd = new FormData();
         fd.append('_token', form.querySelector('[name=_token]').value);
-        fd.append('subject', document.getElementById('campaignSubject').value);
-        fd.append('body_html', document.getElementById('campaignBody').value);
-        const ctaLabel = form.querySelector('[name=cta_label]').value;
-        const ctaUrl = form.querySelector('[name=cta_url]').value;
-        if (ctaLabel) fd.append('cta_label', ctaLabel);
-        if (ctaUrl) fd.append('cta_url', ctaUrl);
+        const templateKey = templatePicker ? templatePicker.value : '';
+        if (templateKey && !emailTemplateDirty) {
+            fd.append('template', templateKey);
+            fd.append('audience', audience.value);
+        } else {
+            fd.append('subject', campaignSubject.value);
+            fd.append('body_html', campaignBody.value);
+            const ctaLabel = form.querySelector('[name=cta_label]').value;
+            const ctaUrl = form.querySelector('[name=cta_url]').value;
+            if (ctaLabel) fd.append('cta_label', ctaLabel);
+            if (ctaUrl) fd.append('cta_url', ctaUrl);
+        }
 
         setPreviewStatus('Rendering preview…', false);
 
@@ -533,9 +710,11 @@
                 method: 'POST',
                 headers: {
                     'X-Requested-With': 'XMLHttpRequest',
-                    'Accept': 'application/json, text/html',
+                    'Accept': 'text/html, application/json',
+                    'X-CSRF-TOKEN': form.querySelector('[name=_token]').value,
                 },
                 body: fd,
+                credentials: 'same-origin',
                 redirect: 'manual',
             });
 
@@ -564,3 +743,7 @@
 })();
 </script>
 @endsection
+
+@push('scripts')
+<script src="{{ asset('assets/js/single-select.js') }}?v={{ @filemtime(public_path('assets/js/single-select.js')) ?: '1' }}"></script>
+@endpush

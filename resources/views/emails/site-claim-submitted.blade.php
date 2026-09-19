@@ -1,12 +1,12 @@
 @component('mail::message')
 # New site ownership claim
 
-**Site:** {{ $siteName }}  
-**Domain:** {{ $claim->domain }}  
-**Claimer:** {{ $claimerName }} ({{ $claimerEmail }})  
-**Name match:** {{ $claim->name_matches ? 'Yes' : 'No — verify carefully' }}
+Site: {{ $siteName }}  
+Domain: {{ $claim->domain }}  
+Claimer: {{ $claimerName }} ({{ $claimerEmail }})  
+Name match: {{ $claim->name_matches ? 'Yes' : 'No — verify carefully' }}
 
-**Proof message:**  
+Proof message:  
 {{ $claim->proof_message }}
 
 @component('mail::button', ['url' => $adminUrl])

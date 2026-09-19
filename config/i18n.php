@@ -9,10 +9,16 @@ return [
     /** Unprefixed canonical English — treated as UK English for SEO (hreflang en-GB). */
     'default' => 'en',
 
-    'supported' => ['en', 'de', 'fr', 'nl', 'es', 'it', 'us'],
+    'supported' => [
+        'en', 'de', 'fr', 'nl', 'es', 'it', 'us',
+        'at', 'ch', 'ro', 'gr', 'dk', 'se', 'no', 'bg', 'hu', 'ee',
+    ],
 
     /** Prefixed locales (UK English has no URL prefix). `us` is US English. */
-    'prefixed' => ['de', 'fr', 'nl', 'es', 'it', 'us'],
+    'prefixed' => [
+        'de', 'fr', 'nl', 'es', 'it', 'us',
+        'at', 'ch', 'ro', 'gr', 'dk', 'se', 'no', 'bg', 'hu', 'ee',
+    ],
 
     /**
      * Public marketing path prefixes (after optional locale segment).
@@ -41,6 +47,16 @@ return [
         'guest-posts-spain',
         'guest-posts-france',
         'guest-posts-netherlands',
+        'guest-posts-switzerland',
+        'guest-posts-austria',
+        'guest-posts-romania',
+        'guest-posts-greece',
+        'guest-posts-denmark',
+        'guest-posts-sweden',
+        'guest-posts-norway',
+        'guest-posts-bulgaria',
+        'guest-posts-hungary',
+        'guest-posts-estonia',
         'guest-post-prices-europe',
     ],
 

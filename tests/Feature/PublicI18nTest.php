@@ -11,6 +11,23 @@ class PublicI18nTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_austria_and_switzerland_reuse_german_copy(): void
+    {
+        foreach (['/at', '/ch'] as $path) {
+            $html = $this->get($path)->assertOk()->getContent();
+            $this->assertStringContainsString('Gastbeitrag-Marktplatz für geprüfte Publisher.', $html, $path);
+            $this->assertStringContainsString('Marktplatz', $html, $path);
+            $this->assertStringNotContainsString('The guest post marketplace for verified publisher sites.', $html, $path);
+        }
+
+        $this->get('/at')->assertSee('lang="de-AT"', false);
+        $this->get('/ch')->assertSee('lang="de-CH"', false);
+        $this->get('/ro')
+            ->assertOk()
+            ->assertSee('Cumpără guest posturi de la publisheri verificați', false)
+            ->assertSee('lang="ro"', false);
+    }
+
     public function test_german_home_is_localized_with_hreflang(): void
     {
         $this->get('/de')
@@ -174,6 +191,12 @@ class PublicI18nTest extends TestCase
 
         $this->get('/us/register')
             ->assertRedirect('/register');
+
+        $this->get('/at/login')
+            ->assertRedirect('/login');
+
+        $this->get('/ro/register')
+            ->assertRedirect('/register');
     }
 
     public function test_english_login_has_no_language_switcher(): void
@@ -210,6 +233,10 @@ class PublicI18nTest extends TestCase
 
         $this->get('/us/about')->assertOk();
         $this->get('/de/blog')->assertOk();
+        $this->get('/at/about')->assertRedirect('/at/ueber-uns');
+        $this->get('/ch/marketplace')->assertRedirect('/ch/marktplatz');
+        $this->get('/ro/about')->assertRedirect('/ro/despre-noi');
+        $this->get('/se/pricing')->assertRedirect('/se/priser');
     }
 
     public function test_language_switcher_uses_localized_page_paths(): void

@@ -146,12 +146,13 @@ class CatalogTrustStripTest extends TestCase
             ->getContent();
 
         $this->assertStringContainsString('Awaiting first ratings', $html);
-        $this->assertStringContainsString('0% completed', $html);
+        $this->assertStringContainsString('No completed orders yet', $html);
+        $this->assertStringNotContainsString('% completed', $html);
         $this->assertStringNotContainsString('site-trust-compact__stars', $html);
         $this->assertStringNotContainsString('5.0', $html);
     }
 
-    public function test_rated_site_shows_score_count_and_completion_rate(): void
+    public function test_rated_site_shows_score_count_and_last_published(): void
     {
         $site = $this->makeSite([
             'site_name' => 'Rated Trust Site',
@@ -162,6 +163,7 @@ class CatalogTrustStripTest extends TestCase
             'completed_orders_count' => 9,
         ]);
 
+        $completedAt = now()->subDays(2);
         $completed = Order::create([
             'user_id' => $this->advertiser->id,
             'order_number' => 'ORD-'.uniqid(),
@@ -172,6 +174,7 @@ class CatalogTrustStripTest extends TestCase
             'payment_method' => 'wallet',
             'payment_status' => 'paid',
             'status' => 'completed',
+            'completed_at' => $completedAt,
         ]);
         OrderItem::create([
             'order_id' => $completed->id,
@@ -180,6 +183,8 @@ class CatalogTrustStripTest extends TestCase
             'site_url' => $site->site_url,
             'price' => 100,
             'content_link' => 'https://example.com/article.docx',
+            'publisher_status' => 'completed',
+            'completed_at' => $completedAt,
         ]);
 
         $cancelled = Order::create([
@@ -209,7 +214,9 @@ class CatalogTrustStripTest extends TestCase
 
         $this->assertStringContainsString('4.5', $html);
         $this->assertStringContainsString('12 ratings', $html);
-        $this->assertStringContainsString('90% completed', $html);
+        $this->assertStringContainsString('% completed', $html);
+        $this->assertStringContainsString('Last published', $html);
+        $this->assertStringContainsString('fa-clock', $html);
         $this->assertStringContainsString('fa-star-half-stroke', $html);
         $this->assertStringNotContainsString('12 completed', $html);
     }
@@ -274,10 +281,15 @@ class CatalogTrustStripTest extends TestCase
             resource_path('views/advertiser/catalog.blade.php')
         );
 
+        $this->assertStringContainsString('lastPublicationLabel()', $partial);
         $this->assertStringContainsString('completionRatePercent()', $partial);
+        $this->assertStringContainsString('fa-clock', $partial);
+        $this->assertStringContainsString('site-trust-compact__published', $partial);
         $this->assertStringContainsString('Awaiting first ratings', $partial);
         $this->assertStringContainsString('No completed orders yet', $partial);
         $this->assertStringContainsString("@include('advertiser.partials.catalog-site-trust'", $results);
+        $this->assertStringNotContainsString('catalog-site-trust--row', $results);
+        $this->assertStringContainsString('catalog-expand-trust', $results);
         // Full page shell must not re-inline results/trust — live + SSR share catalog-results.
         $this->assertStringContainsString("@include('advertiser.partials.catalog-results')", $shell);
         $this->assertStringNotContainsString("@include('advertiser.partials.catalog-site-trust'", $shell);
