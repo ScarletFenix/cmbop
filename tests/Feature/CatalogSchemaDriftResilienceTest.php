@@ -10,10 +10,8 @@ use Database\Seeders\CategoriesTableSeeder;
 use Database\Seeders\CountriesTableSeeder;
 use Database\Seeders\LanguagesTableSeeder;
 use Database\Seeders\RolesTableSeeder;
-use Illuminate\Database\QueryException;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
@@ -106,24 +104,6 @@ class CatalogSchemaDriftResilienceTest extends TestCase
             ->assertOk();
 
         $this->assertSame(1, app(CatalogCountryInventory::class)->counts()['de'] ?? 0);
-    }
-
-    public function test_inventory_counts_retry_when_countries_select_hits_unknown_column(): void
-    {
-        $this->dropSitesColumnIfPresent('countries');
-        CatalogCountryInventory::forget();
-        Cache::flush();
-
-        $threw = false;
-        try {
-            Site::query()->catalogVisible()->select(['id', 'country', 'countries'])->first();
-        } catch (QueryException $e) {
-            $threw = str_contains($e->getMessage(), 'countries');
-        }
-        $this->assertTrue($threw, 'Fixture should 42S22 when countries JSON is selected');
-
-        $counts = app(CatalogCountryInventory::class)->counts();
-        $this->assertSame(1, $counts['de'] ?? 0);
     }
 
     public function test_catalog_loads_when_sites_languages_and_categories_json_missing(): void

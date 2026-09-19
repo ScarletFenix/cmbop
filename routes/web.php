@@ -197,7 +197,8 @@ $registerPublicMarketingRoutes = function (string $locale = 'en') {
         ->name('newsletter.subscribe');
 };
 
-$englishOnlyMarketingSlugs = class_exists(PublicI18n::class)
+$englishOnlyMarketingSlugs = (class_exists(PublicI18n::class)
+        && method_exists(PublicI18n::class, 'englishOnlyMarketingSlugs'))
     ? PublicI18n::englishOnlyMarketingSlugs()
     : ['guest-post-prices-europe'];
 

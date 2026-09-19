@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Models\Blog;
 use App\Models\BlogTranslation;
+use App\Services\Marketing\GuestPostPriceIndex;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Schema;
@@ -251,6 +252,67 @@ class PublicI18n
     }
 
     /**
+     * Country landers and the Europe price index stay English-only.
+     * Prefixed locales 301 these slugs onto the unprefixed English URL.
+     *
+     * @return list<string>
+     */
+    public static function englishOnlyMarketingSlugs(): array
+    {
+        $slugs = ['guest-post-prices-europe'];
+
+        try {
+            if (
+                class_exists(GuestPostPriceIndex::class)
+                && defined(GuestPostPriceIndex::class.'::SLUG')
+            ) {
+                $indexSlug = trim((string) GuestPostPriceIndex::SLUG);
+                if ($indexSlug !== '') {
+                    $slugs = [$indexSlug];
+                }
+            }
+        } catch (\Throwable) {
+            // Keep the hardcoded price-index slug.
+        }
+
+        try {
+            if (class_exists(CountryLander::class) && method_exists(CountryLander::class, 'slugs')) {
+                foreach (CountryLander::slugs() as $slug) {
+                    $slug = trim((string) $slug);
+                    if ($slug !== '') {
+                        $slugs[] = $slug;
+                    }
+                }
+            }
+        } catch (\Throwable) {
+            // Leftover Hostinger can miss CountryLander.
+        }
+
+        return array_values(array_unique($slugs));
+    }
+
+    /**
+     * Country landers / Europe price index: English URL only, not a locale cluster.
+     */
+    public static function isEnglishOnlyMarketingPath(Request $request): bool
+    {
+        $first = self::firstPathSegment($request);
+        if ($first === '') {
+            return false;
+        }
+
+        try {
+            if (method_exists(self::class, 'englishOnlyMarketingSlugs')) {
+                return in_array($first, self::englishOnlyMarketingSlugs(), true);
+            }
+        } catch (\Throwable) {
+            return $first === 'guest-post-prices-europe';
+        }
+
+        return $first === 'guest-post-prices-europe';
+    }
+
+    /**
      * Guest auth entry points (English-only; not a translated marketing cluster).
      */
     public static function isPublicAuthEntryPath(Request $request): bool
@@ -323,8 +385,11 @@ class PublicI18n
             $path = LocalizedPublicPath::canonicalize($path);
         }
 
-        if (self::isEnglishOnlyPath($request) || self::isEnglishOnlyMarketingPath($request)) {
-            if (self::isEnglishOnlyMarketingPath($request) && $targetLocale === self::default()) {
+        if (self::isEnglishOnlyPath($request)
+            || (method_exists(self::class, 'isEnglishOnlyMarketingPath') && self::isEnglishOnlyMarketingPath($request))) {
+            if (method_exists(self::class, 'isEnglishOnlyMarketingPath')
+                && self::isEnglishOnlyMarketingPath($request)
+                && $targetLocale === self::default()) {
                 return $path === '' ? url('/') : url($path);
             }
 
@@ -417,7 +482,9 @@ class PublicI18n
         }
 
         $first = $path === '' ? '' : explode('/', $path, 2)[0];
-        if ($locales === null && $first !== '' && in_array($first, self::englishOnlyMarketingSlugs(), true)) {
+        if ($locales === null && $first !== ''
+            && method_exists(self::class, 'englishOnlyMarketingSlugs')
+            && in_array($first, self::englishOnlyMarketingSlugs(), true)) {
             $locales = [self::default()];
             $xDefaultLocale = self::default();
         }
