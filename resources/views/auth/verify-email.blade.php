@@ -10,7 +10,7 @@
                 <div class="card-body text-center p-5">
                     <i class="fa-solid fa-envelope-circle-check fa-4x text-primary mb-4"></i>
                     
-                    <h3 class="mb-3">Verify Your Email Address</h3>
+                    <h1 class="h3 mb-3">Verify Your Email Address</h1>
                     
                     @if (session('status') == 'verification-link-sent')
                         <div class="alert alert-success">

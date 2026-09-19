@@ -323,7 +323,11 @@ class PublicI18n
             $path = LocalizedPublicPath::canonicalize($path);
         }
 
-        if (self::isEnglishOnlyPath($request)) {
+        if (self::isEnglishOnlyPath($request) || self::isEnglishOnlyMarketingPath($request)) {
+            if (self::isEnglishOnlyMarketingPath($request) && $targetLocale === self::default()) {
+                return $path === '' ? url('/') : url($path);
+            }
+
             return self::urlForLocale('', $targetLocale);
         }
 
@@ -369,12 +373,15 @@ class PublicI18n
             }
 
             if (! $blog) {
-                return 'blog/'.$slug;
+                return 'blog';
             }
 
-            $display = $blog->displayTranslation($targetLocale, 'en');
+            $display = $blog->translationFor($targetLocale, null);
+            if ($display && filled($display->slug)) {
+                return 'blog/'.$display->slug;
+            }
 
-            return 'blog/'.($display?->slug ?: $blog->slug);
+            return 'blog';
         } catch (\Throwable) {
             return 'blog/'.$slug;
         }
@@ -408,6 +415,13 @@ class PublicI18n
         if (class_exists(LocalizedPublicPath::class)) {
             $path = LocalizedPublicPath::canonicalize($path);
         }
+
+        $first = $path === '' ? '' : explode('/', $path, 2)[0];
+        if ($locales === null && $first !== '' && in_array($first, self::englishOnlyMarketingSlugs(), true)) {
+            $locales = [self::default()];
+            $xDefaultLocale = self::default();
+        }
+
         $tags = [];
         $targetLocales = $locales ?: self::supported();
         $targetLocales = array_values(array_filter($targetLocales, fn ($locale) => self::isSupported($locale)));

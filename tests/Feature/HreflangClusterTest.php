@@ -130,17 +130,14 @@ class HreflangClusterTest extends TestCase
     public function test_english_only_assets_do_not_advertise_thin_locale_copies(): void
     {
         $paths = array_merge(
-            ['/guest-post-prices-europe', '/de/guest-post-prices-europe'],
+            ['/guest-post-prices-europe'],
             array_map(static fn (string $slug) => '/'.$slug, CountryLander::slugs()),
-            array_map(static fn (string $slug) => '/de/'.$slug, CountryLander::slugs()),
         );
 
         foreach ($paths as $path) {
             $html = $this->get($path)->assertOk()->getContent();
             $cluster = $this->hreflangCluster($html);
-            $canonicalEnglish = str_starts_with($path, '/de/')
-                ? url(substr($path, 3))
-                : url($path);
+            $canonicalEnglish = url($path);
 
             $this->assertSame(
                 [
@@ -153,6 +150,7 @@ class HreflangClusterTest extends TestCase
             $this->assertArrayNotHasKey('de', $cluster, $path);
             $this->assertArrayNotHasKey('fr', $cluster, $path);
             $this->assertArrayNotHasKey('en-US', $cluster, $path);
+            $this->assertDoesNotMatchRegularExpression('/<a[^>]+hreflang=/i', $html, $path);
         }
     }
 

@@ -8,7 +8,7 @@
         <div class="col-md-5 py-5">
             <div class="card p-4 shadow rounded-3">
 
-                <h3 class="text-center mb-3">Reset Password</h3>
+                <h1 class="h3 text-center mb-3">Reset Password</h1>
 
                 <form id="resetForm">
                     @csrf
