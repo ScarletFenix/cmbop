@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Models\Blog;
 use App\Models\BlogTranslation;
+use App\Services\Marketing\GuestPostPriceIndex;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Schema;
@@ -251,6 +252,46 @@ class PublicI18n
     }
 
     /**
+     * Country landers and the Europe price index stay English-only.
+     * Prefixed locales 301 these slugs onto the unprefixed English URL.
+     *
+     * @return list<string>
+     */
+    public static function englishOnlyMarketingSlugs(): array
+    {
+        $slugs = ['guest-post-prices-europe'];
+
+        try {
+            if (
+                class_exists(GuestPostPriceIndex::class)
+                && defined(GuestPostPriceIndex::class.'::SLUG')
+            ) {
+                $indexSlug = trim((string) GuestPostPriceIndex::SLUG);
+                if ($indexSlug !== '') {
+                    $slugs = [$indexSlug];
+                }
+            }
+        } catch (\Throwable) {
+            // Keep the hardcoded price-index slug.
+        }
+
+        try {
+            if (class_exists(CountryLander::class) && method_exists(CountryLander::class, 'slugs')) {
+                foreach (CountryLander::slugs() as $slug) {
+                    $slug = trim((string) $slug);
+                    if ($slug !== '') {
+                        $slugs[] = $slug;
+                    }
+                }
+            }
+        } catch (\Throwable) {
+            // Leftover Hostinger can miss CountryLander.
+        }
+
+        return array_values(array_unique($slugs));
+    }
+
+    /**
      * Guest auth entry points (English-only; not a translated marketing cluster).
      */
     public static function isPublicAuthEntryPath(Request $request): bool
@@ -417,7 +458,15 @@ class PublicI18n
         }
 
         $first = $path === '' ? '' : explode('/', $path, 2)[0];
-        if ($locales === null && $first !== '' && in_array($first, self::englishOnlyMarketingSlugs(), true)) {
+        $englishOnlySlugs = [];
+        try {
+            if (method_exists(self::class, 'englishOnlyMarketingSlugs')) {
+                $englishOnlySlugs = self::englishOnlyMarketingSlugs();
+            }
+        } catch (\Throwable) {
+            $englishOnlySlugs = [];
+        }
+        if ($locales === null && $first !== '' && in_array($first, $englishOnlySlugs, true)) {
             $locales = [self::default()];
             $xDefaultLocale = self::default();
         }
