@@ -12,6 +12,7 @@ use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\SetLocale;
 use App\Models\Invoice;
 use App\Services\ContentUpload\ContentUploadService;
+use App\Support\LeftoverPublicI18nSlugs;
 use App\Support\TrustedProxies;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -21,6 +22,16 @@ use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Exceptions\PostTooLargeException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
+
+// Leftover PublicI18n.php + leftover web.php: define englishOnlyMarketingSlugs()
+// before route boot so local/Hostinger cannot 500 on the missing method.
+$leftoverPublicI18nSlugs = __DIR__.'/../app/Support/LeftoverPublicI18nSlugs.php';
+if (is_file($leftoverPublicI18nSlugs)) {
+    require_once $leftoverPublicI18nSlugs;
+    if (class_exists(LeftoverPublicI18nSlugs::class)) {
+        LeftoverPublicI18nSlugs::ensureEnglishOnlyMarketingSlugsMethod();
+    }
+}
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
