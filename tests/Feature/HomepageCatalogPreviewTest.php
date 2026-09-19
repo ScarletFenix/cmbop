@@ -103,6 +103,8 @@ class HomepageCatalogPreviewTest extends TestCase
             ->assertSee('Add to cart', false)
             ->assertSee('Germany', false)
             ->assertSee('berlin**.de', false)
+            ->assertSee('munich**.de', false)
+            ->assertSee('hamburg**.de', false)
             ->assertDontSee('Demo Site', false)
             ->assertDontSee('dashboard.png', false)
             ->assertDontSee('advertiser/catalog', false);

@@ -79,18 +79,18 @@
         $catalogPreview = collect();
     }
 
-    $rows = $catalogPreview->isNotEmpty()
-        ? $catalogPreview->map(function ($site, $i) use ($fallbackRows) {
-            $base = $fallbackRows[$i] ?? $fallbackRows[0];
-
-            return array_merge($base, [
+    $rows = [];
+    foreach ($fallbackRows as $i => $base) {
+        $site = $catalogPreview->get($i);
+        $rows[] = is_array($site)
+            ? array_merge($base, [
                 'dr' => $site['dr'] ?? $base['dr'],
                 'da' => $site['da'] ?? $base['da'],
                 'price' => $site['price'] ?? $base['price'],
                 'traffic' => $site['traffic'] ?? $base['traffic'],
-            ]);
-        })->all()
-        : $fallbackRows;
+            ])
+            : $base;
+    }
 
     $rowCount = count($rows);
 @endphp
