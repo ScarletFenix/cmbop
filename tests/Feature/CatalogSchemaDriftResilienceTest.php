@@ -80,15 +80,30 @@ class CatalogSchemaDriftResilienceTest extends TestCase
         $this->actingAs($this->advertiser)
             ->get(route('advertiser.catalog'))
             ->assertOk()
-            ->assertDontSee('Something went wrong');
+            ->assertDontSee('Something went wrong')
+            ->assertDontSee('Unknown column')
+            ->assertDontSee('SQLSTATE');
 
         $this->actingAs($this->advertiser)
             ->get(route('advertiser.catalog', ['country' => 'de']))
-            ->assertOk();
+            ->assertOk()
+            ->assertDontSee('Unknown column');
+
+        $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog.results', ['country' => 'de']))
+            ->assertOk()
+            ->assertDontSee('Unknown column');
+
+        $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog', ['country' => 'is']))
+            ->assertOk()
+            ->assertDontSee('Unknown column');
 
         $this->actingAs($this->advertiser)
             ->get(route('advertiser.catalog.bulk-deals', ['country' => 'de']))
             ->assertOk();
+
+        $this->assertSame(1, app(CatalogCountryInventory::class)->counts()['de'] ?? 0);
     }
 
     public function test_catalog_loads_when_sites_languages_and_categories_json_missing(): void

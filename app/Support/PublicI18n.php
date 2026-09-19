@@ -385,16 +385,11 @@ class PublicI18n
             $path = LocalizedPublicPath::canonicalize($path);
         }
 
-        $isEnglishOnlyMarketing = false;
-        try {
-            $isEnglishOnlyMarketing = method_exists(self::class, 'isEnglishOnlyMarketingPath')
-                && self::isEnglishOnlyMarketingPath($request);
-        } catch (\Throwable) {
-            $isEnglishOnlyMarketing = false;
-        }
-
-        if (self::isEnglishOnlyPath($request) || $isEnglishOnlyMarketing) {
-            if ($isEnglishOnlyMarketing && $targetLocale === self::default()) {
+        if (self::isEnglishOnlyPath($request)
+            || (method_exists(self::class, 'isEnglishOnlyMarketingPath') && self::isEnglishOnlyMarketingPath($request))) {
+            if (method_exists(self::class, 'isEnglishOnlyMarketingPath')
+                && self::isEnglishOnlyMarketingPath($request)
+                && $targetLocale === self::default()) {
                 return $path === '' ? url('/') : url($path);
             }
 
@@ -487,15 +482,9 @@ class PublicI18n
         }
 
         $first = $path === '' ? '' : explode('/', $path, 2)[0];
-        $englishOnlySlugs = [];
-        try {
-            if (method_exists(self::class, 'englishOnlyMarketingSlugs')) {
-                $englishOnlySlugs = self::englishOnlyMarketingSlugs();
-            }
-        } catch (\Throwable) {
-            $englishOnlySlugs = [];
-        }
-        if ($locales === null && $first !== '' && in_array($first, $englishOnlySlugs, true)) {
+        if ($locales === null && $first !== ''
+            && method_exists(self::class, 'englishOnlyMarketingSlugs')
+            && in_array($first, self::englishOnlyMarketingSlugs(), true)) {
             $locales = [self::default()];
             $xDefaultLocale = self::default();
         }
