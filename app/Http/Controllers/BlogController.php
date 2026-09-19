@@ -173,6 +173,13 @@ class BlogController extends Controller
 
         $fallbackUsed = $translation->locale !== $requestedLocale;
         $canonicalUrl = $blog->canonicalUrl($translation->locale, $fallbackLocale);
+
+        // Thin locale copies (English body on /de/blog/…) conflict with hreflang + canonical.
+        if ($fallbackUsed) {
+            $query = $request->getQueryString();
+
+            return redirect($query ? $canonicalUrl.'?'.$query : $canonicalUrl, 301);
+        }
         $availableLocales = $blog->availableLocales();
         if ($availableLocales === []) {
             $availableLocales = [$translation->locale ?: $fallbackLocale];

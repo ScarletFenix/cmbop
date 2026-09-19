@@ -72,9 +72,13 @@ class CountryLanderPageTest extends TestCase
                 ->assertSee(localized_url('become-a-publisher'), false)
                 ->assertDontSee('advertiser/catalog', false);
 
+            $html = $this->get('/'.$slug)->getContent();
+            $this->assertStringNotContainsString('/de/'.$slug, $html);
+            $this->assertDoesNotMatchRegularExpression('/<a[^>]+hreflang=/i', $html);
+
             $this->get('/de/'.$slug)
-                ->assertOk()
-                ->assertSee('rel="canonical" href="'.url('/'.$slug).'"', false);
+                ->assertRedirect('/'.$slug);
+            $this->assertSame(301, $this->get('/de/'.$slug)->status());
         }
     }
 
@@ -175,6 +179,9 @@ class CountryLanderPageTest extends TestCase
             ->assertOk()
             ->assertSee('/guest-posts-germany', false)
             ->assertSee('/guest-posts-uk', false)
+            ->assertSee('/guest-posts-switzerland', false)
+            ->assertSee('/guest-posts-austria', false)
+            ->assertSee('/guest-posts-romania', false)
             ->assertSee('Germany', false)
             ->assertSee('country-lander-nav__card', false)
             ->assertSee('Guest posts by market', false)

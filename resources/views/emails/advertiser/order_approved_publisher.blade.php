@@ -3,13 +3,13 @@
 
 Dear Publisher,
 
-Great news! The advertiser has **approved** the order for your site.
+Great news! The advertiser has approved the order for your site.
 
 ## Order Details:
 
-- **Order Number:** #{{ $order->order_number }}
-- **Site:** {{ $site->site_name }}
-- **Reference Code:** {{ $order->reference_code }}
+- Order Number: #{{ $order->order_number }}
+- Site: {{ $site->site_name }}
+- Reference Code: {{ $order->reference_code }}
 
 ## Content Details:
 
@@ -19,25 +19,25 @@ Great news! The advertiser has **approved** the order for your site.
         : null;
 @endphp
 @if($publisherContentLink)
-- **Content Link:** <a href="{{ $publisherContentLink }}">View Content</a>
+- Content Link: <a href="{{ $publisherContentLink }}">View Content</a>
 @endif
 @if(filled($orderItem->live_url ?? null))
-- **Live URL:** <a href="{{ $orderItem->live_url }}">{{ $orderItem->live_url }}</a>
+- Live URL: <a href="{{ $orderItem->live_url }}">{{ $orderItem->live_url }}</a>
 @endif
 
 ## Payment Details:
 
-- **Base Price:** €{{ number_format($basePrice, 2) }}
+- Base Price: €{{ number_format($basePrice, 2) }}
 @if($orderItem->additional_price > 0)
-- **{{ ucfirst($orderItem->sensitive_type) }}:** +€{{ number_format($orderItem->additional_price, 2) }}
+- {{ ucfirst($orderItem->sensitive_type) }}: +€{{ number_format($orderItem->additional_price, 2) }}
 @endif
 @if($orderItem->hasHomepagePlacement())
-- **Homepage ({{ (int) $orderItem->homepage_days }} day{{ (int) $orderItem->homepage_days === 1 ? '' : 's' }}):** @if((float) ($orderItem->homepage_price ?? 0) > 0)+€{{ number_format((float) $orderItem->homepage_price, 2) }}@else Free @endif
+- Homepage ({{ (int) $orderItem->homepage_days }} day{{ (int) $orderItem->homepage_days === 1 ? '' : 's' }}): @if((float) ($orderItem->homepage_price ?? 0) > 0)+€{{ number_format((float) $orderItem->homepage_price, 2) }}@else Free @endif
 @endif
 @if($orderItem->offersSocialPromotion())
-- **Social:** {{ collect($orderItem->enabledSocialChannels())->map(fn ($c) => $orderItem->socialChannelLabel($c))->implode(', ') }} (included)
+- Social: {{ collect($orderItem->enabledSocialChannels())->map(fn ($c) => $orderItem->socialChannelLabel($c))->implode(', ') }} (included)
 @endif
-- **Amount Credited:** €{{ number_format($payoutAmount, 2) }}
+- Amount Credited: €{{ number_format($payoutAmount, 2) }}
 
 ## What this means:
 

@@ -103,6 +103,11 @@
             <a href="{{ staff_route('sites.create') }}" class="btn btn-sm btn-primary">
                 <i class="fa fa-plus me-1"></i> Add site for publisher
             </a>
+            @if(auth()->user()?->isAdmin())
+                <a href="{{ route('admin.sites.on-demand.index') }}" class="btn btn-sm btn-outline-primary">
+                    On-demand
+                </a>
+            @endif
         </div>
     </div>
 

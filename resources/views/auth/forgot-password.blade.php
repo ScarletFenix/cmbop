@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'Forgot Password')
+@section('title', 'Forgot Password | SEOLinkBuildings Guest Post Marketplace')
 
 @section('content')
 <div class="container py-5">
@@ -8,7 +8,7 @@
         <div class="col-md-5 py-5">
             <div class="card p-4 shadow rounded-3">
 
-                <h3 class="text-center mb-3">Forgot Password</h3>
+                <h1 class="h3 text-center mb-3">Forgot Password</h1>
 
                 <form id="forgotForm">
                     @csrf

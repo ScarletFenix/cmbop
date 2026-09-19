@@ -143,8 +143,42 @@ function initCatalogExpandPreviewZoom(root) {
     });
 }
 
+function initCatalogVerifiedLotties(root) {
+    const scope = root && root.querySelectorAll ? root : document;
+    if (!window.lottie || typeof window.lottie.loadAnimation !== 'function') return;
+    const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    scope.querySelectorAll('.catalog-verified-lottie').forEach(function (box) {
+        if (box._verifiedLottie) return;
+        const src = box.getAttribute('data-lottie');
+        if (!src) return;
+        const anim = window.lottie.loadAnimation({
+            container: box,
+            renderer: 'svg',
+            loop: false,
+            autoplay: false,
+            path: src
+        });
+        box._verifiedLottie = anim;
+        function showRest() {
+            if (anim.totalFrames) anim.goToAndStop(anim.totalFrames - 1, true);
+        }
+        anim.addEventListener('DOMLoaded', showRest);
+        anim.addEventListener('data_ready', showRest);
+        if (reduce) return;
+        const chip = box.closest('.site-chip--verified');
+        if (!chip) return;
+        chip.addEventListener('mouseenter', function () {
+            anim.goToAndPlay(0, true);
+        });
+        chip.addEventListener('focus', function () {
+            anim.goToAndPlay(0, true);
+        });
+    });
+}
+
 document.addEventListener('DOMContentLoaded', function () {
     initCatalogExpandPreviewZoom(document.getElementById('catalogResults') || document);
+    initCatalogVerifiedLotties(document.getElementById('catalogResults') || document);
 });
 
 document.addEventListener('DOMContentLoaded', function () {
@@ -317,6 +351,12 @@ document.addEventListener('DOMContentLoaded', function () {
 /** Prevents double form.submit() while a navigation is already in flight. */
 let catalogFilterSubmitInFlight = false;
 
+function setCatalogBusyLottie(busy, play) {
+    if (!window.SlbLoader) return;
+    if (play) window.SlbLoader.show();
+    else window.SlbLoader.hide();
+}
+
 /**
  * Cover the results card while the next live fragment is on its way.
  *
@@ -348,6 +388,7 @@ function markCatalogResultsBusy(options) {
         if (label) {
             label.textContent = options.label || 'Updating results…';
         }
+        setCatalogBusyLottie(busy, true);
     }
 
     const searchInput = document.getElementById('catalogSearchInput');
@@ -371,6 +412,7 @@ function clearCatalogResultsBusy() {
         busy.setAttribute('aria-hidden', 'true');
         const label = busy.querySelector('.catalog-results-busy__label');
         if (label) label.textContent = 'Updating results…';
+        setCatalogBusyLottie(busy, false);
     }
     const live = document.getElementById('catalogSearchStatus');
     if (live) live.textContent = '';
@@ -654,10 +696,27 @@ function initBulkDealRail() {
         }
     }
 
+    function existingPanelsMatch(cards) {
+        const panels = track.querySelectorAll('[data-bulk-page-panel]');
+        if (!panels.length) return false;
+        const inPanels = Array.prototype.slice.call(
+            track.querySelectorAll('[data-bulk-page-panel] [data-bulk-card]')
+        );
+        if (inPanels.length !== cards.length) return false;
+        return cards.every(function (card, i) {
+            return inPanels[i] === card;
+        });
+    }
+
     function setVisibleCards(cards, opts) {
         const options = opts || {};
         visibleCards = cards.slice();
-        rebuildPanels(visibleCards);
+        const reusePanels = !!options.reusePanels && existingPanelsMatch(visibleCards);
+        if (!reusePanels) {
+            rebuildPanels(visibleCards);
+        } else {
+            pageCount = Math.max(1, Math.ceil(visibleCards.length / pageSize) || 1);
+        }
         if (options.page) {
             currentPage = Math.min(pageCount, Math.max(1, options.page));
         } else {
@@ -665,6 +724,7 @@ function initBulkDealRail() {
         }
         // Rebuild must not animate from a stale offset.
         paint({ instant: true });
+        track.classList.add('is-enhanced');
     }
 
     function stopAutoplay() {
@@ -860,7 +920,7 @@ function initBulkDealRail() {
         });
     }
 
-    setVisibleCards(allCards);
+    setVisibleCards(allCards, { reusePanels: true });
     applyCollapsed(bulkRailReadCollapsed());
     startAutoplay();
 
@@ -2839,6 +2899,9 @@ const CatalogLive = (function () {
         if (typeof initCatalogExpandPreviewZoom === 'function') {
             initCatalogExpandPreviewZoom(card || document.getElementById('catalogResults'));
         }
+        if (typeof initCatalogVerifiedLotties === 'function') {
+            initCatalogVerifiedLotties(card || document.getElementById('catalogResults'));
+        }
         if (window.GlassTip && typeof window.GlassTip.enhance === 'function') {
             window.GlassTip.enhance(card || document.getElementById('catalogResults'));
         }
@@ -3970,12 +4033,12 @@ function updateBuyButtonPrice(siteId, basePrice, additionalPrice = 0, sensitiveT
         const price = catalogPriceDisplaysFor(buyButton);
 
         if (price.pay) {
-            price.pay.textContent = '€' + totalPrice.toFixed(2);
+            price.pay.textContent = (window.slbFormatMoney || function (n) { return '€' + Number(n).toFixed(2); })(totalPrice);
         }
 
         // Strike-through shows the pre-discount list total when a sale is active.
         if (price.list) {
-            price.list.textContent = '€' + displayList.toFixed(2);
+            price.list.textContent = (window.slbFormatMoney || function (n) { return '€' + Number(n).toFixed(2); })(displayList);
             price.list.hidden = !(pct > 0);
         }
 
@@ -5060,7 +5123,7 @@ document.addEventListener('click', async function (e) {
             body: JSON.stringify(form),
         });
         const data = await res.json().catch(() => ({}));
-        const claimsUrl = (CatalogConfig.routes && CatalogConfig.routes.siteClaimsIndex) || '/site-claims';
+        const claimsUrl = (CatalogConfig.routes && CatalogConfig.routes.siteClaimsIndex) || '/advertiser/site-claims';
         if (data.success) {
             Swal.fire({
                 icon: 'success',

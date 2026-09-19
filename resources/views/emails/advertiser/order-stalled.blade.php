@@ -3,7 +3,7 @@
 
 Hi {{ $firstName }},
 
-Your guest post on **{{ $siteName }}** (order **#{{ $order->order_number }}**) was due on **{{ $dueAt->format('j M') }}** and is now {{ $daysOverdue }} day(s) late. We would rather tell you than leave you wondering.
+Your guest post on {{ $siteName }} (order #{{ $order->order_number }}) was due on {{ $dueAt->format('j M') }} and is now {{ $daysOverdue }} day(s) late. We would rather tell you than leave you wondering.
 
 Here is where it stands:
 

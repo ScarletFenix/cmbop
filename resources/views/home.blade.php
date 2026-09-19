@@ -6,13 +6,6 @@
 
 @push('head')
 <script type="application/ld+json">
-{!! json_encode(array_merge([
-    '@@context' => 'https://schema.org',
-], class_exists(\App\Support\BrandOrganization::class)
-    ? \App\Support\BrandOrganization::schema()
-    : ['@type' => 'Organization', 'name' => 'SEOLinkBuildings']), JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) !!}
-</script>
-<script type="application/ld+json">
 {!! json_encode([
     '@@context' => 'https://schema.org',
     '@type' => 'SoftwareApplication',
@@ -20,6 +13,8 @@
     'applicationCategory' => 'BusinessApplication',
     'operatingSystem' => 'Web',
     'url' => url('/'),
+    'description' => 'Guest-post and backlink marketplace connecting advertisers with publishers across Europe.',
+    'image' => asset('assets/img/logo1.png'),
     'offers' => [
         '@type' => 'Offer',
         'price' => '0',
@@ -31,7 +26,7 @@
         'legalName' => config('billing.company.legal_name'),
         'identifier' => config('billing.company.registration_no', '16607074'),
     ],
-], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) !!}
+], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_HEX_TAG|JSON_HEX_AMP|JSON_INVALID_UTF8_SUBSTITUTE) ?: '{}' !!}
 </script>
 <script type="application/ld+json">
 {!! json_encode([
@@ -41,11 +36,8 @@
     'alternateName' => ['SEO Link Buildings', 'Seolink Buildings'],
     'url' => url('/'),
     'inLanguage' => class_exists(\App\Support\PublicI18n::class)
-        ? array_map(
-            fn (string $locale) => \App\Support\PublicI18n::htmlLang($locale),
-            \App\Support\PublicI18n::supported()
-        )
-        : ['en-GB'],
+        ? \App\Support\PublicI18n::htmlLang()
+        : 'en-GB',
     'publisher' => [
         '@type' => 'Organization',
         'name' => 'SEOLinkBuildings',
@@ -58,7 +50,7 @@
             'url' => localized_url('about'),
         ],
     ],
-], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) !!}
+], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_HEX_TAG|JSON_HEX_AMP|JSON_INVALID_UTF8_SUBSTITUTE) ?: '{}' !!}
 </script>
 @endpush
 

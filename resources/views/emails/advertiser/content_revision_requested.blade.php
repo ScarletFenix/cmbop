@@ -3,7 +3,7 @@
 
 Dear Customer,
 
-The publisher for **{{ $site->site_name }}** asked you to send a revised article for order **#{{ $order->order_number }}**.
+The publisher for {{ $site->site_name }} asked you to send a revised article for order #{{ $order->order_number }}.
 
 ## Why they asked
 > {{ $reason }}

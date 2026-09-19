@@ -68,8 +68,7 @@
                  data-status-text="{{ $catalogResultsStatus['text'] }}"
                  data-status-announce="{{ $catalogResultsStatus['announce'] }}">
                 <div class="catalog-results-busy" hidden aria-hidden="true">
-                    <span class="catalog-results-busy__spinner"></span>
-                    <span class="catalog-results-busy__label">Updating results…</span>
+                    <span class="catalog-results-busy__label visually-hidden">Updating results…</span>
                 </div>
                 <div class="card-body p-0">
                     
@@ -296,8 +295,8 @@
                                                 data-glass-tip-body="This publisher has successfully completed our verification process and meets our platform's quality standards."
                                                 data-glass-tip-placement="top"
                                                 aria-label="Verified publisher">
-                                            <i class="fa-solid fa-circle-check" aria-hidden="true"></i>
-                                            <span>Verified</span>
+                                            <span class="catalog-verified-lottie" data-lottie="{{ asset('assets/vendor/lottie/verified.json') }}" aria-hidden="true"></span>
+                                            <span class="visually-hidden">Verified</span>
                                         </button>
                                     @endif
                                 </span>
@@ -690,7 +689,7 @@
                                                checked>
                                         <label class="form-check-label" for="sensitive_{{ $site->id }}_none">
                                             <strong>No sensitive topic</strong>
-                                            <span class="text-muted">€{{ number_format($articlePay, 2) }}</span>
+                                            <span class="text-muted">{{ format_money($articlePay) }}</span>
                                         </label>
                                     </div>
 
@@ -719,8 +718,8 @@
                                             <label class="form-check-label"
                                                    for="sensitive_{{ $site->id }}_{{ $loop->index }}">
                                                 <strong>{{ ucfirst($type) }}</strong>
-                                                <span class="catalog-addon-price">add-on +€{{ number_format($additionalPrice, 2) }}</span>
-                                                <span class="text-muted">→ you pay €{{ number_format($totalPrice, 2) }}</span>
+                                                <span class="catalog-addon-price">add-on {{ format_money($additionalPrice, ['signed' => true]) }}</span>
+                                                <span class="text-muted">→ you pay {{ format_money($totalPrice) }}</span>
                                             </label>
                                         </div>
                                     @endforeach
@@ -732,9 +731,9 @@
                                      id="price-info-{{ $site->id }}">
                                     <small class="text-muted">
                                         You pay:
-                                        <strong>€{{ number_format($articlePay, 2) }}</strong>
+                                        <strong>{{ format_money($articlePay) }}</strong>
                                         @if($catalogSalePrice !== null)
-                                            <span class="text-decoration-line-through">€{{ number_format($catalogListPrice, 2) }}</span>
+                                            <span class="text-decoration-line-through">{{ format_money($catalogListPrice) }}</span>
                                             (offer price)
                                         @else
                                             (base price)
@@ -826,10 +825,10 @@
                                             @if($isFreeHome)
                                                 <span class="text-success">Free</span>
                                             @else
-                                                <span class="text-muted">add-on +€{{ number_format($fee, 2) }}</span>
+                                                <span class="text-muted">add-on {{ format_money($fee, ['signed' => true]) }}</span>
                                             @endif
                                             @if($showAdvertiserPay)
-                                                <span class="text-muted">→ you pay €{{ number_format(round($articlePay + (float) $fee, 2), 2) }}</span>
+                                                <span class="text-muted">→ you pay {{ format_money(round($articlePay + (float) $fee, 2)) }}</span>
                                             @endif
                                         </label>
                                     </div>
@@ -1075,7 +1074,7 @@
                        @endif>{{ $displayRootedUrl }}</a>
                     <div class="catalog-site-badges catalog-site-badges--mobile mt-1">
                         @if($site->verified)
-                            <span class="site-chip site-chip--verified site-chip--status"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>Verified</span></span>
+                            <span class="site-chip site-chip--verified site-chip--status"><span class="catalog-verified-lottie" data-lottie="{{ asset('assets/vendor/lottie/verified.json') }}" aria-hidden="true"></span><span class="visually-hidden">Verified</span></span>
                         @endif
                         @include('advertiser.partials.catalog-tag-chip', ['site' => $site])
                         @if($isNew)
@@ -1213,7 +1212,7 @@
                                checked>
                         <label class="form-check-label" for="sensitive_mobile_{{ $site->id }}_none">
                             <strong>No sensitive topic</strong>
-                            <span class="text-muted">€{{ number_format($articlePay, 2) }}</span>
+                            <span class="text-muted">{{ format_money($articlePay) }}</span>
                         </label>
                     </div>
                     @foreach($mobileSensitivePrices as $type => $additionalPrice)
@@ -1238,8 +1237,8 @@
                                    id="sensitive_mobile_{{ $site->id }}_{{ $loop->index }}">
                             <label class="form-check-label" for="sensitive_mobile_{{ $site->id }}_{{ $loop->index }}">
                                 <strong>{{ ucfirst($type) }}</strong>
-                                <span class="catalog-addon-price">add-on +€{{ number_format($additionalPrice, 2) }}</span>
-                                <span class="text-muted">→ you pay €{{ number_format($totalPrice, 2) }}</span>
+                                <span class="catalog-addon-price">add-on {{ format_money($additionalPrice, ['signed' => true]) }}</span>
+                                <span class="text-muted">→ you pay {{ format_money($totalPrice) }}</span>
                             </label>
                         </div>
                     @endforeach
@@ -1251,9 +1250,9 @@
                 <div class="selected-price-info mt-1" id="price-info-mobile-{{ $site->id }}">
                     <small class="text-muted">
                         You pay:
-                        <strong>€{{ number_format($articlePay, 2) }}</strong>
+                        <strong>{{ format_money($articlePay) }}</strong>
                         @if($catalogSalePrice !== null)
-                            <span class="text-decoration-line-through">€{{ number_format($catalogListPrice, 2) }}</span>
+                            <span class="text-decoration-line-through">{{ format_money($catalogListPrice) }}</span>
                             (offer price)
                         @else
                             (base price)
@@ -1305,10 +1304,10 @@
                                 @if($isFreeHome)
                                     <span class="text-success">Free</span>
                                 @else
-                                    <span class="text-muted">add-on +€{{ number_format($fee, 2) }}</span>
+                                    <span class="text-muted">add-on {{ format_money($fee, ['signed' => true]) }}</span>
                                 @endif
                                 @if($showAdvertiserPay)
-                                    <span class="text-muted">→ you pay €{{ number_format(round($articlePay + (float) $fee, 2), 2) }}</span>
+                                    <span class="text-muted">→ you pay {{ format_money(round($articlePay + (float) $fee, 2)) }}</span>
                                 @endif
                             </label>
                         </div>
@@ -1531,10 +1530,10 @@
                                         @if((float) $fee <= 0)
                                             — <span class="text-success">Free</span>
                                         @else
-                                            — add-on +€{{ number_format((float) $fee, 2) }}
+                                            — add-on {{ format_money($fee, ['signed' => true]) }}
                                         @endif
                                         @if($showAdvertiserPay)
-                                            → you pay €{{ number_format(round($articlePay + (float) $fee, 2), 2) }}
+                                            → you pay {{ format_money(round($articlePay + (float) $fee, 2)) }}
                                         @endif
                                     </li>
                                 @endforeach

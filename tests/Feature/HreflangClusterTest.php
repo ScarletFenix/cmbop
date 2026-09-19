@@ -12,8 +12,19 @@ class HreflangClusterTest extends TestCase
 {
     use RefreshDatabase;
 
-    /** @var list<string> */
-    private const CLUSTER = ['en-GB', 'de', 'fr', 'nl', 'es', 'it', 'en-US', 'x-default'];
+    /**
+     * @return list<string>
+     */
+    private function clusterKeys(): array
+    {
+        $keys = array_map(
+            static fn (string $locale) => PublicI18n::hreflang($locale),
+            PublicI18n::supported()
+        );
+        $keys[] = 'x-default';
+
+        return $keys;
+    }
 
     /**
      * @return array<string, string>
@@ -81,13 +92,18 @@ class HreflangClusterTest extends TestCase
     public function test_locale_homes_share_one_reciprocal_cluster_with_uk_x_default(): void
     {
         $expected = $this->expectedHomeCluster();
-        $this->assertSame(self::CLUSTER, array_keys($expected));
+        $this->assertSame($this->clusterKeys(), array_keys($expected));
         $this->assertSame(url('/'), $expected['en-GB']);
         $this->assertSame(url('/us'), $expected['en-US']);
+        $this->assertSame(url('/at'), $expected['de-AT']);
         $this->assertSame(url('/'), $expected['x-default']);
         $this->assertNotSame($expected['en-US'], $expected['x-default']);
 
-        foreach (['/', '/us', '/de', '/fr', '/nl', '/es', '/it'] as $path) {
+        $homePaths = ['/'];
+        foreach (PublicI18n::prefixed() as $locale) {
+            $homePaths[] = '/'.$locale;
+        }
+        foreach ($homePaths as $path) {
             $html = $this->get($path)->assertOk()->getContent();
             $cluster = $this->hreflangCluster($html);
 
@@ -100,7 +116,7 @@ class HreflangClusterTest extends TestCase
     {
         foreach (['marketplace', 'about'] as $englishPath) {
             $expected = $this->expectedPageCluster($englishPath);
-            $this->assertSame(self::CLUSTER, array_keys($expected));
+            $this->assertSame($this->clusterKeys(), array_keys($expected));
             $this->assertSame(url('/'.$englishPath), $expected['x-default']);
 
             foreach (PublicI18n::supported() as $locale) {
@@ -114,17 +130,14 @@ class HreflangClusterTest extends TestCase
     public function test_english_only_assets_do_not_advertise_thin_locale_copies(): void
     {
         $paths = array_merge(
-            ['/guest-post-prices-europe', '/de/guest-post-prices-europe'],
+            ['/guest-post-prices-europe'],
             array_map(static fn (string $slug) => '/'.$slug, CountryLander::slugs()),
-            array_map(static fn (string $slug) => '/de/'.$slug, CountryLander::slugs()),
         );
 
         foreach ($paths as $path) {
             $html = $this->get($path)->assertOk()->getContent();
             $cluster = $this->hreflangCluster($html);
-            $canonicalEnglish = str_starts_with($path, '/de/')
-                ? url(substr($path, 3))
-                : url($path);
+            $canonicalEnglish = url($path);
 
             $this->assertSame(
                 [
@@ -137,14 +150,18 @@ class HreflangClusterTest extends TestCase
             $this->assertArrayNotHasKey('de', $cluster, $path);
             $this->assertArrayNotHasKey('fr', $cluster, $path);
             $this->assertArrayNotHasKey('en-US', $cluster, $path);
+            $this->assertDoesNotMatchRegularExpression('/<a[^>]+hreflang=/i', $html, $path);
         }
     }
 
-    public function test_auth_pages_are_outside_the_hreflang_cluster(): void
+    public function test_auth_pages_use_english_only_self_hreflang(): void
     {
         foreach (['/login', '/register'] as $path) {
             $html = $this->get($path)->assertOk()->getContent();
-            $this->assertSame([], $this->hreflangCluster($html), $path);
+            $this->assertSame([
+                'en-GB' => url($path),
+                'x-default' => url($path),
+            ], $this->hreflangCluster($html), $path);
         }
     }
 

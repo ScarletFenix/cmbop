@@ -54,6 +54,7 @@ class AppServiceProvider extends ServiceProvider
             app_path('Helpers/FormHelper.php'),
             app_path('Helpers/UrlHelper.php'),
             app_path('Helpers/SiteDescriptionHelper.php'),
+            app_path('Helpers/MoneyHelper.php'),
         ] as $helper) {
             if (is_file($helper)) {
                 require_once $helper;

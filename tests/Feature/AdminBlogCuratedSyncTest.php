@@ -174,7 +174,9 @@ class AdminBlogCuratedSyncTest extends TestCase
                 'slug' => $slug,
                 'status' => 'published',
             ]);
-            $this->get(route('blog.show', ['slug' => $slug]))->assertOk();
+            $this->followingRedirects()
+                ->get(route('blog.show', ['slug' => $slug]))
+                ->assertOk();
         }
 
         $this->assertTrue(

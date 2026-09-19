@@ -54,6 +54,7 @@ use App\Services\StripePaymentService;
 use App\Services\Wallet\WalletLedgerService;
 use App\Support\AdvertiserOrderDetails;
 use App\Support\AdvertiserOrderStatus;
+use App\Support\CartDisplayFx;
 use App\Support\CatalogVisitUrl;
 use App\Support\PaypalPaymentError;
 use App\Support\SiteTag;
@@ -1389,6 +1390,7 @@ class CatalogController extends Controller
             'removed_owned_count' => count($removedOwned),
             'require_same_language' => $requireSame,
             'schedule' => $this->checkoutScheduleClientHint(),
+            'fx' => app(CartDisplayFx::class)->syncWithCart($cart),
         ];
     }
 
@@ -6685,6 +6687,7 @@ class CatalogController extends Controller
         }
 
         session()->forget('cart');
+        app(CartDisplayFx::class)->forget();
     }
 
     /**
@@ -6734,6 +6737,7 @@ class CatalogController extends Controller
 
         if ($remaining === []) {
             session()->forget('cart');
+            app(CartDisplayFx::class)->forget();
         } else {
             $this->putCatalogVisibleCart($remaining);
         }

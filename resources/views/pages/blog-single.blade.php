@@ -35,35 +35,38 @@
 @section('og_image_alt', $resolvedTitle)
 
 @push('head')
-<script type="application/ld+json">
-{!! json_encode([
-    '@@context' => 'https://schema.org',
-    '@type' => 'BlogPosting',
-    'headline' => $resolvedTitle,
-    'description' => $blogDescription,
-    'inLanguage' => class_exists(\App\Support\PublicI18n::class)
-        ? \App\Support\PublicI18n::htmlLang($activeTranslation?->locale ?: ($blog->primary_locale ?: app()->getLocale()))
-        : 'en-GB',
-    'datePublished' => optional($blog->published_at)?->toIso8601String(),
-    'dateModified' => optional($blog->updated_at)?->toIso8601String(),
-    'author' => [
-        '@type' => 'Person',
-        'name' => $blog->author ?: 'SEOLinkBuildings',
-    ],
-    'publisher' => [
-        '@type' => 'Organization',
-        'name' => 'SEOLinkBuildings',
-        'logo' => [
-            '@type' => 'ImageObject',
-            'url' => asset('assets/img/logo1.png'),
+@php
+    $blogJsonLd = array_filter([
+        '@@context' => 'https://schema.org',
+        '@type' => 'BlogPosting',
+        'headline' => $resolvedTitle,
+        'description' => $blogDescription,
+        'inLanguage' => class_exists(\App\Support\PublicI18n::class)
+            ? \App\Support\PublicI18n::htmlLang($activeTranslation?->locale ?: ($blog->primary_locale ?: app()->getLocale()))
+            : 'en-GB',
+        'datePublished' => optional($blog->published_at)?->toIso8601String(),
+        'dateModified' => optional($blog->updated_at)?->toIso8601String(),
+        'author' => [
+            '@type' => 'Person',
+            'name' => $blog->author ?: 'SEOLinkBuildings',
         ],
-    ],
-    'image' => $blog->featuredImageAbsoluteUrl()
-        ? [$blog->featuredImageAbsoluteUrl()]
-        : [asset('assets/brand/web/og-share-1200x630.png')],
-    'mainEntityOfPage' => $blogCanonical,
-    'url' => $blogCanonical,
-], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_HEX_TAG|JSON_INVALID_UTF8_SUBSTITUTE) ?: '{}' !!}
+        'publisher' => [
+            '@type' => 'Organization',
+            'name' => 'SEOLinkBuildings',
+            'logo' => [
+                '@type' => 'ImageObject',
+                'url' => asset('assets/img/logo1.png'),
+            ],
+        ],
+        'image' => $blog->publicFeaturedImageAbsoluteUrl()
+            ? [$blog->publicFeaturedImageAbsoluteUrl()]
+            : [asset('assets/brand/web/og-share-1200x630.png')],
+        'mainEntityOfPage' => $blogCanonical,
+        'url' => $blogCanonical,
+    ], static fn ($value) => $value !== null && $value !== '');
+@endphp
+<script type="application/ld+json">
+{!! json_encode($blogJsonLd, JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_HEX_TAG|JSON_INVALID_UTF8_SUBSTITUTE) ?: '{}' !!}
 </script>
 @if(!empty($blogFaq))
 <script type="application/ld+json">
@@ -161,9 +164,9 @@
         <!-- Main Content -->
         <div class="col-lg-8 mx-auto">
             <article>
-                @if($blog->featured_image)
+                @if($blog->publicFeaturedImageUrl())
                     <div class="mb-5">
-                        <img src="{{ $blog->featuredImageUrl() }}" 
+                        <img src="{{ $blog->publicFeaturedImageUrl() }}" 
                              alt="{{ $resolvedTitle }}" 
                              class="img-fluid rounded-4 shadow-sm w-100">
                     </div>
@@ -244,8 +247,8 @@
                 @foreach($recommendedPosts as $recommended)
                     <div class="col-md-4 mb-4">
                         <div class="card border-0 shadow-sm rounded-4 h-100 overflow-hidden" style="transition: all 0.3s ease;">
-                            @if($recommended->featured_image)
-                                <img src="{{ $recommended->featuredImageUrl() }}" 
+                            @if($recommended->publicFeaturedImageUrl())
+                                <img src="{{ $recommended->publicFeaturedImageUrl() }}" 
                                      alt="{{ $recommended->title }}" 
                                      style="height: 200px; object-fit: cover;">
                             @else
@@ -422,5 +425,5 @@
     }
 </style>
 
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="{{ asset('assets/vendor/sweetalert2/sweetalert2.min.js') }}?v={{ @filemtime(public_path('assets/vendor/sweetalert2/sweetalert2.min.js')) ?: '1' }}"></script>
 @endsection

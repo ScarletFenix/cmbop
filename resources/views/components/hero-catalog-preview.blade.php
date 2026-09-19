@@ -314,7 +314,7 @@
                     <div class="catalog-row-actions">
                       <div class="catalog-price catalog-price--center">
                         <div class="catalog-price__row">
-                          <span class="catalog-price__pay">€{{ number_format((float) $site['price'], 2) }}</span>
+                          <span class="catalog-price__pay">{{ format_money($site['price']) }}</span>
                         </div>
                       </div>
                       <span class="btn btn-sm btn-primary buy-now d-inline-flex justify-content-center align-items-center gap-2">

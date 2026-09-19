@@ -36,21 +36,23 @@ class RobotsTxt
     /** @return list<string> */
     public static function allows(): array
     {
-        return [
+        $allows = [
             '/',
             '/marketplace',
             '/blog',
             '/become-a-publisher',
             '/pricing',
             '/how-it-works',
-            '/guest-posts-germany',
-            '/guest-posts-uk',
-            '/guest-posts-italy',
-            '/guest-posts-spain',
-            '/guest-posts-france',
-            '/guest-posts-netherlands',
             '/guest-post-prices-europe',
         ];
+
+        if (class_exists(CountryLander::class)) {
+            foreach (CountryLander::slugs() as $slug) {
+                $allows[] = '/'.$slug;
+            }
+        }
+
+        return array_values(array_unique($allows));
     }
 
     /** @return list<string> */
@@ -64,6 +66,12 @@ class RobotsTxt
             '/profile',
             '/chat/',
             '/notifications',
+            '/login',
+            '/register',
+            '/forgot-password',
+            '/reset-password',
+            '/email/',
+            '/auth/',
         ];
     }
 

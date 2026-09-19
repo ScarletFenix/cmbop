@@ -66,21 +66,8 @@ class SitemapController extends Controller
             $urls[] = $this->urlEntry($page['path'], $locale, $page['changefreq'], $page['priority']);
         }
 
-        // English-only auth entry points appear only on the English sitemap
+        // Auth stays noindex — do not list login/register in sitemaps.
         if ($locale === $this->defaultLocale()) {
-            $urls[] = [
-                'loc' => $base.'/login',
-                'changefreq' => 'monthly',
-                'priority' => '0.4',
-                'alternates' => [],
-            ];
-            $urls[] = [
-                'loc' => $base.'/register',
-                'changefreq' => 'monthly',
-                'priority' => '0.5',
-                'alternates' => [],
-            ];
-
             if (class_exists(CountryLander::class)) {
                 foreach (CountryLander::slugs() as $landerPath) {
                     $urls[] = $this->urlEntry($landerPath, $locale, 'weekly', '0.8', ['en'], ['en' => $landerPath]);

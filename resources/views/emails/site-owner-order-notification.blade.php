@@ -2,13 +2,13 @@
 @component('mail::message')
 Hello {{ $publisherName }},
 
-A new order has been placed for your site **{{ $site->site_name }}**.
+A new order has been placed for your site {{ $site->site_name }}.
 
 ## Order Summary
 
-**Order Numbers:** {{ $orderNumbers }}
-**Order Count:** {{ $orderCount }} item(s)
-**Total Amount:** €{{ number_format($totalAmount, 2) }}
+Order Numbers: {{ $orderNumbers }}
+Order Count: {{ $orderCount }} item(s)
+Total Amount: €{{ number_format($totalAmount, 2) }}
 
 @component('mail::button', ['url' => $tasksUrl ?? route('publisher.tasks')])
 View Your Tasks

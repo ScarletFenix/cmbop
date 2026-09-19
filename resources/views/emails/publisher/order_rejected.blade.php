@@ -3,13 +3,13 @@
 
 Dear Customer,
 
-We regret to inform you that your order **#{{ $order->order_number }}** has been **rejected** by the publisher.
+We regret to inform you that your order #{{ $order->order_number }} has been rejected by the publisher.
 
 ## Order Details:
 
-- **Site:** {{ $site->site_name }}
-- **Order Number:** {{ $order->order_number }}
-- **Reference Code:** {{ $order->reference_code }}
+- Site: {{ $site->site_name }}
+- Order Number: {{ $order->order_number }}
+- Reference Code: {{ $order->reference_code }}
 
 ## Reason for Rejection:
 {{ $reason }}
