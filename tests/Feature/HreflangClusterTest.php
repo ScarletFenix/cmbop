@@ -130,17 +130,14 @@ class HreflangClusterTest extends TestCase
     public function test_english_only_assets_do_not_advertise_thin_locale_copies(): void
     {
         $paths = array_merge(
-            ['/guest-post-prices-europe', '/de/guest-post-prices-europe'],
+            ['/guest-post-prices-europe'],
             array_map(static fn (string $slug) => '/'.$slug, CountryLander::slugs()),
-            array_map(static fn (string $slug) => '/de/'.$slug, CountryLander::slugs()),
         );
 
         foreach ($paths as $path) {
             $html = $this->get($path)->assertOk()->getContent();
             $cluster = $this->hreflangCluster($html);
-            $canonicalEnglish = str_starts_with($path, '/de/')
-                ? url(substr($path, 3))
-                : url($path);
+            $canonicalEnglish = url($path);
 
             $this->assertSame(
                 [
@@ -153,7 +150,29 @@ class HreflangClusterTest extends TestCase
             $this->assertArrayNotHasKey('de', $cluster, $path);
             $this->assertArrayNotHasKey('fr', $cluster, $path);
             $this->assertArrayNotHasKey('en-US', $cluster, $path);
+            $this->assertDoesNotMatchRegularExpression('/<a[^>]+hreflang=/i', $html, $path);
         }
+    }
+
+    public function test_locale_prefixed_english_only_assets_redirect_to_canonical(): void
+    {
+        $slugs = array_merge(['guest-post-prices-europe'], CountryLander::slugs());
+
+        foreach (PublicI18n::prefixed() as $locale) {
+            foreach ($slugs as $slug) {
+                $this->get('/'.$locale.'/'.$slug)
+                    ->assertRedirect('/'.$slug);
+                $this->assertSame(301, $this->get('/'.$locale.'/'.$slug)->status(), '/'.$locale.'/'.$slug);
+            }
+        }
+    }
+
+    public function test_language_switcher_does_not_emit_hreflang_annotations(): void
+    {
+        $html = $this->get('/')->assertOk()->getContent();
+        $this->assertDoesNotMatchRegularExpression('/<a[^>]+hreflang=/i', $html);
+        $this->assertMatchesRegularExpression('/<link[^>]+rel="alternate"[^>]+hreflang=/i', $html);
+        $this->assertStringContainsString('id="languageDropdown"', $html);
     }
 
     public function test_auth_pages_are_outside_the_hreflang_cluster(): void

@@ -7,6 +7,7 @@ use App\Models\Blog;
 use App\Models\BlogTranslation;
 use App\Support\RobotsTxt;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class SeoAndSecurityHeadersTest extends TestCase
@@ -117,19 +118,36 @@ class SeoAndSecurityHeadersTest extends TestCase
             ->assertDontSee('meta_register_title');
     }
 
+    public function test_auth_recovery_pages_have_an_h1(): void
+    {
+        $forgot = $this->get('/forgot-password')->assertOk()->getContent();
+        $this->assertMatchesRegularExpression('/<h1\b/i', $forgot);
+        $this->assertStringContainsString('Forgot Password', $forgot);
+
+        $reset = $this->get('/reset-password/test-token')->assertOk()->getContent();
+        $this->assertMatchesRegularExpression('/<h1\b/i', $reset);
+        $this->assertStringContainsString('Reset Password', $reset);
+    }
+
     public function test_home_includes_website_and_organization_schema(): void
     {
-        $this->get('/')
-            ->assertOk()
-            ->assertSee('"@type":"WebSite"', false)
-            ->assertSee('"@type":"Organization"', false)
-            ->assertSee('"@type":"SoftwareApplication"', false)
-            ->assertSee('16607074', false)
-            ->assertSee('fetchpriority="high"', false)
-            ->assertSee('https://www.facebook.com/seolinkbuildings/', false)
-            ->assertSee('https://www.instagram.com/seolinkbuildings', false)
-            ->assertSee('https://x.com/seolinbuildings', false)
-            ->assertSee('https://www.youtube.com/@seolinkbuildingss', false);
+        $html = $this->get('/')->assertOk()->getContent();
+
+        $this->assertStringContainsString('"@type":"WebSite"', $html);
+        $this->assertStringContainsString('"@type":"Organization"', $html);
+        $this->assertStringContainsString('"@type":"SoftwareApplication"', $html);
+        $this->assertStringContainsString('16607074', $html);
+        $this->assertStringContainsString('fetchpriority="high"', $html);
+        $this->assertStringContainsString('https://www.facebook.com/seolinkbuildings/', $html);
+        $this->assertStringContainsString('https://www.instagram.com/seolinkbuildings', $html);
+        $this->assertStringContainsString('https://x.com/seolinbuildings', $html);
+        $this->assertStringContainsString('https://www.youtube.com/@seolinkbuildingss', $html);
+        $this->assertStringContainsString('"inLanguage":"en-GB"', $html);
+        $this->assertStringNotContainsString('"inLanguage":[', $html);
+
+        $de = $this->get('/de')->assertOk()->getContent();
+        $this->assertStringContainsString('"inLanguage":"de"', $de);
+        $this->assertStringNotContainsString('"inLanguage":[', $de);
     }
 
     public function test_sitemap_index_uses_request_origin_when_app_url_is_loopback(): void
@@ -231,6 +249,7 @@ class SeoAndSecurityHeadersTest extends TestCase
             'excerpt' => 'A short excerpt for SEO.',
             'featured_image' => 'blogs/featured/structured-data.jpg',
         ]);
+        Storage::disk('public')->put('blogs/featured/structured-data.jpg', 'fake-image');
         BlogTranslation::create([
             'blog_id' => $blog->id,
             'locale' => 'en',

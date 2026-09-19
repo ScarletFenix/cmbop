@@ -195,7 +195,13 @@ $registerPublicMarketingRoutes = function (string $locale = 'en') {
     Route::post($p('newsletter').'/subscribe', [NewsletterController::class, 'subscribe'])
         ->middleware('throttle:10,1')
         ->name('newsletter.subscribe');
+};
 
+$englishOnlyMarketingSlugs = class_exists(PublicI18n::class)
+    ? PublicI18n::englishOnlyMarketingSlugs()
+    : ['guest-post-prices-europe'];
+
+$registerEnglishOnlyMarketingRoutes = function () {
     $landers = class_exists(CountryLander::class) ? CountryLander::all() : [];
     foreach ($landers as $landerKey => $lander) {
         $landerSlug = trim((string) ($lander['slug'] ?? ''));
@@ -212,7 +218,10 @@ $registerPublicMarketingRoutes = function (string $locale = 'en') {
 };
 
 // English (canonical, no prefix)
-Route::group([], fn () => $registerPublicMarketingRoutes('en'));
+Route::group([], function () use ($registerPublicMarketingRoutes, $registerEnglishOnlyMarketingRoutes) {
+    $registerPublicMarketingRoutes('en');
+    $registerEnglishOnlyMarketingRoutes();
+});
 
 // Short legal aliases used in citations / the SEO workbook Pages tab.
 Route::get('/privacy', fn () => Redirect::to('/privacy-policy', 301));
@@ -232,6 +241,15 @@ foreach ($prefixedLocales as $locale) {
         Route::get('/'.$locale.'/'.$from, function () use ($locale, $to) {
             $query = request()->getQueryString();
             $target = '/'.$locale.'/'.$to;
+
+            return Redirect::to($query ? $target.'?'.$query : $target, 301);
+        });
+    }
+
+    foreach ($englishOnlyMarketingSlugs as $slug) {
+        Route::get('/'.$locale.'/'.$slug, function () use ($slug) {
+            $query = request()->getQueryString();
+            $target = '/'.$slug;
 
             return Redirect::to($query ? $target.'?'.$query : $target, 301);
         });

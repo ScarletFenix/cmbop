@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Support\PublicI18n;
+use Illuminate\Http\Request;
 use Tests\TestCase;
 
 class PublicI18nLocaleMapTest extends TestCase
@@ -73,5 +74,32 @@ class PublicI18nLocaleMapTest extends TestCase
         $this->assertSame('de', PublicI18n::messagesFallback('at'));
         $this->assertSame('de', PublicI18n::messagesFallback('ch'));
         $this->assertSame(['ro'], PublicI18n::catalogTeaserCountries('ro'));
+    }
+
+    public function test_english_only_marketing_slugs_cover_landers_and_price_index(): void
+    {
+        $slugs = PublicI18n::englishOnlyMarketingSlugs();
+        $this->assertContains('guest-post-prices-europe', $slugs);
+        $this->assertContains('guest-posts-germany', $slugs);
+        $this->assertContains('guest-posts-uk', $slugs);
+    }
+
+    public function test_hreflang_tags_restrict_english_only_marketing_without_view_override(): void
+    {
+        $request = Request::create('/guest-posts-germany', 'GET');
+        $tags = PublicI18n::hreflangTags($request);
+        $cluster = [];
+        foreach ($tags as $tag) {
+            $cluster[$tag['hreflang']] = $tag['href'];
+        }
+
+        $canonical = url('/guest-posts-germany');
+        $this->assertSame(
+            [
+                'en-GB' => $canonical,
+                'x-default' => $canonical,
+            ],
+            $cluster
+        );
     }
 }
