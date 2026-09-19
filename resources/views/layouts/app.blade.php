@@ -141,7 +141,8 @@
     <style>
         html, body {
             font-family: 'Poppins', sans-serif;
-            overflow-x: clip;
+            overflow-x: hidden;
+            overflow-y: auto;
             max-width: 100%;
         }
         /* Optional: style for back-to-top button */

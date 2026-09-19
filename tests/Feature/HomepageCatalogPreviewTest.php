@@ -115,6 +115,15 @@ class HomepageCatalogPreviewTest extends TestCase
         $this->assertStringContainsString('slb-hero-catalog-clone', $html);
         $this->assertStringContainsString('min-width: 720px', $html);
         $this->assertStringContainsString('overscroll-behavior-x: contain', $html);
+
+        $hero = (string) file_get_contents(resource_path('views/components/hero.blade.php'));
+        $this->assertStringContainsString('overflow-x: visible', $hero);
+        $this->assertDoesNotMatchRegularExpression(
+            '/#main-content[^{;]*\{[^}]*overflow-x:\s*clip/',
+            $hero
+        );
+        $this->assertStringNotContainsString('overflow-x: clip;', file_get_contents(resource_path('views/layouts/app.blade.php')));
+        $this->assertStringNotContainsString('overflow-x: clip;', file_get_contents(resource_path('views/components/navbar.blade.php')));
     }
 
     public function test_teaser_service_diversifies_countries_before_filling(): void

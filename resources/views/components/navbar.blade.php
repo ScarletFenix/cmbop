@@ -132,12 +132,13 @@
   }
 
   html {
-    overflow-x: clip;
+    overflow-x: hidden;
   }
 
   body {
     padding-top: var(--public-navbar-height);
-    overflow-x: clip;
+    overflow-x: hidden;
+    overflow-y: auto;
   }
 
   #mainNavbar {

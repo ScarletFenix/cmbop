@@ -49,6 +49,9 @@ class SitewideLiveSearchFlowTest extends TestCase
 
             if ($layout === 'layouts/app.blade.php') {
                 $this->assertStringContainsString('MarketingCssBundle', $markup, $layout);
+                $this->assertStringContainsString('assets/css/slb-icons.css', $markup, $layout);
+                $this->assertStringContainsString('partials.slb-icon-draw', $markup, $layout);
+                $this->assertStringNotContainsString('font-awesome', $markup, $layout);
                 $this->assertContains('slb-live-search.css', MarketingCssBundle::FILES);
                 $files = MarketingCssBundle::FILES;
                 $this->assertSame('hover-system.css', $files[array_key_last($files)]);
