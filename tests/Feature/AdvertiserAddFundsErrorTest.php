@@ -61,6 +61,74 @@ class AdvertiserAddFundsErrorTest extends TestCase
             ->assertJsonMissingPath('exception');
     }
 
+    public function test_store_validation_is_json_even_without_accept_json_header(): void
+    {
+        $advertiser = $this->advertiser();
+
+        $this->actingAs($advertiser)
+            ->from(route('advertiser.add-funds'))
+            ->post(route('advertiser.add-funds.store'), [
+                'amount' => 5,
+                'payment_method' => 'wise',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false)
+            ->assertJsonStructure(['success', 'message', 'errors']);
+    }
+
+    public function test_store_creates_invoice_from_html_form_post(): void
+    {
+        $advertiser = $this->advertiser();
+
+        $this->actingAs($advertiser)
+            ->post(route('advertiser.add-funds.store'), [
+                'amount' => 50,
+                'payment_method' => 'bank',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $code = (string) DepositRequest::query()->where('user_id', $advertiser->id)->value('reference_code');
+        $this->assertMatchesRegularExpression('/^\d{6}$/', $code);
+    }
+
+    public function test_store_does_not_persist_dummy_xxxxxxxx_placeholder(): void
+    {
+        $advertiser = $this->advertiser();
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.add-funds.store'), [
+                'amount' => 40,
+                'payment_method' => 'wise',
+                'reference_code' => 'XXXXXXXX',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonMissing(['reference_code' => 'XXXXXXXX']);
+
+        $this->assertDatabaseMissing('deposit_requests', [
+            'user_id' => $advertiser->id,
+            'reference_code' => 'XXXXXXXX',
+        ]);
+    }
+
+    public function test_store_survives_missing_users_company_name_column(): void
+    {
+        $advertiser = $this->advertiser();
+        Schema::table('users', function ($table) {
+            $table->dropColumn('company_name');
+        });
+
+        $this->actingAs($advertiser->fresh())
+            ->postJson(route('advertiser.add-funds.store'), [
+                'amount' => 50,
+                'payment_method' => 'wise',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertDontSee('SQLSTATE');
+    }
+
     public function test_stripe_checkout_validation_is_422_not_wrapped_success(): void
     {
         $advertiser = $this->advertiser();

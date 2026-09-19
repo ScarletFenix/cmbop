@@ -138,6 +138,7 @@ class AddFundsHardenUxTest extends TestCase
         // Relative data-qr-base / boot path — absolute APP_URL hosts break Hostinger QR <img>.
         $this->assertMatchesRegularExpression('/data-qr-base="\/advertiser\/add-funds\/wise-qr"/', $html);
         $this->assertMatchesRegularExpression('/wiseQr:\s*"\\\\?\/advertiser\\\\?\/add-funds\\\\?\/wise-qr"/', $html);
+        $this->assertMatchesRegularExpression('/store:\s*"\\\\?\/advertiser\\\\?\/add-funds"/', $html);
         $this->assertStringContainsString('assets/js/add-funds.js', $html);
         $this->assertStringContainsString('assets/css/add-funds.css', $html);
         $this->assertStringContainsString('AddFundsBoot', $html);
@@ -154,6 +155,7 @@ class AddFundsHardenUxTest extends TestCase
         $this->assertStringContainsString('wiseQrEndpoint', $js);
         $this->assertStringContainsString('if (!invoiceLocked)', $js);
         $this->assertStringContainsString('function isRealReference', $js);
+        $this->assertStringContainsString('function sameOriginRoute', $js);
         $this->assertStringContainsString('invoiceReadyBar', $html);
         $this->assertStringNotContainsString('XXXXXXXX', $html);
         $this->assertStringNotContainsString('api.qrserver.com', $js);

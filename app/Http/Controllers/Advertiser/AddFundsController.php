@@ -33,6 +33,7 @@ use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 use Stripe\Checkout\Session;
 use Stripe\PaymentIntent;
@@ -709,7 +710,7 @@ class AddFundsController extends Controller
 
             // Invoice methods need billing details on the PDF.
             if (in_array($request->payment_method, ['bank', 'wise', 'crypto'], true)) {
-                if (empty($user->billing_name) || empty($user->address) || empty($user->company_name)) {
+                if (! $this->userHasInvoiceBilling($user)) {
                     return response()->json([
                         'success' => false,
                         'message' => 'Please complete your billing information first so we can issue your invoice.',
@@ -718,31 +719,41 @@ class AddFundsController extends Controller
                 }
             }
 
-            if ($request->payment_method === 'crypto' && ! DepositPaymentConfig::cryptoEnabled()) {
+            $cryptoEnabled = true;
+            if (class_exists(DepositPaymentConfig::class) && method_exists(DepositPaymentConfig::class, 'cryptoEnabled')) {
+                $cryptoEnabled = DepositPaymentConfig::cryptoEnabled();
+            }
+            if ($request->payment_method === 'crypto' && ! $cryptoEnabled) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Cryptocurrency deposits are temporarily unavailable. Please use Bank or Wise.',
                 ], 422);
             }
 
-            if (! DepositRequest::tableAvailable()) {
+            if (method_exists(DepositRequest::class, 'tableAvailable') && ! DepositRequest::tableAvailable()) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Deposits are temporarily unavailable. Please try again shortly.',
                 ], 503);
             }
 
-            // Server owns the REF. A client-supplied code is ignored so a copied
-            // placeholder cannot diverge from the deposit row after collision.
-            $referenceCode = DepositRequest::generateUniqueReferenceCode();
+            // Server owns the REF when that helper exists. Leftover Hostinger
+            // store() still required a client 6-digit code — JS sends one, we
+            // never persist XXXXXXXX placeholders.
+            $referenceCode = $this->newDepositReferenceCode($request);
 
-            $depositRequest = DepositRequest::create([
+            $payload = [
                 'user_id' => auth()->id(),
                 'reference_code' => $referenceCode,
                 'amount' => $request->amount,
                 'payment_method' => $request->payment_method,
                 'status' => 'pending',
-            ]);
+            ];
+            if (method_exists(DepositRequest::class, 'attributesThatExist')) {
+                $payload = DepositRequest::attributesThatExist($payload);
+            }
+
+            $depositRequest = DepositRequest::create($payload);
 
             // Send email notification to admin
             try {
@@ -765,11 +776,26 @@ class AddFundsController extends Controller
 
             try {
                 $notifications = app(InAppNotificationService::class);
-                $freshDeposit = $depositRequest->fresh(['user']);
-                $notifications->notifyDepositSubmitted($freshDeposit);
-                $notifications->notifyAdminsDepositSubmitted($freshDeposit);
+                if (method_exists($notifications, 'notifyDepositSubmitted')) {
+                    $freshDeposit = $depositRequest->fresh(['user']);
+                    $notifications->notifyDepositSubmitted($freshDeposit);
+                    if (method_exists($notifications, 'notifyAdminsDepositSubmitted')) {
+                        $notifications->notifyAdminsDepositSubmitted($freshDeposit);
+                    }
+                }
             } catch (\Throwable $e) {
                 Log::warning('Failed to send deposit bell notification: '.$e->getMessage());
+            }
+
+            $invoiceUrl = null;
+            $markPaidUrl = null;
+            try {
+                $invoiceUrl = route('advertiser.invoice', $referenceCode);
+            } catch (\Throwable) {
+            }
+            try {
+                $markPaidUrl = route('advertiser.add-funds.mark-paid', $depositRequest);
+            } catch (\Throwable) {
             }
 
             return response()->json([
@@ -777,20 +803,77 @@ class AddFundsController extends Controller
                 'message' => 'Invoice created. Transfer the amount with your REF — we credit your wallet after funds arrive.',
                 'reference_code' => $referenceCode,
                 'deposit_id' => $depositRequest->id,
-                'invoice_url' => route('advertiser.invoice', $referenceCode),
-                'mark_paid_url' => route('advertiser.add-funds.mark-paid', $depositRequest),
+                'invoice_url' => $invoiceUrl,
+                'mark_paid_url' => $markPaidUrl,
             ]);
 
         } catch (ValidationException $e) {
-            throw $e;
+            // Always JSON — leftover Add Funds JS parse-failed HTML redirects
+            // into "Failed to submit request".
+            return response()->json([
+                'success' => false,
+                'message' => collect($e->errors())->flatten()->first() ?: 'Please check the amount and payment method.',
+                'errors' => $e->errors(),
+            ], 422);
         } catch (\Throwable $e) {
             Log::error('Error submitting deposit request: '.$e->getMessage());
 
             return response()->json([
                 'success' => false,
-                'message' => UserFacingError::message($e, 'Failed to submit deposit request. Please try again.'),
+                'message' => UserFacingError::message($e, 'Could not create the invoice. Please try again.'),
             ], $e instanceof QueryException ? 503 : 500);
         }
+    }
+
+    /**
+     * @param  User|null  $user
+     */
+    private function userHasInvoiceBilling($user): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        try {
+            if (empty($user->billing_name) || empty($user->address)) {
+                return false;
+            }
+        } catch (\Throwable) {
+            return false;
+        }
+
+        try {
+            if (! Schema::hasColumn($user->getTable(), 'company_name')) {
+                return true;
+            }
+        } catch (\Throwable) {
+        }
+
+        try {
+            return ! empty($user->company_name);
+        } catch (\Throwable) {
+            return true;
+        }
+    }
+
+    private function newDepositReferenceCode(Request $request): string
+    {
+        if (method_exists(DepositRequest::class, 'generateUniqueReferenceCode')) {
+            try {
+                $code = (string) DepositRequest::generateUniqueReferenceCode();
+                if ($code !== '') {
+                    return $code;
+                }
+            } catch (\Throwable) {
+            }
+        }
+
+        $client = preg_replace('/^REF/i', '', trim((string) $request->input('reference_code', '')));
+        if (is_string($client) && preg_match('/^\d{6,}$/', $client) && ! preg_match('/^x+$/i', $client)) {
+            return $client;
+        }
+
+        return str_pad((string) random_int(1, 999999), 6, '0', STR_PAD_LEFT);
     }
 
     /**
@@ -965,14 +1048,27 @@ class AddFundsController extends Controller
             ]);
 
             // Update user billing info directly on users table
-            $user->billing_name = $request->billing_name;
-            $user->company_name = $request->company_name;
-            $user->country = $request->country;
-            $user->state = $request->state;
-            $user->city = $request->city;
-            $user->address = $request->address;
-            $user->postal_code = $request->postal_code;
-            $user->vat_number = $request->vat_number;
+            $billing = [
+                'billing_name' => $request->billing_name,
+                'company_name' => $request->company_name,
+                'country' => $request->country,
+                'state' => $request->state,
+                'city' => $request->city,
+                'address' => $request->address,
+                'postal_code' => $request->postal_code,
+                'vat_number' => $request->vat_number,
+            ];
+            $table = $user->getTable();
+            foreach ($billing as $column => $value) {
+                try {
+                    if (! Schema::hasColumn($table, $column)) {
+                        continue;
+                    }
+                    $user->{$column} = $value;
+                } catch (\Throwable) {
+                    continue;
+                }
+            }
             $user->save();
 
             Log::info('Billing information saved for user', [
@@ -986,7 +1082,11 @@ class AddFundsController extends Controller
             ]);
 
         } catch (ValidationException $e) {
-            throw $e;
+            return response()->json([
+                'success' => false,
+                'message' => collect($e->errors())->flatten()->first() ?: 'Please fill in all required billing fields.',
+                'errors' => $e->errors(),
+            ], 422);
         } catch (\Throwable $e) {
             Log::error('Error saving billing info: '.$e->getMessage());
 
@@ -1014,9 +1114,7 @@ class AddFundsController extends Controller
                 'address' => $user->address,
                 'postal_code' => $user->postal_code,
                 'vat_number' => $user->vat_number,
-                'has_info' => ! empty($user->billing_name)
-                    && ! empty($user->company_name)
-                    && ! empty($user->address)
+                'has_info' => $this->userHasInvoiceBilling($user)
                     && ! empty($user->city)
                     && ! empty($user->country),
             ];

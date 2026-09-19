@@ -105,6 +105,13 @@ class AddFundsUiGuardTest extends TestCase
         $this->assertDoesNotMatchRegularExpression("/formatted = '€' \\+ \\(amt \\|\\| 0\\)\\.toFixed/", $js);
         $this->assertStringContainsString('applyPrefill();', $js);
         $this->assertStringContainsString('stampServerReference(referenceCode)', $js);
+        $this->assertStringContainsString("'Accept': 'application/json'", $js);
+        $this->assertStringContainsString('reference_code: instantRailReference()', $js);
+        $this->assertStringContainsString('function sameOriginRoute', $js);
+        $this->assertStringContainsString("store: '/advertiser/add-funds'", $js);
+        $this->assertStringContainsString("route('advertiser.add-funds.store', absolute: false)", $view);
+        $this->assertStringContainsString('function readJson', $js);
+        $this->assertStringNotContainsString('Failed to submit request. Please try again.', $js);
         $this->assertStringNotContainsString('function updateReferenceCode', $js);
         $this->assertStringNotContainsString('function generateReferenceCode', $js);
         $this->assertDoesNotMatchRegularExpression(
