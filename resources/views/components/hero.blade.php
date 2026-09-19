@@ -296,12 +296,6 @@
     background: #e6f5f5;
   }
 
-  .slb-hero-live-catalog__url-blur {
-    filter: blur(3.5px);
-    user-select: none;
-    pointer-events: none;
-  }
-
   .slb-hero-catalog-hit {
     position: absolute;
     inset: 0;

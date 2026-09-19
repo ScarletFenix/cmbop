@@ -35,11 +35,12 @@ class HomepageFirstImpressionTest extends TestCase
         $response->assertSee('slb-bottom-cta', false);
         $response->assertSee('btn btn-primary', false);
 
-        // Hero uses the advertiser catalog chrome (German-only country, blurred URLs).
+        // Hero uses the advertiser catalog chrome (German-only country, masked demo domains).
         $this->assertStringContainsString('Publisher catalog preview', $html);
         $this->assertStringContainsString('Add to cart', $html);
         $this->assertStringContainsString('Germany', $html);
-        $this->assertStringContainsString('slb-hero-live-catalog__url-blur', $html);
+        $this->assertStringContainsString('berlin**.de', $html);
+        $this->assertStringNotContainsString('Demo Site', $html);
         $this->assertStringNotContainsString('dashboard.png', $html);
     }
 
