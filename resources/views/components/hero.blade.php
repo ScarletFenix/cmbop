@@ -44,8 +44,7 @@
     width: 100%;
     margin-top: 0;
     min-height: min(88vh, 820px);
-    overflow-x: clip;
-    overflow-y: visible;
+    overflow: visible;
     display: flex;
     align-items: center;
     padding: 28px 0 0;
@@ -310,14 +309,17 @@
     text-decoration: none;
   }
 
-  /* catalog.css body:has(.catalog-page) opts out of shell overflow clip. */
+  /* Clip the wide catalog preview inside the hero only.
+     overflow-x:clip on #main-content makes a nested scrollport and hides
+     features / pricing / footer below the first viewport. */
   body:has(.slb-hero-catalog-clone) {
-    overflow-x: clip;
+    overflow-x: hidden;
     scrollbar-gutter: auto;
   }
   body:has(.slb-hero-catalog-clone) #main-content,
   body:has(.slb-hero-catalog-clone) #content {
-    overflow-x: clip;
+    overflow-x: visible;
+    overflow-y: visible;
   }
 
   @keyframes slbHeroFade {

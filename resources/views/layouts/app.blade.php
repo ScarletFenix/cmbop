@@ -118,7 +118,7 @@
     @stack('head')
     <link href="{{ asset('assets/vendor/bootstrap-5.3.0/bootstrap.min.css') }}?v={{ @filemtime(public_path('assets/vendor/bootstrap-5.3.0/bootstrap.min.css')) ?: '1' }}" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <link href="{{ asset('assets/css/slb-icons.css') }}?v={{ @filemtime(public_path('assets/css/slb-icons.css')) ?: '1' }}" rel="stylesheet">
     @php
         $marketingCssUrl = (class_exists(\App\Support\MarketingCssBundle::class) && method_exists(\App\Support\MarketingCssBundle::class, 'urlIfReady'))
             ? \App\Support\MarketingCssBundle::urlIfReady()
@@ -143,7 +143,8 @@
     <style>
         html, body {
             font-family: 'Poppins', sans-serif;
-            overflow-x: clip;
+            overflow-x: hidden;
+            overflow-y: auto;
             max-width: 100%;
         }
         /* Optional: style for back-to-top button */
