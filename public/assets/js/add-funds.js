@@ -17,6 +17,47 @@ document.addEventListener('DOMContentLoaded', function() {
     const prefillAmount = boot.prefillAmount || null;
     const prefillMethod = boot.prefillMethod || null;
 
+    function sameOriginRoute(raw, fallbackPath) {
+        const fallback = String(fallbackPath || '').trim();
+        const value = String(raw || '').trim();
+        if (!value) {
+            return fallback;
+        }
+        try {
+            if (/^https?:\/\//i.test(value)) {
+                const u = new URL(value, window.location.href);
+                const here = window.location;
+                const sameHost = u.hostname === here.hostname;
+                const samePort = String(u.port || '') === String(here.port || '');
+                const sameProtocol = u.protocol === here.protocol;
+                if (!sameHost || !samePort || !sameProtocol) {
+                    return (u.pathname + u.search) || fallback;
+                }
+            }
+        } catch (e) {}
+        return value;
+    }
+
+    // Leftover Hostinger APP_URL (localhost / www / http) must not send
+    // invoice POSTs to another host — that drops the session and SweetAlert
+    // shows a generic submit error.
+    boot.routes = boot.routes || {};
+    const routeFallbacks = {
+        store: '/advertiser/add-funds',
+        addFunds: '/advertiser/add-funds',
+        saveBilling: '/advertiser/save-billing-info',
+        paySavedCard: '/advertiser/add-funds/pay-saved-card',
+        createCheckout: '/advertiser/create-checkout-session',
+        createPaypal: '/advertiser/add-funds/paypal',
+        getBilling: '/advertiser/get-billing-info',
+        paymentMethodsSetup: '/advertiser/payment-methods/setup',
+        paymentMethodsBase: '/advertiser/payment-methods',
+        wiseQr: '/advertiser/add-funds/wise-qr',
+    };
+    Object.keys(routeFallbacks).forEach(function (key) {
+        boot.routes[key] = sameOriginRoute(boot.routes[key], routeFallbacks[key]);
+    });
+
     function isManualMethod(method) {
         return method === 'wise' || method === 'bank' || method === 'crypto';
     }
@@ -124,37 +165,43 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function applyInvoice(data) {
-        const code = data && data.reference_code ? String(data.reference_code) : '';
-        if (!isRealReference(code)) return;
-        invoiceLocked = true;
-        invoiceMarkPaidUrl = data.mark_paid_url || null;
-        invoiceViewUrl = data.invoice_url || null;
-        stampServerReference(code);
-        const details = document.getElementById('paymentDetailsSection');
-        if (details) {
-            details.style.display = 'block';
-            details.setAttribute('data-invoice-ready', '1');
-        }
-        hideManualPayDetails();
-        if (selectedMethod === 'wise' && wiseDetails) {
-            wiseDetails.style.display = 'block';
-            if (selectedAmount >= 10) syncWiseQr(selectedAmount);
-        }
-        if (selectedMethod === 'crypto' && cryptoDetails) cryptoDetails.style.display = 'block';
-        if (selectedMethod === 'bank' && bankDetails) bankDetails.style.display = 'block';
-        const bar = document.getElementById('invoiceReadyBar');
-        if (bar) bar.style.display = 'block';
-        const view = document.getElementById('invoiceReadyView');
-        if (view) {
-            if (invoiceViewUrl) {
-                view.href = invoiceViewUrl;
-                view.classList.remove('d-none');
-            } else {
-                view.classList.add('d-none');
+        try {
+            const code = data && (data.reference_code || data.reference || data.ref)
+                ? String(data.reference_code || data.reference || data.ref)
+                : '';
+            if (!isRealReference(code)) return;
+            invoiceLocked = true;
+            invoiceMarkPaidUrl = data.mark_paid_url || data.markPaidUrl || null;
+            invoiceViewUrl = data.invoice_url || data.invoiceUrl || null;
+            stampServerReference(code);
+            const details = document.getElementById('paymentDetailsSection');
+            if (details) {
+                details.style.display = 'block';
+                details.setAttribute('data-invoice-ready', '1');
             }
+            hideManualPayDetails();
+            if (selectedMethod === 'wise' && wiseDetails) {
+                wiseDetails.style.display = 'block';
+                if (selectedAmount >= 10) syncWiseQr(selectedAmount);
+            }
+            if (selectedMethod === 'crypto' && cryptoDetails) cryptoDetails.style.display = 'block';
+            if (selectedMethod === 'bank' && bankDetails) bankDetails.style.display = 'block';
+            const bar = document.getElementById('invoiceReadyBar');
+            if (bar) bar.style.display = 'block';
+            const view = document.getElementById('invoiceReadyView');
+            if (view) {
+                if (invoiceViewUrl) {
+                    view.href = invoiceViewUrl;
+                    view.classList.remove('d-none');
+                } else {
+                    view.classList.add('d-none');
+                }
+            }
+            setInvoiceLockUi(true);
+            setProceedBusy(false);
+        } catch (e) {
+            console.error(e);
         }
-        setInvoiceLockUi(true);
-        setProceedBusy(false);
     }
 
     const amountBtns = document.querySelectorAll('.amount-btn');
@@ -314,6 +361,9 @@ document.addEventListener('DOMContentLoaded', function() {
         if (status === 422) {
             return 'Please check the amount and payment method.';
         }
+        if (status === 429) {
+            return 'Please wait a moment and try again.';
+        }
         if (status === 503) {
             return 'Deposits are temporarily unavailable. Please try again shortly.';
         }
@@ -395,12 +445,13 @@ document.addEventListener('DOMContentLoaded', function() {
             setSelectedAmount(amount);
             amountBtns.forEach(b => b.classList.remove('active'));
             this.classList.add('active');
-            customAmountInput.value = '';
+            if (customAmountInput) customAmountInput.value = '';
         });
     });
 
     // Custom amount: allow mid-typing (e.g. "1" while entering "100").
     // Enforce the €10 minimum on blur and when proceeding — not on every keystroke.
+    if (customAmountInput) {
     customAmountInput.addEventListener('input', function() {
         const raw = String(this.value || '').trim();
         if (raw === '') {
@@ -443,6 +494,7 @@ document.addEventListener('DOMContentLoaded', function() {
             updateSummary(0);
         }
     });
+    }
 
     function setSelectedAmount(amount) {
         selectedAmount = amount;
@@ -568,7 +620,11 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .then(data => {
             if (data.success) {
-                applyInvoice(data);
+                try {
+                    applyInvoice(data);
+                } catch (e) {
+                    console.error(e);
+                }
                 Swal.fire({
                     title: 'Invoice ready',
                     html: `Transfer <strong>€${selectedAmount.toFixed(2)}</strong> and include<br>
@@ -606,7 +662,8 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     // Save billing info
-    document.getElementById('saveBillingInfo').addEventListener('click', function() {
+    const saveBillingInfoBtn = document.getElementById('saveBillingInfo');
+    if (saveBillingInfoBtn) saveBillingInfoBtn.addEventListener('click', function() {
         const formData = {
             billing_name: document.getElementById('billing_name').value,
             company_name: document.getElementById('company_name').value,
@@ -654,7 +711,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     // Proceed button
-    proceedBtn.addEventListener('click', async function() {
+    if (proceedBtn) proceedBtn.addEventListener('click', async function() {
         if (invoiceLocked) {
             return;
         }
@@ -838,12 +895,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 })
                 .catch(error => {
                     console.error('Error:', error);
-                    Swal.fire({
-                        title: 'Error',
-                        text: (error && error.message) ? error.message : 'Could not load billing details. Please try again.',
-                        icon: 'error',
-                        confirmButtonText: 'OK'
-                    });
+                    // Leftover Hostinger may 404 get-billing-info; store() still checks billing.
+                    submitDeposit();
                 });
             } else {
                 submitDeposit();
