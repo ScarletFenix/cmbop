@@ -295,6 +295,56 @@ document.addEventListener('DOMContentLoaded', function() {
         return Number.isFinite(Number(selectedAmount)) && Number(selectedAmount) >= 10;
     }
 
+    function jsonHeaders() {
+        return {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRF-TOKEN': boot.csrfToken
+        };
+    }
+
+    function httpFallbackMessage(status) {
+        if (status === 419) {
+            return 'Your session expired. Refresh the page and try again.';
+        }
+        if (status === 401 || status === 403) {
+            return 'Please sign in again to continue.';
+        }
+        if (status === 422) {
+            return 'Please check the amount and payment method.';
+        }
+        if (status === 503) {
+            return 'Deposits are temporarily unavailable. Please try again shortly.';
+        }
+        return 'Could not create the invoice. Please try again.';
+    }
+
+    function jsonMessage(data, status) {
+        if (data && typeof data.message === 'string' && data.message.trim()) {
+            return data.message.trim();
+        }
+        if (data && data.errors && typeof data.errors === 'object') {
+            const first = Object.values(data.errors).flat().find(Boolean);
+            if (first) {
+                return String(first);
+            }
+        }
+        return httpFallbackMessage(status);
+    }
+
+    async function readJson(response) {
+        const text = await response.text();
+        if (!text) {
+            return {};
+        }
+        try {
+            return JSON.parse(text);
+        } catch (e) {
+            throw new Error(httpFallbackMessage(response.status));
+        }
+    }
+
     function setProceedBusy(busy) {
         proceedBusy = !!busy;
         if (!proceedBtn) return;
@@ -501,16 +551,21 @@ document.addEventListener('DOMContentLoaded', function() {
         
         fetch(boot.routes.store, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': boot.csrfToken
-            },
+            credentials: 'same-origin',
+            headers: jsonHeaders(),
             body: JSON.stringify({
                 amount: selectedAmount,
-                payment_method: selectedMethod
+                payment_method: selectedMethod,
+                // Leftover Hostinger store() still requires a 6-digit REF.
+                // Current store() ignores this and issues its own code.
+                reference_code: instantRailReference()
             })
         })
-        .then(response => response.json())
+        .then(async response => {
+            const data = await readJson(response);
+            data.__status = response.status;
+            return data;
+        })
         .then(data => {
             if (data.success) {
                 applyInvoice(data);
@@ -530,8 +585,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 setProceedBusy(false);
             } else {
                 Swal.fire({
-                    title: 'Error', 
-                    text: data.message || 'Failed to submit request. Please try again.',
+                    title: 'Error',
+                    text: jsonMessage(data, data.__status),
                     icon: 'error',
                     confirmButtonText: 'OK'
                 });
@@ -542,7 +597,7 @@ document.addEventListener('DOMContentLoaded', function() {
             console.error('Error:', error);
             Swal.fire({
                 title: 'Error',
-                text: 'Failed to submit request. Please try again.',
+                text: (error && error.message) ? error.message : httpFallbackMessage(0),
                 icon: 'error',
                 confirmButtonText: 'OK'
             });
@@ -575,24 +630,26 @@ document.addEventListener('DOMContentLoaded', function() {
         
         fetch(boot.routes.saveBilling, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': boot.csrfToken
-            },
+            credentials: 'same-origin',
+            headers: jsonHeaders(),
             body: JSON.stringify(formData)
         })
-        .then(response => response.json())
+        .then(async response => {
+            const data = await readJson(response);
+            data.__status = response.status;
+            return data;
+        })
         .then(data => {
             if (data.success) {
                 const modal = bootstrap.Modal.getInstance(document.getElementById('billingInfoModal'));
                 modal.hide();
                 submitDeposit();
             } else {
-                Swal.fire('Error', data.message || 'Failed to save billing information', 'error');
+                Swal.fire('Error', jsonMessage(data, data.__status), 'error');
             }
         })
         .catch(error => {
-            Swal.fire('Error', 'Failed to save billing information', 'error');
+            Swal.fire('Error', (error && error.message) ? error.message : 'Failed to save billing information', 'error');
         });
     });
     
@@ -763,14 +820,16 @@ document.addEventListener('DOMContentLoaded', function() {
             if (selectedMethod === 'bank' || selectedMethod === 'wise' || selectedMethod === 'crypto') {
                 fetch(boot.routes.getBilling, {
                     method: 'GET',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': boot.csrfToken
-                    }
+                    credentials: 'same-origin',
+                    headers: jsonHeaders()
                 })
-                .then(response => response.json())
+                .then(async response => {
+                    const data = await readJson(response);
+                    data.__status = response.status;
+                    return data;
+                })
                 .then(billingData => {
-                    if (!billingData.success || !billingData.data.has_info) {
+                    if (!billingData.success || !billingData.data || !billingData.data.has_info) {
                         const modal = new bootstrap.Modal(document.getElementById('billingInfoModal'));
                         modal.show();
                     } else {
@@ -779,7 +838,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 })
                 .catch(error => {
                     console.error('Error:', error);
-                    submitDeposit();
+                    Swal.fire({
+                        title: 'Error',
+                        text: (error && error.message) ? error.message : 'Could not load billing details. Please try again.',
+                        icon: 'error',
+                        confirmButtonText: 'OK'
+                    });
                 });
             } else {
                 submitDeposit();
