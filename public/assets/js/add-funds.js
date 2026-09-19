@@ -788,6 +788,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     applyPrefill();
+    if (typeof stampServerReference === 'function') stampServerReference(referenceCode);
     if (typeof syncProceedLabel === 'function') syncProceedLabel();
 
     if (boot.openCardsTab) {

@@ -103,7 +103,8 @@ class AddFundsUiGuardTest extends TestCase
         $this->assertStringContainsString('Select an amount', $js);
         $this->assertStringContainsString('selectedAmount) >= 10', $js);
         $this->assertDoesNotMatchRegularExpression("/formatted = '€' \\+ \\(amt \\|\\| 0\\)\\.toFixed/", $js);
-        $this->assertStringContainsString('if (!invoiceLocked)', $js);
+        $this->assertStringContainsString('applyPrefill();', $js);
+        $this->assertStringContainsString('stampServerReference(referenceCode)', $js);
         $this->assertStringNotContainsString('function updateReferenceCode', $js);
         $this->assertStringNotContainsString('function generateReferenceCode', $js);
         $this->assertDoesNotMatchRegularExpression(
