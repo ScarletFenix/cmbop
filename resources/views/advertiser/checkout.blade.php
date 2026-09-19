@@ -762,10 +762,10 @@
                                 </div>
                             </div>
 
-                            <div class="alert alert-warning py-2 px-3 mb-3">
-                                <i class="fas fa-exclamation-triangle me-1"></i>
-                                <small>Please include <strong id="refCodeDisplay">REF{{ $checkoutReferenceCode }}</strong> in your payment note for manual payments. For card payments, reference is auto-recorded.</small>
-                            </div>
+                            <p class="small text-muted mb-3" id="refHintBox">
+                                Wallet, card, and PayPal record <strong id="refCodeDisplay" class="font-monospace">REF{{ $checkoutReferenceCode }}</strong> automatically.
+                                Bank, Wise, and crypto use Add Funds first.
+                            </p>
 
                             <button type="button" id="placeOrderBtn" class="btn btn-primary w-100 mt-3">
                                 <i class="fa fa-check-circle"></i> Place Order
@@ -1249,10 +1249,15 @@ document.addEventListener('DOMContentLoaded', function() {
     const refCodeTexts = document.querySelectorAll('.ref-code-display');
     
     function updateReferenceCode() {
-        if (refCodeDisplay) refCodeDisplay.innerText = referenceCode;
-        if (refCodeDisplaySpan) refCodeDisplaySpan.innerText = `REF${referenceCode}`;
+        const raw = String(referenceCode || '').trim();
+        const digits = raw.replace(/^REF/i, '');
+        if (!digits || /^x+$/i.test(digits) || digits === '—' || digits === '-') {
+            return;
+        }
+        if (refCodeDisplay) refCodeDisplay.innerText = digits;
+        if (refCodeDisplaySpan) refCodeDisplaySpan.innerText = `REF${digits}`;
         refCodeTexts.forEach(el => {
-            el.innerText = `REF${referenceCode}`;
+            el.innerText = `REF${digits}`;
         });
     }
     
@@ -1263,7 +1268,11 @@ document.addEventListener('DOMContentLoaded', function() {
             const targetId = this.dataset.target;
             const textEl = document.getElementById(targetId);
             if (textEl) {
-                const textToCopy = `REF${textEl.innerText}`;
+                const digits = String(textEl.innerText || '').replace(/^REF/i, '').trim();
+                if (!digits || /^x+$/i.test(digits) || digits === '—') {
+                    return;
+                }
+                const textToCopy = `REF${digits}`;
                 navigator.clipboard.writeText(textToCopy).then(() => {
                     const originalHtml = this.innerHTML;
                     this.innerHTML = '<i class="fas fa-check"></i> Copied!';

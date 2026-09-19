@@ -153,6 +153,7 @@ class AddFundsHardenUxTest extends TestCase
         $this->assertStringContainsString('function syncWiseQr', $js);
         $this->assertStringContainsString('wiseQrEndpoint', $js);
         $this->assertStringContainsString('if (!invoiceLocked)', $js);
+        $this->assertStringContainsString('function isRealReference', $js);
         $this->assertStringContainsString('invoiceReadyBar', $html);
         $this->assertStringNotContainsString('XXXXXXXX', $html);
         $this->assertStringNotContainsString('api.qrserver.com', $js);
