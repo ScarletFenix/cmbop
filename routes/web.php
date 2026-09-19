@@ -200,12 +200,10 @@ $registerPublicMarketingRoutes = function (string $locale = 'en') {
 
 $englishOnlyMarketingSlugs = ['guest-post-prices-europe'];
 try {
+    // Do not call leftover PublicI18n english-only slug helpers from route boot.
     if (class_exists(EnglishOnlyMarketingSlugs::class)
         && method_exists(EnglishOnlyMarketingSlugs::class, 'all')) {
         $englishOnlyMarketingSlugs = EnglishOnlyMarketingSlugs::all();
-    } elseif (class_exists(PublicI18n::class)
-        && method_exists(PublicI18n::class, 'englishOnlyMarketingSlugs')) {
-        $englishOnlyMarketingSlugs = PublicI18n::englishOnlyMarketingSlugs();
     } elseif (class_exists(CountryLander::class) && method_exists(CountryLander::class, 'slugs')) {
         $englishOnlyMarketingSlugs = array_values(array_unique(array_merge(
             $englishOnlyMarketingSlugs,

@@ -20,14 +20,17 @@ class SeoLeftoverClassHardeningTest extends TestCase
         $this->assertStringContainsString('$loadAppClass', $bootstrap);
         $this->assertStringContainsString('class_exists(ContentUploadService::class)', $bootstrap);
         $this->assertStringContainsString('prependToGroup(\'web\', CanonicalHost::class)', $bootstrap);
+        $this->assertStringContainsString('LeftoverPublicI18nSlugs.php', $bootstrap);
+        $this->assertStringContainsString('ensureEnglishOnlyMarketingSlugsMethod', $bootstrap);
 
         $web = (string) file_get_contents(base_path('routes/web.php'));
         $this->assertStringContainsString('class_exists(CountryLander::class)', $web);
         $this->assertStringContainsString('class_exists(CatalogTeaserService::class)', $web);
         $this->assertStringContainsString('class_exists(LocalizedPublicPath::class)', $web);
         $this->assertStringContainsString('class_exists(PublicI18n::class)', $web);
-        $this->assertStringContainsString("method_exists(PublicI18n::class, 'englishOnlyMarketingSlugs')", $web);
         $this->assertStringContainsString('class_exists(EnglishOnlyMarketingSlugs::class)', $web);
+        $this->assertStringContainsString('EnglishOnlyMarketingSlugs::all()', $web);
+        $this->assertStringNotContainsString('PublicI18n::englishOnlyMarketingSlugs()', $web);
         $this->assertStringContainsString('} catch (Throwable)', $web);
         $this->assertStringContainsString('class_exists(RobotsTxt::class)', $web);
 
