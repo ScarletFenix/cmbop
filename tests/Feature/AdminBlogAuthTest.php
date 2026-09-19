@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Blog;
+use App\Models\BlogTranslation;
 use App\Models\Role;
 use App\Models\User;
 use Database\Seeders\BlogSeeder;
@@ -86,14 +87,36 @@ class AdminBlogAuthTest extends TestCase
             ->assertForbidden();
     }
 
-    public function test_blog_seeder_creates_english_translations(): void
+    public function test_blog_seeder_unpublishes_thin_competing_posts(): void
     {
         $this->seed(RolesTableSeeder::class);
+        $author = User::factory()->create();
+
+        $blog = Blog::factory()->published()->create([
+            'title' => 'How to Build High-Quality Backlinks in 2026',
+            'slug' => 'how-to-build-high-quality-backlinks-in-2026',
+            'created_by' => $author->id,
+        ]);
+        BlogTranslation::create([
+            'blog_id' => $blog->id,
+            'locale' => 'en',
+            'title' => $blog->title,
+            'slug' => $blog->slug,
+            'excerpt' => $blog->excerpt,
+            'content' => $blog->content,
+            'is_published' => true,
+        ]);
+
         $this->seed(BlogSeeder::class);
 
-        $this->assertDatabaseHas('blog_translations', [
-            'locale' => 'en',
+        $this->assertDatabaseHas('blogs', [
             'slug' => 'how-to-build-high-quality-backlinks-in-2026',
+            'status' => 'draft',
+        ]);
+        $this->assertDatabaseHas('blog_translations', [
+            'blog_id' => $blog->id,
+            'locale' => 'en',
+            'is_published' => false,
         ]);
     }
 }

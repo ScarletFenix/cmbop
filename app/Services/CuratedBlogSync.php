@@ -7,6 +7,7 @@ use App\Support\BlogInlineImages;
 use App\Support\BlogTranslationSlug;
 use App\Support\CuratedBlogCatalog;
 use App\Support\PublicI18n;
+use App\Support\ThinBlogRedirects;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
@@ -216,6 +217,14 @@ class CuratedBlogSync
             // Always heal schema first — curated presence cache must not skip translations table.
             self::ensureSchema();
             self::ensureLocalizedTranslationSlugs();
+
+            static $legacyUnpublished = false;
+            if (! $legacyUnpublished) {
+                $legacyUnpublished = true;
+                if (class_exists(ThinBlogRedirects::class)) {
+                    ThinBlogRedirects::unpublishLegacy();
+                }
+            }
 
             $present = Cache::remember('curated_blogs_present_v1', now()->addMinutes(30), function () {
                 $slugs = array_values(array_filter(

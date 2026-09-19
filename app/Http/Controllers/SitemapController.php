@@ -8,6 +8,7 @@ use App\Services\CuratedBlogSync;
 use App\Services\Marketing\GuestPostPriceIndex;
 use App\Support\CountryLander;
 use App\Support\PublicI18n;
+use App\Support\ThinBlogRedirects;
 use Illuminate\Http\Response;
 
 class SitemapController extends Controller
@@ -81,14 +82,27 @@ class SitemapController extends Controller
 
         $translations = collect();
         try {
-            $translations = BlogTranslation::query()
+            $published = Blog::published();
+            if (method_exists(Blog::class, 'scopeWithoutLegacyRedirects')) {
+                $published = $published->withoutLegacyRedirects();
+            }
+
+            $query = BlogTranslation::query()
                 ->select('blog_translations.*')
                 ->join('blogs', 'blogs.id', '=', 'blog_translations.blog_id')
-                ->whereIn('blogs.id', Blog::published()->select('blogs.id'))
+                ->whereIn('blogs.id', $published->select('blogs.id'))
                 ->where('blog_translations.locale', $locale)
-                ->where('blog_translations.is_published', true)
-                ->orderByDesc('blogs.published_at')
-                ->get();
+                ->where('blog_translations.is_published', true);
+
+            if (class_exists(ThinBlogRedirects::class) && method_exists(ThinBlogRedirects::class, 'legacySlugs')) {
+                $legacy = ThinBlogRedirects::legacySlugs();
+                if ($legacy !== []) {
+                    $query->whereNotIn('blog_translations.slug', $legacy)
+                        ->whereNotIn('blogs.slug', $legacy);
+                }
+            }
+
+            $translations = $query->orderByDesc('blogs.published_at')->get();
         } catch (\Throwable) {
             // Static money pages still ship if translations are mid-heal.
         }

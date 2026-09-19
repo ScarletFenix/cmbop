@@ -3,7 +3,11 @@
 namespace Tests\Unit;
 
 use App\Support\CuratedBlogCatalog;
+use App\Support\GuestPostingGuideBlogPost;
+use App\Support\HowToGetBacklinksBlogPost;
 use App\Support\HowToPriceYourSiteBlogPost;
+use App\Support\LinkBuildingGuideBlogPost;
+use App\Support\SponsoredPostGuideBlogPost;
 use PHPUnit\Framework\TestCase;
 
 class CuratedBlogCatalogTest extends TestCase
@@ -26,6 +30,25 @@ class CuratedBlogCatalogTest extends TestCase
     public function test_catalog_includes_publisher_supply_slugs(): void
     {
         $this->assertContains(HowToPriceYourSiteBlogPost::SLUG, CuratedBlogCatalog::slugs());
+    }
+
+    public function test_catalog_includes_link_building_guide_slugs(): void
+    {
+        $slugs = CuratedBlogCatalog::slugs();
+
+        $this->assertContains(HowToGetBacklinksBlogPost::SLUG, $slugs);
+        $this->assertContains(GuestPostingGuideBlogPost::SLUG, $slugs);
+        $this->assertContains(SponsoredPostGuideBlogPost::SLUG, $slugs);
+        $this->assertContains(LinkBuildingGuideBlogPost::SLUG, $slugs);
+
+        foreach ([
+            HowToGetBacklinksBlogPost::class,
+            GuestPostingGuideBlogPost::class,
+            SponsoredPostGuideBlogPost::class,
+            LinkBuildingGuideBlogPost::class,
+        ] as $class) {
+            $this->assertSame([], $class::faqItems());
+        }
     }
 
     public function test_every_registered_post_class_exists(): void

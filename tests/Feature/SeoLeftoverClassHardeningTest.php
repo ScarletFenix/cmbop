@@ -42,6 +42,8 @@ class SeoLeftoverClassHardeningTest extends TestCase
         $this->assertStringContainsString('class_exists(CountryLander::class)', $sitemap);
         $this->assertStringContainsString('class_exists(GuestPostPriceIndex::class)', $sitemap);
         $this->assertStringContainsString('class_exists(PublicI18n::class)', $sitemap);
+        $this->assertStringContainsString('class_exists(ThinBlogRedirects::class)', $sitemap);
+        $this->assertStringContainsString('method_exists(Blog::class, \'scopeWithoutLegacyRedirects\')', $sitemap);
 
         $site = (string) file_get_contents(base_path('app/Models/Site.php'));
         $this->assertStringContainsString('class_exists(GuestPostPriceIndex::class)', $site);
@@ -102,6 +104,7 @@ class SeoLeftoverClassHardeningTest extends TestCase
         $writer = (string) file_get_contents(base_path('app/Services/CuratedBlogWriter.php'));
         $validates = (string) file_get_contents(base_path('app/Http/Requests/Admin/Concerns/ValidatesBlogPost.php'));
         $this->assertStringContainsString('class_exists(PublicI18n::class)', $blogModel);
+        $this->assertStringContainsString('class_exists(ThinBlogRedirects::class)', $blogModel);
         $this->assertStringContainsString('class_exists(PublicI18n::class)', $catalog);
         $this->assertStringContainsString('class_exists(PublicI18n::class)', $writer);
         $this->assertStringContainsString('class_exists(PublicI18n::class)', $validates);

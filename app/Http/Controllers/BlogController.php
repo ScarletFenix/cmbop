@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Blog;
 use App\Models\BlogTranslation;
 use App\Services\CuratedBlogSync;
+use App\Support\ThinBlogRedirects;
 use App\Support\UserFacingError;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
@@ -21,7 +22,12 @@ class BlogController extends Controller
             CuratedBlogSync::ensurePresent();
             $requestedLocale = public_locale();
 
-            $blog = Blog::published()
+            $listing = Blog::published();
+            if (method_exists(Blog::class, 'scopeWithoutLegacyRedirects')) {
+                $listing = $listing->withoutLegacyRedirects();
+            }
+
+            $blog = $listing
                 ->withPublishedLocale($requestedLocale)
                 ->orderByDesc('published_at')
                 ->paginate(12);
@@ -76,6 +82,19 @@ class BlogController extends Controller
         $fallbackLocale = 'en';
 
         $slug = (string) $request->route('slug');
+
+        try {
+            if (class_exists(ThinBlogRedirects::class)) {
+                $legacyTarget = ThinBlogRedirects::redirectUrl($slug, $requestedLocale);
+                if (is_string($legacyTarget) && $legacyTarget !== '') {
+                    $query = $request->getQueryString();
+
+                    return redirect($query ? $legacyTarget.'?'.$query : $legacyTarget, 301);
+                }
+            }
+        } catch (\Throwable) {
+            // Missing schema or catalog class: fall through to the normal show path.
+        }
 
         $translation = BlogTranslation::query()
             ->where('locale', $requestedLocale)
@@ -167,7 +186,11 @@ class BlogController extends Controller
         }
         $hreflangPath = 'blog/'.$translation->slug;
 
-        $related = Blog::published()
+        $related = Blog::published();
+        if (method_exists(Blog::class, 'scopeWithoutLegacyRedirects')) {
+            $related = $related->withoutLegacyRedirects();
+        }
+        $related = $related
             ->withPublishedLocale($requestedLocale)
             ->where('id', '!=', $blog->id)
             ->orderByDesc('published_at')
