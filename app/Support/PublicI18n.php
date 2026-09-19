@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Models\Blog;
 use App\Models\BlogTranslation;
+use App\Services\Marketing\GuestPostPriceIndex;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Schema;
@@ -260,12 +261,45 @@ class PublicI18n
     {
         if (class_exists(EnglishOnlyMarketingSlugs::class) && method_exists(EnglishOnlyMarketingSlugs::class, 'all')) {
             try {
-                return EnglishOnlyMarketingSlugs::all();
+                $fromHelper = EnglishOnlyMarketingSlugs::all();
+                if (is_array($fromHelper) && $fromHelper !== []) {
+                    return array_values(array_unique(array_filter(
+                        $fromHelper,
+                        static fn ($slug) => is_string($slug) && trim($slug) !== ''
+                    )));
+                }
             } catch (\Throwable) {
             }
         }
 
-        return ['guest-post-prices-europe'];
+        $slugs = ['guest-post-prices-europe'];
+
+        try {
+            if (
+                class_exists(GuestPostPriceIndex::class)
+                && defined(GuestPostPriceIndex::class.'::SLUG')
+            ) {
+                $indexSlug = trim((string) GuestPostPriceIndex::SLUG);
+                if ($indexSlug !== '') {
+                    $slugs = [$indexSlug];
+                }
+            }
+        } catch (\Throwable) {
+        }
+
+        try {
+            if (class_exists(CountryLander::class) && method_exists(CountryLander::class, 'slugs')) {
+                foreach (CountryLander::slugs() as $slug) {
+                    $slug = trim((string) $slug);
+                    if ($slug !== '') {
+                        $slugs[] = $slug;
+                    }
+                }
+            }
+        } catch (\Throwable) {
+        }
+
+        return array_values(array_unique($slugs));
     }
 
     /**
