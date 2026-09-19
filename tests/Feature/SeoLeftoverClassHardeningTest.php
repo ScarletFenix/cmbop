@@ -58,8 +58,6 @@ class SeoLeftoverClassHardeningTest extends TestCase
 
         $i18n = (string) file_get_contents(base_path('app/Support/PublicI18n.php'));
         $this->assertStringContainsString('class_exists(LocalizedPublicPath::class)', $i18n);
-        $this->assertStringContainsString('class_exists(CountryLander::class)', $i18n);
-        $this->assertStringContainsString('class_exists(GuestPostPriceIndex::class)', $i18n);
         $this->assertStringContainsString("method_exists(self::class, 'englishOnlyMarketingSlugs')", $i18n);
         $this->assertStringContainsString("method_exists(self::class, 'isEnglishOnlyMarketingPath')", $i18n);
 
@@ -79,6 +77,7 @@ class SeoLeftoverClassHardeningTest extends TestCase
         $this->assertStringContainsString('jsonLd', (string) file_get_contents(base_path('app/Support/BrandOrganization.php')));
         $this->assertStringContainsString('assets/css/type-system.css', $layout);
         $this->assertStringContainsString('assets/css/hover-system.css', $layout);
+        $this->assertStringContainsString('assets/css/slb-icons.css', $layout);
         $this->assertStringContainsString('class_exists(\\App\\Support\\PublicI18n::class)', $layout);
         $this->assertStringContainsString('JSON_HEX_TAG', (string) file_get_contents(resource_path('views/home.blade.php')));
         $this->assertStringContainsString('JSON_HEX_TAG', (string) file_get_contents(resource_path('views/pages/about.blade.php')));

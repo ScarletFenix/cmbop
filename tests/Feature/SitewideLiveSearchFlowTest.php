@@ -52,6 +52,9 @@ class SitewideLiveSearchFlowTest extends TestCase
                 $this->assertContains('slb-live-search.css', MarketingCssBundle::FILES);
                 $files = MarketingCssBundle::FILES;
                 $this->assertSame('hover-system.css', $files[array_key_last($files)]);
+                $this->assertStringContainsString('assets/css/slb-icons.css', $markup, $layout);
+                $this->assertStringContainsString('partials.slb-icon-draw', $markup, $layout);
+                $this->assertStringNotContainsString('font-awesome', $markup, $layout);
 
                 continue;
             }
@@ -220,5 +223,11 @@ class SitewideLiveSearchFlowTest extends TestCase
         $this->assertStringContainsString('../icons/lucide/plus.svg', $css);
         $this->assertStringNotContainsString('font-awesome', $css);
         $this->assertStringNotContainsString('cdnjs.cloudflare.com', $css);
+
+        $public = (string) file_get_contents(resource_path('views/layouts/app.blade.php'));
+        $this->assertStringContainsString('assets/css/slb-icons.css', $public);
+        $this->assertStringContainsString('partials.slb-icon-draw', $public);
+        $this->assertStringNotContainsString('font-awesome', $public);
+        $this->assertStringNotContainsString('cdnjs.cloudflare.com/ajax/libs/font-awesome', $public);
     }
 }
