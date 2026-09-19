@@ -61,6 +61,7 @@ class SeoLeftoverClassHardeningTest extends TestCase
         $this->assertStringContainsString('class_exists(CountryLander::class)', $i18n);
         $this->assertStringContainsString('class_exists(GuestPostPriceIndex::class)', $i18n);
         $this->assertStringContainsString("method_exists(self::class, 'englishOnlyMarketingSlugs')", $i18n);
+        $this->assertStringContainsString("method_exists(self::class, 'isEnglishOnlyMarketingPath')", $i18n);
 
         $about = (string) file_get_contents(base_path('resources/views/pages/about.blade.php'));
         $prices = (string) file_get_contents(base_path('resources/views/pages/guest-post-prices-europe.blade.php'));

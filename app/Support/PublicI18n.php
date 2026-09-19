@@ -292,6 +292,27 @@ class PublicI18n
     }
 
     /**
+     * Country landers / Europe price index: English URL only, not a locale cluster.
+     */
+    public static function isEnglishOnlyMarketingPath(Request $request): bool
+    {
+        $first = self::firstPathSegment($request);
+        if ($first === '') {
+            return false;
+        }
+
+        try {
+            if (method_exists(self::class, 'englishOnlyMarketingSlugs')) {
+                return in_array($first, self::englishOnlyMarketingSlugs(), true);
+            }
+        } catch (\Throwable) {
+            return $first === 'guest-post-prices-europe';
+        }
+
+        return $first === 'guest-post-prices-europe';
+    }
+
+    /**
      * Guest auth entry points (English-only; not a translated marketing cluster).
      */
     public static function isPublicAuthEntryPath(Request $request): bool
@@ -364,8 +385,16 @@ class PublicI18n
             $path = LocalizedPublicPath::canonicalize($path);
         }
 
-        if (self::isEnglishOnlyPath($request) || self::isEnglishOnlyMarketingPath($request)) {
-            if (self::isEnglishOnlyMarketingPath($request) && $targetLocale === self::default()) {
+        $isEnglishOnlyMarketing = false;
+        try {
+            $isEnglishOnlyMarketing = method_exists(self::class, 'isEnglishOnlyMarketingPath')
+                && self::isEnglishOnlyMarketingPath($request);
+        } catch (\Throwable) {
+            $isEnglishOnlyMarketing = false;
+        }
+
+        if (self::isEnglishOnlyPath($request) || $isEnglishOnlyMarketing) {
+            if ($isEnglishOnlyMarketing && $targetLocale === self::default()) {
                 return $path === '' ? url('/') : url($path);
             }
 
