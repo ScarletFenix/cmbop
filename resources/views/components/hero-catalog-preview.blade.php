@@ -20,8 +20,8 @@
 
     $fallbackRows = [
         [
-            'name' => 'Demo Site 86',
-            'domain_masked' => 'd******.de',
+            'name' => 'berlin**.de',
+            'domain_masked' => 'berlin**.de',
             'traffic' => 627000,
             'dr' => 89,
             'da' => 74,
@@ -36,8 +36,8 @@
             'verified' => true,
         ],
         [
-            'name' => 'Demo Site 3',
-            'domain_masked' => 'd******.de',
+            'name' => 'munich**.de',
+            'domain_masked' => 'munich**.de',
             'traffic' => 580400,
             'dr' => 89,
             'da' => 28,
@@ -52,8 +52,8 @@
             'verified' => true,
         ],
         [
-            'name' => 'Demo Site 68',
-            'domain_masked' => 'd******.de',
+            'name' => 'hamburg**.de',
+            'domain_masked' => 'hamburg**.de',
             'traffic' => 501200,
             'dr' => 88,
             'da' => 28,
@@ -84,8 +84,6 @@
             $base = $fallbackRows[$i] ?? $fallbackRows[0];
 
             return array_merge($base, [
-                'name' => $site['name'] ?? $base['name'],
-                'domain_masked' => $site['domain_masked'] ?? $base['domain_masked'],
                 'dr' => $site['dr'] ?? $base['dr'],
                 'da' => $site['da'] ?? $base['da'],
                 'price' => $site['price'] ?? $base['price'],
@@ -253,7 +251,7 @@
                           </span>
                         </div>
                         <div class="catalog-site-identity">
-                          <span class="catalog-site-rooted-url catalog-site-url slb-hero-live-catalog__url-blur">{{ $site['domain_masked'] }}</span>
+                          <span class="catalog-site-rooted-url catalog-site-url">{{ $site['domain_masked'] }}</span>
                           <span class="catalog-site-status-row">
                             <span class="site-chip site-chip--{{ $site['tag'] }} site-chip--descriptor">
                               <i class="fa-solid {{ $site['tag_icon'] }}" aria-hidden="true"></i>

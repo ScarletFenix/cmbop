@@ -79,9 +79,12 @@ class HomepageCatalogPreviewTest extends TestCase
             ->assertOk()
             ->assertSee('Publisher catalog preview', false)
             ->assertSee('Add to cart', false)
-            ->assertSee('German News Hub', false)
+            ->assertSee('berlin**.de', false)
+            ->assertSee('munich**.de', false)
+            ->assertSee('hamburg**.de', false)
             ->assertSee('Germany', false)
-            ->assertSee('slb-hero-live-catalog__url-blur', false)
+            ->assertDontSee('Demo Site', false)
+            ->assertDontSee('German News Hub', false)
             ->assertDontSee('dashboard.png', false)
             ->assertDontSee('French Lifestyle', false)
             ->assertDontSee('french-lifestyle.fr', false)
@@ -89,8 +92,7 @@ class HomepageCatalogPreviewTest extends TestCase
             ->assertDontSee('advertiser/catalog', false)
             ->getContent();
 
-        $this->assertStringContainsString('g', $html);
-        $this->assertStringContainsString('*', $html);
+        $this->assertStringContainsString('**', $html);
     }
 
     public function test_homepage_always_shows_catalog_table_even_without_sites(): void
@@ -100,7 +102,8 @@ class HomepageCatalogPreviewTest extends TestCase
             ->assertSee('Publisher catalog preview', false)
             ->assertSee('Add to cart', false)
             ->assertSee('Germany', false)
-            ->assertSee('slb-hero-live-catalog__url-blur', false)
+            ->assertSee('berlin**.de', false)
+            ->assertDontSee('Demo Site', false)
             ->assertDontSee('dashboard.png', false)
             ->assertDontSee('advertiser/catalog', false);
     }
@@ -167,6 +170,15 @@ class HomepageCatalogPreviewTest extends TestCase
         $this->assertContains('us', $countries);
         $this->assertContains('it', $countries);
         $this->assertSame(3, count(array_unique($countries)));
-        $this->assertStringContainsString('*', (string) $teasers->first()['domain_masked']);
+        $this->assertStringContainsString('**', (string) $teasers->first()['domain_masked']);
+    }
+
+    public function test_mask_domain_hides_the_middle_with_double_stars(): void
+    {
+        $service = app(CatalogTeaserService::class);
+
+        $this->assertSame('berlin**.de', $service->maskDomain('berlin-editorial.de'));
+        $this->assertSame('london**.co.uk', $service->maskDomain('www.london-trade.co.uk'));
+        $this->assertSame('site**.com', $service->maskDomain(''));
     }
 }
