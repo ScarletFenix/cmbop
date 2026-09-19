@@ -47,7 +47,7 @@
     overflow: visible;
     display: flex;
     align-items: center;
-    padding: 40px 0 48px;
+    padding: 52px 0 56px;
     background: var(--grad-hero, linear-gradient(145deg, #e6f5f5 0%, #f7fafb 40%, #ffffff 100%));
   }
 
@@ -76,15 +76,19 @@
     position: relative;
     z-index: 2;
     display: grid;
-    grid-template-columns: minmax(260px, 0.92fr) minmax(0, 1.2fr);
-    gap: 36px;
+    grid-template-columns: minmax(280px, 400px) minmax(0, 1fr);
+    gap: 32px;
     align-items: center;
     width: 100%;
-    max-width: 1240px;
+    max-width: 1280px;
     margin: 0 auto;
-    padding-left: clamp(20px, 4vw, 48px);
-    padding-right: clamp(20px, 4vw, 48px);
+    padding-left: clamp(20px, 3.5vw, 40px);
+    padding-right: clamp(20px, 3.5vw, 40px);
     min-width: 0;
+  }
+
+  body:has(.locale-suggest-banner) .slb-hero {
+    padding-top: 56px;
   }
 
   .slb-hero-copy {
@@ -134,7 +138,7 @@
 
   .slb-hero-cta-group {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 12px;
     margin-top: 1.75rem;
     animation: slbHeroFade 0.7s ease 0.24s both;
@@ -145,8 +149,8 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 14px 28px;
-    font-size: 0.98rem;
+    padding: 12px 22px;
+    font-size: 0.92rem;
     font-weight: 700;
     border-radius: 12px;
     text-decoration: none;
@@ -224,7 +228,8 @@
     max-width: 100%;
     zoom: 1;
     animation: slbHeroRise 0.9s ease 0.18s both;
-    overflow: hidden;
+    overflow-x: auto;
+    overflow-y: hidden;
     border-radius: 18px;
     box-shadow: 0 22px 56px rgba(15, 45, 60, 0.16);
     border: 1px solid rgba(26, 88, 94, 0.08);
@@ -237,15 +242,15 @@
     background: #fff;
     width: 100%;
     min-width: 0;
-    overflow: hidden;
+    overflow: visible;
   }
 
   .slb-hero-shot-table {
     width: 100%;
     border-collapse: collapse;
     table-layout: auto;
-    font-size: 10.5px;
-    line-height: 1.25;
+    font-size: 10px;
+    line-height: 1.2;
     color: #334155;
     margin: 0;
   }
@@ -258,7 +263,7 @@
     letter-spacing: 0.06em;
     text-transform: uppercase;
     white-space: nowrap;
-    padding: 9px 8px;
+    padding: 8px 6px;
     text-align: center;
     border: 0;
   }
@@ -274,7 +279,7 @@
   }
 
   .slb-hero-shot-table tbody td {
-    padding: 8px 7px;
+    padding: 7px 5px;
     border-bottom: 1px solid #eef2f6;
     vertical-align: middle;
     text-align: center;
@@ -289,7 +294,7 @@
   .slb-hero-shot-table td.is-site {
     text-align: left;
     padding-left: 12px;
-    min-width: 108px;
+    min-width: 96px;
   }
 
   .slb-hero-shot-domain {
@@ -311,8 +316,8 @@
   .slb-hero-shot-table td.is-niche {
     text-align: left;
     white-space: normal;
-    min-width: 118px;
-    max-width: 150px;
+    min-width: 96px;
+    max-width: 128px;
     font-size: 9.5px;
     line-height: 1.3;
     color: #64748b;
