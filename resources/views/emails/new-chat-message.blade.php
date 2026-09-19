@@ -2,7 +2,7 @@
 
 Hello {{ $receiverName }},
 
-You have received a new message from **{{ $sender->name }}** ({{ $senderType }}) regarding order **#{{ $order->order_number }}**.
+You have received a new message from {{ $sender->name }} ({{ $senderType }}) regarding order #{{ $order->order_number }}.
 
 ## Message:
 > {{ $message }}

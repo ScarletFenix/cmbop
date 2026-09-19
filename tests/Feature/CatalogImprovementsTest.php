@@ -137,7 +137,8 @@ class CatalogImprovementsTest extends TestCase
         $this->assertStringContainsString('data-catalog-tag="sponsored"', $html);
         $this->assertStringContainsString('id="catalogSuggestList"', $html);
         $this->assertStringContainsString('Pay with wallet, card, or PayPal at checkout', $html);
-        $this->assertStringContainsString('catalog-site-trust--row', $html);
+        $this->assertStringNotContainsString('catalog-site-trust--row', $html);
+        $this->assertStringContainsString('catalog-expand-trust', $html);
         $results = (string) file_get_contents(resource_path('views/advertiser/partials/catalog-results.blade.php'));
         $this->assertStringContainsString('toggle-cats-btn', $results);
         $this->assertStringNotContainsString('onclick=', $results);

@@ -12,6 +12,7 @@ use App\Services\ActivityLogger;
 use App\Services\EmailNotificationService;
 use App\Services\InAppNotificationService;
 use App\Services\SiteDescriptionSanitizer;
+use App\Support\MoneyDisplay;
 use App\Support\SiteDescriptionRules;
 use App\Support\SiteTag;
 use App\Support\UserFacingError;
@@ -120,7 +121,7 @@ class BulkSiteRequestController extends Controller
                 $parsedRows[] = [
                     'site_url' => $siteUrl,
                     'domain' => $domain,
-                    'price' => round((float) $priceRaw, 2),
+                    'price' => app(MoneyDisplay::class)->toEuros($priceRaw),
                 ];
             }
 

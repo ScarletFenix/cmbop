@@ -1,4 +1,60 @@
 /* Publisher My Tasks */
+.publisher-needs-alert {
+    background: #e0e0e3;
+    border: 0;
+    color: #5c5c64;
+    font-size: 0.875rem;
+    line-height: 1.45;
+    border-radius: var(--radius-md, 0.5rem);
+    padding: 1rem;
+}
+
+.publisher-needs-alert__icon {
+    display: inline-block;
+    width: 13px;
+    height: 13px;
+    margin-right: 0.4rem;
+    vertical-align: 0.05em;
+    color: var(--brand-danger, #dc2626);
+}
+
+.publisher-needs-alert__copy {
+    color: inherit;
+}
+
+.publisher-needs-alert__copy strong {
+    color: #3f3f46;
+    font-weight: 600;
+}
+
+.publisher-needs-alert__link {
+    display: inline-block;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: #3f3f46;
+    font-size: 0.875rem;
+    font-weight: 600;
+    line-height: 1.45;
+    white-space: nowrap;
+    cursor: pointer;
+    transform: translateZ(0);
+    transform-origin: center;
+    backface-visibility: hidden;
+    -webkit-font-smoothing: antialiased;
+    transition: color 0.22s ease, transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.publisher-needs-alert__link:hover,
+.publisher-needs-alert__link:focus-visible {
+    color: var(--brand-primary, #1a585e);
+    transform: translateZ(0) scale(1.025);
+}
+
+.publisher-needs-alert__link:focus-visible {
+    outline: 2px solid var(--brand-primary-soft, #3faeb2);
+    outline-offset: 2px;
+}
 .table td, .table th {
     padding: 12px 15px;
     vertical-align: middle;
@@ -148,13 +204,90 @@ td[data-label="Content"] {
 }
 
 .btn-action-sm {
-    padding: 4px 8px;
-    font-size: 11px;
-    min-width: 0;
-    min-height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    min-width: 2rem;
+    min-height: 2rem;
+    padding: 0;
+    font-size: 12px;
     border-radius: 8px;
     white-space: nowrap;
     flex-shrink: 0;
+    box-shadow: none;
+}
+
+.action-buttons .btn-action-sm,
+.action-buttons .btn-action-sm:hover,
+.action-buttons .btn-action-sm:focus-visible,
+.action-buttons .btn-action-sm:active,
+.action-buttons a.btn-action-sm:hover {
+    background: transparent !important;
+    background-image: none !important;
+    box-shadow: none !important;
+}
+
+.action-buttons .btn-action-sm {
+    border: 1px solid var(--border-subtle, #e2e8f0);
+    color: var(--brand-ink-muted, #697078) !important;
+}
+
+.action-buttons .btn-primary.btn-action-sm:hover,
+.action-buttons .btn-primary.btn-action-sm:focus-visible,
+.action-buttons .btn-outline-primary.btn-action-sm:hover,
+.action-buttons .btn-outline-primary.btn-action-sm:focus-visible {
+    color: var(--brand-primary, #1a585e) !important;
+    border-color: var(--brand-primary-soft, #3faeb2);
+}
+
+.action-buttons .btn-success.btn-action-sm:hover,
+.action-buttons .btn-success.btn-action-sm:focus-visible {
+    color: var(--brand-success, #0f766e) !important;
+    border-color: var(--brand-success, #0f766e);
+}
+
+.action-buttons .btn-danger.btn-action-sm:hover,
+.action-buttons .btn-danger.btn-action-sm:focus-visible,
+.action-buttons .btn-outline-danger.btn-action-sm:hover,
+.action-buttons .btn-outline-danger.btn-action-sm:focus-visible {
+    color: var(--brand-danger, #dc2626) !important;
+    border-color: var(--brand-danger, #dc2626);
+}
+
+.action-buttons .btn-warning.btn-action-sm:hover,
+.action-buttons .btn-warning.btn-action-sm:focus-visible,
+.action-buttons .btn-outline-warning.btn-action-sm:hover,
+.action-buttons .btn-outline-warning.btn-action-sm:focus-visible {
+    color: var(--brand-warning, #b45309) !important;
+    border-color: var(--brand-warning, #b45309);
+}
+
+.action-buttons .btn-live-url.btn-action-sm:hover,
+.action-buttons .btn-live-url.btn-action-sm:focus-visible {
+    color: var(--brand-live, #0ea5e9) !important;
+    border-color: var(--brand-live, #0ea5e9);
+}
+
+.task-action-icon {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.task-action-icon .chat-unread-dot {
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    margin: 0;
+    min-width: 14px;
+    height: 14px;
+    padding: 0 3px;
+    font-size: 9px;
+    line-height: 14px;
+    pointer-events: none;
 }
 
 .link-cell {
@@ -179,8 +312,8 @@ td[data-label="Content"] {
 
 .publisher-task-actions-col,
 td[data-label="Action"] {
-    width: 13rem;
-    min-width: 13rem;
+    width: 1%;
+    min-width: 0;
     text-align: right;
     white-space: nowrap;
     vertical-align: middle;

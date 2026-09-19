@@ -100,15 +100,27 @@
 }
 
 #toggleCart {
-  width: auto;
-  height: 36px;
-  border-radius: var(--radius-sm, 8px);
+  width: 44px;
+  height: 44px;
+  border: none;
+  box-shadow: none;
+  border-radius: var(--radius-icon, 999px);
   display: inline-flex;
   justify-content: center;
   align-items: center;
-  padding: 0 12px;
+  padding: 0;
   position: relative;
-  gap: 6px;
+  gap: 0;
+  background: transparent;
+}
+#toggleCart i,
+#toggleCart.slb-icon-svg,
+#toggleCart .fa {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  font-size: 24px;
+  flex: 0 0 24px;
 }
 
 .cart-badge {

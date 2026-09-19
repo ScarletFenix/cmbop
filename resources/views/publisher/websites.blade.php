@@ -809,7 +809,7 @@
                                         ? 'is-empty'
                                         : ($filledCount === 2 ? 'is-ready' : 'is-partial');
                                     $summaryUrl = trim($oldUrl) !== '' ? $oldUrl : 'Website URL';
-                                    $summaryPrice = trim($oldPrice) !== '' ? '€'.$oldPrice : 'No price';
+                                    $summaryPrice = trim($oldPrice) !== '' ? listing_price_symbol().$oldPrice : 'No price';
                                 @endphp
                                 <details class="bulk-url-price-row" @if($rowOpen) open @endif>
                                     <summary class="bulk-url-price-row__summary">
@@ -834,7 +834,7 @@
                                                 @error('sites.'.$i.'.url')<div class="invalid-feedback">{{ $message }}</div>@enderror
                                             </div>
                                             <div class="bulk-url-price-field bulk-url-price-field--price">
-                                                <label class="form-label" for="bulk-price-{{ $i }}">Price (€) <span class="text-danger">*</span></label>
+                                                <label class="form-label" for="bulk-price-{{ $i }}">Price ({{ listing_price_symbol() }}) <span class="text-danger">*</span></label>
                                                 <input type="number"
                                                        id="bulk-price-{{ $i }}"
                                                        name="sites[{{ $i }}][price]"
@@ -1232,7 +1232,7 @@
                         <span class="form-section-title">Pricing & link policy</span>
                         <div class="row bg-light p-3 rounded g-3 g-form">
                             <div class="col-md-4">
-                                <label class="form-label">Price (€) <span class="req" aria-hidden="true">*</span></label>
+                                <label class="form-label" data-listing-price-label>Price ({{ listing_price_symbol(old_text('country', old_text('countries')) ?: null) }}) <span class="req" aria-hidden="true">*</span></label>
                                 <input type="number" name="price" id="price" class="form-control" placeholder="Enter price" min="0" step="0.01" value="{{ old_text('price') }}" required>
                             </div>
                             <div class="col-md-4">
@@ -1311,7 +1311,7 @@
                                                 <input type="checkbox" name="sensitive[{{ $topic }}]" value="1" class="form-check-input sensitive-checkbox" id="sensitive{{ $topic }}" {{ old("sensitive.$topic") ? 'checked' : '' }}>
                                                 <label class="form-check-label" for="sensitive{{ $topic }}">{{ ucfirst($topic) }}</label>
                                             </div>
-                                            <input type="number" name="price_sensitive[{{ $topic }}]" class="form-control mt-1 sensitive-price" placeholder="Extra price (€)" value="{{ old_text("price_sensitive.$topic") }}" min="0" step="0.01">
+                                            <input type="number" name="price_sensitive[{{ $topic }}]" class="form-control mt-1 sensitive-price" placeholder="Extra price ({{ listing_price_symbol(old_text('country', old_text('countries')) ?: null) }})" value="{{ old_text("price_sensitive.$topic") }}" min="0" step="0.01" data-listing-price-placeholder="Extra price">
                                         </div>
                                         @endforeach
                                     </div>
@@ -1340,7 +1340,7 @@
                             <div class="row bg-light p-3 rounded mt-2 g-3">
                                 <div class="col-12">
                                     <p class="fw-semibold small mb-2">Homepage placement</p>
-                                    <p class="small text-muted mb-2">Offer putting the guest article on your homepage for 1, 7, or 30 days. Price €0 = Free. Leave unchecked to not offer that duration.</p>
+                                    <p class="small text-muted mb-2" data-listing-homepage-hint>Offer putting the guest article on your homepage for 1, 7, or 30 days. Price {{ listing_price_symbol(old_text('country', old_text('countries')) ?: null) }}0 = Free. Leave unchecked to not offer that duration.</p>
                                     <div class="d-flex flex-wrap gap-3">
                                         @foreach($homepageDays as $days)
                                             <div class="me-3" style="min-width:140px;">
@@ -1356,7 +1356,8 @@
                                                 <input type="number"
                                                        name="price_homepage[{{ $days }}]"
                                                        class="form-control mt-1 homepage-price"
-                                                       placeholder="Fee (€) — 0 = Free"
+                                                       placeholder="Fee ({{ listing_price_symbol(old_text('country', old_text('countries')) ?: null) }}) — 0 = Free"
+                                                       data-listing-fee-placeholder
                                                        value="{{ old_text("price_homepage.$days") }}"
                                                        min="0"
                                                        step="0.01"
@@ -1478,8 +1479,8 @@
 <link href="{{ asset('assets/css/multi-select.css') }}?v={{ @filemtime(public_path('assets/css/multi-select.css')) ?: '1' }}" rel="stylesheet">
 <link href="{{ asset('assets/css/publisher-websites.css') }}?v={{ @filemtime(public_path('assets/css/publisher-websites.css')) ?: '1' }}" rel="stylesheet">
 <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="{{ asset('assets/js/jquery-3.6.0.min.js') }}?v={{ @filemtime(public_path('assets/js/jquery-3.6.0.min.js')) ?: '1' }}"></script>
+<script src="{{ asset('assets/vendor/sweetalert2/sweetalert2.min.js') }}?v={{ @filemtime(public_path('assets/vendor/sweetalert2/sweetalert2.min.js')) ?: '1' }}"></script>
 @php
     $pwOldLanguage = old_text('language', old_text('languages'));
     $pwOldCountry = old_text('country', old_text('countries'));
@@ -2006,6 +2007,37 @@ function initMultiSelect(wrapperId, inputId, dropdownId, optionsId, hiddenInputI
 }
 
 window.countryLanguageMap = @json($countryLanguageMap ?? new \stdClass());
+window.__slbListingPriceSymbol = @json(listing_price_symbol());
+window.__slbListingCountrySymbols = @json(app(\App\Support\MoneyDisplay::class)->countrySymbols());
+
+function listingSymbolForCountry(code) {
+    const key = String(code || '').trim().toUpperCase();
+    const map = window.__slbListingCountrySymbols || {};
+    if (key && map[key]) return map[key];
+    if (key === 'UK' && map.GB) return map.GB;
+    return '€';
+}
+
+function syncListingPriceLabels(code) {
+    const symbol = listingSymbolForCountry(code);
+    const main = document.querySelector('[data-listing-price-label]');
+    if (main) {
+        const req = main.querySelector('.req');
+        main.textContent = 'Price (' + symbol + ') ';
+        if (req) main.appendChild(req);
+    }
+    document.querySelectorAll('[data-listing-price-placeholder]').forEach(function (input) {
+        const prefix = input.getAttribute('data-listing-price-placeholder') || 'Extra price';
+        input.setAttribute('placeholder', prefix + ' (' + symbol + ')');
+    });
+    document.querySelectorAll('[data-listing-fee-placeholder]').forEach(function (input) {
+        input.setAttribute('placeholder', 'Fee (' + symbol + ') — 0 = Free');
+    });
+    const hint = document.querySelector('[data-listing-homepage-hint]');
+    if (hint) {
+        hint.textContent = 'Offer putting the guest article on your homepage for 1, 7, or 30 days. Price ' + symbol + '0 = Free. Leave unchecked to not offer that duration.';
+    }
+}
 const countryLanguageMap = window.countryLanguageMap;
 
 // Country first → language list filtered by allowed pairs
@@ -2068,7 +2100,9 @@ function applyCountryLanguageFilter(countryCode, { clearLanguage = true, preferL
 let syncingCountryLanguage = false;
 $('#selectedCountry').on('change', function() {
     if (syncingCountryLanguage) return;
-    applyCountryLanguageFilter($(this).val() || '', { clearLanguage: true });
+    const code = $(this).val() || '';
+    applyCountryLanguageFilter(code, { clearLanguage: true });
+    syncListingPriceLabels(code);
 });
 
 // Start with languages locked until country is chosen
@@ -2990,6 +3024,9 @@ function prefillSiteForm(site) {
         applyCountryLanguageFilter('', { clearLanguage: true });
     }
     syncingCountryLanguage = false;
+    if (typeof syncListingPriceLabels === 'function') {
+        syncListingPriceLabels(countryCode);
+    }
 
     categoryMultiSelect.clearSelections();
     (Array.isArray(site.categories) ? site.categories : []).forEach(categoryName => {

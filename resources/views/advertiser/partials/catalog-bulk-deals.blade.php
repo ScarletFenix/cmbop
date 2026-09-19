@@ -1,7 +1,14 @@
     @if(isset($bulkDeals) && $bulkDeals->count())
+    @php
+        $bulkPageSize = 6;
+        $bulkDealPages = $bulkDeals->values()->chunk($bulkPageSize);
+        $bulkPageCount = max(1, $bulkDealPages->count());
+    @endphp
     {{-- Paged batches of 6 with a smooth R→L slide between pages (translateX).
          Autoplay advances slowly; hover/focus pauses. Search beside Hide.
-         One section only — under Spendable (never duplicated). --}}
+         One section only — under Spendable (never duplicated).
+         First page is server-rendered so the rail does not squash all cards
+         into one flex row before catalog.js pages them. --}}
     <section class="card border-0 shadow-sm mb-3 catalog-bulk-section"
              data-bulk-rail
              data-bulk-page-size="6"
@@ -56,7 +63,13 @@
                      tabindex="0"
                      role="group"
                      aria-label="Bulk discount deals">
-                    @foreach($bulkDeals as $deal)
+                    @foreach($bulkDealPages as $pageIndex => $pageDeals)
+                    <div class="catalog-bulk-page-panel"
+                         data-bulk-page-panel
+                         role="group"
+                         aria-label="Bulk deals page {{ $pageIndex + 1 }}"
+                         @if($pageIndex > 0) inert aria-hidden="true" @endif>
+                    @foreach($pageDeals as $deal)
                         @php
                             $qtyExample = (int) ($deal->bulk_pack_qty ?? 3);
                             $list = (float) ($deal->bulk_pack_list_total ?? round(((float) $deal->price) * $qtyExample, 2));
@@ -138,6 +151,8 @@
                             </button>
                         </article>
                     @endforeach
+                    </div>
+                    @endforeach
                 </div>
             </div>
 
@@ -156,7 +171,14 @@
                         aria-label="Previous bulk deals page">
                     <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
                 </button>
-                <div class="catalog-bulk-pages" data-bulk-pages role="group" aria-label="Page numbers"></div>
+                <div class="catalog-bulk-pages" data-bulk-pages role="group" aria-label="Page numbers">
+                    @for($i = 1; $i <= $bulkPageCount; $i++)
+                        <button type="button"
+                                class="catalog-bulk-page{{ $i === 1 ? ' is-active' : '' }}"
+                                aria-label="Bulk deals page {{ $i }}"
+                                @if($i === 1) aria-current="page" @endif>{{ $i }}</button>
+                    @endfor
+                </div>
                 <button type="button"
                         class="catalog-bulk-nav"
                         data-bulk-scroll="next"
@@ -164,7 +186,7 @@
                         aria-label="Next bulk deals page">
                     <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
                 </button>
-                <p class="catalog-bulk-page-label mb-0" data-bulk-page-label>Page 1 of 1</p>
+                <p class="catalog-bulk-page-label mb-0" data-bulk-page-label>Page 1 of {{ $bulkPageCount }}</p>
             </nav>
         </div>
     </section>

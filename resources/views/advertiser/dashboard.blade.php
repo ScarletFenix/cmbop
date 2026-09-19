@@ -173,6 +173,13 @@
     color: #1a585e; font-weight: 600; text-decoration: none;
 }
 .recent-orders-link:hover { color: #123f42; }
+.dash-icon-link {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 36px; height: 36px; border: none; background: transparent;
+    color: #1a585e; border-radius: 999px; text-decoration: none;
+}
+.dash-icon-link i { width: 18px; height: 18px; font-size: 18px; flex: 0 0 18px; }
+.dash-icon-link:hover { background: rgba(26, 88, 94, 0.08); color: #123f42; }
 .help-secondary {
     border: 1px dashed #d7e7e8; border-radius: 12px; padding: 16px;
     background: #fafcfc;
@@ -558,7 +565,9 @@
                     <div class="dw-value">€{{ number_format((float) ($spendSummary['in_progress'] ?? 0), 2) }}</div>
                 </div>
                 <div class="dw-item d-flex align-items-center">
-                    <a href="{{ route('advertiser.analytics', ['view' => 'day']) }}" class="btn btn-sm btn-outline-primary">Full history</a>
+                    <a href="{{ route('advertiser.analytics', ['view' => 'day']) }}" class="dash-icon-link" aria-label="Full history" title="Full history">
+                        <i class="fa fa-history" aria-hidden="true"></i>
+                    </a>
                 </div>
                 @if(!empty($spendCandles['has_spend']))
                     <div class="w-100">
@@ -568,7 +577,7 @@
                         </div>
                         <p class="dash-spend-chart-fallback d-none mb-0" id="dashSpendChartFallback" role="status">
                             Chart unavailable —
-                            <a href="{{ route('advertiser.analytics', ['view' => 'day']) }}">open Full history</a>.
+                            <a href="{{ route('advertiser.analytics', ['view' => 'day']) }}" class="dash-icon-link" aria-label="Full history" title="Full history"><i class="fa fa-history" aria-hidden="true"></i></a>
                         </p>
                     </div>
                 @endif
@@ -577,7 +586,9 @@
                 <div class="card-body p-4">
                     <div class="d-flex justify-content-between align-items-center mb-3">
                         <h5 class="mb-0 recent-orders-title">Recent orders</h5>
-                        <a href="{{ route('advertiser.orders') }}" class="small recent-orders-link">View all</a>
+                        <a href="{{ route('advertiser.orders') }}" class="dash-icon-link" aria-label="View all orders" title="View all orders">
+                            <i class="fa fa-arrow-right" aria-hidden="true"></i>
+                        </a>
                     </div>
                     @if($recentOrders->isEmpty())
                         <x-ui.empty-state

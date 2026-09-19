@@ -103,6 +103,11 @@
             <a href="{{ staff_route('sites.create') }}" class="btn btn-sm btn-primary">
                 <i class="fa fa-plus me-1"></i> Add site for publisher
             </a>
+            @if(auth()->user()?->isAdmin())
+                <a href="{{ route('admin.sites.on-demand.index') }}" class="btn btn-sm btn-outline-primary">
+                    On-demand
+                </a>
+            @endif
         </div>
     </div>
 
@@ -471,8 +476,8 @@ function fetchUserSites(id, page){
 
     const pageNum = Number(page) > 1 ? Number(page) : 1;
     const sitesUrl = pageNum > 1
-        ? `${STAFF_BASE}/users/${id}/sites?page=${encodeURIComponent(pageNum)}`
-        : `${STAFF_BASE}/users/${id}/sites`;
+        ? `${STAFF_BASE}/users/${id}/sites?page=${encodeURIComponent(pageNum)}&_=${Date.now()}`
+        : `${STAFF_BASE}/users/${id}/sites?_=${Date.now()}`;
 
     return fetch(sitesUrl, {
         method: 'GET',
@@ -643,13 +648,26 @@ function dropNeedsReviewQueryParam() {
     }
 }
 
-function afterSiteDecision() {
+function removeSiteFromTable(id) {
+    const nid = Number(id);
+    allSites = allSites.filter((s) => Number(s.id) !== nid);
+    document.getElementById('details-' + id)?.remove();
+    document.querySelector(`[data-site-row="${id}"]`)?.remove();
+    applySiteFilters();
+}
+
+function afterSiteDecision(removedId) {
     // Verify/Activate removes needs_review — keep the row visible with updated status.
+    if (removedId != null && removedId !== '') {
+        removeSiteFromTable(removedId);
+    }
     revealAllPublisherSites();
     dropNeedsReviewQueryParam();
     const userId = sessionStorage.getItem('selected_user');
     if (userId) {
         fetchUserSites(userId);
+    } else {
+        applySiteFilters();
     }
     refreshSidebarQueueBadges();
 }
@@ -1072,7 +1090,7 @@ document.addEventListener('click', function(e){
                 }
 
                 toast(data.message || (data.archived ? 'Site archived' : 'Deleted successfully'));
-                afterSiteDecision();
+                afterSiteDecision(id);
             })
             .catch((error) => {
                 toast(error.message || (isArchive ? 'Could not archive site' : 'Failed to delete site'), 'error');

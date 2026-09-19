@@ -23,8 +23,8 @@
         <div class="d-flex flex-wrap gap-2">
             <a href="{{ route('advertiser.wizard.market') }}" class="btn btn-sm btn-outline-secondary">Change market</a>
             @if($cartCount > 0)
-                <button type="button" class="btn btn-sm btn-outline-primary" onclick="openCart()">
-                    Open cart ({{ $cartCount }})
+                <button type="button" class="catalog-plain-action" onclick="openCart()">
+                    <i class="fa fa-shopping-cart" aria-hidden="true"></i> Open cart ({{ $cartCount }})
                 </button>
             @endif
             <a href="{{ route('advertiser.wizard.content') }}"

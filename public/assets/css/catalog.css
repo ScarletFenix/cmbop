@@ -10,6 +10,37 @@
  * shell's --shell-z-dropdown layer instead of sliding under the topbar.
  */
 
+.catalog-page .catalog-plain-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    padding: 6px 8px;
+    border: none;
+    box-shadow: none;
+    background: transparent;
+    color: #1a585e;
+    font-size: 0.875rem;
+    font-weight: 600;
+    line-height: 1.2;
+    text-decoration: none;
+    border-radius: 8px;
+    cursor: pointer;
+}
+.catalog-page .catalog-plain-action i {
+    width: 16px;
+    height: 16px;
+    min-width: 16px;
+    font-size: 16px;
+    flex: 0 0 16px;
+}
+.catalog-page .catalog-plain-action:hover,
+.catalog-page .catalog-plain-action:focus-visible {
+    background: transparent;
+    color: #123f42;
+    text-decoration: none;
+}
+
 .filter-chip {
     background: var(--brand-primary-bg, #e6f5f5);
     color: var(--brand-primary, #1a585e);
@@ -339,6 +370,51 @@
     width: 100%;
 }
 
+.catalog-metric--traffic .catalog-metric__spark {
+    display: block;
+    width: 5.75rem;
+    height: 36px;
+    padding: 0;
+    margin: 0;
+    box-sizing: border-box;
+    background: none;
+}
+
+.catalog-metric--traffic .catalog-metric__spark svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+}
+
+.catalog-metric--traffic .catalog-metric__spark-line {
+    fill: none;
+    stroke: #0b6266;
+    stroke-width: 2.35;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.catalog-metric--traffic .catalog-metric__spark-halo {
+    fill: rgba(78, 205, 203, 0.35);
+}
+
+.catalog-metric--traffic .catalog-metric__spark-end {
+    fill: #0b6266;
+    stroke: #fff;
+    stroke-width: 1.1;
+}
+
+.catalog-metric--traffic.is-standout .catalog-metric__spark {
+    background: none;
+}
+
+.catalog-mobile-metrics .catalog-metric--traffic .catalog-metric__spark {
+    width: 100%;
+    max-width: 9rem;
+    height: 38px;
+}
+
 /* ------------------------------------------------------------- identity tile */
 
 /* Rows were a wall of monospace domains with nothing to fix the eye on. The
@@ -591,12 +667,24 @@
 }
 
 .catalog-expand-trust {
-    padding-top: 0.5rem;
+    padding-top: 0.85rem;
     border-top: 1px solid rgba(15, 23, 42, 0.06);
 }
 
 .catalog-expand-trust .site-trust-compact {
     font-size: 12px;
+}
+
+.catalog-details-heading {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    line-height: 1.2;
+}
+
+.catalog-details-heading .glass-tip-trigger {
+    flex: 0 0 auto;
+    align-self: center;
 }
 
 /* Buy used to pin itself to the resting colour on hover, so the main CTA in the
@@ -918,7 +1006,7 @@ body:has(.catalog-page) {
     }
 
     .catalog-table .site-chip--verified {
-        padding: 0 7px;
+        padding: 0;
     }
 }
 
@@ -942,9 +1030,18 @@ body:has(.catalog-page) {
 }
 
 .catalog-card-details dt {
+    display: flex;
+    align-items: center;
+    gap: 4px;
     font-weight: 600;
     color: var(--brand-ink, #0f172a);
     margin-bottom: 2px;
+    line-height: 1.2;
+}
+
+.catalog-card-details dt .glass-tip-trigger {
+    flex: 0 0 auto;
+    align-self: center;
 }
 
 .catalog-card-details dd {
@@ -983,14 +1080,168 @@ body:has(.catalog-page) {
     border-radius: var(--radius-sm, 8px);
 }
 
-/* Only the chosen add-on is filled. This used to paint every radio in the group
-   teal, so all of them looked selected at once. */
+/* Sensitive topics stay a single-select radio group in the DOM. The native
+   circle is replaced with a square tick so the column reads as options, not
+   a warning. No teal tray — each row uses a light slate chip. */
+.sensitive-prices-group {
+    padding: 0;
+    border: 0;
+    background: transparent;
+}
+
 .sensitive-price-checkbox {
     cursor: pointer;
 }
 
 .sensitive-prices-group .form-check {
     margin-bottom: 8px;
+    padding: 0.55rem 0.75rem 0.55rem 2.25rem;
+    border: 1px solid #e8edf2;
+    border-radius: 999px;
+    background: #f4f6f8;
+    cursor: pointer;
+}
+
+.sensitive-prices-group .form-check-label {
+    cursor: pointer;
+}
+
+.sensitive-prices-group .form-check:has(.sensitive-price-checkbox:checked) {
+    border-color: #d7dee6;
+    background: #eef2f6;
+}
+
+.sensitive-prices-group .form-check-input.sensitive-price-checkbox {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 1.15rem;
+    height: 1.15rem;
+    margin-top: 0.2em;
+    border-radius: 5px;
+    border: 1.5px solid #c5d4d6;
+    background-color: #fff;
+    background-image: none;
+}
+
+.sensitive-prices-group .form-check-input.sensitive-price-checkbox:checked {
+    background-color: var(--brand-primary, #1a585e);
+    border-color: var(--brand-primary, #1a585e);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath fill='none' stroke='%23fff' stroke-linecap='round' stroke-linejoin='round' stroke-width='3' d='m6 10 3 3 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 0.72rem;
+}
+
+.sensitive-prices-group .form-check-input.sensitive-price-checkbox:focus-visible {
+    box-shadow: 0 0 0 0.2rem rgba(26, 88, 94, 0.22);
+}
+
+.catalog-addon-price {
+    color: var(--brand-primary, #1a585e);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.cart-fly-token {
+    pointer-events: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 11000;
+    width: 108px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    will-change: transform, opacity;
+}
+
+.cart-fly-arrow {
+    display: flex;
+    width: 22px;
+    height: 22px;
+    margin-bottom: 6px;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    background: var(--brand-primary-soft, #3faeb2);
+    color: #fff;
+    font-size: 10px;
+    box-shadow: 0 6px 14px rgba(26, 88, 94, 0.22);
+}
+
+.cart-fly-window {
+    width: 108px;
+    overflow: hidden;
+    border: 2px solid var(--brand-primary-soft, #3faeb2);
+    border-radius: 10px;
+    background: #fff;
+    box-shadow: 0 14px 28px -12px rgba(26, 88, 94, 0.35);
+}
+
+.cart-fly-window__bar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: 14px;
+    padding: 0 8px;
+    background: #eef7f7;
+}
+
+.cart-fly-window__bar span {
+    width: 5px;
+    height: 5px;
+    border-radius: 999px;
+    background: var(--brand-primary-soft, #3faeb2);
+}
+
+.cart-fly-window__body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 52px;
+    color: var(--brand-primary-soft, #3faeb2);
+    background: var(--brand-primary-tint, #f4fbfb);
+    font-size: 16px;
+}
+
+.cart-fly-window__body img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.cart-fly-token.is-mid .cart-fly-window {
+    box-shadow:
+        -28px 0 0 -12px rgba(63, 174, 178, 0.18),
+        -48px 0 0 -14px rgba(63, 174, 178, 0.1),
+        0 14px 28px -12px rgba(26, 88, 94, 0.28);
+}
+
+.catalog-page .buy-now.is-added {
+    background: var(--brand-primary, #1a585e);
+    border-color: var(--brand-primary, #1a585e);
+}
+
+#toggleCart.cart-pop {
+    animation: catalog-cart-pop 520ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes catalog-cart-pop {
+    0%,
+    100% { transform: scale(1); }
+    30% { transform: scale(1.16); }
+    55% { transform: scale(0.96); }
+    75% { transform: scale(1.08); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #toggleCart.cart-pop {
+        animation: none;
+    }
+
+    .cart-fly-token {
+        display: none;
+    }
 }
 
 .selected-price-info {
@@ -1131,14 +1382,21 @@ body:has(.catalog-page) {
 
 .site-trust-compact {
     display: inline-flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px 8px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
     font-size: 11px;
     line-height: 1.3;
     color: var(--brand-ink-muted, #76797c);
     max-width: 100%;
     cursor: help;
+}
+
+.site-trust-compact__row {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 8px;
 }
 
 .site-trust-compact__stars {
@@ -1178,6 +1436,21 @@ body:has(.catalog-page) {
 .site-trust-compact__rate--empty {
     color: var(--brand-ink-muted, #94a3b8);
     font-weight: 500;
+}
+
+.site-trust-compact__published {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 2px;
+    color: var(--brand-ink-muted, #94a3b8);
+    font-size: 11px;
+    font-weight: 500;
+}
+
+.site-trust-compact__published i {
+    font-size: 10px;
+    line-height: 1;
 }
 
 .catalog-card-details .site-trust-compact {
@@ -1265,6 +1538,31 @@ body:has(.catalog-page) {
     width: 100%;
     will-change: transform;
     transition: transform 560ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* First paint: only the first 6-up page is visible. Extra cards used to sit
+   in one flex row and squash until JS rebuilt the panels. */
+.catalog-bulk-rail:not(.is-enhanced) {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 12px;
+    transform: none !important;
+    transition: none;
+    will-change: auto;
+}
+.catalog-bulk-rail:not(.is-enhanced) > [data-bulk-card]:nth-child(n + 7) {
+    display: none;
+}
+.catalog-bulk-rail:not(.is-enhanced) > [data-bulk-page-panel] {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 12px;
+    width: 100%;
+    min-width: 0;
+    flex: none;
+}
+.catalog-bulk-rail:not(.is-enhanced) > [data-bulk-page-panel] ~ [data-bulk-page-panel] {
+    display: none;
 }
 
 .catalog-bulk-rail:focus-visible {
@@ -1668,16 +1966,9 @@ body:has(.catalog-page) {
     inset: 0;
     z-index: 4;
     display: none;
-    align-items: flex-start;
-    justify-content: center;
-    gap: 10px;
-    padding-top: 4.5rem;
+    pointer-events: none;
     border-radius: inherit;
-    background: rgba(255, 255, 255, 0.72);
-    backdrop-filter: blur(1px);
-    font-size: 0.875rem;
-    font-weight: 600;
-    color: var(--brand-primary, #1a585e);
+    background: rgba(255, 255, 255, 0.28);
 }
 
 /* Belt-and-suspenders: without catalog.css a plain div is display:block and
@@ -1701,26 +1992,7 @@ body:has(.catalog-page) {
     opacity: 0.55;
 }
 
-.catalog-results-busy__spinner {
-    width: 1.05rem;
-    height: 1.05rem;
-    border-radius: 50%;
-    border: 2px solid var(--brand-primary-border, #b8e4e4);
-    border-top-color: var(--brand-primary, #1a585e);
-    animation: catalogResultsSpin 700ms linear infinite;
-}
-
-@keyframes catalogResultsSpin {
-    to { transform: rotate(360deg); }
-}
-
 @media (prefers-reduced-motion: reduce) {
-    .catalog-results-busy__spinner {
-        animation: none;
-        border-top-color: var(--brand-primary-border, #b8e4e4);
-        opacity: 0.7;
-    }
-
     .catalog-results-card.is-busy > .card-body {
         opacity: 0.7;
     }
@@ -1909,6 +2181,10 @@ a.catalog-site-rooted-url.site-open-link::after {
     gap: 4px;
     min-width: 0;
     width: 100%;
+}
+
+.catalog-table .catalog-site-title-row + .catalog-site-identity {
+    margin-top: 8px;
 }
 
 /* NEW · Verified · eye — snug cluster immediately after the name. */
@@ -2141,20 +2417,45 @@ button.site-chip {
 /* Chips no longer lift. A row can carry several, so translating each one on
    hover read as jitter — and most of them are labels, not controls. */
 
-.site-chip--verified {
-    background: linear-gradient(180deg, #ecfdf5 0%, #d1fae5 100%);
+.site-chip--verified,
+button.site-chip.site-chip--verified {
+    height: auto;
+    min-height: 0;
+    padding: 0;
+    margin: 0;
+    gap: 0;
+    line-height: 0;
+    background: none;
+    border: 0;
+    box-shadow: none;
     color: #0f766e;
-    border-color: rgba(15, 118, 110, 0.22);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 .site-chip--verified:hover,
 .site-chip--verified:focus-visible {
-    box-shadow: 0 2px 8px rgba(15, 118, 110, 0.14);
+    background: none;
+    box-shadow: none;
 }
 
 .site-chip--verified i {
     color: #0d9488;
+}
+
+.site-chip--verified .catalog-verified-lottie {
+    display: block;
+    width: 52px;
+    height: 52px;
+    flex: 0 0 52px;
+    margin: 0 -8px;
+    overflow: hidden;
+}
+
+.site-chip--verified .catalog-verified-lottie svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    transform: scale(1.42);
+    transform-origin: center;
 }
 
 .site-chip--blacklist {

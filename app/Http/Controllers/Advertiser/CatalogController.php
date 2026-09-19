@@ -54,6 +54,7 @@ use App\Services\StripePaymentService;
 use App\Services\Wallet\WalletLedgerService;
 use App\Support\AdvertiserOrderDetails;
 use App\Support\AdvertiserOrderStatus;
+use App\Support\CartDisplayFx;
 use App\Support\CatalogVisitUrl;
 use App\Support\PaypalPaymentError;
 use App\Support\SiteTag;
@@ -141,6 +142,44 @@ class CatalogController extends Controller
 
             return [];
         }
+    }
+
+    /**
+     * Leftover fallback when CatalogCountryInventory cannot build picker sections
+     * (missing class, missing sites.countries JSON, etc.). Same shape as the view.
+     *
+     * @return list<array{key: string, label: string, options: list<array{code: string, name: string, count: int}>}>
+     */
+    private function staticCountryPickerSections(): array
+    {
+        $options = [];
+        foreach ($this->getAvailableCountries() as $code => $name) {
+            $options[] = [
+                'code' => strtolower((string) $code),
+                'name' => (string) $name,
+                'count' => 0,
+            ];
+        }
+
+        if ($options === [] && function_exists('marketplace_countries')) {
+            foreach (marketplace_countries() as $code => $name) {
+                $options[] = [
+                    'code' => strtolower((string) $code),
+                    'name' => (string) $name,
+                    'count' => 0,
+                ];
+            }
+        }
+
+        if ($options === []) {
+            return [];
+        }
+
+        return [[
+            'key' => 'all_other',
+            'label' => 'Countries',
+            'options' => $options,
+        ]];
     }
 
     /**
@@ -795,6 +834,9 @@ class CatalogController extends Controller
         // Pagination links always target the full catalog page (not /results),
         // and only carry the allowlisted listing query (URL source of truth).
         $perPage = CatalogUrlQuery::perPage($request);
+        if (Schema::hasColumn('order_items', 'completed_at')) {
+            $query->withMax('orderItems as last_completed_at', 'completed_at');
+        }
         $sites = $query->paginate($perPage);
         $sites->appends(CatalogUrlQuery::fromRequest($request));
         $sites->setPath(route('advertiser.catalog', absolute: false));
@@ -1386,6 +1428,7 @@ class CatalogController extends Controller
             'removed_owned_count' => count($removedOwned),
             'require_same_language' => $requireSame,
             'schedule' => $this->checkoutScheduleClientHint(),
+            'fx' => app(CartDisplayFx::class)->syncWithCart($cart),
         ];
     }
 
@@ -6682,6 +6725,7 @@ class CatalogController extends Controller
         }
 
         session()->forget('cart');
+        app(CartDisplayFx::class)->forget();
     }
 
     /**
@@ -6731,6 +6775,7 @@ class CatalogController extends Controller
 
         if ($remaining === []) {
             session()->forget('cart');
+            app(CartDisplayFx::class)->forget();
         } else {
             $this->putCatalogVisibleCart($remaining);
         }

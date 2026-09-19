@@ -48,7 +48,7 @@ class ActionConfirmDialogsTest extends TestCase
             $this->assertFileExists($layout);
             $html = file_get_contents($layout);
             $this->assertStringContainsString('js/slb-confirm.js', $html, $layout);
-            $this->assertStringContainsString('sweetalert2@11', $html, $layout);
+            $this->assertStringContainsString('assets/vendor/sweetalert2/sweetalert2.min.js', $html, $layout);
         }
     }
 

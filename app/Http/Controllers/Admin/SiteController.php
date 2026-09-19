@@ -988,6 +988,10 @@ class SiteController extends Controller
                 ->withInput();
         }
 
+        if (trim(scalar_text($request->input('site_tag'))) === '') {
+            $request->merge(['site_tag' => null]);
+        }
+
         $validator = Validator::make($request->all(), [
             'publisher_id' => 'required|integer|exists:users,id',
             'site_name' => 'required|string|max:255',
@@ -1005,7 +1009,7 @@ class SiteController extends Controller
             'link_type' => 'required|in:dofollow,nofollow',
             'description' => 'nullable|string|max:20000',
             'site_image' => SiteImageUpload::uploadedFileRules(false),
-            'site_tag' => 'nullable|in:sponsored,partner_material,as_you_prefer',
+            'site_tag' => 'nullable|in:sponsored,partner_material,as_you_prefer,none',
             'written_request' => 'accepted',
             'suggestion_id' => 'nullable|integer',
         ] + $this->placementOfferValidationRules(), array_merge($this->siteImageValidationMessages(), [

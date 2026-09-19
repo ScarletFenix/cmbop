@@ -37,14 +37,14 @@
         ? \App\Support\PublicI18n::htmlLang()
         : 'en-GB',
     'dateModified' => __('messages.refund_last_updated_iso'),
-], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) !!}
+], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_HEX_TAG|JSON_HEX_AMP|JSON_INVALID_UTF8_SUBSTITUTE) ?: '{}' !!}
 </script>
 <script type="application/ld+json">
 {!! json_encode([
     '@@context' => 'https://schema.org',
     '@type' => 'FAQPage',
     'mainEntity' => $faqEntities,
-], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) !!}
+], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_HEX_TAG|JSON_HEX_AMP|JSON_INVALID_UTF8_SUBSTITUTE) ?: '{}' !!}
 </script>
 @endpush
 

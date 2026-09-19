@@ -84,17 +84,13 @@ class SiteTag
     }
 
     /**
-     * Staff / bulk-complete radios. Default is As you prefer (no empty option).
+     * Staff / bulk-complete radios, including empty = No tags.
      *
      * @return array<string, string>
      */
     public static function staffFormOptions(): array
     {
-        return [
-            self::AS_YOU_PREFER => self::LABELS[self::AS_YOU_PREFER],
-            self::SPONSORED => self::LABELS[self::SPONSORED],
-            self::PARTNER => self::LABELS[self::PARTNER],
-        ];
+        return ['' => self::NONE_LABEL] + self::LABELS;
     }
 
     /**
@@ -297,8 +293,7 @@ class SiteTag
      */
     public static function applyStaffDefault(Site $site, mixed $tag): void
     {
-        $normalized = self::normalize($tag);
-        self::applyExclusive($site, $normalized ?? self::AS_YOU_PREFER);
+        self::applyExclusive($site, self::normalize($tag));
     }
 
     /**

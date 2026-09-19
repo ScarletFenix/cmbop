@@ -17,8 +17,8 @@
     <link rel="dns-prefetch" href="https://fonts.googleapis.com">
     <link rel="dns-prefetch" href="https://fonts.gstatic.com">
 
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ asset('assets/vendor/bootstrap-5.3.0/bootstrap.min.css') }}?v={{ @filemtime(public_path('assets/vendor/bootstrap-5.3.0/bootstrap.min.css')) ?: '1' }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/slb-icons.css') }}?v={{ @filemtime(public_path('assets/css/slb-icons.css')) ?: '1' }}" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link href="{{ asset('assets/css/type-system.css') }}?v={{ @filemtime(public_path('assets/css/type-system.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('assets/css/brand-colors.css') }}?v={{ @filemtime(public_path('assets/css/brand-colors.css')) ?: '1' }}" rel="stylesheet">
@@ -40,7 +40,10 @@
     @stack('page-styles')
     <link href="{{ asset('assets/css/slb-live-search.css') }}?v={{ @filemtime(public_path('assets/css/slb-live-search.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('assets/css/slb-pagination.css') }}?v={{ @filemtime(public_path('assets/css/slb-pagination.css')) ?: '1' }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/slb-loader.css') }}?v={{ @filemtime(public_path('assets/css/slb-loader.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('assets/css/hover-system.css') }}?v={{ @filemtime(public_path('assets/css/hover-system.css')) ?: '1' }}" rel="stylesheet">
+    <script src="{{ asset('assets/vendor/lottie-web/lottie_light.min.js') }}?v={{ @filemtime(public_path('assets/vendor/lottie-web/lottie_light.min.js')) ?: '1' }}" defer></script>
+    <script src="{{ asset('assets/js/slb-loader.js') }}?v={{ @filemtime(public_path('assets/js/slb-loader.js')) ?: '1' }}" defer></script>
     <script src="{{ asset('assets/js/pulse-badge.js') }}?v={{ @filemtime(public_path('assets/js/pulse-badge.js')) ?: '1' }}" defer></script>
     <script src="{{ asset('assets/js/glass-tip.js') }}?v={{ @filemtime(public_path('assets/js/glass-tip.js')) ?: '1' }}" defer></script>
     <script src="{{ asset('assets/js/image-rights.js') }}?v={{ @filemtime(public_path('assets/js/image-rights.js')) ?: '1' }}" defer></script>
@@ -124,7 +127,7 @@
             <span class="nav-label">Projects</span>
         </a>
 
-        <a href="{{ route('site-claims.index') }}" class="{{ request()->routeIs('site-claims.*') ? 'active' : '' }}">
+        <a href="{{ route('advertiser.site-claims') }}" class="{{ request()->routeIs('advertiser.site-claims') || request()->routeIs('site-claims.*') ? 'active' : '' }}">
             <i class="fa fa-user-check" aria-hidden="true"></i>
             <span class="nav-label">My Claims</span>
         </a>
@@ -156,7 +159,7 @@
 <div class="top-navbar">
 
     <div class="mobile-left d-flex align-items-center gap-2">
-        <button id="toggleSidebar" class="btn btn-sm btn-outline-secondary" type="button" aria-label="Toggle sidebar navigation" title="Toggle sidebar" aria-controls="sidebar" aria-expanded="true">
+        <button id="toggleSidebar" class="topbar-icon-btn" type="button" aria-label="Toggle sidebar navigation" title="Toggle sidebar" aria-controls="sidebar" aria-expanded="true">
             <span class="arrow" aria-hidden="true"><i class="fa fa-chevron-left"></i></span>
         </button>
 
@@ -181,10 +184,9 @@
                 $headerCart
             )), 2);
         @endphp
-        <button id="toggleCart" class="btn btn-outline-secondary btn-sm topbar-action" type="button" aria-label="Open cart" title="Cart">
+        <button id="toggleCart" class="topbar-icon-btn" type="button" aria-label="Open cart" title="Cart" data-cart-fly-target>
             <i class="fa fa-shopping-cart" aria-hidden="true"></i>
-            <span class="d-none d-sm-inline">Cart</span>
-            <span id="cartTotalBadge" class="cart-total-label {{ $headerCartCount > 0 ? '' : 'd-none' }}">€{{ number_format($headerCartTotal, 2) }}</span>
+            <span id="cartTotalBadge" class="visually-hidden">{{ format_money_pay($headerCartTotal) }}</span>
             <span id="cartBadge" class="cart-badge" style="{{ $headerCartCount > 0 ? 'display:flex;' : 'display:none;' }}">{{ $headerCartCount > 0 ? $headerCartCount : 0 }}</span>
         </button>
 
@@ -207,12 +209,12 @@
             }
             $headerBalanceTitle = $headerWalletUnavailable
                 ? 'Spendable unavailable'
-                : ('Spendable €' . number_format($spendableBalance, 2)
-                    . ($reservedBalance > 0 ? ' · On hold: €' . number_format($reservedBalance, 2) : ''));
+                : ('Spendable ' . format_money($spendableBalance)
+                    . ($reservedBalance > 0 ? ' · On hold: ' . format_money($reservedBalance) : ''));
         @endphp
         <a href="{{ route('advertiser.add-funds') }}" class="balance-block text-decoration-none" data-glass-tip data-glass-tip-body="{{ $headerBalanceTitle }}" data-glass-tip-placement="bottom" aria-label="{{ $headerWalletUnavailable ? 'Spendable balance unavailable' : 'Spendable balance '.number_format($spendableBalance, 2).' euros' }}">
             <span class="balance-label">Spendable</span>
-            <span class="balance-amount">{{ $headerWalletUnavailable ? '—' : '€'.number_format($spendableBalance, 2) }}</span>
+            <span class="balance-amount">{{ $headerWalletUnavailable ? '—' : format_money($spendableBalance) }}</span>
         </a>
 
         @include('partials.notification-center')
@@ -276,7 +278,7 @@
             <h5 id="cartTitle" class="mb-0">Your Cart</h5>
             <div id="cartHeaderMeta" class="small text-muted mt-1">Pay with wallet, card, or PayPal at checkout. Sites without an article stay in the cart.</div>
         </div>
-        <button id="closeCart" class="btn btn-sm btn-outline-secondary" type="button" aria-label="Close cart">
+        <button id="closeCart" class="topbar-icon-btn" type="button" aria-label="Close cart">
             <i class="fa fa-times" aria-hidden="true"></i>
         </button>
     </div>
@@ -340,9 +342,10 @@
     @include('components.help-feedback-widget')
 @endunless
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="{{ asset('assets/vendor/bootstrap-5.3.0/bootstrap.bundle.min.js') }}?v={{ @filemtime(public_path('assets/vendor/bootstrap-5.3.0/bootstrap.bundle.min.js')) ?: '1' }}"></script>
 <script src="{{ asset('assets/js/modal-stack.js') }}?v={{ @filemtime(public_path('assets/js/modal-stack.js')) ?: '1' }}"></script>
 <script src="{{ asset('assets/js/jquery-3.6.0.min.js') }}?v={{ @filemtime(public_path('assets/js/jquery-3.6.0.min.js')) ?: '1' }}"></script>
+@include('partials.money-display')
 @include('partials.app-toast')
 
 <script>
@@ -457,6 +460,16 @@
         cartSchedule = data?.schedule && data.schedule.mode === 'scheduled' ? data.schedule : null;
         if (data?.content_library_url) {
             contentLibraryUploadUrl = data.content_library_url;
+        }
+        if (window.__slbMoney) {
+            if (data?.fx && data.fx.rate) {
+                window.__slbMoney.cart_rate = Number(data.fx.rate);
+                window.__slbMoney.currency = data.fx.currency || window.__slbMoney.currency;
+                window.__slbMoney.symbol = data.fx.symbol || window.__slbMoney.symbol;
+                window.__slbMoney.guide = (window.__slbMoney.currency || 'EUR') !== 'EUR';
+            } else if (!Array.isArray(cart) || cart.length === 0) {
+                window.__slbMoney.cart_rate = window.__slbMoney.rate;
+            }
         }
         toastRemovedCartNames(
             Array.isArray(data?.removed_inactive) ? data.removed_inactive : [],
@@ -695,10 +708,10 @@
         if (totalBadge) {
             if (cartCount > 0) {
                 totalBadge.classList.remove('d-none');
-                totalBadge.textContent = '€' + cartTotal.toFixed(2);
+                totalBadge.textContent = slbFormatPay(cartTotal);
             } else {
                 totalBadge.classList.add('d-none');
-                totalBadge.textContent = '€0.00';
+                totalBadge.textContent = slbFormatPay(0);
             }
         }
         
@@ -826,11 +839,11 @@
             if (heldNote) {
                 if (readyCount === 0) {
                     heldNote.classList.remove('d-none');
-                    heldNote.textContent = 'In cart €' + cartTotal.toFixed(2);
+                    heldNote.textContent = 'In cart ' + slbFormatPay(cartTotal);
                 } else if (missing > 0) {
                     heldNote.classList.remove('d-none');
                     heldNote.textContent = missing + ' site' + (missing === 1 ? '' : 's')
-                        + ' stay' + (missing === 1 ? 's' : '') + ' in cart (€' + heldTotal.toFixed(2) + ')';
+                        + ' stay' + (missing === 1 ? 's' : '') + ' in cart (' + slbFormatPay(heldTotal) + ')';
                 } else {
                     heldNote.classList.add('d-none');
                     heldNote.textContent = '';
@@ -867,13 +880,13 @@
                 const placementIds = lineContentIds(item);
                 const qty = Math.max(1, parseInt(item.quantity, 10) || 1);
                 const unitPrice = (parseFloat(item.price) || 0).toFixed(2);
-                const priceLabel = qty > 1 ? ('€' + unitPrice + ' × ' + qty) : ('€' + unitPrice);
+                const priceLabel = qty > 1 ? (slbFormatPay(unitPrice) + ' × ' + qty) : slbFormatPay(unitPrice);
                 const sensitiveDisplay = item.sensitive_type ? 
-                    `<div class="cart-item-sensitive"><small>+ ${escapeHtml(item.sensitive_type)} (€${(parseFloat(item.additional_price) || 0).toFixed(2)})</small></div>` : '';
+                    `<div class="cart-item-sensitive"><small>+ ${escapeHtml(item.sensitive_type)} (${slbFormatPay(item.additional_price)})</small></div>` : '';
                 const homepageDays = item.homepage_days != null && item.homepage_days !== '' ? parseInt(item.homepage_days, 10) : null;
                 const homepageFee = parseFloat(item.homepage_price) || 0;
                 const homepageDisplay = homepageDays
-                    ? `<div class="cart-item-homepage"><small>Homepage ${homepageDays} day${homepageDays === 1 ? '' : 's'}${homepageFee > 0 ? ' (+€' + homepageFee.toFixed(2) + ')' : ' (Free)'}</small></div>`
+                    ? `<div class="cart-item-homepage"><small>Homepage ${homepageDays} day${homepageDays === 1 ? '' : 's'}${homepageFee > 0 ? ' (' + slbFormatPay(homepageFee, { signed: true }) + ')' : ' (Free)'}</small></div>`
                     : '';
                 const socialList = Array.isArray(item.social_channels) ? item.social_channels : [];
                 const socialDisplay = socialList.length
@@ -988,7 +1001,7 @@
             const payNow = cart.length === 0 ? 0 : cart
                 .filter((item) => lineFullyAssigned(item))
                 .reduce((sum, item) => sum + ((parseFloat(item.price) || 0) * (parseInt(item.quantity, 10) || 0)), 0);
-            payEl.innerHTML = `€${payNow.toFixed(2)}`;
+            payEl.innerHTML = slbFormatPay(payNow);
         }
     }
     
@@ -1076,7 +1089,16 @@
             applyCartPayload(data);
             updateCartDisplay();
             const label = sensitiveType ? (name + ' + ' + sensitiveType) : name;
-            showToast(data.message || (label + ' added to cart.'), 'success');
+            const flew = typeof window.catalogFlyToCart === 'function'
+                && window.catalogFlyToCart(opts.flyOrigin, { siteId: id, name: name });
+            if (!opts.quiet) {
+                showToast(data.message || (label + ' added to cart.'), 'success');
+            } else if (!flew) {
+                showToast(label + ' added to cart.', 'success', { delay: 1800, quiet: true });
+            }
+            if (typeof window.catalogAnnounceCart === 'function') {
+                window.catalogAnnounceCart(label);
+            }
             updateCartDisplay();
             if (opts.openCart || opts.bulk || (Number.isFinite(qty) && qty > 1)) {
                 try { openCart(); } catch (_) { /* cart chrome may not be ready */ }
@@ -1317,8 +1339,9 @@
     }
 </script>
 
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="{{ asset('assets/vendor/sweetalert2/sweetalert2.min.js') }}?v={{ @filemtime(public_path('assets/vendor/sweetalert2/sweetalert2.min.js')) ?: '1' }}"></script>
 <script src="{{ asset('js/slb-confirm.js') }}?v={{ @filemtime(public_path('js/slb-confirm.js')) ?: '1' }}"></script>
+@include('partials.slb-icon-draw')
 <script src="{{ asset('js/slb-live-search.js') }}?v={{ @filemtime(public_path('js/slb-live-search.js')) ?: '1' }}"></script>
 <script src="{{ asset('js/slb-http.js') }}?v={{ @filemtime(public_path('js/slb-http.js')) ?: '1' }}"></script>
 <script>
@@ -1328,6 +1351,7 @@
 <script src="{{ asset('js/notification-center.js') }}?v={{ @filemtime(public_path('js/notification-center.js')) ?: '8' }}" defer></script>
 @stack('scripts')
 @include('partials.tawk')
+@include('partials.slb-loader')
 
 </body>
 </html>

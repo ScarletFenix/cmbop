@@ -92,7 +92,7 @@ return [
     'meta_privacy_description' => 'Cómo SEOLinkBuildings recopila, utiliza y protege los datos personales en Seolinkbuildings.com para anunciantes, editores y visitantes.',
     'meta_terms_title' => 'Términos del servicio | SEOLinkBuildings',
     'meta_terms_description' => 'Términos que rigen el uso del marketplace de guest posts de SEOLinkBuildings, monederos, pedidos y publicaciones de editores en Seolinkbuildings.com.',
-    'meta_login_title' => 'Iniciar sesión | SEOLinkBuildings',
+    'meta_login_title' => 'Iniciar sesión en su cuenta guest post | SEOLinkBuildings',
     'meta_login_description' => 'Acceda a su cuenta de SEOLinkBuildings para gestionar pedidos de guest posts, sitios de editor, saldo del monedero y campañas.',
     'meta_register_title' => 'Crear cuenta — 20 € de crédito de bienvenida | SEOLinkBuildings',
     'meta_register_title_off' => 'Crear cuenta | SEOLinkBuildings',

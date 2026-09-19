@@ -120,6 +120,33 @@ class CatalogUiHardeningTest extends TestCase
         $this->assertStringNotContainsString("'<strong>' + selected.type", $js);
     }
 
+    public function test_add_to_cart_flies_to_the_header_cart_quietly(): void
+    {
+        $js = $this->catalogJs();
+
+        $this->assertStringContainsString('function catalogFlyToCart(', $js);
+        $this->assertStringContainsString('quiet: true', $js);
+        $this->assertStringContainsString('flyOrigin: button', $js);
+        $layout = (string) file_get_contents(resource_path('views/advertiser/layouts/app.blade.php'));
+        $this->assertStringContainsString('data-cart-fly-target', $layout);
+        $this->assertStringContainsString('opts.quiet', $layout);
+        $this->assertStringContainsString('catalog-addon-price', $this->catalogBlade());
+        $this->assertStringContainsString('lastPublicationLabel()', (string) file_get_contents(
+            resource_path('views/advertiser/partials/catalog-site-trust.blade.php')
+        ));
+        $this->assertStringContainsString('catalog-expand-trust', $this->catalogBlade());
+        $this->assertStringNotContainsString('catalog-site-trust--row', $this->catalogBlade());
+
+        $css = (string) file_get_contents(public_path('assets/css/catalog.css'));
+        $this->assertStringContainsString('.form-check-input.sensitive-price-checkbox', $css);
+        $this->assertStringContainsString('appearance: none', $css);
+        $this->assertStringContainsString("m6 10 3 3 6-6", $css);
+        $this->assertStringContainsString('cart-fly-arrow', $js);
+        $this->assertStringContainsString('cart-fly-window', $js);
+        $this->assertStringContainsString('.cart-fly-window', $css);
+        $this->assertStringContainsString('.cart-fly-arrow', $css);
+    }
+
     public function test_buy_button_price_updates_apply_the_active_discount(): void
     {
         $js = $this->catalogJs();

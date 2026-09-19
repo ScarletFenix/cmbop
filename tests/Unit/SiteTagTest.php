@@ -45,8 +45,8 @@ class SiteTagTest extends TestCase
         $this->assertSame('Partner article', $publisher['partner_material']);
 
         $staff = SiteTag::staffFormOptions();
-        $this->assertSame(['as_you_prefer', 'sponsored', 'partner_material'], array_keys($staff));
-        $this->assertArrayNotHasKey('', $staff);
+        $this->assertSame(['', 'sponsored', 'partner_material', 'as_you_prefer'], array_keys($staff));
+        $this->assertSame('No tags', $staff['']);
     }
 
     public function test_from_flags_uses_sponsored_then_partner_priority(): void
@@ -121,12 +121,12 @@ class SiteTagTest extends TestCase
         $this->assertFalse((bool) $site->partner_material);
     }
 
-    public function test_staff_default_blank_is_as_you_prefer(): void
+    public function test_staff_default_blank_is_no_tags(): void
     {
         $site = new Site;
         SiteTag::applyStaffDefault($site, '');
 
-        $this->assertSame('as_you_prefer', $site->tagValue());
+        $this->assertNull($site->tagValue());
     }
 
     public function test_exclusive_attribute_patch_collapses_multi_flags(): void

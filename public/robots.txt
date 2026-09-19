@@ -19,6 +19,12 @@ Disallow: /publisher/
 Disallow: /profile
 Disallow: /chat/
 Disallow: /notifications
+Disallow: /login
+Disallow: /register
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /email/
+Disallow: /auth/
 
 User-agent: Googlebot
 Allow: /
@@ -41,6 +47,12 @@ Disallow: /publisher/
 Disallow: /profile
 Disallow: /chat/
 Disallow: /notifications
+Disallow: /login
+Disallow: /register
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /email/
+Disallow: /auth/
 
 User-agent: bingbot
 Allow: /
@@ -63,6 +75,12 @@ Disallow: /publisher/
 Disallow: /profile
 Disallow: /chat/
 Disallow: /notifications
+Disallow: /login
+Disallow: /register
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /email/
+Disallow: /auth/
 
 User-agent: Slurp
 Allow: /
@@ -85,6 +103,12 @@ Disallow: /publisher/
 Disallow: /profile
 Disallow: /chat/
 Disallow: /notifications
+Disallow: /login
+Disallow: /register
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /email/
+Disallow: /auth/
 
 User-agent: DuckDuckBot
 Allow: /
@@ -107,6 +131,12 @@ Disallow: /publisher/
 Disallow: /profile
 Disallow: /chat/
 Disallow: /notifications
+Disallow: /login
+Disallow: /register
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /email/
+Disallow: /auth/
 
 User-agent: GPTBot
 Allow: /
@@ -129,6 +159,12 @@ Disallow: /publisher/
 Disallow: /profile
 Disallow: /chat/
 Disallow: /notifications
+Disallow: /login
+Disallow: /register
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /email/
+Disallow: /auth/
 
 User-agent: ChatGPT-User
 Allow: /
@@ -151,6 +187,12 @@ Disallow: /publisher/
 Disallow: /profile
 Disallow: /chat/
 Disallow: /notifications
+Disallow: /login
+Disallow: /register
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /email/
+Disallow: /auth/
 
 User-agent: OAI-SearchBot
 Allow: /
@@ -173,6 +215,12 @@ Disallow: /publisher/
 Disallow: /profile
 Disallow: /chat/
 Disallow: /notifications
+Disallow: /login
+Disallow: /register
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /email/
+Disallow: /auth/
 
 User-agent: Google-Extended
 Allow: /
@@ -195,6 +243,12 @@ Disallow: /publisher/
 Disallow: /profile
 Disallow: /chat/
 Disallow: /notifications
+Disallow: /login
+Disallow: /register
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /email/
+Disallow: /auth/
 
 User-agent: ClaudeBot
 Allow: /
@@ -217,6 +271,12 @@ Disallow: /publisher/
 Disallow: /profile
 Disallow: /chat/
 Disallow: /notifications
+Disallow: /login
+Disallow: /register
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /email/
+Disallow: /auth/
 
 User-agent: Anthropic-AI
 Allow: /
@@ -239,6 +299,12 @@ Disallow: /publisher/
 Disallow: /profile
 Disallow: /chat/
 Disallow: /notifications
+Disallow: /login
+Disallow: /register
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /email/
+Disallow: /auth/
 
 User-agent: PerplexityBot
 Allow: /
@@ -261,6 +327,12 @@ Disallow: /publisher/
 Disallow: /profile
 Disallow: /chat/
 Disallow: /notifications
+Disallow: /login
+Disallow: /register
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /email/
+Disallow: /auth/
 
 User-agent: Bytespider
 Allow: /
@@ -283,6 +355,12 @@ Disallow: /publisher/
 Disallow: /profile
 Disallow: /chat/
 Disallow: /notifications
+Disallow: /login
+Disallow: /register
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /email/
+Disallow: /auth/
 
 User-agent: CCBot
 Allow: /
@@ -305,6 +383,12 @@ Disallow: /publisher/
 Disallow: /profile
 Disallow: /chat/
 Disallow: /notifications
+Disallow: /login
+Disallow: /register
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /email/
+Disallow: /auth/
 
 User-agent: Applebot-Extended
 Allow: /
@@ -327,6 +411,12 @@ Disallow: /publisher/
 Disallow: /profile
 Disallow: /chat/
 Disallow: /notifications
+Disallow: /login
+Disallow: /register
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /email/
+Disallow: /auth/
 
 User-agent: meta-externalagent
 Allow: /
@@ -349,6 +439,12 @@ Disallow: /publisher/
 Disallow: /profile
 Disallow: /chat/
 Disallow: /notifications
+Disallow: /login
+Disallow: /register
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /email/
+Disallow: /auth/
 
 User-agent: LinkedInBot
 Allow: /
@@ -371,6 +467,12 @@ Disallow: /publisher/
 Disallow: /profile
 Disallow: /chat/
 Disallow: /notifications
+Disallow: /login
+Disallow: /register
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /email/
+Disallow: /auth/
 
 User-agent: facebookexternalhit
 Allow: /
@@ -393,6 +495,12 @@ Disallow: /publisher/
 Disallow: /profile
 Disallow: /chat/
 Disallow: /notifications
+Disallow: /login
+Disallow: /register
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /email/
+Disallow: /auth/
 
 User-agent: FacebookBot
 Allow: /
@@ -415,6 +523,12 @@ Disallow: /publisher/
 Disallow: /profile
 Disallow: /chat/
 Disallow: /notifications
+Disallow: /login
+Disallow: /register
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /email/
+Disallow: /auth/
 
 Sitemap: https://seolinkbuildings.com/sitemap.xml
 # AI / LLM product digest for assistants and answer engines

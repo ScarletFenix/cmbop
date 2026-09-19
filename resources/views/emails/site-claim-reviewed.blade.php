@@ -2,15 +2,15 @@
 @if($approved)
 # Your site claim was approved
 
-Ownership of **{{ $siteName }}** has been transferred to your account. You can manage it from My Sites.
+Ownership of {{ $siteName }} has been transferred to your account. You can manage it from My Sites.
 @else
 # Your site claim was not approved
 
-We reviewed your claim for **{{ $siteName }}** and could not transfer ownership at this time.
+We reviewed your claim for {{ $siteName }} and could not transfer ownership at this time.
 @endif
 
 @if($claim->admin_notes)
-**Note from our team:**  
+Note from our team:  
 {{ $claim->admin_notes }}
 @endif
 

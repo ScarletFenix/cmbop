@@ -1,14 +1,14 @@
 @component('mail::message')
 # Welcome aboard, {{ $firstName }}!
 
-Thanks for joining **{{ $brand['name'] ?? config('app.name') }}**.
+Thanks for joining {{ $brand['name'] ?? config('app.name') }}.
 
 @if(!empty($needsVerification))
 Please verify your email address to activate your account and sign in.
 @elseif(($workspace ?? 'advertiser') === 'publisher')
 Your publisher account is ready — list your first website so advertisers can find you and start ordering placements.
 @elseif(!empty($welcomeBonusEuro))
-Your account is ready — explore verified publishers with your **{{ $welcomeBonusEuro }} welcome credit** and place your first order whenever you’re ready.
+Your account is ready — explore verified publishers with your {{ $welcomeBonusEuro }} welcome credit and place your first order whenever you’re ready.
 @else
 Your account is ready — explore verified publishers and place your first order whenever you’re ready.
 @endif

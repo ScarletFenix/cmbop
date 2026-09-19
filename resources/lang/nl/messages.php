@@ -567,7 +567,7 @@ return [
     'meta_privacy_description' => 'Hoe SEOLinkBuildings persoonsgegevens van adverteerders, publishers en bezoekers op Seolinkbuildings.com verzamelt, gebruikt en beschermt.',
     'meta_terms_title' => 'Gebruiksvoorwaarden | SEOLinkBuildings',
     'meta_terms_description' => 'Voorwaarden voor gebruik van de SEOLinkBuildings-guestpost-marktplaats, wallets, orders en publisherplacements op Seolinkbuildings.com.',
-    'meta_login_title' => 'Inloggen | SEOLinkBuildings',
+    'meta_login_title' => 'Inloggen op uw guestpost-account | SEOLinkBuildings',
     'meta_login_description' => 'Log in op uw SEOLinkBuildings-account om guestpost-orders, publishersites, walletsaldo en campagnes te beheren.',
     'meta_register_title' => 'Account aanmaken — €20 welkomsttegoed | SEOLinkBuildings',
     'meta_register_title_off' => 'Account aanmaken | SEOLinkBuildings',

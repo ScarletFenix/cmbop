@@ -5,8 +5,10 @@ namespace Tests\Feature;
 use App\Http\Middleware\CanonicalHost;
 use App\Models\Blog;
 use App\Models\BlogTranslation;
+use App\Support\BrandOrganization;
 use App\Support\RobotsTxt;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class SeoAndSecurityHeadersTest extends TestCase
@@ -66,7 +68,9 @@ class SeoAndSecurityHeadersTest extends TestCase
         $this->get('/sitemap-en.xml')
             ->assertOk()
             ->assertSee('/blog/sitemap-post', false)
-            ->assertSee('/contact', false);
+            ->assertSee('/contact', false)
+            ->assertDontSee('/login', false)
+            ->assertDontSee('/register', false);
 
         $this->get('/robots.txt')
             ->assertOk()
@@ -76,6 +80,8 @@ class SeoAndSecurityHeadersTest extends TestCase
             ->assertSee('Allow: /become-a-publisher', false)
             ->assertSee('Disallow: /admin/', false)
             ->assertSee('Disallow: /marketing/', false)
+            ->assertSee('Disallow: /login', false)
+            ->assertSee('Disallow: /register', false)
             ->assertSee('Googlebot', false)
             ->assertSee('bingbot', false)
             ->assertSee('Slurp', false)
@@ -108,28 +114,104 @@ class SeoAndSecurityHeadersTest extends TestCase
     {
         $this->get('/login')
             ->assertOk()
-            ->assertSee('Sign In | SEOLinkBuildings', false)
-            ->assertSee('name="robots" content="index, follow', false);
+            ->assertSee('Sign In to Your Guest Post Account | SEOLinkBuildings', false)
+            ->assertSee('name="robots" content="noindex, nofollow', false)
+            ->assertSee('application/ld+json', false)
+            ->assertSee('"@type":"Organization"', false)
+            ->assertSee('"@type":"WebPage"', false)
+            ->assertSee('"@graph"', false)
+            ->assertSee('hreflang="en-GB"', false)
+            ->assertSee('hreflang="x-default"', false)
+            ->assertDontSee('hreflang="de"', false);
 
         $this->get('/register')
             ->assertOk()
             ->assertSee('€20 Welcome Credit', false)
+            ->assertSee('name="robots" content="noindex, nofollow', false)
             ->assertDontSee('meta_register_title');
+    }
+
+    public function test_login_schema_graph_is_valid_json_ld(): void
+    {
+        $html = $this->get('/login')->assertOk()->getContent();
+        preg_match_all('#<script type="application/ld\+json">\s*(.*?)\s*</script>#s', $html, $matches);
+        $this->assertNotEmpty($matches[1]);
+        $payload = json_decode($matches[1][0], true);
+        $this->assertIsArray($payload);
+        $this->assertSame(JSON_ERROR_NONE, json_last_error());
+        $this->assertSame('https://schema.org', $payload['@context'] ?? null);
+        $types = array_column($payload['@graph'] ?? [], '@type');
+        $this->assertContains('Organization', $types);
+        $this->assertContains('WebPage', $types);
+    }
+
+    public function test_login_title_length_meets_on_page_band_in_every_locale(): void
+    {
+        foreach (['en', 'us', 'de', 'fr', 'nl', 'es', 'it'] as $locale) {
+            $title = trans('messages.meta_login_title', [], $locale);
+            $len = mb_strlen($title);
+            $this->assertGreaterThanOrEqual(30, $len, $locale.': '.$title);
+            $this->assertLessThanOrEqual(60, $len, $locale.': '.$title);
+        }
+    }
+
+    public function test_contact_and_marketplace_include_organization_schema(): void
+    {
+        foreach (['/contact', '/marketplace', '/privacy-policy'] as $path) {
+            $this->get($path)
+                ->assertOk()
+                ->assertSee('application/ld+json', false)
+                ->assertSee('"@type":"Organization"', false)
+                ->assertSee('"@type":"WebPage"', false);
+        }
     }
 
     public function test_home_includes_website_and_organization_schema(): void
     {
-        $this->get('/')
-            ->assertOk()
-            ->assertSee('"@type":"WebSite"', false)
-            ->assertSee('"@type":"Organization"', false)
-            ->assertSee('"@type":"SoftwareApplication"', false)
-            ->assertSee('16607074', false)
-            ->assertSee('fetchpriority="high"', false)
-            ->assertSee('https://www.facebook.com/seolinkbuildings/', false)
-            ->assertSee('https://www.instagram.com/seolinkbuildings', false)
-            ->assertSee('https://x.com/seolinbuildings', false)
-            ->assertSee('https://www.youtube.com/@seolinkbuildingss', false);
+        $html = $this->get('/')->assertOk()->getContent();
+
+        $this->assertStringContainsString('"@type":"WebSite"', $html);
+        $this->assertStringContainsString('"@type":"Organization"', $html);
+        $this->assertStringContainsString('"@type":"SoftwareApplication"', $html);
+        $this->assertStringContainsString('16607074', $html);
+        $this->assertStringContainsString('fetchpriority="high"', $html);
+        $this->assertStringContainsString('https://www.facebook.com/seolinkbuildings/', $html);
+        $this->assertStringContainsString('https://www.instagram.com/seolinkbuildings', $html);
+        $this->assertStringContainsString('https://x.com/seolinbuildings', $html);
+        $this->assertStringContainsString('https://www.youtube.com/@seolinkbuildingss', $html);
+        $this->assertStringContainsString('"inLanguage":"en-GB"', $html);
+        $this->assertStringNotContainsString('"inLanguage":[', $html);
+
+        $de = $this->get('/de')->assertOk()->getContent();
+        $this->assertStringContainsString('"inLanguage":"de"', $de);
+        $this->assertStringNotContainsString('"inLanguage":[', $de);
+    }
+
+    public function test_layout_json_ld_escapes_script_breakout_in_page_title(): void
+    {
+        $json = BrandOrganization::pageGraphJson(
+            'Break</script><script>alert(1)</script>',
+            'Description',
+            'https://seolinkbuildings.com/login'
+        );
+
+        $this->assertStringContainsString('\\u003C/script\\u003E', $json);
+        $this->assertStringNotContainsString('</script><script>alert(1)</script>', $json);
+        $decoded = json_decode($json, true);
+        $this->assertIsArray($decoded);
+        $this->assertSame('https://schema.org', $decoded['@context'] ?? null);
+    }
+
+    public function test_json_ld_helper_escapes_script_breakout(): void
+    {
+        $json = BrandOrganization::jsonLd([
+            '@context' => 'https://schema.org',
+            '@type' => 'WebPage',
+            'name' => 'Break</script><script>alert(1)</script>',
+        ]);
+
+        $this->assertStringContainsString('\\u003C/script\\u003E', $json);
+        $this->assertStringNotContainsString('</script>', $json);
     }
 
     public function test_sitemap_index_uses_request_origin_when_app_url_is_loopback(): void
@@ -231,6 +313,7 @@ class SeoAndSecurityHeadersTest extends TestCase
             'excerpt' => 'A short excerpt for SEO.',
             'featured_image' => 'blogs/featured/structured-data.jpg',
         ]);
+        Storage::disk('public')->put('blogs/featured/structured-data.jpg', 'fake-image');
         BlogTranslation::create([
             'blog_id' => $blog->id,
             'locale' => 'en',

@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Models\Blog;
 use App\Models\BlogTranslation;
+use App\Services\Marketing\GuestPostPriceIndex;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Schema;
@@ -12,12 +13,18 @@ class PublicI18n
 {
     public static function supported(): array
     {
-        return config('i18n.supported', ['en', 'de', 'fr', 'nl', 'es', 'it', 'us']);
+        return config('i18n.supported', [
+            'en', 'de', 'fr', 'nl', 'es', 'it', 'us',
+            'at', 'ch', 'ro', 'gr', 'dk', 'se', 'no', 'bg', 'hu', 'ee',
+        ]);
     }
 
     public static function prefixed(): array
     {
-        return config('i18n.prefixed', ['de', 'fr', 'nl', 'es', 'it', 'us']);
+        return config('i18n.prefixed', [
+            'de', 'fr', 'nl', 'es', 'it', 'us',
+            'at', 'ch', 'ro', 'gr', 'dk', 'se', 'no', 'bg', 'hu', 'ee',
+        ]);
     }
 
     public static function prefixedPattern(): string
@@ -38,6 +45,13 @@ class PublicI18n
         return match ($locale) {
             'en' => 'en-GB',
             'us' => 'en-US',
+            'at' => 'de-AT',
+            'ch' => 'de-CH',
+            'gr' => 'el-GR',
+            'dk' => 'da-DK',
+            'se' => 'sv-SE',
+            'no' => 'nb-NO',
+            'ee' => 'et-EE',
             default => $locale,
         };
     }
@@ -62,7 +76,50 @@ class PublicI18n
             'nl' => 'nl_NL',
             'es' => 'es_ES',
             'it' => 'it_IT',
+            'at' => 'de_AT',
+            'ch' => 'de_CH',
+            'ro' => 'ro_RO',
+            'gr' => 'el_GR',
+            'dk' => 'da_DK',
+            'se' => 'sv_SE',
+            'no' => 'nb_NO',
+            'bg' => 'bg_BG',
+            'hu' => 'hu_HU',
+            'ee' => 'et_EE',
             default => $locale.'_'.strtoupper($locale),
+        };
+    }
+
+    /**
+     * Laravel messages locale. AT/CH reuse German copy.
+     */
+    public static function messagesFallback(string $locale): ?string
+    {
+        return match ($locale) {
+            'at', 'ch' => 'de',
+            default => null,
+        };
+    }
+
+    /**
+     * Homepage catalog teasers for this public locale.
+     *
+     * @return list<string>
+     */
+    public static function catalogTeaserCountries(string $locale): array
+    {
+        return match ($locale) {
+            'at' => ['at'],
+            'ch' => ['ch'],
+            'ro' => ['ro'],
+            'gr' => ['gr'],
+            'dk' => ['dk'],
+            'se' => ['se'],
+            'no' => ['no'],
+            'bg' => ['bg'],
+            'hu' => ['hu'],
+            'ee' => ['ee'],
+            default => ['de'],
         };
     }
 
@@ -92,6 +149,25 @@ class PublicI18n
             'es-co' => 'es',
             'es-cl' => 'es',
             'it-it' => 'it',
+            'de-at' => 'at',
+            'de-ch' => 'ch',
+            'de-de' => 'de',
+            'el' => 'gr',
+            'el-gr' => 'gr',
+            'da' => 'dk',
+            'da-dk' => 'dk',
+            'sv' => 'se',
+            'sv-se' => 'se',
+            'nb' => 'no',
+            'nb-no' => 'no',
+            'nn' => 'no',
+            'nn-no' => 'no',
+            'no-no' => 'no',
+            'et' => 'ee',
+            'et-ee' => 'ee',
+            'ro-ro' => 'ro',
+            'bg-bg' => 'bg',
+            'hu-hu' => 'hu',
         ];
 
         if (isset($aliases[$normalized]) && self::isSupported($aliases[$normalized])) {
@@ -105,6 +181,10 @@ class PublicI18n
         $base = explode('-', $normalized)[0];
         if ($base === 'en' && self::isSupported('en')) {
             return 'en';
+        }
+
+        if (isset($aliases[$base]) && self::isSupported($aliases[$base])) {
+            return $aliases[$base];
         }
 
         return self::isSupported($base) ? $base : null;
@@ -171,6 +251,91 @@ class PublicI18n
         return false;
     }
 
+    /**
+     * Country landers and the Europe price index stay English-only.
+     * Prefixed locales 301 these slugs onto the unprefixed English URL.
+     *
+     * @return list<string>
+     */
+    public static function englishOnlyMarketingSlugs(): array
+    {
+        $slugs = ['guest-post-prices-europe'];
+
+        try {
+            if (
+                class_exists(GuestPostPriceIndex::class)
+                && defined(GuestPostPriceIndex::class.'::SLUG')
+            ) {
+                $indexSlug = trim((string) GuestPostPriceIndex::SLUG);
+                if ($indexSlug !== '') {
+                    $slugs = [$indexSlug];
+                }
+            }
+        } catch (\Throwable) {
+            // Keep the hardcoded price-index slug.
+        }
+
+        try {
+            if (class_exists(CountryLander::class) && method_exists(CountryLander::class, 'slugs')) {
+                foreach (CountryLander::slugs() as $slug) {
+                    $slug = trim((string) $slug);
+                    if ($slug !== '') {
+                        $slugs[] = $slug;
+                    }
+                }
+            }
+        } catch (\Throwable) {
+            // Leftover Hostinger can miss CountryLander.
+        }
+
+        return array_values(array_unique($slugs));
+    }
+
+    /**
+     * Country landers / Europe price index: English URL only, not a locale cluster.
+     */
+    public static function isEnglishOnlyMarketingPath(Request $request): bool
+    {
+        $first = self::firstPathSegment($request);
+        if ($first === '') {
+            return false;
+        }
+
+        try {
+            if (method_exists(self::class, 'englishOnlyMarketingSlugs')) {
+                return in_array($first, self::englishOnlyMarketingSlugs(), true);
+            }
+        } catch (\Throwable) {
+            return $first === 'guest-post-prices-europe';
+        }
+
+        return $first === 'guest-post-prices-europe';
+    }
+
+    /**
+     * Guest auth entry points (English-only; not a translated marketing cluster).
+     */
+    public static function isPublicAuthEntryPath(Request $request): bool
+    {
+        return in_array(self::firstPathSegment($request), [
+            'login',
+            'register',
+            'forgot-password',
+            'reset-password',
+            'email',
+            'auth',
+        ], true);
+    }
+
+    public static function robotsContent(Request $request): string
+    {
+        if (self::isPublicAuthEntryPath($request)) {
+            return 'noindex, nofollow';
+        }
+
+        return 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1';
+    }
+
     public static function isPublicMarketingPath(Request $request): bool
     {
         if (self::isEnglishOnlyPath($request)) {
@@ -220,7 +385,14 @@ class PublicI18n
             $path = LocalizedPublicPath::canonicalize($path);
         }
 
-        if (self::isEnglishOnlyPath($request)) {
+        if (self::isEnglishOnlyPath($request)
+            || (method_exists(self::class, 'isEnglishOnlyMarketingPath') && self::isEnglishOnlyMarketingPath($request))) {
+            if (method_exists(self::class, 'isEnglishOnlyMarketingPath')
+                && self::isEnglishOnlyMarketingPath($request)
+                && $targetLocale === self::default()) {
+                return $path === '' ? url('/') : url($path);
+            }
+
             return self::urlForLocale('', $targetLocale);
         }
 
@@ -266,12 +438,15 @@ class PublicI18n
             }
 
             if (! $blog) {
-                return 'blog/'.$slug;
+                return 'blog';
             }
 
-            $display = $blog->displayTranslation($targetLocale, 'en');
+            $display = $blog->translationFor($targetLocale, null);
+            if ($display && filled($display->slug)) {
+                return 'blog/'.$display->slug;
+            }
 
-            return 'blog/'.($display?->slug ?: $blog->slug);
+            return 'blog';
         } catch (\Throwable) {
             return 'blog/'.$slug;
         }
@@ -288,13 +463,32 @@ class PublicI18n
         ?array $pathByLocale = null
     ): array {
         if (! self::isPublicMarketingPath($request)) {
-            return [];
+            if (! self::isPublicAuthEntryPath($request)) {
+                return [];
+            }
+
+            $authPath = ltrim(self::pathWithoutLocale($request), '/');
+            $href = url('/'.$authPath);
+
+            return [
+                ['hreflang' => self::hreflang(self::default()), 'href' => $href],
+                ['hreflang' => 'x-default', 'href' => $href],
+            ];
         }
 
         $path = $pathOverride !== null ? ltrim($pathOverride, '/') : self::pathWithoutLocale($request);
         if (class_exists(LocalizedPublicPath::class)) {
             $path = LocalizedPublicPath::canonicalize($path);
         }
+
+        $first = $path === '' ? '' : explode('/', $path, 2)[0];
+        if ($locales === null && $first !== ''
+            && method_exists(self::class, 'englishOnlyMarketingSlugs')
+            && in_array($first, self::englishOnlyMarketingSlugs(), true)) {
+            $locales = [self::default()];
+            $xDefaultLocale = self::default();
+        }
+
         $tags = [];
         $targetLocales = $locales ?: self::supported();
         $targetLocales = array_values(array_filter($targetLocales, fn ($locale) => self::isSupported($locale)));

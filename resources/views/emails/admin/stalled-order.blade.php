@@ -1,7 +1,7 @@
 @component('mail::message')
 # Order needs attention
 
-Order **#{{ $order->order_number }}** has run through the automated reminder cadence without moving.
+Order #{{ $order->order_number }} has run through the automated reminder cadence without moving.
 
 @component('mail::table')
 | | |

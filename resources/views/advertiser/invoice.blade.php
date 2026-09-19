@@ -437,7 +437,7 @@
         </div>
     </div>
     @if(($invoiceType ?? '') === 'deposit' && !empty($canMarkPaid) && !empty($markPaidUrl))
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="{{ asset('assets/vendor/sweetalert2/sweetalert2.min.js') }}?v={{ @filemtime(public_path('assets/vendor/sweetalert2/sweetalert2.min.js')) ?: '1' }}"></script>
     <script>
     document.getElementById('invoiceMarkPaidBtn')?.addEventListener('click', function () {
         Swal.fire({

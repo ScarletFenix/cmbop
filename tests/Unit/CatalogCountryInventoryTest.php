@@ -6,8 +6,10 @@ use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\Catalog\CatalogCountryInventory;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 class CatalogCountryInventoryTest extends TestCase
@@ -181,5 +183,27 @@ class CatalogCountryInventoryTest extends TestCase
             ->all();
 
         $this->assertSame([$deMulti->id], $deIds);
+    }
+
+    public function test_counts_use_scalar_country_when_countries_json_column_is_missing(): void
+    {
+        Cache::flush();
+        $publisher = $this->publisher();
+        $this->site($publisher, [
+            'country' => 'nl',
+            'countries' => ['nl'],
+            'domain' => 'nl-scalar-only.test',
+        ]);
+
+        if (Schema::hasColumn('sites', 'countries')) {
+            Schema::table('sites', function (Blueprint $table) {
+                $table->dropColumn('countries');
+            });
+        }
+
+        CatalogCountryInventory::forget();
+        $counts = app(CatalogCountryInventory::class)->counts();
+        $this->assertSame(1, $counts['nl'] ?? 0);
+        $this->assertFalse(Schema::hasColumn('sites', 'countries'));
     }
 }

@@ -276,6 +276,231 @@
   color: var(--brand-live-hover, #0284c7);
 }
 
+.app-toast-icon.text-brand-primary {
+  color: var(--brand-primary, #1a585e);
+}
+
+.app-toast-quiet {
+  background: var(--surface-1, #fff);
+  border-color: var(--brand-primary-border, #b8e4e4) !important;
+  box-shadow: 0 8px 20px rgba(26, 88, 94, 0.08);
+}
+
+.slb-flash-stack {
+  margin: 0 0 1rem;
+}
+
+.slb-flash-stack .slb-flash-soft {
+  background: var(--surface-1, #fff);
+  color: var(--text-1, #0f172a);
+  border: 1px solid var(--brand-primary-border, #b8e4e4);
+  box-shadow: 0 8px 20px rgba(26, 88, 94, 0.06);
+}
+
+.slb-flash-stack .slb-flash-soft .fa-circle-check {
+  color: var(--brand-primary, #1a585e);
+}
+
+.ondemand-table {
+  --ondemand-row-bg: #fff;
+  --ondemand-row-hover: #f3fafb;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.ondemand-table thead th {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--brand-ink-muted, #75787b);
+  background: #f8fbfb;
+  border-bottom: 1px solid var(--brand-primary-border, #b8e4e4);
+}
+
+.ondemand-row {
+  cursor: pointer;
+}
+
+.ondemand-row td {
+  background: var(--ondemand-row-bg);
+  border-bottom: 1px solid #eef4f4;
+  padding: 0.9rem 0.8rem;
+  vertical-align: middle;
+  transition: background-color 160ms ease, box-shadow 160ms ease;
+}
+
+.ondemand-row td:first-child {
+  box-shadow: inset 3px 0 0 transparent;
+}
+
+.ondemand-row:hover td,
+.ondemand-row:focus-visible td,
+.ondemand-row.is-open td {
+  background: var(--ondemand-row-hover);
+}
+
+.ondemand-row:hover td:first-child,
+.ondemand-row:focus-visible td:first-child,
+.ondemand-row.is-open td:first-child {
+  box-shadow: inset 3px 0 0 var(--brand-primary, #1a585e);
+}
+
+.ondemand-row:focus-visible {
+  outline: none;
+}
+
+.ondemand-site-cell {
+  min-width: 0;
+}
+
+.ondemand-site-head {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 4px;
+}
+
+.ondemand-stack-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+
+.ondemand-chip {
+  display: inline;
+  color: #334155;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.ondemand-visit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  border-radius: 999px;
+  color: var(--brand-primary, #1a585e);
+  text-decoration: none;
+  font-size: 11px;
+}
+
+.ondemand-visit:hover,
+.ondemand-visit:focus-visible {
+  background: var(--brand-primary-bg, #e6f5f5);
+  color: var(--brand-primary, #1a585e);
+}
+
+.ondemand-open-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--brand-ink-muted, #75787b);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.ondemand-open-hint i {
+  transition: transform 160ms ease;
+}
+
+.ondemand-more {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 4px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--brand-primary-bg, #e6f5f5);
+  color: var(--brand-primary, #1a585e);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.ondemand-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--brand-ink-muted, #75787b);
+  line-height: 1;
+  text-decoration: none;
+}
+
+.ondemand-icon-btn:hover,
+.ondemand-icon-btn:focus-visible {
+  background: var(--brand-primary-bg, #e6f5f5);
+  color: var(--brand-primary, #1a585e);
+}
+
+.ondemand-icon-btn.is-danger:hover,
+.ondemand-icon-btn.is-danger:focus-visible {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.ondemand-row.is-open .ondemand-open-hint i {
+  transform: rotate(180deg);
+}
+
+.ondemand-enter-field {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 6px;
+  border: 1px solid #d7e3e3;
+  border-radius: 6px;
+  background: #fff;
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  line-height: 1;
+}
+
+.ondemand-row-hint {
+  font-size: 12px;
+}
+
+.ondemand-phone-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.ondemand-phone-row .form-control {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.ondemand-dial-wrap {
+  flex: 0 0 8.75rem;
+  z-index: 5;
+}
+
+.ondemand-dial-wrap .single-select-input {
+  height: 100%;
+}
+
+.ondemand-dial-wrap .single-select-value {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--brand-ink, #1e293b);
+  white-space: nowrap;
+}
+
+.ondemand-dial-wrap .single-select-dropdown {
+  min-width: 16.5rem;
+  z-index: 40;
+}
+
 /*
  * Solid toasts carried Bootstrap's stock green/red (#198754 / #dc3545), which
  * sat off-brand next to the teal system and only cleared 4.5:1. Use the brand

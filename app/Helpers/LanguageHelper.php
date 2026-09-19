@@ -82,6 +82,16 @@ if (! function_exists('get_available_locales')) {
             'nl' => ['name' => 'Nederlands', 'flag' => '🇳🇱', 'code' => 'nl'],
             'es' => ['name' => 'Español', 'flag' => '🇪🇸', 'code' => 'es'],
             'it' => ['name' => 'Italiano', 'flag' => '🇮🇹', 'code' => 'it'],
+            'at' => ['name' => 'Deutsch (Österreich)', 'flag' => '🇦🇹', 'code' => 'at'],
+            'ch' => ['name' => 'Deutsch (Schweiz)', 'flag' => '🇨🇭', 'code' => 'ch'],
+            'ro' => ['name' => 'Română', 'flag' => '🇷🇴', 'code' => 'ro'],
+            'gr' => ['name' => 'Ελληνικά', 'flag' => '🇬🇷', 'code' => 'gr'],
+            'dk' => ['name' => 'Dansk', 'flag' => '🇩🇰', 'code' => 'dk'],
+            'se' => ['name' => 'Svenska', 'flag' => '🇸🇪', 'code' => 'se'],
+            'no' => ['name' => 'Norsk', 'flag' => '🇳🇴', 'code' => 'no'],
+            'bg' => ['name' => 'Български', 'flag' => '🇧🇬', 'code' => 'bg'],
+            'hu' => ['name' => 'Magyar', 'flag' => '🇭🇺', 'code' => 'hu'],
+            'ee' => ['name' => 'Eesti', 'flag' => '🇪🇪', 'code' => 'ee'],
         ];
 
         $supported = class_exists(PublicI18n::class)
