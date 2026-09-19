@@ -17,6 +17,9 @@ class MarketingCssBundleTest extends TestCase
         $this->assertStringNotContainsString('assets/css/type-system.css', $html);
         $this->assertStringNotContainsString('assets/css/hover-system.css?v=', $html);
         $this->assertStringNotContainsString('assets/css/slb-live-search.css?v=', $html);
+        $this->assertStringContainsString('assets/css/slb-icons.css', $html);
+        $this->assertStringContainsString('js/slb-icon-draw.js', $html);
+        $this->assertStringNotContainsString('font-awesome', $html);
     }
 
     public function test_bundle_contains_source_tokens_and_keeps_hover_last(): void
@@ -56,6 +59,8 @@ class MarketingCssBundleTest extends TestCase
         $layout = (string) file_get_contents(resource_path('views/layouts/app.blade.php'));
 
         $this->assertStringContainsString("method_exists(\\App\\Support\\MarketingCssBundle::class, 'urlIfReady')", $layout);
+        $this->assertStringContainsString('assets/css/slb-icons.css', $layout);
+        $this->assertStringNotContainsString('font-awesome', $layout);
         foreach (MarketingCssBundle::FILES as $file) {
             $this->assertStringContainsString('assets/css/'.$file, $layout);
         }
