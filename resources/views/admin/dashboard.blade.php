@@ -1,12 +1,14 @@
 @extends('admin.layouts.app')
 
 @section('content')
-<div class="container-fluid">
+<link href="{{ asset('assets/css/admin-dashboard.css') }}?v={{ @filemtime(public_path('assets/css/admin-dashboard.css')) ?: '1' }}" rel="stylesheet">
+<div class="container-fluid admin-dash">
 
     @include('admin.partials.page-header', [
         'title' => 'Admin Dashboard',
         'subtitle' => 'Platform overview, money flow, and items that need your attention.',
     ])
+    <div class="small text-muted mb-3" id="dashboardUpdated" hidden></div>
 
     {{-- Moderation being off changes nothing visible anywhere else: articles are
          approved, orders go through, and the scan log fills with passes. Nobody
@@ -21,8 +23,8 @@
                 <ul class="mb-1 mt-2">
                     @foreach($opsAlerts as $opsAlert)
                         <li>
-                            {{ $opsAlert['title'] }}
-                            @if($opsAlert['detail'] !== '')
+                            {{ $opsAlert['title'] ?? '' }}
+                            @if(($opsAlert['detail'] ?? '') !== '')
                                 — {{ $opsAlert['detail'] }}
                             @endif
                         </li>
@@ -49,7 +51,7 @@
     <div class="row g-3 mb-4">
         <div class="col-12 d-none" id="kpiRetry"></div>
         <div class="col-6 col-xl-3">
-            <div class="card border-0 shadow-sm h-100 cursor-pointer js-kpi-link" role="link" tabindex="0" data-href="{{ route('admin.users.index') }}">
+            <div class="card admin-dash-card h-100 cursor-pointer js-kpi-link" role="link" tabindex="0" data-href="{{ route('admin.users.index') }}">
                 <div class="card-body">
                     <div class="text-muted small">Total Users</div>
                     <div class="d-flex align-items-end justify-content-between">
@@ -67,22 +69,22 @@
             </div>
         </div>
         <div class="col-6 col-xl-3">
-            <div class="card border-0 shadow-sm h-100 cursor-pointer js-kpi-link" role="link" tabindex="0" data-href="{{ route('admin.finance') }}">
+            <div class="card admin-dash-card h-100 cursor-pointer js-kpi-link" role="link" tabindex="0" data-href="{{ route('admin.finance', ['period' => 'month']) }}">
                 <div class="card-body">
-                    <div class="text-muted small">GMV (paid orders)</div>
+                    <div class="text-muted small">GMV this month</div>
                     <div class="d-flex align-items-end justify-content-between">
                         <h3 class="mb-0" id="kpiRevenue">—</h3>
-                        <span class="badge bg-success-subtle text-success" id="kpiRevenue7d">€0 / 7d</span>
+                        <span class="badge bg-success-subtle text-success" id="kpiRevenuePrev">Last month —</span>
                     </div>
                     <div class="small text-muted mt-2">
-                        <span id="kpiPaidOrders">0</span> paid orders
-                        · Margin &amp; wallets
+                        Paid date · <span id="kpiPaidOrders">0</span> paid this month
                     </div>
+                    <div class="small text-muted" id="kpiRevenueAllTime">All time: —</div>
                 </div>
             </div>
         </div>
         <div class="col-6 col-xl-3">
-            <div class="card border-0 shadow-sm h-100 cursor-pointer js-kpi-link" role="link" tabindex="0" data-href="{{ route('admin.sites.records') }}">
+            <div class="card admin-dash-card h-100 cursor-pointer js-kpi-link" role="link" tabindex="0" data-href="{{ route('admin.sites.records') }}">
                 <div class="card-body">
                     <div class="text-muted small">Sites</div>
                     <div class="d-flex align-items-end justify-content-between">
@@ -96,22 +98,16 @@
             </div>
         </div>
         <div class="col-6 col-xl-3">
-            <div class="card border-0 shadow-sm h-100 cursor-pointer js-kpi-link" role="link" tabindex="0" data-href="#dashboardActionQueues">
+            <div class="card admin-dash-card h-100 cursor-pointer js-kpi-link" role="link" tabindex="0" data-href="#dashboardActionQueues">
                 <div class="card-body">
                     <div class="text-muted small">Needs Attention</div>
                     <div class="d-flex align-items-end justify-content-between">
                         <h3 class="mb-0" id="kpiAttention">—</h3>
                         <span class="badge bg-danger-subtle text-danger">Action queue</span>
                     </div>
-                    <div class="small text-muted mt-2">
-                        <span id="kpiDeposits">0</span> deposits ·
-                        <span id="kpiWithdrawals">0</span> withdrawals ·
-                        <span id="kpiPayments">0</span> unpaid ·
-                        <span id="kpiSitesReview">0</span> sites ·
-                        <span id="kpiCommunity">0</span> community ·
-                        <span id="kpiDisputes">0</span> disputes ·
-                        <span id="kpiStalled">0</span> stalled
-                    </div>
+                    <ul class="list-unstyled mb-0 mt-2 small" id="kpiAttentionList">
+                        <li class="text-muted">Loading…</li>
+                    </ul>
                 </div>
             </div>
         </div>
@@ -119,22 +115,25 @@
 
     <!-- Finance strip (same numbers as /admin/finance) -->
     <div class="row g-3 mb-4">
-        <div class="col-12 d-flex flex-wrap justify-content-between align-items-center gap-2">
-            <strong class="text-muted small"><span class="text-uppercase">Finance</span> <span id="financePeriod" class="fw-normal"></span></strong>
-            <a href="{{ route('admin.finance') }}" class="small">Open finance</a>
+        <div class="col-12 d-flex flex-wrap justify-content-between align-items-center gap-2 admin-dash-section-row">
+            <span class="d-flex align-items-baseline gap-2">
+                <strong class="admin-dash-section mb-0">Finance</strong>
+                <span id="financePeriod" class="small text-muted"></span>
+            </span>
+            <a href="{{ route('admin.finance', ['period' => 'month']) }}" class="small">Open finance</a>
         </div>
         <div class="col-12 d-none" id="financeRetry"></div>
         <div class="col-6 col-xl-3">
-            <div class="card border-0 shadow-sm h-100 border-start border-4 border-danger cursor-pointer js-kpi-link" role="link" tabindex="0" data-href="{{ route('admin.withdrawals', ['queue' => 'open']) }}">
+            <div class="card admin-dash-card admin-dash-card--alert h-100 cursor-pointer js-kpi-link" role="link" tabindex="0" data-href="{{ route('admin.withdrawals', ['queue' => 'open']) }}">
                 <div class="card-body py-3">
                     <div class="text-muted small">Due to pay now</div>
                     <div class="fs-4 fw-semibold text-danger" id="financeDueNow">—</div>
-                    <div class="small text-muted">Open withdrawal requests · <a href="{{ route('admin.withdrawals', ['queue' => 'open']) }}" class="link-secondary">Payout queue</a></div>
+                    <div class="small text-muted"><span id="financeDueCount">0</span> open requests · <a href="{{ route('admin.withdrawals', ['queue' => 'open']) }}" class="link-secondary">Payout queue</a></div>
                 </div>
             </div>
         </div>
         <div class="col-6 col-xl-3">
-            <div class="card border-0 shadow-sm h-100 cursor-pointer js-kpi-link" role="link" tabindex="0" data-href="{{ route('admin.finance') }}">
+            <div class="card admin-dash-card h-100 cursor-pointer js-kpi-link" role="link" tabindex="0" data-href="{{ route('admin.finance', ['period' => 'month']) }}">
                 <div class="card-body py-3">
                     <div class="text-muted small">In publisher wallets</div>
                     <div class="fs-4 fw-semibold" id="financeInWallets">—</div>
@@ -143,7 +142,7 @@
             </div>
         </div>
         <div class="col-6 col-xl-3">
-            <div class="card border-0 shadow-sm h-100 cursor-pointer js-kpi-link" role="link" tabindex="0" data-href="{{ route('admin.finance') }}">
+            <div class="card admin-dash-card h-100 cursor-pointer js-kpi-link" role="link" tabindex="0" data-href="{{ route('admin.finance', ['period' => 'month']) }}">
                 <div class="card-body py-3">
                     <div class="text-muted small">Total publisher liability</div>
                     <div class="fs-4 fw-semibold" id="financeLiability">—</div>
@@ -152,70 +151,152 @@
             </div>
         </div>
         <div class="col-6 col-xl-3">
-            <div class="card border-0 shadow-sm h-100 cursor-pointer js-kpi-link" role="link" tabindex="0" data-href="{{ route('admin.finance') }}">
+            <div class="card admin-dash-card h-100 cursor-pointer js-kpi-link" role="link" tabindex="0" data-href="{{ route('admin.finance', ['period' => 'month']) }}">
                 <div class="card-body py-3">
                     <div class="text-muted small">Fee margin (this month)</div>
                     <div class="fs-4 fw-semibold" id="financeMargin">—</div>
-                    <div class="small text-muted">Fees − fee reversals − bonuses</div>
+                    <div class="small text-muted">Fees − fee reversals − bonuses. Recognized completion.</div>
+                    <div class="small text-muted" id="financeMarginPrev">Last month: —</div>
+                    <div class="small text-muted" id="financeRefunds">Refunds this month: —</div>
+                    <div class="small text-muted" id="financeCollected">Collected this month: —</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-xl-3">
+            <div class="card admin-dash-card h-100 cursor-pointer js-kpi-link" role="link" tabindex="0" data-href="{{ route('admin.finance', ['period' => 'month']) }}">
+                <div class="card-body py-3">
+                    <div class="text-muted small">Advertiser wallets</div>
+                    <div class="fs-4 fw-semibold" id="financeAdvertiser">—</div>
+                    <div class="small text-muted" id="financeAdvertiserSplit">Cash, bonus, and reserved</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-xl-3">
+            <div class="card admin-dash-card h-100 cursor-pointer js-kpi-link" role="link" tabindex="0" data-href="{{ route('admin.payments', ['payment_status' => 'unpaid']) }}">
+                <div class="card-body py-3">
+                    <div class="text-muted small">Unpaid orders</div>
+                    <div class="fs-4 fw-semibold" id="financeUnpaid">—</div>
+                    <div class="small text-muted"><span id="financeUnpaidCount">0</span> waiting for payment</div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Action queues (first viewport priority) -->
+    <div class="row g-3 mb-4" id="marketplaceHealth">
+        <div class="col-12 d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <strong class="admin-dash-section">Marketplace</strong>
+            <span class="small text-muted">People with both roles count in both signup figures.</span>
+        </div>
+        <div class="col-12 d-none" id="healthRetry"></div>
+        <div class="col-6 col-xl">
+            <div class="card admin-dash-card h-100 cursor-pointer js-kpi-link" role="link" tabindex="0" data-href="{{ route('admin.users.index', ['role' => 'advertiser']) }}">
+                <div class="card-body py-3">
+                    <div class="text-muted small">New advertisers</div>
+                    <div class="fs-4 fw-semibold" id="healthAdvertisers">—</div>
+                    <div class="small text-muted">Last 7 days · <span id="healthAdvertisers30">0</span> in 30 days</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-xl">
+            <div class="card admin-dash-card h-100 cursor-pointer js-kpi-link" role="link" tabindex="0" data-href="{{ route('admin.users.index', ['role' => 'publisher']) }}">
+                <div class="card-body py-3">
+                    <div class="text-muted small">New publishers</div>
+                    <div class="fs-4 fw-semibold" id="healthPublishers">—</div>
+                    <div class="small text-muted">Last 7 days · <span id="healthPublishers30">0</span> in 30 days</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-xl">
+            <div class="card admin-dash-card h-100">
+                <div class="card-body py-3">
+                    <div class="text-muted small">In progress</div>
+                    <div class="fs-4 fw-semibold" id="healthInProgress">—</div>
+                    <div class="small text-muted">
+                        <a id="healthPendingLink" href="{{ route('admin.orders.index', ['status' => 'pending', 'payment_status' => 'paid']) }}"><span id="healthPending">0</span> pending</a>
+                        ·
+                        <a id="healthProcessingLink" href="{{ route('admin.orders.index', ['status' => 'processing', 'payment_status' => 'paid']) }}"><span id="healthProcessing">0</span> processing</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-xl">
+            <div class="card admin-dash-card h-100 cursor-pointer js-kpi-link" role="link" tabindex="0" data-href="#stalledOrdersRow">
+                <div class="card-body py-3">
+                    <div class="text-muted small">Stalled</div>
+                    <div class="fs-4 fw-semibold" id="healthStalled">—</div>
+                    <div class="small text-muted">Past the reminder cadence</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-xl">
+            <div class="card admin-dash-card h-100">
+                <div class="card-body py-3">
+                    <div class="text-muted small">Median time to publish</div>
+                    <div class="fs-4 fw-semibold" id="healthMedian">—</div>
+                    <div class="small text-muted">Accept to live link, last 30 days</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Action queues (first viewport priority). Empty cards collapse like stalled orders. -->
     <div id="dashboardActionQueues">
-    <div class="row g-3 mb-4">
-        <div class="col-lg-4">
-            <div class="card border-0 shadow-sm h-100">
-                <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
-                    <strong><i class="fa fa-wallet me-2 text-success"></i>Pending Deposits</strong>
+    <div class="alert alert-success d-none mb-4" id="queuesAllClear" role="status">
+        <i class="fa fa-circle-check me-1" aria-hidden="true"></i>
+        All queues are clear. Nothing needs attention right now.
+    </div>
+    <div class="row g-3 mb-4 js-queue-row">
+        <div class="col-12 col-lg js-queue-panel" data-queue="deposits">
+            <div class="card admin-dash-card h-100">
+                <div class="card-header admin-dash-card__head d-flex justify-content-between align-items-center">
+                    <strong><i class="fa fa-wallet me-2 text-success"></i>Pending Deposits <span class="text-muted fw-normal small" data-queue-meta="deposits"></span></strong>
                     <a href="{{ route('admin.deposits', ['status' => 'pending']) }}" class="small">View all</a>
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
                         <table class="table table-sm mb-0 align-middle">
                             <thead class="table-light">
-                                <tr><th>User</th><th>Amount</th><th>Date</th></tr>
+                                <tr><th>User</th><th>Amount</th><th>Waiting</th><th class="text-end">Action</th></tr>
                             </thead>
                             <tbody id="queueDeposits">
-                                <tr><td colspan="3" class="text-center text-muted py-3">Loading…</td></tr>
+                                <tr><td colspan="4" class="text-center text-muted py-3">Loading…</td></tr>
                             </tbody>
                         </table>
                     </div>
                 </div>
             </div>
         </div>
-        <div class="col-lg-4">
-            <div class="card border-0 shadow-sm h-100">
-                <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
-                    <strong><i class="fa fa-money-bill-wave me-2 text-warning"></i>Pending Withdrawals</strong>
+        <div class="col-12 col-lg js-queue-panel" data-queue="withdrawals">
+            <div class="card admin-dash-card h-100">
+                <div class="card-header admin-dash-card__head d-flex justify-content-between align-items-center">
+                    <strong><i class="fa fa-money-bill-wave me-2 text-warning"></i>Pending Withdrawals <span class="text-muted fw-normal small" data-queue-meta="withdrawals"></span></strong>
                     <a href="{{ route('admin.withdrawals', ['queue' => 'open']) }}" class="small">View all</a>
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
                         <table class="table table-sm mb-0 align-middle">
                             <thead class="table-light">
-                                <tr><th>User</th><th>Amount</th><th>Date</th></tr>
+                                <tr><th>User</th><th>Amount</th><th>Waiting</th><th class="text-end">Action</th></tr>
                             </thead>
                             <tbody id="queueWithdrawals">
-                                <tr><td colspan="3" class="text-center text-muted py-3">Loading…</td></tr>
+                                <tr><td colspan="4" class="text-center text-muted py-3">Loading…</td></tr>
                             </tbody>
                         </table>
                     </div>
                 </div>
             </div>
         </div>
-        <div class="col-lg-4">
-            <div class="card border-0 shadow-sm h-100">
-                <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
-                    <strong><i class="fa fa-globe me-2 text-primary"></i>Sites Awaiting Verify</strong>
+        <div class="col-12 col-lg js-queue-panel" data-queue="sites">
+            <div class="card admin-dash-card h-100">
+                <div class="card-header admin-dash-card__head d-flex justify-content-between align-items-center">
+                    <strong><i class="fa fa-globe me-2 text-primary"></i>Sites Awaiting Verify <span class="text-muted fw-normal small" data-queue-meta="sites"></span></strong>
                     <a href="{{ route('admin.sites.index', ['needs_review' => 1]) }}" class="small">View all</a>
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
                         <table class="table table-sm mb-0 align-middle">
                             <thead class="table-light">
-                                <tr><th>Site</th><th>Publisher</th><th>Date</th></tr>
+                                <tr><th>Site</th><th>Publisher</th><th>Waiting</th></tr>
                             </thead>
                             <tbody id="queueSites">
                                 <tr><td colspan="3" class="text-center text-muted py-3">Loading…</td></tr>
@@ -227,18 +308,18 @@
         </div>
     </div>
 
-    <div class="row g-3 mb-4">
-        <div class="col-lg-3">
-            <div class="card border-0 shadow-sm h-100">
-                <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
-                    <strong><i class="fa fa-money-bill me-2 text-info"></i>Unpaid orders</strong>
+    <div class="row g-3 mb-4 js-queue-row">
+        <div class="col-12 col-lg js-queue-panel" data-queue="unpaid">
+            <div class="card admin-dash-card h-100">
+                <div class="card-header admin-dash-card__head d-flex justify-content-between align-items-center">
+                    <strong><i class="fa fa-money-bill me-2 text-info"></i>Unpaid orders <span class="text-muted fw-normal small" data-queue-meta="unpaid"></span></strong>
                     <a href="{{ route('admin.payments', ['payment_status' => 'unpaid']) }}" class="small">View all</a>
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
                         <table class="table table-sm mb-0 align-middle">
                             <thead class="table-light">
-                                <tr><th>Order</th><th>Amount</th><th>Date</th></tr>
+                                <tr><th>Order</th><th>Amount</th><th>Waiting</th></tr>
                             </thead>
                             <tbody id="queueUnpaid">
                                 <tr><td colspan="3" class="text-center text-muted py-3">Loading…</td></tr>
@@ -248,17 +329,17 @@
                 </div>
             </div>
         </div>
-        <div class="col-lg-3">
-            <div class="card border-0 shadow-sm h-100">
-                <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
-                    <strong><i class="fa fa-gavel me-2 text-danger"></i>Open disputes</strong>
+        <div class="col-12 col-lg js-queue-panel" data-queue="disputes">
+            <div class="card admin-dash-card h-100">
+                <div class="card-header admin-dash-card__head d-flex justify-content-between align-items-center">
+                    <strong><i class="fa fa-gavel me-2 text-danger"></i>Open disputes <span class="text-muted fw-normal small" data-queue-meta="disputes"></span></strong>
                     <a href="{{ route('admin.orders.index', ['dispute' => 'open']) }}" class="small">View all</a>
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
                         <table class="table table-sm mb-0 align-middle">
                             <thead class="table-light">
-                                <tr><th>Order</th><th>Reason</th><th>Date</th></tr>
+                                <tr><th>Order</th><th>Reason</th><th>Waiting</th></tr>
                             </thead>
                             <tbody id="queueDisputes">
                                 <tr><td colspan="3" class="text-center text-muted py-3">Loading…</td></tr>
@@ -268,17 +349,17 @@
                 </div>
             </div>
         </div>
-        <div class="col-lg-3">
-            <div class="card border-0 shadow-sm h-100">
-                <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
-                    <strong><i class="fa fa-comments me-2 text-secondary"></i>Community inbox</strong>
+        <div class="col-12 col-lg js-queue-panel" data-queue="community">
+            <div class="card admin-dash-card h-100">
+                <div class="card-header admin-dash-card__head d-flex justify-content-between align-items-center">
+                    <strong><i class="fa fa-comments me-2 text-secondary"></i>Community inbox <span class="text-muted fw-normal small" data-queue-meta="community"></span></strong>
                     <a href="{{ route('admin.community.index', ['status' => 'pending']) }}" class="small">View all</a>
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
                         <table class="table table-sm mb-0 align-middle">
                             <thead class="table-light">
-                                <tr><th>Type</th><th>Item</th><th>Date</th></tr>
+                                <tr><th>Type</th><th>Item</th><th>Waiting</th></tr>
                             </thead>
                             <tbody id="queueCommunity">
                                 <tr><td colspan="3" class="text-center text-muted py-3">Loading…</td></tr>
@@ -288,19 +369,185 @@
                 </div>
             </div>
         </div>
-        <div class="col-lg-3">
-            <div class="card border-0 shadow-sm h-100">
-                <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
-                    <strong><i class="fa fa-chart-line me-2 text-warning"></i>Enrichment failed</strong>
+        <div class="col-12 col-lg js-queue-panel" data-queue="enrichment">
+            <div class="card admin-dash-card h-100">
+                <div class="card-header admin-dash-card__head d-flex justify-content-between align-items-center">
+                    <strong><i class="fa fa-chart-line me-2 text-warning"></i>Enrichment failed <span class="text-muted fw-normal small" data-queue-meta="enrichment"></span></strong>
                     <a href="{{ route('admin.site-enrichment.index') }}" class="small">View all</a>
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
                         <table class="table table-sm mb-0 align-middle">
                             <thead class="table-light">
-                                <tr><th>Site</th><th>Error</th><th>Date</th></tr>
+                                <tr><th>Site</th><th>Error</th><th>Waiting</th></tr>
                             </thead>
                             <tbody id="queueEnrichment">
+                                <tr><td colspan="3" class="text-center text-muted py-3">Loading…</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4 js-queue-row">
+        <div class="col-12 col-lg js-queue-panel" data-queue="bulk">
+            <div class="card admin-dash-card h-100">
+                <div class="card-header admin-dash-card__head d-flex justify-content-between align-items-center">
+                    <strong><i class="fa fa-layer-group me-2 text-primary"></i>Bulk requests <span class="text-muted fw-normal small" data-queue-meta="bulk"></span></strong>
+                    <a href="{{ route('admin.bulk-site-requests.index', ['status' => 'needs_marketer']) }}" class="small">View all</a>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0 align-middle">
+                            <thead class="table-light">
+                                <tr><th>Publisher</th><th>Status</th><th>Waiting</th></tr>
+                            </thead>
+                            <tbody id="queueBulk">
+                                <tr><td colspan="3" class="text-center text-muted py-3">Loading…</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-lg js-queue-panel" data-queue="mail">
+            <div class="card admin-dash-card h-100">
+                <div class="card-header admin-dash-card__head d-flex justify-content-between align-items-center">
+                    <strong><i class="fa fa-envelope-open-text me-2 text-danger"></i>Failed mail <span class="text-muted fw-normal small" data-queue-meta="mail"></span></strong>
+                    <a href="{{ route('admin.emails.index') }}" class="small">View all</a>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0 align-middle">
+                            <thead class="table-light">
+                                <tr><th>Job</th><th>Waiting</th></tr>
+                            </thead>
+                            <tbody id="queueMail">
+                                <tr><td colspan="2" class="text-center text-muted py-3">Loading…</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-lg js-queue-panel" data-queue="moderation">
+            <div class="card admin-dash-card h-100">
+                <div class="card-header admin-dash-card__head d-flex justify-content-between align-items-center">
+                    <strong><i class="fa fa-shield-alt me-2 text-danger"></i>Moderation errors <span class="text-muted fw-normal small" data-queue-meta="moderation"></span></strong>
+                    <a href="{{ route('admin.moderation.index', ['status' => 'error']) }}" class="small">View all</a>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0 align-middle">
+                            <thead class="table-light">
+                                <tr><th>Error</th><th>Waiting</th></tr>
+                            </thead>
+                            <tbody id="queueModeration">
+                                <tr><td colspan="2" class="text-center text-muted py-3">Loading…</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-lg js-queue-panel" data-queue="catalog_hide">
+            <div class="card admin-dash-card h-100">
+                <div class="card-header admin-dash-card__head d-flex justify-content-between align-items-center">
+                    <strong><i class="fa fa-eye-slash me-2 text-warning"></i>Catalog hide-mode <span class="text-muted fw-normal small" data-queue-meta="catalog_hide"></span></strong>
+                    <a href="{{ route('admin.catalog-activity') }}" class="small">View all</a>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0 align-middle">
+                            <thead class="table-light">
+                                <tr><th>User</th><th>Until</th></tr>
+                            </thead>
+                            <tbody id="queueCatalogHide">
+                                <tr><td colspan="2" class="text-center text-muted py-3">Loading…</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4 js-queue-row">
+        <div class="col-12 col-lg js-queue-panel" data-queue="missing_tax">
+            <div class="card admin-dash-card h-100">
+                <div class="card-header admin-dash-card__head d-flex justify-content-between align-items-center">
+                    <strong><i class="fa fa-file-invoice me-2 text-danger"></i>Missing tax invoices <span class="text-muted fw-normal small" data-queue-meta="missing_tax"></span></strong>
+                    <a href="{{ route('admin.invoices.index', ['queue' => 'missing']) }}" class="small">View all</a>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0 align-middle">
+                            <thead class="table-light">
+                                <tr><th>Order</th><th>Amount</th><th>Waiting</th></tr>
+                            </thead>
+                            <tbody id="queueMissingTax">
+                                <tr><td colspan="3" class="text-center text-muted py-3">Loading…</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-lg js-queue-panel" data-queue="missing_pdf">
+            <div class="card admin-dash-card h-100">
+                <div class="card-header admin-dash-card__head d-flex justify-content-between align-items-center">
+                    <strong><i class="fa fa-file-pdf me-2 text-warning"></i>Missing PDFs <span class="text-muted fw-normal small" data-queue-meta="missing_pdf"></span></strong>
+                    <a href="{{ route('admin.invoices.index', ['pdf' => 'missing']) }}" class="small">View all</a>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0 align-middle">
+                            <thead class="table-light">
+                                <tr><th>Invoice</th><th>Amount</th><th>Waiting</th></tr>
+                            </thead>
+                            <tbody id="queueMissingPdf">
+                                <tr><td colspan="3" class="text-center text-muted py-3">Loading…</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-lg js-queue-panel" data-queue="library">
+            <div class="card admin-dash-card h-100">
+                <div class="card-header admin-dash-card__head d-flex justify-content-between align-items-center">
+                    <strong><i class="fa fa-book me-2 text-primary"></i>Articles in review <span class="text-muted fw-normal small" data-queue-meta="library"></span></strong>
+                    <a href="{{ route('admin.content-library.index', ['availability' => 'evaluating']) }}" class="small">View all</a>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0 align-middle">
+                            <thead class="table-light">
+                                <tr><th>Article</th><th>Waiting</th></tr>
+                            </thead>
+                            <tbody id="queueLibrary">
+                                <tr><td colspan="2" class="text-center text-muted py-3">Loading…</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-lg js-queue-panel" data-queue="campaigns">
+            <div class="card admin-dash-card h-100">
+                <div class="card-header admin-dash-card__head d-flex justify-content-between align-items-center">
+                    <strong><i class="fa fa-bullhorn me-2 text-danger"></i>Campaigns <span class="text-muted fw-normal small" data-queue-meta="campaigns"></span></strong>
+                    <a href="{{ route('admin.campaigns.index', ['status' => 'attention']) }}" class="small">View all</a>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0 align-middle">
+                            <thead class="table-light">
+                                <tr><th>Campaign</th><th>Status</th><th>Waiting</th></tr>
+                            </thead>
+                            <tbody id="queueCampaigns">
                                 <tr><td colspan="3" class="text-center text-muted py-3">Loading…</td></tr>
                             </tbody>
                         </table>
@@ -315,8 +562,8 @@
          Kept inside #dashboardActionQueues so Needs Attention scrolls here too. --}}
     <div class="row g-3 mb-4 d-none" id="stalledOrdersRow">
         <div class="col-12">
-            <div class="card border-0 shadow-sm">
-                <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
+            <div class="card admin-dash-card">
+                <div class="card-header admin-dash-card__head d-flex justify-content-between align-items-center">
                     <strong><i class="fa fa-triangle-exclamation me-2 text-danger"></i>Stalled orders <span class="badge text-bg-danger ms-1" id="stalledOrdersCount">0</span></strong>
                     <span class="text-muted small">Remind the publisher, or open the order to refund.</span>
                 </div>
@@ -352,7 +599,7 @@
                 <div class="card-header bg-white border-0 d-flex flex-wrap justify-content-between align-items-center gap-2">
                     <strong><i class="fa fa-chart-line me-2 text-primary"></i>Revenue &amp; Orders (<span class="js-chart-range-label">30 days</span>)</strong>
                     <div class="d-flex align-items-center gap-2">
-                        <span class="text-muted small">Paid revenue vs paid order volume</span>
+                        <span class="text-muted small">Paid-order euros by paid date</span>
                         <div class="btn-group btn-group-sm js-chart-range" role="group" aria-label="Chart range">
                             <button type="button" class="btn btn-outline-secondary" data-days="7">7</button>
                             <button type="button" class="btn btn-primary" data-days="30">30</button>
@@ -362,6 +609,7 @@
                 </div>
                 <div class="card-body">
                     <canvas id="trendChart" height="110"></canvas>
+                    <div class="small text-muted mt-2">Rolling paid-order euros by paid date. A day on Finance uses recognized completion, so that total can differ from this point.</div>
                     <div id="trendRetry" class="d-none text-center text-muted py-2"></div>
                 </div>
             </div>
@@ -381,25 +629,63 @@
 
     <div class="row g-3 mb-4">
         <div class="col-lg-6">
-            <div class="card border-0 shadow-sm h-100">
-                <div class="card-header bg-white border-0">
-                    <strong><i class="fa fa-shopping-cart me-2 text-info"></i>Orders by Status</strong>
+            <div class="card admin-dash-card h-100">
+                <div class="card-header admin-dash-card__head">
+                    <strong>Order pipeline</strong>
+                    <div class="small text-muted mt-1">Paid orders in progress, plus completions from the last 30 days.</div>
                 </div>
-                <div class="card-body d-flex justify-content-center">
-                    <canvas id="orderStatusChart" style="max-height:260px;"></canvas>
-                    <div id="orderStatusRetry" class="d-none text-center text-muted py-2 align-self-center"></div>
+                <div class="card-body">
+                    <div class="admin-dash-chart admin-dash-chart--donut">
+                        <canvas id="orderStatusChart" style="max-height:168px;"></canvas>
+                    </div>
+                    <div id="orderStatusBars" class="admin-dash-dist"></div>
+                    <div id="orderStatusRetry" class="d-none text-center text-muted py-2"></div>
                 </div>
             </div>
         </div>
         <div class="col-lg-6">
-            <div class="card border-0 shadow-sm h-100">
-                <div class="card-header bg-white border-0">
-                    <strong><i class="fa fa-users me-2 text-secondary"></i>Users by Role</strong>
+            <div class="card admin-dash-card h-100">
+                <div class="card-header admin-dash-card__head">
+                    <strong>Users by Role</strong>
+                    <div class="small text-muted mt-1">Users with more than one role appear in more than one slice.</div>
                 </div>
-                <div class="card-body d-flex justify-content-center">
-                    <canvas id="roleChart" style="max-height:260px;"></canvas>
-                    <div id="roleRetry" class="d-none text-center text-muted py-2 align-self-center"></div>
+                <div class="card-body">
+                    <div class="admin-dash-chart admin-dash-chart--donut">
+                        <canvas id="roleChart" style="max-height:168px;"></canvas>
+                    </div>
+                    <div id="roleBars" class="admin-dash-dist"></div>
+                    <div id="roleRetry" class="d-none text-center text-muted py-2"></div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-12 col-xl-7">
+            <div class="card admin-dash-card admin-dash-demo">
+                <div class="admin-dash-demo__head">
+                    <div>
+                        <h3 class="admin-dash-demo__title">Customers Demographic</h3>
+                        <p class="admin-dash-demo__sub">Number of users based on country</p>
+                    </div>
+                    <div class="admin-dash-demo__menu" data-demo-menu>
+                        <button type="button" class="admin-dash-demo__kebab" aria-expanded="false" aria-haspopup="true" aria-label="Demographic actions">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M10.2441 6C10.2441 5.0335 11.0276 4.25 11.9941 4.25H12.0041C12.9706 4.25 13.7541 5.0335 13.7541 6C13.7541 6.9665 12.9706 7.75 12.0041 7.75H11.9941C11.0276 7.75 10.2441 6.9665 10.2441 6ZM10.2441 18C10.2441 17.0335 11.0276 16.25 11.9941 16.25H12.0041C12.9706 16.25 13.7541 17.0335 13.7541 18C13.7541 18.9665 12.9706 19.75 12.0041 19.75H11.9941C11.0276 19.75 10.2441 18.9665 10.2441 18ZM11.9941 10.25C11.0276 10.25 10.2441 11.0335 10.2441 12C10.2441 12.9665 11.0276 13.75 11.9941 13.75H12.0041C12.9706 13.75 13.7541 12.9665 13.7541 12C13.7541 11.0335 12.9706 10.25 12.0041 10.25H11.9941Z" fill="currentColor"></path>
+                            </svg>
+                        </button>
+                        <div class="admin-dash-demo__drop d-none" role="menu">
+                            <a href="{{ route('admin.users.index') }}" class="admin-dash-demo__drop-item" role="menuitem">View more</a>
+                        </div>
+                    </div>
+                </div>
+                <div class="admin-dash-map" id="userCountryMap">
+                    @include('admin.partials.demographic-world-map')
+                    <div class="admin-dash-map__dots" id="userCountryDots"></div>
+                    <div class="admin-dash-map__tip d-none" id="userCountryTip" role="tooltip"></div>
+                </div>
+                <div id="userCountryBars" class="admin-dash-dist admin-dash-dist--countries"></div>
+                <div id="userCountryRetry" class="d-none text-center text-muted py-2"></div>
             </div>
         </div>
     </div>
@@ -407,7 +693,7 @@
     <!-- Promotions widget (below attention work) -->
     <div class="row g-3 mb-4">
         <div class="col-12">
-            <div class="card border-0 shadow-sm">
+            <div class="card admin-dash-card">
                 <div class="card-body">
                     <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
                         <div>
@@ -423,32 +709,35 @@
                             </a>
                         </div>
                     </div>
-                    @php
-                        $promoStats = app(\App\Services\PromotionService::class)->dashboardStats();
-                    @endphp
                     <div class="row g-3 mt-2">
-                        <div class="col-6 col-md-3">
-                            <div class="border rounded-3 p-3 h-100">
+                        <div class="col-6 col-md">
+                            <div class="admin-dash-stat p-3 h-100">
                                 <div class="small text-muted">Live announcements</div>
-                                <div class="fs-4 fw-semibold">{{ $promoStats['announcements_live'] }}</div>
+                                <div class="fs-4 fw-semibold" id="promoAnnouncements">—</div>
                             </div>
                         </div>
-                        <div class="col-6 col-md-3">
-                            <div class="border rounded-3 p-3 h-100">
+                        <div class="col-6 col-md">
+                            <div class="admin-dash-stat p-3 h-100">
                                 <div class="small text-muted">Live banners</div>
-                                <div class="fs-4 fw-semibold">{{ $promoStats['banners_live'] }}</div>
+                                <div class="fs-4 fw-semibold" id="promoBanners">—</div>
                             </div>
                         </div>
-                        <div class="col-6 col-md-3">
-                            <div class="border rounded-3 p-3 h-100">
-                                <div class="small text-muted">Banner impressions</div>
-                                <div class="fs-4 fw-semibold">{{ number_format($promoStats['banner_impressions']) }}</div>
+                        <div class="col-6 col-md">
+                            <div class="admin-dash-stat p-3 h-100">
+                                <div class="small text-muted">Impressions, last 7 days</div>
+                                <div class="fs-4 fw-semibold" id="promoImpressions">—</div>
                             </div>
                         </div>
-                        <div class="col-6 col-md-3">
-                            <div class="border rounded-3 p-3 h-100">
-                                <div class="small text-muted">Banner clicks</div>
-                                <div class="fs-4 fw-semibold">{{ number_format($promoStats['banner_clicks']) }}</div>
+                        <div class="col-6 col-md">
+                            <div class="admin-dash-stat p-3 h-100">
+                                <div class="small text-muted">Clicks, last 7 days</div>
+                                <div class="fs-4 fw-semibold" id="promoClicks">—</div>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md">
+                            <div class="admin-dash-stat p-3 h-100">
+                                <div class="small text-muted">Click-through, last 7 days</div>
+                                <div class="fs-4 fw-semibold" id="promoCtr">—</div>
                             </div>
                         </div>
                     </div>
@@ -463,11 +752,320 @@
 <script>
 const money = (n) => '€' + Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const num = (n) => Number(n || 0).toLocaleString();
+const financeDayUrl = @json(route('admin.finance'));
+const ordersIndexUrl = @json(route('admin.orders.index'));
+const usersIndexUrl = @json(route('admin.users.index'));
+const queueTotalKeys = {
+    deposits: 'pending_deposits',
+    withdrawals: 'pending_withdrawals',
+    sites: 'unverified_sites',
+    unpaid: 'pending_payments',
+    disputes: 'open_disputes',
+    community: 'pending_community',
+    enrichment: 'enrichment_failed',
+    bulk: 'open_bulk_requests',
+    mail: 'failed_mail',
+    moderation: 'moderation_errors',
+    catalog_hide: 'catalog_hide',
+    missing_tax: 'missing_tax_invoices',
+    missing_pdf: 'missing_pdf_invoices',
+    library: 'library_evaluating',
+    campaigns: 'campaigns_attention',
+};
 
 let trendChart, signupChart, orderStatusChart, roleChart;
 let chartDays = 30;
+let trendDates = [];
+let statsInFlight = 0;
+let financeInFlight = 0;
+let healthInFlight = 0;
 
-async function dashboardFetch(url) {
+function goWithQuery(path, params) {
+    const url = new URL(path, window.location.origin);
+    Object.entries(params).forEach(([key, value]) => {
+        if (value !== '' && value != null) url.searchParams.set(key, value);
+    });
+    window.location.href = url.toString();
+}
+
+function chartPointer(event, elements) {
+    const canvas = event.native && event.native.target;
+    if (canvas) canvas.style.cursor = elements.length ? 'pointer' : 'default';
+}
+
+function flagEmoji(code) {
+    const cc = String(code || '').toUpperCase();
+    if (!/^[A-Z]{2}$/.test(cc)) return '';
+    return String.fromCodePoint(...[...cc].map((ch) => 127397 + ch.charCodeAt(0)));
+}
+
+function renderDistributionBars(containerId, labels, values, keys, hrefForKey, options) {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    const palette = ['#2563eb', '#0f766e', '#0ea5e9', '#334155', '#3faeb2', '#94a3b8', '#1a585e'];
+    const nums = (values || []).map((v) => Number(v) || 0);
+    const total = nums.reduce((sum, n) => sum + n, 0);
+    const codes = (options && options.codes) || [];
+    const unit = (options && options.unit) || '';
+    if (!labels || !labels.length || total <= 0) {
+        el.innerHTML = '';
+        return;
+    }
+    el.innerHTML = labels.map((label, i) => {
+        const value = nums[i] || 0;
+        const pct = Math.round((value / total) * 100);
+        const color = palette[i % palette.length];
+        const key = keys && keys[i];
+        const href = key && hrefForKey ? hrefForKey(key) : '';
+        const tag = href ? 'button' : 'div';
+        const hrefAttr = href ? ` type="button" data-href="${escapeHtml(href)}"` : '';
+        const flag = flagEmoji(codes[i]);
+        const mark = flag
+            ? `<span class="admin-dash-dist__flag" aria-hidden="true">${flag}</span>`
+            : `<span class="admin-dash-dist__dot" style="background:${color}"></span>`;
+        const countLabel = unit ? `${num(value)} ${unit}` : num(value);
+        const fill = (options && options.barColor) || color;
+        const rowClass = (options && options.rowClass) || 'admin-dash-dist__row';
+        const countryAttr = codes[i] ? ` data-country="${escapeHtml(String(codes[i]).toUpperCase())}"` : '';
+        const extraClass = (options && options.visibleLimit && i >= options.visibleLimit) ? ' d-none' : '';
+        return `<${tag} class="${rowClass}${extraClass}"${hrefAttr}${countryAttr}>
+            <div class="admin-dash-dist__who">
+                ${mark}
+                <div>
+                    <span class="admin-dash-dist__name">${escapeHtml(label)}</span>
+                    <span class="admin-dash-dist__count">${escapeHtml(countLabel)}</span>
+                </div>
+            </div>
+            <div class="admin-dash-dist__meter">
+                <span class="admin-dash-dist__track"><span class="admin-dash-dist__fill" style="width:${Math.max(pct, value > 0 ? 4 : 0)}%;background:${fill}"></span></span>
+                <span class="admin-dash-dist__pct">${pct}%</span>
+            </div>
+        </${tag}>`;
+    }).join('');
+    const limit = options && options.visibleLimit;
+    if (limit && labels.length > limit) {
+        const hidden = labels.length - limit;
+        el.insertAdjacentHTML('beforeend', `<button type="button" class="admin-dash-demo__more" data-demo-more aria-expanded="false">More (${hidden})</button>`);
+        bindCountryMore(el, hidden);
+    }
+}
+
+function bindCountryMore(el, hiddenCount) {
+    const btn = el.querySelector('[data-demo-more]');
+    if (!btn || btn.dataset.bound === '1') return;
+    btn.dataset.bound = '1';
+    btn.addEventListener('click', () => {
+        const open = btn.getAttribute('aria-expanded') === 'true';
+        const next = !open;
+        btn.setAttribute('aria-expanded', next ? 'true' : 'false');
+        el.querySelectorAll('.admin-dash-dist__row--demo').forEach((row, i) => {
+            row.classList.toggle('d-none', !next && i >= 4);
+        });
+        btn.textContent = next ? 'Show less' : ('More (' + hiddenCount + ')');
+    });
+}
+
+function regionPinPoint(svg, path) {
+    try {
+        const box = path.getBBox();
+        const pt = svg.createSVGPoint();
+        pt.x = box.x + box.width / 2;
+        pt.y = box.y + box.height / 2;
+        return pt.matrixTransform(path.getCTM());
+    } catch (err) {
+        return null;
+    }
+}
+
+function renderCountryMap(points) {
+    const map = document.getElementById('userCountryMap') || document.querySelector('.admin-dash-map');
+    const svg = document.querySelector('.admin-dash-map__world');
+    const group = document.getElementById('jvm-markers-group');
+    const overlay = document.getElementById('userCountryDots');
+    if (overlay) overlay.innerHTML = '';
+    if (!svg || !group) return;
+    const rows = Array.isArray(points) ? points : [];
+    const byCode = {};
+    rows.forEach((p) => {
+        const code = String(p.code || '').toUpperCase();
+        if (code) byCode[code] = p;
+    });
+    svg.querySelectorAll('path.jvm-region').forEach((path) => {
+        const code = String(path.getAttribute('data-code') || '').toUpperCase();
+        path.classList.toggle('is-marked', Boolean(byCode[code]));
+    });
+    group.replaceChildren();
+    rows.forEach((p) => {
+        const code = String(p.code || '').toUpperCase();
+        if (!code) return;
+        const path = svg.querySelector('path[data-code="' + CSS.escape(code) + '"]');
+        if (!path) return;
+        const view = regionPinPoint(svg, path);
+        if (!view) return;
+        const pin = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        pin.setAttribute('class', 'admin-dash-map__pin');
+        pin.setAttribute('data-code', code);
+        pin.setAttribute('cx', String(view.x));
+        pin.setAttribute('cy', String(view.y));
+        pin.setAttribute('r', '4.5');
+        group.appendChild(pin);
+    });
+    bindDemographicHovers(map, svg, byCode);
+}
+
+function bindDemographicHovers(map, svg, byCode) {
+    if (!map || !svg) return;
+    map._demoByCode = byCode;
+    if (map.dataset.demoBound === '1') {
+        return;
+    }
+    map.dataset.demoBound = '1';
+    map._demoByCode = byCode;
+    const tip = document.getElementById('userCountryTip');
+
+    function clearHot() {
+        svg.querySelectorAll('path.jvm-region.is-hot').forEach((path) => path.classList.remove('is-hot'));
+        document.querySelectorAll('.admin-dash-dist__row--demo.is-hot').forEach((row) => row.classList.remove('is-hot'));
+        if (tip) tip.classList.add('d-none');
+    }
+
+    function showHot(code, clientX, clientY) {
+        const key = String(code || '').toUpperCase();
+        clearHot();
+        if (!key) return;
+        const path = svg.querySelector('path[data-code="' + CSS.escape(key) + '"]');
+        if (path) path.classList.add('is-hot');
+        const row = document.querySelector('#userCountryBars [data-country="' + CSS.escape(key) + '"]');
+        if (row) row.classList.add('is-hot');
+        const meta = map._demoByCode && map._demoByCode[key];
+        if (!tip || !meta) return;
+        const box = map.getBoundingClientRect();
+        tip.innerHTML = '<span class="admin-dash-map__tip-name">' + escapeHtml(meta.label || key) + '</span>'
+            + '<span class="admin-dash-map__tip-count">' + escapeHtml(num(meta.count)) + ' users</span>';
+        const left = clientX != null ? clientX - box.left : 0;
+        const top = clientY != null ? clientY - box.top : 0;
+        tip.style.left = left + 'px';
+        tip.style.top = top + 'px';
+        tip.classList.remove('d-none');
+    }
+
+    map.addEventListener('pointerover', (e) => {
+        const path = e.target.closest('path[data-code]');
+        if (!path || !map.contains(path)) return;
+        showHot(path.getAttribute('data-code'), e.clientX, e.clientY);
+    });
+    map.addEventListener('pointermove', (e) => {
+        const path = e.target.closest('path[data-code]');
+        if (!path || !map.contains(path)) return;
+        showHot(path.getAttribute('data-code'), e.clientX, e.clientY);
+    });
+    map.addEventListener('pointerleave', clearHot);
+
+    const bars = document.getElementById('userCountryBars');
+    if (bars && bars.dataset.demoBound !== '1') {
+        bars.dataset.demoBound = '1';
+        bars.addEventListener('pointerover', (e) => {
+            const row = e.target.closest('[data-country]');
+            if (!row) return;
+            const path = svg.querySelector('path[data-code="' + CSS.escape(row.getAttribute('data-country')) + '"]');
+            let x;
+            let y;
+            if (path) {
+                const box = map.getBoundingClientRect();
+                const region = path.getBoundingClientRect();
+                x = region.left + region.width / 2;
+                y = region.top;
+            }
+            showHot(row.getAttribute('data-country'), x, y);
+        });
+        bars.addEventListener('pointerleave', clearHot);
+    }
+}
+
+function applyAttentionCounts(d) {
+    setText('kpiAttention', num(d.needs_attention));
+    renderAttention(Array.isArray(d.attention) ? d.attention : []);
+}
+
+function renderAttention(items) {
+    const list = document.getElementById('kpiAttentionList');
+    if (!list) return;
+    if (!items.length) {
+        list.innerHTML = '<li class="text-muted">Nothing waiting.</li>';
+        return;
+    }
+    list.innerHTML = items.map((item) => {
+        const severity = item.severity === 'danger'
+            ? 'link-danger'
+            : (item.severity === 'warning' ? 'link-warning' : 'link-secondary');
+        const amount = item.amount == null ? '' : ' · ' + money(item.amount);
+        const href = item.url || '#dashboardActionQueues';
+        return `<li class="mb-1"><a href="${escapeHtml(href)}" class="${severity}">${escapeHtml(item.label || '')} · ${num(item.count)}${amount}</a></li>`;
+    }).join('');
+}
+
+function applyPromotions(p) {
+    const stats = p || {};
+    setText('promoAnnouncements', num(stats.announcements_live));
+    setText('promoBanners', num(stats.banners_live));
+    setText('promoImpressions', num(stats.banner_impressions_7d));
+    setText('promoClicks', num(stats.banner_clicks_7d));
+    setText('promoCtr', Number(stats.banner_ctr_7d || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + '%');
+}
+
+function markDashboardUpdated() {
+    const el = document.getElementById('dashboardUpdated');
+    if (!el) return;
+    const clock = new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+    el.textContent = 'Updated ' + clock;
+    el.hidden = false;
+}
+
+function collectedLine(d) {
+    const rows = Array.isArray(d.collected) ? d.collected : [];
+    const parts = rows
+        .filter((row) => row && row.currency)
+        .map((row) => row.currency + ' ' + Number(row.amount || 0).toFixed(2));
+    let text = parts.length ? 'Collected this month: ' + parts.join(' · ') : 'Collected this month: none';
+    const notes = [];
+    if (Number(d.orders_not_recorded) > 0) {
+        notes.push(num(d.orders_not_recorded) + ' card or PayPal charges not recorded');
+    }
+    if (Number(d.features_not_recorded) > 0) {
+        notes.push(num(d.features_not_recorded) + ' featured-site charges not recorded');
+    }
+    if (notes.length) text += ' · ' + notes.join(' · ');
+    return text;
+}
+
+function setQueueMeta(name, shown, total) {
+    const el = document.querySelector(`[data-queue-meta="${name}"]`);
+    if (!el) return;
+    const count = Number(total) || 0;
+    el.textContent = count > shown ? (shown + ' of ' + count) : '';
+}
+
+function chargeLine(item) {
+    const code = String(item && item.charge_currency || '').toUpperCase();
+    if (!code || code === 'EUR' || item.charge_amount == null || item.charge_amount === '') return '';
+    return `<div class="small text-muted">${escapeHtml(Number(item.charge_amount).toFixed(2) + ' ' + code)}</div>`;
+}
+
+function methodLine(item) {
+    const label = (item && (item.method_label || item.method)) || '';
+    if (!label) return '';
+    return `<div class="small text-muted">${escapeHtml(label)}</div>`;
+}
+
+function rowMoney(item) {
+    const code = String(item && item.currency || '').toUpperCase();
+    if (code && code !== 'EUR') {
+        return escapeHtml(Number(item.amount || 0).toFixed(2) + ' ' + code);
+    }
+    return money(item && item.amount);
+}
+
+async function dashboardFetch(url, options = {}) {
     const res = await fetch(url, {
         headers: { 'Accept': 'application/json' },
         credentials: 'same-origin',
@@ -480,7 +1078,7 @@ async function dashboardFetch(url) {
     }
     if (!res.ok || !json || !json.success) {
         const message = (json && json.message) ? json.message : 'Could not load this panel';
-        if (window.showAppToast) {
+        if (!options.silent && window.showAppToast) {
             window.showAppToast(message, 'error');
         }
         throw new Error(message);
@@ -519,53 +1117,110 @@ function makeChart(existing, canvasId, config) {
     return new Chart(document.getElementById(canvasId), config);
 }
 
-async function loadStatistics() {
+function setText(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value;
+}
+
+async function loadStatistics(options = {}) {
+    const quiet = options.quiet === true;
+    if (quiet && statsInFlight > 0) return;
+    statsInFlight++;
     const retryEl = document.getElementById('kpiRetry');
     try {
-        const json = await dashboardFetch(`{{ route('admin.dashboard.statistics') }}`);
+        const json = await dashboardFetch(`{{ route('admin.dashboard.statistics') }}`, { silent: quiet });
         const d = json.data;
 
-        document.getElementById('kpiUsers').textContent = num(d.total_users);
-        document.getElementById('kpiUsers7d').textContent = '+' + num(d.new_users_7d) + ' / 7d';
-        document.getElementById('kpiAdvertisers').textContent = num(d.advertisers);
-        document.getElementById('kpiPublishers').textContent = num(d.publishers);
-        document.getElementById('kpiAdmins').textContent = num(d.admins);
-        document.getElementById('kpiMarketers').textContent = num(d.marketers);
-        document.getElementById('kpiRevenue').textContent = money(d.revenue);
-        document.getElementById('kpiRevenue7d').textContent = money(d.revenue_7d) + ' / 7d';
-        document.getElementById('kpiPaidOrders').textContent = num(d.paid_orders);
-        document.getElementById('kpiSites').textContent = num(d.total_sites);
-        document.getElementById('kpiVerified').textContent = num(d.live_sites ?? d.verified_sites);
-        document.getElementById('kpiUnverified').textContent = num(d.unverified_sites) + ' in review';
-        document.getElementById('kpiDeposits').textContent = num(d.pending_deposits);
-        document.getElementById('kpiWithdrawals').textContent = num(d.pending_withdrawals);
-        document.getElementById('kpiPayments').textContent = num(d.pending_payments);
-        document.getElementById('kpiSitesReview').textContent = num(d.unverified_sites);
-        document.getElementById('kpiCommunity').textContent = num(d.pending_community);
-        document.getElementById('kpiDisputes').textContent = num(d.open_disputes);
-        document.getElementById('kpiStalled').textContent = num(d.stalled_orders);
-        document.getElementById('kpiAttention').textContent = num(d.needs_attention);
+        setText('kpiUsers', num(d.total_users));
+        setText('kpiUsers7d', '+' + num(d.new_users_7d) + ' / 7d');
+        setText('kpiAdvertisers', num(d.advertisers));
+        setText('kpiPublishers', num(d.publishers));
+        setText('kpiAdmins', num(d.admins));
+        setText('kpiMarketers', num(d.marketers));
+        setText('kpiRevenueAllTime', 'All time: ' + money(d.revenue));
+        setText('kpiSites', num(d.total_sites));
+        setText('kpiVerified', num(d.live_sites ?? d.verified_sites));
+        setText('kpiUnverified', num(d.unverified_sites) + ' in review');
+        applyAttentionCounts(d);
+        applyPromotions(d.promotions);
         hideRetry(retryEl);
+        markDashboardUpdated();
     } catch (err) {
         showRetry(retryEl, 'loadStatistics');
-        throw err;
+        if (!quiet) throw err;
+    } finally {
+        statsInFlight--;
     }
 }
 
-async function loadFinanceStrip() {
+async function loadFinanceStrip(options = {}) {
+    const quiet = options.quiet === true;
+    if (quiet && financeInFlight > 0) return;
+    financeInFlight++;
     const retryEl = document.getElementById('financeRetry');
     try {
-        const json = await dashboardFetch(`{{ route('admin.dashboard.finance') }}`);
+        const json = await dashboardFetch(`{{ route('admin.dashboard.finance') }}`, { silent: quiet });
         const d = json.data;
         document.getElementById('financePeriod').textContent = d.period_label ? '· ' + d.period_label : '';
         document.getElementById('financeDueNow').textContent = money(d.due_to_pay_now);
+        setText('financeDueCount', num(d.open_withdrawals_count));
         document.getElementById('financeInWallets').textContent = money(d.in_publisher_wallets);
         document.getElementById('financeLiability').textContent = money(d.total_publisher_liability);
         document.getElementById('financeMargin').textContent = money(d.margin);
+        setText('financeMarginPrev', (d.previous_period_label || 'Last month') + ': ' + money(d.margin_previous));
+        setText('financeRefunds', 'Refunds this month: ' + money(d.refunds));
+        setText('financeCollected', collectedLine(d));
+        const advertiserTotal = Number(d.advertiser_cash || 0) + Number(d.advertiser_bonus || 0) + Number(d.advertiser_reserved || 0);
+        setText('financeAdvertiser', money(advertiserTotal));
+        setText('financeAdvertiserSplit', 'Cash ' + money(d.advertiser_cash) + ' · bonus ' + money(d.advertiser_bonus) + ' · reserved ' + money(d.advertiser_reserved));
+        setText('financeUnpaid', money(d.unpaid_orders_amount));
+        setText('financeUnpaidCount', num(d.unpaid_orders_count));
+        setText('kpiRevenue', money(d.gmv));
+        setText('kpiRevenuePrev', (d.previous_period_label || 'Last month') + ' ' + money(d.gmv_previous));
+        setText('kpiPaidOrders', num(d.gmv_orders));
         hideRetry(retryEl);
+        markDashboardUpdated();
     } catch (err) {
         showRetry(retryEl, 'loadFinanceStrip');
-        throw err;
+        if (!quiet) throw err;
+    } finally {
+        financeInFlight--;
+    }
+}
+
+function formatHours(value) {
+    if (value == null || value === '') return '—';
+    const hours = Number(value);
+    if (!Number.isFinite(hours)) return '—';
+    if (hours >= 48) {
+        return (hours / 24).toLocaleString(undefined, { maximumFractionDigits: 1 }) + ' days';
+    }
+    return hours.toLocaleString(undefined, { maximumFractionDigits: 1 }) + ' hours';
+}
+
+async function loadMarketplaceHealth(options = {}) {
+    const quiet = options.quiet === true;
+    if (quiet && healthInFlight > 0) return;
+    healthInFlight++;
+    const retryEl = document.getElementById('healthRetry');
+    try {
+        const json = await dashboardFetch(`{{ route('admin.dashboard.health') }}`, { silent: quiet });
+        const d = json.data;
+        setText('healthAdvertisers', num(d.advertisers_7d));
+        setText('healthAdvertisers30', num(d.advertisers_30d));
+        setText('healthPublishers', num(d.publishers_7d));
+        setText('healthPublishers30', num(d.publishers_30d));
+        setText('healthPending', num(d.orders_pending));
+        setText('healthProcessing', num(d.orders_processing));
+        setText('healthInProgress', num(Number(d.orders_pending || 0) + Number(d.orders_processing || 0)));
+        setText('healthStalled', num(d.stalled_orders));
+        setText('healthMedian', formatHours(d.median_hours_to_publish));
+        hideRetry(retryEl);
+    } catch (err) {
+        showRetry(retryEl, 'loadMarketplaceHealth');
+        if (!quiet) throw err;
+    } finally {
+        healthInFlight--;
     }
 }
 
@@ -576,6 +1231,7 @@ async function loadTrends() {
     ];
     try {
         const json = await dashboardFetch(`{{ route('admin.dashboard.trends') }}?days=${chartDays}`);
+        trendDates = Array.isArray(json.dates) ? json.dates : [];
 
         const commonOpts = {
             responsive: true,
@@ -606,11 +1262,40 @@ async function loadTrends() {
                         fill: false,
                         tension: 0.35,
                         yAxisID: 'y1'
+                    },
+                    {
+                        label: json.comparison_label || 'Previous period',
+                        data: json.previous_revenue || [],
+                        borderColor: '#94a3b8',
+                        borderDash: [4, 4],
+                        backgroundColor: 'transparent',
+                        fill: false,
+                        tension: 0.35,
+                        pointRadius: 0,
+                        yAxisID: 'y'
+                    },
+                    {
+                        label: (json.comparison_label || 'Previous period') + ' orders',
+                        data: json.previous_orders || [],
+                        borderColor: '#cbd5e1',
+                        borderDash: [4, 4],
+                        backgroundColor: 'transparent',
+                        fill: false,
+                        tension: 0.35,
+                        pointRadius: 0,
+                        yAxisID: 'y1'
                     }
                 ]
             },
             options: {
                 ...commonOpts,
+                onClick(event, elements) {
+                    if (!elements.length) return;
+                    const day = trendDates[elements[0].index];
+                    if (!day) return;
+                    goWithQuery(financeDayUrl, { date_from: day, date_to: day });
+                },
+                onHover: chartPointer,
                 scales: {
                     y:  { beginAtZero: true, position: 'left', title: { display: true, text: 'Revenue (€)' } },
                     y1: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: 'Paid orders' } }
@@ -622,16 +1307,30 @@ async function loadTrends() {
             type: 'bar',
             data: {
                 labels: json.labels,
-                datasets: [{
-                    label: 'New users',
-                    data: json.signups,
-                    backgroundColor: 'rgba(26, 88, 94, 0.75)',
-                    borderRadius: 4
-                }]
+                datasets: [
+                    {
+                        label: 'Advertisers',
+                        data: json.signups_advertisers || json.signups,
+                        backgroundColor: 'rgba(26, 88, 94, 0.85)',
+                        borderRadius: 4
+                    },
+                    {
+                        label: 'Publishers',
+                        data: json.signups_publishers || [],
+                        backgroundColor: 'rgba(14, 165, 233, 0.75)',
+                        borderRadius: 4
+                    }
+                ]
             },
             options: {
                 ...commonOpts,
-                plugins: { legend: { display: false } }
+                plugins: { legend: { display: true, position: 'bottom' } },
+                onClick(event, elements) {
+                    if (!elements.length) return;
+                    const role = elements[0].datasetIndex === 1 ? 'publisher' : 'advertiser';
+                    goWithQuery(usersIndexUrl, { role });
+                },
+                onHover: chartPointer,
             }
         });
         retryEls.forEach(hideRetry);
@@ -645,11 +1344,22 @@ async function loadDistributions() {
     const retryEls = [
         document.getElementById('orderStatusRetry'),
         document.getElementById('roleRetry'),
+        document.getElementById('userCountryRetry'),
     ];
     try {
         const json = await dashboardFetch(`{{ route('admin.dashboard.distributions') }}`);
 
         const palette = ['#1a585e', '#0ea5e9', '#3faeb2', '#75787B', '#0f766e', '#b8e4e4', '#94a3b8'];
+
+        const orderKeys = (json.orders && json.orders.keys) || [];
+        const roleKeys = (json.roles && json.roles.keys) || [];
+        const donutOpts = {
+            cutout: '78%',
+            plugins: { legend: { display: false } },
+            layout: { padding: 8 },
+            onHover: chartPointer,
+        };
+        const donutStyle = { borderWidth: 4, borderColor: '#ffffff', hoverOffset: 2, borderRadius: 6 };
 
         orderStatusChart = makeChart(orderStatusChart, 'orderStatusChart', {
             type: 'doughnut',
@@ -657,10 +1367,19 @@ async function loadDistributions() {
                 labels: json.orders.labels,
                 datasets: [{
                     data: json.orders.values,
-                    backgroundColor: palette
+                    backgroundColor: palette,
+                    ...donutStyle
                 }]
             },
-            options: { plugins: { legend: { position: 'bottom' } } }
+            options: {
+                ...donutOpts,
+                onClick(event, elements) {
+                    if (!elements.length) return;
+                    const status = orderKeys[elements[0].index];
+                    if (!status) return;
+                    goWithQuery(ordersIndexUrl, { status: status });
+                },
+            }
         });
 
         roleChart = makeChart(roleChart, 'roleChart', {
@@ -669,11 +1388,60 @@ async function loadDistributions() {
                 labels: json.roles.labels,
                 datasets: [{
                     data: json.roles.values,
-                    backgroundColor: palette
+                    backgroundColor: palette,
+                    ...donutStyle
                 }]
             },
-            options: { plugins: { legend: { position: 'bottom' } } }
+            options: {
+                ...donutOpts,
+                onClick(event, elements) {
+                    if (!elements.length) return;
+                    const role = roleKeys[elements[0].index];
+                    if (!role) return;
+                    goWithQuery(usersIndexUrl, { role: role });
+                },
+            }
         });
+
+        renderDistributionBars(
+            'orderStatusBars',
+            json.orders.labels,
+            json.orders.values,
+            orderKeys,
+            (status) => {
+                const url = new URL(ordersIndexUrl, window.location.origin);
+                url.searchParams.set('status', status);
+                return url.toString();
+            }
+        );
+        renderDistributionBars(
+            'roleBars',
+            json.roles.labels,
+            json.roles.values,
+            roleKeys,
+            (role) => {
+                const url = new URL(usersIndexUrl, window.location.origin);
+                url.searchParams.set('role', role);
+                return url.toString();
+            }
+        );
+
+        const countries = json.countries || {};
+        renderDistributionBars(
+            'userCountryBars',
+            countries.labels || [],
+            countries.values || [],
+            countries.codes || [],
+            null,
+            { codes: countries.codes || [], unit: 'users', barColor: '#3faeb2', rowClass: 'admin-dash-dist__row admin-dash-dist__row--demo', visibleLimit: 4 }
+        );
+        renderCountryMap(countries.points || []);
+        if (!(countries.labels || []).length) {
+            const empty = document.getElementById('userCountryBars');
+            if (empty) {
+                empty.innerHTML = '<div class="text-muted small">No signup-IP countries to show yet.</div>';
+            }
+        }
         retryEls.forEach(hideRetry);
     } catch (err) {
         retryEls.forEach((el) => showRetry(el, 'loadDistributions'));
@@ -701,7 +1469,54 @@ function cellLink(url, label) {
     return `<a href="${escapeHtml(url)}">${text}</a>`;
 }
 
-async function loadActionQueue() {
+function waitingCell(item) {
+    const age = item && item.age ? String(item.age) : '';
+    const date = item && item.date ? String(item.date) : '';
+    if (age && date) {
+        return `<td class="small text-muted"><div class="text-nowrap">${escapeHtml(age)}</div><div class="text-nowrap">${escapeHtml(date)}</div></td>`;
+    }
+    if (age || date) {
+        return `<td class="small text-muted text-nowrap">${escapeHtml(age || date)}</td>`;
+    }
+    return `<td class="small text-muted">—</td>`;
+}
+
+function actionCell(item) {
+    if (!item || !item.action_url) return '<td></td>';
+    const label = item.action_label || 'Open';
+    return `<td class="text-end"><a href="${escapeHtml(item.action_url)}" class="btn btn-sm btn-outline-primary">${escapeHtml(label)}</a></td>`;
+}
+
+function setQueuePanel(name, hasItems) {
+    const panel = document.querySelector(`.js-queue-panel[data-queue="${name}"]`);
+    if (!panel) return;
+    panel.classList.toggle('d-none', !hasItems);
+}
+
+function refreshQueueLayout() {
+    document.querySelectorAll('.js-queue-row').forEach((row) => {
+        const visible = [...row.querySelectorAll('.js-queue-panel')].some((panel) => !panel.classList.contains('d-none'));
+        row.classList.toggle('d-none', !visible);
+    });
+    const stalled = document.getElementById('stalledOrdersRow');
+    const anyQueue = [...document.querySelectorAll('#dashboardActionQueues .js-queue-panel')].some((panel) => !panel.classList.contains('d-none'));
+    const stalledVisible = stalled && !stalled.classList.contains('d-none');
+    const allClear = document.getElementById('queuesAllClear');
+    if (allClear) {
+        allClear.classList.toggle('d-none', anyQueue || stalledVisible);
+    }
+}
+
+let actionQueueTick = 0;
+let actionQueueInFlight = 0;
+
+async function loadActionQueue(options = {}) {
+    const quiet = options.quiet === true;
+    // A badge refresh must not cancel the first load. If that first response
+    // is dropped and the refresh then fails quietly, the tables stay on Loading.
+    if (quiet && actionQueueInFlight > 0) return;
+    const tick = ++actionQueueTick;
+    actionQueueInFlight++;
     const depBody = document.getElementById('queueDeposits');
     const wBody = document.getElementById('queueWithdrawals');
     const sBody = document.getElementById('queueSites');
@@ -709,9 +1524,18 @@ async function loadActionQueue() {
     const disputeBody = document.getElementById('queueDisputes');
     const communityBody = document.getElementById('queueCommunity');
     const enrichmentBody = document.getElementById('queueEnrichment');
+    const bulkBody = document.getElementById('queueBulk');
+    const mailBody = document.getElementById('queueMail');
+    const moderationBody = document.getElementById('queueModeration');
+    const catalogBody = document.getElementById('queueCatalogHide');
+    const taxBody = document.getElementById('queueMissingTax');
+    const pdfBody = document.getElementById('queueMissingPdf');
+    const libraryBody = document.getElementById('queueLibrary');
+    const campaignBody = document.getElementById('queueCampaigns');
 
     try {
-        const json = await dashboardFetch(`{{ route('admin.dashboard.action-queue') }}`);
+        const json = await dashboardFetch(`{{ route('admin.dashboard.action-queue') }}`, { silent: quiet });
+        if (tick !== actionQueueTick) return;
         const deposits = json.deposits || [];
         const withdrawals = json.withdrawals || [];
         const sites = json.sites || [];
@@ -719,9 +1543,21 @@ async function loadActionQueue() {
         const disputes = json.disputes || [];
         const community = json.community || [];
         const enrichment = json.enrichment || [];
+        const bulk = json.bulk || [];
+        const mail = json.mail || [];
+        const moderation = json.moderation || [];
+        const catalogHide = json.catalog_hide || [];
+        const missingTax = json.missing_tax || [];
+        const missingPdf = json.missing_pdf || [];
+        const library = json.library || [];
+        const campaigns = json.campaigns || [];
+        const totals = json.totals || {};
+        const meta = (name, shown) => setQueueMeta(name, shown, totals[queueTotalKeys[name]]);
 
+        setQueuePanel('deposits', deposits.length > 0);
+        meta('deposits', deposits.length);
         if (!deposits.length) {
-            depBody.innerHTML = emptyRow(3, 'No pending deposits');
+            depBody.innerHTML = emptyRow(4, 'No pending deposits');
         } else {
             depBody.innerHTML = deposits.map(d => `
                 <tr>
@@ -729,13 +1565,16 @@ async function loadActionQueue() {
                         <div class="fw-semibold">${cellLink(d.url, d.user)}</div>
                         <div class="small text-muted">${escapeHtml(d.email || '')}</div>
                     </td>
-                    <td>${money(d.amount)}</td>
-                    <td class="small text-muted">${escapeHtml(d.date)}</td>
+                    <td>${money(d.amount)}${chargeLine(d)}${methodLine(d)}</td>
+                    ${waitingCell(d)}
+                    ${actionCell(d)}
                 </tr>`).join('');
         }
 
+        setQueuePanel('withdrawals', withdrawals.length > 0);
+        meta('withdrawals', withdrawals.length);
         if (!withdrawals.length) {
-            wBody.innerHTML = emptyRow(3, 'No pending withdrawals');
+            wBody.innerHTML = emptyRow(4, 'No pending withdrawals');
         } else {
             wBody.innerHTML = withdrawals.map(w => `
                 <tr>
@@ -743,11 +1582,14 @@ async function loadActionQueue() {
                         <div class="fw-semibold">${cellLink(w.url, w.user)}</div>
                         <div class="small text-muted">${escapeHtml(w.email || '')}${w.status && w.status !== 'pending' ? ' · ' + escapeHtml(w.status) : ''}</div>
                     </td>
-                    <td>${money(w.amount)}</td>
-                    <td class="small text-muted">${escapeHtml(w.date)}</td>
+                    <td>${money(w.amount)}${methodLine(w)}</td>
+                    ${waitingCell(w)}
+                    ${actionCell(w)}
                 </tr>`).join('');
         }
 
+        setQueuePanel('sites', sites.length > 0);
+        meta('sites', sites.length);
         if (!sites.length) {
             sBody.innerHTML = emptyRow(3, 'No sites awaiting verification');
         } else {
@@ -758,21 +1600,28 @@ async function loadActionQueue() {
                         <div class="small text-muted text-truncate" style="max-width:140px;">${escapeHtml(s.site_url || '')}</div>
                     </td>
                     <td>${escapeHtml(s.publisher)}</td>
-                    <td class="small text-muted">${escapeHtml(s.date)}</td>
+                    ${waitingCell(s)}
                 </tr>`).join('');
         }
 
+        setQueuePanel('unpaid', unpaid.length > 0);
+        meta('unpaid', unpaid.length);
         if (!unpaid.length) {
             unpaidBody.innerHTML = emptyRow(3, 'No unpaid orders');
         } else {
             unpaidBody.innerHTML = unpaid.map(o => `
                 <tr>
-                    <td class="fw-semibold">${cellLink(o.url, '#' + o.order_number)}</td>
+                    <td>
+                        <div class="fw-semibold">${cellLink(o.url, '#' + o.order_number)}</div>
+                        ${methodLine(o)}
+                    </td>
                     <td>${money(o.amount)}</td>
-                    <td class="small text-muted">${escapeHtml(o.date)}</td>
+                    ${waitingCell(o)}
                 </tr>`).join('');
         }
 
+        setQueuePanel('disputes', disputes.length > 0);
+        meta('disputes', disputes.length);
         if (!disputes.length) {
             disputeBody.innerHTML = emptyRow(3, 'No open disputes');
         } else {
@@ -780,10 +1629,12 @@ async function loadActionQueue() {
                 <tr>
                     <td class="fw-semibold">${cellLink(d.url, '#' + d.order_number)}</td>
                     <td class="small text-truncate" style="max-width:120px;">${escapeHtml(d.reason || '')}</td>
-                    <td class="small text-muted">${escapeHtml(d.date)}</td>
+                    ${waitingCell(d)}
                 </tr>`).join('');
         }
 
+        setQueuePanel('community', community.length > 0);
+        meta('community', community.length);
         if (!community.length) {
             communityBody.innerHTML = emptyRow(3, 'Inbox is clear');
         } else {
@@ -791,10 +1642,12 @@ async function loadActionQueue() {
                 <tr>
                     <td><span class="badge text-bg-light">${escapeHtml(c.type)}</span></td>
                     <td>${cellLink(c.url, c.label)}</td>
-                    <td class="small text-muted">${escapeHtml(c.date)}</td>
+                    ${waitingCell(c)}
                 </tr>`).join('');
         }
 
+        setQueuePanel('enrichment', enrichment.length > 0);
+        meta('enrichment', enrichment.length);
         if (!enrichment.length) {
             enrichmentBody.innerHTML = emptyRow(3, 'No failed scans');
         } else {
@@ -802,18 +1655,144 @@ async function loadActionQueue() {
                 <tr>
                     <td class="fw-semibold">${cellLink(e.url, e.site_name)}</td>
                     <td class="small text-truncate" style="max-width:120px;">${escapeHtml(e.error || '')}</td>
-                    <td class="small text-muted">${escapeHtml(e.date)}</td>
+                    ${waitingCell(e)}
                 </tr>`).join('');
         }
+
+        setQueuePanel('bulk', bulk.length > 0);
+        meta('bulk', bulk.length);
+        if (!bulk.length) {
+            bulkBody.innerHTML = emptyRow(3, 'No bulk requests waiting');
+        } else {
+            bulkBody.innerHTML = bulk.map(b => `
+                <tr>
+                    <td>
+                        <div class="fw-semibold">${cellLink(b.url, b.publisher)}</div>
+                        <div class="small text-muted">${b.count ? escapeHtml(String(b.count)) + ' sites' : ''}</div>
+                    </td>
+                    <td class="small">${escapeHtml(b.status || '')}</td>
+                    ${waitingCell(b)}
+                </tr>`).join('');
+        }
+
+        setQueuePanel('mail', mail.length > 0);
+        meta('mail', mail.length);
+        if (!mail.length) {
+            mailBody.innerHTML = emptyRow(2, 'No failed mail');
+        } else {
+            mailBody.innerHTML = mail.map(m => `
+                <tr>
+                    <td class="small">${cellLink(m.url, m.label)}</td>
+                    ${waitingCell(m)}
+                </tr>`).join('');
+        }
+
+        setQueuePanel('moderation', moderation.length > 0);
+        meta('moderation', moderation.length);
+        if (!moderation.length) {
+            moderationBody.innerHTML = emptyRow(2, 'No scan errors');
+        } else {
+            moderationBody.innerHTML = moderation.map(m => `
+                <tr>
+                    <td class="small">${cellLink(m.url, m.label)}</td>
+                    ${waitingCell(m)}
+                </tr>`).join('');
+        }
+
+        setQueuePanel('catalog_hide', catalogHide.length > 0);
+        meta('catalog_hide', catalogHide.length);
+        if (!catalogHide.length) {
+            catalogBody.innerHTML = emptyRow(2, 'Nobody in hide-mode');
+        } else {
+            catalogBody.innerHTML = catalogHide.map(c => `
+                <tr>
+                    <td>
+                        <div class="fw-semibold">${cellLink(c.url, c.user)}</div>
+                        <div class="small text-muted">${escapeHtml(c.email || '')}</div>
+                    </td>
+                    ${waitingCell(c)}
+                </tr>`).join('');
+        }
+
+        setQueuePanel('missing_tax', missingTax.length > 0);
+        meta('missing_tax', missingTax.length);
+        if (taxBody) {
+            taxBody.innerHTML = !missingTax.length
+                ? emptyRow(3, 'No paid orders missing a tax invoice')
+                : missingTax.map(o => `
+                <tr>
+                    <td>
+                        <div class="fw-semibold">${cellLink(o.url, '#' + (o.order_number || o.id))}</div>
+                        <div class="small text-muted">${escapeHtml(o.user || '')}</div>
+                    </td>
+                    <td>${money(o.amount)}</td>
+                    ${waitingCell(o)}
+                </tr>`).join('');
+        }
+
+        setQueuePanel('missing_pdf', missingPdf.length > 0);
+        meta('missing_pdf', missingPdf.length);
+        if (pdfBody) {
+            pdfBody.innerHTML = !missingPdf.length
+                ? emptyRow(3, 'No invoices missing a PDF')
+                : missingPdf.map(inv => `
+                <tr>
+                    <td class="fw-semibold">${cellLink(inv.url, inv.label)}</td>
+                    <td>${rowMoney(inv)}</td>
+                    ${waitingCell(inv)}
+                </tr>`).join('');
+        }
+
+        setQueuePanel('library', library.length > 0);
+        meta('library', library.length);
+        if (libraryBody) {
+            libraryBody.innerHTML = !library.length
+                ? emptyRow(2, 'No articles waiting for review')
+                : library.map(a => `
+                <tr>
+                    <td class="fw-semibold">${cellLink(a.url, a.label)}</td>
+                    ${waitingCell(a)}
+                </tr>`).join('');
+        }
+
+        setQueuePanel('campaigns', campaigns.length > 0);
+        meta('campaigns', campaigns.length);
+        if (campaignBody) {
+            campaignBody.innerHTML = !campaigns.length
+                ? emptyRow(3, 'No queued, sending, or failed campaigns')
+                : campaigns.map(c => `
+                <tr>
+                    <td class="fw-semibold">${cellLink(c.url, c.label)}</td>
+                    <td class="small">${escapeHtml(c.status || '')}</td>
+                    ${waitingCell(c)}
+                </tr>`).join('');
+        }
+
+        refreshQueueLayout();
     } catch (err) {
-        depBody.innerHTML = retryRow(3, 'loadActionQueue');
-        wBody.innerHTML = retryRow(3, 'loadActionQueue');
+        if (tick !== actionQueueTick) return;
+        if (quiet) throw err;
+        ['deposits', 'withdrawals', 'sites', 'unpaid', 'disputes', 'community', 'enrichment', 'bulk', 'mail', 'moderation', 'catalog_hide', 'missing_tax', 'missing_pdf', 'library', 'campaigns']
+            .forEach((name) => setQueuePanel(name, true));
+        depBody.innerHTML = retryRow(4, 'loadActionQueue');
+        wBody.innerHTML = retryRow(4, 'loadActionQueue');
         sBody.innerHTML = retryRow(3, 'loadActionQueue');
         unpaidBody.innerHTML = retryRow(3, 'loadActionQueue');
         disputeBody.innerHTML = retryRow(3, 'loadActionQueue');
         communityBody.innerHTML = retryRow(3, 'loadActionQueue');
         enrichmentBody.innerHTML = retryRow(3, 'loadActionQueue');
+        bulkBody.innerHTML = retryRow(3, 'loadActionQueue');
+        mailBody.innerHTML = retryRow(2, 'loadActionQueue');
+        moderationBody.innerHTML = retryRow(2, 'loadActionQueue');
+        catalogBody.innerHTML = retryRow(2, 'loadActionQueue');
+        if (taxBody) taxBody.innerHTML = retryRow(3, 'loadActionQueue');
+        if (pdfBody) pdfBody.innerHTML = retryRow(3, 'loadActionQueue');
+        if (libraryBody) libraryBody.innerHTML = retryRow(2, 'loadActionQueue');
+        if (campaignBody) campaignBody.innerHTML = retryRow(3, 'loadActionQueue');
+        refreshQueueLayout();
         throw err;
+    } finally {
+        actionQueueInFlight = Math.max(0, actionQueueInFlight - 1);
     }
 }
 
@@ -824,6 +1803,7 @@ async function loadStalledOrders() {
         const items = json.items || [];
         if (!items.length) {
             row.classList.add('d-none');
+            refreshQueueLayout();
             return;
         }
 
@@ -853,9 +1833,11 @@ async function loadStalledOrders() {
                     </div>
                 </td>
             </tr>`).join('');
+        refreshQueueLayout();
     } catch (err) {
         row.classList.remove('d-none');
         document.getElementById('queueStalled').innerHTML = retryRow(7, 'loadStalledOrders');
+        refreshQueueLayout();
         throw err;
     }
 }
@@ -906,6 +1888,7 @@ document.addEventListener('click', async (e) => {
 const dashboardLoaders = {
     loadStatistics,
     loadFinanceStrip,
+    loadMarketplaceHealth,
     loadTrends,
     loadDistributions,
     loadActionQueue,
@@ -959,6 +1942,31 @@ document.addEventListener('click', (e) => {
         return;
     }
 
+    const kebab = e.target.closest('[data-demo-menu] .admin-dash-demo__kebab');
+    if (kebab) {
+        const menu = kebab.closest('[data-demo-menu]');
+        const drop = menu && menu.querySelector('.admin-dash-demo__drop');
+        const open = drop && drop.classList.contains('d-none');
+        document.querySelectorAll('.admin-dash-demo__drop').forEach((el) => el.classList.add('d-none'));
+        if (drop && open) {
+            drop.classList.remove('d-none');
+            kebab.setAttribute('aria-expanded', 'true');
+        } else if (kebab) {
+            kebab.setAttribute('aria-expanded', 'false');
+        }
+        return;
+    }
+    if (!e.target.closest('[data-demo-menu]')) {
+        document.querySelectorAll('.admin-dash-demo__drop').forEach((el) => el.classList.add('d-none'));
+        document.querySelectorAll('.admin-dash-demo__kebab').forEach((el) => el.setAttribute('aria-expanded', 'false'));
+    }
+
+    const distRow = e.target.closest('.admin-dash-dist__row[data-href]');
+    if (distRow) {
+        window.location.href = distRow.getAttribute('data-href');
+        return;
+    }
+
     const kpi = e.target.closest('.js-kpi-link');
     if (!kpi || e.target.closest('a, button')) return;
     followKpiLink(kpi);
@@ -972,7 +1980,17 @@ document.addEventListener('keydown', (e) => {
     followKpiLink(kpi);
 });
 
-Promise.all([loadStatistics(), loadFinanceStrip(), loadTrends(), loadDistributions(), loadActionQueue(), loadStalledOrders()])
+window.refreshAdminDashboardQueues = function (counts) {
+    if (counts && counts.success) {
+        applyAttentionCounts(counts);
+    }
+    loadActionQueue({ quiet: true }).catch(err => console.error('Dashboard queue refresh failed', err));
+    loadStatistics({ quiet: true }).catch(err => console.error('Dashboard statistics refresh failed', err));
+    loadFinanceStrip({ quiet: true }).catch(err => console.error('Dashboard finance refresh failed', err));
+    loadMarketplaceHealth({ quiet: true }).catch(err => console.error('Dashboard health refresh failed', err));
+};
+
+Promise.all([loadStatistics(), loadFinanceStrip(), loadMarketplaceHealth(), loadTrends(), loadDistributions(), loadActionQueue(), loadStalledOrders()])
     .catch(err => console.error('Dashboard load failed', err));
 </script>
 @endsection

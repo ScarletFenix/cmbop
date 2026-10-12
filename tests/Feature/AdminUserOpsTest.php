@@ -5,9 +5,12 @@ namespace Tests\Feature;
 use App\Models\ActivityLog;
 use App\Models\Role;
 use App\Models\User;
+use App\Notifications\VerifyEmail;
 use App\Support\UserMessages;
 use Database\Seeders\RolesTableSeeder;
+use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Notification;
 use Tests\TestCase;
 
 class AdminUserOpsTest extends TestCase
@@ -132,7 +135,11 @@ class AdminUserOpsTest extends TestCase
             ->assertSee('Internal notes')
             ->assertDontSee('Mark email verified')
             ->assertSee('Suspend account')
-            ->assertSee('Finance dossier');
+            ->assertSee('Finance dossier')
+            ->assertSee('Related inboxes')
+            ->assertSee('Send password reset')
+            ->assertSee('Marketing access')
+            ->assertSee('Catalog activity');
 
         $this->actingAs($admin)
             ->from(route('admin.users.show', $member))
@@ -199,6 +206,42 @@ class AdminUserOpsTest extends TestCase
         ]);
     }
 
+    public function test_admin_can_resend_verification_email(): void
+    {
+        Notification::fake();
+
+        $admin = $this->userWithRole('admin');
+        $member = $this->userWithRole('advertiser', [
+            'name' => 'Needs Verify',
+            'email' => 'needs.verify@example.com',
+            'email_verified_at' => null,
+        ]);
+
+        $this->actingAs($admin)
+            ->from(route('admin.users.show', $member))
+            ->post(route('admin.users.resend-verification', $member))
+            ->assertRedirect()
+            ->assertSessionHas('success', 'Verification email sent to needs.verify@example.com.');
+
+        Notification::assertSentTo($member, VerifyEmail::class);
+        $this->assertDatabaseHas('activity_logs', [
+            'action' => 'user.verification_resent',
+            'subject_id' => $member->id,
+        ]);
+
+        $verified = $this->userWithRole('publisher', [
+            'email' => 'already.ok@example.com',
+        ]);
+
+        $this->actingAs($admin)
+            ->from(route('admin.users.show', $verified))
+            ->post(route('admin.users.resend-verification', $verified))
+            ->assertRedirect()
+            ->assertSessionHas('success', 'This email is already verified.');
+
+        Notification::assertNotSentTo($verified, VerifyEmail::class);
+    }
+
     public function test_cannot_suspend_self_or_another_admin(): void
     {
         $admin = $this->userWithRole('admin', [
@@ -255,5 +298,67 @@ class AdminUserOpsTest extends TestCase
             ->assertRedirect(route('login'));
 
         $this->assertGuest();
+    }
+
+    public function test_profile_and_index_show_catalog_hide_and_related_links(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $member = $this->userWithRole('advertiser', [
+            'name' => 'Hidden Buyer',
+            'email' => 'hidden.buyer@example.com',
+            'catalog_copy_strike_count' => 2,
+            'catalog_hide_until' => now()->addDay(),
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.users.show', $member))
+            ->assertOk()
+            ->assertSee('Catalog hidden')
+            ->assertSee(route('admin.catalog-activity.show', $member), false)
+            ->assertSee(e(route('admin.community.index', ['tab' => 'problems', 'q' => $member->email])), false)
+            ->assertSee(route('admin.sites.index', ['publisher' => $member->id]), false)
+            ->assertSee('btn-edit-company', false)
+            ->assertSee('btn-edit-payout', false);
+
+        $this->actingAs($admin)
+            ->get(route('admin.users.index', ['flag' => 'catalog_hide']))
+            ->assertOk()
+            ->assertSee('hidden.buyer@example.com')
+            ->assertSee('Catalog hidden');
+    }
+
+    public function test_admin_can_send_password_reset_from_profile(): void
+    {
+        Notification::fake();
+        $admin = $this->userWithRole('admin');
+        $member = $this->userWithRole('advertiser', [
+            'email' => 'reset.me@example.com',
+        ]);
+
+        $this->actingAs($admin)
+            ->from(route('admin.users.show', $member))
+            ->post(route('admin.users.send-password-reset', $member))
+            ->assertRedirect();
+
+        Notification::assertSentTo($member, ResetPassword::class);
+        $this->assertDatabaseHas('activity_logs', [
+            'action' => 'user.password_reset_sent',
+            'subject_id' => $member->id,
+        ]);
+    }
+
+    public function test_users_index_explains_pinned_user_filter(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $member = $this->userWithRole('advertiser', [
+            'name' => 'Pinned Person',
+            'email' => 'pinned.person@example.com',
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.users.index', ['user' => $member->id]))
+            ->assertOk()
+            ->assertSee('Showing only user #'.$member->id)
+            ->assertSee('Clear to see everyone');
     }
 }

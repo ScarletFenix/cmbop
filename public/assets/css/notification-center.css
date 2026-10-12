@@ -67,22 +67,26 @@
 
 .nc-badge {
   position: absolute;
-  top: -4px;
-  right: -4px;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
+  top: -5px;
+  right: -6px;
+  box-sizing: border-box;
+  width: auto;
+  min-width: 0;
+  height: auto;
+  padding: 2px 5px;
   border-radius: 999px;
-  background: var(--nc-danger, #dc3545);
+  background: var(--nc-danger, #dc2626);
   color: #fff;
   font-size: 10px;
   font-weight: 700;
-  line-height: 18px;
+  line-height: 1;
+  letter-spacing: 0.01em;
   text-align: center;
-  border: 2px solid var(--nc-bg, #fff);
+  border: 2px solid #fff;
   display: none;
   align-items: center;
   justify-content: center;
+  white-space: nowrap;
 }
 
 .nc-badge.is-visible {
@@ -210,6 +214,7 @@
   display: flex;
   gap: 6px;
   overflow-x: auto;
+  overflow-y: hidden;
   padding: 10px 16px;
   border-bottom: 1px solid var(--nc-border-soft);
   background: var(--nc-bg);
@@ -241,11 +246,47 @@
 }
 
 .nc-body {
+  overflow-x: auto;
   overflow-y: auto;
   flex: 1;
   min-height: 0;
   max-height: 320px;
   background: var(--nc-bg-soft, #f7fafb);
+}
+
+.nc-filters,
+.nc-body {
+  scrollbar-width: thin;
+  scrollbar-color: var(--nc-primary, #3faeb2) var(--nc-primary-soft, #e6f5f5);
+}
+
+.nc-filters::-webkit-scrollbar,
+.nc-body::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.nc-filters::-webkit-scrollbar-track,
+.nc-body::-webkit-scrollbar-track {
+  background: var(--nc-primary-soft, #e6f5f5);
+  border-radius: 999px;
+}
+
+.nc-filters::-webkit-scrollbar-thumb,
+.nc-body::-webkit-scrollbar-thumb {
+  background: var(--nc-primary, #3faeb2);
+  border-radius: 999px;
+  border: 2px solid var(--nc-primary-soft, #e6f5f5);
+}
+
+.nc-filters::-webkit-scrollbar-thumb:hover,
+.nc-body::-webkit-scrollbar-thumb:hover {
+  background: var(--nc-primary-strong, #1a585e);
+}
+
+.nc-filters::-webkit-scrollbar-corner,
+.nc-body::-webkit-scrollbar-corner {
+  background: var(--nc-primary-soft, #e6f5f5);
 }
 
 .nc-group-label {
@@ -414,13 +455,19 @@ a.nc-item:focus {
   flex: 0 0 auto;
 }
 
-.nc-dot {
-  width: 7px;
-  height: 7px;
+.nc-dot,
+.nc-theme .nc-dot.pulse-badge {
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
-  background: var(--nc-primary);
+  background: var(--nc-primary, #3faeb2) !important;
   flex-shrink: 0;
   display: inline-block;
+  /* Beat the default red PulseBadge tokens so unread dots stay Teal Trust. */
+  --pulse-badge-ring: rgba(63, 174, 178, 0.5);
+  --pulse-badge-glow-mid: rgba(63, 174, 178, 0.32);
+  --pulse-badge-alert-start: rgba(26, 88, 94, 0.35);
+  --pulse-badge-alert-mid: rgba(63, 174, 178, 0.28);
 }
 
 .nc-item:not(.is-unread) .nc-dot {

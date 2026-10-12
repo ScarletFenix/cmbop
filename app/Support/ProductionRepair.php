@@ -11,21 +11,27 @@ use Illuminate\Support\Facades\Schema;
 
 /**
  * The Hostinger steps this agent cannot SSH in to run: migrate, MEDIA_PATH,
- * public/storage, APP_URL, and roles. Safe to call from artisan or a web
- * request (locked by HealHostingerProduction).
+ * public/storage, APP_URL, and roles. Artisan repair migrates. A web request
+ * calls run(persistEnv: true, migrate: false) and only repairs files and URLs.
  */
 class ProductionRepair
 {
     /**
      * @return list<string>
      */
-    public function run(bool $persistEnv = true): array
+    public function run(bool $persistEnv = true, bool $migrate = true): array
     {
         $notes = [];
 
         $wroteEnv = false;
 
-        $this->migrate($notes);
+        $this->ensureMysqlHost($notes, $persistEnv, $wroteEnv);
+
+        if ($migrate) {
+            $this->migrate($notes);
+        } else {
+            $notes[] = 'migrate skipped on web request';
+        }
         $this->seedRoles($notes);
         $this->ensureMedia($notes, $persistEnv, $wroteEnv);
         $this->ensureAppUrl($notes, $persistEnv, $wroteEnv);
@@ -141,6 +147,32 @@ class ProductionRepair
             $notes[] = 'roles seed failed: '.$e->getMessage();
             Log::error('Production repair roles seed failed', ['error' => $e->getMessage()]);
         }
+    }
+
+    /**
+     * Hostinger PHP cannot TCP to 127.0.0.1:3306 (error 2002 Operation not permitted).
+     *
+     * @param  list<string>  $notes
+     */
+    private function ensureMysqlHost(array &$notes, bool $persistEnv, bool &$wroteEnv): void
+    {
+        $onHostinger = HostingerMediaPath::looksLikeHostinger();
+        HostingerMysqlHost::applyRuntime($onHostinger);
+
+        if (! $onHostinger) {
+            return;
+        }
+
+        $envHost = trim((string) ($_ENV['DB_HOST'] ?? $_SERVER['DB_HOST'] ?? getenv('DB_HOST') ?: ''));
+        if ($envHost !== '127.0.0.1') {
+            return;
+        }
+
+        $wrote = $this->persistKey('DB_HOST', 'localhost', $persistEnv);
+        $wroteEnv = $wroteEnv || $wrote;
+        $notes[] = $wrote
+            ? 'DB_HOST set to localhost (Hostinger MySQL socket)'
+            : 'DB_HOST runtime set to localhost (Hostinger MySQL socket)';
     }
 
     /**

@@ -1,153 +1,34 @@
 @extends('admin.layouts.app')
 
+@php
+    $listUrl = \App\Support\AdminBlog::listUrl($indexQuery ?? []);
+@endphp
+
 @section('content')
 <div class="container-fluid">
-    <div class="row mb-4">
-        <div class="col-md-6">
-            <h1 class="h3 mb-0">Create New Blog</h1>
-            <p class="text-muted">Add a new blog post</p>
-        </div>
-        <div class="col-md-6 text-end">
-            <a href="{{ route('admin.blogs.index') }}" class="btn btn-secondary">
-                <i class="fa fa-arrow-left me-2"></i> Back to Blogs
-            </a>
-        </div>
-    </div>
-
-    @if($errors->any())
-        <div class="alert alert-danger alert-dismissible fade show">
-            <strong>Please fix the following errors:</strong>
-            <ul class="mb-0 mt-2">
-                @foreach($errors->all() as $error)
-                    <li>{{ $error }}</li>
-                @endforeach
-            </ul>
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Dismiss message"></button>
-        </div>
-    @endif
+    @include('admin.partials.page-header', [
+        'title' => 'Create New Blog',
+        'subtitle' => 'Write English first. Add other locales only when you need them.',
+        'actionUrl' => $listUrl,
+        'actionLabel' => 'Back to Blogs',
+        'actionIcon' => 'fa-arrow-left',
+    ])
 
     <div class="card border-0 shadow-sm">
         <div class="card-body">
-            <form action="{{ route('admin.blogs.store') }}" method="POST" enctype="multipart/form-data" id="blogForm">
+            <form action="{{ route('admin.blogs.store') }}" method="POST" enctype="multipart/form-data" id="blogForm" class="admin-deposits-filters" data-admin-filter-live="1" data-blog-unsaved-guard="1">
                 @csrf
+                <input type="hidden" name="status" id="blogStatusInput" value="{{ \App\Support\AdminBlog::normalizeStatus(old_text('status', 'draft')) ?: 'draft' }}">
+                <input type="hidden" name="intent" id="blogIntentInput" value="draft">
 
                 <div class="row">
                     <div class="col-md-8">
-                        <ul class="nav nav-tabs mb-3" role="tablist">
-                            @foreach(($locales ?? (class_exists(\App\Support\PublicI18n::class) ? \App\Support\PublicI18n::supported() : ['en'])) as $index => $locale)
-                                <li class="nav-item" role="presentation">
-                                    <button
-                                        class="nav-link {{ $index === 0 ? 'active' : '' }}"
-                                        data-bs-toggle="tab"
-                                        data-bs-target="#locale-pane-{{ $locale }}"
-                                        type="button"
-                                        role="tab"
-                                    >
-                                        {{ class_exists(\App\Support\PublicI18n::class) ? \App\Support\PublicI18n::shortLabel($locale) : strtoupper($locale) }} {!! $locale === 'en' ? '<span class="text-danger">*</span>' : '' !!}
-                                    </button>
-                                </li>
-                            @endforeach
-                        </ul>
-
-                        <div class="tab-content border rounded p-3 bg-white">
-                            @foreach(($locales ?? (class_exists(\App\Support\PublicI18n::class) ? \App\Support\PublicI18n::supported() : ['en'])) as $index => $locale)
-                                @php($prefix = "translations.$locale")
-                                <div class="tab-pane fade {{ $index === 0 ? 'show active' : '' }}" id="locale-pane-{{ $locale }}" role="tabpanel">
-                                    <div class="mb-3">
-                                        <label class="form-label fw-semibold">Title {!! $locale === 'en' ? '<span class="text-danger">*</span>' : '' !!}</label>
-                                        <input
-                                            type="text"
-                                            name="translations[{{ $locale }}][title]"
-                                            class="form-control form-control-lg @error($prefix.'.title') is-invalid @enderror"
-                                            value="{{ old_text('translations.'.$locale.'.title') }}"
-                                            {{ $locale === 'en' ? 'required' : '' }}
-                                        >
-                                        @error($prefix.'.title')
-                                            <div class="invalid-feedback">{{ $message }}</div>
-                                        @enderror
-                                    </div>
-
-                                    <div class="mb-3">
-                                        <label class="form-label fw-semibold">Slug</label>
-                                        <input
-                                            type="text"
-                                            name="translations[{{ $locale }}][slug]"
-                                            class="form-control @error($prefix.'.slug') is-invalid @enderror"
-                                            value="{{ old_text('translations.'.$locale.'.slug') }}"
-                                            placeholder="Leave blank to auto-generate from title"
-                                        >
-                                        @error($prefix.'.slug')
-                                            <div class="invalid-feedback">{{ $message }}</div>
-                                        @enderror
-                                    </div>
-
-                                    <div class="mb-3">
-                                        <label class="form-label fw-semibold">Meta excerpt</label>
-                                        <textarea
-                                            name="translations[{{ $locale }}][excerpt]"
-                                            rows="3"
-                                            class="form-control @error($prefix.'.excerpt') is-invalid @enderror"
-                                            maxlength="300"
-                                        >{{ old_text('translations.'.$locale.'.excerpt') }}</textarea>
-                                        @error($prefix.'.excerpt')
-                                            <div class="invalid-feedback">{{ $message }}</div>
-                                        @enderror
-                                    </div>
-
-                                    <div class="mb-3">
-                                        <label class="form-label fw-semibold">SEO title</label>
-                                        <input
-                                            type="text"
-                                            name="translations[{{ $locale }}][meta_title]"
-                                            class="form-control @error($prefix.'.meta_title') is-invalid @enderror"
-                                            value="{{ old_text('translations.'.$locale.'.meta_title') }}"
-                                            maxlength="70"
-                                            placeholder="Optional. Defaults to the post title."
-                                        >
-                                        @error($prefix.'.meta_title')
-                                            <div class="invalid-feedback">{{ $message }}</div>
-                                        @enderror
-                                    </div>
-
-                                    <div class="mb-3">
-                                        <label class="form-label fw-semibold">SEO description</label>
-                                        <textarea
-                                            name="translations[{{ $locale }}][meta_description]"
-                                            rows="2"
-                                            class="form-control @error($prefix.'.meta_description') is-invalid @enderror"
-                                            maxlength="180"
-                                            placeholder="Optional. Defaults to the meta excerpt."
-                                        >{{ old_text('translations.'.$locale.'.meta_description') }}</textarea>
-                                        @error($prefix.'.meta_description')
-                                            <div class="invalid-feedback">{{ $message }}</div>
-                                        @enderror
-                                    </div>
-
-                                    <div class="form-check mb-3">
-                                        <input type="hidden" name="translations[{{ $locale }}][is_published]" value="0">
-                                        <input
-                                            type="checkbox"
-                                            name="translations[{{ $locale }}][is_published]"
-                                            id="published-{{ $locale }}"
-                                            class="form-check-input"
-                                            value="1"
-                                            {{ old('translations.'.$locale.'.is_published', '1') ? 'checked' : '' }}
-                                        >
-                                        <label class="form-check-label" for="published-{{ $locale }}">Publish this locale</label>
-                                    </div>
-
-                                    <div class="mb-3">
-                                        <label class="form-label fw-semibold">Content {!! $locale === 'en' ? '<span class="text-danger">*</span>' : '' !!}</label>
-                                        <div id="quillEditor-{{ $locale }}" class="border rounded bg-white" style="height: 320px;"></div>
-                                        <input type="hidden" name="translations[{{ $locale }}][content]" id="contentInput-{{ $locale }}">
-                                        <script type="application/json" id="existingContent-{{ $locale }}">{!! \App\Services\BlogHtmlSanitizer::encodeForEditor(old('translations.'.$locale.'.content', '')) !!}</script>
-                                        @error($prefix.'.content')
-                                            <div class="text-danger small mt-1">{{ $message }}</div>
-                                        @enderror
-                                    </div>
-                                </div>
-                            @endforeach
-                        </div>
+                        @include('admin.blogs.partials.locale-tabs', [
+                            'formLocales' => $formLocales ?? ['en'],
+                            'allLocales' => $locales ?? \App\Support\AdminBlog::publicLocales(),
+                            'blog' => null,
+                            'translationMap' => collect(),
+                        ])
 
                         @include('admin.blogs.partials.article-images-manager')
                     </div>
@@ -198,35 +79,27 @@
                         <div class="mb-3">
                             <label class="form-label fw-semibold">Primary locale</label>
                             <select name="primary_locale" class="form-select @error('primary_locale') is-invalid @enderror">
-                                <option value="">Auto (current URL locale)</option>
-                                @foreach(($locales ?? (class_exists(\App\Support\PublicI18n::class) ? \App\Support\PublicI18n::supported() : ['en'])) as $code)
-                                    <option value="{{ $code }}" {{ old_text('primary_locale') === $code ? 'selected' : '' }}>{{ strtoupper($code) }}</option>
+                                <option value="" {{ old_text('primary_locale') === '' ? 'selected' : '' }}>English (UK) — default canonical</option>
+                                @foreach(($locales ?? \App\Support\AdminBlog::publicLocales()) as $code)
+                                    <option value="{{ $code }}" {{ old_text('primary_locale') === $code ? 'selected' : '' }}>{{ \App\Support\AdminBlog::shortLabel($code) }}</option>
                                 @endforeach
                             </select>
-                            <small class="text-muted">Sets preferred canonical (e.g. DE posts → /de/blog/...)</small>
+                            <small class="text-muted">Public <code>/blog/{slug}</code> uses this locale’s slug. English title and body are still required.</small>
                             @error('primary_locale')
-                                <div class="invalid-feedback">{{ $message }}</div>
-                            @enderror
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold">Status <span class="text-danger">*</span></label>
-                            <select name="status" class="form-select @error('status') is-invalid @enderror" required>
-                                <option value="draft" {{ old('status') == 'draft' ? 'selected' : '' }}>Draft</option>
-                                <option value="published" {{ old('status') == 'published' ? 'selected' : '' }}>Published</option>
-                            </select>
-                            @error('status')
                                 <div class="invalid-feedback">{{ $message }}</div>
                             @enderror
                         </div>
                     </div>
                 </div>
 
-                <div class="mt-4 pt-3 border-top">
-                    <button type="submit" class="btn btn-primary px-4" id="submitBtn">
-                        <i class="fa fa-save me-2"></i> Create Blog
+                <div class="mt-4 pt-3 border-top d-flex flex-wrap gap-2">
+                    <button type="submit" class="btn btn-outline-primary px-4" id="blogDraftBtn">
+                        <i class="fa fa-save me-2"></i> Save draft
                     </button>
-                    <a href="{{ route('admin.blogs.index') }}" class="btn btn-secondary px-4">
+                    <button type="button" class="btn btn-primary px-4" id="blogPublishBtn">
+                        <i class="fa fa-globe me-2"></i> Publish
+                    </button>
+                    <a href="{{ $listUrl }}" class="btn btn-secondary px-4" id="blogCancelLink">
                         <i class="fa fa-times me-2"></i> Cancel
                     </a>
                 </div>
@@ -273,5 +146,50 @@ document.getElementById('featuredImageClearBtn').addEventListener('click', funct
     document.getElementById('featuredImageInput').value = '';
     showFeaturedPlaceholder();
 });
+
+(function () {
+    var form = document.getElementById('blogForm');
+    var statusInput = document.getElementById('blogStatusInput');
+    var intentInput = document.getElementById('blogIntentInput');
+    var publishBtn = document.getElementById('blogPublishBtn');
+    var draftBtn = document.getElementById('blogDraftBtn');
+    if (!form || !statusInput || !intentInput || !publishBtn) {
+        return;
+    }
+
+    draftBtn?.addEventListener('click', function () {
+        statusInput.value = 'draft';
+        intentInput.value = 'draft';
+    });
+
+    publishBtn.addEventListener('click', function (e) {
+        e.preventDefault();
+        var go = function () {
+            statusInput.value = 'published';
+            intentInput.value = 'publish';
+            if (typeof form.requestSubmit === 'function') {
+                form.requestSubmit();
+            } else {
+                form.submit();
+            }
+        };
+        if (!window.Swal) {
+            go();
+            return;
+        }
+        Swal.fire({
+            title: 'Publish this post?',
+            text: 'This goes live on the public blog.',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Publish',
+            cancelButtonText: 'Cancel'
+        }).then(function (result) {
+            if (result.isConfirmed) {
+                go();
+            }
+        });
+    });
+})();
 </script>
 @endsection

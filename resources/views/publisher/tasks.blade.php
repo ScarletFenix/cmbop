@@ -15,16 +15,16 @@
         </div>
     </div>
 
-    <div id="needsActionBanner" class="ui-callout ui-callout--attention ui-callout--banner d-none mb-4" role="status">
-        <div class="ui-callout__main">
-            <span class="ui-callout__icon" aria-hidden="true"><i class="fa-solid fa-circle-exclamation"></i></span>
-            <div class="ui-callout__body">
+    <div id="needsActionBanner" class="publisher-needs-alert d-none mb-4" role="alert" tabindex="-1" aria-labelledby="needsActionLabel">
+        <div class="d-md-flex justify-content-md-between">
+            <p id="needsActionLabel" class="publisher-needs-alert__copy mb-0">
+                <svg class="publisher-needs-alert__icon" xmlns="http://www.w3.org/2000/svg" viewBox="118 4 72 244" fill="currentColor" aria-hidden="true" focusable="false"><g transform="translate(1.4065934065934016 1.4065934065934016) scale(2.81 2.81)"><path d="M 49.083 71.489 l 5.776 -21.96 l 4.186 -15.247 c 3.497 -16.18 -32.704 -2.439 -38.002 1.695 l 0.425 4.853 c 4.824 -3.395 23.091 -7.744 19.449 4.275 l -1.634 6.135 l 0 0 l -8.329 31.071 c -3.497 16.18 32.704 2.439 38.002 -1.695 l -0.425 -4.853 C 63.708 79.159 45.441 83.508 49.083 71.489 z"/><circle cx="53.871" cy="11.201" r="11.201"/></g></svg>
                 <strong>Needs your action</strong>
                 <span class="ms-1" id="needsActionText"></span>
-            </div>
-        </div>
-        <div class="ui-callout__actions">
-            <button type="button" class="btn btn-sm btn-primary" id="showNeedsActionBtn">Show tasks that need me</button>
+            </p>
+            <p class="mb-0 mt-3 mt-md-0 ms-md-4">
+                <button type="button" class="publisher-needs-alert__link" id="showNeedsActionBtn">Show tasks that need me</button>
+            </p>
         </div>
     </div>
 
@@ -66,7 +66,7 @@
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body py-3">
                     <h6 class="text-muted mb-1 small">Earnings</h6>
-                    <h3 class="mb-0" id="statTotalEarnings" style="color: #10b981;">€0</h3>
+                    <h3 class="mb-0" id="statTotalEarnings" style="color: #10b981;">{{ format_money(0) }}</h3>
                 </div>
             </div>
         </div>
@@ -357,10 +357,14 @@
 <link href="{{ asset('assets/css/publisher-tasks.css') }}?v={{ @filemtime(public_path('assets/css/publisher-tasks.css')) ?: '1' }}" rel="stylesheet">
 
 <script src="{{ asset('assets/js/jquery-3.6.0.min.js') }}?v={{ @filemtime(public_path('assets/js/jquery-3.6.0.min.js')) ?: '1' }}"></script>
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="{{ asset('assets/vendor/sweetalert2/sweetalert2.min.js') }}?v={{ @filemtime(public_path('assets/vendor/sweetalert2/sweetalert2.min.js')) ?: '1' }}"></script>
 <script src="{{ asset('assets/js/article-preview-tools.js') }}?v={{ @filemtime(public_path('assets/js/article-preview-tools.js')) ?: '1' }}"></script>
 
 <script>
+    function taskMoney(n) {
+        return (window.slbFormatMoney || function (x) { return '€' + Number(x || 0).toFixed(2); })(n);
+    }
+
 let currentPage = 1;
 let currentChatOrderId = null;
 let refreshInterval = null;
@@ -635,7 +639,7 @@ $(document).ready(function() {
         if (homepageDays) {
             parts.push('<p class="mb-1"><strong>Homepage placement:</strong></p><p class="mb-2">'
                 + homepageDays + ' day' + (homepageDays === 1 ? '' : 's')
-                + (homepageFee > 0 ? ' (+€' + homepageFee.toFixed(2) + ')' : ' (Free)')
+                + (homepageFee > 0 ? ' (+' + taskMoney(homepageFee) + ')' : ' (Free)')
                 + '</p>');
         }
         var channels = Array.isArray(item.social_channels) ? item.social_channels : [];
@@ -839,7 +843,7 @@ $(document).ready(function() {
                     $('#statPendingOrders').text(response.data.pending_orders || 0);
                     $('#statProcessingOrders').text(response.data.accepted_orders || 0);
                     $('#statReviewOrders').text(response.data.review_orders || 0);
-                    $('#statTotalEarnings').html('€' + (response.data.total_earnings || 0).toFixed(2));
+                    $('#statTotalEarnings').html((window.slbFormatMoney || function (n) { return '€' + Number(n).toFixed(2); })(response.data.total_earnings || 0));
                 }
             },
             error: function() {
@@ -1222,7 +1226,7 @@ $(document).ready(function() {
             var homepageLine = homepagePrice > 0
                 ? '<div class="text-muted small">Homepage'
                     + (homepageDays ? ' · ' + homepageDays + 'd' : '')
-                    + ' +€' + homepagePrice.toFixed(2) + '</div>'
+                    + ' +' + taskMoney(homepagePrice) + '</div>'
                 : '';
             
             var hasLiveUrl = !!(item.live_url && item.live_url !== '');
@@ -1246,10 +1250,10 @@ $(document).ready(function() {
             var unreadBadge = item.unread_chat > 0
                 ? '<span class="chat-unread-dot pulse-badge is-pulsing">' + item.unread_chat + '</span>'
                 : '';
-            var chatBtn = '<button type="button" class="btn btn-primary btn-action-sm open-task-chat" data-order-id="' + item.order_id + '" data-order-number="' + escapeHtml(orderNumber) + '" aria-label="Open chat"><i class="fa fa-comments"></i> Chat' + unreadBadge + '</button>';
-            var viewBtn = '<button type="button" class="btn btn-outline-secondary btn-action-sm view-details" data-id="' + item.id + '" aria-label="View order details"><i class="fa fa-eye"></i> View</button>';
+            var chatBtn = '<button type="button" class="btn btn-primary btn-action-sm open-task-chat" data-order-id="' + item.order_id + '" data-order-number="' + escapeHtml(orderNumber) + '" title="Chat" aria-label="Open chat"><span class="task-action-icon"><i class="fa fa-comments" aria-hidden="true"></i>' + unreadBadge + '</span></button>';
+            var viewBtn = '<button type="button" class="btn btn-primary btn-action-sm view-details" data-id="' + item.id + '" title="View" aria-label="View order details"><i class="fa fa-eye" aria-hidden="true"></i></button>';
             var liveBtn = hasLiveUrl
-                ? '<a href="' + escapeHtml(item.live_url) + '" target="_blank" class="btn btn-live-url btn-action-sm"><i class="fa fa-external-link"></i> Live</a>'
+                ? '<a href="' + escapeHtml(item.live_url) + '" target="_blank" class="btn btn-live-url btn-action-sm" title="Live" aria-label="Open live URL"><i class="fa fa-external-link" aria-hidden="true"></i></a>'
                 : '';
             var socialChannels = Array.isArray(item.social_channels) ? item.social_channels : [];
             var socialPostUrls = (item.social_post_urls && typeof item.social_post_urls === 'object') ? item.social_post_urls : {};
@@ -1259,11 +1263,10 @@ $(document).ready(function() {
                 ? '<button type="button" class="btn btn-outline-primary btn-action-sm update-social-posts" data-id="' + item.id
                     + '" data-social-channels="' + escapeHtml(JSON.stringify(socialChannels))
                     + '" data-social-post-urls="' + escapeHtml(JSON.stringify(socialPostUrls))
-                    + '"><i class="fa fa-share-nodes"></i> '
-                    + (hasSocialPosts ? 'Update social' : 'Add social') + '</button>'
+                    + '" title="' + (hasSocialPosts ? 'Update social' : 'Add social') + '" aria-label="' + (hasSocialPosts ? 'Update social' : 'Add social') + '"><i class="fa fa-share-nodes" aria-hidden="true"></i></button>'
                 : '';
             var orderItemsCount = parseInt(item.order_items_count || 1, 10);
-            var cancelBtn = '<button class="btn btn-outline-danger btn-action-sm reject-task" data-id="' + item.id + '" data-order-items="' + orderItemsCount + '" aria-label="Cancel order"><i class="fa fa-times"></i> Cancel</button>';
+            var cancelBtn = '<button class="btn btn-outline-danger btn-action-sm reject-task" data-id="' + item.id + '" data-order-items="' + orderItemsCount + '" title="Cancel" aria-label="Cancel order"><i class="fa fa-times" aria-hidden="true"></i></button>';
 
             var actions = '';
             var awaitingSchedule = !!(item.order && item.order.is_awaiting_scheduled_release);
@@ -1273,15 +1276,15 @@ $(document).ready(function() {
                     '</div>';
             } else if (orderStatus === 'pending') {
                 actions = '<div class="action-buttons">' +
-                    '<button class="btn btn-success btn-action-sm accept-task" data-id="' + item.id + '" aria-label="Accept order"><i class="fa fa-check"></i> Accept</button>' +
-                    '<button class="btn btn-danger btn-action-sm reject-task" data-id="' + item.id + '" data-order-items="' + orderItemsCount + '" aria-label="Reject order"><i class="fa fa-times"></i> Reject</button>' +
+                    '<button class="btn btn-success btn-action-sm accept-task" data-id="' + item.id + '" title="Accept" aria-label="Accept order"><i class="fa fa-check" aria-hidden="true"></i></button>' +
+                    '<button class="btn btn-danger btn-action-sm reject-task" data-id="' + item.id + '" data-order-items="' + orderItemsCount + '" title="Reject" aria-label="Reject order"><i class="fa fa-times" aria-hidden="true"></i></button>' +
                     viewBtn + chatBtn +
                     '</div>';
             } else if (contentRevisionRequested && orderStatus === 'processing') {
                 if (!window._contentRevisionReasons) window._contentRevisionReasons = {};
                 window._contentRevisionReasons[String(item.id)] = item.content_revision_reason || '';
                 actions = '<div class="action-buttons">' +
-                    '<button class="btn btn-outline-warning btn-action-sm request-content-revision is-update" data-update="1" data-id="' + item.id + '"><i class="fa fa-pencil"></i> Update reason</button>' +
+                    '<button class="btn btn-outline-warning btn-action-sm request-content-revision is-update" data-update="1" data-id="' + item.id + '" title="Update reason" aria-label="Update reason"><i class="fa fa-pencil" aria-hidden="true"></i></button>' +
                     cancelBtn +
                     viewBtn + chatBtn +
                     '</div>';
@@ -1290,7 +1293,7 @@ $(document).ready(function() {
                 if (!window._contentRevisionReasons) window._contentRevisionReasons = {};
                 window._contentRevisionReasons[String(item.id)] = item.content_revision_reason || '';
                 actions = '<div class="action-buttons">' +
-                    '<button class="btn btn-outline-warning btn-action-sm request-content-revision is-update" data-update="1" data-id="' + item.id + '"><i class="fa fa-pencil"></i> Update reason</button>' +
+                    '<button class="btn btn-outline-warning btn-action-sm request-content-revision is-update" data-update="1" data-id="' + item.id + '" title="Update reason" aria-label="Update reason"><i class="fa fa-pencil" aria-hidden="true"></i></button>' +
                     viewBtn + chatBtn +
                     '</div>';
             } else if (modificationRequested && (orderStatus === 'processing' || orderStatus === 'review')) {
@@ -1298,8 +1301,8 @@ $(document).ready(function() {
                 // panel, so revisions sat in processing forever and the advertiser
                 // never got an Approve button. The same delegated handler drives
                 // this, it just needs to be findable from the task list.
-                var fixedBtn = '<button class="btn btn-success btn-action-sm chat-revision-fixed-btn" data-item-id="' + item.id + '">' +
-                    '<i class="fa fa-check"></i> I have fixed it</button>';
+                var fixedBtn = '<button class="btn btn-success btn-action-sm chat-revision-fixed-btn" data-item-id="' + item.id + '" title="I have fixed it" aria-label="I have fixed it">' +
+                    '<i class="fa fa-check" aria-hidden="true"></i></button>';
                 actions = '<div class="action-buttons">' +
                     fixedBtn + socialBtn + viewBtn + chatBtn + liveBtn +
                     '</div>';
@@ -1315,8 +1318,8 @@ $(document).ready(function() {
                     '</div>';
             } else if (orderStatus === 'processing') {
                 actions = '<div class="action-buttons">' +
-                    '<button class="btn btn-primary btn-action-sm submit-live-url" data-id="' + item.id + '" data-social-channels="' + escapeHtml(JSON.stringify(socialChannels)) + '"><i class="fa fa-link"></i> Submit Live URL</button>' +
-                    '<button class="btn btn-outline-warning btn-action-sm request-content-revision" data-id="' + item.id + '"><i class="fa fa-file-text"></i> Request revised article</button>' +
+                    '<button class="btn btn-primary btn-action-sm submit-live-url" data-id="' + item.id + '" data-social-channels="' + escapeHtml(JSON.stringify(socialChannels)) + '" title="Submit Live URL" aria-label="Submit Live URL"><i class="fa fa-link" aria-hidden="true"></i></button>' +
+                    '<button class="btn btn-outline-warning btn-action-sm request-content-revision" data-id="' + item.id + '" title="Request revised article" aria-label="Request revised article"><i class="fa fa-file-text" aria-hidden="true"></i></button>' +
                     cancelBtn +
                     viewBtn + chatBtn +
                     '</div>';
@@ -1334,9 +1337,9 @@ $(document).ready(function() {
                         ? '<a class="tasks-site-url" href="' + escapeHtml(siteUrl) + '" target="_blank" rel="noopener noreferrer" title="' + escapeHtml(siteUrl) + '">' + escapeHtml(siteHost) + '</a>'
                         : '') +
                 '</td>' +
-                '<td data-label="Base" class="text-primary text-nowrap publisher-task-col-money">€' + basePrice.toFixed(2) + '</td>' +
-                '<td data-label="Sensitive">' + (additionalPrice > 0 ? '<span class="sensitive-badge"><i class="fa fa-plus-circle"></i> ' + escapeHtml(sensitiveType || 'Extra') + ' (+€' + additionalPrice.toFixed(2) + ')</span>' : '<span class="text-muted tasks-sensitive-empty">None</span>') + '</td>' +
-                '<td data-label="You earn" class="fw-semibold total-price text-nowrap publisher-task-col-money" style="color: #10b981;">€' + totalPrice.toFixed(2) + homepageLine + '</td>' +
+                '<td data-label="Base" class="text-primary text-nowrap publisher-task-col-money">' + taskMoney(basePrice) + '</td>' +
+                '<td data-label="Sensitive">' + (additionalPrice > 0 ? '<span class="sensitive-badge"><i class="fa fa-plus-circle"></i> ' + escapeHtml(sensitiveType || 'Extra') + ' (+' + taskMoney(additionalPrice) + ')</span>' : '<span class="text-muted tasks-sensitive-empty">None</span>') + '</td>' +
+                '<td data-label="You earn" class="fw-semibold total-price text-nowrap publisher-task-col-money" style="color: #10b981;">' + taskMoney(totalPrice) + homepageLine + '</td>' +
                 '<td data-label="Status"><span class="status-badge ' + statusMeta.statusClass + '">' + statusMeta.statusText + '</span>' +
                     (nextStep ? '<div class="next-step-hint" title="' + escapeHtml(nextStep) + '">' + escapeHtml(nextStep) + '</div>' : '') +
                 '</td>' +
@@ -1461,14 +1464,14 @@ $(document).ready(function() {
                     '<h6 class="mb-3">Order Status</h6>' +
                     '<p class="mb-1"><strong>Status:</strong> <span class="status-badge ' + statusClass + '">' + statusText + '</span></p>' +
                     '<p class="mb-1 text-muted small">' + statusMeta.nextStep + '</p>' +
-                    '<p class="mb-1"><strong>Base Price:</strong> €' + basePrice.toFixed(2) + '</p>' +
-                    (additionalPrice > 0 ? '<p class="mb-1"><strong>Sensitive Price:</strong> <span class="text-warning">+ €' + additionalPrice.toFixed(2) + ' (' + escapeHtml(sensitiveType) + ')</span></p>' : '') +
+                    '<p class="mb-1"><strong>Base Price:</strong> ' + taskMoney(basePrice) + '</p>' +
+                    (additionalPrice > 0 ? '<p class="mb-1"><strong>Sensitive Price:</strong> <span class="text-warning">+ ' + taskMoney(additionalPrice) + ' (' + escapeHtml(sensitiveType) + ')</span></p>' : '') +
                     (homepagePrice > 0 || (item.homepage_days != null && parseInt(item.homepage_days, 10) > 0)
                         ? '<p class="mb-1"><strong>Homepage:</strong> ' + (parseInt(item.homepage_days, 10) || '') + ' day(s)'
-                            + (homepagePrice > 0 ? ' <span class="text-muted">(+€' + homepagePrice.toFixed(2) + ')</span>' : ' <span class="text-success">(Free)</span>')
+                            + (homepagePrice > 0 ? ' <span class="text-muted">(+' + taskMoney(homepagePrice) + ')</span>' : ' <span class="text-success">(Free)</span>')
                             + '</p>'
                         : '') +
-                    '<p class="mb-1"><strong>Total Amount:</strong> <span class="fw-bold text-primary fs-5">€' + totalPrice.toFixed(2) + '</span></p>' +
+                    '<p class="mb-1"><strong>Total Amount:</strong> <span class="fw-bold text-primary fs-5">' + taskMoney(totalPrice) + '</span></p>' +
                 '</div>' +
             '</div>' +
         '</div>' +
@@ -1482,15 +1485,15 @@ $(document).ready(function() {
                     '<p class="mb-2">' + escapeHtml(item.site_name) + '</p>' +
                     '<p class="mb-1"><strong>Site URL:</strong></p>' +
                     '<p class="mb-2"><a href="' + escapeHtml(item.site_url) + '" target="_blank" class="text-primary">' + escapeHtml(item.site_url) + ' <i class="fa fa-external-link fa-xs"></i></a></p>' +
-                    (additionalPrice > 0 ? '<p class="mb-1"><strong>Sensitive Type:</strong></p><p class="mb-2 text-warning">' + escapeHtml(sensitiveType) + ' (+€' + additionalPrice.toFixed(2) + ')</p>' : '') +
+                    (additionalPrice > 0 ? '<p class="mb-1"><strong>Sensitive Type:</strong></p><p class="mb-2 text-warning">' + escapeHtml(sensitiveType) + ' (+' + taskMoney(additionalPrice) + ')</p>' : '') +
                     formatPlacementExtrasHtml(item) +
                 '</div>' +
                 '<div class="col-md-6">' +
                     '<p class="mb-1"><strong>Price Breakdown:</strong></p>' +
-                    '<p class="mb-1"><small>Base Price: €' + basePrice.toFixed(2) + '</small></p>' +
-                    (additionalPrice > 0 ? '<p class="mb-1"><small class="text-warning">+ ' + escapeHtml(sensitiveType) + ': €' + additionalPrice.toFixed(2) + '</small></p>' : '') +
-                    (homepagePrice > 0 ? '<p class="mb-1"><small>+ Homepage: €' + homepagePrice.toFixed(2) + '</small></p>' : '') +
-                    '<p class="mb-2"><strong class="text-primary">Total: €' + totalPrice.toFixed(2) + '</strong></p>' +
+                    '<p class="mb-1"><small>Base Price: ' + taskMoney(basePrice) + '</small></p>' +
+                    (additionalPrice > 0 ? '<p class="mb-1"><small class="text-warning">+ ' + escapeHtml(sensitiveType) + ': ' + taskMoney(additionalPrice) + '</small></p>' : '') +
+                    (homepagePrice > 0 ? '<p class="mb-1"><small>+ Homepage: ' + taskMoney(homepagePrice) + '</small></p>' : '') +
+                    '<p class="mb-2"><strong class="text-primary">Total: ' + taskMoney(totalPrice) + '</strong></p>' +
                     '<p class="mb-1"><strong>Uploaded Document:</strong></p>' +
                     '<p class="mb-2">' + ((item.content_download_url || item.content_link) ? '<a href="' + escapeHtml(item.content_download_url || item.content_link) + '" class="text-primary" download><i class="fa fa-download me-1"></i>' + escapeHtml(item.content_original_name || 'Download article') + '</a><br><small class="text-muted">Download only — do not enable macros. Word files can run code on your computer.</small>' : '—') + '</p>' +
                     '<p class="mb-1"><strong>Anchor Text:</strong></p><p class="mb-2">' + escapeHtml(item.anchor_text || '—') + '</p>' +

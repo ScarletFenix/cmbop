@@ -252,24 +252,45 @@
                         <img src="{{ $invoiceLogo }}" alt="{{ $company['name'] ?? 'SEOLinkBuildings' }}" class="company-logo">
                         <div class="company-details">
                             @if($isDepositInvoice)
-                                <p><strong>Seller / Service Provider:</strong> {{ $depositPayment['seller_name'] ?? 'SEOLinkBuildings Partner' }}</p>
-                                <p><strong>Beneficiary:</strong> {{ $depositPayment['beneficiary'] ?? 'Topurlz Ltd' }}</p>
-                                @if(!empty($depositPayment['bic']))
-                                    <p><strong>BIC (SWIFT):</strong> {{ $depositPayment['bic'] }}</p>
+                                <p><strong>Seller / Service Provider:</strong> {{ $company['legal_name'] ?? 'SEOLinkBuildings Partners with (Teqno LTD)' }}</p>
+                                @foreach(($company['address_lines'] ?? []) as $line)
+                                    <p><strong>{{ $loop->first ? 'Address:' : '' }}</strong> {{ $line }}</p>
+                                @endforeach
+                                @if(!empty($company['registration_no']))
+                                    <p><strong>Registration No:</strong> {{ $company['registration_no'] }}</p>
+                                @endif
+                                @if(!empty($company['support_email']))
+                                    <p><strong>Email:</strong> {{ $company['support_email'] }}</p>
+                                @endif
+                                @if(!empty($company['website_url']))
+                                    <p><strong>Website:</strong> {{ $company['website_url'] }}</p>
+                                @endif
+                                <p><strong>VAT:</strong> {{ $company['vat_note'] ?? 'Not VAT registered – no VAT charged' }}</p>
+                                <p><strong>Beneficiary:</strong> {{ $depositPayment['beneficiary'] ?? 'Teqno Ltd' }}</p>
+                                @if(!empty($depositPayment['uk_account_number']))
+                                    <p><strong>GBP account number:</strong> {{ $depositPayment['uk_account_number'] }}
+                                        @if(!empty($depositPayment['uk_transfer_note']))
+                                            <span class="text-muted">({{ $depositPayment['uk_transfer_note'] }})</span>
+                                        @endif
+                                    </p>
                                 @endif
                                 @if(!empty($depositPayment['iban']))
-                                    <p><strong>IBAN:</strong> {{ $depositPayment['iban'] }}</p>
+                                    <p><strong>IBAN:</strong> {{ $depositPayment['iban'] }}
+                                        @if(!empty($depositPayment['intl_transfer_note']))
+                                            <span class="text-muted">({{ $depositPayment['intl_transfer_note'] }})</span>
+                                        @endif
+                                    </p>
+                                @endif
+                                @if(!empty($depositPayment['bic']))
+                                    <p><strong>Swift/BIC:</strong> {{ $depositPayment['bic'] }}
+                                        @if(!empty($depositPayment['intl_transfer_note']))
+                                            <span class="text-muted">({{ $depositPayment['intl_transfer_note'] }})</span>
+                                        @endif
+                                    </p>
                                 @endif
                                 @if(!empty($depositPayment['phone']))
                                     <p><strong>Phone no:</strong> {{ $depositPayment['phone'] }}</p>
                                 @endif
-                                @foreach(($depositPayment['address_lines'] ?? []) as $line)
-                                    <p><strong>{{ $loop->first ? 'Address:' : '' }}</strong> {{ $line }}</p>
-                                @endforeach
-                                @if(!empty($depositPayment['registration_no']))
-                                    <p><strong>Registration No:</strong> {{ $depositPayment['registration_no'] }}</p>
-                                @endif
-                                <p><strong>VAT:</strong> {{ $depositPayment['vat_note'] ?? 'Not VAT registered – no VAT charged' }}</p>
                             @else
                                 <p><strong>Seller / Service Provider:</strong> {{ $company['legal_name'] ?? $company['name'] ?? 'SEOLinkBuildings' }}</p>
                                 @foreach(($company['address_lines'] ?? []) as $line)
@@ -338,7 +359,7 @@
                                 <br><small style="color: #0f766e;">
                                     Homepage {{ (int) $item['homepage_days'] }} day{{ (int) $item['homepage_days'] === 1 ? '' : 's' }}
                                     @if(($item['homepage_price'] ?? 0) > 0)
-                                        (+€{{ number_format($item['homepage_price'], 2) }})
+                                        (+{{ format_money($item['homepage_price']) }})
                                     @else
                                         (Free)
                                     @endif
@@ -350,7 +371,7 @@
                                 </small>
                             @endif
                         </td>
-                        <td class="amount">€{{ number_format($item['price'], 2) }}</td>
+                        <td class="amount">{{ format_money($item['price']) }}</td>
                     </tr>
                     @endforeach
                 </tbody>
@@ -359,10 +380,10 @@
             @if(isset($totalBaseAmount) && $totalBaseAmount > 0)
             <div style="font-size: 12px; color: #6b7280; margin-top: -10px; margin-bottom: 10px;">
                 <p>
-                    Base Amount: €{{ number_format($totalBaseAmount, 2) }}
-                    | Sensitive Add-ons: €{{ number_format($totalSensitiveAmount, 2) }}
+                    Base Amount: {{ format_money($totalBaseAmount) }}
+                    | Sensitive Add-ons: {{ format_money($totalSensitiveAmount) }}
                     @if(!empty($totalHomepageAmount) && $totalHomepageAmount > 0)
-                        | Homepage: €{{ number_format($totalHomepageAmount, 2) }}
+                        | Homepage: {{ format_money($totalHomepageAmount) }}
                     @endif
                 </p>
             </div>
@@ -381,7 +402,7 @@
                     <tr>
                         <td>Wallet Deposit - Reference: REF{{ $referenceCode }}<br>
                         </td>
-                        <td class="amount">€{{ number_format($amount, 2) }}</td>
+                        <td class="amount">{{ format_money($amount) }}</td>
                     </tr>
                 </tbody>
             </table>
@@ -390,7 +411,7 @@
             <div class="totals">
                 <div class="total-row">
                     <div class="total-label">Subtotal:</div>
-                    <div class="total-value">€{{ number_format($amount, 2) }}</div>
+                    <div class="total-value">{{ format_money($amount) }}</div>
                 </div>
                 <div class="total-row">
                     <div class="total-label">VAT (0%):</div>
@@ -398,7 +419,7 @@
                 </div>
                 <div class="total-row grand-total">
                     <div class="total-label">Total:</div>
-                    <div class="total-value" style="font-size: 18px; color: #2563eb;">€{{ number_format($amount, 2) }}</div>
+                    <div class="total-value" style="font-size: 18px; color: #2563eb;">{{ format_money($amount) }}</div>
                 </div>
             </div>
             
@@ -437,7 +458,7 @@
         </div>
     </div>
     @if(($invoiceType ?? '') === 'deposit' && !empty($canMarkPaid) && !empty($markPaidUrl))
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="{{ asset('assets/vendor/sweetalert2/sweetalert2.min.js') }}?v={{ @filemtime(public_path('assets/vendor/sweetalert2/sweetalert2.min.js')) ?: '1' }}"></script>
     <script>
     document.getElementById('invoiceMarkPaidBtn')?.addEventListener('click', function () {
         Swal.fire({

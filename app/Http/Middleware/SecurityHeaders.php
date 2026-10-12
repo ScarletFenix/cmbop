@@ -24,14 +24,18 @@ class SecurityHeaders
             "img-src 'self' data: blob: https:",
             "font-src 'self' data: https://fonts.gstatic.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://*.tawk.to",
             "connect-src 'self' https://js.stripe.com https://api.stripe.com https://m.stripe.com https://m.stripe.network https://q.stripe.com https://embed.tawk.to https://*.tawk.to wss://*.tawk.to",
-            "frame-src 'self' https://js.stripe.com https://hooks.stripe.com https://tawk.to https://*.tawk.to https://embed.tawk.to",
+            "frame-src 'self' about: https://js.stripe.com https://hooks.stripe.com https://tawk.to https://*.tawk.to https://embed.tawk.to",
             "frame-ancestors 'self'",
             "base-uri 'self'",
             "form-action 'self' https://checkout.stripe.com",
             "object-src 'none'",
         ]);
 
-        $response->headers->set('Content-Security-Policy', trim(preg_replace('/\s+/', ' ', $csp)));
+        // Chrome's XML viewer is blocked by a page CSP, so it dumps sitemap
+        // text into one line and hides the tags. XML has no scripts to lock down.
+        if (! $this->isNonHtmlDocument($response)) {
+            $response->headers->set('Content-Security-Policy', trim(preg_replace('/\s+/', ' ', $csp)));
+        }
         $response->headers->set('X-Content-Type-Options', 'nosniff');
         $response->headers->set('X-Frame-Options', 'SAMEORIGIN');
         $response->headers->set('Referrer-Policy', 'strict-origin-when-cross-origin');
@@ -42,6 +46,11 @@ class SecurityHeaders
             $response->headers->set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
         }
 
+        $first = $request->segment(1);
+        if (in_array($first, ['login', 'register', 'forgot-password', 'reset-password', 'feedback'], true)) {
+            $response->headers->set('X-Robots-Tag', 'noindex, nofollow');
+        }
+
         // Long-cache fingerprinted/static CSS & JS served from /css and /js
         $path = $request->path();
         if (preg_match('#^(css|js|assets)/#', $path) && $response->getStatusCode() === 200) {
@@ -49,5 +58,14 @@ class SecurityHeaders
         }
 
         return $response;
+    }
+
+    private function isNonHtmlDocument(Response $response): bool
+    {
+        $type = strtolower((string) $response->headers->get('Content-Type'));
+
+        return str_contains($type, 'xml')
+            || str_contains($type, 'json')
+            || str_contains($type, 'text/plain');
     }
 }

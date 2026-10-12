@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\Blog;
 use App\Models\BlogTranslation;
 use App\Services\CuratedBlogSync;
+use App\Support\GermanMoneyLanders;
+use App\Support\ThinBlogRedirects;
 use App\Support\UserFacingError;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
@@ -20,14 +22,20 @@ class BlogController extends Controller
         try {
             CuratedBlogSync::ensurePresent();
             $requestedLocale = public_locale();
+            $catalogLocale = Blog::catalogLocale($requestedLocale);
 
-            $blog = Blog::published()
-                ->withPublishedLocale($requestedLocale)
+            $listing = Blog::published();
+            if (method_exists(Blog::class, 'scopeWithoutLegacyRedirects')) {
+                $listing = $listing->withoutLegacyRedirects();
+            }
+
+            $blog = $listing
+                ->withPublishedLocale($catalogLocale)
                 ->orderByDesc('published_at')
                 ->paginate(12);
 
             $blog->getCollection()->transform(
-                fn (Blog $post) => $post->applyPublishedLocale($requestedLocale)
+                fn (Blog $post) => $post->applyPublishedLocale($catalogLocale)
             );
 
             return view('pages.blog', compact('blog'));
@@ -76,6 +84,35 @@ class BlogController extends Controller
         $fallbackLocale = 'en';
 
         $slug = (string) $request->route('slug');
+
+        try {
+            if (class_exists(ThinBlogRedirects::class)) {
+                $legacyTarget = ThinBlogRedirects::redirectUrl($slug, $requestedLocale);
+                if (is_string($legacyTarget) && $legacyTarget !== '') {
+                    $query = $request->getQueryString();
+
+                    return redirect($query ? $legacyTarget.'?'.$query : $legacyTarget, 301);
+                }
+            }
+        } catch (\Throwable) {
+            // Missing schema or catalog class: fall through to the normal show path.
+        }
+
+        try {
+            if ($requestedLocale === 'de'
+                && class_exists(GermanMoneyLanders::class)
+                && method_exists(GermanMoneyLanders::class, 'legacyBlogSlugs')) {
+                $legacyDe = GermanMoneyLanders::legacyBlogSlugs()[$slug] ?? null;
+                if (is_string($legacyDe) && $legacyDe !== '' && $legacyDe !== $slug) {
+                    $target = '/de/blog/'.$legacyDe;
+                    $query = $request->getQueryString();
+
+                    return redirect($query ? $target.'?'.$query : $target, 301);
+                }
+            }
+        } catch (\Throwable) {
+            // Fall through if the German lander class is missing on leftover deploys.
+        }
 
         $translation = BlogTranslation::query()
             ->where('locale', $requestedLocale)
@@ -154,21 +191,33 @@ class BlogController extends Controller
 
         $fallbackUsed = $translation->locale !== $requestedLocale;
         $canonicalUrl = $blog->canonicalUrl($translation->locale, $fallbackLocale);
+
+        // Thin locale copies (English body on /de/blog/…) conflict with hreflang + canonical.
+        if ($fallbackUsed) {
+            $query = $request->getQueryString();
+
+            return redirect($query ? $canonicalUrl.'?'.$query : $canonicalUrl, 301);
+        }
         $availableLocales = $blog->availableLocales();
         if ($availableLocales === []) {
             $availableLocales = [$translation->locale ?: $fallbackLocale];
         }
         $hreflangPath = 'blog/'.$translation->slug;
 
-        $related = Blog::published()
-            ->withPublishedLocale($requestedLocale)
+        $related = Blog::published();
+        if (method_exists(Blog::class, 'scopeWithoutLegacyRedirects')) {
+            $related = $related->withoutLegacyRedirects();
+        }
+        $relatedLocale = Blog::catalogLocale($requestedLocale);
+        $related = $related
+            ->withPublishedLocale($relatedLocale)
             ->where('id', '!=', $blog->id)
             ->orderByDesc('published_at')
             ->limit(3)
             ->get();
 
         $related->transform(
-            fn (Blog $post) => $post->applyPublishedLocale($requestedLocale)
+            fn (Blog $post) => $post->applyPublishedLocale($relatedLocale)
         );
 
         return view('pages.blog-single', compact(

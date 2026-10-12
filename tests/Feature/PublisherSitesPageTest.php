@@ -274,9 +274,10 @@ class PublisherSitesPageTest extends TestCase
         $this->assertTrue((bool) $site->active);
 
         $this->actingAs($this->publisher)
-            ->get(route('publisher.sites.ajax', ['status' => 'archived']))
+            ->get(route('publisher.sites.ajax', ['status' => 'pending']))
             ->assertOk()
-            ->assertSee('Archived');
+            ->assertSee('With admin', false)
+            ->assertDontSee('>Archived<', false);
 
         $this->actingAs($this->publisher)
             ->postJson(route('publisher.sites.unarchive', $site->id))
@@ -288,6 +289,38 @@ class PublisherSitesPageTest extends TestCase
         $this->assertTrue((bool) $site->active);
         $this->assertSame(1, ActivityLog::query()->where('action', 'site.archived')->count());
         $this->assertSame(1, ActivityLog::query()->where('action', 'site.unarchived')->count());
+    }
+
+    public function test_unarchive_refuses_when_another_publisher_verified_the_domain(): void
+    {
+        $archived = $this->makeSite($this->publisher, [
+            'site_name' => 'Bumblebee archived copy',
+            'site_url' => 'https://bumblebee.io',
+            'domain' => 'bumblebee.io',
+            'example_url' => 'https://bumblebee.io/sample-post',
+            'verified' => false,
+            'active' => false,
+            'archived_at' => now(),
+        ]);
+        $owner = $this->makeSite($this->otherPublisher, [
+            'site_name' => 'Bumblebee',
+            'site_url' => 'https://bumblebee.io',
+            'domain' => 'bumblebee.io',
+            'example_url' => 'https://bumblebee.io/sample-post',
+            'verified' => true,
+            'active' => true,
+        ]);
+
+        $this->actingAs($this->publisher)
+            ->postJson(route('publisher.sites.unarchive', $archived->id))
+            ->assertStatus(422)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', Site::RESTORE_BLOCKED_VERIFIED);
+
+        $this->assertNotNull($archived->fresh()->archived_at);
+        $this->assertNull($owner->fresh()->archived_at);
+        $this->assertTrue((bool) $owner->fresh()->verified);
+        $this->assertSame(0, ActivityLog::query()->where('action', 'site.unarchived')->count());
     }
 
     public function test_unarchive_restores_active_unverified_site(): void

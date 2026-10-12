@@ -2,7 +2,7 @@
 # We’d love your feedback, {{ $user->name }}
 
 @if($order)
-Thanks for completing order **#{{ $order->order_number }}**.
+Thanks for completing order #{{ $order->order_number }}.
 @else
 Thanks for working with us.
 @endif

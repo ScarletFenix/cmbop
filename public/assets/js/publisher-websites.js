@@ -72,17 +72,36 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 });
 
-// Quill editor (guarded so a CDN/CSP failure cannot break the sites table loader)
+// Quill is created only after the add-site card is visible. Building it while
+// #formCard is display:none leaves the editor unable to record typing.
 var quill = null;
+var siteDescUsesTextarea = false;
 const SITE_DESC_MIN_CHARS = Number((window.PublisherWebsitesConfig && window.PublisherWebsitesConfig.descMinChars) || 50);
 const SITE_DESC_MAX_WORDS = Number((window.PublisherWebsitesConfig && window.PublisherWebsitesConfig.descMaxWords) || 500);
 const SITE_DESC_PLACEHOLDER = (window.PublisherWebsitesConfig && window.PublisherWebsitesConfig.descPlaceholder)
     || 'Describe your audience, niches, and why advertisers should buy a placement here…';
 
+function markSiteDescUntranslated(el) {
+    if (!el) return;
+    el.setAttribute('translate', 'no');
+    el.classList.add('notranslate');
+}
+
+function currentSiteDescriptionHtml() {
+    if (quill) return quill.root.innerHTML || '';
+    const area = document.getElementById('siteDescTextarea');
+    if (area) return area.value || '';
+    return $('#siteDescription').val() || '';
+}
+
 function siteDescPlainText(htmlOrText) {
     const tmp = document.createElement('div');
     tmp.innerHTML = htmlOrText || '';
-    return String(tmp.textContent || tmp.innerText || '').replace(/\s+/g, ' ').trim();
+    return String(tmp.textContent || '').replace(/\s+/g, ' ').trim();
+}
+
+function siteDescCharCount(plain) {
+    return Array.from(String(plain || '')).length;
 }
 
 function siteDescWordCount(plain) {
@@ -93,7 +112,7 @@ function siteDescWordCount(plain) {
 
 function siteDescValidationMessage(plain) {
     if (!plain) return 'Please enter a site description.';
-    if (plain.length < SITE_DESC_MIN_CHARS) {
+    if (siteDescCharCount(plain) < SITE_DESC_MIN_CHARS) {
         return 'Description must be at least ' + SITE_DESC_MIN_CHARS + ' characters (visible text).';
     }
     if (siteDescWordCount(plain) > SITE_DESC_MAX_WORDS) {
@@ -103,17 +122,17 @@ function siteDescValidationMessage(plain) {
 }
 
 function syncSiteDescriptionCounter() {
-    const html = quill ? quill.root.innerHTML : ($('#siteDescription').val() || '');
+    const html = currentSiteDescriptionHtml();
     const plain = siteDescPlainText(html);
     const words = siteDescWordCount(plain);
     const el = document.getElementById('siteDescCounter');
     const err = document.getElementById('siteDescError');
     if (el) {
-        el.textContent = plain.length + ' / ' + SITE_DESC_MIN_CHARS + ' chars · ' + words + ' / ' + SITE_DESC_MAX_WORDS + ' words';
+        el.textContent = siteDescCharCount(plain) + ' / ' + SITE_DESC_MIN_CHARS + ' chars · ' + words + ' / ' + SITE_DESC_MAX_WORDS + ' words';
         el.classList.remove('is-invalid', 'is-ok');
         const msg = siteDescValidationMessage(plain);
-        if (msg) el.classList.add('is-invalid');
-        else if (plain) el.classList.add('is-ok');
+        if (msg && plain) el.classList.add('is-invalid');
+        else if (!msg && plain) el.classList.add('is-ok');
     }
     if (err && !err.dataset.serverError) {
         const msg = siteDescValidationMessage(plain);
@@ -125,9 +144,100 @@ function syncSiteDescriptionCounter() {
     }
 }
 
-if (typeof Quill !== 'undefined' && document.getElementById('quillEditor')) {
+function onSiteDescEdited(delta, oldDelta, source) {
+    if (source === 'silent') return;
+    const err = document.getElementById('siteDescError');
+    if (err && err.dataset.serverError) {
+        delete err.dataset.serverError;
+        err.classList.add('d-none');
+        err.classList.remove('d-block');
+        err.textContent = '';
+    }
+    syncSiteDescriptionCounter();
+    if ($('#methodField').val() === 'POST') {
+        saveSiteDraft();
+    }
+}
+
+function siteDescHostIsVisible() {
+    const card = document.getElementById('formCard');
+    if (!card || card.classList.contains('d-none')) return false;
+    const pane = document.querySelector('.wizard-pane[data-wizard-pane="1"]');
+    if (pane && !pane.classList.contains('active')) return false;
+    return true;
+}
+
+function installSiteDescTextarea(initial) {
+    let area = document.getElementById('siteDescTextarea');
+    if (area) {
+        siteDescUsesTextarea = true;
+        return area;
+    }
+    area = document.createElement('textarea');
+    area.id = 'siteDescTextarea';
+    area.className = 'form-control notranslate';
+    area.rows = 8;
+    area.placeholder = SITE_DESC_PLACEHOLDER;
+    area.value = siteDescPlainText(initial || '');
+    markSiteDescUntranslated(area);
+    area.setAttribute('dir', 'auto');
+    const label = document.querySelector('label[for="quillEditor"]');
+    if (label) label.setAttribute('for', 'siteDescTextarea');
+    const host = document.getElementById('quillEditor');
+    if (host && host.previousElementSibling && host.previousElementSibling.classList.contains('ql-toolbar')) {
+        host.previousElementSibling.remove();
+    }
+    if (host) host.replaceWith(area);
+    else {
+        const hidden = document.getElementById('siteDescription');
+        if (hidden) hidden.insertAdjacentElement('beforebegin', area);
+    }
+    area.addEventListener('input', onSiteDescEdited);
+    siteDescUsesTextarea = true;
+    syncSiteDescriptionCounter();
+    return area;
+}
+
+function setSiteDescriptionHtml(html) {
+    const value = html == null ? '' : String(html);
+    if (quill) {
+        if (!siteDescPlainText(value)) {
+            quill.setText('', 'silent');
+        } else {
+            quill.setContents(quill.clipboard.convert(value), 'silent');
+        }
+    } else if (siteDescUsesTextarea || document.getElementById('siteDescTextarea')) {
+        const area = document.getElementById('siteDescTextarea');
+        if (area) area.value = siteDescPlainText(value);
+    } else {
+        const host = document.getElementById('quillEditor');
+        if (host) host.innerHTML = value;
+    }
+    const hidden = document.getElementById('siteDescription');
+    const area = document.getElementById('siteDescTextarea');
+    if (hidden) {
+        if (quill) hidden.value = quill.root.innerHTML || '';
+        else if (area) hidden.value = area.value || '';
+        else hidden.value = value;
+    }
+    syncSiteDescriptionCounter();
+}
+
+function ensureQuillEditor() {
+    if (quill || siteDescUsesTextarea) return quill;
+    if (!siteDescHostIsVisible()) return null;
+    const host = document.getElementById('quillEditor');
+    if (!host) return null;
+    markSiteDescUntranslated(host);
+    const hiddenVal = (document.getElementById('siteDescription') || {}).value || '';
+    const seed = siteDescPlainText(hiddenVal) ? hiddenVal : (host.innerHTML || '');
+    if (typeof Quill === 'undefined') {
+        installSiteDescTextarea(seed);
+        return null;
+    }
     try {
-        quill = new Quill('#quillEditor', {
+        if (siteDescPlainText(seed)) host.innerHTML = seed;
+        quill = new Quill(host, {
             theme: 'snow',
             placeholder: SITE_DESC_PLACEHOLDER,
             modules: {
@@ -138,18 +248,23 @@ if (typeof Quill !== 'undefined' && document.getElementById('quillEditor')) {
                 ]
             }
         });
-        const initialDesc = document.getElementById('siteDescription')?.value || '';
-        if (initialDesc) {
-            quill.root.innerHTML = initialDesc;
-        }
+        quill.root.setAttribute('dir', 'auto');
+        markSiteDescUntranslated(quill.root);
+        markSiteDescUntranslated(quill.container);
+        const toolbarModule = quill.getModule('toolbar');
+        if (toolbarModule && toolbarModule.container) markSiteDescUntranslated(toolbarModule.container);
         const serverErr = document.getElementById('siteDescError');
         if (serverErr && serverErr.getAttribute('data-server-error') === '1') {
             serverErr.dataset.serverError = '1';
         }
+        quill.on('text-change', onSiteDescEdited);
         syncSiteDescriptionCounter();
     } catch (e) {
         console.warn('Quill init failed', e);
+        quill = null;
+        installSiteDescTextarea(seed);
     }
+    return quill;
 }
 
 // FR1 — progressive disclosure for sensitive topics
@@ -555,6 +670,8 @@ function setWizardStep(step) {
     $('#wizardBackBtn').toggleClass('d-none', wizardStep === 1);
     $('#wizardNextBtn').toggleClass('d-none', wizardStep === wizardTotalSteps);
     $('#submitBtn').toggleClass('d-none', wizardStep !== wizardTotalSteps);
+
+    if (wizardStep === 1) ensureQuillEditor();
 }
 
 function saveSiteDraft() {
@@ -574,7 +691,7 @@ function saveSiteDraft() {
             country: $('#selectedCountry').val(),
             categories: $('#selectedCategories').val(),
             site_tag: $('input[name="site_tag"]:checked').val() || '',
-            siteDescription: quill ? quill.root.innerHTML : ($('#siteDescription').val() || ''),
+            siteDescription: currentSiteDescriptionHtml(),
             sensitive: {},
             price_sensitive: {},
             homepage: {},
@@ -635,8 +752,7 @@ function loadSiteDraft() {
         $(`input[name="site_tag"][value="${draftTag}"]`).prop('checked', true);
         if (!draftTag) $('#tagNone').prop('checked', true);
         if (draft.siteDescription) {
-            if (quill) quill.root.innerHTML = draft.siteDescription;
-            $('#siteDescription').val(draft.siteDescription);
+            setSiteDescriptionHtml(draft.siteDescription);
             syncSiteDescriptionCounter();
         }
         ['crypto','trading','CBD','forex'].forEach(topic => {
@@ -708,7 +824,7 @@ function validateWizardStep(step) {
     });
 
     if (step === 1) {
-        const html = quill ? quill.root.innerHTML : ($('#siteDescription').val() || '');
+        const html = currentSiteDescriptionHtml();
         const desc = siteDescPlainText(html);
         const msg = siteDescValidationMessage(desc);
         if (msg) {
@@ -721,8 +837,8 @@ function validateWizardStep(step) {
                 err.classList.add('d-block');
                 delete err.dataset.serverError;
             }
-        } else if (quill) {
-            $('#siteDescription').val(quill.root.innerHTML);
+        } else {
+            $('#siteDescription').val(html);
         }
         syncSiteDescriptionCounter();
     }
@@ -760,25 +876,11 @@ $('#wizardBackBtn').on('click', function() {
 });
 
 $('#addSiteForm').on('change input', 'input, select, textarea', function() {
+    if (this.id === 'siteDescTextarea') return;
     if ($('#methodField').val() === 'POST') {
         saveSiteDraft();
     }
 });
-if (quill) {
-    quill.on('text-change', function() {
-        const err = document.getElementById('siteDescError');
-        if (err && err.dataset.serverError) {
-            delete err.dataset.serverError;
-            err.classList.add('d-none');
-            err.classList.remove('d-block');
-            err.textContent = '';
-        }
-        syncSiteDescriptionCounter();
-        if ($('#methodField').val() === 'POST') {
-            saveSiteDraft();
-        }
-    });
-}
 
 // Toggle form for CREATE
 addBtn.on('click', function() {
@@ -795,7 +897,7 @@ addBtn.on('click', function() {
         $('#addSiteForm')[0].reset();
         $('#methodField').val('POST');
         $('#addSiteForm').attr('action', (window.PublisherWebsitesConfig.routes.store));
-        if (quill) quill.root.innerHTML = '';
+        setSiteDescriptionHtml('');
         submitBtn.prop('disabled', false).text('Review & submit');
         
         // Reset selects
@@ -842,6 +944,9 @@ function previewValue(selector) {
     if ($el.is('select')) {
         const label = $el.find('option:selected').text();
         return $.trim(label || $el.val() || '');
+    }
+    if ($el.is(':radio') || $el.is(':checkbox')) {
+        return $.trim($el.filter(':checked').val() || '');
     }
     return $.trim($el.val() || '');
 }
@@ -893,6 +998,13 @@ function previewSocialChannels() {
         })
         .map(function (channel) { return labels[channel] || channel; })
         .join(', ');
+}
+
+function previewLinkTypeLabel() {
+    const value = previewValue('#addSiteForm [name="link_type"]');
+    if (value === 'nofollow') return 'NoFollow';
+    if (value === 'dofollow') return 'DoFollow';
+    return value;
 }
 
 function previewSiteTagLabel() {
@@ -981,7 +1093,7 @@ function buildSitePreview() {
     html += previewRow('Country', previewLabelFor('#selectedCountry', '#countryOptions'));
     html += previewRow('Language', previewLabelFor('#selectedLanguage', '#languageOptions'));
     html += previewRow('Niches', previewNiches());
-    html += previewRow('Link type', previewValue('#addSiteForm [name="link_type"]'));
+    html += previewRow('Link type', previewLinkTypeLabel());
     html += previewRow('Turnaround time', previewValue('#addSiteForm [name="turnaround_time"]'));
     html += previewRow('Publication time', previewValue('#addSiteForm [name="publicationTime"]'));
     html += previewRow('Site tag', previewSiteTagLabel(), { emptyLabel: 'No tags', optional: true });
@@ -1008,9 +1120,7 @@ function buildSitePreview() {
 
 $('#sitePreviewConfirmBtn').on('click', function () {
     sitePreviewConfirmed = true;
-    if (quill) {
-        $('#siteDescription').val(quill.root.innerHTML);
-    }
+    $('#siteDescription').val(currentSiteDescriptionHtml());
     if ($('#methodField').val() !== 'PUT') {
         clearSiteDraft();
     }
@@ -1052,7 +1162,7 @@ window.addEventListener('pageshow', function () {
 });
 
 $('#addSiteForm').submit(function(e){
-    if (quill) $('#siteDescription').val(quill.root.innerHTML);
+    $('#siteDescription').val(currentSiteDescriptionHtml());
 
     for (let s = 1; s <= wizardTotalSteps; s++) {
         if (!validateWizardStep(s)) {
@@ -1228,7 +1338,7 @@ function syncSitesFilterUi(pendingCount, activeCount, status, activeIds, inviteC
                 ? '1 site is with our marketer; others below may need your details or admin review.'
                 : bulkWaiting + ' sites are with our marketer; others below may need your details or admin review.';
         } else if (openBulk) {
-            hint.textContent = 'Your bulk request is open — drafts appear here as the marketer adds them, then you finish details.';
+            hint.textContent = 'Your bulk request is open. Our team publishes the sites they accept, and you’ll be notified when those sites are active.';
         } else {
             hint.textContent = 'Drafts that need your details, plus sites waiting for admin approval.';
         }
@@ -1486,7 +1596,7 @@ closeBtn.on('click', function(){
     formHeaderSpan.text('Add New Website');
     sitePreviewConfirmed = false;
     $('#addSiteForm')[0].reset();
-    if (quill) quill.root.innerHTML = '';
+    setSiteDescriptionHtml('');
     $('.tag-checkbox').prop('checked', false);
     $('.sensitive-checkbox').prop('checked', false);
     $('.sensitive-price').val('');
@@ -1655,10 +1765,8 @@ $(document).on('click', '.btn-edit', function() {
         });
     }
     
-    // Description
-    if (quill) {
-        quill.root.innerHTML = site.description || '';
-    }
+    setSiteDescriptionHtml(site.description || '');
+    syncSiteDescriptionCounter();
     
     $('#submitBtn').prop('disabled', false).text('Review & update');
     
@@ -2028,11 +2136,11 @@ function promoBetterOfNote() {
     return 'This percent is off your list price. Advertisers pay your list plus the platform fee, then the same percent. Timed sale and bulk are not added together.';
 }
 
-async function startFeatureStripeCheckout(siteId) {
+async function startFeatureStripeCheckout(siteId, plan) {
     const res = await fetch(`/publisher/sites/${siteId}/feature/checkout`, {
         method: 'POST',
         headers: { 'X-CSRF-TOKEN': promoCsrfToken(), 'Accept': 'application/json', 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ plan: plan || '' }),
     });
     const data = await res.json().catch(() => ({}));
     if (data.success && data.checkout_url) {
@@ -2041,6 +2149,120 @@ async function startFeatureStripeCheckout(siteId) {
     }
     Swal.fire({ icon: 'error', title: 'Checkout unavailable', text: data.message || 'Could not start card payment.' });
 }
+
+function celebrateFeatureReward() {
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const canvas = document.createElement('canvas');
+    canvas.setAttribute('aria-hidden', 'true');
+    canvas.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:20000';
+    document.body.appendChild(canvas);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+        canvas.remove();
+        return;
+    }
+    const dpr = window.devicePixelRatio || 1;
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const colors = ['#1a585e', '#3faeb2', '#f0b429', '#e36a4a', '#f472b6', '#ffffff', '#e6f5f5'];
+    const pieces = Array.from({ length: 160 }, function () {
+        return {
+            x: Math.random() * width,
+            y: -24 - Math.random() * height * 0.55,
+            w: 6 + Math.random() * 7,
+            h: 8 + Math.random() * 10,
+            vy: 2.4 + Math.random() * 3.6,
+            vx: -1.8 + Math.random() * 3.6,
+            rot: Math.random() * Math.PI,
+            vr: -0.22 + Math.random() * 0.44,
+            color: colors[Math.floor(Math.random() * colors.length)],
+        };
+    });
+    const started = performance.now();
+    function frame(now) {
+        ctx.clearRect(0, 0, width, height);
+        pieces.forEach(function (piece) {
+            piece.x += piece.vx;
+            piece.y += piece.vy;
+            piece.vy += 0.035;
+            piece.rot += piece.vr;
+            ctx.save();
+            ctx.translate(piece.x, piece.y);
+            ctx.rotate(piece.rot);
+            ctx.fillStyle = piece.color;
+            ctx.fillRect(-piece.w / 2, -piece.h / 2, piece.w, piece.h);
+            ctx.restore();
+        });
+        if (now - started < 3200) requestAnimationFrame(frame);
+        else canvas.remove();
+    }
+    requestAnimationFrame(frame);
+}
+
+function adminRewardCard(days, name, mode) {
+    const title = mode === 'done' ? 'Congratulations' : 'A reward for this site';
+    const copy = mode === 'done'
+        ? `${name} is featured. Enjoy the extra visibility.`
+        : `Free featuring for ${name}. Nothing is taken from your wallet and no card is charged.`;
+    return `<div class="admin-reward-card__gift" aria-hidden="true"><i class="fa fa-gift"></i></div>
+            <p class="admin-reward-card__kicker">${mode === 'done' ? 'Reward used' : 'From the admin'}</p>
+            <h2 class="admin-reward-card__title">${title}</h2>
+            <p class="admin-reward-card__copy">${copy}</p>
+            <span class="admin-reward-card__days">${days} days</span>`;
+}
+
+$(document).on('click', '.btn-use-admin-credit', async function () {
+    const $btn = $(this);
+    const id = $btn.data('id');
+    const creditId = Number($btn.data('credit-id') || 0);
+    const days = Number($btn.data('days') || 0);
+    const name = promoEscapeHtml($btn.data('name'));
+    if (!id || !creditId) return;
+    const result = await Swal.fire({
+        title: '',
+        html: adminRewardCard(days, name, 'ask'),
+        showCancelButton: true,
+        showConfirmButton: true,
+        buttonsStyling: false,
+        confirmButtonText: 'Use reward',
+        cancelButtonText: 'Not now',
+        customClass: {
+            popup: 'admin-reward-card',
+            htmlContainer: 'admin-reward-card__body',
+            confirmButton: 'admin-reward-card__use',
+            cancelButton: 'admin-reward-card__later',
+            actions: 'admin-reward-card__actions',
+        },
+    });
+    if (!result.isConfirmed) return;
+    const res = await fetch(`/publisher/sites/${id}/feature/credit`, {
+        method: 'POST',
+        headers: { 'X-CSRF-TOKEN': promoCsrfToken(), 'Accept': 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ credit_id: creditId }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!data.success) {
+        Swal.fire({ icon: 'error', title: 'Could not use reward', text: data.message || 'Failed' });
+        return;
+    }
+    celebrateFeatureReward();
+    Swal.fire({
+        title: '',
+        html: adminRewardCard(days, name, 'done'),
+        showConfirmButton: true,
+        buttonsStyling: false,
+        confirmButtonText: 'Done',
+        customClass: {
+            popup: 'admin-reward-card',
+            htmlContainer: 'admin-reward-card__body',
+            confirmButton: 'admin-reward-card__use',
+        },
+    });
+    reloadSitesAfterPromo();
+});
 
 $(document).on('click', '.btn-feature-site', async function () {
     const $btn = $(this);
@@ -2064,34 +2286,92 @@ $(document).on('click', '.btn-feature-site', async function () {
     } catch (e) {}
 
     const spendable = Number(wallet.withdrawable ?? wallet.balance ?? 0);
-    const canWallet = spendable >= Number(wallet.feature_price || 10);
-    const featureDays = Number(wallet.feature_days || 7);
-    const featurePrice = Number(wallet.feature_price || 10).toFixed(2);
+    const offers = Array.isArray(wallet.offers) && wallet.offers.length
+        ? wallet.offers
+        : [{
+            key: '',
+            label: 'Feature',
+            price: Number(wallet.feature_price || 10),
+            days: Number(wallet.feature_days || 7),
+            display: '€' + Number(wallet.feature_price || 10).toFixed(2),
+            euros_label: '€' + Number(wallet.feature_price || 10).toFixed(2),
+        }];
+    const credits = Array.isArray(wallet.credits)
+        ? wallet.credits.filter((credit) => Number(credit.id) > 0 && Number(credit.days) > 0 && (!credit.site_id || String(credit.site_id) === String(id)))
+        : [];
+    let chosenCreditId = 0;
+    let chosenPlan = String(offers[0].key || '');
+    const planChoices = offers.map((offer, index) => {
+        const shown = String(offer.display || offer.euros_label || '');
+        const ledger = String(offer.euros_label || '');
+        const priceText = shown.startsWith('€') || shown === ledger
+            ? promoEscapeHtml(shown)
+            : `${promoEscapeHtml(shown)} <span class="text-muted">(wallet ${promoEscapeHtml(ledger)})</span>`;
+        return `<label class="d-flex align-items-start gap-2 text-start mb-2">
+            <input type="radio" name="feature-plan" value="${promoEscapeHtml(String(offer.key || ''))}" ${index === 0 ? 'checked' : ''}>
+            <span><strong>${promoEscapeHtml(String(offer.label || 'Feature'))}</strong> — ${priceText} for ${Number(offer.days || 0)} days</span>
+        </label>`;
+    }).join('');
+    const creditBlock = credits.length
+        ? `<div class="text-start mx-3 mb-2">
+               <div class="small fw-semibold mb-1">Reward from admin</div>
+               ${credits.map((credit) => `<button type="button" class="btn btn-sm btn-primary me-1 mb-2 swal-use-feature-credit" data-credit-id="${Number(credit.id)}">Use ${Number(credit.days)}-day reward</button>`).join('')}
+               <p class="small text-muted mb-0">The admin gave you this featuring. It is free. No wallet or card charge. The days start when you use it.</p>
+           </div>`
+        : '';
     const unverifiedNote = isVerified
         ? ''
         : '<p class="small text-muted">This site is active but not verified. Featuring still works; advertisers may trust it less.</p>';
     const body = isLive
-        ? `<p><strong>${name}</strong> is already featured until <strong>${promoEscapeHtml(promoFormatDate(featuredUntil))}</strong> (${daysLeft} day${daysLeft === 1 ? '' : 's'} left).</p>
-           <p>Paying <strong>€${featurePrice}</strong> adds another <strong>${featureDays} days</strong>.</p>`
-        : `<p>Feature <strong>${name}</strong> for <strong>${featureDays} days</strong> to boost catalog visibility.</p>
-           <p class="mb-1">Cost: <strong>€${featurePrice}</strong></p>`;
+        ? `<p><strong>${name}</strong> is already featured until <strong>${promoEscapeHtml(promoFormatDate(featuredUntil))}</strong> (${daysLeft} day${daysLeft === 1 ? '' : 's'} left). Pick a package to add more days.</p>`
+        : `<p>Feature <strong>${name}</strong> in the advertiser catalog. Pick a package.</p>`;
     const result = await Swal.fire({
         title: isLive ? 'Extend featuring?' : 'Feature this website?',
         html: `${body}
+               ${creditBlock}
+               <div class="text-start mx-3">${planChoices}</div>
                ${unverifiedNote}
                <p class="small text-muted">Publisher earnings: €${spendable.toFixed(2)} (bonus cannot be used for featuring)</p>
-               <p class="small text-muted">Pay from earnings, or pay securely by card with Stripe.</p>`,
+               <p class="small text-muted">Wallet pays the euro price. Card pays the amount shown for your location.</p>`,
         showDenyButton: !!wallet.stripe_available,
         showCancelButton: true,
-        confirmButtonText: canWallet ? 'Pay from wallet' : 'Use card / top up',
+        confirmButtonText: 'Pay from wallet',
         denyButtonText: wallet.stripe_available ? 'Pay by card' : undefined,
+        didOpen: () => {
+            document.querySelectorAll('input[name="feature-plan"]').forEach((el) => {
+                el.addEventListener('change', () => { chosenPlan = el.value; });
+            });
+            document.querySelectorAll('.swal-use-feature-credit').forEach((el) => {
+                el.addEventListener('click', () => {
+                    chosenCreditId = Number(el.getAttribute('data-credit-id') || 0);
+                    Swal.close();
+                });
+            });
+        },
     });
+    if (chosenCreditId > 0) {
+        const creditRes = await fetch(`/publisher/sites/${id}/feature/credit`, {
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': promoCsrfToken(), 'Accept': 'application/json', 'Content-Type': 'application/json' },
+            body: JSON.stringify({ credit_id: chosenCreditId }),
+        });
+        const creditData = await creditRes.json().catch(() => ({}));
+        Swal.fire({
+            icon: creditData.success ? 'success' : 'error',
+            title: creditData.success ? 'Featured!' : 'Could not use credit',
+            text: creditData.message || (creditData.success ? 'Featured credit used.' : 'Failed'),
+        });
+        if (creditData.success) reloadSitesAfterPromo();
+        return;
+    }
+    const selected = offers.find((offer) => String(offer.key || '') === chosenPlan) || offers[0];
+    const selectedPrice = Number(selected.price || 0);
 
     if (result.isDenied) {
-        return startFeatureStripeCheckout(id);
+        return startFeatureStripeCheckout(id, chosenPlan);
     }
     if (!result.isConfirmed) return;
-    if (!canWallet) {
+    if (spendable < selectedPrice) {
         return Swal.fire({
             icon: 'info',
             title: 'Insufficient balance',
@@ -2099,7 +2379,7 @@ $(document).on('click', '.btn-feature-site', async function () {
                    <button type="button" class="btn btn-sm btn-primary me-1" id="swalPayCard">Pay by card</button>
                    <a class="btn btn-sm btn-outline-secondary" href="${wallet.top_up_url || wallet.balance_url || '#'}">Add Funds</a>`,
             didOpen: () => {
-                document.getElementById('swalPayCard')?.addEventListener('click', () => startFeatureStripeCheckout(id));
+                document.getElementById('swalPayCard')?.addEventListener('click', () => startFeatureStripeCheckout(id, chosenPlan));
             },
             showConfirmButton: false,
             showCancelButton: true,
@@ -2109,7 +2389,7 @@ $(document).on('click', '.btn-feature-site', async function () {
     const res = await fetch(`/publisher/sites/${id}/feature`, {
         method: 'POST',
         headers: { 'X-CSRF-TOKEN': promoCsrfToken(), 'Accept': 'application/json', 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ plan: chosenPlan }),
     });
     const data = await res.json().catch(() => ({}));
     if (data.success) {
@@ -2120,10 +2400,10 @@ $(document).on('click', '.btn-feature-site', async function () {
             icon: 'info',
             title: 'Top up or pay by card',
             html: `${promoEscapeHtml(data.message || '')}<br><br>
-                   <button type="button" class="btn btn-sm btn-primary me-1" id="swalPayCard2">Pay by card (€${Number(wallet.feature_price || 10).toFixed(2)})</button>
+                   <button type="button" class="btn btn-sm btn-primary me-1" id="swalPayCard2">Pay by card (${promoEscapeHtml(String(selected.display || selected.euros_label || ''))})</button>
                    <a class="btn btn-sm btn-outline-secondary" href="${wallet.top_up_url || wallet.balance_url || '#'}">Add Funds</a>`,
             didOpen: () => {
-                document.getElementById('swalPayCard2')?.addEventListener('click', () => startFeatureStripeCheckout(id));
+                document.getElementById('swalPayCard2')?.addEventListener('click', () => startFeatureStripeCheckout(id, chosenPlan));
             },
             showConfirmButton: false,
             showCancelButton: true,
@@ -2270,6 +2550,9 @@ function previewValue(selector) {
         const label = $el.find('option:selected').text();
         return $.trim(label || $el.val() || '');
     }
+    if ($el.is(':radio') || $el.is(':checkbox')) {
+        return $.trim($el.filter(':checked').val() || '');
+    }
     return $.trim($el.val() || '');
 }
 
@@ -2314,6 +2597,13 @@ function previewSocialChannels() {
         })
         .map(function (channel) { return labels[channel] || channel; })
         .join(', ');
+}
+
+function previewLinkTypeLabel() {
+    const value = previewValue('#addSiteForm [name="link_type"]');
+    if (value === 'nofollow') return 'NoFollow';
+    if (value === 'dofollow') return 'DoFollow';
+    return value;
 }
 
 function previewSiteTagLabel() {
@@ -2388,10 +2678,10 @@ function publisherQuill() {
 
 function buildSitePreview() {
     const price = previewValue('#addSiteForm [name="price"]');
-    const q = publisherQuill();
-    const description = q
-        ? $.trim($(q.root).text())
-        : $.trim($('<div>').html($('#siteDescription').val() || '').text());
+    const descriptionHtml = (typeof window.getPublisherSiteDescriptionHtml === 'function')
+        ? window.getPublisherSiteDescriptionHtml()
+        : (publisherQuill() ? publisherQuill().root.innerHTML : ($('#siteDescription').val() || ''));
+    const description = $.trim($('<div>').html(descriptionHtml || '').text());
 
     let html = '<div class="mb-3">' +
         '<div class="fw-semibold fs-5">' + previewEscape(previewValue('#addSiteForm [name="siteName"]') || 'Untitled site') + '</div>' +
@@ -2406,7 +2696,7 @@ function buildSitePreview() {
     html += previewRow('Country', previewLabelFor('#selectedCountry', '#countryOptions'));
     html += previewRow('Language', previewLabelFor('#selectedLanguage', '#languageOptions'));
     html += previewRow('Niches', previewNiches());
-    html += previewRow('Link type', previewValue('#addSiteForm [name="link_type"]'));
+    html += previewRow('Link type', previewLinkTypeLabel());
     html += previewRow('Turnaround time', previewValue('#addSiteForm [name="turnaround_time"]'));
     html += previewRow('Publication time', previewValue('#addSiteForm [name="publicationTime"]'));
     html += previewRow('Site tag', previewSiteTagLabel(), { emptyLabel: 'No tags', optional: true });
@@ -2452,9 +2742,11 @@ function resetPublisherSubmitButton() {
 
 $('#sitePreviewConfirmBtn').on('click', function () {
     window.sitePreviewConfirmed = true;
-    const q = publisherQuill();
-    if (q) {
-        $('#siteDescription').val(q.root.innerHTML);
+    if (typeof window.getPublisherSiteDescriptionHtml === 'function') {
+        $('#siteDescription').val(window.getPublisherSiteDescriptionHtml());
+    } else {
+        const q = publisherQuill();
+        if (q) $('#siteDescription').val(q.root.innerHTML);
     }
     if ($('#methodField').val() !== 'PUT' && typeof window.clearSiteDraft === 'function') {
         window.clearSiteDraft();

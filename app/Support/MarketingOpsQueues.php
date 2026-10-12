@@ -17,6 +17,9 @@ class MarketingOpsQueues
     /** Bulk index `?status=` value for marketer-actionable rows (not a DB enum). */
     public const FILTER_NEEDS_MARKETER = 'needs_marketer';
 
+    /** Seeded drafts with the publisher and no leftover Done rows. */
+    public const FILTER_WAITING_PUBLISHER = 'waiting_publisher';
+
     /**
      * Sites ready for staff activate / review (not publisher drafts or invites).
      *
@@ -57,21 +60,55 @@ class MarketingOpsQueues
     /**
      * Unpublished listings still with the publisher (details or accept).
      *
+     * @param  'filling'|'reviewing'|'accept'|null  $stage
      * @return Builder<Site>
      */
-    public static function sitesWaitingOnPublisher(): Builder
+    public static function sitesWaitingOnPublisher(?string $stage = null): Builder
     {
         $query = Site::query();
-        self::constrainSitesWaitingOnPublisher($query);
+        self::constrainSitesWaitingOnPublisher($query, $stage);
 
         return $query;
     }
 
     /**
-     * @param  Builder<Site>  $q
+     * Filling details, publisher review, and the old accept invite, counted apart.
+     *
+     * @return array{filling: int, reviewing: int, accept: int}
      */
-    public static function constrainSitesWaitingOnPublisher(Builder $q): void
+    public static function sitesWaitingStageCounts(): array
     {
+        return [
+            'filling' => self::rememberCount(
+                'marketing.ops.waiting_filling_count',
+                fn () => self::sitesWaitingOnPublisher('filling')->count()
+            ),
+            'reviewing' => self::rememberCount(
+                'marketing.ops.waiting_reviewing_count',
+                fn () => self::sitesWaitingOnPublisher('reviewing')->count()
+            ),
+            'accept' => self::rememberCount(
+                'marketing.ops.waiting_accept_count',
+                fn () => self::sitesWaitingOnPublisher('accept')->count()
+            ),
+        ];
+    }
+
+    public static function normalizeWaitingStage(mixed $stage): ?string
+    {
+        $value = strtolower(trim(scalar_text($stage)));
+
+        return in_array($value, ['filling', 'reviewing', 'accept'], true) ? $value : null;
+    }
+
+    /**
+     * @param  Builder<Site>  $q
+     * @param  'filling'|'reviewing'|'accept'|null  $stage
+     */
+    public static function constrainSitesWaitingOnPublisher(Builder $q, ?string $stage = null): void
+    {
+        $stage = self::normalizeWaitingStage($stage);
+
         $q->notArchived()
             ->where(function ($inner) {
                 $inner->where('verified', 0)->orWhereNull('verified');
@@ -79,18 +116,39 @@ class MarketingOpsQueues
             ->where(function ($inner) {
                 $inner->where('active', 0)->orWhereNull('active');
             })
-            ->where(function ($inner) {
-                $inner->whereIn('onboarding_status', [
-                    Site::ONBOARDING_AWAITING_DETAILS,
-                    Site::ONBOARDING_DETAILS_COMPLETE,
-                ]);
+            ->where(function ($inner) use ($stage) {
+                $started = false;
+                $add = function ($branch) use ($inner, &$started) {
+                    if ($started) {
+                        $inner->orWhere($branch);
 
-                if (Site::hasSitesColumn('publisher_accepted_at')
-                    && Site::hasSitesColumn('assigned_by_user_id')) {
-                    $inner->orWhere(function ($invite) {
-                        $invite->wherePublisherAcceptanceIsMissing()
-                            ->whereNotNull('assigned_by_user_id');
+                        return;
+                    }
+                    $inner->where($branch);
+                    $started = true;
+                };
+
+                if ($stage === null || $stage === 'filling') {
+                    $add(function ($filling) {
+                        $filling->where('onboarding_status', Site::ONBOARDING_AWAITING_DETAILS)
+                            ->acceptedByPublisher();
                     });
+                }
+                if ($stage === null || $stage === 'reviewing') {
+                    $add(function ($reviewing) {
+                        $reviewing->where('onboarding_status', Site::ONBOARDING_DETAILS_COMPLETE)
+                            ->acceptedByPublisher();
+                    });
+                }
+                if (($stage === null || $stage === 'accept')
+                    && Site::hasSitesColumn('publisher_accepted_at')
+                    && Site::hasSitesColumn('assigned_by_user_id')) {
+                    $add(function ($invite) {
+                        $invite->pendingPublisherAcceptance();
+                    });
+                }
+                if (! $started) {
+                    $inner->whereRaw('1 = 0');
                 }
             });
     }
@@ -127,6 +185,9 @@ class MarketingOpsQueues
         return match ($status) {
             '', 'all' => $query,
             self::FILTER_NEEDS_MARKETER => $query->where(fn ($q) => self::constrainWaitingOnMarketer($q)),
+            self::FILTER_WAITING_PUBLISHER => $query->where(fn ($q) => self::constrainWaitingOnPublisherBulk($q)),
+            BulkSiteRequest::STATUS_COMPLETED => $query->where('status', BulkSiteRequest::STATUS_COMPLETED)
+                ->where(fn ($q) => self::constrainBulkFinished($q)),
             default => $query->where('status', $status),
         };
     }
@@ -165,6 +226,10 @@ class MarketingOpsQueues
                             ->where('estimated_count', '>', 0)
                             ->whereDoesntHave('items')
                             ->whereDoesntHave('sites', fn ($sites) => $sites->notArchived());
+                    })
+                    ->orWhereHas('sites', function ($sites) {
+                        $sites->notArchived();
+                        BulkSiteRequest::constrainSitesReadyToPublishNow($sites);
                     });
             });
     }
@@ -184,15 +249,39 @@ class MarketingOpsQueues
      */
     public static function bulkWaitingOnPublisher(): Builder
     {
-        return BulkSiteRequest::query()
-            ->where('status', BulkSiteRequest::STATUS_AWAITING_PUBLISHER)
+        return BulkSiteRequest::query()->where(fn ($q) => self::constrainWaitingOnPublisherBulk($q));
+    }
+
+    /**
+     * @param  Builder<BulkSiteRequest>  $q
+     */
+    public static function constrainWaitingOnPublisherBulk(Builder $q): void
+    {
+        $q->where('status', BulkSiteRequest::STATUS_AWAITING_PUBLISHER)
             ->whereDoesntHave('items', fn ($items) => $items->whereNull('site_id'));
+    }
+
+    /**
+     * Completed with no leftover Done rows and no publisher-stage sites.
+     *
+     * @param  Builder<BulkSiteRequest>  $q
+     */
+    public static function constrainBulkFinished(Builder $q): void
+    {
+        $q->whereDoesntHave('items', fn ($items) => $items->whereNull('site_id'));
+        $q->whereDoesntHave('sites', function ($sites) {
+            $sites->notArchived();
+            BulkSiteRequest::constrainSitesPendingPublisher($sites);
+        });
     }
 
     public static function siteQueueLabel(Site $site): string
     {
         if ($site->isPendingPublisherAcceptance()) {
             return 'Waiting on accept';
+        }
+        if ($site->isBulkReadyToPublishNow()) {
+            return 'Ready to publish';
         }
 
         return match ($site->onboarding_status) {

@@ -23,16 +23,22 @@ use App\Services\WalletPaypalDepositService;
 use App\Services\WalletStripeDepositService;
 use App\Support\DepositPaymentConfig;
 use App\Support\PaypalPaymentError;
+use App\Support\PlatformCharge;
 use App\Support\UserFacingError;
 use App\Support\UserMessages;
 use Endroid\QrCode\Builder\Builder;
+use Endroid\QrCode\Color\Color;
+use Endroid\QrCode\ErrorCorrectionLevel;
 use Endroid\QrCode\Writer\PngWriter;
+use Endroid\QrCode\Writer\Result\ResultInterface;
 use Endroid\QrCode\Writer\SvgWriter;
+use Endroid\QrCode\Writer\WriterInterface;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 use Stripe\Checkout\Session;
 use Stripe\PaymentIntent;
@@ -54,7 +60,7 @@ class AddFundsController extends Controller
         }
 
         try {
-            $wallet = Wallet::firstOrCreate(
+            $wallet = Wallet::unguarded(fn () => Wallet::firstOrCreate(
                 ['user_id' => $user->id, 'role_id' => $advertiserRoleId],
                 [
                     'balance' => 0,
@@ -63,7 +69,7 @@ class AddFundsController extends Controller
                     'bonus_reserved' => 0,
                     'currency' => 'EUR',
                 ]
-            );
+            ));
 
             $wallet->repairOrphanedWelcomeBonus();
             $wallet->reconcileInflatedBonusBalance();
@@ -242,16 +248,16 @@ class AddFundsController extends Controller
 
         $amount = round((float) $data['amount'], 2);
         $payUrl = DepositPaymentConfig::wisePayLink($amount);
+        $logoPath = public_path('assets/brand/web/favicon.svg');
+        if (! is_file($logoPath)) {
+            $logoPath = public_path('favicon.svg');
+        }
+        $logoPath = is_file($logoPath) ? $logoPath : '';
 
         // Prefer SVG: no ext-gd / Imagick required (Hostinger often lacks GD for PNG).
         // Fall back to PNG when GD is available and SVG somehow fails.
         try {
-            $result = (new Builder(
-                writer: new SvgWriter,
-                data: $payUrl,
-                size: 300,
-                margin: 10,
-            ))->build();
+            $result = $this->buildWiseQr(new SvgWriter, $payUrl, $logoPath);
         } catch (\Throwable $svgError) {
             if (! extension_loaded('gd')) {
                 Log::error('Wise QR generation failed (SVG) and GD is unavailable', [
@@ -264,12 +270,7 @@ class AddFundsController extends Controller
                 'error' => $svgError->getMessage(),
             ]);
 
-            $result = (new Builder(
-                writer: new PngWriter,
-                data: $payUrl,
-                size: 300,
-                margin: 10,
-            ))->build();
+            $result = $this->buildWiseQr(new PngWriter, $payUrl, $logoPath);
         }
 
         return response($result->getString(), 200, [
@@ -278,6 +279,23 @@ class AddFundsController extends Controller
             // Avoid intermediary caches serving a login HTML page as the image.
             'X-Content-Type-Options' => 'nosniff',
         ]);
+    }
+
+    private function buildWiseQr(WriterInterface $writer, string $payUrl, string $logoPath): ResultInterface
+    {
+        return (new Builder(
+            writer: $writer,
+            data: $payUrl,
+            size: 300,
+            margin: 16,
+            errorCorrectionLevel: ErrorCorrectionLevel::High,
+            foregroundColor: new Color(13, 47, 20),
+            backgroundColor: new Color(244, 248, 244),
+            logoPath: $logoPath,
+            logoResizeToWidth: 72,
+            logoResizeToHeight: 72,
+            logoPunchoutBackground: false,
+        ))->build();
     }
 
     public function createCheckoutSession(Request $request)
@@ -297,8 +315,9 @@ class AddFundsController extends Controller
 
             Stripe::setApiKey(config('services.stripe.secret'));
 
-            $amountEuros = round((float) $request->amount, 2);
-            $amountCents = StripePaymentService::toCents($amountEuros);
+            $charge = app(PlatformCharge::class)->quote(round((float) $request->amount, 2));
+            $amountEuros = $charge['euros'];
+            $amountCents = StripePaymentService::toCents($charge['amount']);
             $referenceCode = $request->reference_code;
             $user = auth()->user();
 
@@ -309,10 +328,10 @@ class AddFundsController extends Controller
                 'payment_method_types' => ['card'],
                 'line_items' => [[
                     'price_data' => [
-                        'currency' => 'eur',
+                        'currency' => $charge['stripe'],
                         'product_data' => [
                             'name' => 'Add Funds to Wallet',
-                            'description' => 'Deposit €'.number_format($amountEuros, 2).' to your wallet',
+                            'description' => 'Deposit '.$charge['code'].' '.number_format($charge['amount'], 2).' (wallet €'.number_format($amountEuros, 2).')',
                         ],
                         'unit_amount' => $amountCents,
                     ],
@@ -325,6 +344,9 @@ class AddFundsController extends Controller
                     'type' => 'wallet_deposit',
                     'user_id' => (string) $user->id,
                     'amount' => (string) $amountEuros,
+                    'eur_amount' => (string) $amountEuros,
+                    'charge_currency' => $charge['code'],
+                    'charge_amount' => (string) $charge['amount'],
                     'reference_code' => $referenceCode,
                     'session_reference' => $sessionReference,
                 ],
@@ -628,18 +650,22 @@ class AddFundsController extends Controller
         }
 
         $user = auth()->user();
-        $amountEuros = round((float) $request->amount, 2);
+        $charge = app(PlatformCharge::class)->quote(round((float) $request->amount, 2));
+        $amountEuros = $charge['euros'];
         $referenceCode = (string) $request->reference_code;
 
         try {
             $payResult = app(StripeCustomerService::class)->payWithSavedCard(
                 $user,
                 (string) $request->payment_method_id,
-                StripePaymentService::toCents($amountEuros),
+                StripePaymentService::toCents($charge['amount']),
                 [
                     'type' => 'wallet_deposit',
                     'user_id' => (string) $user->id,
                     'amount' => (string) $amountEuros,
+                    'eur_amount' => (string) $amountEuros,
+                    'charge_currency' => $charge['code'],
+                    'charge_amount' => (string) $charge['amount'],
                     'reference_code' => $referenceCode,
                 ],
                 route('advertiser.checkout.success').'?ref='.urlencode($referenceCode).'&amount='.$amountEuros,
@@ -647,9 +673,7 @@ class AddFundsController extends Controller
             );
 
             if ($payResult['status'] === 'succeeded') {
-                $chargedEuros = ! empty($payResult['amount_received'])
-                    ? StripePaymentService::fromCents((int) $payResult['amount_received'])
-                    : $amountEuros;
+                $chargedEuros = $amountEuros;
                 app(WalletStripeDepositService::class)->creditFromPaymentIntent(
                     $user->id,
                     $payResult['payment_intent_id'],
@@ -709,7 +733,7 @@ class AddFundsController extends Controller
 
             // Invoice methods need billing details on the PDF.
             if (in_array($request->payment_method, ['bank', 'wise', 'crypto'], true)) {
-                if (empty($user->billing_name) || empty($user->address) || empty($user->company_name)) {
+                if (! $this->userHasInvoiceBilling($user)) {
                     return response()->json([
                         'success' => false,
                         'message' => 'Please complete your billing information first so we can issue your invoice.',
@@ -718,58 +742,81 @@ class AddFundsController extends Controller
                 }
             }
 
-            if ($request->payment_method === 'crypto' && ! DepositPaymentConfig::cryptoEnabled()) {
+            $cryptoEnabled = true;
+            if (class_exists(DepositPaymentConfig::class) && method_exists(DepositPaymentConfig::class, 'cryptoEnabled')) {
+                $cryptoEnabled = DepositPaymentConfig::cryptoEnabled();
+            }
+            if ($request->payment_method === 'crypto' && ! $cryptoEnabled) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Cryptocurrency deposits are temporarily unavailable. Please use Bank or Wise.',
                 ], 422);
             }
 
-            if (! DepositRequest::tableAvailable()) {
+            if (method_exists(DepositRequest::class, 'tableAvailable') && ! DepositRequest::tableAvailable()) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Deposits are temporarily unavailable. Please try again shortly.',
                 ], 503);
             }
 
-            // Server owns the REF. A client-supplied code is ignored so a copied
-            // placeholder cannot diverge from the deposit row after collision.
-            $referenceCode = DepositRequest::generateUniqueReferenceCode();
+            // Server owns the REF when that helper exists. Leftover Hostinger
+            // store() still required a client 6-digit code — JS sends one, we
+            // never persist XXXXXXXX placeholders.
+            $referenceCode = $this->newDepositReferenceCode($request);
 
-            $depositRequest = DepositRequest::create([
+            $payload = [
                 'user_id' => auth()->id(),
                 'reference_code' => $referenceCode,
                 'amount' => $request->amount,
                 'payment_method' => $request->payment_method,
                 'status' => 'pending',
-            ]);
+            ];
+            if (method_exists(DepositRequest::class, 'attributesThatExist')) {
+                $payload = DepositRequest::attributesThatExist($payload);
+            }
 
-            // Send email notification to admin
+            $depositRequest = DepositRequest::create($payload);
+
+            // Send email notification to admin (skip when no mailbox is configured —
+            // empty ADMIN_EMAIL + no admin users used to throw "To/Cc/Bcc header").
             try {
-                $admins = User::whereHas('roles', function ($query) {
-                    $query->where('name', 'admin');
-                })->get();
-
-                if ($admins->count() > 0) {
-                    foreach ($admins as $admin) {
-                        Mail::to($admin->email)->send(new DepositRequestSubmitted($depositRequest));
-                    }
+                $recipients = $this->adminDepositMailRecipients();
+                if ($recipients === []) {
+                    Log::info('Deposit invoice created with no admin mailbox configured', [
+                        'deposit_request_id' => $depositRequest->id,
+                    ]);
                 } else {
-                    $defaultAdminEmail = config('mail.admin_email', 'admin@yourdomain.com');
-                    Mail::to($defaultAdminEmail)->send(new DepositRequestSubmitted($depositRequest));
+                    foreach ($recipients as $email) {
+                        Mail::to($email)->send(new DepositRequestSubmitted($depositRequest));
+                    }
                 }
-
             } catch (\Throwable $e) {
                 Log::error('Failed to send deposit notification email: '.$e->getMessage());
             }
 
             try {
                 $notifications = app(InAppNotificationService::class);
-                $freshDeposit = $depositRequest->fresh(['user']);
-                $notifications->notifyDepositSubmitted($freshDeposit);
-                $notifications->notifyAdminsDepositSubmitted($freshDeposit);
+                if (method_exists($notifications, 'notifyDepositSubmitted')) {
+                    $freshDeposit = $depositRequest->fresh(['user']);
+                    $notifications->notifyDepositSubmitted($freshDeposit);
+                    if (method_exists($notifications, 'notifyAdminsDepositSubmitted')) {
+                        $notifications->notifyAdminsDepositSubmitted($freshDeposit);
+                    }
+                }
             } catch (\Throwable $e) {
                 Log::warning('Failed to send deposit bell notification: '.$e->getMessage());
+            }
+
+            $invoiceUrl = null;
+            $markPaidUrl = null;
+            try {
+                $invoiceUrl = route('advertiser.invoice.pdf', $referenceCode);
+            } catch (\Throwable) {
+            }
+            try {
+                $markPaidUrl = route('advertiser.add-funds.mark-paid', $depositRequest);
+            } catch (\Throwable) {
             }
 
             return response()->json([
@@ -777,20 +824,77 @@ class AddFundsController extends Controller
                 'message' => 'Invoice created. Transfer the amount with your REF — we credit your wallet after funds arrive.',
                 'reference_code' => $referenceCode,
                 'deposit_id' => $depositRequest->id,
-                'invoice_url' => route('advertiser.invoice', $referenceCode),
-                'mark_paid_url' => route('advertiser.add-funds.mark-paid', $depositRequest),
+                'invoice_url' => $invoiceUrl,
+                'mark_paid_url' => $markPaidUrl,
             ]);
 
         } catch (ValidationException $e) {
-            throw $e;
+            // Always JSON — leftover Add Funds JS parse-failed HTML redirects
+            // into "Failed to submit request".
+            return response()->json([
+                'success' => false,
+                'message' => collect($e->errors())->flatten()->first() ?: 'Please check the amount and payment method.',
+                'errors' => $e->errors(),
+            ], 422);
         } catch (\Throwable $e) {
             Log::error('Error submitting deposit request: '.$e->getMessage());
 
             return response()->json([
                 'success' => false,
-                'message' => UserFacingError::message($e, 'Failed to submit deposit request. Please try again.'),
+                'message' => UserFacingError::message($e, 'Could not create the invoice. Please try again.'),
             ], $e instanceof QueryException ? 503 : 500);
         }
+    }
+
+    /**
+     * @param  User|null  $user
+     */
+    private function userHasInvoiceBilling($user): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        try {
+            if (empty($user->billing_name) || empty($user->address)) {
+                return false;
+            }
+        } catch (\Throwable) {
+            return false;
+        }
+
+        try {
+            if (! Schema::hasColumn($user->getTable(), 'company_name')) {
+                return true;
+            }
+        } catch (\Throwable) {
+        }
+
+        try {
+            return ! empty($user->company_name);
+        } catch (\Throwable) {
+            return true;
+        }
+    }
+
+    private function newDepositReferenceCode(Request $request): string
+    {
+        if (method_exists(DepositRequest::class, 'generateUniqueReferenceCode')) {
+            try {
+                $code = (string) DepositRequest::generateUniqueReferenceCode();
+                if ($code !== '') {
+                    return $code;
+                }
+            } catch (\Throwable) {
+            }
+        }
+
+        $client = preg_replace('/^REF/i', '', trim((string) $request->input('reference_code', '')));
+        if (is_string($client) && preg_match('/^\d{6,}$/', $client) && ! preg_match('/^x+$/i', $client)) {
+            return $client;
+        }
+
+        return str_pad((string) random_int(1, 999999), 6, '0', STR_PAD_LEFT);
     }
 
     /**
@@ -892,25 +996,50 @@ class AddFundsController extends Controller
         }
 
         try {
-            $admins = User::whereHas('roles', fn ($query) => $query->where('name', 'admin'))->get();
-
-            if ($admins->isEmpty()) {
-                $fallback = config('mail.admin_email');
-                if (filled($fallback)) {
-                    Mail::to($fallback)->send(new DepositMarkedPaid($deposit));
-                }
-
-                return;
-            }
-
-            foreach ($admins as $admin) {
-                Mail::to($admin->email)->send(new DepositMarkedPaid($deposit));
+            $recipients = $this->adminDepositMailRecipients();
+            foreach ($recipients as $email) {
+                Mail::to($email)->send(new DepositMarkedPaid($deposit));
             }
         } catch (\Throwable $e) {
             Log::error('Failed to send deposit marked-paid email: '.$e->getMessage(), [
                 'deposit_request_id' => $deposit->id,
             ]);
         }
+    }
+
+    /**
+     * Admin deposit emails need a real To address. Empty ADMIN_EMAIL with no
+     * admin users (common on leftover Hostinger) must not call Mail::to('').
+     *
+     * @return list<string>
+     */
+    private function adminDepositMailRecipients(): array
+    {
+        $emails = [];
+
+        try {
+            $admins = User::whereHas('roles', fn ($query) => $query->where('name', 'admin'))->get();
+            foreach ($admins as $admin) {
+                $email = trim((string) ($admin->email ?? ''));
+                if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                    $emails[] = $email;
+                }
+            }
+        } catch (\Throwable) {
+        }
+
+        if ($emails === []) {
+            $fallback = trim((string) (
+                config('mail.admin_email')
+                ?: config('email_notifications.brand.support_email')
+                ?: ''
+            ));
+            if ($fallback !== '' && filter_var($fallback, FILTER_VALIDATE_EMAIL)) {
+                $emails[] = $fallback;
+            }
+        }
+
+        return array_values(array_unique($emails));
     }
 
     public function getStatus($id)
@@ -965,14 +1094,27 @@ class AddFundsController extends Controller
             ]);
 
             // Update user billing info directly on users table
-            $user->billing_name = $request->billing_name;
-            $user->company_name = $request->company_name;
-            $user->country = $request->country;
-            $user->state = $request->state;
-            $user->city = $request->city;
-            $user->address = $request->address;
-            $user->postal_code = $request->postal_code;
-            $user->vat_number = $request->vat_number;
+            $billing = [
+                'billing_name' => $request->billing_name,
+                'company_name' => $request->company_name,
+                'country' => $request->country,
+                'state' => $request->state,
+                'city' => $request->city,
+                'address' => $request->address,
+                'postal_code' => $request->postal_code,
+                'vat_number' => $request->vat_number,
+            ];
+            $table = $user->getTable();
+            foreach ($billing as $column => $value) {
+                try {
+                    if (! Schema::hasColumn($table, $column)) {
+                        continue;
+                    }
+                    $user->{$column} = $value;
+                } catch (\Throwable) {
+                    continue;
+                }
+            }
             $user->save();
 
             Log::info('Billing information saved for user', [
@@ -986,7 +1128,11 @@ class AddFundsController extends Controller
             ]);
 
         } catch (ValidationException $e) {
-            throw $e;
+            return response()->json([
+                'success' => false,
+                'message' => collect($e->errors())->flatten()->first() ?: 'Please fill in all required billing fields.',
+                'errors' => $e->errors(),
+            ], 422);
         } catch (\Throwable $e) {
             Log::error('Error saving billing info: '.$e->getMessage());
 
@@ -1014,9 +1160,7 @@ class AddFundsController extends Controller
                 'address' => $user->address,
                 'postal_code' => $user->postal_code,
                 'vat_number' => $user->vat_number,
-                'has_info' => ! empty($user->billing_name)
-                    && ! empty($user->company_name)
-                    && ! empty($user->address)
+                'has_info' => $this->userHasInvoiceBilling($user)
                     && ! empty($user->city)
                     && ! empty($user->country),
             ];

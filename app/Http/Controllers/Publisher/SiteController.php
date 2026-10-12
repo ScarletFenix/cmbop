@@ -8,6 +8,7 @@ use App\Models\BulkSiteRequest;
 use App\Models\BulkSiteRequestItem;
 use App\Models\Category;
 use App\Models\Country;
+use App\Models\FeatureCredit;
 use App\Models\Language;
 use App\Models\Site;
 use App\Services\ActivityLogger;
@@ -17,11 +18,15 @@ use App\Services\EmailNotificationService;
 use App\Services\InAppNotificationService;
 use App\Services\Marketplace\CountryLanguagePairs;
 use App\Services\Marketplace\LanguageCountryMap;
+use App\Support\MoneyDisplay;
 use App\Support\NormalizesHttpUrls;
 use App\Support\SiteDescriptionRules;
 use App\Support\SiteImageUpload;
 use App\Support\SiteTag;
 use App\Support\UserFacingError;
+use Database\Seeders\CountriesTableSeeder;
+use Database\Seeders\LanguagesTableSeeder;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -285,8 +290,8 @@ class SiteController extends Controller
 
                 $site = new Site;
 
-                $sensitivePrices = $this->collectSensitivePrices($request);
-                $homepagePrices = $this->collectHomepagePlacementPrices($request);
+                $sensitivePrices = $this->collectSensitivePrices($request, $countryCodes[0] ?? null);
+                $homepagePrices = $this->collectHomepagePlacementPrices($request, $countryCodes[0] ?? null);
                 $socialPromotion = $this->collectSocialPromotion($request);
 
                 // Manual publisher metrics — never auto-fetched/overwritten.
@@ -312,7 +317,7 @@ class SiteController extends Controller
                     'languages' => $languageCodes,
                     'category' => $primaryCategory,
                     'categories' => $categoriesArray,
-                    'price' => $request->price,
+                    'price' => $this->listingToEuros($request->price, $countryCodes[0] ?? null),
                     'turnaround_time' => $request->turnaround_time,
                     'publication_time' => $request->publicationTime,
                     'link_type' => $request->link_type,
@@ -375,7 +380,7 @@ class SiteController extends Controller
             }
         }
 
-        return redirect()->back()->with('success', 'Site submitted successfully! Admin will review and activate it within 24-48 hours. A homepage screenshot is being generated automatically.');
+        return redirect()->back()->with('success', 'Site submitted successfully! Admin will review and activate it within 24-48 hours. A homepage screenshot is being generated automatically.'.$this->listingSavedNote($request->price, (float) ($site?->price ?? 0), $countryCodes[0] ?? null));
     }
 
     public function ajax(Request $request)
@@ -384,7 +389,10 @@ class SiteController extends Controller
             $this->ensureListingSchema();
             $query = scalar_text($request->get('query'));
             $status = strtolower(scalar_text($request->get('status', 'active')));
-            if (! in_array($status, ['pending', 'active', 'invites', 'archived', 'all'], true)) {
+            if ($status === 'archived') {
+                $status = 'pending';
+            }
+            if (! in_array($status, ['pending', 'active', 'invites', 'all'], true)) {
                 $status = 'active';
             }
             $page = max(1, (int) scalar_text($request->get('page', 1)));
@@ -406,11 +414,12 @@ class SiteController extends Controller
                 });
 
             $waitingItemsCount = (clone $waitingItemsQuery)->count();
-            // Match list filters: Active/Pending badges exclude archived sites.
-            $sitePendingCount = (clone $acceptedBase)->notArchived()->notFromCancelledBulk()
-                ->where('active', 0)->where('verified', 0)->count();
+            // Pending includes staff-archived listings (shown as With admin).
+            $sitePendingCount = (int) $this->publisherPendingSitesQuery($acceptedBase)->count();
             $pendingCount = $sitePendingCount + $waitingItemsCount;
             $inviteCount = (clone $base)->pendingPublisherAcceptance()->count();
+            $archivedCount = (clone $acceptedBase)->archived()->count();
+            $cancelledBulkCount = $this->cancelledBulkSiteCount($acceptedBase);
 
             $activeQuery = (clone $acceptedBase)->notArchived()->notFromCancelledBulk()->where(function ($q) {
                 $q->where('active', 1)->orWhere('verified', 1);
@@ -433,21 +442,16 @@ class SiteController extends Controller
 
             if ($status === 'invites') {
                 $sitesQuery = (clone $base)->pendingPublisherAcceptance();
-            } elseif ($status === 'archived') {
-                $sitesQuery = (clone $acceptedBase)->archived();
             } elseif ($status === 'all') {
                 $sitesQuery = (clone $acceptedBase)->notArchived()->notFromCancelledBulk();
+            } elseif ($status === 'pending') {
+                $sitesQuery = $this->publisherPendingSitesQuery($acceptedBase)
+                    ->with('bulkSiteRequest');
             } else {
                 $sitesQuery = (clone $acceptedBase)->notArchived()
-                    ->when($status === 'pending', function ($q) {
-                        $q->notFromCancelledBulk()
-                            ->where('active', 0)->where('verified', 0);
-                    })
-                    ->when($status === 'active', function ($q) {
-                        $q->notFromCancelledBulk()
-                            ->where(function ($inner) {
-                                $inner->where('active', 1)->orWhere('verified', 1);
-                            });
+                    ->notFromCancelledBulk()
+                    ->where(function ($inner) {
+                        $inner->where('active', 1)->orWhere('verified', 1);
                     });
             }
 
@@ -466,16 +470,37 @@ class SiteController extends Controller
                     'query' => $query,
                 ]);
 
+            $featureCreditsBySite = [];
+            if (Schema::hasTable('feature_credits')) {
+                $featureCreditsBySite = FeatureCredit::query()
+                    ->where('user_id', auth()->id())
+                    ->whereNull('used_at')
+                    ->whereNotNull('site_id')
+                    ->orderBy('id')
+                    ->get(['id', 'site_id', 'days'])
+                    ->unique('site_id')
+                    ->mapWithKeys(fn (FeatureCredit $credit) => [
+                        (int) $credit->site_id => [
+                            'id' => (int) $credit->id,
+                            'days' => (int) $credit->days,
+                        ],
+                    ])
+                    ->all();
+            }
+
             return view('publisher.sites.partials.table', compact(
                 'sites',
                 'pendingCount',
                 'activeCount',
                 'inviteCount',
+                'archivedCount',
+                'cancelledBulkCount',
                 'activeIds',
                 'status',
                 'bulkWaitingItems',
                 'openBulkRequest',
-                'waitingItemsCount'
+                'waitingItemsCount',
+                'featureCreditsBySite'
             ))->render();
         } catch (\Throwable $e) {
             Log::error('Publisher sites ajax failed: '.$e->getMessage(), [
@@ -490,6 +515,56 @@ class SiteController extends Controller
         }
     }
 
+    /**
+     * Pending tab: live drafts waiting on details/admin, plus staff-archived
+     * rows (shown as With admin) and leftovers from a cancelled bulk request.
+     *
+     * @param  Builder<Site>  $acceptedBase
+     * @return Builder<Site>
+     */
+    private function publisherPendingSitesQuery($acceptedBase)
+    {
+        return (clone $acceptedBase)->where(function ($q) {
+            $q->where(function ($livePending) {
+                $livePending->notArchived()
+                    ->notFromCancelledBulk()
+                    ->where('active', 0)
+                    ->where('verified', 0);
+            })->orWhere(function ($hidden) {
+                $hidden->where(function ($archived) {
+                    $archived->archived();
+                });
+                if (! Site::hasSitesColumn('bulk_site_request_id')) {
+                    return;
+                }
+                $hidden->orWhere(function ($cancelled) {
+                    $cancelled->notArchived()
+                        ->whereNotNull('bulk_site_request_id')
+                        ->whereHas('bulkSiteRequest', function ($bulk) {
+                            $bulk->where('status', BulkSiteRequest::STATUS_CANCELLED);
+                        });
+                });
+            });
+        });
+    }
+
+    /**
+     * @param  Builder<Site>  $acceptedBase
+     */
+    private function cancelledBulkSiteCount($acceptedBase): int
+    {
+        if (! Site::hasSitesColumn('bulk_site_request_id')) {
+            return 0;
+        }
+
+        return (clone $acceptedBase)->notArchived()
+            ->whereNotNull('bulk_site_request_id')
+            ->whereHas('bulkSiteRequest', function ($bulk) {
+                $bulk->where('status', BulkSiteRequest::STATUS_CANCELLED);
+            })
+            ->count();
+    }
+
     public function acceptAssignment(Request $request, $id)
     {
         try {
@@ -501,6 +576,7 @@ class SiteController extends Controller
 
                 $locked->publisher_accepted_at = now();
                 $locked->save();
+                $locked->bulkSiteRequest?->refreshProgressStatus();
 
                 return $locked;
             });
@@ -604,7 +680,17 @@ class SiteController extends Controller
                     'screenshot' => is_string($locked->screenshot_path) ? $locked->screenshot_path : null,
                     'thumb' => is_string($locked->screenshot_thumb_path) ? $locked->screenshot_thumb_path : null,
                 ];
+                $bulkRequestId = $locked->bulk_site_request_id;
+                $wasStaffInvite = filled($locked->assigned_by_user_id);
                 $locked->delete();
+
+                if ($bulkRequestId) {
+                    $bulk = BulkSiteRequest::query()->find($bulkRequestId);
+                    if ($bulk && $wasStaffInvite) {
+                        $bulk->forgetUnlinkedStaffInviteItems();
+                    }
+                    $bulk?->refreshProgressStatus();
+                }
 
                 return $snapshot;
             });
@@ -733,7 +819,7 @@ class SiteController extends Controller
                 'languages' => $site->languages,
                 'category' => $site->category,
                 'categories' => $categories,
-                'price' => (float) $site->price,
+                'price' => $this->listingFromEuros((float) $site->price, $site->country),
                 'turnaround_time' => $site->turnaround_time,
                 'publication_time' => $site->publication_time,
                 'link_type' => $site->link_type,
@@ -741,8 +827,8 @@ class SiteController extends Controller
                 'sponsored' => (bool) $site->sponsored,
                 'partner_material' => (bool) $site->partner_material,
                 'as_you_prefer' => (bool) $site->as_you_prefer,
-                'sensitive_prices' => $site->sensitive_prices ?: new \stdClass,
-                'homepage_placement_prices' => $site->homepage_placement_prices ?: new \stdClass,
+                'sensitive_prices' => $this->listingMapFromEuros($site->sensitive_prices, $site->country),
+                'homepage_placement_prices' => $this->listingMapFromEuros($site->homepage_placement_prices, $site->country),
                 'social_promotion' => $site->social_promotion ?: new \stdClass,
                 'verified' => (bool) $site->verified,
                 'active' => (bool) $site->active,
@@ -764,10 +850,6 @@ class SiteController extends Controller
             return redirect()
                 ->route('publisher.websites', ['status' => 'invites'])
                 ->with('error', 'Accept this invitation before editing the listing.');
-        }
-
-        if ($site->isArchived()) {
-            return redirect()->back()->with('error', 'Archived sites cannot be edited. Restore the site first.');
         }
 
         if ($request->filled('exampleUrl')) {
@@ -882,8 +964,8 @@ class SiteController extends Controller
 
         try {
             DB::transaction(function () use ($site, $request, $cleanDescription, $categoriesArray, $primaryCategory, $countryCodes, $languageCodes, $needsRereview, $keepAsBulkDraft) {
-                $sensitivePrices = $this->collectSensitivePrices($request);
-                $homepagePrices = $this->collectHomepagePlacementPrices($request);
+                $sensitivePrices = $this->collectSensitivePrices($request, $countryCodes[0] ?? null);
+                $homepagePrices = $this->collectHomepagePlacementPrices($request, $countryCodes[0] ?? null);
                 $socialPromotion = $this->collectSocialPromotion($request);
 
                 $payload = [
@@ -899,7 +981,7 @@ class SiteController extends Controller
                     'languages' => $languageCodes,
                     'category' => $primaryCategory,
                     'categories' => $categoriesArray,
-                    'price' => $request->price,
+                    'price' => $this->listingToEuros($request->price, $countryCodes[0] ?? null),
                     'turnaround_time' => $request->turnaround_time,
                     'publication_time' => $request->publicationTime,
                     'link_type' => $request->link_type,
@@ -955,7 +1037,7 @@ class SiteController extends Controller
         if ($site->hasDetailsComplete() || $site->awaitsPublisherDetails()) {
             return redirect()
                 ->route('publisher.bulk-sites.review')
-                ->with('success', '“'.$site->site_name.'” saved. Review your sites, then submit for admin review.');
+                ->with('success', '“'.$site->site_name.'” saved. Review your sites — Accept to go live, or Edit to send them to admin.');
         }
 
         if ($needsRereview) {
@@ -979,21 +1061,21 @@ class SiteController extends Controller
                 $site->site_name
             );
 
-            return redirect()->back()->with('success', 'Site updated. Market/niche changes require re-review — it is offline until an admin approves it again.');
+            return redirect()->back()->with('success', 'Site updated. Market/niche changes require re-review — it is offline until an admin approves it again.'.$this->listingSavedNote($request->price, (float) $site->price, $countryCodes[0] ?? null));
         }
 
         if ($needsRereview) {
-            return redirect()->back()->with('success', 'Site updated and queued for review.');
+            return redirect()->back()->with('success', 'Site updated and queued for review.'.$this->listingSavedNote($request->price, (float) $site->price, $countryCodes[0] ?? null));
         }
 
         // Bulk drafts return to the review sheet (PUT has no reliable referrer).
         if ($site->fresh()->hasDetailsComplete()) {
             return redirect()
                 ->route('publisher.bulk-sites.review')
-                ->with('success', 'Website details saved. Review your sites, then submit them for approval.');
+                ->with('success', 'Website details saved. Accept to go live, or Edit to send the listing to admin.'.$this->listingSavedNote($request->price, (float) $site->price, $countryCodes[0] ?? null));
         }
 
-        return redirect()->back()->with('success', 'Site updated successfully.');
+        return redirect()->back()->with('success', 'Site updated successfully.'.$this->listingSavedNote($request->price, (float) $site->price, $countryCodes[0] ?? null));
     }
 
     public function destroy($id)
@@ -1002,12 +1084,8 @@ class SiteController extends Controller
             $deleted = DB::transaction(function () use ($id) {
                 $site = Site::where('publisher_id', auth()->id())->lockForUpdate()->findOrFail($id);
 
-                if ($site->verified || $site->active) {
+                if (($site->verified || $site->active) && ! $site->isArchived()) {
                     return ['status' => 'live'];
-                }
-
-                if ($site->isArchived()) {
-                    return ['status' => 'archived'];
                 }
 
                 if ($site->orderItemsCount() > 0) {
@@ -1044,10 +1122,6 @@ class SiteController extends Controller
 
         if (($deleted['status'] ?? '') === 'live') {
             return redirect()->back()->with('error', 'You cannot delete an active or verified site. Archive it instead.');
-        }
-
-        if (($deleted['status'] ?? '') === 'archived') {
-            return redirect()->back()->with('error', 'Archived sites cannot be deleted from here.');
         }
 
         if (($deleted['status'] ?? '') === 'has_orders') {
@@ -1127,6 +1201,13 @@ class SiteController extends Controller
 
         if (! $site->isArchived()) {
             return response()->json(['success' => false, 'message' => 'Site is not archived.'], 422);
+        }
+
+        if ($site->verifiedOwnerListing()) {
+            return response()->json([
+                'success' => false,
+                'message' => Site::RESTORE_BLOCKED_VERIFIED,
+            ], 422);
         }
 
         try {
@@ -1224,7 +1305,7 @@ class SiteController extends Controller
     /**
      * @return array<string, float>
      */
-    private function collectSensitivePrices(Request $request): array
+    private function collectSensitivePrices(Request $request, ?string $country = null): array
     {
         $sensitivePrices = [];
         foreach (['crypto', 'trading', 'CBD', 'forex'] as $topic) {
@@ -1237,7 +1318,7 @@ class SiteController extends Controller
                 continue;
             }
 
-            $sensitivePrices[$topic] = (float) $price;
+            $sensitivePrices[$topic] = $this->listingToEuros($price, $country);
         }
 
         return $sensitivePrices;
@@ -1248,7 +1329,7 @@ class SiteController extends Controller
      *
      * @return array<string, float> days (string keys) => fee
      */
-    private function collectHomepagePlacementPrices(Request $request): array
+    private function collectHomepagePlacementPrices(Request $request, ?string $country = null): array
     {
         $out = [];
         foreach (config('site_placement.homepage_days', [1, 7, 30]) as $days) {
@@ -1262,10 +1343,63 @@ class SiteController extends Controller
                 continue;
             }
 
-            $out[(string) $days] = round($price, 2);
+            $out[(string) $days] = $this->listingToEuros($price, $country);
         }
 
         return $out;
+    }
+
+    private function listingSavedNote(mixed $typedLocal, float $storedEuros, ?string $country): string
+    {
+        $money = app(MoneyDisplay::class);
+        $currency = $money->currencyForCountry($country);
+        if ($currency === 'EUR') {
+            return '';
+        }
+
+        return ' Saved €'.number_format($storedEuros, 2)
+            .' (from '.$money->symbolFor($currency).number_format((float) $typedLocal, 2).').';
+    }
+
+    private function listingToEuros(mixed $local, ?string $country): float
+    {
+        $money = app(MoneyDisplay::class);
+
+        return $money->toEuros($local, $money->currencyForCountry($country));
+    }
+
+    private function listingFromEuros(mixed $euros, ?string $country): float
+    {
+        $money = app(MoneyDisplay::class);
+
+        return $money->fromEuros($euros, $money->currencyForCountry($country));
+    }
+
+    /**
+     * @param  array<string, mixed>|object|string|null  $map
+     * @return array<string, float>|\stdClass
+     */
+    private function listingMapFromEuros(mixed $map, ?string $country): array|\stdClass
+    {
+        if (is_string($map)) {
+            $map = json_decode($map, true);
+        }
+        if (is_object($map)) {
+            $map = (array) $map;
+        }
+        if (! is_array($map) || $map === []) {
+            return new \stdClass;
+        }
+
+        $out = [];
+        foreach ($map as $key => $value) {
+            if (! is_numeric($value)) {
+                continue;
+            }
+            $out[(string) $key] = $this->listingFromEuros($value, $country);
+        }
+
+        return $out === [] ? new \stdClass : $out;
     }
 
     /**
@@ -1505,6 +1639,19 @@ class SiteController extends Controller
             app(CheckoutSchemaService::class)->ensureCheckoutTables();
         } catch (\Throwable $e) {
             Log::warning('Publisher listing schema ensure failed', [
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        try {
+            // Language rows first: country pairing looks them up by code.
+            // A missing Bulgarian/Arabic/Chinese row blocks that market.
+            LanguagesTableSeeder::upsertMissing();
+            // Live databases that skipped the North America migration have no
+            // Canada row, so the country menu omits it. Insert missing rows only.
+            CountriesTableSeeder::upsertMissing();
+        } catch (\Throwable $e) {
+            Log::warning('Publisher marketplace country ensure failed', [
                 'error' => $e->getMessage(),
             ]);
         }

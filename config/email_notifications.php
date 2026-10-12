@@ -3,6 +3,7 @@
 use App\Mail\AdminAssignedSiteNotification;
 use App\Mail\AdminManualPaymentNotification;
 use App\Mail\AdminNewUserRegistered;
+use App\Mail\AdminPublishedSiteNotification;
 use App\Mail\AdminStalledOrderAlert;
 use App\Mail\AdvertiserOrderStalledNotice;
 use App\Mail\AdvertiserReviewNudge;
@@ -11,6 +12,7 @@ use App\Mail\AutoApproveReminderMail;
 use App\Mail\BulkSiteItemsRejected;
 use App\Mail\BulkSiteRequestCancelled;
 use App\Mail\BulkSiteRequestSubmitted;
+use App\Mail\BulkSitesReadyForPublisherReview;
 use App\Mail\BulkSitesSeededNotification;
 use App\Mail\CommunityFeedbackReviewed;
 use App\Mail\ContentEvaluationResult;
@@ -403,11 +405,25 @@ return [
             'mailable' => BulkSitesSeededNotification::class,
             'default_enabled' => true,
         ],
+        'bulk_sites_publisher_review' => [
+            'name' => 'Bulk Sites Ready for Publisher Review',
+            'audience' => 'publisher',
+            'preference' => null,
+            'mailable' => BulkSitesReadyForPublisherReview::class,
+            'default_enabled' => true,
+        ],
         'admin_assigned_site' => [
             'name' => 'Admin Assigned Site — Accept Listing',
             'audience' => 'publisher',
             'preference' => null,
             'mailable' => AdminAssignedSiteNotification::class,
+            'default_enabled' => true,
+        ],
+        'admin_published_site' => [
+            'name' => 'Admin Published Site — Live',
+            'audience' => 'publisher',
+            'preference' => null,
+            'mailable' => AdminPublishedSiteNotification::class,
             'default_enabled' => true,
         ],
         'admin_new_user' => [

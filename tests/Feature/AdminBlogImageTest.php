@@ -450,11 +450,16 @@ class AdminBlogImageTest extends TestCase
             '/media/blogs/featured/gastbeitraege-europa-featured.jpg',
             $blog->featuredImageUrl()
         );
+        $this->assertNull($blog->publicFeaturedImageUrl());
 
         Storage::disk('public')->put('blogs/content/gastbeitraege-europa-featured.jpg', 'content-copy');
         $this->assertSame(
             '/media/blogs/content/gastbeitraege-europa-featured.jpg',
             $blog->featuredImageUrl()
+        );
+        $this->assertSame(
+            '/media/blogs/content/gastbeitraege-europa-featured.jpg',
+            $blog->publicFeaturedImageUrl()
         );
 
         Storage::disk('public')->put('blogs/featured/gastbeitraege-europa-featured.jpg', 'featured-copy');
@@ -482,10 +487,9 @@ class AdminBlogImageTest extends TestCase
                 ],
             ]);
 
-        $store->assertRedirect(route('admin.blogs.index'));
-
         $blog = Blog::query()->where('slug', 'webp-featured-post')->first();
         $this->assertNotNull($blog);
+        $store->assertRedirect(route('admin.blogs.edit', $blog->id));
         $this->assertNotNull($blog->featured_image);
         $this->assertStringStartsWith('blogs/featured/', $blog->featured_image);
         Storage::disk('public')->assertExists($blog->featured_image);

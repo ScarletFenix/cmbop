@@ -13,6 +13,7 @@ use App\Services\BlogHtmlSanitizer;
 use App\Services\CuratedBlogSync;
 use App\Services\CuratedBlogWriter;
 use App\Services\SiteEnrichment\ImageOptimizationService;
+use App\Support\AdminBlog;
 use App\Support\BlogInlineImages;
 use App\Support\PublicI18n;
 use App\Support\UserFacingError;
@@ -41,69 +42,59 @@ class BlogController extends Controller
             session()->now('error', UserFacingError::message($e, 'Curated blog sync failed. The list below may be incomplete.'));
         }
 
+        $filters = AdminBlog::listFilters($request);
+
         if (! $this->schemaTableAvailable('blogs')) {
             return view('admin.blogs.index', [
                 'blogs' => $this->emptyBlogPaginator(),
+                'filters' => $filters,
             ]);
         }
 
-        $with = ['creator'];
         $translationsAvailable = $this->schemaTableAvailable('blog_translations');
-        if ($translationsAvailable) {
-            $with[] = 'translations';
-        }
 
         try {
-            $query = Blog::with($with)->orderByDesc('created_at');
-
-            $search = trim((string) $request->input('q', ''));
-            if ($search !== '') {
-                $like = '%'.$search.'%';
-                $query->where(function ($inner) use ($like, $translationsAvailable) {
-                    $inner->where('title', 'like', $like)
-                        ->orWhere('slug', 'like', $like)
-                        ->orWhere('author', 'like', $like);
-                    if ($translationsAvailable) {
-                        $inner->orWhereHas('translations', function ($translations) use ($like) {
-                            $translations->where('title', 'like', $like)
-                                ->orWhere('slug', 'like', $like);
-                        });
-                    }
-                });
+            $query = Blog::query();
+            if ($translationsAvailable) {
+                $query->with('translations');
             }
 
-            $status = (string) $request->input('status', '');
-            if (in_array($status, ['draft', 'published'], true)) {
-                $query->where('status', $status);
+            AdminBlog::applySearch($query, $filters['q'], $translationsAvailable);
+
+            if ($filters['status'] !== '' && AdminBlog::columnExists('blogs', 'status')) {
+                $query->where('status', $filters['status']);
             }
 
-            $locale = (string) $request->input('locale', '');
-            if (class_exists(PublicI18n::class) && PublicI18n::isSupported($locale)) {
-                $query->where('primary_locale', $locale);
+            if ($filters['locale'] !== '' && AdminBlog::columnExists('blogs', 'primary_locale')) {
+                $query->where('primary_locale', $filters['locale']);
             }
 
-            $kind = (string) $request->input('kind', '');
-            if ($kind === 'curated') {
-                $query->whereNotNull('curated_key');
-            } elseif ($kind === 'custom') {
-                $query->whereNull('curated_key');
+            if (AdminBlog::columnExists('blogs', 'curated_key')) {
+                if ($filters['kind'] === 'curated') {
+                    $query->whereNotNull('curated_key');
+                } elseif ($filters['kind'] === 'custom') {
+                    $query->whereNull('curated_key');
+                }
             }
 
-            if ($request->boolean('missing_translations') && $translationsAvailable) {
-                $needed = count($this->publicLocales());
-                $query->whereRaw(
-                    '(select count(*) from blog_translations where blog_translations.blog_id = blogs.id) < ?',
-                    [$needed]
-                );
+            if ($filters['incomplete'] && $translationsAvailable) {
+                AdminBlog::constrainIncomplete($query);
             }
 
-            $blogs = $query->paginate(20)->withQueryString();
+            AdminBlog::applyListSort($query, $filters['sort']);
+
+            $page = (int) (filter_number($request->input('page')) ?? 1);
+            $blogs = $query->paginate(20, ['*'], 'page', max(1, $page))->withQueryString();
+            try {
+                $blogs->getCollection()->loadMissing('creator');
+            } catch (\Throwable) {
+            }
         } catch (\Throwable $e) {
             Log::warning('Admin blogs list leftover query failed', ['error' => $e->getMessage()]);
             $blogs = $this->emptyBlogPaginator();
         }
 
-        return view('admin.blogs.index', compact('blogs'));
+        return view('admin.blogs.index', compact('blogs', 'filters'));
     }
 
     /**
@@ -134,10 +125,14 @@ class BlogController extends Controller
     /**
      * Show the form for creating a new blog.
      */
-    public function create()
+    public function create(Request $request)
     {
+        $locales = $this->publicLocales();
+
         return view('admin.blogs.create', [
-            'locales' => $this->publicLocales(),
+            'locales' => $locales,
+            'formLocales' => AdminBlog::formLocales(null, $request),
+            'indexQuery' => AdminBlog::rememberReturnQuery($request),
         ]);
     }
 
@@ -152,8 +147,9 @@ class BlogController extends Controller
             $translations = $this->sanitizeTranslations((array) $request->input('translations', []), true);
             $this->assertPrimaryLocalePresent($this->requestedPrimaryLocale($request), $translations);
 
-            if ($request->hasFile('featured_image')) {
-                $featuredImage = $this->storeBlogImage($request->file('featured_image'), 'blogs/featured');
+            $featuredFile = $request->file('featured_image');
+            if ($featuredFile instanceof UploadedFile) {
+                $featuredImage = $this->storeBlogImage($featuredFile, 'blogs/featured');
                 if ($featuredImage === null) {
                     throw ValidationException::withMessages([
                         'featured_image' => [self::imageConversionFailedMessage()],
@@ -162,31 +158,32 @@ class BlogController extends Controller
                 Log::info('Featured image uploaded', ['path' => $featuredImage]);
             }
 
-            $tags = null;
-            if ($request->tags) {
-                $tags = array_map('trim', explode(',', $request->tags));
-                $tags = array_filter($tags);
-                $tags = array_values($tags);
+            $tags = $this->tagsFromRequest($request);
+            $en = $translations['en'] ?? null;
+            if (! is_array($en)) {
+                throw ValidationException::withMessages([
+                    'translations.en.title' => 'English title and content are required.',
+                ]);
             }
-            $en = $translations['en'];
             $enSlug = $this->uniquePublicSlug($en['slug'] ?: Str::slug($en['title']));
             $legacyExcerpt = filled($en['excerpt'])
                 ? Str::limit(trim((string) $en['excerpt']), 300)
                 : Str::limit(strip_tags((string) $en['content']), 160);
             $primaryLocale = $this->requestedPrimaryLocale($request);
+            $status = AdminBlog::resolveStoreStatus($request);
 
-            $blog = DB::transaction(function () use ($request, $featuredImage, $tags, $translations, $en, $enSlug, $legacyExcerpt, $primaryLocale) {
+            $blog = DB::transaction(function () use ($request, $featuredImage, $tags, $translations, $en, $enSlug, $legacyExcerpt, $primaryLocale, $status) {
                 $blog = Blog::create([
                     'title' => $en['title'],
                     'slug' => $enSlug,
-                    'primary_locale' => $request->input('primary_locale') ?: null,
+                    'primary_locale' => AdminBlog::normalizeLocale($request->input('primary_locale')) ?: null,
                     'excerpt' => $legacyExcerpt,
                     'content' => $en['content'],
                     'featured_image' => $featuredImage,
-                    'author' => trim((string) $request->input('author')) ?: auth()->user()->name,
+                    'author' => search_text($request->input('author')) ?: (auth()->user()?->name ?? 'Admin'),
                     'tags' => $tags,
-                    'status' => $request->status,
-                    'published_at' => $request->status === 'published' ? now() : null,
+                    'status' => $status,
+                    'published_at' => $status === 'published' ? now() : null,
                     'created_by' => auth()->id(),
                     'updated_by' => auth()->id(),
                     'manually_edited_at' => now(),
@@ -222,14 +219,27 @@ class BlogController extends Controller
                 'slug' => $blog->slug,
             ]);
 
-            return redirect()->route('admin.blogs.index')
+            ActivityLogger::tryLog(
+                'blog.created',
+                (auth()->user()?->name ?? 'Admin').' created blog "'.$blog->title.'"',
+                $blog,
+                ['blog_id' => $blog->id, 'status' => $blog->status],
+                $blog->title
+            );
+
+            return redirect()->route('admin.blogs.edit', $blog->id)
                 ->with('success', 'Blog "'.$blog->title.'" created successfully!');
         } catch (ValidationException $e) {
             $this->deleteOrphanedBlogUpload($featuredImage);
 
-            return redirect()->back()
+            $redirect = redirect()->back()
                 ->withErrors($e->errors())
                 ->withInput();
+            if ($request->hasFile('featured_image')) {
+                $redirect->with('warning', 'Choose the featured image again.');
+            }
+
+            return $redirect;
         } catch (\Throwable $e) {
             $this->deleteOrphanedBlogUpload($featuredImage);
             Log::error('Blog creation failed: '.$e->getMessage());
@@ -259,7 +269,11 @@ class BlogController extends Controller
                 filled($en?->content) ? $en->content : $blog->content
             );
 
-            return view('admin.blogs.show', compact('blog', 'safeContent'));
+            return view('admin.blogs.show', [
+                'blog' => $blog,
+                'safeContent' => $safeContent,
+                'locales' => $this->publicLocales(),
+            ]);
         } catch (ModelNotFoundException $e) {
             return redirect()->route('admin.blogs.index')
                 ->with('error', 'Blog not found.');
@@ -272,6 +286,43 @@ class BlogController extends Controller
 
             return redirect()->route('admin.blogs.index')
                 ->with('error', UserFacingError::message($e, 'Failed to load blog. Please try again.'));
+        }
+    }
+
+    /**
+     * Staff-only preview of a locale, including drafts / unpublished locales.
+     */
+    public function preview(Request $request, $id)
+    {
+        if (! $this->schemaTableAvailable('blogs')) {
+            abort(404);
+        }
+
+        try {
+            $blog = $this->findAdminBlog($id);
+            $locale = AdminBlog::normalizeLocale($request->query('locale'))
+                ?: AdminBlog::normalizeLocale($blog->primary_locale)
+                ?: 'en';
+            $translation = $blog->translations->firstWhere('locale', $locale)
+                ?: $blog->translations->firstWhere('locale', 'en');
+            $html = filled($translation?->content) ? $translation->content : $blog->content;
+            $safeContent = app(BlogHtmlSanitizer::class)->sanitize($html);
+
+            return view('admin.blogs.preview', [
+                'blog' => $blog,
+                'locale' => $locale,
+                'translation' => $translation,
+                'safeContent' => $safeContent,
+                'locales' => $this->publicLocales(),
+            ]);
+        } catch (ModelNotFoundException $e) {
+            return redirect()->route('admin.blogs.index')
+                ->with('error', 'Blog not found.');
+        } catch (\Throwable $e) {
+            Log::error('Error previewing blog: '.$e->getMessage());
+
+            return redirect()->route('admin.blogs.index')
+                ->with('error', UserFacingError::message($e, 'Failed to preview blog. Please try again.'));
         }
     }
 
@@ -290,6 +341,8 @@ class BlogController extends Controller
             return view('admin.blogs.edit', [
                 'blog' => $blog,
                 'locales' => $this->publicLocales(),
+                'formLocales' => AdminBlog::formLocales($blog, request()),
+                'indexQuery' => AdminBlog::storedReturnQuery(request()),
             ]);
         } catch (ModelNotFoundException $e) {
             return redirect()->route('admin.blogs.index')
@@ -317,24 +370,24 @@ class BlogController extends Controller
             $blog = Blog::with('translations')->findOrFail($id);
             $oldImagePaths = $this->collectStoredBlogImagePaths($blog);
 
-            $tags = null;
-            if ($request->tags) {
-                $tags = array_map('trim', explode(',', $request->tags));
-                $tags = array_filter($tags);
-                $tags = array_values($tags);
-            }
+            $tags = $this->tagsFromRequest($request);
 
             $translations = $this->sanitizeTranslations((array) $request->input('translations', []), true);
             $this->assertPrimaryLocalePresent($this->requestedPrimaryLocale($request), $translations);
-            $en = $translations['en'];
+            $en = $translations['en'] ?? null;
+            if (! is_array($en)) {
+                throw ValidationException::withMessages([
+                    'translations.en.title' => 'English title and content are required.',
+                ]);
+            }
             $data = [
                 'title' => $en['title'],
-                'primary_locale' => $request->input('primary_locale') ?: null,
+                'primary_locale' => AdminBlog::normalizeLocale($request->input('primary_locale')) ?: null,
                 'excerpt' => filled($en['excerpt'])
                     ? Str::limit(trim((string) $en['excerpt']), 300)
                     : Str::limit(strip_tags((string) $en['content']), 160),
                 'content' => $en['content'],
-                'author' => trim((string) $request->input('author')) ?: ($blog->author ?: auth()->user()?->name),
+                'author' => search_text($request->input('author')) ?: ($blog->author ?: auth()->user()?->name),
                 'tags' => $tags,
                 'status' => $request->status,
                 'updated_by' => auth()->id(),
@@ -365,8 +418,9 @@ class BlogController extends Controller
             }
             $data['slug'] = $slugsByLocale[$primaryLocale] ?? $enSlug;
 
-            if ($request->hasFile('featured_image')) {
-                $newFeaturedImage = $this->storeBlogImage($request->file('featured_image'), 'blogs/featured');
+            $featuredFile = $request->file('featured_image');
+            if ($featuredFile instanceof UploadedFile) {
+                $newFeaturedImage = $this->storeBlogImage($featuredFile, 'blogs/featured');
                 if ($newFeaturedImage === null) {
                     throw ValidationException::withMessages([
                         'featured_image' => [self::imageConversionFailedMessage()],
@@ -375,7 +429,7 @@ class BlogController extends Controller
 
                 $data['featured_image'] = $newFeaturedImage;
                 Log::info('New featured image uploaded', ['path' => $newFeaturedImage]);
-            } elseif ($request->boolean('remove_featured_image')) {
+            } elseif (AdminBlog::normalizeIncomplete($request->input('remove_featured_image'))) {
                 $data['featured_image'] = null;
             }
 
@@ -419,6 +473,14 @@ class BlogController extends Controller
                 'status' => $blog->status,
             ]);
 
+            ActivityLogger::tryLog(
+                'blog.updated',
+                (auth()->user()?->name ?? 'Admin').' updated blog "'.$blog->title.'"',
+                $blog,
+                ['blog_id' => $blog->id, 'status' => $blog->status],
+                $blog->title
+            );
+
             return redirect()->route('admin.blogs.index')
                 ->with('success', 'Blog "'.$blog->title.'" updated successfully!');
         } catch (ValidationException $e) {
@@ -441,7 +503,7 @@ class BlogController extends Controller
     /**
      * Remove the specified blog.
      */
-    public function destroy($id)
+    public function destroy(Request $request, $id)
     {
         try {
             $blog = Blog::with('translations')->findOrFail($id);
@@ -478,7 +540,7 @@ class BlogController extends Controller
                 $blogTitle
             );
 
-            return redirect()->route('admin.blogs.index')
+            return redirect()->route('admin.blogs.index', AdminBlog::indexQuery($request))
                 ->with('success', 'Blog "'.$blogTitle.'" deleted successfully!');
         } catch (\Throwable $e) {
             Log::error('Blog deletion failed: '.$e->getMessage());
@@ -491,7 +553,7 @@ class BlogController extends Controller
     /**
      * Toggle blog status (publish/unpublish).
      */
-    public function toggleStatus($id)
+    public function toggleStatus(Request $request, $id)
     {
         try {
             $blog = Blog::findOrFail($id);
@@ -519,7 +581,7 @@ class BlogController extends Controller
                 $blog->title
             );
 
-            return redirect()->route('admin.blogs.index')
+            return redirect()->route('admin.blogs.index', AdminBlog::indexQuery($request))
                 ->with('success', $message);
         } catch (\Throwable $e) {
             Log::error('Blog status toggle failed: '.$e->getMessage());
@@ -764,14 +826,15 @@ class BlogController extends Controller
 
         foreach ($this->publicLocales() as $locale) {
             $item = (array) ($translations[$locale] ?? []);
-            $title = trim((string) ($item['title'] ?? ''));
-            $slug = trim((string) ($item['slug'] ?? ''));
-            $excerpt = isset($item['excerpt']) ? trim((string) $item['excerpt']) : null;
-            $metaTitle = isset($item['meta_title']) ? trim((string) $item['meta_title']) : null;
-            $metaDescription = isset($item['meta_description']) ? trim((string) $item['meta_description']) : null;
-            $isPublished = ! array_key_exists('is_published', $item)
-                || filter_var($item['is_published'], FILTER_VALIDATE_BOOLEAN);
-            $rawContent = trim((string) ($item['content'] ?? ''));
+            $title = search_text($item['title'] ?? '');
+            $slug = search_text($item['slug'] ?? '');
+            $excerpt = array_key_exists('excerpt', $item) ? search_text($item['excerpt']) : null;
+            $metaTitle = array_key_exists('meta_title', $item) ? search_text($item['meta_title']) : null;
+            $metaDescription = array_key_exists('meta_description', $item) ? search_text($item['meta_description']) : null;
+            $isPublished = array_key_exists('is_published', $item)
+                ? AdminBlog::normalizeIncomplete($item['is_published'])
+                : true;
+            $rawContent = is_string($item['content'] ?? null) ? trim($item['content']) : '';
             $content = BlogHtmlSanitizer::isBlank($rawContent)
                 ? ''
                 : app(BlogHtmlSanitizer::class)->sanitize($rawContent);
@@ -850,9 +913,24 @@ class BlogController extends Controller
     /**
      * @return list<string>
      */
+    /**
+     * @return list<string>|null
+     */
+    private function tagsFromRequest(Request $request): ?array
+    {
+        $raw = $request->input('tags');
+        if (! is_string($raw) || trim($raw) === '') {
+            return null;
+        }
+
+        $tags = array_values(array_filter(array_map('trim', explode(',', $raw))));
+
+        return $tags === [] ? null : $tags;
+    }
+
     private function publicLocales(): array
     {
-        if (class_exists(PublicI18n::class)) {
+        if (class_exists(PublicI18n::class) && method_exists(PublicI18n::class, 'supported')) {
             return PublicI18n::supported();
         }
 
@@ -861,9 +939,9 @@ class BlogController extends Controller
 
     private function requestedPrimaryLocale(Request $request): string
     {
-        $locale = (string) $request->input('primary_locale');
+        $locale = AdminBlog::normalizeLocale($request->input('primary_locale'));
 
-        return (class_exists(PublicI18n::class) && PublicI18n::isSupported($locale)) ? $locale : 'en';
+        return $locale !== '' ? $locale : 'en';
     }
 
     /**
@@ -939,6 +1017,10 @@ class BlogController extends Controller
         $blog = $query->findOrFail($id);
         if (! $translationsAvailable) {
             $blog->setRelation('translations', $blog->newCollection());
+        }
+        try {
+            $blog->loadMissing(['creator:id,name,email', 'updater:id,name,email']);
+        } catch (\Throwable) {
         }
 
         return $blog;

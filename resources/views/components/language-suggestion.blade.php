@@ -6,8 +6,12 @@
   $suggestedName = '';
   $switchUrl = '#';
 
-  if (show_public_language_switcher()) {
-      $suggested = PublicI18n::preferredFromBrowser(request());
+  if (show_public_language_switcher()
+      && class_exists(PublicI18n::class)
+      && (method_exists(PublicI18n::class, 'suggestedLocale') || method_exists(PublicI18n::class, 'preferredFromBrowser'))) {
+      $suggested = method_exists(PublicI18n::class, 'suggestedLocale')
+          ? PublicI18n::suggestedLocale(request())
+          : PublicI18n::preferredFromBrowser(request());
       $current = public_locale();
       $dismissed = request()->cookie(config('i18n.suggestion_dismiss_cookie', 'locale_suggest_dismissed'));
 
@@ -31,7 +35,7 @@
       {{ __('messages.language_suggestion', ['language' => $suggestedName]) }}
     </p>
     <div class="d-flex gap-2">
-      <a href="{{ $switchUrl }}" class="btn btn-sm btn-primary" hreflang="{{ \App\Support\PublicI18n::hreflang($suggested) }}">
+      <a href="{{ $switchUrl }}" class="btn btn-sm btn-primary" lang="{{ (class_exists(\App\Support\PublicI18n::class) && method_exists(\App\Support\PublicI18n::class, 'htmlLang')) ? \App\Support\PublicI18n::htmlLang($suggested) : $suggested }}">
         {{ __('messages.language_suggestion_switch', ['language' => $suggestedName]) }}
       </a>
       <button type="button" class="btn btn-sm btn-outline-secondary" id="localeSuggestDismiss">

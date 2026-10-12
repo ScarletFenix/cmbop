@@ -2376,17 +2376,17 @@ class InAppNotificationService
             $publisherId,
             self::TYPE_SITE_STATUS,
             $createdCount === 1
-                ? 'Your site was added to Pending sites'
-                : "{$createdCount} sites were added to Pending sites",
-            'We’ve added your sites to Pending sites — open them and finish any remaining details. They stay hidden from advertisers until we approve.',
+                ? 'Your site is active on the platform'
+                : "{$createdCount} sites are active on the platform",
+            'These sites from your bulk request are live for advertisers. They are not verified yet. You do not need to add more details or submit them again.',
             [
                 'category' => self::CATEGORY_ACCOUNT,
                 'icon' => 'check-circle',
                 'priority' => InAppNotification::PRIORITY_HIGH,
                 'related' => $bulk,
                 'audience' => InAppNotification::AUDIENCE_PUBLISHER,
-                'action_label' => 'Open Pending sites',
-                'action_url' => route('publisher.websites', ['status' => 'pending'], false),
+                'action_label' => 'Open My Sites',
+                'action_url' => route('publisher.websites', ['status' => 'active'], false),
                 'meta' => [
                     'bulk_site_request_id' => $bulk->id,
                     'created_count' => $createdCount,
@@ -2395,16 +2395,80 @@ class InAppNotificationService
         );
     }
 
-    public function notifyPublisherSiteAssignedForAcceptance(Site $site): void
+    public function notifyPublisherBulkSitesReadyForReview(BulkSiteRequest $bulk, int $createdCount): void
+    {
+        $publisherId = (int) ($bulk->publisher_id ?? 0);
+        if ($publisherId <= 0 || $createdCount <= 0) {
+            return;
+        }
+
+        $this->notify(
+            $publisherId,
+            self::TYPE_SITE_STATUS,
+            $createdCount === 1
+                ? 'Please review a website from your bulk request'
+                : "Please review {$createdCount} websites from your bulk request",
+            'These listings are filled in and waiting for you. They are not live yet. Accept them to go live, or Edit them to send them to our team.',
+            [
+                'category' => self::CATEGORY_ACCOUNT,
+                'icon' => 'check-circle',
+                'priority' => InAppNotification::PRIORITY_HIGH,
+                'related' => $bulk,
+                'audience' => InAppNotification::AUDIENCE_PUBLISHER,
+                'action_label' => 'Review & submit',
+                'action_url' => route('publisher.bulk-sites.review', absolute: false),
+                'meta' => [
+                    'bulk_site_request_id' => $bulk->id,
+                    'created_count' => $createdCount,
+                ],
+            ]
+        );
+    }
+
+    /**
+     * Staff published listing(s) live — not an Accept invite.
+     */
+    public function notifyPublisherStaffPublishedListings(int $publisherId, int $count, mixed $related = null): ?InAppNotification
+    {
+        if ($publisherId <= 0 || $count <= 0) {
+            return null;
+        }
+
+        return $this->notify(
+            $publisherId,
+            self::TYPE_SITE_STATUS,
+            $count === 1
+                ? 'Your site is live on the platform'
+                : $count.' sites are live on the platform',
+            $count === 1
+                ? 'Our team published a website on your account. It is live for advertisers and not verified yet. You do not need to Accept an invite.'
+                : 'Our team published '.$count.' websites on your account. They are live for advertisers and not verified yet. You do not need to Accept invites.',
+            [
+                'category' => self::CATEGORY_ACCOUNT,
+                'icon' => 'check-circle',
+                'priority' => InAppNotification::PRIORITY_HIGH,
+                'related' => $related,
+                'audience' => InAppNotification::AUDIENCE_PUBLISHER,
+                'action_label' => 'Open My Sites',
+                'action_url' => route('publisher.websites', ['status' => 'active'], false),
+                'meta' => [
+                    'created_count' => $count,
+                    'publish_mode' => 'publish',
+                ],
+            ]
+        );
+    }
+
+    public function notifyPublisherSiteAssignedForAcceptance(Site $site): ?InAppNotification
     {
         $publisherId = (int) ($site->publisher_id ?? 0);
         if ($publisherId <= 0) {
-            return;
+            return null;
         }
 
         $domain = $site->domain ?: $site->site_name ?: 'a website';
 
-        $this->notify(
+        return $this->notify(
             $publisherId,
             self::TYPE_SITE_STATUS,
             'Please accept a website we added for you',
@@ -2488,7 +2552,9 @@ class InAppNotificationService
                 $message .= ' Note: '.$notes;
             }
             $actionLabel = 'View my claims';
-            $actionUrl = route('site-claims.index', [], false);
+            $actionUrl = $claim->claimer?->hasRole('advertiser')
+                ? route('advertiser.site-claims', [], false)
+                : route('site-claims.index', [], false);
         }
 
         $this->notify(

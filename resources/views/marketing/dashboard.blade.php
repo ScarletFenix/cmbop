@@ -27,6 +27,7 @@
         </div>
         <div class="d-flex gap-2 flex-wrap mkt-dashboard-toolbar">
             <form method="GET" action="{{ route('marketing.sites.index') }}" class="mkt-dashboard-jump" role="search">
+                <input type="hidden" name="publishers" value="1">
                 <x-slb-search-field
                     name="q"
                     id="mkt-dashboard-q"
@@ -82,7 +83,7 @@
                     <div class="small text-muted mb-1" data-stat-sites-label>
                         {{ (int) $stats['sites_waiting_on_publisher'] === 1 ? 'site' : 'sites' }}
                     </div>
-                    <a href="{{ route('marketing.bulk-site-requests.index', ['status' => 'awaiting_publisher']) }}" class="small text-muted" data-stat-bulk="{{ $stats['bulk_waiting_on_publisher'] }}">
+                    <a href="{{ route('marketing.bulk-site-requests.index', ['status' => \App\Support\MarketingOpsQueues::FILTER_WAITING_PUBLISHER]) }}" class="small text-muted" data-stat-bulk="{{ $stats['bulk_waiting_on_publisher'] }}">
                         {{ $stats['bulk_waiting_on_publisher'] }}
                         bulk request{{ (int) $stats['bulk_waiting_on_publisher'] === 1 ? '' : 's' }}
                     </a>
@@ -143,7 +144,7 @@
                                                     <span class="badge text-bg-danger">Missing market</span>
                                                 @endif
                                                 @if(! $site->hasGoodMetrics())
-                                                    <span class="badge text-bg-warning text-dark">Below quality bar</span>
+                                                    <span class="badge text-bg-warning text-dark">{{ $site->qualityBarBadgeText() }}</span>
                                                 @endif
                                             </div>
                                         </td>
@@ -319,7 +320,72 @@
 (function () {
     const csrf = @json(csrf_token());
     const activateUrl = @json(staff_route('sites.active', '__ID__', false));
+    const publishNowUrl = @json(staff_route('sites.publish-now', '__ID__', false));
     const staffBase = @json(staff_base_path());
+    document.querySelectorAll('.js-staff-publish-now').forEach((btn) => {
+        btn.addEventListener('click', function () {
+            const id = this.dataset.id;
+            const name = this.dataset.name || 'this site';
+            const go = (typeof window.slbConfirmActivate === 'function')
+                ? window.slbConfirmActivate({
+                    looksEnglish: this.dataset.descriptionEnglish !== '0',
+                    excerpt: this.dataset.descriptionExcerpt || '',
+                    name: name,
+                    confirmText: 'Active now',
+                    editUrl: staffBase + '/sites/' + encodeURIComponent(id) + '/edit#description',
+                })
+                : (typeof window.slbConfirm === 'function')
+                    ? window.slbConfirm({
+                        title: 'Activate Site?',
+                        text: 'Make "' + name + '" live in the catalog?',
+                        icon: 'question',
+                        confirmText: 'Active now',
+                    })
+                    : (typeof Swal !== 'undefined' && Swal.fire)
+                        ? Swal.fire({
+                            title: 'Activate Site?',
+                            text: 'Make "' + name + '" live in the catalog?',
+                            icon: 'question',
+                            showCancelButton: true,
+                            confirmButtonText: 'Active now',
+                        }).then((r) => !!(r && r.isConfirmed))
+                        : Promise.resolve(false);
+            go.then((ok) => {
+                if (!ok) return;
+                fetch(publishNowUrl.replace('__ID__', encodeURIComponent(id)), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'X-CSRF-TOKEN': csrf,
+                    },
+                    credentials: 'same-origin',
+                })
+                .then((res) => res.json().then((data) => ({ ok: res.ok, status: res.status, data: data || {} })).catch(() => ({ ok: false, status: res.status, data: {} })))
+                .then(({ ok, status, data }) => {
+                    if (ok && data && data.success) {
+                        const row = document.querySelector('[data-ready-site="' + String(id).replace(/[^0-9]/g, '') + '"]');
+                        if (row) row.remove();
+                        if (typeof window.refreshAdminQueueBadges === 'function') {
+                            window.refreshAdminQueueBadges({ refillReady: true });
+                        }
+                        return;
+                    }
+                    const msg = (typeof window.slbHttpMessage === 'function')
+                        ? window.slbHttpMessage({ status: status, data: data }, 'Could not activate site')
+                        : ((data && data.message) || 'Could not activate site');
+                    window.slbAlert({ icon: 'error', title: 'Error', text: msg });
+                })
+                .catch(() => {
+                    const msg = (typeof window.slbHttpMessage === 'function')
+                        ? window.slbHttpMessage({ status: 0 }, 'Could not activate site')
+                        : 'Request failed';
+                    window.slbAlert({ icon: 'error', title: 'Error', text: msg });
+                });
+            });
+        });
+    });
     document.querySelectorAll('.js-mkt-activate').forEach((btn) => {
         btn.addEventListener('click', function () {
             const id = this.dataset.id;

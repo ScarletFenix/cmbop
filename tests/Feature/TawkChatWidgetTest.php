@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Role;
 use App\Models\User;
+use App\Support\VisitorChatEmbed;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -34,15 +35,28 @@ class TawkChatWidgetTest extends TestCase
         $this->get('/')
             ->assertOk()
             ->assertSee('https://embed.tawk.to/6aa6a3693d02a53444168308/default', false)
-            ->assertSee('Tawk_API', false)
+            ->assertSee('How do I create an account?', false)
+            ->assertSee('How does the marketplace work?', false)
+            ->assertSee('What does a placement cost?', false)
+            ->assertDontSee('slb-tawk-chips', false)
+            ->assertDontSee('askPredefined', false)
+            ->assertSee('slb-tawk-theme-header', false)
+            ->assertSee('window.Tawk_API', false)
+            ->assertSee('window.Tawk_LoadStart', false)
             ->assertSee('Tawk_API.onLoad', false)
             ->assertSee('Tawk_API.minimize', false)
-            ->assertSee('slbPinTawk', false)
-            ->assertSee("classList.toggle('tawk-open'", false)
+            ->assertSee('Tawk_API.setAttributes', false)
+            ->assertSee('slb-chat-mark__unread', false)
+            ->assertSee('widget-settings', false)
+            ->assertSee('brandTawkSettings', false)
+            ->assertSee('messageBackground', false)
+            ->assertSee('[option]', false)
+            ->assertDontSee('id="slbLiveChat"', false)
+            ->assertDontSee('slbPinTawk', false)
             ->assertDontSee('slb-tawk-launcher', false)
             ->assertDontSee('aria-label="Open customer support"', false)
-            ->assertSee("setProperty('top', 'auto', 'important')", false)
-            ->assertSee("removeProperty('max-width')", false)
+            ->assertDontSee("setProperty('top', 'auto', 'important')", false)
+            ->assertDontSee("setProperty('width'", false)
             ->assertSee('slbTawkKeepOpen = false', false)
             ->assertDontSee('aria-label="Open help and feedback"', false)
             ->assertSee('slbOpenSupport', false)
@@ -74,7 +88,59 @@ class TawkChatWidgetTest extends TestCase
             $layout = (string) file_get_contents($path);
             $this->assertStringContainsString('partials.tawk', $layout);
             $this->assertStringContainsString('TawkChat::enabled()', $layout);
+            $this->assertStringContainsString('class_exists(\\App\\Support\\VisitorSupportChat::class)', $layout);
+            $this->assertStringContainsString('class_exists(\\App\\Support\\TawkChat::class)', $layout);
+            $this->assertStringContainsString("view()->exists('partials.tawk')", $layout);
         }
+
+        $tawk = (string) file_get_contents(resource_path('views/partials/tawk.blade.php'));
+        $this->assertStringContainsString('class_exists(\\App\\Support\\VisitorSupportChat::class)', $tawk);
+        $this->assertStringContainsString('class_exists(\\App\\Support\\TawkChat::class)', $tawk);
+        $this->assertStringContainsString("view()->exists('partials.visitor-support-chat')", $tawk);
+        $this->assertStringContainsString('$useFirstParty', $tawk);
+        $this->assertStringContainsString('window.Tawk_API', $tawk);
+        $this->assertStringContainsString('window.Tawk_LoadStart', $tawk);
+        $this->assertStringContainsString('Tawk_API.setAttributes', $tawk);
+        $this->assertStringContainsString('Tawk_API.addTags', $tawk);
+        $this->assertStringNotContainsString('slb-tawk-chips', $tawk);
+        $this->assertStringContainsString('slb-tawk-theme-header', $tawk);
+        $this->assertStringContainsString('slb-tawk-theme-header__back', $tawk);
+        $this->assertStringContainsString('slb-tawk-theme-header__menu', $tawk);
+        $this->assertStringContainsString('stroke="#ffffff"', $tawk);
+        $this->assertStringContainsString("icon: '#ffffff'", $tawk);
+        $this->assertStringContainsString('#1a585e', $tawk);
+        $this->assertStringNotContainsString('askPredefined', $tawk);
+        $this->assertStringContainsString('onChatMessageAgent', $tawk);
+        $this->assertStringContainsString('slb-chat-mark__unread', $tawk);
+        $this->assertStringContainsString('widget-settings', $tawk);
+        $this->assertStringContainsString('brandTawkSettings', $tawk);
+        $this->assertStringContainsString('brandTawkColor', $tawk);
+        $this->assertStringContainsString('brandTawkSocketData', $tawk);
+        $this->assertStringContainsString('messageBackground', $tawk);
+        $this->assertStringContainsString('[option]', $tawk);
+        $this->assertStringContainsString('brandTawkLine', $tawk);
+        $this->assertStringNotContainsString('function restorePageTitle', $tawk);
+        $this->assertStringContainsString('$activeRole?->name', $tawk);
+        $this->assertStringContainsString('function mountLauncher', $tawk);
+        $this->assertStringContainsString('paintMark();', $tawk);
+        $this->assertStringNotContainsString('slbPaintMarkOnce', $tawk);
+        $this->assertStringContainsString('chat-box.json', $tawk);
+        $this->assertStringContainsString('chatBoxData', $tawk);
+        $this->assertStringContainsString('animationData', $tawk);
+        $this->assertStringContainsString("addEventListener('mouseenter', playMark)", $tawk);
+        $this->assertStringContainsString("addEventListener('mouseleave', restMark)", $tawk);
+        $this->assertStringContainsString('goToAndPlay(1, true)', $tawk);
+        $this->assertStringContainsString('goToAndStop(40, true)', $tawk);
+        $this->assertStringNotContainsString('H9l-5 5v-5H4', $tawk);
+        $this->assertStringContainsString('function startTawkEmbed', $tawk);
+        $this->assertStringContainsString('window.slbStartTawkEmbed', $tawk);
+        $this->assertStringNotContainsString('requestIdleCallback(startTawkEmbed', $tawk);
+        $this->assertStringContainsString("asset('assets/vendor/lottie-web/lottie_light.min.js')", $tawk);
+        $this->assertStringContainsString('width:84px;height:84px', $tawk);
+        $this->assertStringContainsString("svg.style.width = '84px'", $tawk);
+        $this->assertStringContainsString("svg.style.height = '84px'", $tawk);
+        $this->assertStringNotContainsString('100vw', $tawk);
+        $this->assertStringNotContainsString('100vh', $tawk);
 
         $admin = (string) file_get_contents(resource_path('views/admin/layouts/app.blade.php'));
         $this->assertStringNotContainsString('partials.tawk', $admin);
@@ -94,12 +160,16 @@ class TawkChatWidgetTest extends TestCase
             ->assertOk()
             ->assertSee('https://embed.tawk.to/6aa6a3693d02a53444168308/default', false)
             ->assertSee('Tawk_API.visitor', false)
+            ->assertSee('Tawk_API.setAttributes', false)
+            ->assertSee('Tawk_API.addTags', false)
+            ->assertSee('"role":"advertiser"', false)
+            ->assertSee('How do I place an order?', false)
             ->assertSee($advertiser->email, false)
             ->assertSee('slbOpenSupport', false)
             ->assertSee('Tawk_API.onLoad', false)
             ->assertSee('Tawk_API.minimize', false)
             ->assertSee('slbTawkKeepOpen', false)
-            ->assertSee('slbPinTawk', false)
+            ->assertDontSee('slbPinTawk', false)
             ->assertDontSee('slb-tawk-launcher', false)
             ->assertDontSee('aria-label="Open customer support"', false)
             ->assertDontSee('aria-label="Open help and feedback"', false);
@@ -110,10 +180,12 @@ class TawkChatWidgetTest extends TestCase
             ->assertOk()
             ->assertSee('https://embed.tawk.to/6aa6a3693d02a53444168308/default', false)
             ->assertSee('Tawk_API.visitor', false)
+            ->assertSee('"role":"publisher"', false)
+            ->assertSee('How do I add a website?', false)
             ->assertSee($publisher->email, false)
             ->assertSee('Tawk_API.onLoad', false)
             ->assertSee('Tawk_API.minimize', false)
-            ->assertSee('slbPinTawk', false)
+            ->assertDontSee('slbPinTawk', false)
             ->assertDontSee('slb-tawk-launcher', false)
             ->assertDontSee('aria-label="Open help and feedback"', false);
     }
@@ -124,14 +196,46 @@ class TawkChatWidgetTest extends TestCase
         $this->assertStringContainsString('iframe[title="chat widget"]', $css);
         $this->assertStringContainsString('iframe[src*="tawk.to"]', $css);
         $this->assertStringContainsString('flex: 0 0 auto', $css);
-        $this->assertStringContainsString('top: auto !important', $css);
-        $this->assertStringContainsString('left: auto !important', $css);
-        $this->assertStringContainsString('right: 16px !important', $css);
-        $this->assertStringContainsString('bottom: 20px !important', $css);
+        $this->assertStringContainsString('position: fixed !important', $css);
+        $this->assertStringNotContainsString('right: 16px !important', $css);
+        $this->assertStringNotContainsString('bottom: 20px !important', $css);
+        $this->assertStringNotContainsString('html.tawk-open iframe[title="chat widget"]', $css);
         $this->assertStringNotContainsString('.slb-tawk-launcher', $css);
-        $this->assertStringNotContainsString('html:not(.tawk-open) iframe[title="chat widget"]', $css);
-        $this->assertStringContainsString('html.tawk-open iframe[title="chat widget"]', $css);
-        $this->assertStringContainsString('div:has(> iframe[title="chat widget"])', $css);
-        $this->assertStringNotContainsString('div:has( iframe[src*="tawk.to"])', $css);
+        $this->assertStringNotContainsString('div:has(> iframe[title="chat widget"])', $css);
+    }
+
+    public function test_leftover_html_without_tawk_include_gets_the_widget(): void
+    {
+        config([
+            'services.support_chat.enabled' => false,
+            'services.tawk.property_id' => '6aa6a3693d02a53444168308',
+            'services.tawk.widget_id' => 'default',
+        ]);
+
+        $html = '<html><body><div class="help-fab" id="helpFeedbackWidget"></div></body></html>';
+        $out = VisitorChatEmbed::inject($html);
+
+        $this->assertStringContainsString('https://embed.tawk.to/6aa6a3693d02a53444168308/default', $out);
+        $this->assertStringContainsString('window.Tawk_API', $out);
+        $this->assertStringContainsString('Tawk_API', $out);
+        $this->assertStringContainsString('window.slbOpenSupport', $out);
+        $this->assertStringNotContainsString('window.slbPinTawk', $out);
+        $this->assertSame($out, VisitorChatEmbed::inject($out));
+    }
+
+    public function test_leftover_html_gets_first_party_chat_when_enabled(): void
+    {
+        config([
+            'services.support_chat.enabled' => true,
+            'services.tawk.property_id' => '6aa6a3693d02a53444168308',
+            'services.tawk.widget_id' => 'default',
+        ]);
+
+        $html = '<html><body><p>Home</p></body></html>';
+        $out = VisitorChatEmbed::inject($html);
+
+        $this->assertStringContainsString('id="slbLiveChat"', $out);
+        $this->assertStringContainsString('visitor-support-chat.js', $out);
+        $this->assertStringNotContainsString('embed.tawk.to', $out);
     }
 }

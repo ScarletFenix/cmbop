@@ -26,11 +26,9 @@
                 <div class="card-body d-flex justify-content-between align-items-center">
                     <div>
                         <h6 class="text-muted mb-1">Total Earned</h6>
-                        <h3 class="mb-0" id="totalEarned" style="color: #10b981;">€0.00</h3>
+                        <h3 class="mb-0" id="totalEarned" style="color: #10b981;">{{ format_money(0) }}</h3>
                     </div>
-                    <div class="bg-success bg-opacity-10 p-3 rounded-circle">
-                        <i class="fa fa-euro-sign fa-2x text-success"></i>
-                    </div>
+                    <i class="fa fa-euro-sign reports-stat-icon" aria-hidden="true"></i>
                 </div>
             </div>
         </div>
@@ -46,9 +44,7 @@
                             <a href="{{ route('publisher.tasks') }}">Tasks</a>
                         </div>
                     </div>
-                    <div class="bg-primary bg-opacity-10 p-3 rounded-circle">
-                        <i class="fa fa-check-circle fa-2x text-primary"></i>
-                    </div>
+                    <i class="fa fa-check-circle reports-stat-icon" aria-hidden="true"></i>
                 </div>
             </div>
         </div>
@@ -57,12 +53,10 @@
                 <div class="card-body d-flex justify-content-between align-items-center">
                     <div>
                         <h6 class="text-muted mb-1">Total Withdrawn</h6>
-                        <h3 class="mb-0" id="totalWithdrawn" style="color: #ef4444;">€0.00</h3>
+                        <h3 class="mb-0" id="totalWithdrawn" style="color: #ef4444;">{{ format_money(0) }}</h3>
                         <div class="text-muted small mt-1" id="withdrawnFeesHint"></div>
                     </div>
-                    <div class="bg-danger bg-opacity-10 p-3 rounded-circle">
-                        <i class="fa fa-download fa-2x text-danger"></i>
-                    </div>
+                    <i class="fa fa-download reports-stat-icon" aria-hidden="true"></i>
                 </div>
             </div>
         </div>
@@ -71,12 +65,10 @@
                 <div class="card-body d-flex justify-content-between align-items-center">
                     <div>
                         <h6 class="text-muted mb-1">Available to Withdraw</h6>
-                        <h3 class="mb-0" id="availableToWithdraw">€0.00</h3>
+                        <h3 class="mb-0" id="availableToWithdraw">{{ format_money(0) }}</h3>
                         <a href="{{ route('publisher.withdraw') }}" class="small">Go to Withdraw</a>
                     </div>
-                    <div class="bg-info bg-opacity-10 p-3 rounded-circle">
-                        <i class="fa fa-wallet fa-2x text-info"></i>
-                    </div>
+                    <i class="fa fa-wallet reports-stat-icon" aria-hidden="true"></i>
                 </div>
             </div>
         </div>
@@ -108,7 +100,10 @@
                             <div class="fw-semibold"><i class="fa fa-shopping-cart me-2"></i><span id="ordersTabTitle">Orders</span></div>
                             <small class="text-muted" id="ordersResultsCount"></small>
                         </div>
-                        <form id="ordersFilters" class="row g-2 align-items-end">
+                        <form id="ordersFilters" class="row g-2 align-items-end flex-md-nowrap">
+                            <div class="col-auto reports-search-field">
+                                <x-slb-search-field name="search" id="ordersSearch" placeholder="Order #, site, reference…" mode="" />
+                            </div>
                             <div class="col-auto">
                                 <label class="form-label small mb-0" for="ordersDateFrom">From</label>
                                 <input type="date" class="form-control form-control-sm" id="ordersDateFrom" name="date_from">
@@ -117,17 +112,23 @@
                                 <label class="form-label small mb-0" for="ordersDateTo">To</label>
                                 <input type="date" class="form-control form-control-sm" id="ordersDateTo" name="date_to">
                             </div>
-                            <div class="col-auto">
+                            <div class="col-auto reports-theme-select">
                                 <label class="form-label small mb-0" for="ordersStatus">Status</label>
-                                <select class="form-select form-select-sm" id="ordersStatus" name="status">
-                                    <option value="completed" selected>Completed</option>
-                                    <option value="pending">Pending</option>
-                                    <option value="processing">Processing</option>
-                                    <option value="review">In Review</option>
-                                    <option value="scheduled">Scheduled</option>
-                                    <option value="cancelled">Cancelled</option>
-                                    <option value="all">All</option>
-                                </select>
+                                @include('advertiser.partials.catalog-theme-select', [
+                                    'selectId' => 'ordersStatus',
+                                    'name' => 'status',
+                                    'label' => 'Status',
+                                    'current' => 'completed',
+                                    'options' => [
+                                        ['value' => 'completed', 'label' => 'Completed'],
+                                        ['value' => 'pending', 'label' => 'Pending'],
+                                        ['value' => 'processing', 'label' => 'Processing'],
+                                        ['value' => 'review', 'label' => 'In Review'],
+                                        ['value' => 'scheduled', 'label' => 'Scheduled'],
+                                        ['value' => 'cancelled', 'label' => 'Cancelled'],
+                                        ['value' => 'all', 'label' => 'All'],
+                                    ],
+                                ])
                             </div>
                             <div class="col-auto">
                                 <button type="submit" class="btn btn-sm btn-primary">Apply</button>
@@ -177,7 +178,10 @@
                             <div class="fw-semibold"><i class="fa fa-download me-2"></i><span id="withdrawalsTabTitle">Withdrawals</span></div>
                             <small class="text-muted" id="withdrawalsResultsCount"></small>
                         </div>
-                        <form id="withdrawalsFilters" class="row g-2 align-items-end">
+                        <form id="withdrawalsFilters" class="row g-2 align-items-end flex-md-nowrap">
+                            <div class="col-auto reports-search-field">
+                                <x-slb-search-field name="search" id="withdrawalsSearch" placeholder="WD reference, method…" mode="" />
+                            </div>
                             <div class="col-auto">
                                 <label class="form-label small mb-0" for="withdrawalsDateFrom">From</label>
                                 <input type="date" class="form-control form-control-sm" id="withdrawalsDateFrom" name="date_from">
@@ -186,15 +190,21 @@
                                 <label class="form-label small mb-0" for="withdrawalsDateTo">To</label>
                                 <input type="date" class="form-control form-control-sm" id="withdrawalsDateTo" name="date_to">
                             </div>
-                            <div class="col-auto">
+                            <div class="col-auto reports-theme-select">
                                 <label class="form-label small mb-0" for="withdrawalsStatus">Status</label>
-                                <select class="form-select form-select-sm" id="withdrawalsStatus" name="status">
-                                    <option value="completed" selected>Paid</option>
-                                    <option value="pending">Requested</option>
-                                    <option value="processing">Processing</option>
-                                    <option value="cancelled">Cancelled / Rejected</option>
-                                    <option value="all">All</option>
-                                </select>
+                                @include('advertiser.partials.catalog-theme-select', [
+                                    'selectId' => 'withdrawalsStatus',
+                                    'name' => 'status',
+                                    'label' => 'Status',
+                                    'current' => 'completed',
+                                    'options' => [
+                                        ['value' => 'completed', 'label' => 'Paid'],
+                                        ['value' => 'pending', 'label' => 'Requested'],
+                                        ['value' => 'processing', 'label' => 'Processing'],
+                                        ['value' => 'cancelled', 'label' => 'Cancelled / Rejected'],
+                                        ['value' => 'all', 'label' => 'All'],
+                                    ],
+                                ])
                             </div>
                             <div class="col-auto">
                                 <button type="submit" class="btn btn-sm btn-primary">Apply</button>
@@ -252,6 +262,24 @@
 </div>
 
 <style>
+.publisher-reports-container .reports-search-field {
+    width: 18rem;
+    max-width: 100%;
+}
+.publisher-reports-container .reports-theme-select {
+    min-width: 10.5rem;
+}
+.publisher-reports-container .reports-theme-select .theme-select {
+    width: 100%;
+}
+.publisher-reports-container .reports-stat-icon {
+    font-size: 1.75rem;
+    line-height: 1;
+    color: var(--brand-primary, #1a585e);
+    background: none;
+    border: 0;
+    flex-shrink: 0;
+}
 .publisher-reports-container .table td,
 .publisher-reports-container .table th {
     padding: 12px 15px;
@@ -333,8 +361,7 @@
     let withdrawalsPage = 1;
 
     function money(n) {
-        const v = parseFloat(n);
-        return (Number.isFinite(v) ? v : 0).toFixed(2);
+        return (window.slbFormatMoney || function (x) { return '€' + Number(x || 0).toFixed(2); })(n);
     }
 
     function escapeHtml(str) {
@@ -396,7 +423,7 @@
         if (state === 'none' || !label) {
             return '<span class="text-muted">—</span>';
         }
-        const amount = '€' + money(item.price);
+        const amount = '' + money(item.price);
         if (state === 'you_earned') {
             return '<span class="earned-amount">' + escapeHtml(label) + ' ' + amount + '</span>';
         }
@@ -408,7 +435,7 @@
             return '<span class="text-muted">—</span>';
         }
         const daysBit = homepageDays ? ' · ' + homepageDays + 'd' : '';
-        return '<span class="sensitive-badge"><i class="fa fa-plus-circle"></i> +€' + money(homepagePrice) + daysBit + '</span>';
+        return '<span class="sensitive-badge"><i class="fa fa-plus-circle"></i> +' + money(homepagePrice) + daysBit + '</span>';
     }
 
     function linkOrDash(url, label) {
@@ -426,13 +453,13 @@
             success: function (response) {
                 if (!response.success) return;
                 const d = response.data || {};
-                $('#totalEarned').html('<span style="color:#10b981;">+ €' + money(d.total_earned) + '</span>');
+                $('#totalEarned').html('<span style="color:#10b981;">+ ' + money(d.total_earned) + '</span>');
                 $('#completedOrders').text(d.completed_orders || 0);
                 $('#openOrders').text(d.open_orders != null ? d.open_orders : (d.pending_orders || 0));
-                $('#totalWithdrawn').html('<span style="color:#ef4444;">- €' + money(d.total_withdrawn) + '</span>');
-                $('#availableToWithdraw').text('€' + money(d.available_to_withdraw));
+                $('#totalWithdrawn').html('<span style="color:#ef4444;">- ' + money(d.total_withdrawn) + '</span>');
+                $('#availableToWithdraw').text('' + money(d.available_to_withdraw));
                 const fees = parseFloat(d.total_withdrawal_fees || 0);
-                $('#withdrawnFeesHint').text(fees > 0 ? ('Fees paid: €' + money(fees) + ' · net received') : 'Net received');
+                $('#withdrawnFeesHint').text(fees > 0 ? ('Fees paid: ' + money(fees) + ' · net received') : 'Net received');
             },
             error: function (xhr) {
                 if (typeof slbHandleHttpError === 'function') {
@@ -445,6 +472,7 @@
     function ordersFilterParams(page) {
         return {
             page: page || 1,
+            search: String($('#ordersSearch').val() || '').trim(),
             status: $('#ordersStatus').val() || 'completed',
             date_from: $('#ordersDateFrom').val() || '',
             date_to: $('#ordersDateTo').val() || '',
@@ -454,10 +482,67 @@
     function withdrawalsFilterParams(page) {
         return {
             page: page || 1,
+            search: String($('#withdrawalsSearch').val() || '').trim(),
             status: $('#withdrawalsStatus').val() || 'completed',
             date_from: $('#withdrawalsDateFrom').val() || '',
             date_to: $('#withdrawalsDateTo').val() || '',
         };
+    }
+
+    function refreshReportsThemeSelects() {
+        document.querySelectorAll('.publisher-reports-container [data-theme-select]').forEach(function (wrap) {
+            const select = wrap.querySelector('select');
+            const valueEl = wrap.querySelector('.single-select-value');
+            if (!select || !valueEl) return;
+            const val = String(select.value);
+            wrap.querySelectorAll('.single-select-option').forEach(function (opt) {
+                const on = String(opt.getAttribute('data-value')) === val;
+                opt.classList.toggle('selected', on);
+                opt.setAttribute('aria-selected', on ? 'true' : 'false');
+            });
+            const selected = wrap.querySelector('.single-select-option.selected');
+            valueEl.textContent = selected
+                ? String(selected.getAttribute('data-label') || selected.textContent || '').trim()
+                : String((select.options[select.selectedIndex] && select.options[select.selectedIndex].text) || '').trim();
+        });
+    }
+
+    function bindReportsThemeSelects() {
+        document.querySelectorAll('.publisher-reports-container [data-theme-select]').forEach(function (wrap) {
+            if (wrap.dataset.bound === '1') return;
+            wrap.dataset.bound = '1';
+            const select = wrap.querySelector('select');
+            const trigger = wrap.querySelector('.single-select-input');
+            const dropdown = wrap.querySelector('.single-select-dropdown');
+            if (!select || !trigger || !dropdown) return;
+
+            trigger.addEventListener('click', function (e) {
+                e.preventDefault();
+                const willOpen = !dropdown.classList.contains('show');
+                document.querySelectorAll('.publisher-reports-container .theme-select .single-select-dropdown.show').forEach(function (dd) {
+                    if (dd === dropdown) return;
+                    dd.classList.remove('show');
+                    const other = dd.previousElementSibling;
+                    if (other) other.setAttribute('aria-expanded', 'false');
+                });
+                dropdown.classList.toggle('show', willOpen);
+                trigger.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+            });
+
+            wrap.querySelectorAll('.single-select-option').forEach(function (opt) {
+                opt.addEventListener('click', function () {
+                    const next = String(opt.getAttribute('data-value') || '');
+                    if (select.value !== next) {
+                        select.value = next;
+                        select.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                    refreshReportsThemeSelects();
+                    dropdown.classList.remove('show');
+                    trigger.setAttribute('aria-expanded', 'false');
+                });
+            });
+        });
+        refreshReportsThemeSelects();
     }
 
     function loadOrders(page) {
@@ -498,7 +583,7 @@
     function renderOrdersTable(orderItems) {
         if (!orderItems || orderItems.length === 0) {
             $('#ordersTableBody').html(
-                '<tr><td colspan="9" class="text-center py-5"><i class="fa fa-inbox fa-3x text-muted"></i><p class="mt-2 mb-0">No orders match this filter</p><p class="text-muted small mb-0">Try another status or date range.</p></td></tr>'
+                '<tr><td colspan="9" class="text-center py-5"><i class="fa fa-inbox fa-3x text-muted"></i><p class="mt-2 mb-0">No orders match this filter</p><p class="text-muted small mb-0">Try another search, status, or date range.</p></td></tr>'
             );
             return;
         }
@@ -525,9 +610,9 @@
                 '<td class="fw-semibold"><strong>#' + escapeHtml(orderNumber) + '</strong></td>' +
                 '<td>' + formatDate(item.created_at) + '</td>' +
                 '<td><div class="fw-semibold">' + escapeHtml(item.site_name) + '</div><div class="text-muted small">' + linkOrDash(item.site_url, item.site_url) + '</div></td>' +
-                '<td class="text-primary">€' + money(basePrice) + '</td>' +
+                '<td class="text-primary">' + money(basePrice) + '</td>' +
                 '<td>' + (additionalPrice > 0
-                    ? '<span class="sensitive-badge"><i class="fa fa-plus-circle"></i> ' + escapeHtml(sensitiveType || 'Extra') + ' (+€' + money(additionalPrice) + ')</span>'
+                    ? '<span class="sensitive-badge"><i class="fa fa-plus-circle"></i> ' + escapeHtml(sensitiveType || 'Extra') + ' (+' + money(additionalPrice) + ')</span>'
                     : '<span class="text-muted">—</span>') + '</td>' +
                 '<td>' + homepageCell(homepagePrice, homepageDays) + '</td>' +
                 '<td>' + payoutCell(item) + '</td>' +
@@ -602,12 +687,12 @@
             '</div></div>' +
             '<div class="col-md-6"><div class="bg-light p-3 rounded">' +
                 '<h6 class="mb-3">Earnings Summary</h6>' +
-                '<p class="mb-1"><strong>Base Price:</strong> €' + money(basePrice) + '</p>' +
+                '<p class="mb-1"><strong>Base Price:</strong> ' + money(basePrice) + '</p>' +
                 (additionalPrice > 0
-                    ? '<p class="mb-1"><strong>Sensitive Price:</strong> <span class="text-warning">+ €' + money(additionalPrice) + ' (' + escapeHtml(sensitiveType || 'Extra') + ')</span></p>'
+                    ? '<p class="mb-1"><strong>Sensitive Price:</strong> <span class="text-warning">+ ' + money(additionalPrice) + ' (' + escapeHtml(sensitiveType || 'Extra') + ')</span></p>'
                     : '') +
                 (homepagePrice > 0
-                    ? '<p class="mb-1"><strong>Homepage:</strong> <span class="text-warning">+ €' + money(homepagePrice)
+                    ? '<p class="mb-1"><strong>Homepage:</strong> <span class="text-warning">+ ' + money(homepagePrice)
                         + (homepageDays
                             ? ' (' + homepageDays + ' day' + (homepageDays === 1 ? '' : 's') + ')'
                             : '')
@@ -616,7 +701,7 @@
                 '<p class="mb-1"><strong>' + escapeHtml((orderItem.payout_label || 'Payout')) + ':</strong> ' +
                     (orderItem.payout_state === 'none'
                         ? '<span class="text-muted">—</span>'
-                        : '<span class="' + (orderItem.payout_state === 'you_earned' ? 'earned-amount fs-4' : 'fw-semibold') + '">€' + money(totalPrice) + '</span>') +
+                        : '<span class="' + (orderItem.payout_state === 'you_earned' ? 'earned-amount fs-4' : 'fw-semibold') + '">' + money(totalPrice) + '</span>') +
                 '</p>' +
                 (orderItem.is_clawed_back ? '<p class="mb-1 text-muted">Clawed back — not counted as earned.</p>' : '') +
             '</div></div></div>' +
@@ -680,7 +765,7 @@
     function renderWithdrawalsTable(withdrawals) {
         if (!withdrawals || withdrawals.length === 0) {
             $('#withdrawalsTableBody').html(
-                '<tr><td colspan="7" class="text-center py-5"><i class="fa fa-inbox fa-3x text-muted"></i><p class="mt-2 mb-0">No withdrawals match this filter</p><p class="text-muted small mb-0">Try another status or date range.</p></td></tr>'
+                '<tr><td colspan="7" class="text-center py-5"><i class="fa fa-inbox fa-3x text-muted"></i><p class="mt-2 mb-0">No withdrawals match this filter</p><p class="text-muted small mb-0">Try another search, status, or date range.</p></td></tr>'
             );
             return;
         }
@@ -690,9 +775,9 @@
             const w = withdrawals[i];
             html += '<tr>' +
                 '<td>' + formatDate(w.created_at) + '</td>' +
-                '<td>€' + money(w.amount) + '</td>' +
-                '<td class="text-muted">€' + money(w.fee) + '</td>' +
-                '<td class="withdrawn-amount"><strong>- €' + money(w.net_amount) + '</strong></td>' +
+                '<td>' + money(w.amount) + '</td>' +
+                '<td class="text-muted">' + money(w.fee) + '</td>' +
+                '<td class="withdrawn-amount"><strong>- ' + money(w.net_amount) + '</strong></td>' +
                 '<td><span class="badge bg-secondary">' + escapeHtml(w.payment_method || 'Bank Transfer') + '</span></td>' +
                 '<td>' + withdrawalStatusBadge(w) + '</td>' +
                 '<td><span class="text-muted small">' + escapeHtml(w.reference || ('WD-' + w.id)) + '</span></td>' +
@@ -741,9 +826,21 @@
     }
 
     $(function () {
+        bindReportsThemeSelects();
         loadStatistics();
         loadOrders(1);
         loadWithdrawals(1);
+
+        if (window.SlbLiveSearch) {
+            SlbLiveSearch.init(document.getElementById('ordersSearch'), {
+                mode: 'ajax',
+                onSearch: function () { loadOrders(1); },
+            });
+            SlbLiveSearch.init(document.getElementById('withdrawalsSearch'), {
+                mode: 'ajax',
+                onSearch: function () { loadWithdrawals(1); },
+            });
+        }
 
         $('#ordersFilters').on('submit', function (e) {
             e.preventDefault();
@@ -751,6 +848,12 @@
         });
         $('#withdrawalsFilters').on('submit', function (e) {
             e.preventDefault();
+            loadWithdrawals(1);
+        });
+        $('#ordersStatus, #ordersDateFrom, #ordersDateTo').on('change', function () {
+            loadOrders(1);
+        });
+        $('#withdrawalsStatus, #withdrawalsDateFrom, #withdrawalsDateTo').on('change', function () {
             loadWithdrawals(1);
         });
 

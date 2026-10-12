@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Support\TawkChat;
+use App\Support\VisitorSupportChat;
 use Tests\TestCase;
 
 class TawkChatTest extends TestCase
@@ -37,5 +38,31 @@ class TawkChatTest extends TestCase
             'services.tawk.widget_id' => 'default',
         ]);
         $this->assertNull(TawkChat::embedSrc());
+    }
+
+    public function test_missing_config_key_does_not_invent_a_property_id(): void
+    {
+        config(['services.tawk' => []]);
+
+        $php = (string) file_get_contents(app_path('Support/TawkChat.php'));
+        $this->assertStringNotContainsString('6aa6a3693d02a53444168308', $php);
+
+        $config = (string) file_get_contents(config_path('services.php'));
+        $this->assertStringNotContainsString("'TAWK_PROPERTY_ID', '6aa6a3693d02a53444168308'", $config);
+
+        if (trim((string) env('TAWK_PROPERTY_ID', '')) === '') {
+            $this->assertNull(TawkChat::embedSrc());
+            $this->assertFalse(TawkChat::enabled());
+        }
+    }
+
+    public function test_predefined_messages_follow_role_questions(): void
+    {
+        $this->assertSame(
+            VisitorSupportChat::questionsForRole('guest'),
+            TawkChat::predefinedMessages('guest')
+        );
+        $this->assertContains('How do I place an order?', TawkChat::predefinedMessages('advertiser'));
+        $this->assertContains('How do I add a website?', TawkChat::predefinedMessages('publisher'));
     }
 }

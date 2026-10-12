@@ -10,6 +10,9 @@
     $exemptionMinutes = (int) ($exemptionMinutes ?? 60);
     $noOrdersThreshold = (int) ($noOrdersThreshold ?? 100);
     $copyAttentionDays = (int) ($copyAttentionDays ?? 14);
+    $unlockLimit = (int) ($unlockLimit ?? \App\Support\AdminCatalogActivity::UNLOCK_LIMIT);
+    $copyLimit = (int) ($copyLimit ?? \App\Support\AdminCatalogActivity::COPY_LIMIT);
+    $dayChips = $dayChips ?? \App\Support\AdminCatalogActivity::DAY_CHIPS;
     $queryBase = array_filter([
         'days' => $days,
         'copy' => $copyFilter === 'all' ? 'all' : null,
@@ -24,19 +27,16 @@
         'subtitle' => 'Who is in catalog hide mode or on a copy warning. Open-catalog browsing is not logged.',
     ])
 
-    <form method="GET" action="{{ route('admin.catalog-activity') }}" class="mb-3">
+    <form method="GET" action="{{ route('admin.catalog-activity') }}" class="admin-deposits-filters mb-3">
         <input type="hidden" name="days" value="{{ $days }}">
         @if($copyFilter === 'all')
             <input type="hidden" name="copy" value="all">
         @endif
-        <div class="input-group" style="max-width: 28rem;">
-            <input type="search" name="q" value="{{ $q }}" class="form-control form-control-sm"
-                   placeholder="Search email or name" aria-label="Search accounts">
-            <button type="submit" class="btn btn-sm btn-outline-secondary">Search</button>
-            @if($q !== '')
-                <a href="{{ route('admin.catalog-activity', array_filter($queryBase, fn ($k) => $k !== 'q', ARRAY_FILTER_USE_KEY)) }}"
-                   class="btn btn-sm btn-outline-secondary">Clear</a>
-            @endif
+        <div class="d-flex flex-wrap align-items-end gap-2" style="max-width: 28rem;">
+            <div class="flex-grow-1">
+                <x-slb-search-field name="q" id="adminCatalogActivitySearch" :value="$q" placeholder="Search email or name" label="Search accounts" label-class="form-label" input-class="form-control" />
+            </div>
+            <button type="submit" class="btn btn-primary">Search</button>
         </div>
     </form>
 
@@ -62,7 +62,7 @@
             </div>
             <div class="card-body p-0">
                 @if($copyStrikeCapped ?? false)
-                    <div class="small text-muted px-3 pt-2">Showing 100. Narrow with search.</div>
+                    <div class="small text-muted px-3 pt-2">Showing {{ number_format($copyLimit) }}. Narrow with search.</div>
                 @endif
                 <div class="table-responsive">
                     <table class="table table-sm align-middle mb-0">
@@ -74,7 +74,7 @@
                                 <th>Warned</th>
                                 <th>Hide until</th>
                                 <th class="text-end">Copies (24h)</th>
-                                <th class="text-end">Unlocks</th>
+                                <th class="text-end">Unlocks ({{ $days }}d)</th>
                                 <th class="text-end">Paid orders</th>
                                 <th class="text-end">Action</th>
                             </tr>
@@ -175,7 +175,13 @@
                             @empty
                                 <tr>
                                     <td colspan="9" class="text-center text-muted py-4">
-                                        No warned or hide-mode accounts right now.
+                                        @if($q !== '')
+                                            No accounts match this search.
+                                        @elseif($copyFilter === 'all')
+                                            No accounts on the strike ladder.
+                                        @else
+                                            No warned or hide-mode accounts right now.
+                                        @endif
                                     </td>
                                 </tr>
                             @endforelse
@@ -208,15 +214,18 @@
             <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <strong>Hide-mode unlocks (eye / visit / cart) &middot; last {{ $days }} days</strong>
                 <div class="btn-group btn-group-sm">
-                    @foreach([1, 7, 30] as $option)
+                    @foreach($dayChips as $option)
                         <a href="{{ route('admin.catalog-activity', array_merge($queryBase, ['days' => $option])) }}"
-                           class="btn btn-outline-secondary {{ $days === $option ? 'active' : '' }}">
+                           class="btn btn-outline-secondary {{ (int) $days === (int) $option ? 'active' : '' }}">
                             {{ $option }}d
                         </a>
                     @endforeach
                 </div>
             </div>
             <div class="card-body p-0">
+                @if($unlockCapped ?? false)
+                    <div class="small text-muted px-3 pt-2">Showing {{ number_format($unlockLimit) }}. Narrow with search.</div>
+                @endif
                 <div class="table-responsive">
                     <table class="table table-sm align-middle mb-0">
                         <thead class="table-light">
@@ -234,7 +243,7 @@
                         <tbody>
                             @forelse($rows as $row)
                                 @php $uid = (int) $row['user']->id; @endphp
-                                <tr>
+                                <tr class="{{ $focusUserId === $uid ? 'table-warning' : '' }}">
                                     <td>
                                         <div class="fw-semibold">
                                             <a href="{{ route('admin.users.show', $uid) }}" class="link-dark">{{ $row['user']->name ?: '—' }}</a>

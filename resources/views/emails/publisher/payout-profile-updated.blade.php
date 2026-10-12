@@ -6,7 +6,7 @@
 
 Dear {{ $userName }},
 
-Our support team has updated your locked payout details for **{{ strtoupper($method) }}**.
+Our support team has updated your locked payout details for {{ strtoupper($method) }}.
 
 For security, publishers cannot change payout methods themselves after the first confirmation. If you did not request this change, contact us immediately at {{ $supportEmail }}.
 

@@ -64,9 +64,14 @@
         color: #525f7f;
     }
 
-    #quillEditor {
+    #quillEditor,
+    #siteDescTextarea {
         border-radius: 8px;
         border: 1px solid #dfe3e8;
+    }
+
+    #siteDescTextarea {
+        min-height: 200px;
     }
 
     .text-danger {
@@ -143,27 +148,57 @@
         white-space: normal;
     }
 
-    .pagination {
+    #sitesTableWrapper .pagination {
         list-style: none;
         display: flex;
-        gap: 5px;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 0.3rem;
         padding: 0;
-        margin-top: 10px;
+        margin: 0.75rem 0 0;
     }
 
-    .pagination li {
-        cursor: pointer;
-        padding: 6px 12px;
-        border: 1px solid #dfe3e8;
-        border-radius: 4px;
-        color: #525f7f;
-        transition: all 0.2s ease;
+    #sitesTableWrapper .pagination li {
+        padding: 0;
+        border: 0;
+        background: transparent;
     }
 
-    .pagination li.active {
-        background-color: #0b6266;
-        color: white;
-        border-color: #0b6266;
+    #sitesTableWrapper .pagination .page-link {
+        min-width: 2.25rem;
+        height: 2.25rem;
+        padding: 0 0.65rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.875rem;
+        font-weight: 600;
+        line-height: 1;
+        border-radius: 0.5rem;
+        color: var(--brand-primary, #1a585e);
+        background: #fff;
+        border: 1px solid var(--brand-primary-border, #b8e4e4);
+    }
+
+    #sitesTableWrapper .pagination .page-link:hover,
+    #sitesTableWrapper .pagination .page-link:focus {
+        color: var(--brand-primary, #1a585e);
+        background: var(--brand-primary-bg, #e6f5f5);
+        border-color: var(--brand-primary-soft, #3faeb2);
+        box-shadow: 0 0 0 0.2rem var(--focus-ring, rgba(26, 88, 94, 0.18));
+    }
+
+    #sitesTableWrapper .pagination .page-item.active .page-link {
+        color: #fff;
+        background: var(--brand-primary, #1a585e);
+        border-color: var(--brand-primary, #1a585e);
+    }
+
+    #sitesTableWrapper .pagination .page-item.disabled .page-link {
+        color: var(--brand-ink-muted, #697078);
+        background: #f8fafb;
+        border-color: var(--border-subtle, #e2e8f0);
+        pointer-events: none;
     }
 
     #formCard {
@@ -616,26 +651,26 @@
         gap: 6px;
         line-height: 1.2;
         padding: 0.4rem 0.9rem !important;
-        background: #fff;
-        border: 1px solid #c5d4d6;
-        color: #334155;
+        background: var(--brand-primary-bg, #e6f5f5);
+        border: 0 !important;
+        color: var(--brand-primary, #1a585e);
         box-shadow: none;
     }
     .site-status-filter:hover {
-        background: #f1f7f7;
-        border-color: #9ec5c8;
-        color: #123f42;
+        background: #d5eeee;
+        border: 0 !important;
+        color: var(--brand-primary, #1a585e);
     }
     .site-status-filter.is-active {
-        background: #0f766e;
-        border-color: #0f766e;
+        background: var(--brand-primary, #1a585e);
+        border: 0 !important;
         color: #fff;
         font-weight: 600;
         box-shadow: none;
     }
     .site-status-filter.is-active:hover {
-        background: #0d9488;
-        border-color: #0d9488;
+        background: var(--brand-primary-deep, #123f42);
+        border: 0 !important;
         color: #fff;
     }
     .site-status-filter.is-active .badge {
@@ -700,7 +735,7 @@
 
     @if(!empty($openBulkRequest))
         @php
-            $bulkNextStep = 'Next: our marketer adds DA/DR/traffic/language/country/niches → you add descriptions & listing details → we approve.';
+            $bulkNextStep = 'Next: our team fills in the sites they accept and publishes them. You’ll be notified when those sites are active.';
             if (($awaitingDetailsCount ?? 0) > 0) {
                 $bulkNextStep = 'Next: add descriptions and listing details with Complete details, then we approve.';
             } elseif (($detailsCompleteCount ?? 0) > 0) {
@@ -809,7 +844,7 @@
                                         ? 'is-empty'
                                         : ($filledCount === 2 ? 'is-ready' : 'is-partial');
                                     $summaryUrl = trim($oldUrl) !== '' ? $oldUrl : 'Website URL';
-                                    $summaryPrice = trim($oldPrice) !== '' ? '€'.$oldPrice : 'No price';
+                                    $summaryPrice = trim($oldPrice) !== '' ? listing_price_symbol().$oldPrice : 'No price';
                                 @endphp
                                 <details class="bulk-url-price-row" @if($rowOpen) open @endif>
                                     <summary class="bulk-url-price-row__summary">
@@ -834,7 +869,7 @@
                                                 @error('sites.'.$i.'.url')<div class="invalid-feedback">{{ $message }}</div>@enderror
                                             </div>
                                             <div class="bulk-url-price-field bulk-url-price-field--price">
-                                                <label class="form-label" for="bulk-price-{{ $i }}">Price (€) <span class="text-danger">*</span></label>
+                                                <label class="form-label" for="bulk-price-{{ $i }}">Price ({{ listing_price_symbol() }}) <span class="text-danger">*</span></label>
                                                 <input type="number"
                                                        id="bulk-price-{{ $i }}"
                                                        name="sites[{{ $i }}][price]"
@@ -1124,9 +1159,15 @@
                         <span class="form-section-title">Description</span>
                         <div class="row">
                             <div class="col-12">
-                                <label class="form-label">Site Description (500 words max) <span class="req" aria-hidden="true">*</span></label>
-                                <div id="quillEditor" class="border rounded" style="height: 200px;">{!! old_text('siteDescription') !!}</div>
-                                <input type="hidden" name="siteDescription" id="siteDescription" required>
+                                <label class="form-label" for="quillEditor">Site Description (500 words max) <span class="req" aria-hidden="true">*</span></label>
+                                <div id="quillEditor" class="border rounded notranslate" translate="no" style="height: 200px;">{!! old_text('siteDescription') !!}</div>
+                                <input type="hidden" name="siteDescription" id="siteDescription" value="">
+                                <div class="site-desc-meta">
+                                    <div class="help-text mb-0" id="siteDescHelp">{{ \App\Support\SiteDescriptionRules::helpText() }}</div>
+                                    <div class="site-desc-counter" id="siteDescCounter" aria-live="polite"></div>
+                                </div>
+                                @php $siteDescError = $errors->first('siteDescription'); @endphp
+                                <div id="siteDescError" class="text-danger small {{ $siteDescError ? 'd-block' : 'd-none' }}" @if($siteDescError) data-server-error="1" @endif>{{ $siteDescError }}</div>
                             </div>
                         </div>
                     </div>
@@ -1232,7 +1273,7 @@
                         <span class="form-section-title">Pricing & link policy</span>
                         <div class="row bg-light p-3 rounded g-3 g-form">
                             <div class="col-md-4">
-                                <label class="form-label">Price (€) <span class="req" aria-hidden="true">*</span></label>
+                                <label class="form-label" data-listing-price-label>Price ({{ listing_price_symbol(old_text('country', old_text('countries')) ?: null) }}) <span class="req" aria-hidden="true">*</span></label>
                                 <input type="number" name="price" id="price" class="form-control" placeholder="Enter price" min="0" step="0.01" value="{{ old_text('price') }}" required>
                             </div>
                             <div class="col-md-4">
@@ -1249,11 +1290,11 @@
                                 <div class="d-flex gap-3 mt-2">
                                     <div class="form-check">
                                         <input type="radio" name="link_type" id="linkTypeDofollow" value="dofollow" class="form-check-input" {{ old('link_type', 'dofollow') == 'dofollow' ? 'checked' : '' }}>
-                                        <label class="form-check-label">DoFollow</label>
+                                        <label class="form-check-label" for="linkTypeDofollow">DoFollow</label>
                                     </div>
                                     <div class="form-check">
                                         <input type="radio" name="link_type" id="linkTypeNofollow" value="nofollow" class="form-check-input" {{ old('link_type') == 'nofollow' ? 'checked' : '' }}>
-                                        <label class="form-check-label">NoFollow</label>
+                                        <label class="form-check-label" for="linkTypeNofollow">NoFollow</label>
                                     </div>
                                 </div>
                             </div>
@@ -1311,7 +1352,7 @@
                                                 <input type="checkbox" name="sensitive[{{ $topic }}]" value="1" class="form-check-input sensitive-checkbox" id="sensitive{{ $topic }}" {{ old("sensitive.$topic") ? 'checked' : '' }}>
                                                 <label class="form-check-label" for="sensitive{{ $topic }}">{{ ucfirst($topic) }}</label>
                                             </div>
-                                            <input type="number" name="price_sensitive[{{ $topic }}]" class="form-control mt-1 sensitive-price" placeholder="Extra price (€)" value="{{ old_text("price_sensitive.$topic") }}" min="0" step="0.01">
+                                            <input type="number" name="price_sensitive[{{ $topic }}]" class="form-control mt-1 sensitive-price" placeholder="Extra price ({{ listing_price_symbol(old_text('country', old_text('countries')) ?: null) }})" value="{{ old_text("price_sensitive.$topic") }}" min="0" step="0.01" data-listing-price-placeholder="Extra price">
                                         </div>
                                         @endforeach
                                     </div>
@@ -1340,7 +1381,7 @@
                             <div class="row bg-light p-3 rounded mt-2 g-3">
                                 <div class="col-12">
                                     <p class="fw-semibold small mb-2">Homepage placement</p>
-                                    <p class="small text-muted mb-2">Offer putting the guest article on your homepage for 1, 7, or 30 days. Price €0 = Free. Leave unchecked to not offer that duration.</p>
+                                    <p class="small text-muted mb-2" data-listing-homepage-hint>Offer putting the guest article on your homepage for 1, 7, or 30 days. Price {{ listing_price_symbol(old_text('country', old_text('countries')) ?: null) }}0 = Free. Leave unchecked to not offer that duration.</p>
                                     <div class="d-flex flex-wrap gap-3">
                                         @foreach($homepageDays as $days)
                                             <div class="me-3" style="min-width:140px;">
@@ -1356,7 +1397,8 @@
                                                 <input type="number"
                                                        name="price_homepage[{{ $days }}]"
                                                        class="form-control mt-1 homepage-price"
-                                                       placeholder="Fee (€) — 0 = Free"
+                                                       placeholder="Fee ({{ listing_price_symbol(old_text('country', old_text('countries')) ?: null) }}) — 0 = Free"
+                                                       data-listing-fee-placeholder
                                                        value="{{ old_text("price_homepage.$days") }}"
                                                        min="0"
                                                        step="0.01"
@@ -1478,8 +1520,8 @@
 <link href="{{ asset('assets/css/multi-select.css') }}?v={{ @filemtime(public_path('assets/css/multi-select.css')) ?: '1' }}" rel="stylesheet">
 <link href="{{ asset('assets/css/publisher-websites.css') }}?v={{ @filemtime(public_path('assets/css/publisher-websites.css')) ?: '1' }}" rel="stylesheet">
 <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="{{ asset('assets/js/jquery-3.6.0.min.js') }}?v={{ @filemtime(public_path('assets/js/jquery-3.6.0.min.js')) ?: '1' }}"></script>
+<script src="{{ asset('assets/vendor/sweetalert2/sweetalert2.min.js') }}?v={{ @filemtime(public_path('assets/vendor/sweetalert2/sweetalert2.min.js')) ?: '1' }}"></script>
 @php
     $pwOldLanguage = old_text('language', old_text('languages'));
     $pwOldCountry = old_text('country', old_text('countries'));
@@ -1569,13 +1611,191 @@ const submitBtn = $('#submitBtn');
 const closeBtn = $('#closeBtn');
 const formHeaderSpan = $('#formHeader');
 
-// Quill editor (guarded so a CDN/CSP failure cannot break the sites table loader)
+// Quill is created only after the add-site card is visible. Building it while
+// #formCard is display:none leaves the editor unable to record typing, so the
+// counter stays at 0 and Next reports an empty description.
 var quill = null;
-if (typeof Quill !== 'undefined' && document.getElementById('quillEditor')) {
+var siteDescUsesTextarea = false;
+const SITE_DESC_MIN_CHARS = Number((window.PublisherWebsitesConfig && window.PublisherWebsitesConfig.descMinChars) || 50);
+const SITE_DESC_MAX_WORDS = Number((window.PublisherWebsitesConfig && window.PublisherWebsitesConfig.descMaxWords) || 500);
+
+function siteDescPlaceholder() {
+    return (window.PublisherWebsitesConfig && window.PublisherWebsitesConfig.descPlaceholder) || 'Enter site description...';
+}
+
+function markSiteDescUntranslated(el) {
+    if (!el) return;
+    el.setAttribute('translate', 'no');
+    el.classList.add('notranslate');
+}
+
+function siteDescPlainText(htmlOrText) {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = htmlOrText || '';
+    return String(tmp.textContent || '').replace(/\s+/g, ' ').trim();
+}
+
+function siteDescCharCount(plain) {
+    // Code points, same as PHP mb_strlen, so Arabic, Cyrillic, Greek, and
+    // Chinese match the server minimum. String.length counts UTF-16 units.
+    return Array.from(String(plain || '')).length;
+}
+
+function siteDescWordCount(plain) {
+    const text = String(plain || '').trim();
+    if (!text) return 0;
+    return text.split(/\s+/).filter(Boolean).length;
+}
+
+function currentSiteDescriptionHtml() {
+    if (quill) return quill.root.innerHTML || '';
+    const area = document.getElementById('siteDescTextarea');
+    if (area) return area.value || '';
+    return $('#siteDescription').val() || '';
+}
+
+function siteDescValidationMessage(plain) {
+    if (!plain) return 'Please enter a site description.';
+    if (siteDescCharCount(plain) < SITE_DESC_MIN_CHARS) {
+        return 'Description must be at least ' + SITE_DESC_MIN_CHARS + ' characters (visible text).';
+    }
+    if (siteDescWordCount(plain) > SITE_DESC_MAX_WORDS) {
+        return 'Description must be at most ' + SITE_DESC_MAX_WORDS + ' words.';
+    }
+    return '';
+}
+
+function showSiteDescError(message) {
+    const err = document.getElementById('siteDescError');
+    if (!err) return;
+    delete err.dataset.serverError;
+    if (message) {
+        err.textContent = message;
+        err.classList.remove('d-none');
+        err.classList.add('d-block');
+    } else {
+        err.textContent = '';
+        err.classList.add('d-none');
+        err.classList.remove('d-block');
+    }
+}
+
+function syncSiteDescriptionField() {
+    const html = currentSiteDescriptionHtml();
+    $('#siteDescription').val(html);
+    const plain = siteDescPlainText(html);
+    const words = siteDescWordCount(plain);
+    const msg = siteDescValidationMessage(plain);
+    const counter = document.getElementById('siteDescCounter');
+    if (counter) {
+        counter.textContent = siteDescCharCount(plain) + ' / ' + SITE_DESC_MIN_CHARS + ' chars · ' + words + ' / ' + SITE_DESC_MAX_WORDS + ' words';
+        counter.classList.toggle('is-invalid', !!msg && !!plain);
+        counter.classList.toggle('is-ok', !msg && !!plain);
+    }
+    const err = document.getElementById('siteDescError');
+    if (err && err.dataset.serverError === '1') {
+        return msg;
+    }
+    // Keep the empty-state message for Next/submit. While typing, clear it
+    // so deleting the brief does not leave a stale "at least 50" error.
+    showSiteDescError(plain ? msg : '');
+    return msg;
+}
+
+function onSiteDescEdited(delta, oldDelta, source) {
+    if (source === 'silent') return;
+    const err = document.getElementById('siteDescError');
+    if (err) delete err.dataset.serverError;
+    syncSiteDescriptionField();
+    if ($('#methodField').val() === 'POST') {
+        saveSiteDraft();
+    }
+}
+
+function siteDescHostIsVisible() {
+    const card = document.getElementById('formCard');
+    if (!card || card.classList.contains('d-none')) return false;
+    const pane = document.querySelector('.wizard-pane[data-wizard-pane="1"]');
+    if (pane && !pane.classList.contains('active')) return false;
+    return true;
+}
+
+function installSiteDescTextarea(initial) {
+    let area = document.getElementById('siteDescTextarea');
+    if (area) {
+        siteDescUsesTextarea = true;
+        return area;
+    }
+    area = document.createElement('textarea');
+    area.id = 'siteDescTextarea';
+    area.className = 'form-control notranslate';
+    area.rows = 8;
+    area.placeholder = siteDescPlaceholder();
+    area.value = siteDescPlainText(initial || '');
+    markSiteDescUntranslated(area);
+    area.setAttribute('dir', 'auto');
+    const label = document.querySelector('label[for="quillEditor"]');
+    if (label) label.setAttribute('for', 'siteDescTextarea');
+    const host = document.getElementById('quillEditor');
+    if (host && host.previousElementSibling && host.previousElementSibling.classList.contains('ql-toolbar')) {
+        host.previousElementSibling.remove();
+    }
+    if (host) {
+        host.replaceWith(area);
+    } else {
+        const hidden = document.getElementById('siteDescription');
+        if (hidden) hidden.insertAdjacentElement('beforebegin', area);
+    }
+    area.addEventListener('input', onSiteDescEdited);
+    siteDescUsesTextarea = true;
+    syncSiteDescriptionField();
+    return area;
+}
+
+function setSiteDescriptionHtml(html) {
+    const value = html == null ? '' : String(html);
+    if (quill) {
+        // innerHTML bypasses Quill's document, so the next keystrokes never
+        // update the counter and Next reports an empty description.
+        if (!siteDescPlainText(value)) {
+            quill.setText('', 'silent');
+        } else {
+            quill.setContents(quill.clipboard.convert(value), 'silent');
+        }
+    } else if (siteDescUsesTextarea || document.getElementById('siteDescTextarea')) {
+        const area = document.getElementById('siteDescTextarea');
+        if (area) area.value = siteDescPlainText(value);
+    } else {
+        const host = document.getElementById('quillEditor');
+        if (host) host.innerHTML = value;
+    }
+    const hidden = document.getElementById('siteDescription');
+    const area = document.getElementById('siteDescTextarea');
+    if (hidden) {
+        if (quill) hidden.value = quill.root.innerHTML || '';
+        else if (area) hidden.value = area.value || '';
+        else hidden.value = value;
+    }
+    syncSiteDescriptionField();
+}
+
+function ensureQuillEditor() {
+    if (quill || siteDescUsesTextarea) return quill;
+    if (!siteDescHostIsVisible()) return null;
+    const host = document.getElementById('quillEditor');
+    if (!host) return null;
+    markSiteDescUntranslated(host);
+    const hiddenVal = (document.getElementById('siteDescription') || {}).value || '';
+    const seed = siteDescPlainText(hiddenVal) ? hiddenVal : (host.innerHTML || '');
+    if (typeof Quill === 'undefined') {
+        installSiteDescTextarea(seed);
+        return null;
+    }
     try {
-        quill = new Quill('#quillEditor', {
+        if (siteDescPlainText(seed)) host.innerHTML = seed;
+        quill = new Quill(host, {
             theme: 'snow',
-            placeholder: 'Enter site description...',
+            placeholder: siteDescPlaceholder(),
             modules: {
                 toolbar: [
                     [{ 'header': [1, 2, 3, false] }],
@@ -1585,9 +1805,19 @@ if (typeof Quill !== 'undefined' && document.getElementById('quillEditor')) {
                 ]
             }
         });
+        quill.root.setAttribute('dir', 'auto');
+        markSiteDescUntranslated(quill.root);
+        markSiteDescUntranslated(quill.container);
+        const toolbarModule = quill.getModule('toolbar');
+        if (toolbarModule && toolbarModule.container) markSiteDescUntranslated(toolbarModule.container);
+        quill.on('text-change', onSiteDescEdited);
+        syncSiteDescriptionField();
     } catch (e) {
         console.warn('Quill init failed', e);
+        quill = null;
+        installSiteDescTextarea(seed);
     }
+    return quill;
 }
 
 // FR1 — progressive disclosure for sensitive topics
@@ -2006,6 +2236,37 @@ function initMultiSelect(wrapperId, inputId, dropdownId, optionsId, hiddenInputI
 }
 
 window.countryLanguageMap = @json($countryLanguageMap ?? new \stdClass());
+window.__slbListingPriceSymbol = @json(listing_price_symbol());
+window.__slbListingCountrySymbols = @json(app(\App\Support\MoneyDisplay::class)->countrySymbols());
+
+function listingSymbolForCountry(code) {
+    const key = String(code || '').trim().toUpperCase();
+    const map = window.__slbListingCountrySymbols || {};
+    if (key && map[key]) return map[key];
+    if (key === 'UK' && map.GB) return map.GB;
+    return '€';
+}
+
+function syncListingPriceLabels(code) {
+    const symbol = listingSymbolForCountry(code);
+    const main = document.querySelector('[data-listing-price-label]');
+    if (main) {
+        const req = main.querySelector('.req');
+        main.textContent = 'Price (' + symbol + ') ';
+        if (req) main.appendChild(req);
+    }
+    document.querySelectorAll('[data-listing-price-placeholder]').forEach(function (input) {
+        const prefix = input.getAttribute('data-listing-price-placeholder') || 'Extra price';
+        input.setAttribute('placeholder', prefix + ' (' + symbol + ')');
+    });
+    document.querySelectorAll('[data-listing-fee-placeholder]').forEach(function (input) {
+        input.setAttribute('placeholder', 'Fee (' + symbol + ') — 0 = Free');
+    });
+    const hint = document.querySelector('[data-listing-homepage-hint]');
+    if (hint) {
+        hint.textContent = 'Offer putting the guest article on your homepage for 1, 7, or 30 days. Price ' + symbol + '0 = Free. Leave unchecked to not offer that duration.';
+    }
+}
 const countryLanguageMap = window.countryLanguageMap;
 
 // Country first → language list filtered by allowed pairs
@@ -2068,7 +2329,9 @@ function applyCountryLanguageFilter(countryCode, { clearLanguage = true, preferL
 let syncingCountryLanguage = false;
 $('#selectedCountry').on('change', function() {
     if (syncingCountryLanguage) return;
-    applyCountryLanguageFilter($(this).val() || '', { clearLanguage: true });
+    const code = $(this).val() || '';
+    applyCountryLanguageFilter(code, { clearLanguage: true });
+    syncListingPriceLabels(code);
 });
 
 // Start with languages locked until country is chosen
@@ -2135,6 +2398,8 @@ function setWizardStep(step) {
     $('#wizardBackBtn').toggleClass('d-none', wizardStep === 1);
     $('#wizardNextBtn').toggleClass('d-none', wizardStep === wizardTotalSteps);
     $('#submitBtn').toggleClass('d-none', wizardStep !== wizardTotalSteps);
+
+    if (wizardStep === 1) ensureQuillEditor();
 }
 
 function saveSiteDraft() {
@@ -2154,7 +2419,7 @@ function saveSiteDraft() {
             country: $('#selectedCountry').val(),
             categories: $('#selectedCategories').val(),
             site_tag: $('input[name="site_tag"]:checked').val() || '',
-            siteDescription: quill ? quill.root.innerHTML : ($('#siteDescription').val() || ''),
+            siteDescription: currentSiteDescriptionHtml(),
             sensitive: {},
             price_sensitive: {},
             homepage: {},
@@ -2188,6 +2453,7 @@ function clearSiteDraft() {
 }
 window.clearSiteDraft = clearSiteDraft;
 window.getPublisherQuill = function () { return quill; };
+window.getPublisherSiteDescriptionHtml = function () { return currentSiteDescriptionHtml(); };
 
 function loadSiteDraft() {
     try {
@@ -2217,8 +2483,7 @@ function loadSiteDraft() {
         $(`input[name="site_tag"][value="${draftTag}"]`).prop('checked', true);
         if (!draftTag) $('#tagNone').prop('checked', true);
         if (draft.siteDescription) {
-            if (quill) quill.root.innerHTML = draft.siteDescription;
-            $('#siteDescription').val(draft.siteDescription);
+            setSiteDescriptionHtml(draft.siteDescription);
         }
         ['crypto','trading','CBD','forex'].forEach(topic => {
             $(`#sensitive${topic}`).prop('checked', !!(draft.sensitive && draft.sensitive[topic]));
@@ -2279,6 +2544,7 @@ function validateWizardStep(step) {
     let message = '';
 
     pane.find('input[required], select[required]').each(function() {
+        if (this.type === 'hidden' || this.id === 'siteDescription') return;
         if (!this.checkValidity()) {
             ok = false;
             $(this).addClass('is-invalid');
@@ -2289,12 +2555,18 @@ function validateWizardStep(step) {
     });
 
     if (step === 1) {
-        const desc = quill ? (quill.root.innerText || '').trim() : ($('#siteDescription').val() || '').replace(/<[^>]+>/g,'').trim();
-        if (!desc) {
+        // textContent, not innerText: step 1 is display:none on later steps,
+        // and innerText is empty for hidden editors, so a filled description
+        // was rejected as blank after the publisher picked a language.
+        const plain = siteDescPlainText(currentSiteDescriptionHtml());
+        const descMsg = siteDescValidationMessage(plain);
+        $('#siteDescription').val(currentSiteDescriptionHtml());
+        if (descMsg) {
             ok = false;
-            message = message || 'Please enter a site description.';
+            message = message || descMsg;
+            showSiteDescError(descMsg);
         } else {
-            if (quill) $('#siteDescription').val(quill.root.innerHTML);
+            showSiteDescError('');
         }
     }
 
@@ -2331,17 +2603,11 @@ $('#wizardBackBtn').on('click', function() {
 });
 
 $('#addSiteForm').on('change input', 'input, select, textarea', function() {
+    if (this.id === 'siteDescTextarea') return;
     if ($('#methodField').val() === 'POST') {
         saveSiteDraft();
     }
 });
-if (quill) {
-    quill.on('text-change', function() {
-        if ($('#methodField').val() === 'POST') {
-            saveSiteDraft();
-        }
-    });
-}
 
 // Toggle form for CREATE
 addBtn.on('click', function() {
@@ -2366,7 +2632,7 @@ addBtn.on('click', function() {
             $('#methodField').val('POST');
         }
         $('#addSiteForm').attr('action', (window.PublisherWebsitesConfig && window.PublisherWebsitesConfig.routes.store) || '/publisher/websites/store');
-        if (quill) quill.root.innerHTML = '';
+        setSiteDescriptionHtml('');
         submitBtn.prop('disabled', false).text('Review & submit');
         window.sitePreviewConfirmed = false;
         
@@ -2387,6 +2653,7 @@ addBtn.on('click', function() {
             setWizardStep(1);
             $('#wizardDraftHint').text('');
         }
+        syncSiteDescriptionField();
     }
 });
 
@@ -2410,7 +2677,7 @@ closeBulkBtn.on('click', function() {
 
 // Form validation + listing preview gate (modal handlers live in always-on JS)
 $('#addSiteForm').submit(function(e){
-    if (quill) $('#siteDescription').val(quill.root.innerHTML);
+    $('#siteDescription').val(currentSiteDescriptionHtml());
 
     for (let s = 1; s <= wizardTotalSteps; s++) {
         if (!validateWizardStep(s)) {
@@ -2620,7 +2887,7 @@ function syncSitesFilterUi(pendingCount, activeCount, status, activeIds, inviteC
                 ? '1 site is with our marketer; others below may need your details or admin review.'
                 : bulkWaiting + ' sites are with our marketer; others below may need your details or admin review.';
         } else if (openBulk) {
-            hint.textContent = 'Your bulk request is open — drafts appear here as the marketer adds them, then you finish details.';
+                hint.textContent = 'Your bulk request is open. Our team publishes the sites they accept, and you’ll be notified when those sites are active.';
         } else {
             hint.textContent = 'Drafts that need your details, plus sites waiting for admin approval.';
         }
@@ -2779,12 +3046,13 @@ function fetchSites(page = 1, query = '', opts = {}) {
                 if (meta) {
                     const pendingFromMeta = parseInt(meta.getAttribute('data-pending') || '0', 10);
                     const activeFromMeta = parseInt(meta.getAttribute('data-active') || '0', 10);
+                    const inviteFromMeta = parseInt(meta.getAttribute('data-invites') || '0', 10);
                     syncSitesFilterUi(
                         pendingFromMeta,
                         activeFromMeta,
                         meta.getAttribute('data-status') || sitesStatusFilter,
                         activeIds,
-                        parseInt(meta.getAttribute('data-invites') || '0', 10)
+                        inviteFromMeta
                     );
                     // Auto-open Pending when Active is empty and the URL did not set ?status=
                     if (!sitesAutoOpenPendingChecked) {
@@ -2793,14 +3061,15 @@ function fetchSites(page = 1, query = '', opts = {}) {
                             !sitesStatusExplicit
                             && sitesStatusFilter === 'active'
                             && activeFromMeta === 0
-                            && pendingFromMeta > 0
                             && !String(query || '').trim()
                         ) {
-                            if (typeof window.setSitesStatusFilter === 'function') {
-                                window.setSitesStatusFilter('pending');
+                            if (pendingFromMeta > 0) {
+                                if (typeof window.setSitesStatusFilter === 'function') {
+                                    window.setSitesStatusFilter('pending');
+                                }
+                                fetchSites(1, query, opts);
+                                return;
                             }
-                            fetchSites(1, query, opts);
-                            return;
                         }
                     }
                 }
@@ -2990,6 +3259,9 @@ function prefillSiteForm(site) {
         applyCountryLanguageFilter('', { clearLanguage: true });
     }
     syncingCountryLanguage = false;
+    if (typeof syncListingPriceLabels === 'function') {
+        syncListingPriceLabels(countryCode);
+    }
 
     categoryMultiSelect.clearSelections();
     (Array.isArray(site.categories) ? site.categories : []).forEach(categoryName => {
@@ -2999,9 +3271,8 @@ function prefillSiteForm(site) {
         }
     });
 
-    if (quill) {
-        quill.root.innerHTML = site.description || '';
-    }
+    setSiteDescriptionHtml(site.description || '');
+    syncSiteDescriptionField();
 
     if (site.is_live) {
         $('#wizardDraftHint').text('Changing country, language, or categories will send this site for re-review and take it offline.');
@@ -3027,6 +3298,7 @@ $(document).ready(function(){
             bulkRequestBtn.addClass('d-none');
             claimBtn.addClass('d-none');
             closeBtn.removeClass('d-none');
+            setWizardStep(1);
 
             const editingSiteId = @json(session('editing_site_id'));
             if (editingSiteId) {
@@ -3064,12 +3336,11 @@ $(document).ready(function(){
                 window.sitePreviewConfirmed = false;
             }
 
-            if (quill && !quill.root.innerHTML.trim()) {
+            if (!siteDescPlainText(currentSiteDescriptionHtml())) {
                 const oldDesc = @json(old_text('siteDescription'));
-                if (oldDesc) quill.root.innerHTML = oldDesc;
+                if (oldDesc) setSiteDescriptionHtml(oldDesc);
             }
-
-            setWizardStep(1);
+            syncSiteDescriptionField();
             $('html, body').animate({ scrollTop: formCard.offset().top - 100 }, 400);
         })();
     @endif
@@ -3126,6 +3397,11 @@ $(document).ready(function(){
         if (data.success) loadSites();
     });
 
+    $(document).on('click', '.btn-restore-blocked', function () {
+        const message = String($(this).data('message') || 'This site is verified and cannot be restored.');
+        Swal.fire({ icon: 'error', title: message });
+    });
+
     $(document).on('click', '.btn-unarchive-site', async function () {
         const id = $(this).data('id');
         const res = await fetch(`/publisher/sites/${id}/unarchive`, {
@@ -3150,7 +3426,7 @@ closeBtn.on('click', function(){
     claimBtn.removeClass('d-none');
     formHeaderSpan.text('Add New Website');
     $('#addSiteForm')[0].reset();
-    if (quill) quill.root.innerHTML = '';
+    setSiteDescriptionHtml('');
     $('.tag-checkbox').prop('checked', false);
     $('.sensitive-checkbox').prop('checked', false);
     $('.sensitive-price').val('');

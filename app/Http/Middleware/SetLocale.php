@@ -20,33 +20,61 @@ class SetLocale
             return $next($request);
         }
 
+        $defaultLocale = method_exists(PublicI18n::class, 'default')
+            ? PublicI18n::default()
+            : (string) config('i18n.default', 'en');
+
         // Authenticated SaaS + English-only auth pages always stay English.
-        if (PublicI18n::isEnglishOnlyPath($request) || $this->isAuthenticatedAppPath($request)) {
-            App::setLocale(PublicI18n::default());
-            Session::put('locale', PublicI18n::default());
+        $englishOnly = method_exists(PublicI18n::class, 'isEnglishOnlyPath')
+            && PublicI18n::isEnglishOnlyPath($request);
+        if ($englishOnly || $this->isAuthenticatedAppPath($request)) {
+            App::setLocale($defaultLocale);
+            Session::put('locale', $defaultLocale);
 
             return $next($request);
         }
 
-        [$urlLocale] = PublicI18n::splitPath($request);
+        $urlLocale = null;
+        if (method_exists(PublicI18n::class, 'splitPath')) {
+            [$urlLocale] = PublicI18n::splitPath($request);
+        }
 
-        if (PublicI18n::isPrefixed($urlLocale)) {
+        if ($request->isMethod('GET') && ! $request->ajax()) {
+            $explicit = $this->redirectForExplicitLocale($request);
+            if ($explicit !== null) {
+                return $explicit;
+            }
+            // Geo-IP / cookieless homepage redirects stay off. Master already
+            // dropped them; a leftover Hostinger copy must not 302 /blog/{slug}
+            // onto /us/blog (GSC Redirect error).
+        }
+
+        if (method_exists(PublicI18n::class, 'isPrefixed') && PublicI18n::isPrefixed($urlLocale)) {
             $locale = $urlLocale;
-        } elseif (PublicI18n::isPublicMarketingPath($request)) {
+        } elseif (method_exists(PublicI18n::class, 'isPublicMarketingPath') && PublicI18n::isPublicMarketingPath($request)) {
             // Unprefixed public URL = English (canonical)
-            $locale = PublicI18n::default();
+            $locale = $defaultLocale;
         } else {
-            $locale = PublicI18n::default();
+            $locale = $defaultLocale;
         }
 
         App::setLocale($locale);
+        $messagesFallback = method_exists(PublicI18n::class, 'messagesFallback')
+            ? PublicI18n::messagesFallback($locale)
+            : null;
+        if ($messagesFallback !== null && $messagesFallback !== $locale) {
+            App::setFallbackLocale($messagesFallback);
+        }
         Session::put('locale', $locale);
 
         /** @var Response $response */
         $response = $next($request);
 
         // Remember public browsing language for logo/home links after English auth.
-        if (PublicI18n::isPublicMarketingPath($request) && PublicI18n::isSupported($locale)) {
+        if (method_exists(PublicI18n::class, 'isPublicMarketingPath')
+            && method_exists(PublicI18n::class, 'isSupported')
+            && PublicI18n::isPublicMarketingPath($request)
+            && PublicI18n::isSupported($locale)) {
             $response->headers->setCookie(
                 Cookie::make(
                     config('i18n.cookie', 'public_locale'),
@@ -63,6 +91,68 @@ class SetLocale
         }
 
         return $response;
+    }
+
+    /**
+     * Language switcher (?locale= / ?hl=) wins. The clean URL is kept and the
+     * public_locale cookie is set so a leftover /us cookie cannot steal English.
+     * The URL itself chooses the locale. A missing cookie never redirects.
+     */
+    private function redirectForExplicitLocale(Request $request): ?Response
+    {
+        if (! method_exists(PublicI18n::class, 'isPublicMarketingPath')
+            || ! PublicI18n::isPublicMarketingPath($request)
+            || ! method_exists(PublicI18n::class, 'urlForLocale')
+            || ! method_exists(PublicI18n::class, 'pathWithoutLocale')) {
+            return null;
+        }
+
+        $path = PublicI18n::pathWithoutLocale($request);
+        $requested = method_exists(PublicI18n::class, 'requestedLocale')
+            ? PublicI18n::requestedLocale($request)
+            : null;
+
+        if ($requested !== null) {
+            $target = PublicI18n::urlForLocale($path, $requested);
+            $query = $request->query();
+            unset($query['locale'], $query['hl']);
+            if ($query !== []) {
+                $target .= (str_contains($target, '?') ? '&' : '?').http_build_query($query);
+            }
+
+            if ($this->redirectTargetIsCurrentUrl($request, $target)) {
+                return null;
+            }
+
+            $redirect = redirect()->to($target, 302);
+            if (method_exists(PublicI18n::class, 'localeCookie')) {
+                $redirect->headers->setCookie(PublicI18n::localeCookie($requested, $request));
+            }
+
+            return $redirect;
+        }
+
+        return null;
+    }
+
+    /**
+     * A redirect whose path and query match this request (trailing slash ignored)
+     * would loop for clients that do not store cookies. Render the page instead.
+     */
+    private function redirectTargetIsCurrentUrl(Request $request, string $target): bool
+    {
+        $normalize = static function (string $url): string {
+            $parts = parse_url($url) ?: [];
+            $path = rtrim((string) ($parts['path'] ?? ''), '/');
+            if ($path === '') {
+                $path = '/';
+            }
+            $query = (string) ($parts['query'] ?? '');
+
+            return $path.($query !== '' ? '?'.$query : '');
+        };
+
+        return $normalize($target) === $normalize($request->fullUrl());
     }
 
     private function isAuthenticatedAppPath(Request $request): bool

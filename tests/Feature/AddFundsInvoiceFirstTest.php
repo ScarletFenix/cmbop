@@ -85,6 +85,8 @@ class AddFundsInvoiceFirstTest extends TestCase
             ->getContent();
 
         $this->assertStringNotContainsString('XXXXXXXX', $html);
+        $this->assertStringNotContainsString('Pay €0.00 with card', $html);
+        $this->assertStringContainsString('Select an amount', $html);
         $this->assertStringContainsString('data-invoice-ready="0"', $html);
         $this->assertStringContainsString('invoiceReadyBar', $html);
         $this->assertStringContainsString('Your transfer reference is created with the invoice', $html);

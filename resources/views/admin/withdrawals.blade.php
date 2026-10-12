@@ -24,22 +24,22 @@
     <!-- Stats -->
     <div class="row g-3 mb-3" id="statsRow">
         <div class="col-6 col-lg">
-            <div class="card border-0 shadow-sm h-100">
+            <button type="button" class="card border-0 shadow-sm h-100 w-100 text-start queue-preset" data-queue="open" data-status="pending">
                 <div class="card-body py-3">
                     <div class="text-muted small">Pending</div>
                     <div class="fs-4 fw-bold text-warning" id="statPending">—</div>
                     <div class="small text-muted" id="statPendingAmount">€—</div>
                 </div>
-            </div>
+            </button>
         </div>
         <div class="col-6 col-lg">
-            <div class="card border-0 shadow-sm h-100">
+            <button type="button" class="card border-0 shadow-sm h-100 w-100 text-start queue-preset" data-queue="open" data-status="processing">
                 <div class="card-body py-3">
                     <div class="text-muted small">Processing</div>
                     <div class="fs-4 fw-bold text-info" id="statProcessing">—</div>
                     <div class="small text-muted" id="statProcessingAmount">€—</div>
                 </div>
-            </div>
+            </button>
         </div>
         <div class="col-6 col-lg">
             <div class="card border-0 shadow-sm h-100">
@@ -51,13 +51,13 @@
             </div>
         </div>
         <div class="col-6 col-lg">
-            <div class="card border-0 shadow-sm h-100">
+            <button type="button" class="card border-0 shadow-sm h-100 w-100 text-start queue-preset" data-queue="history" data-status="completed" data-week="1">
                 <div class="card-body py-3">
                     <div class="text-muted small">Paid this week</div>
                     <div class="fs-4 fw-bold text-success" id="statWeek">—</div>
                     <div class="small text-muted" id="statWeekAmount">€—</div>
                 </div>
-            </div>
+            </button>
         </div>
         <div class="col-12 col-lg">
             <div class="card border-0 shadow-sm h-100">
@@ -70,20 +70,21 @@
     </div>
 
     <!-- Filters -->
-    <div class="card shadow-sm border-0 mb-3">
+    <div class="card shadow-sm border-0 mb-3 admin-deposits-filter-card">
         <div class="card-body">
-            <div class="row g-3 align-items-end">
-                <div class="col-md-2">
-                    <label class="form-label fw-semibold small text-muted">Queue</label>
-                    <select id="queueFilter" class="form-select form-select-sm">
+            <form id="withdrawalFilterForm" class="admin-deposits-filters admin-orders-filters" data-admin-filter-live="1">
+            <div class="admin-orders-filters__grid">
+                <div>
+                    <label class="form-label" for="queueFilter">Queue</label>
+                    <select id="queueFilter" class="form-select">
                         <option value="open" selected>Open (pay these)</option>
                         <option value="history">History</option>
                         <option value="all">All</option>
                     </select>
                 </div>
-                <div class="col-md-2">
-                    <label class="form-label fw-semibold small text-muted">Status</label>
-                    <select id="statusFilter" class="form-select form-select-sm">
+                <div>
+                    <label class="form-label" for="statusFilter">Status</label>
+                    <select id="statusFilter" class="form-select">
                         <option value="">Any in queue</option>
                         <option value="pending">Pending</option>
                         <option value="processing">Processing</option>
@@ -91,9 +92,9 @@
                         <option value="cancelled">Cancelled / Rejected</option>
                     </select>
                 </div>
-                <div class="col-md-2">
-                    <label class="form-label fw-semibold small text-muted">Payment Method</label>
-                    <select id="paymentMethodFilter" class="form-select form-select-sm">
+                <div>
+                    <label class="form-label" for="paymentMethodFilter">Payment Method</label>
+                    <select id="paymentMethodFilter" class="form-select">
                         <option value="">All Methods</option>
                         <option value="bank">Bank Transfer</option>
                         <option value="paypal">PayPal</option>
@@ -101,20 +102,21 @@
                         <option value="crypto">Cryptocurrency</option>
                     </select>
                 </div>
-                <div class="col-md-3">
-                    <label class="form-label fw-semibold small text-muted">Date Range</label>
-                    <div class="d-flex gap-2">
-                        <input type="date" id="dateFrom" class="form-control form-control-sm">
-                        <input type="date" id="dateTo" class="form-control form-control-sm">
-                    </div>
+                <div>
+                    <label class="form-label" for="dateFrom">From</label>
+                    <input type="date" id="dateFrom" class="form-control">
                 </div>
-                <div class="col-md-3">
-                    <label class="form-label fw-semibold small text-muted" for="searchInput">Search</label>
+                <div>
+                    <label class="form-label" for="dateTo">To</label>
+                    <input type="date" id="dateTo" class="form-control">
+                </div>
+                <div class="admin-orders-filters__search">
+                    <label class="form-label" for="searchInput">Search</label>
                     <div class="slb-search-wrap">
                         <input type="search"
                                id="searchInput"
-                               class="form-control form-control-sm"
-                               placeholder="Name, email, or #ID"
+                               class="form-control"
+                               placeholder="Name, email, WD id, or payout destination"
                                title="Results update as you type"
                                autocomplete="off"
                                enterkeyhint="search"
@@ -125,15 +127,36 @@
                     </div>
                     <div id="adminWithdrawalsSearchStatus" class="form-text slb-search-status" role="status" aria-live="polite"></div>
                 </div>
+                <div>
+                    <label class="form-label" for="sortFilter">Sort</label>
+                    <select id="sortFilter" class="form-select">
+                        <option value="">Default</option>
+                        <option value="oldest">Oldest first</option>
+                        <option value="newest">Newest first</option>
+                        <option value="amount">Net amount</option>
+                        <option value="waiting">Waiting days</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label" for="waitingFilter">Waiting</label>
+                    <select id="waitingFilter" class="form-select">
+                        <option value="">Any</option>
+                        <option value="7">7+ days</option>
+                        <option value="14">14+ days</option>
+                    </select>
+                </div>
+                <div class="admin-deposits-filters__actions admin-orders-filters__actions">
+                    <div class="d-flex flex-wrap gap-2">
+                        <button type="submit" id="filterBtn" class="btn btn-primary">
+                            <i class="fa fa-search"></i> Filter
+                        </button>
+                        <button type="button" id="resetFiltersBtn" class="btn btn-outline-secondary">
+                            <i class="fa fa-undo"></i> Reset
+                        </button>
+                    </div>
+                </div>
             </div>
-            <div class="mt-3 d-flex flex-wrap gap-2">
-                <button id="filterBtn" class="btn btn-primary btn-sm px-3">
-                    <i class="fa fa-search"></i> Filter
-                </button>
-                <button id="resetFiltersBtn" class="btn btn-secondary btn-sm px-3">
-                    <i class="fa fa-undo"></i> Reset
-                </button>
-            </div>
+            </form>
         </div>
     </div>
 
@@ -231,14 +254,18 @@
 </div>
 
 
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="{{ asset('assets/js/jquery-3.6.0.min.js') }}?v={{ @filemtime(public_path('assets/js/jquery-3.6.0.min.js')) ?: '1' }}"></script>
+<script src="{{ asset('assets/vendor/sweetalert2/sweetalert2.min.js') }}?v={{ @filemtime(public_path('assets/vendor/sweetalert2/sweetalert2.min.js')) ?: '1' }}"></script>
 
 <script>
 let currentPage = 1;
+let financeClock = new URLSearchParams(window.location.search).get('finance') === '1';
+let weekStart = @json(now()->startOfWeek()->toDateString());
+let weekEnd = @json(now()->endOfWeek()->toDateString());
 let selectedIds = new Set();
 let lastDetailsCopyText = '';
 const withdrawalFlags = new Map();
+const markPaidConfirmUrls = new Map();
 const duplicateLookbackDays = {{ max(1, (int) config('billing.withdrawal_mark_paid_duplicate_lookback_days', 30)) }};
 
 const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content
@@ -249,7 +276,6 @@ const withdrawalsExportUrl = @json(route('admin.withdrawals.export'));
 const withdrawalsBatchUrl = @json(route('admin.withdrawals.batch'));
 const withdrawalsShowUrlTemplate = @json(route('admin.withdrawals.show', ['id' => '__ID__']));
 const withdrawalsProcessingUrlTemplate = @json(route('admin.withdrawals.processing', ['id' => '__ID__']));
-const withdrawalsPaidUrlTemplate = @json(route('admin.withdrawals.paid', ['id' => '__ID__']));
 const withdrawalsRejectUrlTemplate = @json(route('admin.withdrawals.reject', ['id' => '__ID__']));
 const financeUserUrlTemplate = @json(route('admin.finance.user', ['user' => '__ID__']));
 
@@ -308,7 +334,7 @@ function getStatusClass(status) {
 function getPaymentMethodBadge(method) {
     const badges = {
         bank: '<span class="badge bg-secondary bg-opacity-10 text-secondary px-2 py-1"><i class="fa fa-university me-1"></i>Bank</span>',
-        paypal: '<span class="badge bg-primary bg-opacity-10 text-primary px-2 py-1"><i class="fab fa-paypal me-1"></i>PayPal</span>',
+        paypal: '<span class="badge bg-primary bg-opacity-10 text-primary px-2 py-1"><img src="{{ asset('assets/img/payments/paypal.png') }}" alt="" width="20" height="20" style="width:20px;height:20px;vertical-align:-4px;margin-right:4px">PayPal</span>',
         wise: '<span class="badge bg-info bg-opacity-10 text-info px-2 py-1"><i class="fa fa-exchange-alt me-1"></i>Wise</span>',
         crypto: '<span class="badge bg-warning bg-opacity-10 text-warning px-2 py-1"><i class="fab fa-bitcoin me-1"></i>Crypto</span>'
     };
@@ -339,15 +365,17 @@ function filterParams() {
         payment_method: $('#paymentMethodFilter').val(),
         date_from: $('#dateFrom').val(),
         date_to: $('#dateTo').val(),
+        sort: $('#sortFilter').val(),
+        waiting: $('#waitingFilter').val(),
     };
     const status = $('#statusFilter').val();
-    const queue = $('#queueFilter').val();
+    const queue = $('#queueFilter').val() || 'open';
+    params.queue = queue;
     if (status) {
         params.status = status;
-    } else if (queue === 'all') {
-        params.queue = 'all';
-    } else {
-        params.queue = queue || 'open';
+    }
+    if (financeClock) {
+        params.finance = '1';
     }
     return params;
 }
@@ -366,16 +394,32 @@ function loadStatistics() {
 
         const by = s.by_method || {};
         const labels = { bank: 'Bank', paypal: 'PayPal', wise: 'Wise', crypto: 'Crypto' };
+        weekStart = s.week_start || weekStart;
+        weekEnd = s.week_end || weekEnd;
         const parts = Object.keys(by).map(function(method) {
             const row = by[method];
-            return `<span class="d-inline-block me-2 mb-1"><strong>${row.count}</strong> ${labels[method] || method} · €${Number(row.net_total).toFixed(0)}</span>`;
+            return `<button type="button" class="btn btn-link btn-sm p-0 me-2 mb-1 queue-preset" data-queue="open" data-method="${escapeHtml(method)}"><strong>${row.count}</strong> ${escapeHtml(labels[method] || method)} · €${Number(row.net_total).toFixed(0)}</button>`;
         });
         $('#statByMethod').html(parts.length ? parts.join('') : '<span class="text-muted">No open payouts</span>');
     });
 }
 
+function syncFilterUrl() {
+    const params = filterParams();
+    delete params.page;
+    const q = new URLSearchParams();
+    Object.keys(params).forEach(function (key) {
+        if (params[key] !== '' && params[key] != null) {
+            q.set(key, params[key]);
+        }
+    });
+    const next = q.toString();
+    history.replaceState(null, '', window.location.pathname + (next ? '?' + next : ''));
+}
+
 function loadWithdrawals(page = 1) {
     currentPage = page;
+    syncFilterUrl();
     const params = filterParams();
     params.page = page;
 
@@ -418,7 +462,17 @@ function renderWithdrawals(withdrawals) {
             possible_duplicate: !!w.possible_duplicate,
             duplicate_match_ids: matchIds,
         });
+        if (w.mark_paid_confirm_url) {
+            markPaidConfirmUrls.set(Number(w.id), w.mark_paid_confirm_url);
+        } else {
+            markPaidConfirmUrls.delete(Number(w.id));
+        }
 
+        const userId = w.user?.id;
+        const publisherName = escapeHtml(w.user?.name || 'N/A');
+        const nameHtml = userId
+            ? `<a class="fw-semibold" href="${escapeHtml(withdrawalActionUrl(financeUserUrlTemplate, userId))}">${publisherName}</a>`
+            : `<span class="fw-semibold">${publisherName}</span>`;
         html += `
             <tr data-id="${w.id}">
                 <td>
@@ -429,7 +483,7 @@ function renderWithdrawals(withdrawals) {
                 <td class="text-muted small">WD-${w.id}</td>
                 <td>
                     <div class="d-flex flex-column">
-                        <span class="fw-semibold">${escapeHtml(w.user?.name || 'N/A')}</span>
+                        ${nameHtml}
                         <small class="text-muted">${escapeHtml(w.user?.email || '')}</small>
                     </div>
                 </td>
@@ -461,6 +515,7 @@ function renderWithdrawals(withdrawals) {
                             ${actionable ? `
                             <li><hr class="dropdown-divider"></li>
                             <li><button type="button" class="dropdown-item act-paid" data-id="${w.id}"
+                                data-confirm-url="${escapeHtml(w.mark_paid_confirm_url || '')}"
                                 data-name="${escapeHtml(w.user?.name || '')}"
                                 data-net="${money(w.net_amount)}"
                                 data-method="${escapeHtml(w.payment_method)}"
@@ -517,20 +572,41 @@ function refreshAll() {
     loadWithdrawals(currentPage);
 }
 
-async function confirmNotes(title, html, confirmText, confirmClass) {
+async function confirmNotes(title, html, confirmText, confirmClass, requireNotes) {
     const result = await Swal.fire({
         title,
         html,
         input: 'textarea',
-        inputLabel: 'Notes / payment reference (optional)',
-        inputPlaceholder: 'e.g. Wise transfer #12345',
+        inputLabel: requireNotes ? 'Reason (10–2000 characters)' : 'Notes / payment reference (optional)',
+        inputPlaceholder: requireNotes ? 'Why this payout is rejected' : 'e.g. Wise transfer #12345',
         showCancelButton: true,
         confirmButtonText: confirmText,
         cancelButtonText: 'Cancel',
         customClass: { confirmButton: confirmClass || '' },
+        inputValidator: requireNotes ? function (value) {
+            const text = (value || '').trim();
+            if (text.length < 10) return 'Enter at least 10 characters.';
+            if (text.length > 2000) return 'Keep the reason under 2000 characters.';
+        } : undefined,
     });
     if (!result.isConfirmed) return null;
-    return result.value || '';
+    return (result.value || '').trim();
+}
+
+function payoutContextHtml(ctx) {
+    if (!ctx) return '';
+    const prior = (ctx.prior_paid || []).slice(0, 5).map(function (row) {
+        return 'WD-' + row.id + ' €' + money(row.net_amount);
+    }).join(', ');
+    return `<br><span class="small">Wallet balance: <strong>€${money(ctx.current_balance)}</strong>. Recent paid: ${escapeHtml(prior || 'none')}.</span>`;
+}
+
+function loadPayoutContext(id) {
+    return $.getJSON(withdrawalActionUrl(withdrawalsShowUrlTemplate, id)).then(function (response) {
+        return response.data && response.data.payout_context ? response.data.payout_context : null;
+    }).catch(function () {
+        return null;
+    });
 }
 
 // Row actions
@@ -561,28 +637,28 @@ function duplicateWarningHtml(matchRefs) {
 }
 
 $(document).on('click', '.act-paid', async function() {
-    const id = $(this).data('id');
+    const confirmUrl = $(this).attr('data-confirm-url') || '';
     const name = $(this).data('name');
     const net = $(this).data('net');
     const method = $(this).data('method');
     const isDuplicate = $(this).attr('data-duplicate') === '1';
     const matchRefs = $(this).attr('data-duplicate-ids') || '';
-    const notes = await confirmNotes(
-        'Mark paid?',
-        `Pay <strong>€${escapeHtml(String(net))}</strong> net to <strong>${escapeHtml(name)}</strong> via <strong>${escapeHtml(method)}</strong>?<br><span class="text-muted small">Only confirm after you sent the money outside the app.</span>${isDuplicate ? duplicateWarningHtml(matchRefs) : ''}`,
-        'Yes, mark paid',
-        ''
-    );
-    if (notes === null) return;
-    postAction(withdrawalActionUrl(withdrawalsPaidUrlTemplate, id), { notes })
-        .done(function(res) {
-            toast(res.message || 'Marked paid');
-            selectedIds.delete(id);
-            refreshAll();
-        })
-        .fail(function(xhr) {
-            toast(xhr.responseJSON?.message || 'Failed', 'error');
-        });
+    const id = $(this).data('id');
+    const context = await loadPayoutContext(id);
+    const result = await Swal.fire({
+        title: 'Mark paid?',
+        html: `Pay <strong>€${escapeHtml(String(net))}</strong> net to <strong>${escapeHtml(name)}</strong> via <strong>${escapeHtml(method)}</strong>?<br><span class="text-muted small">You will confirm the payout on the next page. Nothing is marked paid until you confirm there.</span>${payoutContextHtml(context)}${isDuplicate ? duplicateWarningHtml(matchRefs) : ''}`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Continue',
+        cancelButtonText: 'Cancel',
+    });
+    if (!result.isConfirmed) return;
+    if (!confirmUrl) {
+        toast('Open the confirm page from this payout row.', 'error');
+        return;
+    }
+    window.location.href = confirmUrl;
 });
 
 $(document).on('click', '.act-reject', async function() {
@@ -593,7 +669,8 @@ $(document).on('click', '.act-reject', async function() {
         'Reject & refund?',
         `Reject withdrawal for <strong>${escapeHtml(name)}</strong> and refund <strong>€${escapeHtml(String(amount))}</strong> to their wallet.`,
         'Reject & refund',
-        'slb-swal-danger'
+        'slb-swal-danger',
+        true
     );
     if (notes === null) return;
     postAction(withdrawalActionUrl(withdrawalsRejectUrlTemplate, id), { notes })
@@ -665,7 +742,8 @@ async function runBatch(action, title, confirmText, confirmClass, options) {
         title,
         `Apply to <strong>${selectedIds.size}</strong> selected withdrawal(s).${warn}`,
         confirmText,
-        confirmClass
+        confirmClass,
+        action === 'cancelled'
     );
     if (notes === null) return;
 
@@ -697,7 +775,21 @@ async function runBatch(action, title, confirmText, confirmClass, options) {
 }
 
 $('#batchProcessingBtn').on('click', () => runBatch('processing', 'Mark selected processing?', 'Mark processing', ''));
-$('#batchPaidBtn').on('click', () => runBatch('completed', 'Mark selected paid?', 'Mark paid', ''));
+$('#batchPaidBtn').on('click', function () {
+    const ids = Array.from(selectedIds);
+    if (ids.length !== 1) {
+        toast('Confirm each payout on its own page. Use Mark paid on the row.', 'error');
+        return;
+    }
+    const confirmUrl = markPaidConfirmUrls.get(Number(ids[0]))
+        || $(`tr[data-id="${ids[0]}"] .act-paid`).attr('data-confirm-url')
+        || '';
+    if (!confirmUrl) {
+        toast('This payout cannot be confirmed from here.', 'error');
+        return;
+    }
+    window.location.href = confirmUrl;
+});
 $('#batchRejectBtn').on('click', () => runBatch('cancelled', 'Reject selected & refund?', 'Reject & refund', 'slb-swal-danger'));
 
 function buildExportUrl(extra = {}) {
@@ -795,8 +887,10 @@ function renderDetails(withdrawal) {
         $('#openInvoiceLink').addClass('d-none').attr('href', '#');
     }
 
+    const contextBlock = payoutContextHtml(withdrawal.payout_context);
     $('#detailsContent').html(`
         ${duplicateAlert}
+        ${contextBlock ? `<div class="mb-3">${contextBlock.replace(/^<br>/, '')}</div>` : ''}
         <div class="row mb-3">
             <div class="col-md-6">
                 <div class="bg-light p-3 rounded">
@@ -839,22 +933,42 @@ $('#copyDetailsBtn').on('click', function() {
     if (lastDetailsCopyText) copyText(lastDetailsCopyText);
 });
 
-$('#filterBtn').on('click', () => loadWithdrawals(1));
+$('#withdrawalFilterForm').on('submit', function (e) {
+    e.preventDefault();
+    financeClock = false;
+    loadWithdrawals(1);
+});
+document.getElementById('withdrawalFilterForm').addEventListener('admin-filter-pick', function () {
+    financeClock = false;
+    loadWithdrawals(1);
+});
 $('#resetFiltersBtn').on('click', function() {
     $('#queueFilter').val('open');
     $('#statusFilter').val('');
     $('#paymentMethodFilter').val('');
     $('#dateFrom').val('');
     $('#dateTo').val('');
+    $('#sortFilter').val('');
+    $('#waitingFilter').val('');
     $('#searchInput').val('');
+    document.querySelectorAll('#withdrawalFilterForm select').forEach(function (select) {
+        select.dataset.themeSync = '1';
+        select.dispatchEvent(new Event('change'));
+        delete select.dataset.themeSync;
+    });
+    financeClock = false;
     selectedIds.clear();
     withdrawalFlags.clear();
     loadWithdrawals(1);
 });
 
 $('#queueFilter').on('change', function() {
-    if ($(this).val() === 'open') $('#statusFilter').val('');
-    loadWithdrawals(1);
+    if (this.dataset.themeSync === '1') return;
+    financeClock = false;
+    if ($(this).val() === 'open') {
+        $('#statusFilter').val('');
+        document.getElementById('statusFilter').dispatchEvent(new Event('change'));
+    }
 });
 
 document.addEventListener('DOMContentLoaded', function () {
@@ -879,7 +993,36 @@ document.addEventListener('DOMContentLoaded', function () {
     if (q.get('status')) $('#statusFilter').val(q.get('status'));
     if (q.get('payment_method')) $('#paymentMethodFilter').val(q.get('payment_method'));
     if (q.get('search')) $('#searchInput').val(q.get('search'));
+    if (q.get('date_from')) $('#dateFrom').val(q.get('date_from'));
+    if (q.get('date_to')) $('#dateTo').val(q.get('date_to'));
+    if (q.get('sort')) $('#sortFilter').val(q.get('sort'));
+    if (q.get('waiting')) $('#waitingFilter').val(q.get('waiting'));
 })();
+
+$(document).on('click', '.queue-preset', function () {
+    const $el = $(this);
+    $('#queueFilter').val($el.attr('data-queue') || 'open');
+    $('#statusFilter').val($el.attr('data-status') || '');
+    $('#paymentMethodFilter').val($el.attr('data-method') || '');
+    $('#sortFilter').val('');
+    $('#waitingFilter').val('');
+    $('#searchInput').val('');
+    document.querySelectorAll('#withdrawalFilterForm select').forEach(function (select) {
+        select.dataset.themeSync = '1';
+        select.dispatchEvent(new Event('change'));
+        delete select.dataset.themeSync;
+    });
+    financeClock = false;
+    document.getElementById('searchInput')?._slbLiveSearch?.refreshClear();
+    if ($el.attr('data-week') === '1') {
+        $('#dateFrom').val(weekStart);
+        $('#dateTo').val(weekEnd);
+    } else {
+        $('#dateFrom').val('');
+        $('#dateTo').val('');
+    }
+    loadWithdrawals(1);
+});
 
 loadStatistics();
 loadWithdrawals(1);

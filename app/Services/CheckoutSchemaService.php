@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Site;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -85,6 +86,8 @@ class CheckoutSchemaService
         $this->addColumn('orders', 'paypal_capture_id', 'varchar(255) NULL');
         $this->addColumn('orders', 'paypal_refund_id', 'varchar(255) NULL');
         $this->addNullableJsonColumn('orders', 'paypal_response');
+        $this->addColumn('orders', 'project_id', 'bigint unsigned NULL');
+        $this->addIndexIfMissing('orders', 'project_id');
         $this->addIndexIfMissing('orders', 'paypal_order_id');
         $this->addUniqueIfMissing('orders', 'paypal_capture_id');
         $this->addUniqueIfMissing('orders', 'paypal_refund_id');
@@ -236,6 +239,9 @@ class CheckoutSchemaService
             Schema::table($table, function (Blueprint $blueprint) use ($column) {
                 $blueprint->json($column)->nullable();
             });
+            if ($table === 'sites') {
+                Site::forgetColumnCache();
+            }
             Log::info("Added missing {$table}.{$column} for checkout");
 
             return;
@@ -339,6 +345,9 @@ class CheckoutSchemaService
 
         try {
             DB::statement("ALTER TABLE `{$table}` ADD COLUMN `{$column}` {$definition}");
+            if ($table === 'sites') {
+                Site::forgetColumnCache();
+            }
             Log::info("Added missing {$table}.{$column} for checkout");
         } catch (\Throwable $e) {
             try {

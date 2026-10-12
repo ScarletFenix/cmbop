@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
@@ -117,11 +119,7 @@ class CatalogExpandCorrectnessTest extends TestCase
         $this->assertStringContainsString('site-chip--partner', $html);
         $this->assertStringContainsString(SiteTag::DETAILS_HEADING, $html);
         $this->assertStringContainsString(SiteTag::FILTER_TOOLTIP, $html);
-        $this->assertStringContainsString('catalog-tag-definition', $html);
-        $this->assertStringContainsString(
-            'Paid placement disclosed as sponsored — not the DoFollow / NoFollow link attribute',
-            $html
-        );
+        $this->assertStringNotContainsString('catalog-tag-definition', $html);
         $this->assertStringNotContainsString('<strong>Tags</strong>', $html);
         $this->assertStringNotContainsString('<dt>Tags</dt>', $html);
     }
@@ -139,11 +137,9 @@ class CatalogExpandCorrectnessTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        // Desktop expand + mobile Details only — closed row / card badges stay empty.
-        $this->assertSame(2, substr_count($html, 'site-chip--none'));
-        $this->assertStringContainsString(SiteTag::NONE_LABEL, $html);
-        $this->assertStringContainsString(SiteTag::NONE_CHIP_TITLE, $html);
-        $this->assertStringContainsString('catalog-tag-definition', $html);
+        // Untagged listings omit Listing tag from Site Details instead of a No tags chip.
+        $this->assertStringNotContainsString('site-chip--none', $html);
+        $this->assertStringNotContainsString('catalog-tag-definition', $html);
     }
 
     public function test_expand_layout_separates_pricing_and_empty_states(): void
@@ -161,13 +157,59 @@ class CatalogExpandCorrectnessTest extends TestCase
         $this->assertStringContainsString('catalog-expand-grid', $html);
         $this->assertStringContainsString('catalog-expand-pricing', $html);
         $this->assertStringContainsString('Sensitive topics', $html);
+        $this->assertStringContainsString('catalog-addon-price', $html);
+        $this->assertStringNotContainsString('text-danger">add-on', $html);
         $this->assertStringContainsString('+€23.00', $html);
         $this->assertMatchesRegularExpression('/→\s*you pay €\d+\.\d{2}/u', $html);
-        $this->assertStringContainsString('Screenshot not available yet', $html);
-        $this->assertStringContainsString('No sample article yet', $html);
+        $this->assertStringNotContainsString('Screenshot not available yet', $html);
+        $this->assertStringNotContainsString('No sample article yet', $html);
+        $this->assertStringNotContainsString('Sample article', $html);
         $this->assertStringNotContainsString('Not available</a>', $html);
         $this->assertStringNotContainsString('No extra pricing options for this listing.', $html);
         $this->assertStringNotContainsString('Base guest post only', $html);
+    }
+
+    public function test_sensitive_topics_show_last_completed_order_time(): void
+    {
+        $site = $this->makeSite([
+            'site_name' => 'Completed Expand Blog',
+            'site_url' => 'https://completed-expand.example',
+            'domain' => 'completed-expand.example',
+            'sensitive_prices' => ['crypto' => 23],
+        ]);
+
+        $completedAt = now()->subDays(2);
+        $order = Order::create([
+            'user_id' => $this->advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'CAT-LAST-COMPLETED',
+            'subtotal' => 90,
+            'tax' => 0,
+            'total_amount' => 90,
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'paid_at' => $completedAt->copy()->subDay(),
+            'status' => 'completed',
+            'completed_at' => $completedAt,
+        ]);
+        OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://completed-expand.example/post',
+            'price' => 90,
+            'publisher_status' => 'completed',
+            'completed_at' => $completedAt,
+        ]);
+
+        $html = $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Sensitive topics', $html);
+        $this->assertStringContainsString('Last published', $html);
     }
 
     public function test_homepage_only_details_shows_advertiser_you_pay_not_publisher_base(): void
@@ -222,7 +264,7 @@ class CatalogExpandCorrectnessTest extends TestCase
         $this->assertStringContainsString('Homepage promotions', $html);
         $this->assertStringContainsString('homepage-placement-group', $html);
         $this->assertMatchesRegularExpression(
-            '/catalog-expand-meta[\s\S]*?Homepage promotions[\s\S]*?<strong>Social<\/strong>/u',
+            '/catalog-expand-meta[\s\S]*?Homepage promotions[\s\S]*?<strong>Social promotions<\/strong>/u',
             $html
         );
         $this->assertStringContainsString('Facebook', $html);
@@ -233,8 +275,8 @@ class CatalogExpandCorrectnessTest extends TestCase
         $this->assertStringNotContainsString('Sensitive topics', $html);
         $this->assertStringNotContainsString('Base guest post only', $html);
         // Mobile Details also lists the offers.
-        $this->assertStringContainsString('<dt>Homepage promotions</dt>', $html);
-        $this->assertStringContainsString('<dt>Social</dt>', $html);
+        $this->assertStringContainsString('Homepage promotions', $html);
+        $this->assertStringContainsString('Social', $html);
     }
 
     public function test_expand_collapses_pricing_when_no_extras(): void
@@ -256,12 +298,12 @@ class CatalogExpandCorrectnessTest extends TestCase
         $this->assertStringNotContainsString('Sensitive topics', $html);
         $this->assertStringNotContainsString('No extra pricing options for this listing.', $html);
         $this->assertStringContainsString('Base guest post only — no homepage, social, or sensitive add-ons.', $html);
-        // Site Details always lists Homepage / Social (empty state when not offered).
-        $this->assertStringContainsString('Homepage promotions', $html);
-        $this->assertStringContainsString('Not offered on this listing.', $html);
-        $this->assertStringContainsString('<strong>Social</strong>', $html);
-        $this->assertStringContainsString('No social sharing included on this listing.', $html);
-        $this->assertStringContainsString('No description yet', $html);
+        // Homepage promotions is omitted when the listing has no homepage offer.
+        $this->assertStringNotContainsString('Homepage promotions', $html);
+        $this->assertStringNotContainsString('Not offered on this listing.', $html);
+        $this->assertStringNotContainsString('<strong>Social promotions</strong>', $html);
+        $this->assertStringNotContainsString('No social sharing included on this listing.', $html);
+        $this->assertStringNotContainsString('No description yet', $html);
         $this->assertStringContainsString('Turnaround', $html);
     }
 
@@ -277,11 +319,13 @@ class CatalogExpandCorrectnessTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        $this->assertStringContainsString('site-chip--social', $html);
+        $this->assertStringContainsString('catalog-social-icons', $html);
         $this->assertStringContainsString('Facebook', $html);
-        $this->assertStringContainsString('<dt>Social</dt>', $html);
-        $this->assertStringContainsString('<dt>Homepage promotions</dt>', $html);
-        $this->assertStringContainsString('Choose a duration above Buy.', $html);
+        $this->assertStringContainsString('Social promotions', $html);
+        $this->assertStringContainsString('Homepage promotions', $html);
+        $this->assertStringContainsString('Choose a duration in this panel, or change it later in the cart.', $html);
+        $this->assertStringNotContainsString('Choose a duration above Buy.', $html);
+        $this->assertStringContainsString('catalog-buy-addon-hint', $html);
     }
 
     public function test_you_pay_copy_is_aligned_across_desktop_and_mobile(): void
@@ -300,7 +344,7 @@ class CatalogExpandCorrectnessTest extends TestCase
 
         $js = file_get_contents(public_path('assets/js/catalog.js'));
         $this->assertIsString($js);
-        $this->assertStringContainsString("You pay: <strong>€'", $js);
+        $this->assertStringContainsString("You pay: <strong>' + catalogMoneyLabel(payTotal)", $js);
         $this->assertStringContainsString('function catalogAdvertiserBasePrice', $js);
         $this->assertStringNotContainsString('Current price:', $js);
     }
@@ -320,8 +364,14 @@ class CatalogExpandCorrectnessTest extends TestCase
         $this->assertStringContainsString('site-chip--homepage', $html);
         $this->assertStringContainsString('Homepage</span>', $html);
         $this->assertStringNotContainsString('Free homepage', $html);
-        $this->assertStringContainsString('site-chip--social', $html);
-        $this->assertStringContainsString('Homepage placement available in Details.', $html);
+        $this->assertStringContainsString('catalog-social-icons', $html);
+        $this->assertStringContainsString('fa-facebook', $html);
+        $this->assertStringContainsString('fa-instagram', $html);
+        $this->assertStringNotContainsString('>Facebook, Instagram<', $html);
+        $this->assertStringNotContainsString('Social: Facebook', $html);
+        $this->assertStringContainsString('data-catalog-open-section="social"', $html);
+        $this->assertStringContainsString('data-catalog-open-section="homepage"', $html);
+        $this->assertStringNotContainsString('Homepage placement available in Details.', $html);
     }
 
     public function test_free_homepage_chip_skips_paid_only_hint(): void
@@ -422,8 +472,38 @@ class CatalogExpandCorrectnessTest extends TestCase
         $this->assertStringContainsString('Full mobile description for parity.', $html);
         $this->assertStringContainsString('Sponsored', $html);
         $this->assertStringContainsString('site-chip--sponsored', $html);
-        $this->assertStringContainsString('No sample article yet', $html);
+        $this->assertStringNotContainsString('No sample article yet', $html);
+        $this->assertStringNotContainsString('Sample article', $html);
         $this->assertStringContainsString('catalog-deferred-preview', $html);
         $this->assertStringContainsString('Publisher trust', $html);
+    }
+
+    public function test_catalog_buy_js_treats_reclick_as_already_in_cart(): void
+    {
+        $js = (string) file_get_contents(public_path('assets/js/catalog.js'));
+
+        $this->assertStringContainsString('window.catalogSyncInCartButtons', $js);
+        $this->assertStringContainsString("btn.classList.toggle('is-in-cart', inCart)", $js);
+        $this->assertStringContainsString('<span>In cart</span>', $js);
+        $this->assertStringContainsString("button.classList.contains('is-in-cart')", $js);
+        $this->assertStringContainsString('window.catalogSyncBuyAddonHints', $js);
+        $this->assertStringContainsString('.buy-now.is-in-cart[data-id=', $js);
+        $this->assertStringContainsString("Incl. ' + homepage.days + '-day homepage'", $js);
+        $this->assertStringNotContainsString('readiness chips', $js);
+    }
+
+    public function test_catalog_empty_library_copy_does_not_mention_readiness_chips(): void
+    {
+        $this->makeSite();
+
+        $html = $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringNotContainsString('readiness chips', $html);
+        $this->assertStringContainsString('the cart lists which sites still need an article', $html);
+        $this->assertStringContainsString('id="catalogCartBanner"', $html);
+        $this->assertStringContainsString('catalog-buy-addon-hint', $html);
     }
 }

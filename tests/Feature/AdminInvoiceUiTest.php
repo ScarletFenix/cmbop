@@ -191,7 +191,7 @@ class AdminInvoiceUiTest extends TestCase
             ->assertSee($invoice->invoice_number, false)
             ->getContent();
 
-        $this->assertStringContainsString(route('admin.users.show', $advertiser->id), $html);
+        $this->assertStringContainsString(route('admin.finance.user', $advertiser->id), $html);
         $this->assertStringContainsString(route('admin.orders.show', $order->id), $html);
         $this->assertStringContainsString('text-bg-success', $html);
     }
@@ -209,7 +209,7 @@ class AdminInvoiceUiTest extends TestCase
         $this->actingAs($admin)
             ->get(route('admin.invoices.view', $invoice))
             ->assertOk()
-            ->assertHeader('content-type', 'application/pdf');
+            ->assertSee('INVOICE #', false);
 
         $this->assertSame(0, (int) $invoice->fresh()->download_count);
     }
@@ -228,7 +228,7 @@ class AdminInvoiceUiTest extends TestCase
         $this->actingAs($admin)
             ->get(route('admin.invoices.view', $invoice))
             ->assertOk()
-            ->assertHeader('content-type', 'application/pdf');
+            ->assertSee('INVOICE #', false);
 
         $this->actingAs($admin)
             ->get(route('admin.invoices.download', $invoice))
@@ -266,7 +266,7 @@ class AdminInvoiceUiTest extends TestCase
             ->assertSee('Subtotal', false)
             ->assertSee($receipt->invoice_number, false)
             ->assertSee(route('admin.invoices.show', $receipt), false)
-            ->assertSee(route('admin.users.show', $advertiser->id), false)
+            ->assertSee(route('admin.finance.user', $advertiser->id), false)
             ->assertSee(route('admin.orders.show', $order->id), false);
     }
 

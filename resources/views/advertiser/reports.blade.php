@@ -8,7 +8,7 @@
         <div class="col-md-12">
             <h2 class="mb-1 fw-semibold">Reports</h2>
             <p class="text-muted mb-0">
-                View your campaign performance, funds activity, and order history.
+                Wallet ledger and order history. Spend charts live under Spending.
             </p>
         </div>
     </div>
@@ -222,7 +222,7 @@
 
 </style>
 
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="{{ asset('assets/js/jquery-3.6.0.min.js') }}?v={{ @filemtime(public_path('assets/js/jquery-3.6.0.min.js')) ?: '1' }}"></script>
 
 <script>
 var repFundsPage = 1;
@@ -337,7 +337,7 @@ function renderRepFundsTable(activities) {
         html += '<tr class="rep-report-row">' +
             '<td class="text-muted">' + formatRepDate(activity.created_at) + '</td>' +
             '<td><code class="small bg-light px-2 py-1 rounded">' + escapeRepHtml(activity.reference_code) + '</code></td>' +
-            '<td class="fw-semibold ' + amountClass + '">' + amountPrefix + ' €' + parseFloat(activity.amount).toFixed(2) + '</td>' +
+            '<td class="fw-semibold ' + amountClass + '">' + amountPrefix + ' ' + (window.slbFormatMoney || function (n) { return '€' + Number(n).toFixed(2); })(activity.amount) + '</td>' +
             '<td><span class="badge bg-secondary">' + escapeRepHtml(paymentMethod) + '</span></td>' +
             '<td>' + statusBadge + '</td>' +
             '<td><span class="badge bg-primary">' + escapeRepHtml(type) + '</span></td>' +
@@ -434,12 +434,12 @@ function renderRepOrderRow(order, item) {
             '<div class="fw-semibold">' + escapeRepHtml(siteName) + '</div>' +
             (siteUrl ? '<small class="text-muted">' + truncateRep(siteUrl, 30) + '</small>' : '') +
         '</td>' +
-        '<td class="text-primary">' + (Number.isFinite(basePrice) ? ('€' + basePrice.toFixed(2)) : '—') + '</td>' +
+        '<td class="text-primary">' + (Number.isFinite(basePrice) ? (window.slbFormatMoney || function (n) { return '€' + Number(n).toFixed(2); })(basePrice) : '—') + '</td>' +
         '<td>' + (Number.isFinite(additionalPrice) && additionalPrice > 0 ?
-            '<span class="rep-sensitive-badge"><i class="fa fa-plus-circle"></i> ' + escapeRepHtml(sensitiveType || 'Sensitive') + ' (+€' + additionalPrice.toFixed(2) + ')</span>' :
+            '<span class="rep-sensitive-badge"><i class="fa fa-plus-circle"></i> ' + escapeRepHtml(sensitiveType || 'Sensitive') + ' (+' + (window.slbFormatMoney || function (n) { return '€' + Number(n).toFixed(2); })(additionalPrice) + ')</span>' :
             '<span class="text-muted">—</span>') +
         '</td>' +
-        '<td class="fw-semibold">' + (Number.isFinite(linePrice) ? ('€' + linePrice.toFixed(2)) : ('€' + parseFloat(order.total_amount || 0).toFixed(2))) + '</td>' +
+        '<td class="fw-semibold">' + (window.slbFormatMoney || function (n) { return '€' + Number(n).toFixed(2); })(Number.isFinite(linePrice) ? linePrice : order.total_amount) + '</td>' +
         '<td><code class="small bg-light px-2 py-1 rounded">' + escapeRepHtml(order.reference_code) + '</code></td>' +
         '<td><span class="badge bg-secondary">' + escapeRepHtml(paymentMethodLabel(order.payment_method)) + '</span></td>' +
         '<td>' + repOrderStatusBadge(order) + '</td>' +

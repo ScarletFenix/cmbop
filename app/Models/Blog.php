@@ -7,9 +7,11 @@ namespace App\Models;
 use App\Models\Concerns\ToleratesMissingSchema;
 use App\Models\Concerns\ToleratesUnparseableDates;
 use App\Support\PublicI18n;
+use App\Support\ThinBlogRedirects;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -183,9 +185,63 @@ class Blog extends Model
     }
 
     /**
+     * Drop thin BlogSeeder stubs that 301 onto ranking pillars.
+     */
+    public function scopeWithoutLegacyRedirects($query)
+    {
+        try {
+            if (! class_exists(ThinBlogRedirects::class) || ! method_exists(ThinBlogRedirects::class, 'legacySlugs')) {
+                return $query;
+            }
+
+            $slugs = ThinBlogRedirects::legacySlugs();
+            if ($slugs === []) {
+                return $query;
+            }
+
+            $query->whereNotIn($this->qualifyColumn('slug'), $slugs);
+
+            if (Schema::hasTable('blog_translations')) {
+                $query->whereNotIn($this->getQualifiedKeyName(), function ($sub) use ($slugs) {
+                    $sub->select('blog_id')
+                        ->from('blog_translations')
+                        ->whereIn('slug', $slugs);
+                });
+            }
+        } catch (\Throwable) {
+            return $query;
+        }
+
+        return $query;
+    }
+
+    /**
+     * The US section shares the English catalog. Posts are stored as locale en.
+     */
+    public static function catalogLocale(string $locale): string
+    {
+        return $locale === 'us' ? 'en' : $locale;
+    }
+
+    /**
+     * Absolute public URL for a listing card. US cards point at the English
+     * canonical (/blog/{slug}), which is the URL that actually has the post.
+     */
+    public function listingUrl(): string
+    {
+        $locale = $this->getAttribute('resolved_locale');
+        if (! is_string($locale) || $locale === '') {
+            $locale = function_exists('public_locale') ? public_locale() : 'en';
+        }
+
+        return $this->canonicalUrl(self::catalogLocale($locale), 'en');
+    }
+
+    /**
      * Public listings (index, footer, related, marketing cards): only posts
      * with a published translation for this locale. Does not fall back to
      * English or primary_locale — that belongs on show() / canonical only.
+     * Callers that list the US section pass catalogLocale() so English posts show.
      */
     public function scopeWithPublishedLocale($query, string $locale)
     {
@@ -238,7 +294,7 @@ class Blog extends Model
     public function canonicalUrl(?string $locale = null, ?string $fallbackLocale = 'en'): string
     {
         $preferredLocale = $locale ?: $this->primary_locale;
-        $supported = class_exists(PublicI18n::class)
+        $supported = class_exists(PublicI18n::class) && method_exists(PublicI18n::class, 'isSupported')
             ? PublicI18n::isSupported($preferredLocale)
             : in_array((string) $preferredLocale, ['en'], true);
         if (! $supported) {
@@ -249,7 +305,7 @@ class Blog extends Model
         $slug = $translation?->slug ?: $this->slug;
         $canonicalLocale = $translation?->locale ?: $preferredLocale;
 
-        if (class_exists(PublicI18n::class)) {
+        if (class_exists(PublicI18n::class) && method_exists(PublicI18n::class, 'urlForLocale')) {
             return PublicI18n::urlForLocale('blog/'.$slug, $canonicalLocale);
         }
 
@@ -291,11 +347,72 @@ class Blog extends Model
     }
 
     /**
+     * Public <img> / JSON-LD URL only when the file is actually on the public disk.
+     */
+    public function publicFeaturedImageUrl(): ?string
+    {
+        $relative = $this->featuredImageUrl();
+        if ($relative === null) {
+            return null;
+        }
+
+        $path = $this->featured_image;
+        if (! is_string($path) || trim($path) === '') {
+            return null;
+        }
+
+        $path = trim($path);
+        $urlPath = $path;
+        if (preg_match('#^(https?:)?//#i', $path) === 1) {
+            $parsed = parse_url($path, PHP_URL_PATH);
+            $urlPath = is_string($parsed) && $parsed !== '' ? $parsed : $path;
+        }
+
+        $normalized = ltrim(str_replace('\\', '/', $urlPath), '/');
+        if (preg_match('#(?:^|/)assets/img/blog/([^/]+)$#i', $normalized, $matches)) {
+            $filename = $matches[1];
+            $featured = 'blogs/featured/'.$filename;
+            $content = 'blogs/content/'.$filename;
+            $disk = Storage::disk('public');
+            $normalized = $disk->exists($featured) ? $featured : ($disk->exists($content) ? $content : '');
+        } elseif (preg_match('#(?:storage|media)/(blogs/(?:content|featured)/.+)$#i', $normalized, $matches)) {
+            $normalized = $matches[1];
+        } else {
+            foreach (['storage/', 'media/'] as $prefix) {
+                if (str_starts_with($normalized, $prefix)) {
+                    $normalized = ltrim(substr($normalized, strlen($prefix)), '/');
+                }
+            }
+        }
+
+        if ($normalized === '') {
+            return null;
+        }
+
+        try {
+            if (! Storage::disk('public')->exists($normalized)) {
+                return null;
+            }
+        } catch (\Throwable) {
+            return null;
+        }
+
+        return $relative;
+    }
+
+    /**
      * Absolute featured-image URL for Open Graph / JSON-LD.
      */
     public function featuredImageAbsoluteUrl(): ?string
     {
         $relative = $this->featuredImageUrl();
+
+        return $relative ? url($relative) : null;
+    }
+
+    public function publicFeaturedImageAbsoluteUrl(): ?string
+    {
+        $relative = $this->publicFeaturedImageUrl();
 
         return $relative ? url($relative) : null;
     }

@@ -16,10 +16,10 @@ use App\Services\CartPricingService;
 use App\Services\EmailNotificationService;
 use App\Services\Wallet\WelcomeBonusService;
 use App\Support\BillingCustomerMailSuppressor;
+use App\Support\HostingerMysqlHost;
 use App\Support\MarketingOpsQueues;
 use App\Support\OrderLifecycleMailSuppressor;
 use App\Support\PublicStorageLink;
-use App\Support\UserMessages;
 use Illuminate\Auth\Middleware\RedirectIfAuthenticated;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -43,6 +43,9 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(OrderLifecycleMailSuppressor::class);
         $this->app->singleton(BillingCustomerMailSuppressor::class);
 
+        // Before any provider opens PDO: Hostinger blocks TCP 127.0.0.1:3306.
+        HostingerMysqlHost::applyRuntime();
+
         // Blade views call these helpers on every form page. Composer "files"
         // autoload is enough after dump-autoload, but a deploy that only
         // synced PHP without regenerating the classmap leaves My Sites (and
@@ -54,6 +57,7 @@ class AppServiceProvider extends ServiceProvider
             app_path('Helpers/FormHelper.php'),
             app_path('Helpers/UrlHelper.php'),
             app_path('Helpers/SiteDescriptionHelper.php'),
+            app_path('Helpers/MoneyHelper.php'),
         ] as $helper) {
             if (is_file($helper)) {
                 require_once $helper;
@@ -105,7 +109,9 @@ class AppServiceProvider extends ServiceProvider
                 ->response(function (Request $request, array $headers) {
                     return response()->json([
                         'status' => 'error',
-                        'message' => UserMessages::get('password.throttled'),
+                        'message' => function_exists('user_message')
+                            ? user_message('password.throttled', 'Too many attempts. Please try again later.')
+                            : 'Too many attempts. Please try again later.',
                     ], 429, $headers);
                 });
         });
@@ -116,16 +122,81 @@ class AppServiceProvider extends ServiceProvider
                 ->response(function (Request $request, array $headers) {
                     return response()->json([
                         'status' => 'error',
-                        'message' => UserMessages::get('password.reset_throttled'),
+                        'message' => function_exists('user_message')
+                            ? user_message('password.reset_throttled', 'Too many attempts. Try again later.')
+                            : 'Too many attempts. Try again later.',
                     ], 429, $headers);
+                });
+        });
+
+        // Isolated from numeric throttle:N,M. Those share one per-user key, so
+        // catalog favicons / copy-track / live search would burn a 10/min
+        // report bucket after a few seconds of browsing.
+        RateLimiter::for('catalog-site-report', function (Request $request) {
+            $id = $request->user()?->getAuthIdentifier() ?: $request->ip();
+
+            return Limit::perMinute(10)
+                ->by('catalog-site-report:'.$id)
+                ->response(function (Request $request, array $headers) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'You sent several reports just now. Wait a minute and try again.',
+                    ], 429, $headers);
+                });
+        });
+
+        $verificationThrottleMessage = static function (): string {
+            return function_exists('user_message')
+                ? user_message('verification.throttled', 'Too many verification emails. Please wait a minute and try again.')
+                : 'Too many verification emails. Please wait a minute and try again.';
+        };
+
+        RateLimiter::for('email-verify-click', function (Request $request) {
+            return Limit::perMinute(6)->by('email-verify-click:'.$request->ip());
+        });
+
+        RateLimiter::for('email-verify-send', function (Request $request) use ($verificationThrottleMessage) {
+            $id = $request->user()?->getAuthIdentifier() ?: $request->ip();
+
+            return Limit::perMinute(6)
+                ->by('email-verify-send:'.$id)
+                ->response(function (Request $request, array $headers) use ($verificationThrottleMessage) {
+                    return redirect()
+                        ->route('verification.notice')
+                        ->with('error', $verificationThrottleMessage());
+                });
+        });
+
+        RateLimiter::for('email-verify-resend', function (Request $request) use ($verificationThrottleMessage) {
+            $email = strtolower(trim((string) $request->input('email', '')));
+
+            return Limit::perMinute(3)
+                ->by('email-verify-resend:'.$request->ip().'|'.$email)
+                ->response(function (Request $request, array $headers) use ($verificationThrottleMessage) {
+                    $message = $verificationThrottleMessage();
+                    if ($request->expectsJson() || $request->wantsJson()) {
+                        return response()->json([
+                            'status' => 'error',
+                            'message' => $message,
+                        ], 429, $headers);
+                    }
+
+                    return redirect()
+                        ->route('verification.notice')
+                        ->withInput()
+                        ->with('error', $message)
+                        ->with('verify_email', $request->input('email'));
                 });
         });
 
         // Authenticated users hitting /login or /register go to their role dashboard.
         RedirectIfAuthenticated::redirectUsing(function () {
             $user = Auth::user();
+            if ($user && method_exists($user, 'getDashboardRoute')) {
+                return $user->getDashboardRoute();
+            }
 
-            return $user ? $user->getDashboardRoute() : '/';
+            return '/';
         });
 
         // Gap-fill: welcome + admin new-user (HTTP only — skips seeders/artisan)
@@ -258,8 +329,12 @@ class AppServiceProvider extends ServiceProvider
 
             try {
                 if (Schema::hasTable('blogs')) {
-                    $locale = public_locale();
-                    $posts = Blog::published()
+                    $locale = Blog::catalogLocale(public_locale());
+                    $posts = Blog::published();
+                    if (method_exists(Blog::class, 'scopeWithoutLegacyRedirects')) {
+                        $posts = $posts->withoutLegacyRedirects();
+                    }
+                    $posts = $posts
                         ->withPublishedLocale($locale)
                         ->orderByDesc('published_at')
                         ->limit(4)
@@ -294,8 +369,16 @@ class AppServiceProvider extends ServiceProvider
         });
 
         View::composer('advertiser.layouts.app', function ($view) {
+            $sessionCart = [];
+            try {
+                $rawCart = session('cart', []);
+                $sessionCart = is_array($rawCart) ? array_values($rawCart) : [];
+            } catch (\Throwable $e) {
+                Log::warning('Advertiser header cart session unreadable', ['error' => $e->getMessage()]);
+            }
+
             $pruned = [
-                'cart' => array_values(session('cart', []) ?: []),
+                'cart' => $sessionCart,
                 'removed_inactive' => [],
                 'removed_owned' => [],
             ];
@@ -309,10 +392,12 @@ class AppServiceProvider extends ServiceProvider
                 Log::warning('Advertiser cart prune composer failed', ['error' => $e->getMessage()]);
             }
 
+            $headerCart = is_array($pruned['cart'] ?? null) ? $pruned['cart'] : [];
+
             $view->with([
-                'headerCart' => $pruned['cart'],
-                'ssrCartRemovedInactive' => $pruned['removed_inactive'],
-                'ssrCartRemovedOwned' => $pruned['removed_owned'],
+                'headerCart' => $headerCart,
+                'ssrCartRemovedInactive' => is_array($pruned['removed_inactive'] ?? null) ? $pruned['removed_inactive'] : [],
+                'ssrCartRemovedOwned' => is_array($pruned['removed_owned'] ?? null) ? $pruned['removed_owned'] : [],
             ]);
         });
     }

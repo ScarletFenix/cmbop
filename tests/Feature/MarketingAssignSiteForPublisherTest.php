@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Mail\AdminAssignedSiteNotification;
+use App\Mail\BulkSiteRequestSubmitted;
+use App\Models\BulkSiteRequest;
 use App\Models\Category;
 use App\Models\Country;
 use App\Models\InAppNotification;
@@ -101,10 +103,16 @@ class MarketingAssignSiteForPublisherTest extends TestCase
             ->assertSee('id="qualityBarWarn"', false)
             ->assertDontSee('Activate / Deactivate as usual', false)
             ->assertSee('id="selectedLanguage"', false)
-            ->assertSee('id="publisherFilter"', false)
+            ->assertSee('id="publisher_id"', false)
+            ->assertSee('data-admin-select-search-url', false)
+            ->assertSee('/marketing/sites/publishers-search', false)
+            ->assertDontSee('data-admin-select-search-url="http', false)
+            ->assertSee('staff-assign-site-form', false)
             ->assertSee('written_request', false)
             ->assertSee('I have a written request', false)
             ->assertSee('This emails and bells the publisher', false)
+            ->assertSee('Invite to Accept', false)
+            ->assertSee('Publish this site now', false)
             ->assertSee('Click to toggle; type to search; Enter adds the highlighted match. Max 7.', false)
             ->assertDontSee('Click niches one by one', false)
             ->assertSee('data-site-description-editor', false)
@@ -116,7 +124,10 @@ class MarketingAssignSiteForPublisherTest extends TestCase
             ->assertSee('name="social[facebook]"', false)
             ->assertSee('name="sensitive[crypto]"', false)
             ->assertSee('name="price_sensitive[crypto]"', false)
-            ->assertSee('optional homepage, social, and sensitive-topic prices', false)
+            ->assertSee("getElementById('sensitiveDisclosureBtn')", false)
+            ->assertSee('Shown in catalog Site Details', false)
+            ->assertDontSee('optional homepage, social, and sensitive-topic prices', false)
+            ->assertDontSee('id="publisherFilter"', false)
             ->assertSee('Must be on the same domain as the site URL.', false)
             ->getContent();
 
@@ -174,13 +185,26 @@ class MarketingAssignSiteForPublisherTest extends TestCase
         $this->assertSame(12000, (int) $site->traffic);
         $this->assertEqualsWithDelta(99.0, (float) $site->price, 0.001);
         $this->assertTrue($site->isPendingPublisherAcceptance());
+        $this->assertTrue($site->wasAddedFromBulkRequest());
+        $this->assertNotNull($site->bulk_site_request_id);
+        $bulk = BulkSiteRequest::query()->find($site->bulk_site_request_id);
+        $this->assertNotNull($bulk);
+        $this->assertSame(BulkSiteRequest::STATUS_AWAITING_PUBLISHER, $bulk->status);
+        $this->assertSame((int) $this->marketer->id, (int) $bulk->handled_by);
+        $this->assertSame(1, $bulk->pendingPublisherCount());
         $this->assertNull($site->sensitive_prices);
         $this->assertStringContainsString('Invites', (string) session('success'));
         $this->assertStringNotContainsString('below the marketing Activate bar', (string) session('success'));
+        $actions = session('success_actions');
+        $this->assertSame('Edit listing', $actions[1]['label'] ?? null);
+        $this->assertSame('Open batch', $actions[2]['label'] ?? null);
+        $this->assertStringContainsString('/marketing/sites/'.$site->id.'/edit', (string) ($actions[1]['url'] ?? ''));
+        $this->assertStringContainsString('/marketing/bulk-site-requests/'.$bulk->id, (string) ($actions[2]['url'] ?? ''));
 
         Mail::assertQueued(AdminAssignedSiteNotification::class, function ($mail) {
             return $mail->hasTo($this->publisher->email);
         });
+        Mail::assertNotQueued(BulkSiteRequestSubmitted::class);
 
         $bell = InAppNotification::query()
             ->where('user_id', $this->publisher->id)
@@ -296,6 +320,10 @@ class MarketingAssignSiteForPublisherTest extends TestCase
         $this->assertStringContainsString('publisher='.$unverified->id, $html);
         $this->assertDoesNotMatchRegularExpression(
             '/class="[^"]*d-none[^"]*" id="unverifiedPublisherWarn"/',
+            $html
+        );
+        $this->assertMatchesRegularExpression(
+            '/id="assignSubmitBtn"[^>]*\bdisabled\b/',
             $html
         );
     }
@@ -1079,10 +1107,9 @@ class MarketingAssignSiteForPublisherTest extends TestCase
     {
         $disk = \Mockery::mock();
         $disk->shouldReceive('makeDirectory')->andReturn(true);
-        $disk->shouldReceive('put')->andReturn(true);
-        $disk->shouldReceive('putFile')->andReturn('sites/fail.jpg');
-        $disk->shouldReceive('putFileAs')->andReturn('sites/fail.jpg');
-        $disk->shouldReceive('exists')->andReturn(false);
+        $disk->shouldReceive('put')->andThrow(new \RuntimeException('disk full'));
+        $disk->shouldReceive('putFile')->andThrow(new \RuntimeException('disk full'));
+        $disk->shouldReceive('putFileAs')->andThrow(new \RuntimeException('disk full'));
         Storage::shouldReceive('disk')
             ->with('public')
             ->andReturn($disk);
@@ -1916,5 +1943,31 @@ class MarketingAssignSiteForPublisherTest extends TestCase
         $pending->refresh();
         $this->assertSame('Pending Name', $pending->site_name);
         $this->assertSame(41, (int) $pending->da);
+    }
+
+    public function test_marketing_can_publish_existing_invite_from_sites_table(): void
+    {
+        Mail::fake();
+
+        $this->actingAs($this->marketer)
+            ->post(route('marketing.sites.store'), $this->validPayload([
+                'site_url' => 'https://mkt-table-publish.example',
+                'example_url' => 'https://mkt-table-publish.example/sample',
+            ]))
+            ->assertRedirect();
+
+        $site = Site::where('domain', 'mkt-table-publish.example')->first();
+        $this->assertNotNull($site);
+        $this->assertTrue($site->isPendingPublisherAcceptance());
+
+        $this->actingAs($this->marketer)
+            ->postJson(route('marketing.sites.publish-now', $site->id))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('active', true)
+            ->assertJsonPath('verified', false);
+
+        $this->assertTrue((bool) $site->fresh()->active);
+        $this->assertFalse($site->fresh()->isPendingPublisherAcceptance());
     }
 }

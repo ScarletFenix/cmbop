@@ -137,18 +137,20 @@ class CatalogVisualLanguageTest extends TestCase
         $this->assertStringContainsString('1,450,000 monthly visits', $html);
     }
 
-    public function test_traffic_uses_a_log_scale_so_small_sites_are_not_all_zero(): void
+    public function test_traffic_uses_a_themed_sparkline_instead_of_a_bar(): void
     {
         $this->makeSite(['traffic' => 800, 'domain' => 'small.example', 'site_url' => 'https://small.example']);
 
         $html = $this->catalogHtml();
 
-        // On a linear scale against millions, 800 visits would render as an empty
-        // bar and be indistinguishable from a site with none.
-        $this->assertMatchesRegularExpression(
-            '/catalog-metric__fill" style="width: (4[0-9]|5[0-9])(\.\d)?%"/',
-            $html
-        );
+        $this->assertStringContainsString('catalog-metric--traffic', $html);
+        $this->assertStringContainsString('catalog-metric__spark', $html);
+        $this->assertStringContainsString('catalog-metric__spark-line', $html);
+        $this->assertStringContainsString('catalog-traffic-spark-', $html);
+
+        $css = (string) file_get_contents(public_path('assets/css/catalog.css'));
+        $this->assertStringContainsString('.catalog-metric--traffic .catalog-metric__spark', $css);
+        $this->assertStringContainsString('stroke: #0b6266', $css);
     }
 
     public function test_each_listing_gets_a_monogram_tile_from_the_label_on_screen(): void
@@ -438,11 +440,11 @@ class CatalogVisualLanguageTest extends TestCase
         $html = $this->catalogHtml();
         $js = (string) file_get_contents(public_path('assets/js/catalog.js'));
 
-        // The table used a bare chevron; the card already said "Details". Both
-        // now share the same labelled control and open/close voice.
-        $this->assertGreaterThanOrEqual(2, substr_count($html, 'catalog-details-toggle__label">Details'));
-        $this->assertStringContainsString('expand-arrow catalog-details-toggle', $html);
+        // Closed table rows have no Details / Hide details label. Cards keep
+        // the labelled disclosure; the table expand control stays visually hidden.
+        $this->assertStringNotContainsString('expand-arrow catalog-details-toggle', $html);
+        $this->assertStringContainsString('class="expand-arrow visually-hidden"', $html);
+        $this->assertStringContainsString('catalog-card-details-toggle', $html);
         $this->assertStringContainsString('function setCatalogDetailsToggleState(', $js);
-        $this->assertStringContainsString("label.textContent = open ? 'Hide details' : 'Details'", $js);
     }
 }

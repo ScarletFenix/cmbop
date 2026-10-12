@@ -8,6 +8,68 @@ if (!window.CatalogConfig) { window.CatalogConfig = { favorites: [], blacklist: 
  * before showing the empty-state fallback. Hostinger often 404s /storage when the
  * public/storage symlink is missing; /media streams from the public disk.
  */
+window.catalogSiteFaviconOnError = function (img) {
+    if (!img) return;
+    var chain = [];
+    try {
+        chain = JSON.parse(img.getAttribute('data-favicon-chain') || '[]');
+    } catch (e) {
+        chain = [];
+    }
+    if (!Array.isArray(chain)) chain = [];
+    var i = parseInt(img.getAttribute('data-favicon-i') || '0', 10);
+    if (isNaN(i) || i < 0) i = 0;
+    var next = i + 1;
+    var fallbackSrc = img.getAttribute('data-favicon-fallback') || '';
+    var current = img.getAttribute('src') || '';
+    var alreadyFallback = current.indexOf('catalog-site-fallback.svg') !== -1;
+    if (next < chain.length && chain[next]) {
+        img.setAttribute('data-favicon-i', String(next));
+        img.hidden = false;
+        img.src = chain[next];
+        if (String(chain[next]).indexOf('catalog-site-fallback.svg') !== -1) {
+            var stepping = img.closest('.catalog-tile');
+            if (stepping) {
+                stepping.classList.add('catalog-tile--fallback');
+                stepping.classList.remove('catalog-tile--favicon');
+            }
+        }
+        return;
+    }
+    if (fallbackSrc && !alreadyFallback) {
+        img.setAttribute('data-favicon-i', String(Math.max(chain.length - 1, 0)));
+        img.hidden = false;
+        img.src = fallbackSrc;
+        var viaAttr = img.closest('.catalog-tile');
+        if (viaAttr) {
+            viaAttr.classList.add('catalog-tile--fallback');
+            viaAttr.classList.remove('catalog-tile--favicon');
+        }
+        return;
+    }
+    img.onerror = null;
+    img.hidden = true;
+    img.removeAttribute('src');
+    var tile = img.closest('.catalog-tile');
+    if (!tile) return;
+    var fallback = tile.querySelector('.catalog-tile__fallback');
+    if (fallback) {
+        fallback.hidden = false;
+        tile.classList.add('catalog-tile--fallback');
+        tile.classList.remove('catalog-tile--favicon');
+        var initials = tile.querySelector('.catalog-tile__initials');
+        if (initials) {
+            initials.hidden = true;
+        }
+        return;
+    }
+    var initials = tile.querySelector('.catalog-tile__initials');
+    if (initials) {
+        initials.hidden = false;
+    }
+    tile.classList.remove('catalog-tile--favicon');
+};
+
 window.catalogSitePreviewOnError = function (img) {
     if (!img) return;
     // Ignore errors on the 1x1 deferred placeholder — hydrateExpandScreenshots
@@ -32,6 +94,16 @@ window.catalogSitePreviewOnError = function (img) {
         return;
     }
     img.onerror = null;
+    var tile = img.closest('.catalog-tile--preview');
+    if (tile) {
+        img.hidden = true;
+        var initials = tile.querySelector('.catalog-tile__initials');
+        if (initials) {
+            initials.hidden = false;
+        }
+        tile.classList.remove('catalog-tile--preview');
+        return;
+    }
     var z = img.closest('.site-preview-zoom');
     if (z) {
         z.classList.add('is-broken');
@@ -46,7 +118,7 @@ window.catalogSitePreviewOnError = function (img) {
 
 /**
  * Floating desktop zoom popover for Site Details / card expand previews.
- * Previews stay out of catalog rows; hover enlarge only on expand.
+ * Closed rows show a small thumbnail; hover enlarge only on the Details panel.
  */
 function initCatalogExpandPreviewZoom(root) {
     const scope = root || document;
@@ -143,8 +215,78 @@ function initCatalogExpandPreviewZoom(root) {
     });
 }
 
+function catalogBuyAriaLabel(btn, extra) {
+    const name = (btn && btn.dataset && btn.dataset.name) || 'this site';
+    const inCart = !!(btn && (btn.classList.contains('is-in-cart') || btn.dataset.inCart === '1'));
+    if (inCart) {
+        return 'In cart — open cart, ' + name + ' is already in your cart';
+    }
+    let label = 'Add to cart for ' + name;
+    if (extra) {
+        label += extra;
+    }
+    return label;
+}
+
+function initCatalogVerifiedLotties(root) {
+    const scope = root && root.querySelectorAll ? root : document;
+    const boxes = scope.querySelectorAll('.catalog-verified-lottie');
+    if (!boxes.length) return;
+
+    function run() {
+        if (!window.lottie || typeof window.lottie.loadAnimation !== 'function') return;
+        paintCatalogVerifiedLotties(scope);
+    }
+
+    function arm(box) {
+        if (box.getAttribute('data-lottie-armed') === '1') return;
+        box.setAttribute('data-lottie-armed', '1');
+        const chip = box.closest('.site-chip--verified') || box;
+        chip.addEventListener('pointerenter', function () {
+            if (typeof window.slbWhenLottie === 'function') window.slbWhenLottie(run);
+            else run();
+        }, { once: true });
+    }
+
+    boxes.forEach(arm);
+}
+
+function paintCatalogVerifiedLotties(root) {
+    const scope = root && root.querySelectorAll ? root : document;
+    if (!window.lottie || typeof window.lottie.loadAnimation !== 'function') return;
+    const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    scope.querySelectorAll('.catalog-verified-lottie').forEach(function (box) {
+        if (box._verifiedLottie) return;
+        const src = box.getAttribute('data-lottie');
+        if (!src) return;
+        const anim = window.lottie.loadAnimation({
+            container: box,
+            renderer: 'svg',
+            loop: false,
+            autoplay: false,
+            path: src
+        });
+        box._verifiedLottie = anim;
+        function showRest() {
+            if (anim.totalFrames) anim.goToAndStop(anim.totalFrames - 1, true);
+        }
+        anim.addEventListener('DOMLoaded', showRest);
+        anim.addEventListener('data_ready', showRest);
+        if (reduce) return;
+        const chip = box.closest('.site-chip--verified');
+        if (!chip) return;
+        chip.addEventListener('mouseenter', function () {
+            anim.goToAndPlay(0, true);
+        });
+        chip.addEventListener('focus', function () {
+            anim.goToAndPlay(0, true);
+        });
+    });
+}
+
 document.addEventListener('DOMContentLoaded', function () {
     initCatalogExpandPreviewZoom(document.getElementById('catalogResults') || document);
+    initCatalogVerifiedLotties(document.getElementById('catalogResults') || document);
 });
 
 document.addEventListener('DOMContentLoaded', function () {
@@ -317,6 +459,23 @@ document.addEventListener('DOMContentLoaded', function () {
 /** Prevents double form.submit() while a navigation is already in flight. */
 let catalogFilterSubmitInFlight = false;
 
+let catalogSlbLoaderOn = false;
+
+function setCatalogBusyLottie(busy, play) {
+    if (!window.SlbLoader) return;
+    // Pair show/hide once. Live apply() plus form submit both mark busy, and
+    // two show() calls leave the overlay up after a single hide().
+    if (play) {
+        if (catalogSlbLoaderOn) return;
+        catalogSlbLoaderOn = true;
+        window.SlbLoader.show();
+        return;
+    }
+    if (!catalogSlbLoaderOn) return;
+    catalogSlbLoaderOn = false;
+    window.SlbLoader.hide();
+}
+
 /**
  * Cover the results card while the next live fragment is on its way.
  *
@@ -348,6 +507,7 @@ function markCatalogResultsBusy(options) {
         if (label) {
             label.textContent = options.label || 'Updating results…';
         }
+        setCatalogBusyLottie(busy, true);
     }
 
     const searchInput = document.getElementById('catalogSearchInput');
@@ -371,6 +531,7 @@ function clearCatalogResultsBusy() {
         busy.setAttribute('aria-hidden', 'true');
         const label = busy.querySelector('.catalog-results-busy__label');
         if (label) label.textContent = 'Updating results…';
+        setCatalogBusyLottie(busy, false);
     }
     const live = document.getElementById('catalogSearchStatus');
     if (live) live.textContent = '';
@@ -425,11 +586,18 @@ function destroyBulkDealRail() {
 }
 
 function bulkRailReadCollapsed() {
-    try {
-        return window.localStorage.getItem(BULK_RAIL_COLLAPSED_KEY) === '1';
-    } catch (err) {
-        // Private mode / blocked storage: the section simply starts open.
+    const section = document.querySelector('[data-bulk-rail]');
+    if (section && section.getAttribute('data-bulk-start') === 'open') {
         return false;
+    }
+    try {
+        const stored = window.localStorage.getItem(BULK_RAIL_COLLAPSED_KEY);
+        if (stored === '1') return true;
+        if (stored === '0') return false;
+        return true;
+    } catch (err) {
+        // Private mode / blocked storage: start collapsed like a first visit.
+        return true;
     }
 }
 
@@ -654,10 +822,27 @@ function initBulkDealRail() {
         }
     }
 
+    function existingPanelsMatch(cards) {
+        const panels = track.querySelectorAll('[data-bulk-page-panel]');
+        if (!panels.length) return false;
+        const inPanels = Array.prototype.slice.call(
+            track.querySelectorAll('[data-bulk-page-panel] [data-bulk-card]')
+        );
+        if (inPanels.length !== cards.length) return false;
+        return cards.every(function (card, i) {
+            return inPanels[i] === card;
+        });
+    }
+
     function setVisibleCards(cards, opts) {
         const options = opts || {};
         visibleCards = cards.slice();
-        rebuildPanels(visibleCards);
+        const reusePanels = !!options.reusePanels && existingPanelsMatch(visibleCards);
+        if (!reusePanels) {
+            rebuildPanels(visibleCards);
+        } else {
+            pageCount = Math.max(1, Math.ceil(visibleCards.length / pageSize) || 1);
+        }
         if (options.page) {
             currentPage = Math.min(pageCount, Math.max(1, options.page));
         } else {
@@ -665,6 +850,7 @@ function initBulkDealRail() {
         }
         // Rebuild must not animate from a stale offset.
         paint({ instant: true });
+        track.classList.add('is-enhanced');
     }
 
     function stopAutoplay() {
@@ -860,9 +1046,38 @@ function initBulkDealRail() {
         });
     }
 
-    setVisibleCards(allCards);
+    setVisibleCards(allCards, { reusePanels: true });
     applyCollapsed(bulkRailReadCollapsed());
     startAutoplay();
+
+    window.revealBulkDealForSite = function (siteId) {
+        const id = String(siteId || '');
+        if (!id || id === '0') return;
+
+        const card = allCards.find(function (node) {
+            const buy = node.querySelector('.buy-now[data-id]');
+            return buy && String(buy.getAttribute('data-id')) === id;
+        });
+
+        if (searchInput && String(searchInput.value || '').trim() !== '') {
+            searchInput.value = '';
+            applySearch('');
+        }
+
+        applyCollapsed(false);
+        bulkRailWriteCollapsed(false);
+        clearHighlights();
+
+        if (card) {
+            const index = allCards.indexOf(card);
+            goToPage(Math.floor(index / pageSize) + 1, { user: true });
+            card.classList.add('is-bulk-match');
+            autoplayPaused = true;
+            stopAutoplay();
+        }
+
+        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
 
     bulkRailTeardown = function () {
         stopAutoplay();
@@ -878,6 +1093,14 @@ function initBulkDealRail() {
 }
 
 document.addEventListener('DOMContentLoaded', initBulkDealRail);
+document.addEventListener('click', function (e) {
+    const jump = e.target.closest('[data-bulk-jump]');
+    if (!jump) return;
+    e.preventDefault();
+    if (typeof window.revealBulkDealForSite === 'function') {
+        window.revealBulkDealForSite(jump.getAttribute('data-bulk-jump'));
+    }
+});
 window.initBulkDealRail = initBulkDealRail;
 window.destroyBulkDealRail = destroyBulkDealRail;
 
@@ -1229,6 +1452,18 @@ document.addEventListener('keydown', function (e) {
         updateMultiFilter(optionInput);
         return;
     }
+});
+
+document.addEventListener('click', function (e) {
+    if (!e.target || !e.target.closest) return;
+    if (e.target.closest('input, button, a')) return;
+    var item = e.target.closest('.multi-select-wrapper[data-multi-select] .option-item');
+    if (!item) return;
+    var optionInput = item.querySelector('input[type="checkbox"]');
+    if (!optionInput) return;
+    e.preventDefault();
+    optionInput.checked = !optionInput.checked;
+    updateMultiFilter(optionInput);
 });
 
 function filterMultiOptions(optionsId, searchTerm) {
@@ -2159,7 +2394,7 @@ const CatalogUrl = (function () {
             'search', 'category', 'country', 'language',
             'price_min', 'price_max', 'da_min', 'da_max', 'dr_min', 'dr_max',
             'traffic_min', 'traffic_max', 'tag', 'sponsored', 'favorites_filter',
-            'blacklist_filter', 'bulk_deals', 'new_badge', 'on_sale', 'verified', 'quality',
+            'blacklist_filter', 'bulk_deals', 'new_badge', 'on_sale', 'featured', 'verified', 'quality',
             'rating_min', 'has_completions', 'site', 'sort', 'per_page', 'page',
             'wizard',
         ];
@@ -2354,6 +2589,7 @@ const CatalogUrl = (function () {
         setInputValue(form.querySelector('[name="bulk_deals"]'), get('bulk_deals'));
         setInputValue(form.querySelector('[name="new_badge"]'), get('new_badge'));
         setInputValue(form.querySelector('[name="on_sale"]'), get('on_sale'));
+        setInputValue(form.querySelector('[name="featured"]'), get('featured'));
         setInputValue(form.querySelector('[name="quality"]'), get('quality'));
         setInputValue(form.querySelector('[name="rating_min"]'), get('rating_min'));
         setInputValue(form.querySelector('[name="has_completions"]'), get('has_completions'));
@@ -2387,6 +2623,10 @@ const CatalogUrl = (function () {
             document.querySelectorAll('.filter-presets').forEach(function (group) {
                 markActivePreset(group);
             });
+        }
+
+        if (typeof refreshCatalogThemeSelects === 'function') {
+            refreshCatalogThemeSelects();
         }
     }
 
@@ -2582,24 +2822,29 @@ const CatalogLive = (function () {
         }
     }
 
+    function inventoryFromHtml(card) {
+        const raw = card && card.getAttribute('data-inventory-from');
+        if (raw === null || raw === '') return '';
+        const n = Number(raw);
+        if (!Number.isFinite(n) || n < 0) return '';
+        return ' <span class="catalog-inventory-from">· from <strong class="catalog-inventory-teaser__price">'
+            + catalogMoneyLabel(n) + '</strong></span>';
+    }
+
     function syncResultsCount(card) {
         const el = document.getElementById('catalogResultsCount');
         if (!el || !card) return;
         const total = parseInt(card.getAttribute('data-result-total') || '0', 10) || 0;
         const first = parseInt(card.getAttribute('data-first-item') || '0', 10) || 0;
         const last = parseInt(card.getAttribute('data-last-item') || '0', 10) || 0;
+        const fromHtml = inventoryFromHtml(card);
         if (total > 0 && first > 0) {
             el.innerHTML = 'Showing <strong class="text-dark">' + first + '–' + last
                 + '</strong> of <strong class="text-dark">' + total.toLocaleString()
-                + '</strong> ' + (total === 1 ? 'site' : 'sites');
+                + '</strong> ' + (total === 1 ? 'site' : 'sites') + fromHtml;
         } else {
             // Keep Phase 6 empty-status wording after live fragment swap.
             el.textContent = card.getAttribute('data-status-text') || 'No sites match your filters';
-        }
-
-        const countEl = document.querySelector('.catalog-inventory-teaser strong.text-dark');
-        if (countEl) {
-            countEl.textContent = total.toLocaleString();
         }
 
         announceResults(total, first, last, card);
@@ -2682,6 +2927,7 @@ const CatalogLive = (function () {
         if (params.get('traffic_min') || params.get('traffic_max')) chips.push({ label: 'Traffic', params: ['traffic_min', 'traffic_max'] });
         if (params.get('new_badge') === '1') chips.push({ label: 'New sites', params: ['new_badge'] });
         if (params.get('on_sale') === '1') chips.push({ label: 'On sale', params: ['on_sale'] });
+        if (params.get('featured') === '1') chips.push({ label: 'Featured', params: ['featured'] });
         if (params.get('quality') === '1') chips.push({ label: 'Quality bar (DA/DR/traffic)', params: ['quality'] });
         if (params.get('rating_min')) chips.push({ label: 'Min rating ' + params.get('rating_min') + '+', params: ['rating_min'] });
         if (params.get('has_completions') === '1') chips.push({ label: 'Has completions', params: ['has_completions'] });
@@ -2745,7 +2991,7 @@ const CatalogLive = (function () {
         const moreKeys = [
             'favorites_filter', 'blacklist_filter', 'bulk_deals',
             'da_min', 'da_max', 'dr_min', 'dr_max',
-            'traffic_min', 'traffic_max', 'new_badge', 'on_sale', 'quality',
+            'traffic_min', 'traffic_max', 'new_badge', 'on_sale', 'featured', 'quality',
             'rating_min', 'has_completions',
         ];
         let count = 0;
@@ -2774,6 +3020,11 @@ const CatalogLive = (function () {
             btn.appendChild(badge);
         }
         badge.textContent = String(count);
+        const drawer = document.getElementById('moreFiltersDrawer');
+        if (drawer && count > 0) {
+            drawer.style.display = '';
+            btn.setAttribute('aria-expanded', 'true');
+        }
     }
 
     function applyResultsHtml(html) {
@@ -2833,11 +3084,19 @@ const CatalogLive = (function () {
         syncFilterChips(params);
         syncMoreFiltersBadge(params);
         syncTagQuick(params);
+        syncFavoritesQuick(params);
+        syncFeaturedQuick(params);
         syncSuggestButtons(params);
         if (typeof updateButtonStates === 'function') updateButtonStates();
         if (typeof syncDefaultHomepagePrices === 'function') syncDefaultHomepagePrices();
+        if (typeof window.catalogSyncInCartButtons === 'function') {
+            window.catalogSyncInCartButtons(window.advertiserCart || []);
+        }
         if (typeof initCatalogExpandPreviewZoom === 'function') {
             initCatalogExpandPreviewZoom(card || document.getElementById('catalogResults'));
+        }
+        if (typeof initCatalogVerifiedLotties === 'function') {
+            initCatalogVerifiedLotties(card || document.getElementById('catalogResults'));
         }
         if (window.GlassTip && typeof window.GlassTip.enhance === 'function') {
             window.GlassTip.enhance(card || document.getElementById('catalogResults'));
@@ -2900,6 +3159,8 @@ const CatalogLive = (function () {
             syncFilterChips(params);
             syncMoreFiltersBadge(params);
             syncTagQuick(params);
+            syncFavoritesQuick(params);
+            syncFeaturedQuick(params);
             syncSuggestButtons(params);
             return Promise.resolve();
         }
@@ -3119,6 +3380,8 @@ window.scheduleCatalogFilterLive = scheduleCatalogFilterLive;
         });
     }
 
+    bindCatalogThemeSelects();
+
     // More-filters selects + checkbox filters share the live path.
     ['tag', 'favorites_filter', 'blacklist_filter'].forEach(function (name) {
         const select = document.querySelector('#filterForm select[name="' + name + '"]');
@@ -3138,6 +3401,13 @@ window.scheduleCatalogFilterLive = scheduleCatalogFilterLive;
     const newBadge = document.getElementById('new_badge');
     if (newBadge) {
         newBadge.addEventListener('change', function () {
+            submitCatalogFilters();
+        });
+    }
+
+    const featured = document.getElementById('featured');
+    if (featured) {
+        featured.addEventListener('change', function () {
             submitCatalogFilters();
         });
     }
@@ -3198,14 +3468,102 @@ window.scheduleCatalogFilterLive = scheduleCatalogFilterLive;
 
     initCatalogCategoryToggle();
     initCatalogTagQuick();
+    initCatalogFavoritesQuick();
+    initCatalogFeaturedQuick();
 })();
+
+function refreshCatalogThemeSelects() {
+    document.querySelectorAll('.catalog-theme-select').forEach(function (wrap) {
+        const select = wrap.querySelector('select');
+        const valueEl = wrap.querySelector('.single-select-value');
+        if (!select || !valueEl) return;
+        const val = String(select.value);
+        wrap.querySelectorAll('.single-select-option').forEach(function (opt) {
+            const on = String(opt.getAttribute('data-value')) === val;
+            opt.classList.toggle('selected', on);
+            opt.setAttribute('aria-selected', on ? 'true' : 'false');
+        });
+        const selected = wrap.querySelector('.single-select-option.selected');
+        valueEl.textContent = selected
+            ? String(selected.getAttribute('data-label') || selected.textContent || '').trim()
+            : String((select.options[select.selectedIndex] && select.options[select.selectedIndex].text) || '').trim();
+        const trigger = wrap.querySelector('.single-select-input');
+        if (trigger) {
+            const base = trigger.getAttribute('data-select-label') || '';
+            const visible = valueEl.textContent;
+            if (base && visible) {
+                trigger.setAttribute('aria-label', base + ': ' + visible);
+            }
+        }
+    });
+}
+
+function bindCatalogThemeSelects() {
+    document.querySelectorAll('.catalog-theme-select').forEach(function (wrap) {
+        if (wrap.dataset.bound === '1') return;
+        wrap.dataset.bound = '1';
+        const select = wrap.querySelector('select');
+        const trigger = wrap.querySelector('.single-select-input');
+        const dropdown = wrap.querySelector('.single-select-dropdown');
+        if (!select || !trigger || !dropdown) return;
+
+        trigger.addEventListener('click', function (e) {
+            e.preventDefault();
+            const willOpen = !dropdown.classList.contains('show');
+            document.querySelectorAll('.catalog-theme-select .single-select-dropdown.show').forEach(function (dd) {
+                if (dd === dropdown) return;
+                dd.classList.remove('show');
+                const other = dd.previousElementSibling;
+                if (other) other.setAttribute('aria-expanded', 'false');
+            });
+            dropdown.classList.toggle('show', willOpen);
+            trigger.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+        });
+
+        wrap.querySelectorAll('.single-select-option').forEach(function (opt) {
+            opt.addEventListener('click', function () {
+                const next = String(opt.getAttribute('data-value') || '');
+                if (select.value !== next) {
+                    select.value = next;
+                    select.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+                refreshCatalogThemeSelects();
+                dropdown.classList.remove('show');
+                trigger.setAttribute('aria-expanded', 'false');
+            });
+        });
+
+        select.addEventListener('change', refreshCatalogThemeSelects);
+    });
+    refreshCatalogThemeSelects();
+}
 
 function syncTagQuick(params) {
     const current = params && params.get
         ? (params.get('tag') || '')
         : ((document.getElementById('catalogTagFilter') || {}).value || '');
-    document.querySelectorAll('.catalog-tag-quick__btn').forEach(function (btn) {
+    document.querySelectorAll('.catalog-tag-quick [data-catalog-tag]').forEach(function (btn) {
         const on = (btn.getAttribute('data-catalog-tag') || '') === current;
+        btn.classList.toggle('is-active', on);
+        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+}
+
+function syncFeaturedQuick(params) {
+    const on = params && params.get
+        ? params.get('featured') === '1'
+        : ((document.getElementById('featured') || {}).checked === true);
+    document.querySelectorAll('[data-catalog-featured]').forEach(function (btn) {
+        btn.classList.toggle('is-active', on);
+        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+}
+
+function syncFavoritesQuick(params) {
+    const on = params && params.get
+        ? params.get('favorites_filter') === '1'
+        : ((document.querySelector('#filterForm select[name="favorites_filter"]') || {}).value === '1');
+    document.querySelectorAll('[data-catalog-favorites]').forEach(function (btn) {
         btn.classList.toggle('is-active', on);
         btn.setAttribute('aria-pressed', on ? 'true' : 'false');
     });
@@ -3224,6 +3582,37 @@ function initCatalogTagQuick() {
             select.dispatchEvent(new Event('change', { bubbles: true }));
         }
         syncTagQuick({ get: function () { return tag; } });
+    });
+}
+
+function initCatalogFeaturedQuick() {
+    const btn = document.querySelector('[data-catalog-featured]');
+    if (!btn) return;
+    btn.addEventListener('click', function () {
+        const box = document.getElementById('featured');
+        if (!box) return;
+        box.checked = !box.checked;
+        box.dispatchEvent(new Event('change', { bubbles: true }));
+        syncFeaturedQuick({ get: function (key) { return key === 'featured' && box.checked ? '1' : ''; } });
+        const drawer = document.getElementById('moreFiltersDrawer');
+        const moreBtn = document.getElementById('toggleMoreFiltersBtn');
+        if (box.checked && drawer) {
+            drawer.style.display = '';
+            if (moreBtn) moreBtn.setAttribute('aria-expanded', 'true');
+        }
+    });
+}
+
+function initCatalogFavoritesQuick() {
+    const btn = document.querySelector('[data-catalog-favorites]');
+    if (!btn) return;
+    btn.addEventListener('click', function () {
+        const select = document.querySelector('#filterForm select[name="favorites_filter"]');
+        if (!select) return;
+        const nextOn = select.value !== '1';
+        select.value = nextOn ? '1' : '';
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+        syncFavoritesQuick({ get: function (key) { return key === 'favorites_filter' && nextOn ? '1' : ''; } });
     });
 }
 
@@ -3490,6 +3879,152 @@ function catalogEscapeHtml(value) {
         .replace(/'/g, '&#39;');
 }
 
+function catalogSuggestionUrlFromSearch(value) {
+    const raw = String(value || '').trim();
+    if (!raw || /\s/.test(raw)) return '';
+    const withScheme = /^https?:\/\//i.test(raw) ? raw : ('https://' + raw.replace(/^\/+/, ''));
+    try {
+        const host = new URL(withScheme).hostname.replace(/^www\./i, '');
+        if (!host || host.indexOf('.') === -1 || !/^[a-z0-9.-]+$/i.test(host)) return '';
+        return withScheme;
+    } catch (err) {
+        return '';
+    }
+}
+
+function catalogSuggestionCountryOptions() {
+    const seen = {};
+    const rows = [];
+    document.querySelectorAll('#countryMultiOptions input[data-type="country"]').forEach(function (input) {
+        const code = String(input.value || '').trim();
+        if (!code || seen[code]) return;
+        seen[code] = true;
+        rows.push({
+            code: code,
+            name: input.getAttribute('data-name') || code,
+        });
+    });
+    rows.sort(function (a, b) {
+        return String(a.name).localeCompare(String(b.name));
+    });
+    return rows;
+}
+
+function catalogSuggestionLanguageOptions(countryCode) {
+    const map = (window.CatalogConfig && CatalogConfig.countryLanguageMap) || {};
+    const rows = map[String(countryCode || '').toLowerCase()] || [];
+    return Array.isArray(rows) ? rows : [];
+}
+
+function catalogSuggestionStatusLabel(status) {
+    const key = String(status || 'pending').toLowerCase();
+    if (key === 'accepted' || key === 'approved') return 'Accepted';
+    if (key === 'rejected') return 'Declined';
+    if (key === 'reviewed') return 'In review';
+    return 'Pending';
+}
+
+function catalogThemeSelectMarkup(id, rows, placeholder) {
+    const options = [{ value: '', label: placeholder }].concat(rows || []);
+    const optionHtml = options.map(function (opt) {
+        const selected = opt.value === '' ? ' selected' : '';
+        return '<option value="' + catalogEscapeHtml(opt.value) + '"' + selected + '>' + catalogEscapeHtml(opt.label) + '</option>';
+    }).join('');
+    const itemHtml = options.map(function (opt) {
+        const on = opt.value === '';
+        return '<div class="single-select-option' + (on ? ' selected' : '') + '" role="option"'
+            + ' data-value="' + catalogEscapeHtml(opt.value) + '"'
+            + ' data-label="' + catalogEscapeHtml(opt.label) + '"'
+            + ' aria-selected="' + (on ? 'true' : 'false') + '">'
+            + catalogEscapeHtml(opt.label) + '</div>';
+    }).join('');
+    return '<div class="single-select-wrapper theme-select swal-theme-select" data-theme-select="' + catalogEscapeHtml(id) + '">'
+        + '<select id="' + catalogEscapeHtml(id) + '" class="visually-hidden" tabindex="-1">' + optionHtml + '</select>'
+        + '<button type="button" class="single-select-input" aria-haspopup="listbox" aria-expanded="false" aria-label="' + catalogEscapeHtml(placeholder) + '">'
+        + '<span class="single-select-value">' + catalogEscapeHtml(placeholder) + '</span>'
+        + '<i class="fa fa-chevron-down single-select-arrow" aria-hidden="true"></i>'
+        + '</button>'
+        + '<div class="single-select-dropdown"><div class="single-select-options" role="listbox" aria-label="' + catalogEscapeHtml(placeholder) + '">' + itemHtml + '</div></div>'
+        + '</div>';
+}
+
+function catalogSyncSwalThemeSelect(wrap) {
+    const select = wrap.querySelector('select');
+    const valueEl = wrap.querySelector('.single-select-value');
+    if (!select || !valueEl) return;
+    const val = String(select.value);
+    wrap.querySelectorAll('.single-select-option').forEach(function (opt) {
+        const on = String(opt.getAttribute('data-value')) === val;
+        opt.classList.toggle('selected', on);
+        opt.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    const selected = wrap.querySelector('.single-select-option.selected');
+    valueEl.textContent = selected
+        ? String(selected.getAttribute('data-label') || selected.textContent || '').trim()
+        : '';
+}
+
+function catalogBindSwalThemeSelect(wrap) {
+    if (!wrap || wrap.dataset.bound === '1') return;
+    wrap.dataset.bound = '1';
+    const select = wrap.querySelector('select');
+    const trigger = wrap.querySelector('.single-select-input');
+    const dropdown = wrap.querySelector('.single-select-dropdown');
+    if (!select || !trigger || !dropdown) return;
+
+    trigger.addEventListener('click', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        const willOpen = !dropdown.classList.contains('show');
+        document.querySelectorAll('.swal-theme-select .single-select-dropdown.show').forEach(function (open) {
+            if (open === dropdown) return;
+            open.classList.remove('show');
+            const other = open.parentElement && open.parentElement.querySelector('.single-select-input');
+            if (other) other.setAttribute('aria-expanded', 'false');
+        });
+        dropdown.classList.toggle('show', willOpen);
+        trigger.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+    });
+
+    wrap.addEventListener('click', function (event) {
+        const opt = event.target.closest('.single-select-option');
+        if (!opt || !wrap.contains(opt)) return;
+        event.preventDefault();
+        const next = String(opt.getAttribute('data-value') || '');
+        if (select.value !== next) {
+            select.value = next;
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        catalogSyncSwalThemeSelect(wrap);
+        dropdown.classList.remove('show');
+        trigger.setAttribute('aria-expanded', 'false');
+    });
+}
+
+function catalogReplaceSwalThemeOptions(selectId, rows, placeholder) {
+    const select = document.getElementById(selectId);
+    const wrap = select && select.closest('.swal-theme-select');
+    if (!select || !wrap) return;
+    const options = [{ value: '', label: placeholder }].concat(rows || []);
+    const previous = String(select.value || '');
+    const keep = options.some(function (opt) { return opt.value === previous; }) ? previous : '';
+    select.innerHTML = options.map(function (opt) {
+        return '<option value="' + catalogEscapeHtml(opt.value) + '">' + catalogEscapeHtml(opt.label) + '</option>';
+    }).join('');
+    select.value = keep;
+    const list = wrap.querySelector('.single-select-options');
+    if (list) {
+        list.innerHTML = options.map(function (opt) {
+            return '<div class="single-select-option" role="option"'
+                + ' data-value="' + catalogEscapeHtml(opt.value) + '"'
+                + ' data-label="' + catalogEscapeHtml(opt.label) + '"'
+                + ' aria-selected="false">'
+                + catalogEscapeHtml(opt.label) + '</div>';
+        }).join('');
+    }
+    catalogSyncSwalThemeSelect(wrap);
+}
+
 // Prefer shared layout toast (partials/app-toast); keep a local fallback for catalog-only pages.
 function catalogToast(message, type = 'success', options) {
     if (typeof window.showAppToast === 'function') {
@@ -3508,6 +4043,189 @@ function catalogToast(message, type = 'success', options) {
 // Cart mutations live on window.addToCart from the advertiser layout.
 // Do not declare a top-level function addToCart / updateCartBadge — classic
 // scripts hoist those onto window and recurse until the Buy button crashes.
+
+function catalogPrefersReducedMotion() {
+    return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+}
+
+function catalogEaseInOut(t) {
+    return t < 0.5 ? 4 * t * t * t : 1 - (((-2 * t) + 2) ** 3) / 2;
+}
+
+function catalogFlyEase(t) {
+    // Cubic ease-out: leaves promptly, then settles so the path stays readable.
+    const u = 1 - t;
+    return 1 - (u * u * u);
+}
+
+function catalogSmoothstep(t) {
+    const x = Math.min(1, Math.max(0, t));
+    return x * x * (3 - (2 * x));
+}
+
+function catalogCartFlyTarget() {
+    return document.querySelector('[data-cart-fly-target]') || document.getElementById('toggleCart');
+}
+
+function catalogFlyImageForSite(siteId, originEl) {
+    const details = document.getElementById('site-details-' + siteId);
+    const card = originEl && originEl.closest ? originEl.closest('.catalog-card, .catalog-mobile-card, .bulk-deal-card') : null;
+    const scopes = [details, card].filter(Boolean);
+    for (let s = 0; s < scopes.length; s++) {
+        const imgs = scopes[s].querySelectorAll('.site-preview-zoom img, .site-image-thumbnail');
+        for (let i = 0; i < imgs.length; i++) {
+            const img = imgs[i];
+            const live = img.currentSrc || img.src || '';
+            if (live && live.indexOf('data:') !== 0) {
+                return live;
+            }
+            const deferred = img.getAttribute('data-src');
+            if (deferred) {
+                return deferred;
+            }
+        }
+    }
+    return '';
+}
+
+function catalogAnnounceCart(label) {
+    const live = document.getElementById('catalogCartLive');
+    if (live) {
+        live.textContent = '';
+        live.textContent = (label || 'Website') + ' added to cart.';
+    }
+    const cart = catalogCartFlyTarget();
+    if (!cart) {
+        return;
+    }
+    const previous = cart.getAttribute('aria-label') || 'Open cart';
+    cart.setAttribute('aria-label', 'Open cart — item added');
+    window.setTimeout(function () {
+        cart.setAttribute('aria-label', previous);
+    }, 2000);
+}
+
+/**
+ * Velora-style fly-to-cart: token travels from the Buy button to the header
+ * cart, then the cart icon pops. Returns true when motion ran (or a reduced-
+ * motion pop), so the caller can skip a blocking toast.
+ */
+function catalogFlyToCart(originEl, meta) {
+    const cart = catalogCartFlyTarget();
+    if (!cart) {
+        return false;
+    }
+
+    const popCart = function () {
+        cart.classList.remove('cart-pop');
+        // Force a style flush so a second add still replays the pop.
+        void cart.offsetWidth;
+        cart.classList.add('cart-pop');
+        window.setTimeout(function () {
+            cart.classList.remove('cart-pop');
+        }, 520);
+    };
+
+    if (catalogPrefersReducedMotion()) {
+        popCart();
+        return true;
+    }
+
+    const origin = originEl && originEl.getBoundingClientRect ? originEl : cart;
+    const startBox = origin.getBoundingClientRect();
+    const endBox = cart.getBoundingClientRect();
+    const x0 = startBox.left + (startBox.width / 2);
+    const y0 = startBox.top + (startBox.height / 2);
+    const x1 = endBox.left + (endBox.width / 2);
+    const y1 = endBox.top + (endBox.height / 2);
+    const dx = x1 - x0;
+    const dy = y1 - y0;
+    const lift = Math.min(160, Math.max(64, Math.abs(dx) * 0.28));
+    const tokenSize = 108;
+
+    const token = document.createElement('div');
+    token.className = 'cart-fly-token';
+    token.setAttribute('aria-hidden', 'true');
+
+    const arrow = document.createElement('div');
+    arrow.className = 'cart-fly-arrow';
+    arrow.innerHTML = '<i class="fa-solid fa-arrow-up" aria-hidden="true"></i>';
+
+    const windowEl = document.createElement('div');
+    windowEl.className = 'cart-fly-window';
+    windowEl.innerHTML = '<div class="cart-fly-window__bar"><span></span><span></span><span></span></div>';
+
+    const body = document.createElement('div');
+    body.className = 'cart-fly-window__body';
+    const imageUrl = catalogFlyImageForSite(meta && meta.siteId, originEl);
+    if (imageUrl) {
+        const img = document.createElement('img');
+        img.alt = '';
+        img.width = 72;
+        img.height = 52;
+        img.decoding = 'async';
+        img.src = imageUrl;
+        body.appendChild(img);
+    } else {
+        body.innerHTML = '<i class="fa-regular fa-image" aria-hidden="true"></i>';
+    }
+    windowEl.appendChild(body);
+
+    token.appendChild(arrow);
+    token.appendChild(windowEl);
+    document.body.appendChild(token);
+
+    const place = function (x, y, scale, t) {
+        token.classList.toggle('is-mid', t > 0.18 && t < 0.85);
+        token.style.transform = 'translate(' + (x - (tokenSize / 2)) + 'px, ' + (y - 48) + 'px) scale(' + scale + ')';
+    };
+
+    // Hold size through mid; last stretch eases down to a tiny chip at Cart.
+    const flyScale = function (t) {
+        if (t <= 0.55) {
+            return 1.0 - (t * 0.22);
+        }
+        return 0.88 - (catalogSmoothstep((t - 0.55) / 0.45) * 0.66);
+    };
+
+    place(x0, y0, flyScale(0), 0);
+
+    const duration = 720;
+    const started = performance.now();
+
+    const frame = function (now) {
+        const progress = Math.min(1, (now - started) / duration);
+        const t = catalogFlyEase(progress);
+        const x = x0 + (dx * t);
+        const y = y0 + (dy * t) - (Math.sin(t * Math.PI) * lift);
+        place(x, y, flyScale(t), t);
+        token.style.opacity = String(1 - (t * 0.08));
+
+        if (progress < 1) {
+            requestAnimationFrame(frame);
+            return;
+        }
+
+        token.remove();
+        popCart();
+    };
+
+    requestAnimationFrame(frame);
+    return true;
+}
+
+window.catalogFlyToCart = catalogFlyToCart;
+window.catalogAnnounceCart = catalogAnnounceCart;
+
+/**
+ * Format a catalog amount. File-scope so expand/Buy sync and live results
+ * both see it (it used to live inside the live-search IIFE).
+ */
+function catalogMoneyLabel(amount) {
+    const n = Number(amount);
+    if (!Number.isFinite(n)) return '';
+    return (window.slbFormatMoney || function (value) { return '€' + Number(value).toFixed(2); })(n);
+}
 
 /**
  * Round money the same way PHP round(..., 2) does for catalog prices.
@@ -3528,6 +4246,18 @@ function catalogRoundMoney(value) {
 function catalogVisibleFirst(nodes) {
     const list = Array.prototype.slice.call(nodes);
     return list.find(function (el) { return el.offsetParent !== null; }) || list[0] || null;
+}
+
+function markCatalogSiteInCart(siteId) {
+    const id = String(siteId);
+    document.querySelectorAll('.buy-now[data-id="' + id + '"]').forEach(function (buy) {
+        if (buy.dataset.bulkHint === '1' || buy.hasAttribute('data-bulk-hint')) return;
+        buy.classList.add('is-in-cart');
+        buy.dataset.inCart = '1';
+        buy.innerHTML = '<i class="fa-solid fa-cart-shopping" aria-hidden="true"></i> <span>In cart</span>';
+        const name = buy.dataset.name || 'this site';
+        buy.setAttribute('aria-label', catalogBuyAriaLabel(buy));
+    });
 }
 
 /**
@@ -3703,6 +4433,63 @@ function getSelectedHomepageForSite(siteId) {
     };
 }
 
+window.catalogSyncBuyAddonHints = function catalogSyncBuyAddonHints() {
+    document.querySelectorAll('.catalog-buy-addon-hint[data-site-id]').forEach(function (el) {
+        const siteId = el.getAttribute('data-site-id');
+        if (!siteId) return;
+        if (document.querySelector('.buy-now.is-in-cart[data-id="' + siteId + '"]')) {
+            el.hidden = true;
+            el.textContent = '';
+            return;
+        }
+        const homepage = getSelectedHomepageForSite(siteId);
+        const sensitive = getSelectedSensitiveForSite(siteId);
+        const bits = [];
+        if (homepage.days) {
+            bits.push('Incl. ' + homepage.days + '-day homepage'
+                + (homepage.price > 0 ? '' : ' (free)'));
+        }
+        if (sensitive.type) {
+            bits.push(sensitive.type);
+        }
+        if (bits.length === 0) {
+            el.hidden = true;
+            el.textContent = '';
+            return;
+        }
+        el.hidden = false;
+        el.textContent = bits.join(' · ');
+    });
+};
+
+window.catalogSyncInCartButtons = function catalogSyncInCartButtons(cartItems) {
+    const ids = {};
+    (cartItems || []).forEach(function (item) {
+        if (item && item.id) {
+            ids[String(item.id)] = true;
+        }
+    });
+    document.querySelectorAll('.buy-now').forEach(function (btn) {
+        if (!btn.dataset.defaultHtml) {
+            btn.dataset.defaultHtml = btn.innerHTML;
+        }
+        const inCart = !!ids[String(btn.dataset.id)];
+        btn.classList.toggle('is-in-cart', inCart);
+        if (inCart) {
+            btn.innerHTML = '<i class="fa-solid fa-check" aria-hidden="true"></i> <span>In cart</span>';
+            btn.setAttribute('aria-label', catalogBuyAriaLabel(btn));
+            btn.title = 'Already in cart — open to assign an article or change options';
+        } else if (btn.dataset.busy !== '1') {
+            btn.innerHTML = btn.dataset.defaultHtml;
+            btn.setAttribute('aria-label', catalogBuyAriaLabel(btn));
+            btn.removeAttribute('title');
+        }
+    });
+    if (typeof window.catalogSyncBuyAddonHints === 'function') {
+        window.catalogSyncBuyAddonHints();
+    }
+};
+
 // Update UI for favorites and blacklist (quiet icon actions)
 function updateButtonStates() {
     document.querySelectorAll('.favorite-btn').forEach(btn => {
@@ -3800,12 +4587,12 @@ function updateBuyButtonPrice(siteId, basePrice, additionalPrice = 0, sensitiveT
         const price = catalogPriceDisplaysFor(buyButton);
 
         if (price.pay) {
-            price.pay.textContent = '€' + totalPrice.toFixed(2);
+            price.pay.textContent = (window.slbFormatMoney || function (n) { return '€' + Number(n).toFixed(2); })(totalPrice);
         }
 
         // Strike-through shows the pre-discount list total when a sale is active.
         if (price.list) {
-            price.list.textContent = '€' + displayList.toFixed(2);
+            price.list.textContent = (window.slbFormatMoney || function (n) { return '€' + Number(n).toFixed(2); })(displayList);
             price.list.hidden = !(pct > 0);
         }
 
@@ -3827,13 +4614,10 @@ function updateBuyButtonPrice(siteId, basePrice, additionalPrice = 0, sensitiveT
         if (sensitiveType) {
             buyButton.dataset.sensitiveType = sensitiveType;
             buyButton.setAttribute('aria-label',
-                'Buy placement' + (buyButton.dataset.name ? ' for ' + buyButton.dataset.name : '')
-                + ' with ' + sensitiveType + ' add-on, €' + totalPrice.toFixed(2));
+                catalogBuyAriaLabel(buyButton, ' with ' + sensitiveType + ' add-on, ' + catalogMoneyLabel(totalPrice)));
         } else {
             delete buyButton.dataset.sensitiveType;
-            if (buyButton.dataset.name) {
-                buyButton.setAttribute('aria-label', 'Buy placement for ' + buyButton.dataset.name);
-            }
+            buyButton.setAttribute('aria-label', catalogBuyAriaLabel(buyButton));
         }
     });
 }
@@ -3871,17 +4655,17 @@ function syncSensitiveSelectionUi(siteId) {
     const effectiveOfferPct = catalogEffectiveDiscountPercent(listForLabel, articlePay);
     const homeNote = homepage.days
         ? (' · Homepage ' + homepage.days + 'd'
-            + (homeFee > 0 ? (' add-on +€' + homeFee.toFixed(2)) : ' Free'))
+            + (homeFee > 0 ? (' add-on +' + catalogMoneyLabel(homeFee)) : ' Free'))
         : '';
 
     if (selected.type && selected.additionalPrice > 0) {
         infoHtml =
-            '<small class="text-muted">List price: <strong>€'
-            + listForLabel.toFixed(2)
+            '<small class="text-muted">List price: <strong>'
+            + catalogMoneyLabel(listForLabel)
             + '</strong></small><br>'
-            + '<small class="text-success">Selected: <strong>' + catalogEscapeHtml(selected.type)
-            + '</strong> — You pay: <strong>€' + Number(payTotal).toFixed(2)
-            + '</strong> (add-on +€' + selected.additionalPrice.toFixed(2);
+            + '<small class="text-muted">Selected: <strong>' + catalogEscapeHtml(selected.type)
+            + '</strong> — You pay: <strong>' + catalogMoneyLabel(payTotal)
+            + '</strong> (add-on +' + catalogMoneyLabel(selected.additionalPrice);
         if (effectiveOfferPct > 0) {
             infoHtml += ', includes −'
                 + catalogFormatPercentLabel(effectiveOfferPct)
@@ -3890,11 +4674,11 @@ function syncSensitiveSelectionUi(siteId) {
         infoHtml += homeNote + ')</small>';
             } else if (discountPercent > 0 || homeFee > 0 || homepage.days) {
         infoHtml =
-            '<small class="text-muted">You pay: <strong>€' + Number(payTotal).toFixed(2)
+            '<small class="text-muted">You pay: <strong>' + catalogMoneyLabel(payTotal)
             + '</strong>';
         if (discountPercent > 0) {
-            infoHtml += ' <span class="text-decoration-line-through">€'
-                + catalogRoundMoney(listForLabel + homeFee).toFixed(2) + '</span> (offer price)';
+            infoHtml += ' <span class="text-decoration-line-through">'
+                + catalogMoneyLabel(catalogRoundMoney(listForLabel + homeFee)) + '</span> (offer price)';
         } else if (homepage.days) {
             infoHtml += homeNote;
         } else {
@@ -3903,7 +4687,7 @@ function syncSensitiveSelectionUi(siteId) {
         infoHtml += '</small>';
     } else {
         infoHtml =
-            '<small class="text-muted">You pay: <strong>€' + Number(basePrice).toFixed(2)
+            '<small class="text-muted">You pay: <strong>' + catalogMoneyLabel(basePrice)
             + '</strong> (Base price)</small>';
     }
 
@@ -3913,6 +4697,9 @@ function syncSensitiveSelectionUi(siteId) {
             priceInfoDiv.innerHTML = infoHtml;
         }
     });
+    if (typeof window.catalogSyncBuyAddonHints === 'function') {
+        window.catalogSyncBuyAddonHints();
+    }
 }
 
 /**
@@ -3987,16 +4774,23 @@ function setCatalogDetailsToggleState(toggle, open) {
     if (icon) icon.classList.toggle('rotate-arrow', !!open);
 }
 
-function toggleCardDetails(toggle) {
+function toggleCardDetails(toggle, opts) {
     if (!toggle) return;
 
     const panel = document.getElementById(toggle.dataset.cardDetails || '');
     if (!panel) return;
 
+    const forceOpen = !!(opts && opts.open);
     const willOpen = panel.hidden;
-    panel.hidden = !willOpen;
-    setCatalogDetailsToggleState(toggle, willOpen);
+    if (!willOpen && !forceOpen) {
+        panel.hidden = true;
+        setCatalogDetailsToggleState(toggle, false);
+        return;
+    }
+
     if (willOpen) {
+        panel.hidden = false;
+        setCatalogDetailsToggleState(toggle, true);
         hydrateExpandScreenshots(panel);
         if (typeof initCatalogExpandPreviewZoom === 'function') {
             initCatalogExpandPreviewZoom(panel);
@@ -4004,6 +4798,14 @@ function toggleCardDetails(toggle) {
         const siteId = (toggle.dataset.cardDetails || '').replace('card-details-', '');
         if (siteId) {
             syncSensitiveSelectionUi(siteId);
+        }
+    }
+
+    if (opts && opts.scrollTo && !panel.hidden) {
+        const article = panel.closest('article');
+        const el = ((article && article.querySelector(opts.scrollTo)) || panel.querySelector(opts.scrollTo));
+        if (el && typeof el.scrollIntoView === 'function') {
+            el.scrollIntoView({ block: 'nearest' });
         }
     }
 }
@@ -4110,6 +4912,12 @@ document.addEventListener('DOMContentLoaded', function() {
     // Default free homepage can be pre-checked in Blade; sync Buy totals before
     // the first radio change so expand/header prices match the selection.
     syncDefaultHomepagePrices();
+    if (typeof window.catalogSyncBuyAddonHints === 'function') {
+        window.catalogSyncBuyAddonHints();
+    }
+    if (typeof window.catalogSyncInCartButtons === 'function') {
+        window.catalogSyncInCartButtons(window.advertiserCart || []);
+    }
 
     // Sensitive topic + homepage radios: delegate so late/expanded markup still works.
     document.addEventListener('change', function (e) {
@@ -4128,16 +4936,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
         if (radio.classList.contains('sensitive-price-checkbox')) {
             const selected = getSelectedSensitiveForSite(siteId);
-            const homepage = getSelectedHomepageForSite(siteId);
             if (selected.type && selected.additionalPrice > 0) {
-                const article = selected.totalPrice != null
-                    ? selected.totalPrice
-                    : (selected.basePrice + selected.additionalPrice);
-                const total = catalogRoundMoney(Number(article) + (homepage.price || 0));
                 catalogToast(
-                    selected.type + ' selected: +€' + selected.additionalPrice.toFixed(2)
-                    + ' — Total: €' + Number(total).toFixed(2),
-                    'success'
+                    selected.type + ' +' + catalogMoneyLabel(selected.additionalPrice),
+                    'success',
+                    { delay: 1200 }
                 );
             }
         }
@@ -4325,14 +5128,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    function catalogActionClick(e) {
-        // Interactive chrome must not toggle Details — ↗, eye, Buy, favorite,
-        // blacklist, claim, tip chips, Details itself (has its own handler), etc.
-        return !!e.target.closest(
-            'button, a, input, label, select, textarea, .reveal-url, .hide-url, .toggle-url, .catalog-url-eye, .expand-arrow, .catalog-card-details-toggle, .btn-icon-quiet, .site-open-link, .buy-now, .favorite-btn, .blacklist-btn, .btn-claim-site, .copy-example-url, .sensitive-price-checkbox, .homepage-placement-radio, .form-check-label, .site-chip, .site-badge-new, .catalog-site-actions, .catalog-site-controls, .catalog-card-details'
-        );
-    }
-
     const URL_MASK = '•••••••';
 
     /**
@@ -4368,9 +5163,7 @@ document.addEventListener('DOMContentLoaded', function() {
             } else {
                 delete el.dataset.host;
             }
-            if (el.getAttribute('title') !== null) {
-                el.setAttribute('title', displayText);
-            }
+            el.removeAttribute('title');
         });
         return nodes[0] || null;
     }
@@ -4387,11 +5180,7 @@ document.addEventListener('DOMContentLoaded', function() {
         roots.forEach(function (root) {
             root.querySelectorAll('.catalog-site-name, [data-site-name-label]').forEach(function (el) {
                 el.textContent = displayName;
-                if (setTitle) {
-                    el.setAttribute('title', displayName);
-                } else {
-                    el.removeAttribute('title');
-                }
+                el.removeAttribute('title');
             });
             root.setAttribute('data-name', displayName);
             root.querySelectorAll('[data-name]').forEach(function (el) {
@@ -4520,65 +5309,111 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Toggle expanded row — multi-open: siblings stay expanded.
-    function toggleExpandRow(id, arrowElement) {
+    function toggleExpandRow(id, arrowElement, opts) {
         const expandedRow = document.querySelector('.expanded-row-' + id);
         if (!expandedRow) return;
 
         const arrow = arrowElement || document.getElementById('arrow-' + id);
         const isClosed = expandedRow.style.display === 'none' || expandedRow.style.display === '';
+        const forceOpen = !!(opts && opts.open);
 
-        if (isClosed) {
-            expandedRow.style.display = 'table-row';
-            hydrateExpandScreenshots(expandedRow);
-            if (typeof initCatalogExpandPreviewZoom === 'function') {
-                initCatalogExpandPreviewZoom(expandedRow);
+        if (isClosed || forceOpen) {
+            if (isClosed) {
+                expandedRow.style.display = 'table-row';
+                hydrateExpandScreenshots(expandedRow);
+                if (typeof initCatalogExpandPreviewZoom === 'function') {
+                    initCatalogExpandPreviewZoom(expandedRow);
+                }
+                setCatalogDetailsToggleState(arrow, true);
+                syncSensitiveSelectionUi(id);
             }
-            setCatalogDetailsToggleState(arrow, true);
-            syncSensitiveSelectionUi(id);
+            if (opts && opts.scrollTo) {
+                const el = expandedRow.querySelector(opts.scrollTo);
+                if (el && typeof el.scrollIntoView === 'function') {
+                    el.scrollIntoView({ block: 'nearest' });
+                }
+            }
         } else {
             expandedRow.style.display = 'none';
             setCatalogDetailsToggleState(arrow, false);
         }
     }
 
-    // Details button — dedicated control (also excluded from whole-row handler).
+    // Whole row / card opens Details. Buy, visit, eye, and other controls stay
+    // their own actions. Delegated so live-fetched rows stay interactive.
     document.addEventListener('click', function (e) {
-        const arrow = e.target.closest('.expand-arrow');
-        if (!arrow) return;
+        const onControl = e.target.closest('a, button, input, select, textarea, label, .catalog-url-eye');
+        const onDetails = e.target.closest('.expand-arrow, .catalog-card-details-toggle, [data-catalog-open-details], .catalog-new-ribbon');
+        if (onControl && !onDetails) {
+            return;
+        }
+        // Dedicated thumbnail / social-chip handler opens a section.
+        if (e.target.closest('[data-catalog-open-details]')) {
+            return;
+        }
+        if (e.target.closest('.catalog-card-details, .catalog-expand-cell')) {
+            return;
+        }
+
+        const card = e.target.closest('.catalog-mobile-card[data-id]');
+        if (card) {
+            const cardToggle = card.querySelector('.catalog-card-details-toggle');
+            if (!cardToggle) return;
+            e.preventDefault();
+            const section = onDetails && onDetails.getAttribute
+                ? onDetails.getAttribute('data-catalog-open-section')
+                : null;
+            toggleCardDetails(cardToggle, section
+                ? { open: true, scrollTo: '[data-catalog-section="' + section + '"]' }
+                : undefined);
+            return;
+        }
+
+        const row = e.target.closest('.site-row[data-id]');
+        if (!row) return;
+        const id = row.getAttribute('data-id');
+        if (!id) return;
+        e.preventDefault();
+        const arrow = document.getElementById('arrow-' + id) || (onDetails && onDetails.classList.contains('expand-arrow') ? onDetails : null);
+        const section = onDetails && onDetails.getAttribute
+            ? onDetails.getAttribute('data-catalog-open-section')
+            : null;
+        toggleExpandRow(id, arrow, section
+            ? { open: true, scrollTo: '[data-catalog-section="' + section + '"]' }
+            : undefined);
+    });
+
+    // Homepage thumbnail / Social chip on the closed row — dedicated Details
+    // controls, not a hover or whole-row expand.
+    document.addEventListener('click', function (e) {
+        const thumb = e.target.closest('[data-catalog-open-details]');
+        if (!thumb) return;
         e.preventDefault();
         e.stopPropagation();
         if (typeof e.stopImmediatePropagation === 'function') {
             e.stopImmediatePropagation();
         }
-        const id = arrow.id.replace('arrow-', '');
-        toggleExpandRow(id, arrow);
-    });
-
-    // Whole-row click toggles Details (name, URL text, tile, metrics, empty space).
-    // ↗ stays external-only; interactive chrome is filtered via catalogActionClick.
-    // Delegated so live-fetched rows stay interactive. Multi-open: opening one
-    // does not close others; second click on the same row collapses it.
-    document.addEventListener('click', function (e) {
-        const row = e.target.closest('tr.site-row');
-        if (!row) return;
-        if (catalogActionClick(e)) return;
-
-        const id = row.getAttribute('data-id');
+        const id = thumb.getAttribute('data-catalog-open-details');
         if (!id) return;
 
-        toggleExpandRow(id, document.getElementById('arrow-' + id));
-    });
+        const section = thumb.getAttribute('data-catalog-open-section');
+        const opts = section
+            ? { open: true, scrollTo: '[data-catalog-section="' + section + '"]' }
+            : undefined;
 
-    // Mobile cards: same body-click toggle parity with the table.
-    document.addEventListener('click', function (e) {
-        const card = e.target.closest('.catalog-mobile-card');
-        if (!card) return;
-        if (catalogActionClick(e)) return;
+        const card = thumb.closest('.catalog-mobile-card');
+        if (card) {
+            const cardToggle = card.querySelector('.catalog-card-details-toggle');
+            if (cardToggle) {
+                toggleCardDetails(cardToggle, opts);
+                return;
+            }
+        }
 
-        const toggle = card.querySelector('.catalog-card-details-toggle');
-        if (!toggle) return;
-
-        toggleCardDetails(toggle);
+        const arrow = document.getElementById('arrow-' + id);
+        if (arrow) {
+            toggleExpandRow(id, arrow, opts);
+        }
     });
 
     // Copy example URL
@@ -4599,7 +5434,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             catalogToast('URL copied to clipboard!', 'success');
             const originalText = button.innerHTML;
-            button.innerHTML = '<i class="fa-regular fa-check"></i> Copied!';
+            button.innerHTML = '<i class="fa-regular fa-check" aria-hidden="true"></i>';
             setTimeout(function () {
                 button.innerHTML = originalText;
             }, 1500);
@@ -4613,6 +5448,14 @@ document.addEventListener('DOMContentLoaded', function() {
     document.addEventListener('click', function (e) {
         const button = e.target.closest('.buy-now');
         if (!button) return;
+        if (button.classList.contains('is-in-cart')) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (typeof window.openCart === 'function') {
+                window.openCart();
+            }
+            return;
+        }
         e.preventDefault();
         e.stopPropagation();
         if (button.disabled || button.dataset.busy === '1') return;
@@ -4622,6 +5465,15 @@ document.addEventListener('DOMContentLoaded', function() {
         let name = button.dataset.name;
         if (!id || Number.isNaN(id)) {
             catalogToast('Could not add to cart.', 'error');
+            return;
+        }
+
+        if ((button.classList.contains('is-in-cart') || button.dataset.inCart === '1')
+            && button.dataset.bulkHint !== '1'
+            && !button.hasAttribute('data-bulk-hint')) {
+            if (typeof window.openCart === 'function') {
+                window.openCart();
+            }
             return;
         }
 
@@ -4652,7 +5504,10 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
-        const cartOptions = {};
+        const cartOptions = {
+            quiet: true,
+            flyOrigin: button
+        };
         const bulkHint = button.dataset.bulkHint === '1' || button.hasAttribute('data-bulk-hint');
         if (bulkHint) {
             const packQty = parseInt(button.dataset.bulkQty, 10);
@@ -4674,11 +5529,18 @@ document.addEventListener('DOMContentLoaded', function() {
         Promise.resolve(window.addToCart(id, name, finalPrice, sensitiveType, additionalPrice, basePrice, cartOptions))
             .then(function (result) {
                 if (result && result.ok === false) return;
+                btn.classList.add('is-added');
                 btn.innerHTML = '<i class="fa-solid fa-check" aria-hidden="true"></i> Added!';
                 setTimeout(function () {
-                    btn.innerHTML = originalText;
+                    btn.classList.remove('is-added');
+                    if (!btn.classList.contains('is-in-cart')) {
+                        btn.innerHTML = originalText;
+                    }
                     syncSensitiveSelectionUi(id);
-                }, 1000);
+                    if (typeof window.catalogSyncInCartButtons === 'function' && Array.isArray(window.advertiserCart)) {
+                        window.catalogSyncInCartButtons(window.advertiserCart);
+                    }
+                }, 1400);
             })
             .finally(function () {
                 btn.dataset.busy = '0';
@@ -4809,7 +5671,294 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         );
     });
+
+    document.addEventListener('click', function (e) {
+        const reportBtn = e.target.closest('.catalog-site-report');
+        if (!reportBtn) return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (window.GlassTip && typeof window.GlassTip.hide === 'function') {
+            window.GlassTip.hide();
+        }
+        openCatalogSiteReport(reportBtn);
+    });
+
+    document.addEventListener('click', function (e) {
+        const noteBtn = e.target.closest('.catalog-site-note');
+        if (!noteBtn) return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (window.GlassTip && typeof window.GlassTip.hide === 'function') {
+            window.GlassTip.hide();
+        }
+        openCatalogSiteNote(noteBtn);
+    });
 });
+
+function catalogSiteToolUrl(template, siteId) {
+    return String(template || '').replace('__SITE__', encodeURIComponent(String(siteId)));
+}
+
+function catalogSanitizePlain(text) {
+    var value = String(text || '').replace(/<[^>]*>/g, ' ');
+    value = value.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '');
+    value = value.replace(/\r\n|\r/g, '\n');
+    value = value.replace(/[ \t]+\n/g, '\n');
+    value = value.replace(/[ \t]{2,}/g, ' ');
+    return value.trim();
+}
+
+function catalogWordCount(text) {
+    var parts = catalogSanitizePlain(text).split(/\s+/).filter(Boolean);
+    return parts.length;
+}
+
+function applyCatalogReported(siteId, report) {
+    var id = String(siteId || '');
+    if (!id) return;
+    var saved = catalogSanitizePlain(report || '');
+    var hasReport = saved !== '';
+    document.querySelectorAll('.site-row[data-id="' + id + '"], .catalog-mobile-card[data-id="' + id + '"]').forEach(function (row) {
+        row.classList.toggle('is-catalog-reported', hasReport);
+    });
+    document.querySelectorAll('.catalog-site-report[data-id="' + id + '"]').forEach(function (el) {
+        el.classList.toggle('is-active', hasReport);
+        el.setAttribute('data-report', saved);
+        var label = el.dataset.name || 'this site';
+        el.setAttribute('aria-label', hasReport ? ('You reported ' + label) : ('Report ' + label));
+        el.removeAttribute('data-glass-tip');
+        el.removeAttribute('data-glass-tip-title');
+        el.removeAttribute('data-glass-tip-body');
+    });
+}
+
+function catalogSwalTextareaValue(fallback) {
+    var popup = window.Swal && typeof Swal.getPopup === 'function' ? Swal.getPopup() : null;
+    var input = popup ? popup.querySelector('textarea.swal2-textarea') : null;
+    if (input) return input.value;
+    return fallback;
+}
+
+function catalogPrepareSwalInput(input, options) {
+    options = options || {};
+    if (!input || !input.parentNode) return;
+    var popup = input.closest('.swal2-popup');
+    if (popup) popup.classList.add('catalog-swal-tools');
+    var host = input.parentNode;
+    var field = document.createElement('div');
+    field.className = 'catalog-swal-field';
+    host.insertBefore(field, input);
+    field.appendChild(input);
+    if (typeof options.onDelete === 'function') {
+        var bin = document.createElement('button');
+        bin.type = 'button';
+        bin.className = 'catalog-swal-bin';
+        bin.setAttribute('data-no-tip', '1');
+        bin.setAttribute('aria-label', options.deleteLabel || 'Delete');
+        bin.innerHTML = '<i class="fa-solid fa-trash" aria-hidden="true"></i>';
+        bin.addEventListener('click', function (event) {
+            event.preventDefault();
+            event.stopPropagation();
+            options.onDelete();
+            if (window.Swal && typeof Swal.close === 'function') Swal.close();
+        });
+        field.appendChild(bin);
+    }
+    if (typeof options.paintCounter === 'function') {
+        var counter = document.createElement('div');
+        counter.className = 'catalog-note-count';
+        options.paintCounter(counter);
+        input.addEventListener('input', function () {
+            options.paintCounter(counter);
+        });
+        host.insertBefore(counter, field.nextSibling);
+    }
+}
+
+function applyCatalogNoteButton(el, saved, name) {
+    var hasNote = saved !== '';
+    var label = name || el.dataset.name || 'this site';
+    el.setAttribute('data-note', saved);
+    el.classList.toggle('is-active', hasNote);
+    el.setAttribute('aria-label', hasNote ? ('Your notes for ' + label) : ('Notes for ' + label));
+    el.removeAttribute('data-glass-tip');
+    el.removeAttribute('data-glass-tip-title');
+    el.removeAttribute('data-glass-tip-body');
+}
+
+function openCatalogSiteReport(button) {
+    if (!window.Swal || typeof Swal.fire !== 'function') return;
+    const siteId = button.dataset.id;
+    const name = button.dataset.name || 'this site';
+    const url = catalogSiteToolUrl(CatalogConfig.routes && CatalogConfig.routes.siteReport, siteId);
+    const deleteUrl = catalogSiteToolUrl(CatalogConfig.routes && CatalogConfig.routes.siteReportDelete, siteId);
+    if (!url) return;
+    const current = catalogSanitizePlain(button.getAttribute('data-report') || '');
+    const hasReport = current !== '';
+
+    Swal.fire({
+        title: hasReport ? 'Your report' : 'Report this listing',
+        html: '<p class="catalog-note-site">' + catalogEscapeHtml(name) + '</p>'
+            + '<p class="catalog-note-lead">' + (hasReport
+                ? 'This is the report the team can see. Update it, or clear it with the bin in the box.'
+                : 'If this site looks outdated, misleading, or not as described, tell us what you noticed. We review every report before we take action. Do not use this for order issues — those go through your order.') + '</p>',
+        input: 'textarea',
+        inputValue: current,
+        inputPlaceholder: 'What did you notice?',
+        inputAttributes: { 'aria-label': 'Report', maxlength: '800' },
+        showCancelButton: true,
+        confirmButtonText: hasReport ? 'Update report' : 'Send report',
+        cancelButtonText: 'Cancel',
+        didOpen: function () {
+            var input = Swal.getInput();
+            catalogPrepareSwalInput(input, {
+                deleteLabel: hasReport && deleteUrl ? 'Delete report' : '',
+                onDelete: hasReport && deleteUrl ? function () {
+                    fetch(deleteUrl, {
+                        method: 'DELETE',
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': CatalogConfig.csrfToken,
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                    }).then(async function (res) {
+                        const data = await res.json().catch(function () { return {}; });
+                        if (!res.ok || !data.success) {
+                            if (res.status === 429) {
+                                throw new Error(data.message || 'You sent several reports just now. Wait a minute and try again.');
+                            }
+                            throw new Error(data.message || 'We could not remove that report.');
+                        }
+                        applyCatalogReported(siteId, '');
+                        catalogToast(data.message || 'Report removed.', 'success');
+                    }).catch(function (err) {
+                        catalogToast(err.message || 'We could not remove that report.', 'error');
+                    });
+                } : null,
+                paintCounter: function (counter) {
+                    counter.textContent = catalogWordCount(input.value) + ' / 80 words';
+                },
+            });
+        },
+        inputValidator: function (value) {
+            var cleaned = catalogSanitizePlain(catalogSwalTextareaValue(value));
+            if (cleaned === '' || catalogWordCount(cleaned) < 1) {
+                return 'Write a short report before sending.';
+            }
+            if (catalogWordCount(cleaned) > 80) {
+                return 'Keep the report to 80 words or fewer.';
+            }
+            return undefined;
+        },
+        preConfirm: function (value) {
+            return catalogSanitizePlain(catalogSwalTextareaValue(value));
+        },
+    }).then(function (result) {
+        if (!result.isConfirmed) return;
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': CatalogConfig.csrfToken,
+            },
+            body: JSON.stringify({ message: catalogSanitizePlain(result.value) }),
+        }).then(async function (res) {
+            const data = await res.json().catch(function () { return {}; });
+            if (!res.ok || !data.success) {
+                if (res.status === 429) {
+                    throw new Error(data.message || 'You sent several reports just now. Wait a minute and try again.');
+                }
+                throw new Error(data.message || 'We could not submit that report.');
+            }
+            applyCatalogReported(siteId, data.report || result.value);
+            catalogToast(data.message || 'Thanks — your report was submitted.', 'success');
+        }).catch(function (err) {
+            catalogToast(err.message || 'We could not submit that report.', 'error');
+        });
+    });
+}
+
+function openCatalogSiteNote(button) {
+    if (!window.Swal || typeof Swal.fire !== 'function') return;
+    const siteId = button.dataset.id;
+    const name = button.dataset.name || 'this site';
+    const current = button.getAttribute('data-note') || '';
+    const hasNote = current.trim() !== '';
+    const url = catalogSiteToolUrl(CatalogConfig.routes && CatalogConfig.routes.siteNote, siteId);
+    if (!url) return;
+
+    Swal.fire({
+        title: 'Notes',
+        html: '<p class="catalog-note-site">' + catalogEscapeHtml(name) + '</p>'
+            + '<p class="catalog-note-lead">One private note for this site. Saving replaces it. Only you can see it.</p>',
+        input: 'textarea',
+        inputValue: current,
+        inputPlaceholder: 'Write the one thing you want to remember',
+        inputAttributes: { 'aria-label': 'Notes', maxlength: '2000' },
+        showCancelButton: true,
+        confirmButtonText: hasNote ? 'Update' : 'Save',
+        cancelButtonText: 'Cancel',
+        didOpen: function () {
+            var input = Swal.getInput();
+            catalogPrepareSwalInput(input, {
+                deleteLabel: hasNote ? 'Remove note' : '',
+                onDelete: hasNote ? function () {
+                    fetch(url, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': CatalogConfig.csrfToken,
+                        },
+                        body: JSON.stringify({ note: '' }),
+                    }).then(async function (res) {
+                        const data = await res.json().catch(function () { return {}; });
+                        if (!res.ok || !data.success) {
+                            throw new Error(data.message || 'Could not save that note.');
+                        }
+                        document.querySelectorAll('.catalog-site-note[data-id="' + siteId + '"]').forEach(function (el) {
+                            applyCatalogNoteButton(el, '', el.dataset.name || name);
+                        });
+                        catalogToast('Note removed.', 'success');
+                    }).catch(function (err) {
+                        catalogToast(err.message || 'Could not save that note.', 'error');
+                    });
+                } : null,
+                paintCounter: function (counter) {
+                    counter.textContent = String(input.value.length) + ' / 2000';
+                },
+            });
+        },
+        preConfirm: function (value) {
+            return catalogSanitizePlain(catalogSwalTextareaValue(value));
+        },
+    }).then(function (result) {
+        if (!result.isConfirmed) return;
+        const note = catalogSanitizePlain(catalogSwalTextareaValue(result.value));
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': CatalogConfig.csrfToken,
+            },
+            body: JSON.stringify({ note: note }),
+        }).then(async function (res) {
+            const data = await res.json().catch(function () { return {}; });
+            if (!res.ok || !data.success) {
+                throw new Error(data.message || 'Could not save that note.');
+            }
+            const saved = catalogSanitizePlain(data.note || '');
+            document.querySelectorAll('.catalog-site-note[data-id="' + siteId + '"]').forEach(function (el) {
+                applyCatalogNoteButton(el, saved, el.dataset.name || name);
+            });
+            catalogToast(saved === '' ? 'Note removed.' : (hasNote ? 'Note updated.' : 'Note saved.'), 'success');
+        }).catch(function (err) {
+            catalogToast(err.message || 'Could not save that note.', 'error');
+        });
+    });
+}
 
 // Safety net: hide any blacklisted sites still rendered on the main catalog
 if (!CatalogConfig.blacklistFilter) {
@@ -4890,7 +6039,7 @@ document.addEventListener('click', async function (e) {
             body: JSON.stringify(form),
         });
         const data = await res.json().catch(() => ({}));
-        const claimsUrl = (CatalogConfig.routes && CatalogConfig.routes.siteClaimsIndex) || '/site-claims';
+        const claimsUrl = (CatalogConfig.routes && CatalogConfig.routes.siteClaimsIndex) || '/advertiser/site-claims';
         if (data.success) {
             Swal.fire({
                 icon: 'success',
@@ -4905,24 +6054,129 @@ document.addEventListener('click', async function (e) {
 
     const btn = e.target.closest('.btn-suggest-website');
     if (!btn) return;
+    e.preventDefault();
+    if (!window.Swal || typeof Swal.fire !== 'function') return;
+    if (!CatalogConfig.routes || !CatalogConfig.routes.websiteSuggestionsStore) return;
+
     const prefill = btn.dataset.search || document.querySelector('input[name="search"]')?.value || '';
+    const prefilledUrl = catalogSuggestionUrlFromSearch(prefill);
+    const searchContext = prefilledUrl ? '' : String(prefill || '').trim();
+    const countryRows = catalogSuggestionCountryOptions().map(function (row) {
+        return { value: row.code, label: row.name };
+    });
+    const contextHtml = searchContext
+        ? '<p class="small text-muted mb-2">You searched for <strong>' + catalogEscapeHtml(searchContext) + '</strong>. Tell us the publisher site that should be in the catalog.</p>'
+        : '<p class="small text-muted mb-2">Paste the site URL. We’ll check the catalog before sending it for review.</p>';
+
     const { value: form } = await Swal.fire({
         title: 'Suggest a website',
-        html: `<p class="small text-muted mb-2">Can’t find a publisher site? Suggest it and we’ll try to include it.</p>
-               <input id="swal-site-name" class="swal2-input" placeholder="Website name" value="${catalogEscapeHtml(prefill)}">
-               <input id="swal-site-url" class="swal2-input" placeholder="https://example.com">
-               <textarea id="swal-site-notes" class="swal2-textarea" placeholder="Why should we add it? (optional)"></textarea>`,
+        html: contextHtml
+            + '<input id="swal-site-url" class="swal2-input" placeholder="https://example.com" value="' + catalogEscapeHtml(prefilledUrl) + '" autocomplete="url">'
+            + '<p id="swal-site-status" class="small mb-2 text-start" style="min-height:1.25rem"></p>'
+            + '<input id="swal-site-name" class="swal2-input" placeholder="Website name (optional)">'
+            + catalogThemeSelectMarkup('swal-site-country', countryRows, 'Country (optional)')
+            + catalogThemeSelectMarkup('swal-site-language', [], 'Language (optional)')
+            + '<textarea id="swal-site-notes" class="swal2-textarea" placeholder="What placement do you want here? (optional)"></textarea>',
         showCancelButton: true,
         confirmButtonText: 'Submit suggestion',
-        preConfirm: () => {
+        focusConfirm: false,
+        didOpen: function () {
+            const urlInput = document.getElementById('swal-site-url');
+            const statusEl = document.getElementById('swal-site-status');
+            const countryEl = document.getElementById('swal-site-country');
+            let timer = null;
+
+            function fillLanguages() {
+                const rows = catalogSuggestionLanguageOptions(countryEl.value).map(function (row) {
+                    return { value: row.code, label: row.name };
+                });
+                catalogReplaceSwalThemeOptions('swal-site-language', rows, 'Language (optional)');
+            }
+
+            function paintStatus(data) {
+                const state = data && data.state ? data.state : '';
+                urlInput.dataset.checkState = state;
+                if (!state || state === 'invalid') {
+                    statusEl.textContent = state === 'invalid' ? (data.message || '') : '';
+                    statusEl.style.color = 'var(--brand-ink-muted, #697078)';
+                    return;
+                }
+                const tone = state === 'available'
+                    ? 'var(--brand-primary, #1a585e)'
+                    : 'var(--brand-danger, #dc2626)';
+                statusEl.style.color = tone;
+                if (data.href) {
+                    statusEl.innerHTML = catalogEscapeHtml(data.message || '')
+                        + ' <a href="' + catalogEscapeHtml(data.href) + '">Open in catalog</a>';
+                } else {
+                    statusEl.textContent = data.message || '';
+                }
+            }
+
+            function runCheck() {
+                const raw = urlInput.value.trim();
+                if (!CatalogConfig.routes.websiteSuggestionsCheck || !catalogSuggestionUrlFromSearch(raw)) {
+                    urlInput.dataset.checkState = '';
+                    statusEl.textContent = '';
+                    return;
+                }
+                statusEl.style.color = 'var(--brand-ink-muted, #697078)';
+                statusEl.textContent = 'Checking the catalog…';
+                const requested = raw;
+                fetch(CatalogConfig.routes.websiteSuggestionsCheck + '?url=' + encodeURIComponent(raw), {
+                    headers: { 'Accept': 'application/json' },
+                    credentials: 'same-origin',
+                }).then(function (res) {
+                    return res.json().catch(function () { return {}; });
+                }).then(function (data) {
+                    if (urlInput.value.trim() !== requested) return;
+                    paintStatus(data);
+                }).catch(function () {
+                    if (urlInput.value.trim() !== requested) return;
+                    urlInput.dataset.checkState = '';
+                    statusEl.textContent = '';
+                });
+            }
+
+            document.querySelectorAll('.swal-theme-select').forEach(catalogBindSwalThemeSelect);
+            const popup = document.querySelector('.swal2-popup');
+            const htmlBox = popup && popup.querySelector('.swal2-html-container');
+            if (htmlBox) htmlBox.style.overflow = 'visible';
+            countryEl.addEventListener('change', fillLanguages);
+            urlInput.addEventListener('input', function () {
+                window.clearTimeout(timer);
+                timer = window.setTimeout(runCheck, 350);
+            });
+            fillLanguages();
+            if (urlInput.value.trim()) runCheck();
+        },
+        preConfirm: function () {
             const website_name = document.getElementById('swal-site-name').value.trim();
             const website_url = document.getElementById('swal-site-url').value.trim();
             const notes = document.getElementById('swal-site-notes').value.trim();
-            if (!website_name || !website_url) {
-                Swal.showValidationMessage('Website name and URL are required');
+            const country = document.getElementById('swal-site-country').value.trim();
+            const language = document.getElementById('swal-site-language').value.trim();
+            const checkState = document.getElementById('swal-site-url').dataset.checkState || '';
+            if (!website_url) {
+                Swal.showValidationMessage('Enter the website URL.');
                 return false;
             }
-            return { website_name, website_url, notes, search_query: prefill };
+            if (!catalogSuggestionUrlFromSearch(website_url)) {
+                Swal.showValidationMessage('Enter a full website URL, like https://example.com.');
+                return false;
+            }
+            if (checkState === 'listed' || checkState === 'unavailable' || checkState === 'pending') {
+                Swal.showValidationMessage(document.getElementById('swal-site-status').textContent || 'That website cannot be suggested.');
+                return false;
+            }
+            return {
+                website_name: website_name,
+                website_url: website_url,
+                notes: notes,
+                country: country,
+                language: language,
+                search_query: prefill,
+            };
         },
     });
     if (!form) return;
@@ -4933,10 +6187,25 @@ document.addEventListener('click', async function (e) {
             'Accept': 'application/json',
             'X-CSRF-TOKEN': CatalogConfig.csrfToken,
         },
+        credentials: 'same-origin',
         body: JSON.stringify(form),
     });
     const data = await res.json().catch(() => ({}));
-    Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });
+    if (!data.success) {
+        Swal.fire({ icon: 'error', title: data.message || 'Could not send that suggestion.' });
+        return;
+    }
+    const recent = Array.isArray(data.recent) ? data.recent : [];
+    const list = recent.map(function (row) {
+        const label = row.domain || row.name || 'Website';
+        return '<li>' + catalogEscapeHtml(label) + ' — ' + catalogEscapeHtml(catalogSuggestionStatusLabel(row.status)) + '</li>';
+    }).join('');
+    Swal.fire({
+        icon: 'success',
+        title: 'Suggestion pending',
+        html: '<p class="small mb-2">' + catalogEscapeHtml(data.message || 'We’ll review this site.') + '</p>'
+            + (list ? '<ul class="small text-start mb-0">' + list + '</ul>' : ''),
+    });
 });
 
 /**

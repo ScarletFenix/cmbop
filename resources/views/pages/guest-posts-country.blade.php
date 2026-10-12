@@ -33,7 +33,7 @@
     '@@context' => 'https://schema.org',
     '@type' => 'FAQPage',
     'mainEntity' => $faqEntities,
-], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) !!}
+], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_HEX_TAG|JSON_HEX_AMP|JSON_INVALID_UTF8_SUBSTITUTE) ?: '{}' !!}
 </script>
 @endif
 <script type="application/ld+json">
@@ -44,7 +44,7 @@
     'url' => $canonical,
     'description' => $lander['meta_description'] ?? '',
     'inLanguage' => 'en-GB',
-], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) !!}
+], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_HEX_TAG|JSON_HEX_AMP|JSON_INVALID_UTF8_SUBSTITUTE) ?: '{}' !!}
 </script>
 @endpush
 
@@ -70,7 +70,7 @@
                 <div class="col-md-6">
                     <div class="h-100 p-4 rounded-4 bg-white border">
                         <div class="small text-muted mb-1">From</div>
-                        <div class="h3 mb-0" style="color:#1a585e;">€{{ number_format((float) $priceFrom, 0) }}</div>
+                        <div class="h3 mb-0" style="color:#1a585e;">{{ format_money($priceFrom, ['decimals' => 0]) }}</div>
                         <p class="small text-muted mb-0 mt-2">Lowest advertiser checkout price on verified {{ $lander['market'] ?? '' }} listings right now.</p>
                     </div>
                 </div>
@@ -126,7 +126,7 @@
                             <td>{{ strtoupper((string) ($site['language'] ?: '—')) }}</td>
                             <td>{{ $site['dr'] ?? '—' }}</td>
                             <td>{{ $site['da'] ?? '—' }}</td>
-                            <td class="fw-semibold" style="color:#1a585e;">€{{ number_format((float) $site['price'], 0) }}</td>
+                            <td class="fw-semibold" style="color:#1a585e;">{{ format_money($site['price'], ['decimals' => 0]) }}</td>
                         </tr>
                     @endforeach
                 </tbody>
@@ -176,6 +176,9 @@
 
     <div class="text-center d-flex flex-wrap justify-content-center gap-2">
         <a href="{{ url('/register') }}" class="btn btn-primary btn-lg px-4">{{ __('messages.get_started') }}</a>
+        @if(!empty($lander['native_url']))
+            <a href="{{ url($lander['native_url']) }}" class="btn btn-outline-primary btn-lg px-4">{{ $lander['native_label'] ?? $lander['native_url'] }}</a>
+        @endif
         <a href="{{ localized_url('become-a-publisher') }}" class="btn btn-outline-secondary btn-lg px-4">{{ __('messages.nav_become_publisher') }}</a>
         <a href="{{ localized_url('how-it-works') }}" class="btn btn-outline-secondary btn-lg px-4">{{ __('messages.nav_how_it_works') }}</a>
     </div>

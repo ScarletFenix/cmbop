@@ -202,7 +202,15 @@ class GuestPostWizardController extends Controller
             return $state;
         }
 
-        $cart = $this->syncVisibleCart();
+        try {
+            $cart = $this->syncVisibleCart();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return redirect()
+                ->route('advertiser.wizard.publishers')
+                ->with('error', UserFacingError::message($e, 'Unable to load your cart. Please try again.'));
+        }
         if ($cart === []) {
             return redirect()
                 ->route('advertiser.wizard.publishers')
@@ -233,9 +241,46 @@ class GuestPostWizardController extends Controller
      */
     public static function stateFromSession(): array
     {
-        $raw = session(self::SESSION_KEY, []);
+        try {
+            $raw = session(self::SESSION_KEY, []);
+            if (! is_array($raw)) {
+                return [];
+            }
 
-        return is_array($raw) ? $raw : [];
+            $state = [];
+            foreach (['language', 'country'] as $key) {
+                $value = $raw[$key] ?? null;
+                if (! is_scalar($value)) {
+                    continue;
+                }
+                $value = strtolower(trim((string) $value));
+                if ($value === '' || strlen($value) > 16) {
+                    continue;
+                }
+                $state[$key] = $value;
+            }
+
+            $cats = $raw['categories'] ?? null;
+            if (is_array($cats)) {
+                $state['categories'] = array_values(array_filter(
+                    array_map(
+                        static fn ($c) => is_scalar($c) ? trim((string) $c) : '',
+                        $cats
+                    ),
+                    static fn ($c) => $c !== '' && strlen($c) <= 120
+                ));
+            }
+
+            if (isset($raw['started_at']) && is_scalar($raw['started_at'])) {
+                $state['started_at'] = (string) $raw['started_at'];
+            }
+
+            return $state;
+        } catch (\Throwable $e) {
+            report($e);
+
+            return [];
+        }
     }
 
     public static function clear(): void
@@ -286,7 +331,7 @@ class GuestPostWizardController extends Controller
         }
 
         foreach ($cart as $line) {
-            if (! $this->lineFullyAssigned($line)) {
+            if (! is_array($line) || ! $this->lineFullyAssigned($line)) {
                 return false;
             }
         }
@@ -302,7 +347,7 @@ class GuestPostWizardController extends Controller
     private function cartHasReadyLine(array $cart): bool
     {
         foreach ($cart as $line) {
-            if ($this->lineFullyAssigned($line)) {
+            if (is_array($line) && $this->lineFullyAssigned($line)) {
                 return true;
             }
         }
@@ -337,7 +382,8 @@ class GuestPostWizardController extends Controller
      */
     private function syncVisibleCart(): array
     {
-        $cart = array_values(session('cart', []));
+        $rawCart = session('cart', []);
+        $cart = is_array($rawCart) ? array_values(array_filter($rawCart, 'is_array')) : [];
         $pruned = $this->cartPricing->pruneUnavailableCartItems($cart);
         $cart = array_values($pruned['cart']);
         $this->enrichCartSites($cart);
@@ -360,6 +406,9 @@ class GuestPostWizardController extends Controller
         $sites = Site::query()->catalogVisible()->whereIn('id', $siteIds)->get()->keyBy('id');
         $kept = [];
         foreach ($cart as $line) {
+            if (! is_array($line)) {
+                continue;
+            }
             $site = $sites->get((int) ($line['id'] ?? 0));
             if (! $site || ! $site->isCatalogVisible()) {
                 continue;

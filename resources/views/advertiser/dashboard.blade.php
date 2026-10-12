@@ -19,6 +19,7 @@
     $browseCatalogUrl = route('advertiser.catalog');
     $guidedFlowUrl = route('advertiser.wizard.start');
     $needsAction = (int) ($stats['needs_action'] ?? 0);
+    $needsActionOrders = $needsActionOrders ?? collect();
     $awaitingPayment = (int) ($stats['awaiting_payment'] ?? 0);
     $upcomingScheduledCount = (int) ($upcomingScheduledCount ?? 0);
     $primaryAction = (string) ($primaryAction ?? 'catalog');
@@ -46,7 +47,7 @@
     border: 1px solid #e5eef0; border-radius: 10px; background: #fff; height: 100%;
 }
 .kpi-tile .kpi-icon {
-    width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center;
+    width: 56px; height: 56px; border-radius: 12px; display: flex; align-items: center;
     justify-content: center; flex-shrink: 0;
     background: var(--brand-primary-bg, #e6f5f5);
     color: #fff;
@@ -54,8 +55,9 @@
 }
 .kpi-tile .kpi-icon i {
     color: inherit;
-    font-size: 1.05rem;
+    font-size: 1.25rem;
     line-height: 1;
+    transform: scale(0.92);
 }
 .kpi-tile .kpi-label { font-size: 12px; color: #6b7280; display: block; }
 .kpi-tile .kpi-value { font-size: 1.35rem; font-weight: 700; color: var(--brand-primary, #1a585e); line-height: 1.1; }
@@ -173,6 +175,13 @@
     color: #1a585e; font-weight: 600; text-decoration: none;
 }
 .recent-orders-link:hover { color: #123f42; }
+.dash-icon-link {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 36px; height: 36px; border: none; background: transparent;
+    color: #1a585e; border-radius: 999px; text-decoration: none;
+}
+.dash-icon-link i { width: 18px; height: 18px; font-size: 18px; flex: 0 0 18px; }
+.dash-icon-link:hover { background: rgba(26, 88, 94, 0.08); color: #123f42; }
 .help-secondary {
     border: 1px dashed #d7e7e8; border-radius: 12px; padding: 16px;
     background: #fafcfc;
@@ -344,15 +353,15 @@
     <div class="dash-wallet-strip">
         <div class="dw-item">
             <span class="dw-label">Spendable</span>
-            <div class="dw-value">€{{ number_format((float) ($wallet['spendable'] ?? 0), 2) }}</div>
+            <div class="dw-value">{{ format_money($wallet['spendable'] ?? 0) }}</div>
         </div>
         <div class="dw-item">
             <span class="dw-label">Available</span>
-            <div class="dw-value">€{{ number_format((float) ($wallet['available'] ?? 0), 2) }}</div>
+            <div class="dw-value">{{ format_money($wallet['available'] ?? 0) }}</div>
         </div>
         <div class="dw-item">
             <span class="dw-label">Bonus</span>
-            <div class="dw-value">€{{ number_format((float) ($wallet['bonus'] ?? 0), 2) }}</div>
+            <div class="dw-value">{{ format_money($wallet['bonus'] ?? 0) }}</div>
         </div>
         <div class="dw-item d-flex align-items-center">
             <a href="{{ route('advertiser.add-funds') }}" class="btn btn-sm btn-primary">
@@ -365,12 +374,12 @@
         </div>
         @if(!empty($budgetStatus['low_balance']))
             <p class="dw-warn">
-                Spendable is below your €{{ number_format((float) ($budgetStatus['low_balance_threshold'] ?? 0), 2) }} alert threshold.
+                Spendable is below your {{ format_money($budgetStatus['low_balance_threshold'] ?? 0) }} alert threshold.
             </p>
         @elseif(!empty($budgetStatus['monthly_limit']))
             <p class="dw-warn" style="background:#f0fbfb;border-color:#b8e4e4;color:#1a585e;">
-                This month committed €{{ number_format((float) ($budgetStatus['committed'] ?? 0), 2) }}
-                / €{{ number_format((float) $budgetStatus['monthly_limit'], 2) }}
+                This month committed {{ format_money($budgetStatus['committed'] ?? 0) }}
+                / {{ format_money($budgetStatus['monthly_limit']) }}
                 ({{ number_format((float) ($budgetStatus['percent'] ?? 0), 1) }}%)
             </p>
         @endif
@@ -418,6 +427,30 @@
             </div>
         </div>
     </div>
+
+    @if($needsActionOrders->isNotEmpty())
+        <div class="dash-panel mb-4 mx-1" id="dashNeedsYouQueue">
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+                <h5 class="mb-0">Needs you</h5>
+                <a href="{{ route('advertiser.orders', ['status' => 'needs_action']) }}" class="small fw-semibold">Open all</a>
+            </div>
+            <div class="d-flex flex-column gap-2">
+                @foreach($needsActionOrders as $needOrder)
+                    @php
+                        $needItem = $needOrder->items->first();
+                        $needSite = $needItem->site_name ?? ($needItem->site_url ?? 'Placement');
+                    @endphp
+                    <a href="{{ route('advertiser.orders', ['status' => 'needs_action']) }}" class="next-action border-warning">
+                        <div>
+                            <div class="na-title">{{ $needOrder->order_number }} · {{ $needSite }}</div>
+                            <p class="na-desc mb-0">{{ $needOrder->status_label }} — {{ $needOrder->next_action }}</p>
+                        </div>
+                        <i class="fa fa-chevron-right text-muted" aria-hidden="true"></i>
+                    </a>
+                @endforeach
+            </div>
+        </div>
+    @endif
 
     <div class="row g-4 mb-4">
         <!-- Next actions + recommended -->
@@ -510,7 +543,7 @@
                                     @if(!empty($budgetStatus['low_balance']))
                                         Spendable is below your alert — top up to keep checkout ready
                                     @else
-                                        Spendable €{{ number_format((float) ($wallet['spendable'] ?? 0), 2) }}
+                                        Spendable {{ format_money($wallet['spendable'] ?? 0) }}
                                     @endif
                                 </p>
                             </div>
@@ -520,8 +553,8 @@
                             <div>
                                 <div class="na-title">Spending history</div>
                                 <p class="na-desc">
-                                    Net €{{ number_format((float) ($spendSummary['net'] ?? 0), 2) }}
-                                    · in progress €{{ number_format((float) ($spendSummary['in_progress'] ?? 0), 2) }}
+                                    Net {{ format_money($spendSummary['net'] ?? 0) }}
+                                    · in progress {{ format_money($spendSummary['in_progress'] ?? 0) }}
                                 </p>
                             </div>
                             <i class="fa fa-chevron-right text-muted" aria-hidden="true"></i>
@@ -547,18 +580,20 @@
             <div class="dash-spend-strip mb-3">
                 <div class="dw-item">
                     <span class="dw-label">Net spend</span>
-                    <div class="dw-value">€{{ number_format((float) ($spendSummary['net'] ?? 0), 2) }}</div>
+                    <div class="dw-value">{{ format_money($spendSummary['net'] ?? 0) }}</div>
                 </div>
                 <div class="dw-item">
                     <span class="dw-label">Spent</span>
-                    <div class="dw-value">€{{ number_format((float) ($spendSummary['spent'] ?? 0), 2) }}</div>
+                    <div class="dw-value">{{ format_money($spendSummary['spent'] ?? 0) }}</div>
                 </div>
                 <div class="dw-item">
                     <span class="dw-label">In progress</span>
-                    <div class="dw-value">€{{ number_format((float) ($spendSummary['in_progress'] ?? 0), 2) }}</div>
+                    <div class="dw-value">{{ format_money($spendSummary['in_progress'] ?? 0) }}</div>
                 </div>
                 <div class="dw-item d-flex align-items-center">
-                    <a href="{{ route('advertiser.analytics', ['view' => 'day']) }}" class="btn btn-sm btn-outline-primary">Full history</a>
+                    <a href="{{ route('advertiser.analytics', ['view' => 'day']) }}" class="dash-icon-link" aria-label="Full history" title="Full history">
+                        <i class="fa fa-history" aria-hidden="true"></i>
+                    </a>
                 </div>
                 @if(!empty($spendCandles['has_spend']))
                     <div class="w-100">
@@ -568,7 +603,7 @@
                         </div>
                         <p class="dash-spend-chart-fallback d-none mb-0" id="dashSpendChartFallback" role="status">
                             Chart unavailable —
-                            <a href="{{ route('advertiser.analytics', ['view' => 'day']) }}">open Full history</a>.
+                            <a href="{{ route('advertiser.analytics', ['view' => 'day']) }}" class="dash-icon-link" aria-label="Full history" title="Full history"><i class="fa fa-history" aria-hidden="true"></i></a>
                         </p>
                     </div>
                 @endif
@@ -577,7 +612,9 @@
                 <div class="card-body p-4">
                     <div class="d-flex justify-content-between align-items-center mb-3">
                         <h5 class="mb-0 recent-orders-title">Recent orders</h5>
-                        <a href="{{ route('advertiser.orders') }}" class="small recent-orders-link">View all</a>
+                        <a href="{{ route('advertiser.orders') }}" class="dash-icon-link" aria-label="View all orders" title="View all orders">
+                            <i class="fa fa-arrow-right" aria-hidden="true"></i>
+                        </a>
                     </div>
                     @if($recentOrders->isEmpty())
                         <x-ui.empty-state
@@ -644,7 +681,7 @@
                                                 </span>
                                             </td>
                                             <td class="text-end py-3 fw-semibold" style="color:#1a585e;">
-                                                €{{ number_format((float) $order->total_amount, 2) }}
+                                                {{ format_money($order->total_amount) }}
                                             </td>
                                         </tr>
                                     @endforeach
@@ -698,7 +735,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function money(n) {
         const v = Number(n || 0);
-        return v % 1 === 0 ? ('€' + v.toFixed(0)) : ('€' + v.toFixed(2));
+        return (window.slbFormatMoney || function (x) { return '€' + Number(x).toFixed(2); })(v);
     }
 
     try {
@@ -759,7 +796,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     y: {
                         stacked: true,
                         beginAtZero: true,
-                        ticks: { callback: (v) => '€' + v },
+                        ticks: { callback: (v) => (window.slbFormatMoney || function (x) { return '€' + x; })(v) },
                     },
                 },
             },

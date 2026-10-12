@@ -145,6 +145,32 @@ class BlogTranslationFeatureTest extends TestCase
             ->assertDontSee(url('/de/blog/english-title'), false);
     }
 
+    public function test_language_switcher_on_untranslated_post_goes_to_locale_blog_index(): void
+    {
+        $blog = Blog::factory()->published()->create([
+            'title' => 'English title',
+            'slug' => 'english-title',
+            'content' => '<p>English body</p>',
+        ]);
+
+        BlogTranslation::create([
+            'blog_id' => $blog->id,
+            'locale' => 'en',
+            'title' => 'English title',
+            'slug' => 'english-title',
+            'excerpt' => 'English excerpt',
+            'content' => '<p>English body</p>',
+            'is_published' => true,
+        ]);
+
+        $this->assertSame('blog', PublicI18n::blogPathForLocale('english-title', 'de'));
+
+        $this->get('/blog/english-title')
+            ->assertOk()
+            ->assertSee(url('/de/blog'), false)
+            ->assertDontSee(url('/de/blog/english-title'), false);
+    }
+
     public function test_copied_translation_slugs_are_localized_from_title(): void
     {
         $blog = Blog::factory()->published()->create([
@@ -253,10 +279,8 @@ class BlogTranslationFeatureTest extends TestCase
         ]);
 
         $this->get('/de/blog/english-fallback')
-            ->assertOk()
-            ->assertSee('English title', false)
-            ->assertSee('translation is not yet available', false)
-            ->assertSee('rel="canonical" href="'.url('/blog/english-fallback').'"', false);
+            ->assertRedirect(url('/blog/english-fallback'));
+        $this->assertSame(301, $this->get('/de/blog/english-fallback')->status());
     }
 
     public function test_canonical_url_falls_back_to_primary_locale_when_english_is_missing(): void
@@ -287,7 +311,7 @@ class BlogTranslationFeatureTest extends TestCase
     {
         $admin = $this->adminUser();
 
-        $this->actingAs($admin)->post(route('admin.blogs.store'), [
+        $response = $this->actingAs($admin)->post(route('admin.blogs.store'), [
             'status' => 'published',
             'translations' => [
                 'en' => [
@@ -315,9 +339,9 @@ class BlogTranslationFeatureTest extends TestCase
                     'content' => '',
                 ],
             ],
-        ])->assertRedirect(route('admin.blogs.index'));
-
+        ]);
         $blog = Blog::query()->where('slug', 'english-only-title')->firstOrFail();
+        $response->assertRedirect(route('admin.blogs.edit', $blog->id));
         $this->assertDatabaseHas('blog_translations', [
             'blog_id' => $blog->id,
             'locale' => 'en',
@@ -441,7 +465,7 @@ class BlogTranslationFeatureTest extends TestCase
     {
         $admin = $this->adminUser();
 
-        $this->actingAs($admin)->post(route('admin.blogs.store'), [
+        $response = $this->actingAs($admin)->post(route('admin.blogs.store'), [
             'status' => 'published',
             'translations' => [
                 'en' => [
@@ -461,9 +485,10 @@ class BlogTranslationFeatureTest extends TestCase
                     'is_published' => '1',
                 ],
             ],
-        ])->assertRedirect(route('admin.blogs.index'));
+        ]);
 
         $blog = Blog::query()->where('slug', 'meta-english')->firstOrFail();
+        $response->assertRedirect(route('admin.blogs.edit', $blog->id));
         $this->assertDatabaseHas('blog_translations', [
             'blog_id' => $blog->id,
             'locale' => 'en',
@@ -541,7 +566,7 @@ class BlogTranslationFeatureTest extends TestCase
     {
         $admin = $this->adminUser();
 
-        $this->actingAs($admin)->post(route('admin.blogs.store'), [
+        $response = $this->actingAs($admin)->post(route('admin.blogs.store'), [
             'status' => 'published',
             'translations' => [
                 'en' => [
@@ -557,9 +582,10 @@ class BlogTranslationFeatureTest extends TestCase
                     'content' => '<p>Deutscher Inhalt</p>',
                 ],
             ],
-        ])->assertRedirect(route('admin.blogs.index'));
+        ]);
 
         $blog = Blog::query()->where('slug', 'english-admin-title')->firstOrFail();
+        $response->assertRedirect(route('admin.blogs.edit', $blog->id));
         $this->assertDatabaseHas('blog_translations', ['blog_id' => $blog->id, 'locale' => 'en', 'title' => 'English Admin Title']);
         $this->assertDatabaseHas('blog_translations', ['blog_id' => $blog->id, 'locale' => 'de', 'title' => 'Deutscher Admin Titel']);
 
@@ -587,7 +613,7 @@ class BlogTranslationFeatureTest extends TestCase
 
     public function test_store_uses_primary_locale_slug_as_public_fallback(): void
     {
-        $this->actingAs($this->adminUser())->post(route('admin.blogs.store'), [
+        $response = $this->actingAs($this->adminUser())->post(route('admin.blogs.store'), [
             'status' => 'published',
             'primary_locale' => 'de',
             'translations' => [
@@ -604,9 +630,10 @@ class BlogTranslationFeatureTest extends TestCase
                     'content' => '<p>Deutscher Inhalt</p>',
                 ],
             ],
-        ])->assertRedirect(route('admin.blogs.index'));
+        ]);
 
         $blog = Blog::query()->where('slug', 'deutscher-primary-slug-beitrag')->firstOrFail();
+        $response->assertRedirect(route('admin.blogs.edit', $blog->id));
         $this->assertSame('de', $blog->primary_locale);
         $this->assertSame('english-primary-slug-post', $blog->translations()->where('locale', 'en')->value('slug'));
         $this->assertSame('deutscher-primary-slug-beitrag', $blog->translations()->where('locale', 'de')->value('slug'));

@@ -178,21 +178,19 @@ class BlogRoutesTest extends TestCase
         $slug = BacklinksAufbauenBlogPost::SLUG;
         $canonical = PublicI18n::urlForLocale('blog/'.$slug, 'de');
 
-        $paths = ['/blog/'.$slug];
-        foreach (PublicI18n::prefixed() as $locale) {
-            $paths[] = '/'.$locale.'/blog/'.$slug;
-        }
+        $this->get('/de/blog/'.$slug)
+            ->assertOk()
+            ->assertSee('Backlinks aufbauen', false)
+            ->assertSee('rel="canonical" href="'.$canonical.'"', false)
+            ->assertSee('hreflang="x-default"', false)
+            ->assertSee($canonical, false)
+            ->assertSee('FAQPage', false)
+            ->assertSee('/marketplace', false)
+            ->assertSee('/register', false);
 
-        foreach ($paths as $path) {
-            $this->get($path)
-                ->assertOk()
-                ->assertSee('Backlinks aufbauen', false)
-                ->assertSee('rel="canonical" href="'.$canonical.'"', false)
-                ->assertSee('hreflang="x-default"', false)
-                ->assertSee($canonical, false)
-                ->assertSee('FAQPage', false)
-                ->assertSee('/marketplace', false)
-                ->assertSee('/register', false);
+        $this->get('/blog/'.$slug)->assertRedirect($canonical);
+        foreach (array_diff(PublicI18n::prefixed(), ['de']) as $locale) {
+            $this->get('/'.$locale.'/blog/'.$slug)->assertRedirect($canonical);
         }
 
         $this->assertDatabaseHas('blogs', [
@@ -256,8 +254,7 @@ class BlogRoutesTest extends TestCase
             ->assertSee('/blog/backlinks-aufbauen-die-echte-rankings-erzielen-nicht-nur-zahlen', false);
 
         $this->get('/fr/blog/'.$slug)
-            ->assertOk()
-            ->assertSee('rel="canonical" href="'.$canonical.'"', false);
+            ->assertRedirect($canonical);
 
         $this->assertDatabaseHas('blogs', [
             'slug' => $slug,
@@ -294,9 +291,7 @@ class BlogRoutesTest extends TestCase
             ->assertSee('/marketplace', false);
 
         $this->get('/de/blog/'.$slug)
-            ->assertOk()
-            ->assertSee('rel="canonical" href="'.$canonical.'"', false)
-            ->assertSee('How to Buy Guest Posts on SEOLinkBuildings', false);
+            ->assertRedirect($canonical);
 
         $this->assertDatabaseHas('blogs', [
             'slug' => $slug,
@@ -325,8 +320,7 @@ class BlogRoutesTest extends TestCase
             ->assertSee('/register', false);
 
         $this->get('/nl/blog/'.$slug)
-            ->assertOk()
-            ->assertSee('rel="canonical" href="'.$canonical.'"', false);
+            ->assertRedirect($canonical);
 
         $this->assertDatabaseHas('blogs', [
             'slug' => $slug,

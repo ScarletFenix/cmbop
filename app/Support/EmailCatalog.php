@@ -5,6 +5,7 @@ namespace App\Support;
 use App\Mail\AdminAssignedSiteNotification;
 use App\Mail\AdminManualPaymentNotification;
 use App\Mail\AdminNewUserRegistered;
+use App\Mail\AdminPublishedSiteNotification;
 use App\Mail\AdminStalledOrderAlert;
 use App\Mail\AdvertiserOrderStalledNotice;
 use App\Mail\AdvertiserReviewNudge;
@@ -13,6 +14,7 @@ use App\Mail\AutoApproveReminderMail;
 use App\Mail\BulkSiteItemsRejected;
 use App\Mail\BulkSiteRequestCancelled;
 use App\Mail\BulkSiteRequestSubmitted;
+use App\Mail\BulkSitesReadyForPublisherReview;
 use App\Mail\BulkSitesSeededNotification;
 use App\Mail\CommunityFeedbackReviewed;
 use App\Mail\ContentEvaluationResult;
@@ -77,6 +79,7 @@ use App\Models\User;
 use App\Models\WebsiteSuggestion;
 use App\Models\Withdrawal;
 use Illuminate\Mail\Mailable;
+use Illuminate\Mail\Markdown;
 use Illuminate\Support\Str;
 
 class EmailCatalog
@@ -389,10 +392,17 @@ class EmailCatalog
                 'status' => 'active',
             ],
             'bulk_sites_seeded' => [
-                'name' => 'Bulk Sites Seeded — Complete Details',
-                'description' => 'Publisher asked to finish details after staff seed a bulk request.',
+                'name' => 'Bulk Sites Active',
+                'description' => 'Publisher told their bulk sites are active after staff publish them.',
                 'category' => 'Publishers',
                 'mailable' => BulkSitesSeededNotification::class,
+                'status' => 'active',
+            ],
+            'bulk_sites_publisher_review' => [
+                'name' => 'Bulk Sites Ready for Publisher Review',
+                'description' => 'Publisher asked to review bulk sites before they go live.',
+                'category' => 'Publishers',
+                'mailable' => BulkSitesReadyForPublisherReview::class,
                 'status' => 'active',
             ],
             'admin_assigned_site' => [
@@ -400,6 +410,13 @@ class EmailCatalog
                 'description' => 'Publisher asked to accept a website staff added for them.',
                 'category' => 'Publishers',
                 'mailable' => AdminAssignedSiteNotification::class,
+                'status' => 'active',
+            ],
+            'admin_published_site' => [
+                'name' => 'Admin Published Site — Live',
+                'description' => 'Publisher notified that staff published a website live (not verified, no Accept).',
+                'category' => 'Publishers',
+                'mailable' => AdminPublishedSiteNotification::class,
                 'status' => 'active',
             ],
             'audience_campaign' => [
@@ -588,6 +605,39 @@ class EmailCatalog
         return self::templates()[$key] ?? null;
     }
 
+    /**
+     * Exact HTML used by Admin → Emails → Preview.
+     */
+    public static function previewHtml(string $key, ?string $audience = null): ?string
+    {
+        if (! self::get($key)) {
+            return null;
+        }
+
+        if ($html = self::frameworkPreviewHtml($key)) {
+            return $html;
+        }
+
+        $mailable = self::makeMailable($key, array_filter([
+            'audience' => is_string($audience) && $audience !== '' ? $audience : null,
+        ]));
+
+        return $mailable?->render();
+    }
+
+    public static function frameworkPreviewHtml(string $key): ?string
+    {
+        return match ($key) {
+            'password_reset' => app(Markdown::class)->render('emails.password-reset-preview', [
+                'resetUrl' => rtrim(app_public_url(), '/').'/password/reset/preview-token',
+            ]),
+            'email_verification' => app(Markdown::class)->render('emails.email-verification-preview', [
+                'verifyUrl' => self::previewVerificationUrl(),
+            ]),
+            default => null,
+        };
+    }
+
     public static function keyFromMailable(?string $class): ?string
     {
         if (! $class) {
@@ -644,8 +694,12 @@ class EmailCatalog
             'your site discount has ended' => 'site_discount_ended',
             'your payout details were updated' => 'payout_profile_updated',
             'bulk site request from' => 'bulk_site_request_submitted',
+            'your bulk sites are active' => 'bulk_sites_seeded',
+            'please review websites from your bulk request' => 'bulk_sites_publisher_review',
             'your sites were added to pending sites' => 'bulk_sites_seeded',
             'please accept a website we added' => 'admin_assigned_site',
+            'a website is live on your account' => 'admin_published_site',
+            'websites are live on your account' => 'admin_published_site',
             'your bulk website request was cancelled' => 'bulk_request_cancelled',
             'we did not add' => 'bulk_request_items_rejected',
             'spend budget' => 'spend_budget_alert',
@@ -716,9 +770,15 @@ class EmailCatalog
         $item = self::sampleOrderItem();
         $site = self::sampleSite();
         $user = self::sampleUser();
-        $audience = in_array($options['audience'] ?? '', ['advertiser', 'publisher', 'admin'], true)
-            ? $options['audience']
+        $rawAudience = is_string($options['audience'] ?? null) ? $options['audience'] : '';
+        $completed = $rawAudience === 'completed';
+        $audience = in_array($rawAudience, ['advertiser', 'publisher', 'admin'], true)
+            ? $rawAudience
             : 'advertiser';
+        if ($key === 'welcome' && $audience === 'publisher') {
+            $user->setAttribute('preview_workspace', 'publisher');
+            $user->email_verified_at = now();
+        }
 
         return match ($key) {
             'welcome' => new WelcomeEmail($user),
@@ -727,11 +787,11 @@ class EmailCatalog
             'order_status_changed' => new OrderStatusChanged(
                 order: $order,
                 recipient: $user,
-                audience: $audience,
+                audience: $completed ? 'advertiser' : $audience,
                 changeKind: 'status',
-                previousValue: 'pending',
-                newValue: 'processing',
-                description: match ($audience) {
+                previousValue: $completed ? 'review' : 'pending',
+                newValue: $completed ? 'completed' : 'processing',
+                description: $completed ? null : match ($audience) {
                     'publisher' => 'This order is now processing — please continue the placement.',
                     'admin' => 'Order status changed to processing (admin copy).',
                     default => 'Great news — the publisher accepted this order and work can begin.',
@@ -859,7 +919,9 @@ class EmailCatalog
                 $user
             ),
             'bulk_sites_seeded' => new BulkSitesSeededNotification(self::sampleBulkSiteRequest(), 3, $user, ['example.com', 'sample-two.example']),
+            'bulk_sites_publisher_review' => new BulkSitesReadyForPublisherReview(self::sampleBulkSiteRequest(), 2, $user, ['example.com', 'sample-two.example']),
             'admin_assigned_site' => new AdminAssignedSiteNotification($site, $user),
+            'admin_published_site' => new AdminPublishedSiteNotification($site, $user),
             'audience_campaign' => new AudienceCampaignMail(self::sampleCampaign(), $user),
             'bulk_request_cancelled' => new BulkSiteRequestCancelled(self::sampleBulkSiteRequest(), $user, 'Sample cancellation reason for preview.'),
             'bulk_request_items_rejected' => new BulkSiteItemsRejected(

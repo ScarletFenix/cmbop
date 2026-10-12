@@ -55,7 +55,7 @@
     '@@context' => 'https://schema.org',
     '@type' => 'FAQPage',
     'mainEntity' => $faqEntities,
-], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) !!}
+], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_HEX_TAG|JSON_HEX_AMP|JSON_INVALID_UTF8_SUBSTITUTE) ?: '{}' !!}
 </script>
 <script type="application/ld+json">
 {!! json_encode([
@@ -64,14 +64,27 @@
     'name' => 'EU guest-post price index',
     'description' => $metaDescription,
     'url' => $canonical,
-    'creator' => class_exists(\App\Support\BrandOrganization::class)
+    'creator' => (class_exists(\App\Support\BrandOrganization::class) && method_exists(\App\Support\BrandOrganization::class, 'schema'))
         ? \App\Support\BrandOrganization::schema()
         : ['@type' => 'Organization', 'name' => 'SEOLinkBuildings'],
     'isAccessibleForFree' => true,
-    'spatialCoverage' => 'Europe',
-    'variableMeasured' => 'Median advertiser guest-post checkout price (EUR)',
+    'license' => url('/terms-of-services'),
+    'spatialCoverage' => [
+        '@type' => 'Place',
+        'name' => 'Europe',
+    ],
+    'variableMeasured' => array_filter([
+        '@type' => 'PropertyValue',
+        'name' => 'Median advertiser guest-post checkout price',
+        'description' => 'Median of advertiser checkout prices on catalog-visible listings whose primary country is in Europe.',
+        'unitText' => 'EUR',
+        'unitCode' => 'EUR',
+        'value' => isset($index['europe']['median']) && $index['europe']['median'] !== null
+            ? $index['europe']['median']
+            : null,
+    ], static fn ($value) => $value !== null),
     'measurementTechnique' => 'Median of advertiser checkout prices on catalog-visible listings, grouped by primary country. Country rows require at least 3 listings.',
-], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) !!}
+], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_HEX_TAG|JSON_HEX_AMP|JSON_INVALID_UTF8_SUBSTITUTE) ?: '{}' !!}
 </script>
 <script type="application/ld+json">
 {!! json_encode([
@@ -81,7 +94,7 @@
     'url' => $canonical,
     'description' => $metaDescription,
     'inLanguage' => 'en-GB',
-], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) !!}
+], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_HEX_TAG|JSON_HEX_AMP|JSON_INVALID_UTF8_SUBSTITUTE) ?: '{}' !!}
 </script>
 @endpush
 
@@ -107,7 +120,7 @@
                 <div class="col-md-6">
                     <div class="h-100 p-4 rounded-4 bg-white border">
                         <div class="small text-muted mb-1" data-price-index-kpi="europe-median">Europe median</div>
-                        <div class="h3 mb-0" style="color:#1a585e;">€{{ number_format((float) $index['europe']['median'], 0) }}</div>
+                        <div class="h3 mb-0" style="color:#1a585e;">{{ format_money($index['europe']['median'], ['decimals' => 0]) }}</div>
                         <p class="small text-muted mb-0 mt-2">Median advertiser checkout price across {{ number_format((int) $index['europe']['listings']) }} European catalog listings.</p>
                     </div>
                 </div>
@@ -151,7 +164,7 @@
                                     {{ $row['name'] }}
                                 @endif
                             </td>
-                            <td class="fw-semibold" style="color:#1a585e;">€{{ number_format((float) $row['median'], 0) }}</td>
+                            <td class="fw-semibold" style="color:#1a585e;">{{ format_money($row['median'], ['decimals' => 0]) }}</td>
                             <td>{{ number_format((int) $row['listings']) }}</td>
                         </tr>
                     @endforeach

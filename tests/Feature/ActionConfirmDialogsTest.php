@@ -48,7 +48,7 @@ class ActionConfirmDialogsTest extends TestCase
             $this->assertFileExists($layout);
             $html = file_get_contents($layout);
             $this->assertStringContainsString('js/slb-confirm.js', $html, $layout);
-            $this->assertStringContainsString('sweetalert2@11', $html, $layout);
+            $this->assertStringContainsString('assets/vendor/sweetalert2/sweetalert2.min.js', $html, $layout);
         }
     }
 
@@ -64,7 +64,10 @@ class ActionConfirmDialogsTest extends TestCase
             resource_path('views/admin/promotions/banners/index.blade.php') => 'data-slb-confirm="Delete this banner?',
             resource_path('views/admin/promotions/announcements/index.blade.php') => 'data-slb-confirm="Delete this announcement?',
             resource_path('views/admin/promotions/index.blade.php') => 'Disable the {{ $welcomeBonusEuro }} welcome credit?',
-            resource_path('views/admin/moderation/index.blade.php') => 'data-slb-confirm="Approve this submission',
+            resource_path('views/admin/moderation/index.blade.php') => 'data-slb-confirm="Re-check this article',
+            resource_path('views/admin/moderation/show.blade.php') => 'data-slb-confirm="Approve this submission',
+            resource_path('views/admin/content-library/show.blade.php') => 'data-slb-confirm="Restore this article from archive?',
+            resource_path('views/admin/content-library/results.blade.php') => 'data-slb-confirm="Restore the selected archived articles?',
             resource_path('views/admin/campaigns/index.blade.php') => 'data-slb-confirm="Send this campaign',
             resource_path('views/admin/bulk-site-requests/show.blade.php') => "title: 'Cancel bulk request?'",
         ];
@@ -95,8 +98,8 @@ class ActionConfirmDialogsTest extends TestCase
         $this->assertFileExists($path);
         $html = file_get_contents($path);
 
-        $this->assertStringContainsString("confirmTitle = 'Seed draft sites?'", $html);
-        $this->assertStringContainsString("confirmTextBtn = 'Add drafts'", $html);
+        $this->assertStringContainsString("confirmTitle = reviewMode ? 'Send these sites for review?' : 'Publish these sites?'", $html);
+        $this->assertStringContainsString("confirmTextBtn = reviewMode ? 'Send for review' : 'Publish sites'", $html);
         $this->assertStringContainsString('title: confirmTitle', $html);
         $this->assertStringContainsString('confirmText: confirmTextBtn', $html);
         $this->assertStringContainsString('slbBulkAllowSubmit', $html);

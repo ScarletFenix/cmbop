@@ -8,7 +8,7 @@ marketplace ("Seolinkbuildings") connecting **advertisers** (buy placements) wit
 internal EUR wallet system with optional Stripe card payments. The UI is server-
 rendered Blade with hand-written CSS in `public/assets/css` (Bootstrap 5 + jQuery
 from CDN); Vite/Tailwind are configured but not wired into any view yet.
-New advertisers get a €20 welcome bonus.
+New advertisers do not get a welcome bonus unless an admin turns it on under Promotions.
 
 Standard commands live in `composer.json` (`scripts`) and `package.json`
 (`scripts`). Common ones:
@@ -32,6 +32,8 @@ below are non-obvious gotchas discovered during setup.
 `127.0.0.1:3306`). Several migrations use raw MySQL DDL
 (`ALTER TABLE ... MODIFY COLUMN ... ENUM(...)`) that SQLite cannot run.
 PHPUnit uses `.env.testing` (sqlite) and is fine.
+On Hostinger set `DB_HOST=localhost` (unix socket). `127.0.0.1` is TCP and
+fails with `SQLSTATE[HY000] [2002] Operation not permitted`.
 
 MariaDB does not auto-start. Start it each session (it is not in the update script
 because the update script must not start services):
@@ -46,9 +48,10 @@ After migrate + seed (or `composer setup`), confirm the launch path:
 php artisan ops:production-ready --repair
 ```
 `--repair` runs `migrate --force`, seeds roles, sets Hostinger `MEDIA_PATH` /
-`APP_URL`, and recreates `public/storage`. Production page views do the same
-(`HOSTINGER_WEB_HEAL`, default on) so live Hostinger does not need SSH from
-this agent. `--strict` fails on warnings too.
+`APP_URL`, and recreates `public/storage`. Production page views
+(`HOSTINGER_WEB_HEAL`, default on) refresh `MEDIA_PATH`, `APP_URL`, and
+`public/storage` only. They do not migrate and they do not run the scheduler.
+`--strict` fails on warnings too.
 
 ### Seeders
 `php artisan db:seed` now includes `RolesTableSeeder` (advertiser, publisher,
@@ -63,8 +66,11 @@ There is no default user/admin seeder; an admin must be promoted manually in the
   Google's bundle for nothing. Brute-force protection is rate limiting only
   (see `LoginController` / `ForgotPasswordController`), so keep those limits in
   place. Do not reintroduce a captcha without wiring server-side verification.
-- Login is blocked until the email is verified. With `MAIL_MAILER=log`, the
-  verification link is written to `storage/logs/laravel.log` (search for
+- Login is blocked until the email is verified. Expired or missing links are
+  resent from `/email/verify` (no login required); login has a backup
+  “Need a verification email?” control. Links last
+  `AUTH_VERIFICATION_EXPIRE_MINUTES` (default 24 hours). With `MAIL_MAILER=log`,
+  the verification link is written to `storage/logs/laravel.log` (search for
   `email/verify`). Visiting that link (no auth required) verifies the account.
 
 ### Email is queued, not synchronous
@@ -100,6 +106,22 @@ See [`docs/ops-mail-reminders.md`](docs/ops-mail-reminders.md) for `APP_URL` /
 `MAIL_QUEUE_AUTO_DRAIN`. Canonical schedule lives in `bootstrap/app.php`.
 Admin → Campaigns (queued marketing mail + signed unsubscribe):
 [`docs/admin-campaigns.md`](docs/admin-campaigns.md).
+Admin → Audiences (census, CSV, Campaigns handoff):
+[`docs/admin-audiences.md`](docs/admin-audiences.md).
+Admin → Blogs (public posts, curated sync):
+[`docs/admin-blogs.md`](docs/admin-blogs.md).
+Admin → Email Center (delivery, templates, test send):
+[`docs/admin-emails.md`](docs/admin-emails.md).
+Admin → Promotions (notices, banners, welcome bonus, feature credits):
+[`docs/admin-promotions.md`](docs/admin-promotions.md).
+Admin → Moderation (policy, scan queue, test scan):
+[`docs/admin-moderation.md`](docs/admin-moderation.md).
+Admin → Content Library (article desk, overrides, archive):
+[`docs/admin-content-library.md`](docs/admin-content-library.md).
+Admin → Activity History (append-only ActivityLogger log):
+[`docs/admin-activity-logs.md`](docs/admin-activity-logs.md).
+Admin → Catalog Activity (hide-mode / copy-strike queue):
+[`docs/admin-catalog-activity.md`](docs/admin-catalog-activity.md).
 
 ### Durable media (Hostinger)
 Public uploads use the `public` disk (`/storage/...`). Leave `MEDIA_PATH` empty

@@ -476,6 +476,7 @@ class AdvertiserBillingUxTest extends TestCase
         );
 
         $this->mock(InvoicePdfGenerator::class, function ($mock) use ($sql) {
+            $mock->shouldReceive('ensureCustomerPdf')->andThrow($sql);
             $mock->shouldReceive('generateAndStore')->andThrow($sql);
             $mock->shouldReceive('download')->andThrow($sql);
             $mock->shouldReceive('stream')->andThrow($sql);
@@ -492,10 +493,8 @@ class AdvertiserBillingUxTest extends TestCase
 
         $this->actingAs($user)
             ->getJson(route('advertiser.billing.view', $tax))
-            ->assertStatus(503)
-            ->assertJsonPath('success', false)
-            ->assertJsonPath('message', 'Unable to open that invoice.')
-            ->assertJsonMissingPath('exception')
+            ->assertOk()
+            ->assertSee('INVOICE #', false)
             ->assertDontSee('SQLSTATE');
 
         $this->mock(BillingDocumentService::class, function ($mock) use ($sql) {

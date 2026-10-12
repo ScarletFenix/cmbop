@@ -10,9 +10,16 @@
   <div class="container-fluid slb-hero-inner">
     <div class="slb-hero-copy">
       <div class="slb-hero-brand-stack">
-        <img src="{{ asset('assets/img/logo1.png') }}?v={{ @filemtime(public_path('assets/img/logo1.png')) ?: '1' }}"
-             alt="SEOLinkBuildings"
-             class="slb-hero-mark">
+        <picture>
+          <source type="image/webp" srcset="{{ asset('assets/img/logo1-hero.webp') }}?v={{ @filemtime(public_path('assets/img/logo1-hero.webp')) ?: '1' }}">
+          <img src="{{ asset('assets/img/logo1.png') }}?v={{ @filemtime(public_path('assets/img/logo1.png')) ?: '1' }}"
+               alt="SEOLinkBuildings"
+               class="slb-hero-mark"
+               width="1006"
+               height="280"
+               fetchpriority="high"
+               decoding="sync">
+        </picture>
       </div>
 
       <h1 class="slb-hero-title">{{ __('messages.hero_support') }}</h1>
@@ -34,34 +41,83 @@
       </a>
     </div>
 
-    <div class="slb-hero-visual">
-      <a href="{{ $marketplaceHref }}" class="slb-hero-catalog-link" aria-label="{{ __('messages.nav_marketplace') }}">
-        <picture>
-          <source srcset="{{ asset('assets/img/dashboard.webp') }}" type="image/webp">
-          <img
-            src="{{ asset('assets/img/dashboard.png') }}"
-            alt="{{ __('messages.hero_product_alt') }}"
-            class="slb-hero-product"
-            width="1200"
-            height="518"
-            fetchpriority="high"
-            loading="eager"
-            decoding="async"
-          >
-        </picture>
-      </a>
-    </div>
+    @if (view()->exists('components.hero-catalog-preview'))
+      @include('components.hero-catalog-preview')
+    @endif
   </div>
 </section>
 
+@push('page_styles')
 <style>
+  /* Homepage only: lock nav size in <head> so the 1006×280 wordmark
+     cannot paint full-size and then shrink (scale-up flash on land/refresh).
+     Match navbar.blade.php breakpoints; kill size transitions. */
+  :root { --public-navbar-height: 88px; }
+  body { padding-top: var(--public-navbar-height); }
+  #mainNavbar,
+  #mainNavbar .navbar-logo,
+  #mainNavbar .navbar-brand {
+    transition: none !important;
+  }
+  #mainNavbar { padding: 0.75rem 0; }
+  #mainNavbar .navbar-logo {
+    height: 52px;
+    max-height: 52px;
+    width: auto;
+    max-width: min(240px, 52vw);
+    object-fit: contain;
+  }
+  #mainNavbar .navbar-brand {
+    max-width: min(240px, 52vw);
+  }
+  @media (min-width: 992px) and (max-width: 1399.98px) {
+    :root { --public-navbar-height: 76px; }
+    #mainNavbar { padding: 0.45rem 0; }
+    #mainNavbar .navbar-logo {
+      height: 44px;
+      max-height: 44px;
+      max-width: min(180px, 22vw);
+    }
+    #mainNavbar .navbar-brand { max-width: min(180px, 22vw); }
+  }
+  @media (min-width: 1400px) {
+    :root { --public-navbar-height: 96px; }
+    #mainNavbar .navbar-logo {
+      height: 64px;
+      max-height: 64px;
+      max-width: min(300px, 30vw);
+    }
+    #mainNavbar .navbar-brand { max-width: min(300px, 30vw); }
+  }
+  @media (max-width: 991.98px) {
+    :root { --public-navbar-height: 76px; }
+  }
+  @media (max-width: 575.98px) {
+    :root { --public-navbar-height: 72px; }
+    #mainNavbar .navbar-logo {
+      height: 44px;
+      max-height: 44px;
+      max-width: min(200px, 56vw);
+    }
+    #mainNavbar .navbar-brand { max-width: min(200px, 56vw); }
+  }
+
+  .slb-hero-brand-stack,
+  .slb-hero-title,
+  .slb-hero-tagline,
+  .slb-hero-cta-group,
+  .slb-hero-catalog-text,
+  .slb-hero-visual,
+  .slb-hero-catalog-clone {
+    animation: none !important;
+  }
+
   .slb-hero {
     position: relative;
     width: 100%;
     margin-top: 0;
     min-height: min(88vh, 820px);
-    overflow-x: clip;
-    overflow-y: visible;
+    overflow: visible;
     display: flex;
     align-items: center;
     padding: 28px 0 0;
@@ -93,19 +149,22 @@
     position: relative;
     z-index: 2;
     display: grid;
-    grid-template-columns: minmax(240px, 0.78fr) minmax(0, 1.45fr);
-    gap: 28px;
+    grid-template-columns: minmax(320px, 0.72fr) minmax(0, 1.8fr);
+    gap: 20px;
     align-items: center;
     width: 100%;
-    max-width: 1440px;
+    max-width: 1600px;
     margin: 0 auto;
     padding-left: clamp(16px, 4vw, 56px);
     padding-right: 0;
     min-width: 0;
   }
 
-  .slb-hero-copy,
-  .slb-hero-visual {
+  body:has(.locale-suggest-banner) .slb-hero {
+    padding-top: 56px;
+  }
+
+  .slb-hero-copy {
     min-width: 0;
     max-width: 100%;
   }
@@ -116,7 +175,7 @@
     align-items: flex-start;
     gap: 12px;
     margin-bottom: 1rem;
-    animation: slbHeroFade 0.7s ease both;
+    animation: none;
   }
 
   .slb-hero-mark {
@@ -138,7 +197,7 @@
     letter-spacing: -0.015em;
     word-spacing: 0.04em;
     max-width: 32ch;
-    animation: slbHeroFade 0.7s ease 0.08s both;
+    animation: none;
   }
 
   .slb-hero-tagline {
@@ -147,15 +206,19 @@
     line-height: 1.55;
     color: #4b5563;
     max-width: 36ch;
-    animation: slbHeroFade 0.7s ease 0.16s both;
+    animation: none;
   }
 
   .slb-hero-cta-group {
     display: flex;
-    flex-wrap: wrap;
-    gap: 12px;
+    flex-wrap: nowrap;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    width: max-content;
+    max-width: 100%;
     margin-top: 1.75rem;
-    animation: slbHeroFade 0.7s ease 0.24s both;
+    animation: none;
   }
 
   .slb-hero-cta,
@@ -163,23 +226,15 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 14px 28px;
-    font-size: 0.98rem;
+    flex: 0 0 auto;
+    padding: 11px 16px;
+    font-size: 0.86rem;
     font-weight: 700;
     border-radius: 12px;
     text-decoration: none;
     white-space: nowrap;
-    max-width: 100%;
+    max-width: none;
     transition: transform 0.25s ease, box-shadow 0.25s ease, background 0.25s ease, color 0.25s ease, border-color 0.25s ease;
-  }
-
-  @media (max-width: 399.98px) {
-    .slb-hero-cta,
-    .slb-hero-cta-secondary {
-      white-space: normal;
-      text-align: center;
-      line-height: 1.25;
-    }
   }
 
   .slb-hero-cta {
@@ -218,7 +273,7 @@
     font-weight: 600;
     color: var(--brand-primary, #1a585e);
     text-decoration: none;
-    animation: slbHeroFade 0.7s ease 0.3s both;
+    animation: none;
   }
 
   .slb-hero-catalog-text:hover {
@@ -237,159 +292,120 @@
   .slb-hero-visual {
     position: relative;
     align-self: end;
-    width: 100%;
-    animation: slbHeroRise 0.9s ease 0.18s both;
-  }
-
-  .slb-hero-catalog-link {
-    display: block;
-    position: relative;
-    text-decoration: none;
-    color: inherit;
-    transform-origin: bottom right;
-  }
-
-  .slb-hero-product {
-    display: block;
-    width: 100%;
-    height: auto;
-    min-height: 0;
-    max-height: none;
-    aspect-ratio: 1200 / 518;
-    /* contain (not cover) so DR/DA/Traffic stay in frame on laptop columns */
-    object-fit: contain;
-    object-position: left top;
+    justify-self: end;
+    width: 1340px;
+    max-width: none;
+    zoom: 0.74;
+    animation: none;
+    overflow: hidden;
     border-radius: 18px 0 0 0;
     box-shadow: -18px 24px 70px rgba(26, 88, 94, 0.18);
     border: 1px solid rgba(26, 88, 94, 0.1);
     border-right: none;
-    transition: transform 0.35s ease, box-shadow 0.35s ease;
-    background: #fff;
+    background: #f7fafb;
   }
 
-  .slb-hero-live-catalog {
-    display: flex;
-    flex-direction: column;
-    object-fit: unset;
-    overflow: hidden;
-    max-height: min(68vh, 620px);
-    min-height: min(48vh, 440px);
-  }
-
-  .slb-hero-live-catalog__chrome {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 10px 14px;
-    background: linear-gradient(180deg, #f7fafb 0%, #eef4f5 100%);
-    border-bottom: 1px solid rgba(26, 88, 94, 0.1);
-  }
-
-  .slb-hero-live-catalog__dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: #cbd5e1;
-  }
-
-  .slb-hero-live-catalog__dot:nth-child(1) { background: #f87171; }
-  .slb-hero-live-catalog__dot:nth-child(2) { background: #fbbf24; }
-  .slb-hero-live-catalog__dot:nth-child(3) { background: #34d399; }
-
-  .slb-hero-live-catalog__label {
-    margin-left: 8px;
-    font-size: 0.78rem;
-    font-weight: 600;
-    color: #64748b;
-    letter-spacing: 0.01em;
-  }
-
-  .slb-hero-live-catalog__table {
+  .slb-hero-catalog-clone {
+    pointer-events: none;
+    padding: 10px 8px 6px 10px;
+    background: transparent;
     width: 100%;
-    border-collapse: collapse;
-    font-size: 0.82rem;
-    flex: 1;
-  }
-
-  .slb-hero-live-catalog__table thead th {
-    text-align: left;
-    padding: 10px 12px;
-    font-size: 0.7rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: #64748b;
-    background: #f8fafc;
-    border-bottom: 1px solid rgba(26, 88, 94, 0.08);
-    white-space: nowrap;
-  }
-
-  .slb-hero-live-catalog__table tbody td {
-    padding: 10px 12px;
-    border-bottom: 1px solid rgba(148, 163, 184, 0.18);
-    color: #1e293b;
-    vertical-align: middle;
-    white-space: nowrap;
-  }
-
-  .slb-hero-live-catalog__table tbody tr:last-child td {
-    border-bottom: none;
-  }
-
-  .slb-hero-live-catalog__site {
-    display: flex;
-    align-items: center;
-    gap: 10px;
     min-width: 0;
   }
 
-  .slb-hero-live-catalog__thumb {
-    width: 36px;
-    height: 36px;
-    border-radius: 8px;
-    object-fit: cover;
-    flex-shrink: 0;
-    background: #eef4f5;
-    border: 1px solid rgba(26, 88, 94, 0.1);
+  .slb-hero-catalog-clone .catalog-filters-card .row {
+    flex-wrap: nowrap;
   }
 
-  .slb-hero-live-catalog__thumb--placeholder {
+  .slb-hero-catalog-clone .catalog-tag-quick {
+    flex-wrap: nowrap;
+    white-space: nowrap;
+  }
+
+  .slb-hero-catalog-clone .catalog-table-scroll {
+    display: block !important;
+    overflow: visible;
+  }
+
+  .slb-hero-catalog-clone .catalog-metric {
     display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    min-width: 3.5rem;
+  }
+
+  .slb-hero-catalog-clone .catalog-metric__bar {
+    display: block;
+    width: 3.25rem;
+    max-width: 100%;
+    height: 6px;
+    border-radius: 999px;
+    background: #d5dbe3;
+    overflow: hidden;
+  }
+
+  .slb-hero-catalog-clone .catalog-metric__fill {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: #3faeb2;
+  }
+
+  .slb-hero-catalog-clone .catalog-metric--da .catalog-metric__fill {
+    background: #24abe2;
+  }
+
+  .slb-hero-catalog-clone .catalog-country {
+    display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
-    color: #94a3b8;
-    font-size: 0.9rem;
+    gap: 2px;
   }
 
-  .slb-hero-live-catalog__name {
-    font-weight: 600;
-    color: #0f172a;
-    max-width: 18ch;
-    overflow: hidden;
-    text-overflow: ellipsis;
+  .slb-hero-catalog-clone__flag-tile {
+    font-size: 1.15rem;
+    background: #e6f5f5;
   }
 
-  .slb-hero-live-catalog__domain {
-    font-size: 0.72rem;
-    color: #64748b;
+  .slb-hero-catalog-hit {
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    text-decoration: none;
   }
 
-  .slb-hero-live-catalog__country {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-weight: 600;
-    color: #334155;
+  /* Clip the wide catalog preview without making body a scrollport.
+     overflow-x:hidden + overflow-y:auto on body unsticks position:fixed
+     and drops the navbar on land/refresh. clip + visible keeps window
+     scrolling and the bar pinned. */
+  html:has(.slb-hero-catalog-clone),
+  body:has(.slb-hero-catalog-clone) {
+    overflow-x: clip;
+    overflow-y: visible;
+    scrollbar-gutter: auto;
   }
-
-  .slb-hero-live-catalog__price {
-    font-weight: 700;
-    color: var(--brand-primary, #1a585e);
+  body:has(.slb-hero) #mainNavbar {
+    position: fixed;
+    top: 0;
+    right: 0;
+    left: 0;
+    width: 100%;
   }
-
-  .slb-hero-catalog-link:hover .slb-hero-product {
-    transform: translateY(-4px);
-    box-shadow: -20px 28px 72px rgba(26, 88, 94, 0.22);
+  @media (min-width: 992px) {
+    body:has(.slb-hero) #mainNavbar .container {
+      flex-wrap: nowrap;
+    }
+  }
+  body:has(.slb-hero) .slb-reveal {
+    animation: none;
+    opacity: 1;
+  }
+  body:has(.slb-hero-catalog-clone) #main-content,
+  body:has(.slb-hero-catalog-clone) #content {
+    overflow-x: visible;
+    overflow-y: visible;
   }
 
   @keyframes slbHeroFade {
@@ -432,6 +448,8 @@
     }
     .slb-hero-cta-group {
       justify-content: center;
+      margin-left: auto;
+      margin-right: auto;
     }
     /*
      * Stacked hero: shrinking the full dashboard to ~360px makes metrics
@@ -441,6 +459,8 @@
     .slb-hero-visual {
       width: 100%;
       max-width: 100%;
+      zoom: 1;
+      justify-self: stretch;
       align-self: stretch;
       overflow-x: auto;
       overflow-y: hidden;
@@ -448,40 +468,14 @@
       overscroll-behavior-x: contain;
       border-radius: 16px;
       box-shadow: 0 18px 48px rgba(26, 88, 94, 0.14);
-      background: #fff;
+      background: #f7fafb;
       border: 1px solid rgba(26, 88, 94, 0.1);
       scrollbar-width: thin;
     }
-    .slb-hero-catalog-link {
-      display: block;
-      width: max-content;
-      min-width: 100%;
-      transform-origin: center bottom;
-    }
-    .slb-hero-product {
-      width: min(920px, 235vw);
-      max-width: none;
-      min-width: 720px;
-      height: auto;
-      aspect-ratio: 1200 / 518;
-      object-fit: contain;
-      object-position: left top;
-      border-radius: 0;
-      border: 0;
-      box-shadow: none;
-    }
-    .slb-hero-live-catalog {
-      min-height: 0;
-      max-height: none;
-      height: auto;
+    .slb-hero-catalog-clone {
       width: min(920px, 235vw);
       min-width: 720px;
       max-width: none;
-      overflow: visible;
-      border-radius: 0;
-      aspect-ratio: auto;
-      box-shadow: none;
-      border: 0;
     }
   }
 
@@ -490,17 +484,20 @@
       padding-top: 12px;
     }
     .slb-hero-cta-group {
-      flex-direction: column;
-      align-items: stretch;
+      flex-direction: row;
+      flex-wrap: nowrap;
+      justify-content: center;
     }
     .slb-hero-cta,
     .slb-hero-cta-secondary {
-      width: 100%;
+      width: auto;
+      padding: 10px 12px;
+      font-size: 0.8rem;
     }
     .slb-hero-visual {
       border-radius: 14px;
     }
-    .slb-hero-product {
+    .slb-hero-catalog-clone {
       width: min(860px, 230vw);
       min-width: 680px;
     }
@@ -513,9 +510,10 @@
     .slb-hero-cta-group,
     .slb-hero-catalog-text,
     .slb-hero-visual,
-    .slb-hero-product {
+    .slb-hero-catalog-clone {
       animation: none !important;
       transition: none !important;
     }
   }
 </style>
+@endpush

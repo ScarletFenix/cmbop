@@ -3,14 +3,14 @@
 
 Dear Customer,
 
-Your order **#{{ $order->order_number }}** has been **accepted** by the publisher.
+Your order #{{ $order->order_number }} has been accepted by the publisher.
 
 ## Order Details:
 
-- **Site:** {{ $site->site_name }}
-- **Order Number:** {{ $order->order_number }}
-- **Reference Code:** {{ $order->reference_code }}
-- **Content to be published:** <a href="{{ $orderItem->content_link }}">View Content</a>
+- Site: {{ $site->site_name }}
+- Order Number: {{ $order->order_number }}
+- Reference Code: {{ $order->reference_code }}
+- Content to be published: <a href="{{ $orderItem->content_link }}">View Content</a>
 
 @php
     $mailItem = $orderItem ?? null;
@@ -36,7 +36,7 @@ The publisher has accepted your order and will start working on it.
 
 You can track your order status from your dashboard.
 
-@component('mail::button', ['url' => route('advertiser.orders', ['focus' => 'order', 'order' => $order->id])])
+@component('mail::button', ['url' => rtrim(app_public_url(), '/').route('advertiser.orders', ['focus' => 'order', 'order' => $order->id], false)])
 View My Orders
 @endcomponent
 

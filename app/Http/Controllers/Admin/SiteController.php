@@ -6,14 +6,19 @@ use App\Http\Controllers\Controller;
 use App\Jobs\CaptureSiteScreenshotJob;
 use App\Jobs\EnrichSiteJob;
 use App\Mail\AdminAssignedSiteNotification;
+use App\Mail\AdminAssignedSitesBatchNotification;
+use App\Mail\AdminPublishedSiteNotification;
+use App\Mail\AdminPublishedSitesBatchNotification;
 use App\Mail\SiteStatusNotification;
 use App\Models\BulkSiteRequest;
 use App\Models\BulkSiteRequestItem;
 use App\Models\Category;
 use App\Models\Country;
+use App\Models\InAppNotification;
 use App\Models\Language;
 use App\Models\Site;
 use App\Models\User;
+use App\Models\WebsiteSuggestion;
 use App\Services\ActivityLogger;
 use App\Services\CheckoutSchemaService;
 use App\Services\CommunityInboxNotifier;
@@ -21,13 +26,19 @@ use App\Services\InAppNotificationService;
 use App\Services\Marketplace\CountryLanguagePairs;
 use App\Services\SiteDescriptionSanitizer;
 use App\Services\SiteEnrichment\ImageOptimizationService;
+use App\Services\SiteEnrichment\SiteEnrichmentService;
+use App\Services\SiteEnrichment\SiteMetricsAggregator;
+use App\Support\AdminSites;
 use App\Support\CatalogHealthQueue;
+use App\Support\CatalogProblemReport;
 use App\Support\CommunityInbox;
 use App\Support\MarketingOpsQueues;
 use App\Support\PublicStorageLink;
 use App\Support\SiteDescriptionRules;
 use App\Support\SiteImageUpload;
 use App\Support\SiteTag;
+use App\Support\StaffListingPublishMode;
+use App\Support\StaffSitesIndexCounts;
 use App\Support\UserFacingError;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -37,18 +48,23 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class SiteController extends Controller
 {
+    private const EXPORT_LIMIT = 5000;
+
     public function index(Request $request)
     {
         try {
@@ -69,29 +85,78 @@ class SiteController extends Controller
                 'needsReviewFilterActive' => false,
                 'openReviewCount' => 0,
                 'missingMarketCount' => 0,
+                'missingMarketListCount' => 0,
+                'scanFailedListCount' => 0,
+                'belowQualityListCount' => 0,
+                'liveUnverifiedCount' => 0,
+                'placeholderListCount' => 0,
+                'missingCoverListCount' => 0,
+                'readyToActivateCount' => 0,
                 'healthCounts' => CatalogHealthQueue::emptyCounts(),
                 'waitingOnPublisherFilterActive' => false,
                 'waitingOnPublisherCount' => 0,
                 'publisherSearch' => trim(scalar_text($request->query('q', ''))),
-                'flatQueue' => $request->boolean('flat'),
+                'flatQueue' => $this->requestFlag($request, 'flat'),
                 'flatQueueSites' => null,
+                'allSitesMode' => false,
+                'allSites' => null,
+                'sitesExportLimited' => false,
+                'sitesExportUrl' => staff_route('sites.export'),
+                'staffSiteFilters' => $this->staffSitesListFilterState($request),
+                'listingTagOptions' => SiteTag::catalogFilterOptions(),
+                'marketplaceCountries' => collect(),
+                'marketplaceLanguages' => collect(),
+                'nicheOptions' => [],
+                'waitingStageCounts' => ['filling' => 0, 'reviewing' => 0, 'accept' => 0],
+                'waitingStage' => '',
+                'sitesReturnQuery' => [],
+                'archivedListCount' => 0,
             ]);
         }
     }
 
     private function renderSitesIndex(Request $request)
     {
-        $needsReviewFilter = $request->boolean('needs_review')
-            || $request->query('verified') === '0'
-            || $request->query('verified') === 0;
+        $needsReviewFilter = $this->requestNeedsReview($request);
 
-        $waitingOnPublisherFilter = $request->boolean('waiting_on_publisher');
+        $waitingOnPublisherFilter = $this->requestFlag($request, 'waiting_on_publisher');
         if ($waitingOnPublisherFilter) {
             $needsReviewFilter = false;
         }
 
         $publisherSearch = trim(scalar_text($request->query('q', '')));
-        $flatQueue = $request->boolean('flat');
+        $flatQueue = $this->requestFlag($request, 'flat');
+        $staffSiteFilters = $this->staffSitesListFilterState($request);
+        $publishersDirectory = $this->requestFlag($request, 'publishers');
+        $allSitesMode = $this->requestFlag($request, 'all')
+            && ! $needsReviewFilter
+            && ! $waitingOnPublisherFilter
+            && ! $publishersDirectory
+            && ! $request->filled('publisher')
+            && ! $request->filled('site');
+        $listingTagOptions = SiteTag::catalogFilterOptions();
+        $marketplaceCountries = $this->staffMarketplaceCountries();
+        $marketplaceLanguages = $this->staffMarketplaceLanguages();
+        $nicheOptions = $this->staffNicheOptions();
+
+        if ($publisherSearch !== ''
+            && ! $request->filled('publisher')
+            && ! $request->filled('site')
+            && $this->staffListPage($request) === 1
+            && ! $this->staffSitesListNarrows($staffSiteFilters)
+        ) {
+            $exactSite = $this->uniqueStaffSiteForExactSearch($publisherSearch, $staffSiteFilters);
+            if ($exactSite) {
+                return redirect()->to(staff_route('sites.index', $this->staffSitesIndexRedirectQuery(
+                    $publisherSearch,
+                    $exactSite,
+                    $needsReviewFilter,
+                    $waitingOnPublisherFilter,
+                    $staffSiteFilters,
+                    $allSitesMode
+                )));
+            }
+        }
 
         $reviewQueue = function ($q) {
             $q->needsAdminReview()->notArchived();
@@ -101,69 +166,258 @@ class SiteController extends Controller
         $needsReviewFilterActive = $needsReviewFilter;
         $waitingOnPublisherFilterActive = $waitingOnPublisherFilter;
         $openReviewCount = MarketingOpsQueues::sitesReadyForStaffCount();
-        $waitingOnPublisherCount = MarketingOpsQueues::sitesWaitingOnPublisherCount();
-        $healthCounts = CatalogHealthQueue::counts();
-        $missingMarketCount = (int) ($healthCounts[CatalogHealthQueue::MISSING_MARKET] ?? 0);
+        $waitingListNarrows = $waitingOnPublisherFilter
+            && ($publisherSearch !== '' || $this->staffSitesListNarrows($staffSiteFilters));
+        $waitingStage = $waitingOnPublisherFilter
+            ? (string) ($staffSiteFilters['waiting_stage'] ?? '')
+            : '';
+        if ($waitingOnPublisherFilter && $waitingListNarrows) {
+            $countWaitingStage = function (?string $stage) use ($publisherSearch, $staffSiteFilters): int {
+                $stageQuery = MarketingOpsQueues::sitesWaitingOnPublisher($stage);
+                $this->applyStaffIndexSiteOrPublisherSearch($stageQuery, $publisherSearch);
+                $this->applyStaffSitesListFilters($stageQuery, $staffSiteFilters);
+
+                return (int) $stageQuery->count();
+            };
+            $waitingOnPublisherCount = $countWaitingStage(null);
+            $waitingStageCounts = [
+                'filling' => $countWaitingStage('filling'),
+                'reviewing' => $countWaitingStage('reviewing'),
+                'accept' => $countWaitingStage('accept'),
+            ];
+        } elseif ($waitingOnPublisherFilter) {
+            $waitingOnPublisherCount = MarketingOpsQueues::sitesWaitingOnPublisherCount();
+            $waitingStageCounts = MarketingOpsQueues::sitesWaitingStageCounts();
+        } else {
+            $waitingOnPublisherCount = MarketingOpsQueues::sitesWaitingOnPublisherCount();
+            $waitingStageCounts = ['filling' => 0, 'reviewing' => 0, 'accept' => 0];
+        }
+        $catalogCounts = $this->staffSitesCatalogBadgeCounts();
+        $liveUnverifiedCount = (int) $catalogCounts['liveUnverifiedCount'];
+        $belowQualityListCount = (int) $catalogCounts['belowQualityListCount'];
+        $readyToActivateCount = (int) $catalogCounts['readyToActivateCount'];
+        $placeholderListCount = (int) $catalogCounts['placeholderListCount'];
+        $missingCoverListCount = (int) $catalogCounts['missingCoverListCount'];
+        $missingMarketListCount = (int) $catalogCounts['missingMarketListCount'];
+        $scanFailedListCount = (int) $catalogCounts['scanFailedListCount'];
+        $archivedListCount = (int) $catalogCounts['archivedListCount'];
+        $healthCounts = is_array($catalogCounts['healthCounts'] ?? null)
+            ? $catalogCounts['healthCounts']
+            : CatalogHealthQueue::emptyCounts();
+        $missingMarketCount = (int) ($catalogCounts['missingMarketCount'] ?? 0);
         $flatQueueSites = null;
+        $allSites = null;
+        $sitesExportLimited = false;
 
         if ($flatQueue && $waitingOnPublisherFilter) {
-            $users = new LengthAwarePaginator([], 0, 20, 1, [
+            $listPerPage = $this->staffListPerPage($request, 20);
+            $listQuery = $this->staffSitesPagerAppendQuery(
+                $request,
+                $needsReviewFilter,
+                $waitingOnPublisherFilter,
+                $flatQueue,
+                $allSitesMode,
+                $publishersDirectory
+            );
+            $users = new LengthAwarePaginator([], 0, $listPerPage, 1, [
                 'path' => $request->url(),
-                'query' => $request->query(),
+                'query' => $listQuery,
             ]);
-            $flatQueueSites = MarketingOpsQueues::sitesWaitingOnPublisher()
-                ->with('publisher:id,name,email')
-                ->orderBy('created_at')
-                ->orderBy('id')
-                ->paginate(30)
-                ->appends($request->query());
+            $flatQueueSites = MarketingOpsQueues::sitesWaitingOnPublisher($waitingStage !== '' ? $waitingStage : null)
+                ->with($this->staffSiteRowWith())
+                ->when(Schema::hasTable('order_items'), fn ($q) => $q->withCount('orderItems'));
+            $this->applyStaffIndexSiteOrPublisherSearch($flatQueueSites, $publisherSearch);
+            $this->applyStaffSitesListFilters($flatQueueSites, $staffSiteFilters);
+            $this->applyStaffSitesListSort($flatQueueSites, $staffSiteFilters['sort'], 'oldest');
+            $flatQueueSites = $flatQueueSites
+                ->paginate($listPerPage, ['*'], 'page', $this->staffListPage($request))
+                ->appends($listQuery);
         } elseif ($flatQueue && $needsReviewFilter) {
-            $users = new LengthAwarePaginator([], 0, 20, 1, [
+            $listPerPage = $this->staffListPerPage($request, 20);
+            $listQuery = $this->staffSitesPagerAppendQuery(
+                $request,
+                $needsReviewFilter,
+                $waitingOnPublisherFilter,
+                $flatQueue,
+                $allSitesMode,
+                $publishersDirectory
+            );
+            $users = new LengthAwarePaginator([], 0, $listPerPage, 1, [
                 'path' => $request->url(),
-                'query' => $request->query(),
+                'query' => $listQuery,
             ]);
             $flatQueueSites = MarketingOpsQueues::sitesReadyForStaff()
-                ->with('publisher:id,name,email')
-                ->orderBy('created_at')
-                ->orderBy('id')
-                ->paginate(30)
-                ->appends($request->query());
+                ->with($this->staffSiteRowWith())
+                ->when(Schema::hasTable('order_items'), fn ($q) => $q->withCount('orderItems'));
+            $this->applyStaffIndexSiteOrPublisherSearch($flatQueueSites, $publisherSearch);
+            $this->applyStaffSitesListFilters($flatQueueSites, $staffSiteFilters);
+            $this->applyStaffSitesListSort($flatQueueSites, $staffSiteFilters['sort'], 'oldest');
+            $flatQueueSites = $flatQueueSites
+                ->paginate($listPerPage, ['*'], 'page', $this->staffListPage($request))
+                ->appends($listQuery);
+        } elseif ($allSitesMode) {
+            $listPerPage = $this->staffListPerPage($request, 20);
+            $listQuery = $this->staffSitesPagerAppendQuery(
+                $request,
+                $needsReviewFilter,
+                $waitingOnPublisherFilter,
+                $flatQueue,
+                $allSitesMode,
+                $publishersDirectory
+            );
+            $users = new LengthAwarePaginator([], 0, $listPerPage, 1, [
+                'path' => $request->url(),
+                'query' => $listQuery,
+            ]);
+            $allSites = $this->staffAllSitesQuery($request, $publisherSearch, $staffSiteFilters)
+                ->paginate($listPerPage, ['*'], 'page', $this->staffListPage($request))
+                ->appends($listQuery);
+            $sitesExportLimited = $allSites->total() > self::EXPORT_LIMIT;
         } else {
             // Counts only — do not eager-load every site row for the publisher list.
+            $reviewListNarrows = $needsReviewFilter
+                && ($publisherSearch !== '' || $this->staffSitesListNarrows($staffSiteFilters));
+            $narrowQueueSites = function ($q) use ($publisherSearch, $staffSiteFilters) {
+                if ($publisherSearch !== '') {
+                    $this->applyStaffIndexSiteOrPublisherSearch($q, $publisherSearch);
+                }
+                $this->applyStaffSitesListFilters($q, $staffSiteFilters);
+            };
+            $waitingStageForList = $waitingStage !== '' ? $waitingStage : null;
+
             $query = User::query()
                 ->whereHas('roles', fn ($q) => $q->where('name', 'publisher'))
-                ->withCount(['sites' => fn ($q) => $q->notArchived()])
-                ->withCount(['sites as needs_review_sites_count' => $reviewQueue])
-                ->withCount(['sites as waiting_on_publisher_sites_count' => function ($q) {
-                    MarketingOpsQueues::constrainSitesWaitingOnPublisher($q);
+                ->withCount(['sites' => function ($q) use ($staffSiteFilters) {
+                    $this->applyStaffSitesArchiveScope($q, $staffSiteFilters);
+                }])
+                ->withCount(['sites as needs_review_sites_count' => function ($q) use ($reviewQueue, $reviewListNarrows, $narrowQueueSites) {
+                    $reviewQueue($q);
+                    if ($reviewListNarrows) {
+                        $narrowQueueSites($q);
+                    }
                 }]);
 
-            if ($publisherSearch !== '') {
-                $query->where(function ($q) use ($publisherSearch) {
-                    $q->where('name', 'like', '%'.$publisherSearch.'%')
-                        ->orWhere('email', 'like', '%'.$publisherSearch.'%');
+            if ($waitingOnPublisherFilter) {
+                $query
+                    ->withCount(['sites as waiting_on_publisher_sites_count' => function ($q) use ($waitingListNarrows, $narrowQueueSites) {
+                        MarketingOpsQueues::constrainSitesWaitingOnPublisher($q);
+                        if ($waitingListNarrows) {
+                            $narrowQueueSites($q);
+                        }
+                    }])
+                    ->withCount(['sites as waiting_filling_sites_count' => function ($q) use ($waitingListNarrows, $narrowQueueSites) {
+                        MarketingOpsQueues::constrainSitesWaitingOnPublisher($q, 'filling');
+                        if ($waitingListNarrows) {
+                            $narrowQueueSites($q);
+                        }
+                    }])
+                    ->withCount(['sites as waiting_reviewing_sites_count' => function ($q) use ($waitingListNarrows, $narrowQueueSites) {
+                        MarketingOpsQueues::constrainSitesWaitingOnPublisher($q, 'reviewing');
+                        if ($waitingListNarrows) {
+                            $narrowQueueSites($q);
+                        }
+                    }])
+                    ->withCount(['sites as waiting_accept_sites_count' => function ($q) use ($waitingListNarrows, $narrowQueueSites) {
+                        MarketingOpsQueues::constrainSitesWaitingOnPublisher($q, 'accept');
+                        if ($waitingListNarrows) {
+                            $narrowQueueSites($q);
+                        }
+                    }]);
+            }
+
+            if ($publisherSearch !== '' || $this->staffSitesListNarrows($staffSiteFilters)) {
+                $query->withCount(['sites as matched_sites_count' => function ($q) use ($publisherSearch, $staffSiteFilters, $needsReviewFilter, $waitingOnPublisherFilter, $waitingStageForList, $reviewQueue, $narrowQueueSites) {
+                    if ($waitingOnPublisherFilter) {
+                        MarketingOpsQueues::constrainSitesWaitingOnPublisher($q, $waitingStageForList);
+                        $narrowQueueSites($q);
+                    } elseif ($needsReviewFilter) {
+                        $reviewQueue($q);
+                        $narrowQueueSites($q);
+                    } else {
+                        $this->applyStaffSitesArchiveScope($q, $staffSiteFilters);
+                        if ($publisherSearch !== '') {
+                            $this->constrainStaffSiteSearch($q, $publisherSearch);
+                        }
+                        $this->applyStaffSitesListFilters($q, $staffSiteFilters);
+                    }
+                }]);
+            }
+            if ($publisherSearch !== '' && ! $needsReviewFilter && ! $waitingOnPublisherFilter) {
+                $this->applyStaffPublisherSearch($query, $publisherSearch, $staffSiteFilters);
+            }
+
+            if ($this->staffSitesListNarrows($staffSiteFilters) && ! $needsReviewFilter && ! $waitingOnPublisherFilter) {
+                $query->whereHas('sites', function ($sites) use ($staffSiteFilters) {
+                    $this->applyStaffSitesArchiveScope($sites, $staffSiteFilters);
+                    $this->applyStaffSitesListFilters($sites, $staffSiteFilters);
                 });
             }
 
             // Ops queue: publishers with sites ready for admin decision (not unfinished drafts)
             if ($needsReviewFilter) {
-                $query->whereHas('sites', $reviewQueue)
-                    ->withCount(['sites as unverified_sites_count' => $reviewQueue]);
+                $query->whereHas('sites', function ($q) use ($reviewQueue, $reviewListNarrows, $narrowQueueSites) {
+                    $reviewQueue($q);
+                    if ($reviewListNarrows) {
+                        $narrowQueueSites($q);
+                    }
+                })->withCount(['sites as unverified_sites_count' => function ($q) use ($reviewQueue, $reviewListNarrows, $narrowQueueSites) {
+                    $reviewQueue($q);
+                    if ($reviewListNarrows) {
+                        $narrowQueueSites($q);
+                    }
+                }]);
             }
 
             if ($waitingOnPublisherFilter) {
-                $query->whereHas('sites', function ($q) {
-                    MarketingOpsQueues::constrainSitesWaitingOnPublisher($q);
+                $query->whereHas('sites', function ($q) use ($waitingStageForList, $waitingListNarrows, $narrowQueueSites) {
+                    MarketingOpsQueues::constrainSitesWaitingOnPublisher($q, $waitingStageForList);
+                    if ($waitingListNarrows) {
+                        $narrowQueueSites($q);
+                    }
                 });
             }
 
-            $users = $query
-                ->orderByDesc($waitingOnPublisherFilter ? 'waiting_on_publisher_sites_count' : 'needs_review_sites_count')
-                ->orderByDesc('sites_count')
-                ->orderBy('name')
-                ->paginate(20)
-                ->appends($request->query());
+            $waitingSort = match ($waitingStageForList) {
+                'filling' => 'waiting_filling_sites_count',
+                'reviewing' => 'waiting_reviewing_sites_count',
+                'accept' => 'waiting_accept_sites_count',
+                default => 'waiting_on_publisher_sites_count',
+            };
+
+            $users = $query;
+            if ($needsReviewFilter || $waitingOnPublisherFilter) {
+                $users = $users
+                    ->orderByDesc($waitingOnPublisherFilter ? $waitingSort : 'needs_review_sites_count')
+                    ->orderByDesc('sites_count')
+                    ->orderBy('name');
+            } else {
+                $users = $users->orderByDesc('id');
+            }
+            $users = $users
+                ->paginate($this->staffListPerPage($request, 20), ['*'], 'page', $this->staffListPage($request))
+                ->appends($this->staffSitesPagerAppendQuery(
+                    $request,
+                    $needsReviewFilter,
+                    $waitingOnPublisherFilter,
+                    $flatQueue,
+                    $allSitesMode,
+                    $publishersDirectory
+                ));
         }
+
+        if ($flatQueueSites && $flatQueueSites->total() > self::EXPORT_LIMIT) {
+            $sitesExportLimited = true;
+        }
+
+        $sitesExportUrl = staff_route('sites.export', $this->staffSitesPagerAppendQuery(
+            $request,
+            $needsReviewFilter,
+            $waitingOnPublisherFilter,
+            $flatQueue,
+            $allSitesMode,
+            $publishersDirectory
+        ));
+        $sitesReturnQuery = AdminSites::rememberReturnQuery($request);
 
         return view('admin.sites', compact(
             'users',
@@ -172,18 +426,275 @@ class SiteController extends Controller
             'waitingOnPublisherFilterActive',
             'openReviewCount',
             'waitingOnPublisherCount',
+            'waitingStageCounts',
+            'waitingStage',
+            'liveUnverifiedCount',
+            'belowQualityListCount',
+            'readyToActivateCount',
+            'placeholderListCount',
+            'missingCoverListCount',
+            'missingMarketListCount',
+            'scanFailedListCount',
             'missingMarketCount',
             'healthCounts',
             'publisherSearch',
             'flatQueue',
-            'flatQueueSites'
+            'flatQueueSites',
+            'allSitesMode',
+            'publishersDirectory',
+            'allSites',
+            'sitesExportLimited',
+            'sitesExportUrl',
+            'archivedListCount',
+            'staffSiteFilters',
+            'listingTagOptions',
+            'marketplaceCountries',
+            'marketplaceLanguages',
+            'nicheOptions',
+            'sitesReturnQuery'
         ));
+    }
+
+    /**
+     * @param  array{tag: ?string, country: string, listing_active: string, listing_verified: string, below_quality: bool, missing_market: bool, archived: bool, sort: string}  $filters
+     * @return array<string, mixed>
+     */
+    private function staffSitesIndexRedirectQuery(
+        string $search,
+        Site $exact,
+        bool $needsReview,
+        bool $waiting,
+        array $filters,
+        bool $allSitesMode
+    ): array {
+        return array_filter([
+            'q' => $search,
+            'publisher' => $exact->publisher_id,
+            'site' => $exact->id,
+            'needs_review' => $needsReview ? 1 : null,
+            'waiting_on_publisher' => $waiting ? 1 : null,
+            'all' => $allSitesMode ? 1 : null,
+            'tag' => ($filters['tag'] ?? null) !== null && ($filters['tag'] ?? '') !== '' ? $filters['tag'] : null,
+            'country' => ($filters['country'] ?? '') !== '' ? $filters['country'] : null,
+            'listing_active' => ($filters['listing_active'] ?? '') !== '' ? $filters['listing_active'] : null,
+            'listing_verified' => ($filters['listing_verified'] ?? '') !== '' ? $filters['listing_verified'] : null,
+            'below_quality' => ! empty($filters['below_quality']) ? 1 : null,
+            'ready_to_activate' => ! empty($filters['ready_to_activate']) ? 1 : null,
+            'missing_market' => ! empty($filters['missing_market']) ? 1 : null,
+            'placeholder' => ! empty($filters['placeholder']) ? 1 : null,
+            'missing_cover' => ! empty($filters['missing_cover']) ? 1 : null,
+            'bulk_request' => ! empty($filters['bulk_request']) ? 1 : null,
+            'scan_failed' => ! empty($filters['scan_failed']) ? 1 : null,
+            'copy_strike' => ! empty($filters['copy_strike']) ? 1 : null,
+            'has_orders' => ! empty($filters['has_orders']) ? 1 : null,
+            'featured' => ! empty($filters['featured']) ? 1 : null,
+            'bulk_discount' => ! empty($filters['bulk_discount']) ? 1 : null,
+            'csv_metrics' => ! empty($filters['csv_metrics']) ? 1 : null,
+            'price_min' => $filters['price_min'] ?? null,
+            'price_max' => $filters['price_max'] ?? null,
+            'traffic_min' => $filters['traffic_min'] ?? null,
+            'da_min' => $filters['da_min'] ?? null,
+            'metrics_age' => ($filters['metrics_age'] ?? '') !== '' ? $filters['metrics_age'] : null,
+            'language' => ($filters['language'] ?? '') !== '' ? $filters['language'] : null,
+            'niche' => ($filters['niche'] ?? '') !== '' ? $filters['niche'] : null,
+            'archived' => ! empty($filters['archived']) ? 1 : null,
+            'waiting_stage' => $waiting && ($filters['waiting_stage'] ?? '') !== '' ? $filters['waiting_stage'] : null,
+            'sort' => ($filters['sort'] ?? '') !== '' ? $filters['sort'] : null,
+        ], static fn ($value) => $value !== null && $value !== '');
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function staffSiteRowWith(): array
+    {
+        $with = [$this->staffPublisherWith()];
+        if (Site::hasSitesColumn('status_reason_by')) {
+            $with[] = 'statusReasonAuthor:id,name';
+        }
+
+        return $with;
+    }
+
+    /**
+     * CSV follows the queue on screen: review, waiting on publisher, or all sites.
+     *
+     * @return Builder<Site>
+     */
+    private function staffExportSitesQuery(Request $request): Builder
+    {
+        $filters = $this->staffSitesListFilterState($request);
+        $search = trim(scalar_text($request->query('q', '')));
+        $queue = null;
+        $defaultSort = 'newest';
+
+        if ($this->requestFlag($request, 'waiting_on_publisher')) {
+            $stage = ($filters['waiting_stage'] ?? '') !== '' ? $filters['waiting_stage'] : null;
+            $queue = MarketingOpsQueues::sitesWaitingOnPublisher($stage);
+            $defaultSort = 'oldest';
+        } elseif ($this->requestNeedsReview($request)) {
+            $queue = MarketingOpsQueues::sitesReadyForStaff();
+            $defaultSort = 'oldest';
+        }
+
+        if ($queue === null) {
+            return $this->staffAllSitesQuery($request, $search, $filters);
+        }
+
+        $queue->with($this->staffSiteRowWith());
+        if (Schema::hasTable('order_items')) {
+            $queue->withCount('orderItems');
+        }
+        $this->applyStaffIndexSiteOrPublisherSearch($queue, $search);
+        $this->applyStaffSitesListFilters($queue, $filters);
+        $this->applyStaffSitesListSort($queue, (string) ($filters['sort'] ?? ''), $defaultSort);
+
+        return $queue;
+    }
+
+    private function staffPublisherWith(): string
+    {
+        $columns = ['id', 'name', 'email'];
+        try {
+            if (Schema::hasColumn('users', 'catalog_hide_until')) {
+                $columns[] = 'catalog_hide_until';
+            }
+        } catch (\Throwable) {
+            // Hide chip stays off when the column cannot be read.
+        }
+
+        return 'publisher:'.implode(',', $columns);
+    }
+
+    /**
+     * @param  array{tag: ?string, country: string, listing_active: string, listing_verified: string, below_quality: bool, missing_market: bool, archived: bool, sort: string}  $filters
+     * @return Builder<Site>
+     */
+    private function staffAllSitesQuery(Request $request, ?string $search = null, ?array $filters = null): Builder
+    {
+        $filters ??= $this->staffSitesListFilterState($request);
+        $search ??= trim(scalar_text($request->query('q', '')));
+
+        $query = Site::query()->with($this->staffSiteRowWith());
+        if (Schema::hasTable('order_items')) {
+            $query->withCount('orderItems');
+        }
+        $this->applyStaffSitesArchiveScope($query, $filters);
+        $this->applyStaffIndexSiteOrPublisherSearch($query, $search);
+        $this->applyStaffSitesListFilters($query, $filters);
+        $this->applyStaffSitesListSort($query, $filters['sort'], 'newest');
+
+        return $query;
+    }
+
+    public function export(Request $request): StreamedResponse
+    {
+        $matchCount = 0;
+        try {
+            $query = $this->staffExportSitesQuery($request);
+            $matchCount = (clone $query)->count();
+            $rows = $query->limit(self::EXPORT_LIMIT)->get();
+        } catch (\Throwable $e) {
+            Log::warning('Admin sites export query failed', ['error' => $e->getMessage()]);
+            $rows = collect();
+            $matchCount = 0;
+        }
+
+        ActivityLogger::tryLog(
+            'sites.exported',
+            ($request->user()?->name ?? 'Staff').' exported sites ('.$rows->count().' row(s)).',
+            null,
+            [
+                'rows_exported' => $rows->count(),
+                'truncated' => $matchCount > self::EXPORT_LIMIT,
+            ]
+        );
+
+        $filename = 'sites-'.now()->format('Y-m-d-His').'.csv';
+
+        return response()->streamDownload(function () use ($rows) {
+            $out = fopen('php://output', 'w');
+            fputcsv($out, [
+                'id',
+                'site_name',
+                'domain',
+                'site_url',
+                'publisher',
+                'publisher_email',
+                'countries',
+                'languages',
+                'categories',
+                'link_type',
+                'sponsored',
+                'tag',
+                'da',
+                'dr',
+                'traffic',
+                'price_eur',
+                'sale_eur',
+                'featured',
+                'bulk',
+                'bulk_request',
+                'orders',
+                'active',
+                'verified',
+                'enrichment_status',
+                'metrics_fetched_at',
+                'copy_strike_hide',
+            ]);
+            foreach ($rows as $site) {
+                $facts = $this->staffListingFacts($site);
+                fputcsv($out, [
+                    $this->csvCell($site->id),
+                    $this->csvCell($site->site_name),
+                    $this->csvCell($site->domain),
+                    $this->csvCell($site->site_url),
+                    $this->csvCell($site->publisher?->name),
+                    $this->csvCell($site->publisher?->email),
+                    $this->csvCell(implode('|', $facts['countries_list'])),
+                    $this->csvCell(implode('|', $facts['languages_list'])),
+                    $this->csvCell(implode('|', $facts['categories_list'])),
+                    $this->csvCell($facts['link_type_label']),
+                    $this->csvCell($site->sponsored ? 'yes' : 'no'),
+                    $this->csvCell($site->tagLabel('')),
+                    $this->csvCell($site->da),
+                    $this->csvCell($site->dr),
+                    $this->csvCell($site->traffic),
+                    $this->csvCell($site->price),
+                    $this->csvCell($facts['sale_price']),
+                    $this->csvCell($facts['featured'] ? 'yes' : 'no'),
+                    $this->csvCell($facts['bulk_discount'] ? 'yes' : 'no'),
+                    $this->csvCell($site->wasAddedFromBulkRequest() ? 'yes' : 'no'),
+                    $this->csvCell($site->orderItemsCount()),
+                    $this->csvCell($site->active ? 'yes' : 'no'),
+                    $this->csvCell($site->verified ? 'yes' : 'no'),
+                    $this->csvCell($site->enrichment_status),
+                    $this->csvCell($facts['metrics_fetched_label']),
+                    $this->csvCell($facts['publisher_copy_strike'] ? 'yes' : 'no'),
+                ]);
+            }
+            fclose($out);
+        }, $filename, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
+    private function csvCell(mixed $value): string
+    {
+        $text = (string) ($value ?? '');
+        if ($text !== '' && preg_match('/^[=+\-@\t\r]/', $text)) {
+            return "'".$text;
+        }
+
+        return $text;
     }
 
     /**
      * Admin records sheet: all websites with URL, countries, categories only.
      * Always reads live from the sites table.
      * Optional ?country=de (or other ISO code) filters to that market.
+     * Optional ?live=1 keeps catalog-visible listings (active, not archived,
+     * not cancelled-bulk leftover). Country still applies; health queues win.
      * ?partial=1 or Accept: application/json returns table HTML for live filter swaps.
      */
     public function records(Request $request)
@@ -192,40 +703,27 @@ class SiteController extends Controller
         $countryFilter = $filter['country'];
         $healthFilter = $filter['health'];
         $missingMarket = $filter['missing_market'];
-
-        $wantsPartial = $request->boolean('partial')
-            || $request->expectsJson()
-            || str_contains(strtolower((string) $request->header('Accept', '')), 'application/json');
+        $liveFilter = $filter['live'];
 
         try {
-            $query = Site::query()->orderBy('domain')->orderBy('id');
+            $wantsPartial = $this->requestFlag($request, 'partial')
+                || $request->expectsJson()
+                || str_contains(strtolower(scalar_text($request->header('Accept', ''))), 'application/json');
+        } catch (\Throwable $e) {
+            report($e);
+            $wantsPartial = $request->expectsJson();
+        }
+
+        $sites = null;
+        try {
+            $query = $this->recordsBaseQuery();
             $this->applyRecordsFilters($query, $filter);
 
+            $page = $this->recordsPage($request);
             $sites = $query
-                ->paginate(100)
+                ->paginate(100, ['*'], 'page', $page)
                 ->appends($filter['query_params'])
-                ->through(fn (Site $site) => $this->siteRecordRow($site));
-
-            $countryCounts = $this->recordsCountryCounts();
-            $totalSites = (int) Site::query()->count();
-            $healthCounts = CatalogHealthQueue::counts();
-            $missingMarketCount = (int) ($healthCounts[CatalogHealthQueue::MISSING_MARKET] ?? 0);
-            $countries = Country::marketplace()
-                ->orderBy('name')
-                ->get(['code', 'name'])
-                ->map(function (Country $country) use ($countryCounts) {
-                    $code = strtolower(trim((string) $country->code));
-
-                    return [
-                        'code' => $code,
-                        'name' => (string) $country->name,
-                        'count' => (int) ($countryCounts[$code] ?? 0),
-                    ];
-                })
-                ->values();
-
-            $selectedCountry = $countryFilter;
-            $exportUrl = route('admin.sites.records.export', $filter['query_params']);
+                ->through(fn (Site $site) => $this->leftoverSafeSiteRecordRow($site));
         } catch (\Throwable $e) {
             report($e);
 
@@ -233,7 +731,7 @@ class SiteController extends Controller
                 return response()->json([
                     'success' => false,
                     'message' => UserFacingError::message($e, 'We could not filter records. Please try again.'),
-                ], 500);
+                ], 500, [], JSON_INVALID_UTF8_SUBSTITUTE | JSON_PARTIAL_OUTPUT_ON_ERROR);
             }
 
             session()->flash(
@@ -241,29 +739,21 @@ class SiteController extends Controller
                 UserFacingError::message($e, 'We could not load site records. Please refresh and try again.')
             );
 
-            $sites = new LengthAwarePaginator([], 0, 100, 1, [
+            $sites = new LengthAwarePaginator([], 0, 100, $this->recordsPage($request), [
                 'path' => $request->url(),
-                'query' => $request->query(),
+                'query' => $filter['query_params'],
             ]);
-            $countries = collect();
-            $selectedCountry = $countryFilter;
-            $totalSites = 0;
-            $healthCounts = CatalogHealthQueue::emptyCounts();
-            $missingMarketCount = 0;
-            $exportUrl = route('admin.sites.records.export', $filter['query_params']);
-
-            return view('admin.sites.records', compact(
-                'sites',
-                'countries',
-                'selectedCountry',
-                'totalSites',
-                'exportUrl',
-                'missingMarket',
-                'missingMarketCount',
-                'healthFilter',
-                'healthCounts'
-            ));
         }
+
+        // Country combobox / health chips must not empty a sheet that already loaded.
+        $countryCounts = $this->recordsCountryCounts();
+        $totalSites = $this->recordsTotalCount($sites);
+        $healthCounts = CatalogHealthQueue::counts();
+        $missingMarketCount = (int) ($healthCounts[CatalogHealthQueue::MISSING_MARKET] ?? 0);
+        $liveCount = $this->recordsLiveCount();
+        $countries = $this->recordsCountryOptions($countryCounts);
+        $selectedCountry = $countryFilter;
+        $exportUrl = $this->recordsExportUrl($filter['query_params']);
 
         if ($wantsPartial) {
             try {
@@ -272,6 +762,7 @@ class SiteController extends Controller
                     'selectedCountry' => $selectedCountry,
                     'missingMarket' => $missingMarket,
                     'healthFilter' => $healthFilter,
+                    'liveFilter' => $liveFilter,
                 ])->render();
 
                 return response()->json([
@@ -281,35 +772,56 @@ class SiteController extends Controller
                     'missing_market_count' => $missingMarketCount,
                     'health' => $healthFilter,
                     'health_counts' => $healthCounts,
-                    'total' => $sites->total(),
+                    'live' => $liveFilter,
+                    'live_count' => $liveCount,
+                    'total' => is_object($sites) && method_exists($sites, 'total')
+                        ? (int) $sites->total()
+                        : 0,
                     'export_url' => $exportUrl,
                     'table_html' => $tableHtml,
-                ]);
+                ], 200, [], JSON_INVALID_UTF8_SUBSTITUTE | JSON_PARTIAL_OUTPUT_ON_ERROR);
             } catch (\Throwable $e) {
                 report($e);
 
                 return response()->json([
                     'success' => false,
                     'message' => UserFacingError::message($e, 'We could not filter records. Please try again.'),
-                ], 500);
+                ], 500, [], JSON_INVALID_UTF8_SUBSTITUTE | JSON_PARTIAL_OUTPUT_ON_ERROR);
             }
         }
 
-        return view('admin.sites.records', compact(
-            'sites',
-            'countries',
-            'selectedCountry',
-            'totalSites',
-            'exportUrl',
-            'missingMarket',
-            'missingMarketCount',
-            'healthFilter',
-            'healthCounts'
-        ));
+        try {
+            return view('admin.sites.records', compact(
+                'sites',
+                'countries',
+                'selectedCountry',
+                'totalSites',
+                'exportUrl',
+                'missingMarket',
+                'missingMarketCount',
+                'healthFilter',
+                'healthCounts',
+                'liveFilter',
+                'liveCount'
+            ));
+        } catch (\Throwable $e) {
+            report($e);
+
+            session()->flash(
+                'error',
+                UserFacingError::message($e, 'We could not load site records. Please refresh and try again.')
+            );
+
+            return response(
+                'We could not load site records. Please refresh and try again.',
+                200,
+                ['Content-Type' => 'text/plain; charset=UTF-8']
+            );
+        }
     }
 
     /**
-     * CSV download of the same live records sheet (honours country / missing-market filter).
+     * CSV download of the same live records sheet (honours country / live / health filter).
      */
     public function exportRecords(Request $request): StreamedResponse|RedirectResponse
     {
@@ -317,14 +829,16 @@ class SiteController extends Controller
         $countryFilter = $filter['country'];
         $healthFilter = $filter['health'];
         $missingMarket = $filter['missing_market'];
+        $liveFilter = $filter['live'];
 
         $suffix = $healthFilter !== null
             ? '-'.$healthFilter
-            : ($countryFilter !== '' ? '-'.$countryFilter : '');
+            : (($liveFilter ? '-live' : '').($countryFilter !== '' ? '-'.$countryFilter : ''));
+        $suffix = preg_replace('/[^a-z0-9_-]+/i', '', (string) $suffix) ?? '';
         $filename = 'websites-records'.$suffix.'-'.now()->format('Y-m-d').'.csv';
 
         try {
-            $query = Site::query()->orderBy('domain')->orderBy('id');
+            $query = $this->recordsBaseQuery();
             $this->applyRecordsFilters($query, $filter);
             $matchCount = (clone $query)->count();
         } catch (\Throwable $e) {
@@ -343,26 +857,35 @@ class SiteController extends Controller
                 'country' => $countryFilter,
                 'health' => $healthFilter,
                 'missing_market' => $missingMarket,
+                'live' => $liveFilter,
                 'rows_exported' => $matchCount,
             ]
         );
 
         return response()->streamDownload(function () use ($query) {
-            $out = fopen('php://output', 'w');
-            fputcsv($out, ['url', 'countries', 'categories', 'active', 'health']);
+            try {
+                $out = fopen('php://output', 'w');
+                if ($out === false) {
+                    return;
+                }
+                fputcsv($out, ['url', 'countries', 'categories', 'active', 'health', 'listing_state']);
 
-            foreach ($query->cursor() as $site) {
-                $row = $this->siteRecordRow($site);
-                fputcsv($out, [
-                    $row['url'],
-                    $row['countries'],
-                    $row['categories'],
-                    $site->active ? '1' : '0',
-                    $row['health'],
-                ]);
+                foreach ($query->cursor() as $site) {
+                    $row = $this->leftoverSafeSiteRecordRow($site);
+                    fputcsv($out, [
+                        scalar_text($row['url'] ?? ''),
+                        scalar_text($row['countries'] ?? ''),
+                        scalar_text($row['categories'] ?? ''),
+                        ! empty($row['active']) ? '1' : '0',
+                        scalar_text($row['health'] ?? ''),
+                        scalar_text($row['listing_state'] ?? ''),
+                    ]);
+                }
+
+                fclose($out);
+            } catch (\Throwable $e) {
+                report($e);
             }
-
-            fclose($out);
         }, $filename, [
             'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
@@ -373,48 +896,179 @@ class SiteController extends Controller
      *     country: string,
      *     health: ?string,
      *     missing_market: bool,
+     *     live: bool,
      *     query_params: array<string, int|string>
      * }
      */
     private function recordsFilterState(Request $request): array
     {
-        $countryFilter = strtolower(trim(scalar_text($request->query('country', ''))));
-        if ($countryFilter === 'all') {
-            $countryFilter = '';
-        }
+        try {
+            $countryFilter = strtolower(trim($this->leftoverSafeUtf8(scalar_text($request->query('country', '')))));
+            if ($countryFilter === 'all') {
+                $countryFilter = '';
+            }
 
-        $health = CatalogHealthQueue::fromRequest($request);
-        if ($health !== null) {
-            $countryFilter = '';
-        }
+            $health = CatalogHealthQueue::fromRequest($request);
+            if ($health !== null) {
+                $countryFilter = '';
+            }
 
-        return [
-            'country' => $countryFilter,
-            'health' => $health,
-            'missing_market' => $health === CatalogHealthQueue::MISSING_MARKET,
-            'query_params' => array_filter([
-                'country' => $countryFilter !== '' ? $countryFilter : null,
-                'health' => ($health !== null && $health !== CatalogHealthQueue::MISSING_MARKET)
-                    ? $health
-                    : null,
-                'missing_market' => $health === CatalogHealthQueue::MISSING_MARKET ? 1 : null,
-            ]),
-        ];
+            // Leftover ?live[]=1 TypeErrors $request->boolean(); flatten first.
+            $live = $health === null && $this->requestFlag($request, 'live');
+
+            return [
+                'country' => $countryFilter,
+                'health' => $health,
+                'missing_market' => $health === CatalogHealthQueue::MISSING_MARKET,
+                'live' => $live,
+                'query_params' => array_filter([
+                    'country' => $countryFilter !== '' ? $countryFilter : null,
+                    'health' => ($health !== null && $health !== CatalogHealthQueue::MISSING_MARKET)
+                        ? $health
+                        : null,
+                    'missing_market' => $health === CatalogHealthQueue::MISSING_MARKET ? 1 : null,
+                    'live' => $live ? 1 : null,
+                ]),
+            ];
+        } catch (\Throwable $e) {
+            report($e);
+
+            return [
+                'country' => '',
+                'health' => null,
+                'missing_market' => false,
+                'live' => false,
+                'query_params' => [],
+            ];
+        }
     }
 
     /**
      * @param  Builder<Site>  $query
-     * @param  array{country: string, health: ?string}  $filter
+     * @param  array{country: string, health: ?string, live?: bool}  $filter
      */
     private function applyRecordsFilters($query, array $filter): void
     {
-        if (is_string($filter['health'] ?? null) && $filter['health'] !== '') {
-            CatalogHealthQueue::apply($query, $filter['health']);
+        try {
+            if (is_string($filter['health'] ?? null) && $filter['health'] !== '') {
+                CatalogHealthQueue::apply($query, $filter['health']);
+
+                return;
+            }
+
+            if (! empty($filter['live'])) {
+                $this->constrainRecordsLive($query);
+            }
+
+            $this->applyRecordsCountryFilter($query, scalar_text($filter['country'] ?? ''));
+        } catch (\Throwable $e) {
+            report($e);
+        }
+    }
+
+    /**
+     * @return Builder<Site>
+     */
+    private function recordsBaseQuery()
+    {
+        $query = Site::query();
+        try {
+            if (Site::hasSitesColumn('domain')) {
+                $query->orderBy('domain');
+            }
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        try {
+            if (Site::hasSitesColumn('id')) {
+                $query->orderBy('id');
+            }
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        return $query;
+    }
+
+    /**
+     * Leftover ?page[]=2 TypeErrors Laravel's paginator filter_var().
+     * Arrays are junk — stay on page 1 instead of flattening to an empty page.
+     */
+    private function recordsPage(Request $request): int
+    {
+        try {
+            $raw = $request->query('page', 1);
+            if (is_array($raw) || is_object($raw)) {
+                return 1;
+            }
+
+            $page = (int) scalar_text($raw);
+            if ($page < 1) {
+                return 1;
+            }
+
+            return min($page, 10000);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return 1;
+        }
+    }
+
+    /**
+     * Live-on-portal = catalogVisible(). Leftover Hostinger can drop
+     * bulk_site_requests while sites.bulk_site_request_id remains, and
+     * catalogVisible() then 500s on orWhereHas.
+     *
+     * @param  Builder<Site>  $query
+     */
+    private function constrainRecordsLive($query): void
+    {
+        try {
+            if (! Site::hasSitesColumn('active')) {
+                return;
+            }
+        } catch (\Throwable $e) {
+            report($e);
 
             return;
         }
 
-        $this->applyRecordsCountryFilter($query, (string) ($filter['country'] ?? ''));
+        try {
+            if (Schema::hasTable('bulk_site_requests')) {
+                $query->catalogVisible();
+
+                return;
+            }
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        try {
+            $query->active()->notArchived();
+        } catch (\Throwable $e) {
+            report($e);
+            try {
+                $query->where('active', 1);
+            } catch (\Throwable $inner) {
+                report($inner);
+            }
+        }
+    }
+
+    private function recordsLiveCount(): int
+    {
+        try {
+            $query = Site::query();
+            $this->constrainRecordsLive($query);
+
+            return (int) $query->count();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return 0;
+        }
     }
 
     /**
@@ -426,19 +1080,35 @@ class SiteController extends Controller
     private function recordsCountryCounts(): array
     {
         $counts = [];
-        $select = ['id', 'country'];
-        if (Site::hasSitesColumn('countries')) {
-            $select[] = 'countries';
+        $select = [];
+        try {
+            if (Site::hasSitesColumn('country')) {
+                $select[] = 'country';
+            }
+            if (Site::hasSitesColumn('countries')) {
+                $select[] = 'countries';
+            }
+        } catch (\Throwable $e) {
+            report($e);
+
+            return [];
+        }
+        if ($select === []) {
+            return [];
         }
 
         try {
             foreach (Site::query()->select($select)->cursor() as $site) {
-                foreach ($site->countryCodes() as $code) {
-                    $code = strtolower(trim((string) $code));
-                    if ($code === '') {
-                        continue;
+                try {
+                    foreach ($site->countryCodes() as $code) {
+                        $code = strtolower(trim(scalar_text($code)));
+                        if ($code === '') {
+                            continue;
+                        }
+                        $counts[$code] = ($counts[$code] ?? 0) + 1;
                     }
-                    $counts[$code] = ($counts[$code] ?? 0) + 1;
+                } catch (\Throwable $rowError) {
+                    report($rowError);
                 }
             }
         } catch (\Throwable $e) {
@@ -451,20 +1121,144 @@ class SiteController extends Controller
     }
 
     /**
+     * @param  array<string, int>  $countryCounts
+     * @return Collection<int, array{code: string, name: string, count: int}>
+     */
+    private function recordsCountryOptions(array $countryCounts)
+    {
+        try {
+            $table = (new Country)->getTable();
+            $hasCode = Schema::hasColumn($table, 'code');
+            $hasName = Schema::hasColumn($table, 'name');
+            if (! $hasCode && ! $hasName) {
+                return collect();
+            }
+
+            $select = array_values(array_filter([
+                $hasCode ? 'code' : null,
+                $hasName ? 'name' : null,
+            ]));
+
+            $query = Country::query();
+            try {
+                $allowedCodes = config('markets.allowed_country_codes', []);
+                if ($hasCode && is_array($allowedCodes) && $allowedCodes !== []) {
+                    $query->whereIn('code', $allowedCodes);
+                } elseif (Schema::hasColumn($table, 'region')) {
+                    $query = Country::marketplace();
+                }
+            } catch (\Throwable $e) {
+                report($e);
+                $query = Country::query();
+            }
+
+            try {
+                if ($hasName) {
+                    $query->orderBy('name');
+                } elseif ($hasCode) {
+                    $query->orderBy('code');
+                }
+            } catch (\Throwable $e) {
+                report($e);
+            }
+
+            return $query
+                ->get($select)
+                ->map(function (Country $country) use ($countryCounts, $hasCode, $hasName) {
+                    $code = strtolower(trim($this->leftoverSafeUtf8(scalar_text(
+                        $hasCode ? ($country->code ?? '') : ($country->name ?? '')
+                    ))));
+                    $name = $hasName
+                        ? $this->leftoverSafeUtf8(scalar_text($country->name ?? ''))
+                        : strtoupper($code);
+
+                    return [
+                        'code' => $code,
+                        'name' => $name,
+                        'count' => (int) ($countryCounts[$code] ?? 0),
+                    ];
+                })
+                ->filter(fn ($row) => $row['code'] !== '')
+                ->values();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return collect();
+        }
+    }
+
+    private function recordsTotalCount($sites): int
+    {
+        try {
+            return (int) Site::query()->count();
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        try {
+            return is_object($sites) && method_exists($sites, 'total')
+                ? (int) $sites->total()
+                : 0;
+        } catch (\Throwable) {
+            return 0;
+        }
+    }
+
+    /**
+     * @param  array<string, int|string>  $queryParams
+     */
+    private function recordsExportUrl(array $queryParams): string
+    {
+        try {
+            return route('admin.sites.records.export', $queryParams);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return route('admin.sites.records.export');
+        }
+    }
+
+    /**
      * @param  Builder<Site>  $query
      */
     private function applyRecordsCountryFilter($query, string $countryCode): void
     {
-        $code = strtolower(trim($countryCode));
+        $code = strtolower(trim(scalar_text($countryCode)));
         if ($code === '') {
             return;
         }
 
-        $hasCountriesJson = Site::hasSitesColumn('countries');
-        $query->where(function ($q) use ($code, $hasCountriesJson) {
-            $q->whereRaw('LOWER(country) = ?', [$code]);
+        try {
+            $hasCountry = Site::hasSitesColumn('country');
+            $hasCountriesJson = Site::hasSitesColumn('countries');
+        } catch (\Throwable $e) {
+            report($e);
+
+            return;
+        }
+        if (! $hasCountry && ! $hasCountriesJson) {
+            return;
+        }
+
+        // LIKE on CAST text — leftover Hostinger stores junk TEXT, not JSON, and
+        // whereJsonContains() 500s. Quoted needle still matches ["de","at"].
+        $query->where(function ($q) use ($code, $hasCountry, $hasCountriesJson) {
+            if ($hasCountry) {
+                $q->whereRaw('LOWER(country) = ?', [$code]);
+            }
             if ($hasCountriesJson) {
-                $q->orWhereJsonContains('countries', $code);
+                $like = like_contains('"'.$code.'"');
+                // CAST AS CHAR is CHAR(1) on MariaDB. SUBSTRING keeps the whole
+                // list on MariaDB, MySQL, and SQLite.
+                $jsonClause = function ($inner) use ($code, $like) {
+                    $inner->whereRaw('LOWER(SUBSTRING(countries, 1, 8000)) LIKE ? ESCAPE ?', [$like, '\\'])
+                        ->orWhereRaw('LOWER(SUBSTRING(countries, 1, 8000)) = ?', [$code]);
+                };
+                if ($hasCountry) {
+                    $q->orWhere($jsonClause);
+                } else {
+                    $q->where($jsonClause);
+                }
             }
         });
     }
@@ -596,6 +1390,103 @@ class SiteController extends Controller
     }
 
     /**
+     * Advertiser offer, every market, and scan/hide facts for a staff row.
+     *
+     * @return array<string, mixed>
+     */
+    private function staffListingFacts(Site $site): array
+    {
+        $sale = null;
+        try {
+            $prices = $site->catalogPricesForViewer(null);
+            if (array_key_exists('sale', $prices) && $prices['sale'] !== null) {
+                $sale = round((float) $prices['sale'], 2);
+            }
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        $countries = [];
+        $languages = [];
+        $categories = [];
+        try {
+            $countries = array_values($site->countryCodesForDisplay());
+        } catch (\Throwable $e) {
+            report($e);
+        }
+        try {
+            $languages = array_values($site->languageCodes());
+        } catch (\Throwable $e) {
+            report($e);
+        }
+        try {
+            $categories = array_values(array_filter(array_map(
+                static fn ($value) => trim(scalar_text($value)),
+                (array) $site->categories_array
+            ), static fn ($value) => $value !== ''));
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        $metricsLabel = null;
+        try {
+            $fetched = $site->metrics_fetched_at;
+            if ($fetched instanceof \DateTimeInterface) {
+                $metricsLabel = Carbon::parse($fetched)
+                    ->timezone((string) config('app.timezone'))
+                    ->format('M j, Y');
+            }
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        $ordersSearch = trim(scalar_text($site->domain ?: ($site->site_name ?: '')));
+        $ordersUrl = null;
+        if ($ordersSearch !== '' && auth()->user()?->isAdmin()) {
+            try {
+                $ordersUrl = route('admin.orders.index', ['search' => $ordersSearch]);
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+
+        $featured = false;
+        $bulk = false;
+        $linkLabel = null;
+        try {
+            $featured = $site->isFeatured();
+            $bulk = $site->joinsBulkDiscount();
+            $linkLabel = $site->linkTypeLabel();
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        $copyStrike = false;
+        try {
+            $copyStrike = (bool) $site->publisher?->inCatalogHideMode();
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        return [
+            'sale_price' => $sale,
+            'featured' => $featured,
+            'bulk_discount' => $bulk,
+            'link_type_label' => $linkLabel,
+            'countries_list' => $countries,
+            'languages_list' => $languages,
+            'categories_list' => $categories,
+            'orders_url' => $ordersUrl,
+            'enrichment_failed' => (string) ($site->enrichment_status ?? '') === 'failed',
+            'metrics_fetched_label' => $metricsLabel,
+            'metrics_source' => (Site::hasSitesColumn('metrics_manual') && (bool) $site->metrics_manual)
+                ? 'Manual'
+                : ($metricsLabel ? 'Scan' : null),
+            'publisher_copy_strike' => $copyStrike,
+        ];
+    }
+
+    /**
      * Slim JSON row for Sites Management (avoid full model dumps + disk I/O).
      *
      * @return array<string, mixed>
@@ -606,6 +1497,7 @@ class SiteController extends Controller
         $imageUrl = $this->staffPublicStorageUrl(
             is_string($site->site_image) ? $site->site_image : null
         );
+        $listingTag = $site->tagValue();
 
         return [
             'id' => (int) $site->id,
@@ -626,6 +1518,12 @@ class SiteController extends Controller
             'categories' => $site->categories,
             'link_type' => $site->link_type,
             'sponsored' => (bool) $site->sponsored,
+            'listing_tag' => $listingTag,
+            'listing_tag_label' => SiteTag::label($listingTag) ?? SiteTag::NONE_LABEL,
+            'added_from_bulk_request' => $site->wasAddedFromBulkRequest(),
+            'bulk_site_request_id' => $site->bulk_site_request_id ? (int) $site->bulk_site_request_id : null,
+            'assigned_by_user_id' => $site->assigned_by_user_id ? (int) $site->assigned_by_user_id : null,
+            'staff_assigned_batch' => filled($site->assigned_by_user_id) && $site->wasAddedFromBulkRequest(),
             'description' => $site->description,
             'description_textarea' => SiteDescriptionRules::textareaValue((string) $site->description),
             'description_looks_english' => $site->descriptionLooksLikeEnglish(),
@@ -640,6 +1538,10 @@ class SiteController extends Controller
             'needs_review' => $site->needsAdminReview(),
             'missing_market' => ! $site->hasMarketplaceCountry(),
             'below_quality_bar' => ! $site->hasGoodMetrics(),
+            'quality_failures' => $site->qualityBarFailures(),
+            'missing_cover' => ! $site->hasCatalogCover(),
+            'missing_tags' => $listingTag === null,
+            'ready_to_activate' => $site->isReadyToActivate(),
             'listing_locked' => $site->isLockedForMarketingEdits(),
             'awaits_publisher_details' => $site->awaitsPublisherDetails(),
             'details_complete' => $site->hasDetailsComplete(),
@@ -649,8 +1551,12 @@ class SiteController extends Controller
                 : null,
             'csv_metrics_spot_check' => $site->isFromAgencyCsvImport() && (bool) $site->metrics_manual,
             'archived' => $site->isArchived(),
+            'publisher_added' => $site->wasAddedByPublisher(),
+            'bulk_request_draft' => $site->isBulkRequestDraft(),
             'can_activate' => $this->staffCanActivateSite($site),
             'activate_block_reason' => $this->staffActivateBlockReason($site),
+            'can_publish_now' => $this->staffCanPublishNowSite($site),
+            'publish_now_block_reason' => $this->staffPublishNowBlockReasonFor($site),
             'orders_count' => $site->orderItemsCount(),
             'preview_thumb_url' => $preview['thumb'],
             'preview_full_url' => $preview['full'],
@@ -658,46 +1564,172 @@ class SiteController extends Controller
             'screenshot_url' => $preview['full'],
             'screenshot_thumb_url' => $preview['thumb'],
             'image_url' => $imageUrl,
+            ...$this->staffListingFacts($site),
+            ...$this->staffListedDatePayload($site->created_at, $site->updated_at),
         ];
     }
 
     /**
-     * @return array{url: string, countries: string, categories: string}
+     * @return array{
+     *     id: int,
+     *     url: string,
+     *     href: string,
+     *     admin_url: string,
+     *     countries: string,
+     *     categories: string,
+     *     missing_market: bool,
+     *     active: bool,
+     *     listing_state: string,
+     *     health_flags: list<string>,
+     *     health: string
+     * }
      */
+    private function leftoverSafeSiteRecordRow(Site $site): array
+    {
+        try {
+            return $this->siteRecordRow($site);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return [
+                'id' => (int) ($site->id ?? 0),
+                'url' => '',
+                'href' => '',
+                'admin_url' => '',
+                'countries' => '',
+                'categories' => '',
+                'missing_market' => false,
+                'active' => false,
+                'listing_state' => 'not_live',
+                'health_flags' => [],
+                'health' => '',
+            ];
+        }
+    }
+
     private function siteRecordRow(Site $site): array
     {
-        $url = trim((string) ($site->site_url ?: ''));
-        if ($url === '') {
-            $domain = trim((string) ($site->domain ?: ''));
-            $url = $domain !== '' ? 'https://'.$domain : '';
+        $rawUrl = trim(scalar_text($site->site_url ?? ''));
+        if ($rawUrl === '') {
+            $domain = trim(scalar_text($site->domain ?? ''));
+            $rawUrl = $domain !== '' ? 'https://'.$domain : '';
+        }
+        $href = $this->leftoverSafeRecordsUrl($rawUrl);
+        $url = $href !== '' ? $href : '';
+
+        $countries = '';
+        try {
+            $countries = collect($site->countryCodesForDisplay())
+                ->filter()
+                ->map(fn ($code) => strtolower(trim(scalar_text($code))))
+                ->filter()
+                ->unique()
+                ->values()
+                ->implode('|');
+        } catch (\Throwable $e) {
+            report($e);
         }
 
-        $countries = collect($site->countryCodesForDisplay())
-            ->filter()
-            ->map(fn ($code) => strtolower(trim((string) $code)))
-            ->unique()
-            ->values()
-            ->implode('|');
+        $categories = '';
+        try {
+            $categories = collect($site->categories_array)
+                ->filter()
+                ->map(fn ($cat) => trim(scalar_text($cat)))
+                ->filter()
+                ->unique()
+                ->values()
+                ->implode('|');
+        } catch (\Throwable $e) {
+            report($e);
+        }
 
-        $categories = collect($site->categories_array)
-            ->filter()
-            ->map(fn ($cat) => trim((string) $cat))
-            ->filter()
-            ->unique()
-            ->values()
-            ->implode('|');
+        $healthFlags = [];
+        try {
+            $healthFlags = scalar_list(CatalogHealthQueue::flags($site));
+        } catch (\Throwable $e) {
+            report($e);
+        }
 
-        $healthFlags = CatalogHealthQueue::flags($site);
+        $listingState = 'not_live';
+        try {
+            $listingState = $site->isCatalogVisible() ? 'live' : 'not_live';
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        $adminUrl = '';
+        try {
+            $adminUrl = route('admin.sites.edit', $site->id);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        $missingMarket = false;
+        try {
+            $missingMarket = ! $site->hasMarketplaceCountry();
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        $active = false;
+        try {
+            $active = (bool) $site->active;
+        } catch (\Throwable $e) {
+            report($e);
+        }
 
         return [
-            'url' => $url,
-            'countries' => $countries,
-            'categories' => $categories,
-            'missing_market' => ! $site->hasMarketplaceCountry(),
-            'active' => (bool) $site->active,
-            'health_flags' => $healthFlags,
-            'health' => implode('|', $healthFlags),
+            'id' => (int) ($site->id ?? 0),
+            'url' => $this->leftoverSafeUtf8($url),
+            'href' => $this->leftoverSafeUtf8($href),
+            'admin_url' => $this->leftoverSafeUtf8($adminUrl),
+            'countries' => $this->leftoverSafeUtf8($countries),
+            'categories' => $this->leftoverSafeUtf8($categories),
+            'missing_market' => $missingMarket,
+            'active' => $active,
+            'listing_state' => $this->leftoverSafeUtf8($listingState),
+            'health_flags' => array_map(fn ($flag) => $this->leftoverSafeUtf8(scalar_text($flag)), $healthFlags),
+            'health' => $this->leftoverSafeUtf8(implode('|', $healthFlags)),
         ];
+    }
+
+    private function leftoverSafeUtf8(string $value): string
+    {
+        if ($value === '') {
+            return '';
+        }
+
+        try {
+            if (function_exists('mb_scrub')) {
+                return mb_scrub($value, 'UTF-8');
+            }
+
+            $converted = mb_convert_encoding($value, 'UTF-8', 'UTF-8');
+
+            return is_string($converted) ? $converted : '';
+        } catch (\Throwable $e) {
+            report($e);
+
+            return preg_replace('/[^\x09\x0A\x0D\x20-\x7E]/', '', $value) ?? '';
+        }
+    }
+
+    private function leftoverSafeRecordsUrl(mixed $url): string
+    {
+        try {
+            $raw = trim(scalar_text($url));
+            if ($raw === '') {
+                return '';
+            }
+
+            return function_exists('safe_external_url') && safe_external_url($raw) !== '#'
+                ? $raw
+                : '';
+        } catch (\Throwable $e) {
+            report($e);
+
+            return '';
+        }
     }
 
     // Get sites of a user (AJAX, paginated)
@@ -731,6 +1763,36 @@ class SiteController extends Controller
         }
     }
 
+    /**
+     * Unfiltered portfolio counts for the open publisher. Catalog-health
+     * badges on the index stay global; this line is only this publisher.
+     *
+     * @return array{total: int, ready_to_activate: int, below_quality: int}
+     */
+    private function publisherSitesSummary(int $publisherId): array
+    {
+        $empty = ['total' => 0, 'ready_to_activate' => 0, 'below_quality' => 0];
+        if ($publisherId < 1) {
+            return $empty;
+        }
+
+        try {
+            $base = Site::query()->where('publisher_id', $publisherId)->notArchived();
+            $below = clone $base;
+            $this->constrainStaffBelowQuality($below);
+
+            return [
+                'total' => (int) (clone $base)->count(),
+                'ready_to_activate' => (int) (clone $base)->readyToActivate()->count(),
+                'below_quality' => (int) $below->count(),
+            ];
+        } catch (\Throwable $e) {
+            report($e);
+
+            return $empty;
+        }
+    }
+
     private function userSitesPayload(Request $request, User $user)
     {
         $columns = [
@@ -755,6 +1817,8 @@ class SiteController extends Controller
             'categories',
             'link_type',
             'sponsored',
+            'partner_material',
+            'as_you_prefer',
             'description',
             'enrichment_status',
             'enrichment_error',
@@ -766,7 +1830,19 @@ class SiteController extends Controller
             'screenshot_path',
             'screenshot_thumb_path',
             'agency_site_import_id',
+            'bulk_site_request_id',
             'metrics_manual',
+            'featured_until',
+            'custom_discount_percent',
+            'custom_discount_starts_at',
+            'custom_discount_ends_at',
+            'bulk_discount_enabled',
+            'bulk_discount_percent',
+            'original_price',
+            'added_from_bulk_request',
+            'status_reason',
+            'status_reason_at',
+            'status_reason_by',
             'created_at',
             'updated_at',
         ];
@@ -794,20 +1870,49 @@ class SiteController extends Controller
             }
         ));
 
-        $perPage = 50;
+        $perPage = $this->staffListPerPage($request, 50);
+        $siteSearch = trim(scalar_text($request->query('q', '')));
+        $needsReviewOnly = $this->requestFlag($request, 'needs_review');
+        $filters = $this->staffSitesListFilterState($request);
+        // Deep link: keep this row on page 1 even when the list filters would hide it.
+        // Later pages must not pin it, or paging keeps that site and opens its details.
+        $listPage = $this->staffListPage($request);
+        $focusSiteId = $this->canonicalStaffId(trim(scalar_text($request->query('site', ''))));
+        $pinSiteId = $listPage === 1 ? $focusSiteId : null;
+
         $sitesQuery = Site::query()
             ->where('publisher_id', $user->id)
-            ->notArchived()
-            ->latest();
+            ->where(function ($outer) use ($filters, $siteSearch, $needsReviewOnly, $pinSiteId) {
+                $outer->where(function ($matched) use ($filters, $siteSearch, $needsReviewOnly) {
+                    // Always start with a predicate so an empty group cannot compile to "()".
+                    $matched->whereRaw('1 = 1');
+                    $this->applyStaffSitesArchiveScope($matched, $filters);
+                    if ($siteSearch !== '') {
+                        $this->constrainStaffSiteSearch($matched, $siteSearch);
+                    }
+                    if ($needsReviewOnly) {
+                        $matched->needsAdminReview();
+                    }
+                    $this->applyStaffSitesListFilters($matched, $filters);
+                });
+                if ($pinSiteId !== null) {
+                    $outer->orWhere($outer->getModel()->getTable().'.id', $pinSiteId);
+                }
+            });
+        $this->applyStaffSitesListSort($sitesQuery, $filters['sort'], 'newest', $pinSiteId);
 
         if (Schema::hasTable('order_items')) {
             $sitesQuery->withCount('orderItems');
         }
 
-        $paginator = $sitesQuery->paginate($perPage, $select);
+        $paginator = $sitesQuery->paginate($perPage, $select, 'page', $listPage);
 
         $sites = $paginator->getCollection()
-            ->map(fn (Site $site) => $this->staffSiteListRow($site))
+            ->map(function (Site $site) use ($user) {
+                $site->setRelation('publisher', $user);
+
+                return $this->staffSiteListRow($site);
+            })
             ->values();
 
         // Include publisher meta so the detail view still loads when the publisher
@@ -817,15 +1922,836 @@ class SiteController extends Controller
                 'id' => (int) $user->id,
                 'name' => (string) $user->name,
                 'email' => (string) $user->email,
+                'copy_strike' => $user->inCatalogHideMode(),
             ],
+            'summary' => $this->publisherSitesSummary((int) $user->id),
             'sites' => $sites,
             'meta' => [
                 'current_page' => $paginator->currentPage(),
                 'last_page' => $paginator->lastPage(),
                 'total' => $paginator->total(),
                 'per_page' => $paginator->perPage(),
+                'q' => $siteSearch,
+                'needs_review' => $needsReviewOnly,
+                'tag' => $filters['tag'],
+                'country' => $filters['country'],
+                'listing_active' => $filters['listing_active'],
+                'listing_verified' => $filters['listing_verified'],
+                'below_quality' => $filters['below_quality'],
+                'ready_to_activate' => $filters['ready_to_activate'],
+                'missing_market' => $filters['missing_market'],
+                'archived' => $filters['archived'],
+                'sort' => $filters['sort'],
             ],
         ]);
+    }
+
+    /**
+     * Page size for the staff sites lists. Anything outside 20, 50, and 100
+     * falls back to the list's own default.
+     */
+    private function staffListPerPage(Request $request, int $default): int
+    {
+        $value = (int) (filter_number($request->query('per_page')) ?? $default);
+
+        return in_array($value, [20, 50, 100], true) ? $value : $default;
+    }
+
+    private function staffListPage(Request $request): int
+    {
+        return max(1, (int) (filter_number($request->input('page')) ?? 1));
+    }
+
+    private function requestNeedsReview(Request $request): bool
+    {
+        if ($this->requestFlag($request, 'needs_review')) {
+            return true;
+        }
+
+        $verified = $request->query('verified');
+
+        return scalar_text($verified) === '0' || $verified === 0;
+    }
+
+    /**
+     * Publishers whose name, email, or company match, or who own a matching site.
+     * Archived sites stay out unless the Archived filter is on.
+     *
+     * @param  array{archived?: bool, tag?: ?string, country?: string, listing_active?: string, listing_verified?: string, below_quality?: bool, missing_market?: bool}  $filters
+     */
+    private function applyStaffPublisherSearch($query, string $search, array $filters = []): void
+    {
+        if ($search === '') {
+            return;
+        }
+
+        $like = like_contains($search);
+        $query->where(function ($q) use ($search, $like, $filters) {
+            $q->whereRaw('name LIKE ? ESCAPE ?', [$like, '\\'])
+                ->orWhereRaw('email LIKE ? ESCAPE ?', [$like, '\\']);
+            if ($this->usersHaveColumn('company_name')) {
+                $q->orWhereRaw('company_name LIKE ? ESCAPE ?', [$like, '\\']);
+            }
+            $publisherId = $this->canonicalStaffId($search);
+            if ($publisherId !== null) {
+                $q->orWhere('users.id', $publisherId);
+            }
+            $q->orWhereHas('sites', function ($sites) use ($search, $filters) {
+                if ($filters === []) {
+                    $sites->notArchived();
+                } else {
+                    $this->applyStaffSitesArchiveScope($sites, $filters);
+                    $this->applyStaffSitesListFilters($sites, $filters);
+                }
+                $this->constrainStaffSiteSearch($sites, $search);
+            });
+        });
+    }
+
+    /**
+     * Flat queues: match the site itself or its publisher name/email.
+     */
+    private function applyStaffIndexSiteOrPublisherSearch($query, string $search): void
+    {
+        if ($search === '') {
+            return;
+        }
+
+        $like = like_contains($search);
+        $query->where(function ($q) use ($search, $like) {
+            $this->constrainStaffSiteSearch($q, $search);
+            $q->orWhereHas('publisher', function ($publisher) use ($like) {
+                $publisher->whereRaw('name LIKE ? ESCAPE ?', [$like, '\\'])
+                    ->orWhereRaw('email LIKE ? ESCAPE ?', [$like, '\\']);
+                if ($this->usersHaveColumn('company_name')) {
+                    $publisher->orWhereRaw('company_name LIKE ? ESCAPE ?', [$like, '\\']);
+                }
+            });
+        });
+    }
+
+    /**
+     * Match site name, domain, URL, or numeric id.
+     */
+    private function constrainStaffSiteSearch($sites, string $search): void
+    {
+        $like = like_contains($search);
+        $host = $this->staffSearchHost($search);
+        $candidates = $host !== null ? Site::domainLookupCandidates($host) : [];
+
+        $sites->where(function ($q) use ($search, $like, $candidates, $host) {
+            $q->whereRaw('site_name LIKE ? ESCAPE ?', [$like, '\\'])
+                ->orWhereRaw('domain LIKE ? ESCAPE ?', [$like, '\\'])
+                ->orWhereRaw('site_url LIKE ? ESCAPE ?', [$like, '\\']);
+            if ($host === null) {
+                foreach (['category', 'language', 'description', 'example_url'] as $column) {
+                    if (Site::hasSitesColumn($column)) {
+                        $q->orWhereRaw($column.' LIKE ? ESCAPE ?', [$like, '\\']);
+                    }
+                }
+                // CAST AS CHAR is CHAR(1) on MariaDB. SUBSTRING keeps the stored text.
+                foreach (['categories', 'languages'] as $column) {
+                    if (Site::hasSitesColumn($column)) {
+                        $q->orWhereRaw('SUBSTRING('.$column.', 1, 8000) LIKE ? ESCAPE ?', [$like, '\\']);
+                    }
+                }
+            }
+            $siteId = $this->canonicalStaffId($search);
+            if ($siteId !== null) {
+                $q->orWhere('id', $siteId);
+            }
+            if ($candidates !== []) {
+                $q->orWhereIn('domain', $candidates);
+            }
+        });
+    }
+
+    /**
+     * Keep the current Sites mode on page and CSV links.
+     *
+     * @return array<string, mixed>
+     */
+    private function staffSitesPagerAppendQuery(
+        Request $request,
+        bool $needsReview,
+        bool $waiting,
+        bool $flatQueue,
+        bool $allSitesMode,
+        bool $publishersDirectory = false
+    ): array {
+        $query = $request->except(['page', 'publisher', 'site', 'sites_page']);
+        foreach (['needs_review', 'waiting_on_publisher', 'flat', 'all', 'publishers'] as $key) {
+            unset($query[$key]);
+        }
+
+        return array_filter(array_merge($query, [
+            'needs_review' => $needsReview ? 1 : null,
+            'waiting_on_publisher' => $waiting ? 1 : null,
+            'flat' => $flatQueue ? 1 : null,
+            'publishers' => $publishersDirectory ? 1 : null,
+            'all' => $allSitesMode && $request->query('all') !== null ? 1 : null,
+        ]), static fn ($value) => $value !== null && $value !== '');
+    }
+
+    /**
+     * @return array{
+     *     created_at: ?string,
+     *     updated_at: ?string,
+     *     listed_days: ?int,
+     *     listed_label: ?string,
+     *     listed_date: ?string
+     * }
+     */
+    private function staffListedDatePayload(mixed $createdAt, mixed $updatedAt = null): array
+    {
+        $timezone = (string) config('app.timezone');
+        $listed = $createdAt instanceof \DateTimeInterface
+            ? Carbon::parse($createdAt)->timezone($timezone)
+            : null;
+        $updated = $updatedAt instanceof \DateTimeInterface
+            ? Carbon::parse($updatedAt)->timezone($timezone)
+            : null;
+        $days = $listed !== null ? (int) $listed->diffInDays(now()) : null;
+
+        return [
+            'created_at' => $listed?->toIso8601String(),
+            'updated_at' => $updated?->toIso8601String(),
+            'listed_days' => $days,
+            'listed_label' => $days === null ? null : ($days === 0 ? 'Today' : $days.'d'),
+            'listed_date' => $listed?->format('M j, Y'),
+        ];
+    }
+
+    /**
+     * A bare id matches only when the digits are the canonical integer.
+     * 000042 must not also match site or publisher 42.
+     */
+    private function canonicalStaffId(string $search): ?int
+    {
+        if ($search === '' || ! ctype_digit($search)) {
+            return null;
+        }
+
+        $id = (int) $search;
+        if ((string) $id !== $search) {
+            return null;
+        }
+
+        return $id > 0 ? $id : null;
+    }
+
+    private function usersHaveColumn(string $column): bool
+    {
+        try {
+            return Schema::hasColumn('users', $column);
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * Exact site-id or canonical domain hit — used to deep-link a unique result.
+     */
+    /**
+     * @param  array{archived?: bool}  $filters
+     */
+    private function uniqueStaffSiteForExactSearch(string $search, array $filters = []): ?Site
+    {
+        $query = Site::query();
+        $this->applyStaffSitesArchiveScope($query, $filters);
+
+        $siteId = $this->canonicalStaffId($search);
+        if ($siteId !== null) {
+            $matches = $query->where('id', $siteId)->limit(2)->get();
+        } else {
+            $host = $this->staffSearchHost($search);
+            if ($host === null) {
+                return null;
+            }
+            $candidates = Site::domainLookupCandidates($host);
+            if ($candidates === []) {
+                return null;
+            }
+            $matches = $query->whereIn('domain', $candidates)->limit(2)->get();
+        }
+
+        return $matches->count() === 1 ? $matches->first() : null;
+    }
+
+    /**
+     * @return array{
+     *     tag: ?string,
+     *     country: string,
+     *     listing_active: string,
+     *     listing_verified: string,
+     *     below_quality: bool,
+     *     missing_market: bool,
+     *     archived: bool,
+     *     sort: string
+     * }
+     */
+    private function staffSitesListFilterState(Request $request): array
+    {
+        $tag = SiteTag::catalogFilterFromRequest($request);
+        $country = strtolower(trim(scalar_text($request->query('country', $request->input('country', '')))));
+        if ($country === 'all') {
+            $country = '';
+        }
+
+        $active = trim(scalar_text($request->query('listing_active', $request->input('listing_active', ''))));
+        $verified = trim(scalar_text($request->query('listing_verified', $request->input('listing_verified', ''))));
+
+        $language = strtolower(trim(scalar_text($request->query('language', $request->input('language', '')))));
+        if ($language === 'all') {
+            $language = '';
+        }
+        $niche = trim(scalar_text($request->query('niche', $request->input('niche', ''))));
+        $metricsAge = trim(scalar_text($request->query('metrics_age', $request->input('metrics_age', ''))));
+        if (! in_array($metricsAge, ['30', '90', 'never'], true)) {
+            $metricsAge = '';
+        }
+
+        return [
+            'tag' => $tag,
+            'country' => $country,
+            'language' => $language,
+            'niche' => $niche,
+            'listing_active' => in_array($active, ['0', '1'], true) ? $active : '',
+            'listing_verified' => in_array($verified, ['0', '1'], true) ? $verified : '',
+            'below_quality' => $this->requestFlag($request, 'below_quality'),
+            'ready_to_activate' => $this->requestFlag($request, 'ready_to_activate'),
+            'missing_market' => $this->requestFlag($request, 'missing_market'),
+            'placeholder' => $this->requestFlag($request, 'placeholder'),
+            'missing_cover' => $this->requestFlag($request, 'missing_cover'),
+            'bulk_request' => $this->requestFlag($request, 'bulk_request'),
+            'scan_failed' => $this->requestFlag($request, 'scan_failed'),
+            'copy_strike' => $this->requestFlag($request, 'copy_strike'),
+            'has_orders' => $this->requestFlag($request, 'has_orders'),
+            'featured' => $this->requestFlag($request, 'featured'),
+            'bulk_discount' => $this->requestFlag($request, 'bulk_discount'),
+            'csv_metrics' => $this->requestFlag($request, 'csv_metrics'),
+            'price_min' => $this->staffOptionalNumber($request->query('price_min', $request->input('price_min'))),
+            'price_max' => $this->staffOptionalNumber($request->query('price_max', $request->input('price_max'))),
+            'traffic_min' => $this->staffOptionalInt($request->query('traffic_min', $request->input('traffic_min'))),
+            'da_min' => $this->staffOptionalInt($request->query('da_min', $request->input('da_min'))),
+            'metrics_age' => $metricsAge,
+            'archived' => $this->requestFlag($request, 'archived'),
+            'waiting_stage' => MarketingOpsQueues::normalizeWaitingStage($request->query('waiting_stage', $request->input('waiting_stage'))) ?? '',
+            'sort' => $this->staffSitesListSortKey($request->query('sort', $request->input('sort'))),
+        ];
+    }
+
+    private function staffOptionalNumber(mixed $value): ?float
+    {
+        $text = trim(scalar_text($value));
+        if ($text === '' || ! is_numeric($text)) {
+            return null;
+        }
+
+        return round((float) $text, 2);
+    }
+
+    private function staffOptionalInt(mixed $value): ?int
+    {
+        $text = trim(scalar_text($value));
+        if ($text === '' || ! ctype_digit($text)) {
+            return null;
+        }
+
+        return (int) $text;
+    }
+
+    /**
+     * @param  array{tag?: ?string, country?: string, listing_active?: string, listing_verified?: string, below_quality?: bool, missing_market?: bool}  $filter
+     */
+    private function staffSitesListNarrows(array $filter): bool
+    {
+        return (($filter['tag'] ?? null) !== null && ($filter['tag'] ?? '') !== '')
+            || ($filter['country'] ?? '') !== ''
+            || ($filter['language'] ?? '') !== ''
+            || ($filter['niche'] ?? '') !== ''
+            || ($filter['listing_active'] ?? '') !== ''
+            || ($filter['listing_verified'] ?? '') !== ''
+            || ! empty($filter['below_quality'])
+            || ! empty($filter['ready_to_activate'])
+            || ! empty($filter['missing_market'])
+            || ! empty($filter['placeholder'])
+            || ! empty($filter['missing_cover'])
+            || ! empty($filter['bulk_request'])
+            || ! empty($filter['scan_failed'])
+            || ! empty($filter['copy_strike'])
+            || ! empty($filter['has_orders'])
+            || ! empty($filter['featured'])
+            || ! empty($filter['bulk_discount'])
+            || ! empty($filter['csv_metrics'])
+            || ($filter['price_min'] ?? null) !== null
+            || ($filter['price_max'] ?? null) !== null
+            || ($filter['traffic_min'] ?? null) !== null
+            || ($filter['da_min'] ?? null) !== null
+            || ($filter['metrics_age'] ?? '') !== ''
+            || ! empty($filter['archived']);
+    }
+
+    private function staffSitesListSortKey(mixed $sort): string
+    {
+        $value = is_string($sort) ? trim($sort) : '';
+
+        return in_array($value, ['newest', 'oldest', 'price', 'traffic', 'da'], true)
+            ? $value
+            : '';
+    }
+
+    /**
+     * @param  Builder<Site>  $query
+     * @param  array{archived?: bool}  $filter
+     */
+    private function applyStaffSitesArchiveScope($query, array $filter): void
+    {
+        if (! empty($filter['archived'])) {
+            $query->archived();
+
+            return;
+        }
+
+        $query->notArchived();
+    }
+
+    /**
+     * @param  Builder<Site>  $query
+     * @param  array{tag: ?string, country: string, listing_active: string, listing_verified: string, below_quality: bool, missing_market: bool}  $filter
+     */
+    private function applyStaffSitesListFilters($query, array $filter): void
+    {
+        try {
+            SiteTag::constrainQuery($query, $filter['tag'] ?? null);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        $this->applyRecordsCountryFilter($query, scalar_text($filter['country'] ?? ''));
+        $this->applyStaffLanguageFilter($query, scalar_text($filter['language'] ?? ''));
+        $this->applyStaffNicheFilter($query, scalar_text($filter['niche'] ?? ''));
+
+        if (! empty($filter['bulk_request'])) {
+            if (Site::hasSitesColumn('added_from_bulk_request')) {
+                $query->where('added_from_bulk_request', 1);
+            } else {
+                $query->whereRaw('1 = 0');
+            }
+        }
+
+        if (($filter['listing_active'] ?? '') === '1') {
+            $query->where('active', 1);
+        } elseif (($filter['listing_active'] ?? '') === '0') {
+            $query->where(function ($q) {
+                $q->where('active', 0)->orWhereNull('active');
+            });
+        }
+
+        if (($filter['listing_verified'] ?? '') === '1') {
+            $query->where('verified', 1);
+        } elseif (($filter['listing_verified'] ?? '') === '0') {
+            $query->where(function ($q) {
+                $q->where('verified', 0)->orWhereNull('verified');
+            });
+        }
+
+        if (! empty($filter['below_quality'])) {
+            $this->constrainStaffBelowQuality($query);
+        }
+
+        if (! empty($filter['ready_to_activate'])) {
+            $query->readyToActivate();
+        }
+
+        if (! empty($filter['missing_market'])) {
+            $query->missingMarketplaceCountry();
+        }
+
+        if (! empty($filter['placeholder'])) {
+            CatalogHealthQueue::apply($query, CatalogHealthQueue::PLACEHOLDER);
+        }
+
+        if (! empty($filter['missing_cover'])) {
+            CatalogHealthQueue::apply($query, CatalogHealthQueue::MISSING_COVER);
+        }
+
+        if (! empty($filter['scan_failed'])) {
+            if (Site::hasSitesColumn('enrichment_status')) {
+                $query->where('enrichment_status', 'failed');
+            } else {
+                $query->whereRaw('1 = 0');
+            }
+        }
+
+        if (! empty($filter['copy_strike'])) {
+            $query->whereHas('publisher', function ($publisher) {
+                if (Schema::hasColumn('users', 'catalog_hide_until')) {
+                    $publisher->where('catalog_hide_until', '>', now());
+                } else {
+                    $publisher->whereRaw('1 = 0');
+                }
+            });
+        }
+
+        if (! empty($filter['has_orders'])) {
+            if (Schema::hasTable('order_items')) {
+                $query->whereHas('orderItems');
+            } else {
+                $query->whereRaw('1 = 0');
+            }
+        }
+
+        if (! empty($filter['featured']) && Site::hasSitesColumn('featured_until')) {
+            $query->where('featured_until', '>', now());
+        } elseif (! empty($filter['featured'])) {
+            $query->whereRaw('1 = 0');
+        }
+
+        if (! empty($filter['bulk_discount'])) {
+            if (Site::hasSitesColumn('bulk_discount_enabled') && Site::hasSitesColumn('bulk_discount_percent')) {
+                $query->where('bulk_discount_enabled', 1)->where('bulk_discount_percent', '>', 0);
+            } else {
+                $query->whereRaw('1 = 0');
+            }
+        }
+
+        if (! empty($filter['csv_metrics'])) {
+            if (Site::hasSitesColumn('agency_site_import_id') && Site::hasSitesColumn('metrics_manual')) {
+                $query->where('agency_site_import_id', '>', 0)->where('metrics_manual', 1);
+            } else {
+                $query->whereRaw('1 = 0');
+            }
+        }
+
+        if (($filter['price_min'] ?? null) !== null && Site::hasSitesColumn('price')) {
+            $query->where('price', '>=', $filter['price_min']);
+        }
+        if (($filter['price_max'] ?? null) !== null && Site::hasSitesColumn('price')) {
+            $query->where('price', '<=', $filter['price_max']);
+        }
+        if (($filter['traffic_min'] ?? null) !== null && Site::hasSitesColumn('traffic')) {
+            $query->where('traffic', '>=', $filter['traffic_min']);
+        }
+        if (($filter['da_min'] ?? null) !== null && Site::hasSitesColumn('da')) {
+            $query->where('da', '>=', $filter['da_min']);
+        }
+
+        $metricsAge = (string) ($filter['metrics_age'] ?? '');
+        if ($metricsAge !== '' && Site::hasSitesColumn('metrics_fetched_at')) {
+            if ($metricsAge === 'never') {
+                $query->whereNull('metrics_fetched_at');
+            } elseif (in_array($metricsAge, ['30', '90'], true)) {
+                $cutoff = now()->subDays((int) $metricsAge);
+                $query->where(function ($q) use ($cutoff) {
+                    $q->whereNull('metrics_fetched_at')->orWhere('metrics_fetched_at', '<', $cutoff);
+                });
+            }
+        }
+    }
+
+    /**
+     * @param  Builder<Site>  $query
+     */
+    private function constrainStaffBelowQuality($query): void
+    {
+        $checks = [];
+        foreach (['da', 'dr', 'traffic'] as $column) {
+            if (Site::hasSitesColumn($column)) {
+                $checks[] = $column;
+            }
+        }
+        if ($checks === []) {
+            $query->whereRaw('1 = 0');
+
+            return;
+        }
+
+        $mins = [
+            'da' => Site::GOOD_MIN_DA,
+            'dr' => Site::GOOD_MIN_DR,
+            'traffic' => Site::GOOD_MIN_TRAFFIC,
+        ];
+
+        $query->where(function ($q) use ($checks, $mins) {
+            $first = array_shift($checks);
+            $q->where($first, '<', $mins[$first])->orWhereNull($first);
+            foreach ($checks as $column) {
+                $q->orWhere($column, '<', $mins[$column])->orWhereNull($column);
+            }
+        });
+    }
+
+    /**
+     * @param  Builder<Site>  $query
+     */
+    private function applyStaffSitesListSort($query, string $sort, string $default, ?int $pinId = null): void
+    {
+        $key = $sort !== '' ? $sort : $default;
+        if (method_exists($query, 'reorder')) {
+            $query->reorder();
+        }
+
+        $table = $query->getModel()->getTable();
+        if ($pinId !== null && $pinId > 0) {
+            $query->orderByRaw('CASE WHEN '.$table.'.id = ? THEN 0 ELSE 1 END', [$pinId]);
+        }
+
+        $nullsLast = function (string $column) use ($query, $table): void {
+            if (! Site::hasSitesColumn($column)) {
+                $query->orderByDesc($table.'.id');
+
+                return;
+            }
+
+            $query->orderByRaw('CASE WHEN '.$table.'.'.$column.' IS NULL THEN 1 ELSE 0 END')
+                ->orderByDesc($table.'.'.$column)
+                ->orderByDesc($table.'.id');
+        };
+
+        match ($key) {
+            'oldest' => $query->orderBy($table.'.created_at')->orderBy($table.'.id'),
+            'price' => $nullsLast('price'),
+            'traffic' => $nullsLast('traffic'),
+            'da' => $nullsLast('da'),
+            default => $query->orderByDesc($table.'.id'),
+        };
+    }
+
+    /**
+     * @return Collection<int, Country>
+     */
+    private function staffMarketplaceCountries()
+    {
+        try {
+            return Country::marketplace()->orderBy('name')->get(['code', 'name']);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return collect();
+        }
+    }
+
+    /**
+     * @return Collection<int, Language>
+     */
+    private function staffMarketplaceLanguages()
+    {
+        try {
+            return Language::marketplace()->orderBy('name')->get(['code', 'name']);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return collect();
+        }
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function staffNicheOptions(): array
+    {
+        try {
+            return Category::catalogPickerNames();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return [];
+        }
+    }
+
+    /**
+     * Row count for one Sites list filter, with the same archive and filter
+     * rules the All sites page uses when that filter is the only one on.
+     *
+     * @param  array<string, mixed>  $overrides
+     */
+    private function staffSitesFilterTotal(array $overrides): int
+    {
+        $filter = array_merge([
+            'tag' => null,
+            'country' => '',
+            'language' => '',
+            'niche' => '',
+            'listing_active' => '',
+            'listing_verified' => '',
+            'below_quality' => false,
+            'ready_to_activate' => false,
+            'missing_market' => false,
+            'placeholder' => false,
+            'missing_cover' => false,
+            'bulk_request' => false,
+            'scan_failed' => false,
+            'copy_strike' => false,
+            'has_orders' => false,
+            'featured' => false,
+            'bulk_discount' => false,
+            'csv_metrics' => false,
+            'price_min' => null,
+            'price_max' => null,
+            'traffic_min' => null,
+            'da_min' => null,
+            'metrics_age' => '',
+            'archived' => false,
+        ], $overrides);
+
+        try {
+            $query = Site::query();
+            $this->applyStaffSitesArchiveScope($query, $filter);
+            $this->applyStaffSitesListFilters($query, $filter);
+
+            return (int) $query->count();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return 0;
+        }
+    }
+
+    /**
+     * Header / strip catalog counts. Request-wide health COUNTs stay in cache
+     * for a short TTL so paging and filter clicks do not repeat them.
+     *
+     * @return array<string, mixed>
+     */
+    private function staffSitesCatalogBadgeCounts(): array
+    {
+        return StaffSitesIndexCounts::remember(function (): array {
+            $healthCounts = CatalogHealthQueue::counts();
+
+            return [
+                'liveUnverifiedCount' => $this->staffSitesFilterTotal([
+                    'listing_active' => '1',
+                    'listing_verified' => '0',
+                ]),
+                'belowQualityListCount' => $this->staffSitesFilterTotal(['below_quality' => true]),
+                'readyToActivateCount' => $this->staffSitesFilterTotal(['ready_to_activate' => true]),
+                'placeholderListCount' => $this->staffSitesFilterTotal(['placeholder' => true]),
+                'missingCoverListCount' => $this->staffSitesFilterTotal(['missing_cover' => true]),
+                'missingMarketListCount' => $this->staffSitesFilterTotal([
+                    'listing_active' => '1',
+                    'missing_market' => true,
+                ]),
+                'scanFailedListCount' => $this->staffSitesFilterTotal(['scan_failed' => true]),
+                'archivedListCount' => $this->staffSitesFilterTotal(['archived' => true]),
+                'healthCounts' => $healthCounts,
+                'missingMarketCount' => (int) ($healthCounts[CatalogHealthQueue::MISSING_MARKET] ?? 0),
+            ];
+        });
+    }
+
+    /**
+     * @param  Builder<Site>  $query
+     */
+    private function applyStaffLanguageFilter($query, string $languageCode): void
+    {
+        $code = strtolower(trim(scalar_text($languageCode)));
+        if ($code === '') {
+            return;
+        }
+
+        try {
+            $hasLanguage = Site::hasSitesColumn('language');
+            $hasLanguagesJson = Site::hasSitesColumn('languages');
+        } catch (\Throwable $e) {
+            report($e);
+            $query->whereRaw('1 = 0');
+
+            return;
+        }
+        if (! $hasLanguage && ! $hasLanguagesJson) {
+            $query->whereRaw('1 = 0');
+
+            return;
+        }
+
+        $query->where(function ($q) use ($code, $hasLanguage, $hasLanguagesJson) {
+            if ($hasLanguage) {
+                $q->whereRaw('LOWER(language) = ?', [$code]);
+            }
+            if ($hasLanguagesJson) {
+                $like = like_contains('"'.$code.'"');
+                $jsonClause = function ($inner) use ($code, $like) {
+                    $inner->whereRaw('LOWER(SUBSTRING(languages, 1, 8000)) LIKE ? ESCAPE ?', [$like, '\\'])
+                        ->orWhereRaw('LOWER(SUBSTRING(languages, 1, 8000)) = ?', [$code]);
+                };
+                if ($hasLanguage) {
+                    $q->orWhere($jsonClause);
+                } else {
+                    $q->where($jsonClause);
+                }
+            }
+        });
+    }
+
+    /**
+     * @param  Builder<Site>  $query
+     */
+    private function applyStaffNicheFilter($query, string $niche): void
+    {
+        $name = trim(scalar_text($niche));
+        if ($name === '') {
+            return;
+        }
+
+        try {
+            $hasCategory = Site::hasSitesColumn('category');
+            $hasCategories = Site::hasSitesColumn('categories');
+        } catch (\Throwable $e) {
+            report($e);
+            $query->whereRaw('1 = 0');
+
+            return;
+        }
+        if (! $hasCategory && ! $hasCategories) {
+            $query->whereRaw('1 = 0');
+
+            return;
+        }
+
+        $lower = mb_strtolower($name);
+        $query->where(function ($q) use ($name, $lower, $hasCategory, $hasCategories) {
+            if ($hasCategory) {
+                $q->whereRaw('LOWER(category) = ?', [$lower]);
+            }
+            if ($hasCategories && ! str_contains($name, '"') && ! str_contains($name, '\\')) {
+                $like = mb_strtolower(like_contains('"'.$name.'"'));
+                $json = function ($inner) use ($like) {
+                    $inner->whereRaw('LOWER(SUBSTRING(categories, 1, 8000)) LIKE ? ESCAPE ?', [$like, '\\']);
+                };
+                if ($hasCategory) {
+                    $q->orWhere($json);
+                } else {
+                    $q->where($json);
+                }
+            } elseif (! $hasCategory) {
+                $q->whereRaw('1 = 0');
+            }
+        });
+    }
+
+    private function staffSearchHost(string $search): ?string
+    {
+        $raw = trim($search);
+        if ($raw === '' || str_contains($raw, ' ') || str_contains($raw, '@')) {
+            return null;
+        }
+        if (! str_contains($raw, '.') && ! str_contains($raw, '://')) {
+            return null;
+        }
+
+        if (! str_contains($raw, '://')) {
+            $raw = 'https://'.$raw;
+        }
+
+        $host = parse_url($raw, PHP_URL_HOST);
+        if (! is_string($host) || $host === '') {
+            return null;
+        }
+
+        $normalized = Site::normalizeMarketplaceDomain($host);
+
+        return $normalized !== '' ? $normalized : null;
     }
 
     /**
@@ -839,36 +2765,9 @@ class SiteController extends Controller
         }
         $selectedPublisherId = (int) $rawSelectedPublisher;
 
-        $publishers = User::query()
-            ->whereHas('roles', fn ($q) => $q->where('name', 'publisher'))
-            ->where(function ($q) use ($selectedPublisherId) {
-                $q->whereEmailVerified();
-                if ($selectedPublisherId > 0) {
-                    $q->orWhere('id', $selectedPublisherId);
-                }
-            })
-            ->withCount('sites')
-            ->orderBy('name')
-            ->get(['id', 'name', 'email', 'email_verified_at']);
-
-        $selectedPublisherUnverified = $selectedPublisherId > 0
-            && $publishers->contains(
-                fn (User $publisher) => (int) $publisher->id === $selectedPublisherId
-                    && blank($publisher->email_verified_at)
-            );
-
-        $languages = Language::marketplace()->orderBy('name')->get();
-        $countries = Country::marketplace()->orderBy('name')->get();
-        // Same A–Z niche list as Catalog main search filter.
-        $categories = Category::catalogPickerNames();
-        $countryLanguageMap = app(CountryLanguagePairs::class)->mapWithNames();
-        $isMarketingEditor = $this->isMarketingEditor(auth()->user());
-        $sitesBackUrl = $selectedPublisherId > 0
-            ? staff_route('sites.index', ['publisher' => $selectedPublisherId])
-            : staff_route('sites.index');
-
         $prefillSiteName = CommunityInbox::plainLine($request->query('site_name'));
         $prefillSiteUrl = CommunityInbox::safeHttpUrl($request->query('site_url')) ?? '';
+        $prefillExampleUrl = CommunityInbox::safeHttpUrl($request->query('example_url')) ?? '';
         $prefillCountry = strtolower(search_text($request->query('country')));
         if (strlen($prefillCountry) !== 2) {
             $prefillCountry = '';
@@ -878,6 +2777,50 @@ class SiteController extends Controller
             $prefillLanguage = '';
         }
         $suggestionId = CommunityInbox::suggestionIdFrom($request->query('suggestion_id'));
+        $prefillSuggestionNotes = '';
+        $occupyingListingUrl = null;
+
+        if ($suggestionId > 0) {
+            $suggestion = WebsiteSuggestion::query()->find($suggestionId);
+            if ($suggestion) {
+                $prefillSuggestionNotes = CommunityInbox::plainLine($suggestion->notes);
+                if ($prefillExampleUrl === '') {
+                    $suggestionUrl = CommunityInbox::safeHttpUrl($suggestion->website_url);
+                    if ($suggestionUrl) {
+                        $path = parse_url($suggestionUrl, PHP_URL_PATH);
+                        if (is_string($path) && $path !== '' && $path !== '/') {
+                            $prefillExampleUrl = $suggestionUrl;
+                        }
+                    }
+                }
+                $domain = CommunityInbox::suggestionLookupDomain($suggestion);
+                if ($domain !== '') {
+                    $occupying = Site::findOccupyingDomain($domain);
+                    if ($occupying) {
+                        $occupyingListingUrl = CatalogProblemReport::staffListingUrl($occupying, false);
+                        if ($selectedPublisherId <= 0) {
+                            $selectedPublisherId = (int) $occupying->publisher_id;
+                        }
+                    }
+                }
+            }
+        }
+
+        $publishers = $this->selectedPublishersForStaffAssign($selectedPublisherId);
+
+        $selectedPublisherUnverified = $selectedPublisherId > 0
+            && $publishers->contains(
+                fn (User $publisher) => (int) $publisher->id === $selectedPublisherId
+                    && ! $publisher->hasVerifiedEmail()
+            );
+
+        $languages = Language::marketplace()->orderBy('name')->get();
+        $countries = Country::marketplace()->orderBy('name')->get();
+        // Same A–Z niche list as Catalog main search filter.
+        $categories = Category::catalogPickerNames();
+        $countryLanguageMap = app(CountryLanguagePairs::class)->mapWithNames();
+        $isMarketingEditor = $this->isMarketingEditor(auth()->user());
+        $sitesBackUrl = $this->staffSitesBackUrl($request, $selectedPublisherId);
 
         return view('admin.site-create', compact(
             'publishers',
@@ -891,8 +2834,11 @@ class SiteController extends Controller
             'sitesBackUrl',
             'prefillSiteName',
             'prefillSiteUrl',
+            'prefillExampleUrl',
             'prefillCountry',
             'prefillLanguage',
+            'prefillSuggestionNotes',
+            'occupyingListingUrl',
             'suggestionId'
         ));
     }
@@ -988,6 +2934,10 @@ class SiteController extends Controller
                 ->withInput();
         }
 
+        if (trim(scalar_text($request->input('site_tag'))) === '') {
+            $request->merge(['site_tag' => null]);
+        }
+
         $validator = Validator::make($request->all(), [
             'publisher_id' => 'required|integer|exists:users,id',
             'site_name' => 'required|string|max:255',
@@ -1005,11 +2955,14 @@ class SiteController extends Controller
             'link_type' => 'required|in:dofollow,nofollow',
             'description' => 'nullable|string|max:20000',
             'site_image' => SiteImageUpload::uploadedFileRules(false),
-            'site_tag' => 'nullable|in:sponsored,partner_material,as_you_prefer',
+            'site_tag' => 'nullable|in:sponsored,partner_material,as_you_prefer,none',
             'written_request' => 'accepted',
+            'publish_mode' => StaffListingPublishMode::validationRule(),
             'suggestion_id' => 'nullable|integer',
+            'request_source' => 'nullable|string|max:120',
         ] + $this->placementOfferValidationRules(), array_merge($this->siteImageValidationMessages(), [
             'written_request.accepted' => 'Confirm you have a written request from this publisher’s account email.',
+            'publish_mode.in' => 'Choose Invite to Accept or Publish this site now.',
             'price.max' => 'Price must be at most €999,999.99.',
         ]), $this->placementOfferValidationAttributes());
 
@@ -1019,10 +2972,16 @@ class SiteController extends Controller
             $publisher = User::query()
                 ->whereKey($publisherId)
                 ->whereHas('roles', fn ($q) => $q->where('name', 'publisher'))
+                ->when(User::hasUsersColumn('suspended_at'), fn ($q) => $q->whereNull('suspended_at'))
                 ->first();
 
             if (! $publisher) {
                 $validator->errors()->add('publisher_id', 'Choose a valid publisher account.');
+            } elseif (! $publisher->hasVerifiedEmail()) {
+                $validator->errors()->add(
+                    'publisher_id',
+                    'This publisher has not verified their email. They cannot Accept until they verify.'
+                );
             }
 
             $existing = $this->findSiteByDomain($domain);
@@ -1050,6 +3009,8 @@ class SiteController extends Controller
             foreach (SiteDescriptionRules::errors(scalar_text($request->input('description', ''))) as $message) {
                 $validator->errors()->add('description', $message);
             }
+
+            $this->rejectBlankCheckedPlacementFees($validator, $request);
         });
 
         if ($validator->fails()) {
@@ -1059,12 +3020,20 @@ class SiteController extends Controller
         $cleanDescription = app(SiteDescriptionSanitizer::class)
             ->sanitize(scalar_text($request->input('description')));
 
+        $publishMode = StaffListingPublishMode::parse($request->input('publish_mode'));
+        if ($publishMode === null) {
+            return redirect()->back()
+                ->withErrors(['publish_mode' => 'Choose Invite to Accept or Publish this site now.'])
+                ->withInput();
+        }
+
         $site = null;
+        $bulk = null;
         $storedImagePath = null;
         $publisherId = (int) $request->input('publisher_id');
 
         try {
-            DB::transaction(function () use ($request, $domain, $cleanDescription, $categoriesArray, $primaryCategory, $countryCodes, $languageCodes, $publisherId, &$storedImagePath, &$site) {
+            DB::transaction(function () use ($request, $domain, $cleanDescription, $categoriesArray, $primaryCategory, $countryCodes, $languageCodes, $publisherId, $publishMode, &$storedImagePath, &$site, &$bulk) {
                 Site::releaseCancelledBulkDomain($domain, $publisherId);
                 $existing = $this->findSiteByDomain($domain, lock: true);
                 if ($existing) {
@@ -1101,10 +3070,9 @@ class SiteController extends Controller
                 $homepagePrices = $this->collectHomepagePlacementPrices($request);
                 $socialPromotion = $this->collectSocialPromotion($request);
 
-                $site->applyMarketplaceListing([
+                $site->applyMarketplaceListing(array_merge([
                     'publisher_id' => $publisherId,
                     'assigned_by_user_id' => auth()->id(),
-                    'publisher_accepted_at' => null,
                     'site_name' => $request->input('site_name'),
                     'site_url' => $request->input('site_url'),
                     'domain' => $domain,
@@ -1126,22 +3094,16 @@ class SiteController extends Controller
                     'publication_time' => $request->input('publication_time'),
                     'link_type' => $request->input('link_type'),
                     'description' => $cleanDescription,
-                    'verified' => false,
-                    'active' => false,
                     'enrichment_status' => 'pending',
-                    'onboarding_status' => null,
                     'sensitive_prices' => ! empty($sensitivePrices) ? $sensitivePrices : null,
                     'homepage_placement_prices' => ! empty($homepagePrices) ? $homepagePrices : null,
                     'social_promotion' => $socialPromotion,
-                ]);
+                ], StaffListingPublishMode::staffAssignAttributes($publishMode)));
 
-                // Hard-set invite + metrics so a missing column skip cannot silently drop them.
+                // Hard-set mode + metrics so a missing column skip cannot silently drop them.
                 $price = $request->input('price');
-                $site->forceFill([
+                $site->forceFill(array_merge([
                     'assigned_by_user_id' => auth()->id(),
-                    'publisher_accepted_at' => null,
-                    'verified' => false,
-                    'active' => false,
                     'da' => $da,
                     'dr' => $dr,
                     'traffic' => $traffic,
@@ -1149,7 +3111,7 @@ class SiteController extends Controller
                     'metrics_manual' => true,
                     'metrics_provider' => 'manual',
                     'metrics_fetched_at' => now(),
-                ]);
+                ], StaffListingPublishMode::staffAssignAttributes($publishMode)));
 
                 if (class_exists(SiteTag::class)) {
                     SiteTag::applyStaffDefault($site, $request->input('site_tag'));
@@ -1167,12 +3129,19 @@ class SiteController extends Controller
                 if (is_numeric($price) && round((float) $site->price, 2) !== round((float) $price, 2)) {
                     throw new \RuntimeException('Staff site price did not persist after save.');
                 }
-                if (filled($site->publisher_accepted_at) || blank($site->assigned_by_user_id)) {
+                if (blank($site->assigned_by_user_id)) {
                     throw new \RuntimeException('Publisher invite state did not persist after save.');
                 }
-                if ((bool) $site->verified || (bool) $site->active) {
+                if (StaffListingPublishMode::isPublish($publishMode)) {
+                    if (! (bool) $site->active || (bool) $site->verified
+                        || ! ($site->publisher_accepted_at instanceof \DateTimeInterface)) {
+                        throw new \RuntimeException('Staff site publish-now flags did not persist after save.');
+                    }
+                } elseif (filled($site->publisher_accepted_at) || (bool) $site->verified || (bool) $site->active) {
                     throw new \RuntimeException('Staff site invite flags did not persist after save.');
                 }
+
+                $bulk = BulkSiteRequest::openForStaffInvites($publisherId, (int) auth()->id(), [$site]);
             });
         } catch (ValidationException $e) {
             $this->deleteStoredSiteImage($storedImagePath);
@@ -1233,18 +3202,45 @@ class SiteController extends Controller
             ]);
         }
 
+        $wentLive = StaffListingPublishMode::isPublish($publishMode);
+
         try {
             ActivityLogger::log(
-                'site.assigned_for_acceptance',
-                (auth()->user()->name ?? 'Staff').' added site "'.$site->site_name.'" for publisher acceptance',
+                $wentLive ? 'site.staff_published' : 'site.assigned_for_acceptance',
+                $wentLive
+                    ? (auth()->user()->name ?? 'Staff').' published site "'.$site->site_name.'" for the publisher (live, not verified)'
+                    : (auth()->user()->name ?? 'Staff').' added site "'.$site->site_name.'" for publisher acceptance',
                 $site,
                 [
                     'publisher_id' => $publisherId,
                     'assigned_by_user_id' => auth()->id(),
                     'domain' => $site->domain,
+                    'written_request' => true,
+                    'publish_mode' => $publishMode,
+                    'bulk_site_request_id' => $bulk?->id,
+                    ...array_filter([
+                        'request_source' => CommunityInbox::plainLine($request->input('request_source')),
+                    ]),
                 ],
                 $site->site_name
             );
+            if ($bulk) {
+                ActivityLogger::log(
+                    $wentLive ? 'bulk_request.staff_published' : 'bulk_request.staff_assigned',
+                    $wentLive
+                        ? (auth()->user()->name ?? 'Staff').' opened staff batch #'.$bulk->id.' and published 1 live site'
+                        : (auth()->user()->name ?? 'Staff').' opened staff batch #'.$bulk->id.' for publisher acceptance',
+                    $bulk,
+                    [
+                        'bulk_site_request_id' => $bulk->id,
+                        'publisher_id' => $publisherId,
+                        'site_ids' => [$site->id],
+                        'site_count' => 1,
+                        'publish_mode' => $publishMode,
+                    ],
+                    'Bulk request #'.$bulk->id
+                );
+            }
         } catch (\Throwable $e) {
             Log::warning('Failed to log staff-assigned site: '.$e->getMessage());
         }
@@ -1254,7 +3250,11 @@ class SiteController extends Controller
         $publisher = $site->publisher;
         try {
             if ($publisher?->email) {
-                Mail::to($publisher->email)->send(new AdminAssignedSiteNotification($site, $publisher));
+                Mail::to($publisher->email)->send(
+                    $wentLive
+                        ? new AdminPublishedSiteNotification($site, $publisher)
+                        : new AdminAssignedSiteNotification($site, $publisher)
+                );
                 $emailed = true;
             }
         } catch (\Throwable $e) {
@@ -1263,19 +3263,29 @@ class SiteController extends Controller
 
         try {
             if ((int) ($site->publisher_id ?? 0) > 0) {
-                app(InAppNotificationService::class)->notifyPublisherSiteAssignedForAcceptance($site);
-                $belled = true;
+                $notifier = app(InAppNotificationService::class);
+                $belled = ($wentLive
+                    ? $notifier->notifyPublisherStaffPublishedListings((int) $site->publisher_id, 1, $site)
+                    : $notifier->notifyPublisherSiteAssignedForAcceptance($site)) !== null;
             }
         } catch (\Throwable $e) {
             Log::warning('Failed to bell-notify publisher about staff-assigned site: '.$e->getMessage());
         }
 
         $success = 'Site added (DA '.$site->da.' / DR '.$site->dr.').';
-        $success .= ($emailed || $belled)
-            ? ' Publisher was notified — they must open My Sites → Invites and Accept before it appears under Pending.'
-            : ' The listing was saved, but we could not notify the publisher. Ask them to open My Sites → Invites and Accept.';
+        if ($wentLive) {
+            $success .= ($emailed || $belled)
+                ? ' It is live on the catalog (not verified). Publisher was notified — they do not need to Accept.'
+                : ' It is live on the catalog (not verified). We could not notify the publisher.';
+        } else {
+            $success .= ($emailed || $belled)
+                ? ' Publisher was notified — they must open My Sites → Invites and Accept before it appears under Pending.'
+                : ' The listing was saved, but we could not notify the publisher. Ask them to open My Sites → Invites and Accept.';
+        }
         if (! $site->hasGoodMetrics()) {
-            $success .= ' This listing is below the marketing Activate bar (DA ≥ '.Site::GOOD_MIN_DA.', DR ≥ '.Site::GOOD_MIN_DR.', traffic ≥ '.number_format(Site::GOOD_MIN_TRAFFIC).').';
+            $success .= $wentLive
+                ? ' This listing is below the marketing quality bar (DA ≥ '.Site::GOOD_MIN_DA.', DR ≥ '.Site::GOOD_MIN_DR.', traffic ≥ '.number_format(Site::GOOD_MIN_TRAFFIC).').'
+                : ' This listing is below the marketing Activate bar (DA ≥ '.Site::GOOD_MIN_DA.', DR ≥ '.Site::GOOD_MIN_DR.', traffic ≥ '.number_format(Site::GOOD_MIN_TRAFFIC).').';
         }
 
         $redirectParams = ['publisher' => $publisherId];
@@ -1283,9 +3293,629 @@ class SiteController extends Controller
             $redirectParams['site'] = $site->id;
         }
 
+        $successActions = [
+            [
+                'url' => staff_route('sites.create', ['publisher' => $publisherId], false),
+                'label' => 'Add another for this publisher',
+            ],
+        ];
+        if ($site?->id) {
+            $successActions[] = [
+                'url' => staff_route('sites.edit', $site->id, false),
+                'label' => 'Edit listing',
+            ];
+        }
+        if ($bulk?->id) {
+            $successActions[] = [
+                'url' => staff_route('bulk-site-requests.show', $bulk->id, false),
+                'label' => 'Open batch',
+            ];
+        }
+
         return redirect()
-            ->to(staff_route('sites.index', $redirectParams))
-            ->with('success', $success);
+            ->to(staff_route('sites.index', $redirectParams, false))
+            ->with('success', $success)
+            ->with('success_actions', $successActions)
+            ->with('success_action', $successActions[0]);
+    }
+
+    public function domainCheck(Request $request): JsonResponse
+    {
+        $url = $this->postedHttpUrl($request->query('site_url', ''));
+        $domain = $this->domainFromUrl($url);
+        if ($domain === null) {
+            return response()->json([
+                'available' => false,
+                'message' => 'Enter a full website URL to check it.',
+            ]);
+        }
+
+        $existing = $this->findSiteByDomain($domain);
+
+        return response()->json([
+            'available' => $existing === null,
+            'domain' => $domain,
+            'listing_url' => $existing ? CatalogProblemReport::staffListingUrl($existing, false) : null,
+            'message' => $existing
+                ? $this->domainAlreadyRegisteredMessage($existing)
+                : $domain.' is not registered yet.',
+        ]);
+    }
+
+    public function publisherDomains(Request $request): JsonResponse
+    {
+        $publisherId = (int) $request->query('publisher', 0);
+        $publisher = User::query()
+            ->whereKey($publisherId)
+            ->whereHas('roles', fn ($q) => $q->where('name', 'publisher'))
+            ->first();
+        if (! $publisher) {
+            return response()->json(['domains' => [], 'total' => 0]);
+        }
+
+        $query = Site::query()->where('publisher_id', $publisher->id)->orderBy('domain');
+        $total = (clone $query)->count();
+        $sites = $query->limit(12)->get(['id', 'domain', 'publisher_id']);
+        $domains = $sites->map(function (Site $site) {
+            return [
+                'domain' => (string) $site->domain,
+                'listing_url' => CatalogProblemReport::staffListingUrl($site, false),
+            ];
+        })->values()->all();
+
+        $userUrl = null;
+        try {
+            if (auth()->user()?->isAdmin()) {
+                $userUrl = route('admin.users.show', $publisher->id, false);
+            }
+        } catch (\Throwable) {
+            $userUrl = null;
+        }
+
+        return response()->json([
+            'domains' => $domains,
+            'total' => $total,
+            'publisher' => [
+                'id' => $publisher->id,
+                'name' => $publisher->name,
+                'email' => $publisher->email,
+                'verified' => $publisher->hasVerifiedEmail(),
+                'sites_count' => $total,
+            ],
+            'sites_url' => staff_route('sites.index', ['publisher' => $publisher->id], false),
+            'user_url' => $userUrl,
+        ]);
+    }
+
+    public function searchPublishers(Request $request): JsonResponse
+    {
+        $q = search_text($request->query('q'));
+        $selectedId = (int) $request->query('selected', $request->query('publisher', 0));
+
+        $query = $this->staffAssignPublisherBaseQuery()
+            ->whereEmailVerified()
+            ->withCount('sites');
+
+        if ($q !== '') {
+            $like = like_contains($q);
+            $query->where(function ($inner) use ($like) {
+                $inner->whereRaw('name LIKE ? ESCAPE ?', [$like, '\\'])
+                    ->orWhereRaw('email LIKE ? ESCAPE ?', [$like, '\\'])
+                    ->orWhereHas('sites', function ($sites) use ($like) {
+                        $sites->whereRaw('domain LIKE ? ESCAPE ?', [$like, '\\']);
+                    });
+            })->orderBy('name')->limit(20);
+        } else {
+            $query->orderByDesc('id')->limit(8);
+        }
+
+        $rows = $query->get();
+
+        if ($selectedId > 0 && ! $rows->contains(fn (User $user) => (int) $user->id === $selectedId)) {
+            $selected = $this->staffAssignPublisherBaseQuery()
+                ->whereKey($selectedId)
+                ->withCount('sites')
+                ->first();
+            if ($selected) {
+                $rows = $rows->prepend($selected);
+            }
+        }
+
+        $options = $rows->map(function (User $publisher) {
+            $count = (int) ($publisher->sites_count ?? 0);
+            $label = $publisher->name.' · '.$publisher->email;
+            if ($count > 0) {
+                $label .= ' ('.$count.' '.Str::plural('site', $count).')';
+            }
+            if (! $publisher->hasVerifiedEmail()) {
+                $label .= ' · unverified';
+            }
+
+            return [
+                'value' => (string) $publisher->id,
+                'label' => $label,
+                'data' => [
+                    'verified' => $publisher->hasVerifiedEmail() ? '1' : '0',
+                ],
+            ];
+        })->values()->all();
+
+        return response()->json(['options' => $options]);
+    }
+
+    public function lookupMetrics(Request $request, SiteMetricsAggregator $metrics): JsonResponse
+    {
+        if (! SiteEnrichmentService::enabled() || ! $metrics->anyApiProviderConfigured()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Metrics have to be typed. No lookup provider is configured.',
+            ]);
+        }
+
+        $url = $this->postedHttpUrl($request->input('site_url', ''));
+        $domain = $this->domainFromUrl($url);
+        if ($domain === null) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Enter a valid site URL before looking up metrics.',
+            ], 422);
+        }
+
+        $probe = new Site;
+        $probe->site_url = $url;
+        $probe->domain = $domain;
+        $probe->metrics_manual = false;
+
+        try {
+            $result = $metrics->fetch($probe);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Metrics have to be typed. The lookup did not return numbers.',
+            ]);
+        }
+
+        $snapshot = $result['snapshot'];
+        if ($snapshot->domainAuthority === null && $snapshot->domainRating === null && $snapshot->monthlyOrganicTraffic === null) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Metrics have to be typed. The lookup did not return numbers.',
+            ]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'da' => $snapshot->domainAuthority,
+            'dr' => $snapshot->domainRating,
+            'traffic' => $snapshot->monthlyOrganicTraffic,
+            'message' => 'Metrics filled. You can still edit them.',
+        ]);
+    }
+
+    public function createBulkForPublisher(Request $request): View
+    {
+        $rawSelectedPublisher = old('publisher_id', $request->query('publisher', 0));
+        if (is_array($rawSelectedPublisher)) {
+            $rawSelectedPublisher = reset($rawSelectedPublisher);
+        }
+        $selectedPublisherId = (int) $rawSelectedPublisher;
+        $publishers = $this->publishersForStaffAssign($selectedPublisherId);
+        $sitesBackUrl = $this->staffSitesBackUrl($request, $selectedPublisherId);
+
+        return view('admin.site-bulk-create', compact('publishers', 'selectedPublisherId', 'sitesBackUrl'));
+    }
+
+    public function storeBulkForPublisher(Request $request): RedirectResponse
+    {
+        if (! Site::hasSitesColumn('publisher_accepted_at') || ! Site::hasSitesColumn('assigned_by_user_id')) {
+            return back()->withErrors([
+                'save' => 'Database is missing the publisher-acceptance columns. Run migrations, then try again.',
+            ])->withInput();
+        }
+
+        $validator = Validator::make($request->all(), [
+            'publisher_id' => 'required|integer|exists:users,id',
+            'rows' => 'nullable|string|max:500000',
+            'csv_file' => 'nullable|file|max:5120',
+            'written_request' => 'accepted',
+            'publish_mode' => StaffListingPublishMode::validationRule(),
+        ], [
+            'written_request.accepted' => 'Confirm you have a written request from this publisher’s account email.',
+            'publish_mode.in' => 'Choose Invite to Accept or Publish filled sites now.',
+        ]);
+
+        $publisherId = (int) $request->input('publisher_id');
+        $publisher = User::query()
+            ->whereKey($publisherId)
+            ->whereHas('roles', fn ($q) => $q->where('name', 'publisher'))
+            ->when(User::hasUsersColumn('suspended_at'), fn ($q) => $q->whereNull('suspended_at'))
+            ->first();
+
+        $validator->after(function ($validator) use ($request, $publisher) {
+            if (! $publisher) {
+                $validator->errors()->add('publisher_id', 'Choose a valid publisher account.');
+            }
+            $hasFile = $request->hasFile('csv_file');
+            $hasRows = trim((string) $request->input('rows', '')) !== '';
+            if ($hasFile) {
+                $upload = $request->file('csv_file');
+                $ext = strtolower((string) ($upload instanceof UploadedFile ? $upload->getClientOriginalExtension() : ''));
+                if (! $upload instanceof UploadedFile || $upload->getRealPath() === false) {
+                    $validator->errors()->add('csv_file', 'We could not read that file.');
+                } elseif (! in_array($ext, ['csv', 'txt'], true)) {
+                    $validator->errors()->add('csv_file', 'Upload a .csv or .txt file.');
+                }
+            }
+            if (! $hasFile && ! $hasRows) {
+                $validator->errors()->add('rows', 'Paste the sites or upload a CSV.');
+            }
+        });
+
+        if ($validator->fails()) {
+            return back()->withErrors($validator)->withInput();
+        }
+
+        $publishMode = StaffListingPublishMode::parse($request->input('publish_mode'));
+        if ($publishMode === null) {
+            return back()->withErrors([
+                'publish_mode' => 'Choose Invite to Accept or Publish filled sites now.',
+            ])->withInput();
+        }
+
+        $upload = $request->file('csv_file');
+        $rawRows = $upload instanceof UploadedFile
+            ? $this->bulkInviteRowsFromCsv($upload)
+            : $this->bulkInviteRowsFromPaste((string) $request->input('rows', ''));
+
+        if (count($rawRows) > BulkSiteRequest::MAX_SITES_PER_REQUEST) {
+            return back()->withErrors([
+                'rows' => 'Add at most '.BulkSiteRequest::MAX_SITES_PER_REQUEST.' sites at once.',
+            ])->withInput();
+        }
+        if ($rawRows === []) {
+            return back()->withErrors(['rows' => 'No site rows were found.'])->withInput();
+        }
+
+        $allowedCountries = Country::marketplace()->pluck('code')->map(fn ($c) => strtolower((string) $c))->all();
+        $allowedLanguages = Language::marketplace()->pluck('code')->map(fn ($c) => strtolower((string) $c))->all();
+        $seen = [];
+        $ready = [];
+        $failures = [];
+        foreach ($rawRows as $index => $fields) {
+            $line = (int) ($fields['_line'] ?? ($index + 1));
+            unset($fields['_line']);
+            $checked = $this->validateBulkInviteRow($fields, $line, $allowedCountries, $allowedLanguages, $seen);
+            if ($checked['errors'] !== []) {
+                $failures[] = $checked;
+            } else {
+                $ready[] = $checked['row'];
+            }
+        }
+
+        if ($failures !== []) {
+            return back()
+                ->withErrors(['rows' => 'Fix the rows below. Nothing was saved.'])
+                ->with('bulk_row_errors', $failures)
+                ->withInput();
+        }
+
+        $sites = [];
+        $bulk = null;
+        try {
+            DB::transaction(function () use ($ready, $publisherId, $publishMode, &$sites, &$bulk) {
+                foreach ($ready as $row) {
+                    $sites[] = $this->persistStaffInvite($row, $publisherId, $publishMode);
+                }
+                $bulk = BulkSiteRequest::openForStaffInvites($publisherId, (int) auth()->id(), $sites);
+            });
+        } catch (ValidationException $e) {
+            return back()->withErrors($e->errors())->withInput();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return back()->withErrors([
+                'save' => UserFacingError::message($e, 'We could not save these websites. Nothing was added.'),
+            ])->withInput();
+        }
+
+        foreach ($sites as $site) {
+            if (config('site_enrichment.enabled', true)) {
+                try {
+                    CaptureSiteScreenshotJob::dispatch($site->id, 'staff_assign');
+                } catch (\Throwable $e) {
+                    Log::warning('Failed to queue screenshot for staff bulk site', [
+                        'site_id' => $site->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+        }
+
+        $wentLive = StaffListingPublishMode::isPublish($publishMode);
+        $below = 0;
+        foreach ($sites as $site) {
+            if (! $site->hasGoodMetrics()) {
+                $below++;
+            }
+            try {
+                ActivityLogger::log(
+                    $wentLive ? 'site.staff_published' : 'site.assigned_for_acceptance',
+                    $wentLive
+                        ? (auth()->user()->name ?? 'Staff').' published site "'.$site->site_name.'" for the publisher (live, not verified)'
+                        : (auth()->user()->name ?? 'Staff').' added site "'.$site->site_name.'" for publisher acceptance',
+                    $site,
+                    [
+                        'publisher_id' => $publisherId,
+                        'assigned_by_user_id' => auth()->id(),
+                        'domain' => $site->domain,
+                        'written_request' => true,
+                        'bulk' => true,
+                        'publish_mode' => $publishMode,
+                        'bulk_site_request_id' => $bulk?->id,
+                    ],
+                    $site->site_name
+                );
+            } catch (\Throwable $e) {
+                Log::warning('Failed to log staff bulk site: '.$e->getMessage());
+            }
+        }
+
+        if ($bulk) {
+            try {
+                ActivityLogger::log(
+                    $wentLive ? 'bulk_request.staff_published' : 'bulk_request.staff_assigned',
+                    $wentLive
+                        ? (auth()->user()->name ?? 'Staff').' opened staff batch #'.$bulk->id.' and published '.count($sites).' live site(s)'
+                        : (auth()->user()->name ?? 'Staff').' opened staff batch #'.$bulk->id.' for publisher acceptance',
+                    $bulk,
+                    [
+                        'bulk_site_request_id' => $bulk->id,
+                        'publisher_id' => $publisherId,
+                        'site_ids' => collect($sites)->pluck('id')->all(),
+                        'site_count' => count($sites),
+                        'publish_mode' => $publishMode,
+                    ],
+                    'Bulk request #'.$bulk->id
+                );
+            } catch (\Throwable $e) {
+                Log::warning('Failed to log staff bulk batch: '.$e->getMessage());
+            }
+        }
+
+        $emailed = false;
+        $belled = false;
+        try {
+            if ($publisher?->email) {
+                Mail::to($publisher->email)->send(
+                    $wentLive
+                        ? new AdminPublishedSitesBatchNotification($publisher, $sites)
+                        : new AdminAssignedSitesBatchNotification($publisher, $sites)
+                );
+                $emailed = true;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Failed to email publisher about staff bulk sites: '.$e->getMessage());
+        }
+
+        try {
+            $notifier = app(InAppNotificationService::class);
+            if ($wentLive) {
+                $belled = $notifier->notifyPublisherStaffPublishedListings(
+                    $publisherId,
+                    count($sites),
+                    $sites[0] ?? $bulk
+                ) !== null;
+            } else {
+                $names = collect($sites)->pluck('domain')->filter()->take(12)->implode(', ');
+                $extra = count($sites) > 12 ? ' and '.(count($sites) - 12).' more' : '';
+                $count = count($sites);
+                $belled = $notifier->notify(
+                    $publisherId,
+                    InAppNotificationService::TYPE_SITE_STATUS,
+                    $count === 1
+                        ? 'Please accept a website we added for you'
+                        : 'Please accept websites we added for you',
+                    $count === 1
+                        ? 'Our team added 1 website. Accept it in My Sites → Invites. '.$names
+                        : 'Our team added '.$count.' websites. Accept them in My Sites → Invites. '.$names.$extra,
+                    [
+                        'category' => InAppNotificationService::CATEGORY_ACCOUNT,
+                        'icon' => 'check-circle',
+                        'priority' => InAppNotification::PRIORITY_HIGH,
+                        'related' => $sites[0] ?? null,
+                        'audience' => InAppNotification::AUDIENCE_PUBLISHER,
+                        'action_label' => 'Review & accept',
+                        'action_url' => route('publisher.websites', ['status' => 'invites'], false),
+                    ]
+                ) !== null;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Failed to bell-notify publisher about staff bulk sites: '.$e->getMessage());
+        }
+
+        $count = count($sites);
+        if ($wentLive) {
+            $success = $count.' '.($count === 1 ? 'site' : 'sites').' published live as batch'.($bulk?->id ? ' #'.$bulk->id : '').' (not verified).';
+            $success .= ($emailed || $belled)
+                ? ' Publisher was notified — they do not need to Accept.'
+                : ' We could not notify the publisher.';
+        } else {
+            $success = $count.' '.($count === 1 ? 'site' : 'sites').' added as batch'.($bulk?->id ? ' #'.$bulk->id : '').' for acceptance.';
+            $success .= ($emailed || $belled)
+                ? ($count === 1
+                    ? ' Publisher was notified — they must open My Sites → Invites and Accept.'
+                    : ' Publisher was notified once — they must open My Sites → Invites and Accept each one.')
+                : ' The listings were saved, but we could not notify the publisher. Ask them to open My Sites → Invites and Accept.';
+        }
+        if ($below > 0) {
+            $success .= ' '.$below.' listing(s) are below the marketing Activate bar (DA ≥ '.Site::GOOD_MIN_DA.', DR ≥ '.Site::GOOD_MIN_DR.', traffic ≥ '.number_format(Site::GOOD_MIN_TRAFFIC).').';
+        }
+
+        $redirectParams = ['publisher' => $publisherId];
+        if (($sites[0] ?? null)?->id) {
+            $redirectParams['site'] = $sites[0]->id;
+        }
+
+        $successActions = [
+            [
+                'url' => staff_route('sites.bulk-create', ['publisher' => $publisherId], false),
+                'label' => 'Add more in bulk',
+            ],
+        ];
+        if ($bulk?->id) {
+            $successActions[] = [
+                'url' => staff_route('bulk-site-requests.show', $bulk->id, false),
+                'label' => 'Open batch',
+            ];
+        }
+
+        return redirect()
+            ->to(staff_route('sites.index', $redirectParams, false))
+            ->with('success', $success)
+            ->with('success_actions', $successActions)
+            ->with('success_action', $successActions[0]);
+    }
+
+    public function resendInvite(Request $request, int $id): JsonResponse
+    {
+        $site = Site::with('publisher:id,name,email')->findOrFail($id);
+        if (! $site->isPendingPublisherAcceptance()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This listing is not waiting for the publisher to accept it.',
+            ], 422);
+        }
+
+        $publisher = $site->publisher;
+        $emailed = false;
+        $belled = false;
+        try {
+            if ($publisher?->email) {
+                $mail = new AdminAssignedSiteNotification($site, $publisher);
+                $mail->dedupeKey = 'admin-assigned-site-'.$site->id.'-resend-'.Str::uuid();
+                Mail::to($publisher->email)->send($mail);
+                $emailed = true;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Failed to resend staff-assigned site email: '.$e->getMessage());
+        }
+
+        try {
+            $belled = app(InAppNotificationService::class)->notifyPublisherSiteAssignedForAcceptance($site) !== null;
+        } catch (\Throwable $e) {
+            Log::warning('Failed to resend staff-assigned site bell: '.$e->getMessage());
+        }
+
+        if (! $emailed && ! $belled) {
+            return response()->json([
+                'success' => false,
+                'message' => 'The listing is still waiting, but we could not notify the publisher.',
+            ], 500);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Invite resent. The publisher still has to accept it.',
+        ]);
+    }
+
+    public function publishNow(Request $request, int $id): JsonResponse
+    {
+        $actor = auth()->user();
+        if (! $actor?->canActivateSites()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You are not allowed to activate or deactivate sites.',
+            ], 403);
+        }
+
+        try {
+            $site = Site::with('publisher:id,name,email')->findOrFail($id);
+            $block = $site->staffPublishNowBlockReason();
+            if ($block !== null) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $block,
+                    'missing_market' => ! $site->hasMarketplaceCountry(),
+                ], 422);
+            }
+
+            $oldStatus = (int) $site->active;
+            $site->active = true;
+            $site->onboarding_status = null;
+            if (Site::hasSitesColumn('publisher_accepted_at') && ! $site->isAcceptedByPublisher()) {
+                $site->publisher_accepted_at = now();
+            }
+            $site->save();
+            StaffSitesIndexCounts::forget();
+            $this->syncLinkedBulkAfterSiteRemoved($site->bulk_site_request_id);
+            $site->refresh()->loadMissing('publisher:id,name,email');
+
+            if (! (bool) $site->active) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Could not activate this listing.',
+                ], 500);
+            }
+
+            if ($oldStatus !== (int) $site->active) {
+                ActivityLogger::tryLog(
+                    'site.activated',
+                    ($actor->name ?? 'Staff').' activated site "'.$site->site_name.'"',
+                    $site,
+                    [
+                        'from' => $oldStatus,
+                        'to' => (int) $site->active,
+                        'bulk_site_request_id' => $site->bulk_site_request_id,
+                        'by_role' => $actor->activeRole(),
+                        'direct' => true,
+                    ],
+                    $site->site_name
+                );
+            }
+
+            $emailSent = false;
+            try {
+                app(InAppNotificationService::class)->completeAdminSiteReviewNotifications($site);
+            } catch (\Throwable $e) {
+                Log::warning('Could not complete site review notifications after active now: '.$e->getMessage());
+            }
+
+            try {
+                $publisher = $site->publisher;
+                if ($publisher?->email) {
+                    Mail::to($publisher->email)->send(new SiteStatusNotification($site, 'activated'));
+                    $emailSent = true;
+                }
+                if ($publisher) {
+                    app(InAppNotificationService::class)->notifySiteStatusChanged($site->fresh(), 'activated');
+                }
+            } catch (\Throwable $e) {
+                Log::error('Failed to send status notification: '.$e->getMessage());
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Site activated',
+                'email_sent' => $emailSent,
+                'active' => true,
+                'verified' => (bool) $site->verified,
+                'pending_publisher_acceptance' => false,
+                'can_publish_now' => false,
+                'can_activate' => false,
+            ]);
+        } catch (ModelNotFoundException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            return $this->staffSiteMutationFailure(
+                'Failed to activate site now',
+                (int) $id,
+                $e,
+                'Could not update active status.'
+            );
+        }
     }
 
     // Edit page (optional)
@@ -1315,6 +3945,7 @@ class SiteController extends Controller
         // Same A–Z niche list as Catalog main search filter.
         $categories = Category::catalogPickerNames();
         $countryLanguageMap = app(CountryLanguagePairs::class)->mapWithNames();
+        $sitesBackUrl = $this->staffSitesBackUrl(request(), (int) $site->publisher_id, (int) $site->id);
 
         $editData = compact(
             'site',
@@ -1323,7 +3954,8 @@ class SiteController extends Controller
             'languages',
             'countries',
             'categories',
-            'countryLanguageMap'
+            'countryLanguageMap',
+            'sitesBackUrl'
         );
 
         // Named view keeps @section / @stack working. File fallback covers a
@@ -1704,10 +4336,7 @@ class SiteController extends Controller
 
         if ($isMarketingEditor) {
             return redirect()
-                ->to(staff_route('sites.index', array_filter([
-                    'publisher' => $site->publisher_id,
-                    'site' => $site->id,
-                ])))
+                ->to($this->staffSitesBackUrl($request, (int) $site->publisher_id, (int) $site->id))
                 ->with('success', $message);
         }
 
@@ -1859,6 +4488,7 @@ class SiteController extends Controller
             'publication_time' => 'sometimes|nullable|string|max:20',
             // Dedicated editor is free text; modal may send dofollow/nofollow.
             'link_type' => 'sometimes|nullable|string|max:50',
+            'site_tag' => 'sometimes|nullable|in:sponsored,partner_material,as_you_prefer,none',
             'sponsored' => 'sometimes|nullable|boolean',
             'partner_material' => 'sometimes|nullable|boolean',
             'as_you_prefer' => 'sometimes|nullable|boolean',
@@ -1895,6 +4525,10 @@ class SiteController extends Controller
 
             if ($request->filled('site_url') && ($domain === null || $domain === '')) {
                 $validator->errors()->add('site_url', 'Invalid URL');
+            }
+
+            if ($request->boolean('placement_offers_form')) {
+                $this->rejectBlankCheckedPlacementFees($validator, $request);
             }
 
             $exampleUrl = $request->input('example_url');
@@ -2070,14 +4704,7 @@ class SiteController extends Controller
             unset($data['site_image']);
         }
 
-        $placementPatch = null;
-        if ($request->boolean('placement_offers_form')) {
-            $homepagePrices = $this->collectHomepagePlacementPrices($request);
-            $placementPatch = [
-                'homepage_placement_prices' => $homepagePrices !== [] ? $homepagePrices : null,
-                'social_promotion' => $this->collectSocialPromotion($request),
-            ];
-        }
+        $placementPatch = $this->placementOffersPatch($request);
 
         $data = array_filter($data, function ($value, $key) {
             // Optional example URL must be clearable; other nulls mean "leave unchanged".
@@ -2122,7 +4749,7 @@ class SiteController extends Controller
             return $data;
         }
 
-        return SiteTag::exclusiveAttributePatch($data, $site);
+        return SiteTag::exclusiveAttributePatch($this->mergePostedSiteTag($data, $request), $site);
     }
 
     /**
@@ -2215,6 +4842,7 @@ class SiteController extends Controller
             'country' => 'required|string|max:10',
             'categories' => 'required|array|min:1|max:7',
             'site_image' => SiteImageUpload::fieldRules($request->hasFile('site_image')),
+            'site_tag' => 'sometimes|nullable|in:sponsored,partner_material,as_you_prefer,none',
         ];
         if ($canFixListing) {
             $rules['site_name'] = 'sometimes|required|string|max:255';
@@ -2222,6 +4850,9 @@ class SiteController extends Controller
             $rules['example_url'] = 'nullable|url|max:255';
             $rules['price'] = 'sometimes|required|numeric|min:0|max:999999.99';
             $rules['description'] = 'sometimes|nullable|string|max:20000';
+        }
+        if ($canFixListing && $request->boolean('placement_offers_form')) {
+            $rules = array_merge($rules, $this->placementOfferValidationRules());
         }
 
         if ($request->exists('site_name') && is_string($request->input('site_name'))) {
@@ -2244,9 +4875,14 @@ class SiteController extends Controller
             }
         }
 
-        $validator = Validator::make($request->all(), $rules, array_merge($this->siteImageValidationMessages(), [
-            'price.max' => 'Price must be at most €999,999.99.',
-        ]));
+        $validator = Validator::make(
+            $request->all(),
+            $rules,
+            array_merge($this->siteImageValidationMessages(), [
+                'price.max' => 'Price must be at most €999,999.99.',
+            ]),
+            $this->placementOfferValidationAttributes()
+        );
 
         // site_image is often a stored path string after upload-image; only
         // validate as a file when a real upload is present.
@@ -2316,6 +4952,10 @@ class SiteController extends Controller
                     $validator->errors()->add('description', $message);
                 }
             }
+
+            if ($canFixListing && $request->boolean('placement_offers_form')) {
+                $this->rejectBlankCheckedPlacementFees($validator, $request);
+            }
         });
 
         if ($validator->fails()) {
@@ -2371,6 +5011,11 @@ class SiteController extends Controller
             if ($incomingDescription !== null) {
                 $payload['description'] = $incomingDescription;
             }
+
+            $placementPatch = $this->placementOffersPatch($request);
+            if ($placementPatch !== null) {
+                $payload = array_merge($payload, $placementPatch);
+            }
         }
 
         // Same image rules as admin — optional; leave empty to keep current.
@@ -2425,7 +5070,491 @@ class SiteController extends Controller
             }
         }
 
-        return $payload;
+        return $this->mergePostedSiteTag($payload, $request);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function mergePostedSiteTag(array $data, Request $request): array
+    {
+        if (! $request->exists('site_tag') || ! class_exists(SiteTag::class)) {
+            return $data;
+        }
+
+        $raw = $request->input('site_tag');
+        $tag = is_string($raw) ? strtolower(trim($raw)) : '';
+        if ($tag === '' || $tag === 'none') {
+            $tag = null;
+        }
+
+        return array_merge($data, SiteTag::flags($tag));
+    }
+
+    /**
+     * @return Collection<int, User>
+     */
+    private function publishersForStaffAssign(int $selectedPublisherId)
+    {
+        return User::query()
+            ->whereHas('roles', fn ($q) => $q->where('name', 'publisher'))
+            ->when(User::hasUsersColumn('suspended_at'), fn ($q) => $q->whereNull('suspended_at'))
+            ->where(function ($q) use ($selectedPublisherId) {
+                $q->whereEmailVerified();
+                if ($selectedPublisherId > 0) {
+                    $q->orWhere('id', $selectedPublisherId);
+                }
+            })
+            ->withCount('sites')
+            ->orderBy('name')
+            ->get(['id', 'name', 'email', 'email_verified_at']);
+    }
+
+    /**
+     * Same-origin Sites list URL. Query-string return filters only — never PUT body.
+     */
+    private function staffSitesBackUrl(Request $request, int $publisherId = 0, ?int $siteId = null): string
+    {
+        $returnQuery = AdminSites::storedReturnQuery($request);
+        if ($returnQuery !== []) {
+            return staff_route('sites.index', $returnQuery, false);
+        }
+
+        return staff_route('sites.index', array_filter([
+            'publisher' => $publisherId > 0 ? $publisherId : null,
+            'site' => ($siteId ?? 0) > 0 ? $siteId : null,
+        ]), false);
+    }
+
+    /**
+     * Create form only: selected publisher (if any). Typeahead loads the rest.
+     *
+     * @return Collection<int, User>
+     */
+    private function selectedPublishersForStaffAssign(int $selectedPublisherId)
+    {
+        if ($selectedPublisherId <= 0) {
+            return collect();
+        }
+
+        return $this->staffAssignPublisherBaseQuery()
+            ->whereKey($selectedPublisherId)
+            ->withCount('sites')
+            ->get();
+    }
+
+    /**
+     * @return Builder<User>
+     */
+    private function staffAssignPublisherBaseQuery()
+    {
+        return User::query()
+            ->whereHas('roles', fn ($q) => $q->where('name', 'publisher'))
+            ->when(User::hasUsersColumn('suspended_at'), fn ($q) => $q->whereNull('suspended_at'));
+    }
+
+    private function domainFromUrl(string $url): ?string
+    {
+        $host = parse_url($url, PHP_URL_HOST);
+        if (! is_string($host) || $host === '') {
+            return null;
+        }
+        $domain = $this->normalizeDomain($host);
+        if ($domain === '' || ! $this->isMarketplaceHost($domain)) {
+            return null;
+        }
+
+        return $domain;
+    }
+
+    private function rejectBlankCheckedPlacementFees($validator, Request $request): void
+    {
+        foreach (config('site_placement.homepage_days', [1, 7, 30]) as $days) {
+            if (! $request->boolean('homepage.'.$days)) {
+                continue;
+            }
+            $raw = $request->input('price_homepage.'.$days);
+            if ($raw === null || (is_string($raw) && trim($raw) === '')) {
+                $validator->errors()->add(
+                    'price_homepage.'.$days,
+                    'Enter a fee for the '.$days.'-day homepage offer, or leave it unchecked. Use 0 for free.'
+                );
+            }
+        }
+    }
+
+    /**
+     * @return list<array<string, string>>
+     */
+    private function bulkInviteRowsFromPaste(string $raw): array
+    {
+        $rows = [];
+        $lineNo = 0;
+        foreach (preg_split('/\R/', $raw) ?: [] as $line) {
+            $lineNo++;
+            $trimmed = trim($this->stripBulkHeaderBom($line));
+            if ($trimmed === '') {
+                continue;
+            }
+            $delimiter = $this->bulkPasteDelimiter($trimmed);
+            $parts = str_getcsv($trimmed, $delimiter, '"', '');
+            if ($this->isBulkHeaderRow($parts)) {
+                continue;
+            }
+            $rows[] = $this->bulkInviteFieldsFromColumns($parts, $delimiter, $lineNo);
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @return list<array<string, string>>
+     */
+    private function bulkInviteRowsFromCsv(UploadedFile $file): array
+    {
+        $path = $file->getRealPath();
+        if ($path === false) {
+            return [];
+        }
+        $handle = fopen($path, 'r');
+        if ($handle === false) {
+            return [];
+        }
+        $start = ftell($handle);
+        $sample = '';
+        $sampleLine = fgets($handle);
+        if (is_string($sampleLine)) {
+            $sample = $this->stripBulkHeaderBom($sampleLine);
+        }
+        if ($start !== false) {
+            fseek($handle, $start);
+        }
+        $delimiter = $this->bulkPasteDelimiter($sample);
+        $rows = [];
+        $lineNo = 0;
+        while (($cols = fgetcsv($handle, 0, $delimiter, '"', '')) !== false) {
+            $lineNo++;
+            if ($cols === [null]) {
+                continue;
+            }
+            $cols[0] = $this->stripBulkHeaderBom((string) ($cols[0] ?? ''));
+            if ($this->isBulkHeaderRow($cols)) {
+                continue;
+            }
+            if (implode('', array_map(fn ($value) => trim((string) $value), $cols)) === '') {
+                continue;
+            }
+            $rows[] = $this->bulkInviteFieldsFromColumns($cols, $delimiter, $lineNo);
+        }
+        fclose($handle);
+
+        return $rows;
+    }
+
+    private function stripBulkHeaderBom(string $value): string
+    {
+        return ltrim($value, "\xEF\xBB\xBF");
+    }
+
+    /**
+     * @param  list<mixed>  $cols
+     */
+    private function isBulkHeaderRow(array $cols): bool
+    {
+        return strtolower(trim($this->stripBulkHeaderBom((string) ($cols[0] ?? '')))) === 'url';
+    }
+
+    private function bulkPasteDelimiter(string $line): string
+    {
+        $best = ',';
+        $bestScore = -1;
+        foreach ([',', ';', "\t"] as $delimiter) {
+            if ($delimiter !== ',' && substr_count($line, $delimiter) === 0) {
+                continue;
+            }
+            $parts = str_getcsv($line, $delimiter, '"', '');
+            $url = strtolower(trim((string) ($parts[0] ?? '')));
+            $score = min(count($parts), 15) + min(substr_count($line, $delimiter), 20);
+            if (str_starts_with($url, 'http') || $url === 'url') {
+                $score += 4;
+            }
+            if (is_numeric(trim((string) ($parts[1] ?? '')))) {
+                $score += 4;
+            }
+            if (is_numeric(trim((string) ($parts[2] ?? '')))) {
+                $score += 2;
+            }
+            if (preg_match('/^[a-z]{2}$/', strtolower(trim((string) ($parts[5] ?? ''))))) {
+                $score += 2;
+            }
+            if ($score > $bestScore) {
+                $bestScore = $score;
+                $best = $delimiter;
+            }
+        }
+
+        return $best;
+    }
+
+    /**
+     * @param  list<mixed>  $cols
+     * @return array<string, string>
+     */
+    private function bulkInviteFieldsFromColumns(array $cols, string $delimiter, int $line): array
+    {
+        $raw = array_map(fn ($value) => (string) $value, $cols);
+        $cols = array_map('trim', $raw);
+        $niches = $cols[13] ?? '';
+        $description = $cols[14] ?? '';
+        if (count($raw) > 15) {
+            [$niches, $description] = $this->repairBulkNicheAndDescription(array_slice($raw, 13), $delimiter);
+        }
+
+        return [
+            '_line' => (string) $line,
+            'site_url' => $cols[0] ?? '',
+            'price' => $cols[1] ?? '',
+            'da' => $cols[2] ?? '',
+            'dr' => $cols[3] ?? '',
+            'traffic' => $cols[4] ?? '',
+            'country' => $cols[5] ?? '',
+            'language' => $cols[6] ?? '',
+            'site_name' => $cols[7] ?? '',
+            'example_url' => $cols[8] ?? '',
+            'turnaround_time' => $cols[9] ?? '',
+            'publication_time' => $cols[10] ?? '',
+            'link_type' => $cols[11] ?? '',
+            'site_tag' => $cols[12] ?? '',
+            'categories' => $niches,
+            'description' => $description,
+        ];
+    }
+
+    /**
+     * Niche names such as "Marketing, PR & Advertising" contain commas.
+     * Join the tail until both the niche list and the description validate.
+     *
+     * @param  list<string>  $tail
+     * @return array{0: string, 1: string}
+     */
+    private function repairBulkNicheAndDescription(array $tail, string $delimiter): array
+    {
+        $tail = array_values($tail);
+        $count = count($tail);
+        for ($take = 1; $take <= $count; $take++) {
+            $niche = trim(implode($delimiter, array_slice($tail, 0, $take)));
+            $description = trim(implode($delimiter, array_slice($tail, $take)));
+            $resolved = Category::resolveNicheNames($this->nicheNamesInput($niche));
+            if ($resolved['unknown'] !== [] || $resolved['resolved'] === [] || count($resolved['resolved']) > 7) {
+                continue;
+            }
+            if (SiteDescriptionRules::errors($description) !== []) {
+                continue;
+            }
+
+            return [$niche, $description];
+        }
+
+        return [
+            trim(implode($delimiter, array_slice($tail, 0, 1))),
+            trim(implode($delimiter, array_slice($tail, 1))),
+        ];
+    }
+
+    /**
+     * @param  array<string, string>  $fields
+     * @param  list<string>  $allowedCountries
+     * @param  list<string>  $allowedLanguages
+     * @param  array<string, true>  $seenDomains
+     * @return array{line: int, errors: list<string>, row: array<string, mixed>}
+     */
+    private function validateBulkInviteRow(array $fields, int $line, array $allowedCountries, array $allowedLanguages, array &$seenDomains): array
+    {
+        $errors = [];
+        $siteUrl = $this->normalizeHttpUrl((string) ($fields['site_url'] ?? ''));
+        $exampleUrl = $this->normalizeHttpUrl((string) ($fields['example_url'] ?? ''));
+        $domain = $this->domainFromUrl($siteUrl);
+        $exampleDomain = $this->domainFromUrl($exampleUrl);
+        if ($domain === null) {
+            $errors[] = 'Invalid URL';
+        }
+        if ($exampleDomain === null || ($domain !== null && $this->exampleUrlHostDiffers($siteUrl, $exampleUrl))) {
+            $errors[] = 'Example URL must be on the same website domain.';
+        }
+        if ($domain !== null) {
+            if (isset($seenDomains[$domain])) {
+                $errors[] = 'This domain is repeated in the batch.';
+            }
+            $seenDomains[$domain] = true;
+            $existing = $this->findSiteByDomain($domain);
+            if ($existing) {
+                $errors[] = $this->domainAlreadyRegisteredMessage($existing);
+            }
+        }
+
+        $siteName = $this->normalizeSiteName((string) ($fields['site_name'] ?? ''));
+        if ($siteName === '' || strlen($siteName) > 255) {
+            $errors[] = 'Site name is required.';
+        }
+        $price = is_numeric($fields['price'] ?? null) ? round((float) $fields['price'], 2) : null;
+        if ($price === null || $price < 0 || $price > 999999.99) {
+            $errors[] = 'Price must be from 0 to 999999.99.';
+        }
+        $da = is_numeric($fields['da'] ?? null) ? (int) $fields['da'] : null;
+        $dr = is_numeric($fields['dr'] ?? null) ? (int) $fields['dr'] : null;
+        $traffic = is_numeric($fields['traffic'] ?? null) ? (int) $fields['traffic'] : null;
+        if ($da === null || $da < 0 || $da > 100) {
+            $errors[] = 'DA must be from 0 to 100.';
+        }
+        if ($dr === null || $dr < 0 || $dr > 100) {
+            $errors[] = 'DR must be from 0 to 100.';
+        }
+        if ($traffic === null || $traffic < 0 || $traffic > 4294967295) {
+            $errors[] = 'Traffic must be a whole number.';
+        }
+
+        $country = strtolower(trim((string) ($fields['country'] ?? '')));
+        $language = strtolower(trim((string) ($fields['language'] ?? '')));
+        if (! in_array($country, $allowedCountries, true)) {
+            $errors[] = 'Country is not a marketplace country.';
+        }
+        if (! in_array($language, $allowedLanguages, true)) {
+            $errors[] = 'Language is not a marketplace language.';
+        }
+        if ($country !== '' && $language !== '' && ! app(CountryLanguagePairs::class)->isAllowedPair($country, $language)) {
+            $errors[] = 'That language is not allowed for the selected country.';
+        }
+
+        $resolved = Category::resolveNicheNames($this->nicheNamesInput($fields['categories'] ?? ''));
+        if ($resolved['unknown'] !== []) {
+            $errors[] = 'Unknown niche: '.implode(', ', $resolved['unknown']);
+        }
+        if ($resolved['resolved'] === [] || count($resolved['resolved']) > 7) {
+            $errors[] = 'Choose 1 to 7 niches.';
+        }
+
+        $turnaround = strtolower(trim((string) ($fields['turnaround_time'] ?? '')));
+        $publication = strtolower(trim((string) ($fields['publication_time'] ?? '')));
+        $linkType = strtolower(trim((string) ($fields['link_type'] ?? '')));
+        if (! in_array($turnaround, ['24h', '48h', '3days', '5days', '7days'], true)) {
+            $errors[] = 'Turnaround must be 24h, 48h, 3days, 5days, or 7days.';
+        }
+        if (! in_array($publication, ['6months', '1year', 'permanent'], true)) {
+            $errors[] = 'Publication must be 6months, 1year, or permanent.';
+        }
+        if (! in_array($linkType, ['dofollow', 'nofollow'], true)) {
+            $errors[] = 'Link type must be dofollow or nofollow.';
+        }
+        $tag = strtolower(trim((string) ($fields['site_tag'] ?? '')));
+        if ($tag !== '' && ! in_array($tag, ['sponsored', 'partner_material', 'as_you_prefer', 'none'], true)) {
+            $errors[] = 'Tag must be sponsored, partner_material, as_you_prefer, none, or blank.';
+        }
+
+        foreach (SiteDescriptionRules::errors((string) ($fields['description'] ?? '')) as $message) {
+            $errors[] = $message;
+        }
+
+        return [
+            'line' => $line,
+            'errors' => $errors,
+            'row' => [
+                'site_name' => $siteName,
+                'site_url' => $siteUrl,
+                'example_url' => $exampleUrl,
+                'domain' => $domain,
+                'da' => $da,
+                'dr' => $dr,
+                'traffic' => $traffic,
+                'country' => $country,
+                'language' => $language,
+                'categories' => $resolved['resolved'],
+                'price' => $price,
+                'turnaround_time' => $turnaround,
+                'publication_time' => $publication,
+                'link_type' => $linkType,
+                'site_tag' => $tag === '' ? null : $tag,
+                'description' => (string) ($fields['description'] ?? ''),
+            ],
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function persistStaffInvite(array $row, int $publisherId, string $publishMode = StaffListingPublishMode::INVITE): Site
+    {
+        $domain = (string) $row['domain'];
+        Site::releaseCancelledBulkDomain($domain, $publisherId);
+        $existing = $this->findSiteByDomain($domain, lock: true);
+        if ($existing) {
+            throw ValidationException::withMessages([
+                'rows' => [$this->domainAlreadyRegisteredMessage($existing)],
+            ]);
+        }
+
+        $categories = $row['categories'];
+        $cleanDescription = app(SiteDescriptionSanitizer::class)->sanitize((string) $row['description']);
+        $modeAttrs = StaffListingPublishMode::staffAssignAttributes($publishMode);
+        $site = new Site;
+        $site->applyMarketplaceListing(array_merge([
+            'publisher_id' => $publisherId,
+            'assigned_by_user_id' => auth()->id(),
+            'site_name' => $row['site_name'],
+            'site_url' => $row['site_url'],
+            'domain' => $domain,
+            'example_url' => $row['example_url'],
+            'da' => $row['da'],
+            'dr' => $row['dr'],
+            'traffic' => $row['traffic'],
+            'metrics_manual' => true,
+            'metrics_provider' => 'manual',
+            'metrics_fetched_at' => now(),
+            'country' => $row['country'],
+            'countries' => [$row['country']],
+            'language' => $row['language'],
+            'languages' => [$row['language']],
+            'category' => implode('|', $categories),
+            'categories' => $categories,
+            'price' => $row['price'],
+            'turnaround_time' => $row['turnaround_time'],
+            'publication_time' => $row['publication_time'],
+            'link_type' => $row['link_type'],
+            'description' => $cleanDescription,
+            'enrichment_status' => 'pending',
+        ], $modeAttrs));
+        $site->forceFill(array_merge([
+            'assigned_by_user_id' => auth()->id(),
+            'da' => $row['da'],
+            'dr' => $row['dr'],
+            'traffic' => $row['traffic'],
+            'price' => $row['price'],
+            'metrics_manual' => true,
+            'metrics_provider' => 'manual',
+            'metrics_fetched_at' => now(),
+        ], $modeAttrs));
+        SiteTag::applyStaffDefault($site, $row['site_tag']);
+        $site->save();
+
+        if ((int) $site->da !== (int) $row['da'] || (int) $site->dr !== (int) $row['dr'] || (int) $site->traffic !== (int) $row['traffic']) {
+            throw new \RuntimeException('DA/DR/traffic did not persist after save.');
+        }
+        if (is_numeric($row['price']) && round((float) $site->price, 2) !== round((float) $row['price'], 2)) {
+            throw new \RuntimeException('Staff site price did not persist after save.');
+        }
+        if (blank($site->assigned_by_user_id)) {
+            throw new \RuntimeException('Publisher invite state did not persist after save.');
+        }
+        if (StaffListingPublishMode::isPublish($publishMode)) {
+            if (! (bool) $site->active || (bool) $site->verified
+                || ! ($site->publisher_accepted_at instanceof \DateTimeInterface)) {
+                throw new \RuntimeException('Staff site publish-now flags did not persist after save.');
+            }
+        } elseif (filled($site->publisher_accepted_at) || (bool) $site->verified || (bool) $site->active) {
+            throw new \RuntimeException('Publisher invite state did not persist after save.');
+        }
+
+        return $site;
     }
 
     private function domainAlreadyRegisteredMessage(Site $existing): string
@@ -2474,6 +5603,27 @@ class SiteController extends Controller
         }
 
         return ['save' => 'We could not save this website. Please try again.'];
+    }
+
+    /**
+     * Homepage / social / sensitive extras posted from staff create or edit.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function placementOffersPatch(Request $request): ?array
+    {
+        if (! $request->boolean('placement_offers_form')) {
+            return null;
+        }
+
+        $homepagePrices = $this->collectHomepagePlacementPrices($request);
+        $sensitivePrices = $this->collectSensitivePrices($request);
+
+        return [
+            'homepage_placement_prices' => $homepagePrices !== [] ? $homepagePrices : null,
+            'social_promotion' => $this->collectSocialPromotion($request),
+            'sensitive_prices' => $sensitivePrices !== [] ? $sensitivePrices : null,
+        ];
     }
 
     /**
@@ -2767,6 +5917,13 @@ class SiteController extends Controller
         return $raw;
     }
 
+    private function postedHttpUrl(mixed $raw): string
+    {
+        $value = $this->firstScalarString($raw);
+
+        return $this->normalizeHttpUrl(is_string($value) ? $value : '');
+    }
+
     private function nonStringUrlErrors(array $values): array
     {
         $errors = [];
@@ -3004,7 +6161,7 @@ class SiteController extends Controller
             return (int) $value === 1;
         }
 
-        $raw = strtolower(trim((string) $value));
+        $raw = strtolower(trim(scalar_text($value)));
 
         return in_array($raw, ['1', 'true', 'on', 'yes'], true);
     }
@@ -3086,7 +6243,276 @@ class SiteController extends Controller
         return (int) round((float) $raw);
     }
 
+    private function staffSiteQualifiesForBulkArchive(Site $site): bool
+    {
+        if ($site->isArchived() || $site->orderItemsCount() > 0) {
+            return false;
+        }
+
+        return (bool) $site->verified
+            || (bool) $site->active
+            || $site->wasAddedByPublisher()
+            || $site->isBulkRequestDraft();
+    }
+
     // VERIFY / UNVERIFY (approve / reject) — admin only
+    public function bulkAction(Request $request): JsonResponse
+    {
+        $matchAll = $request->boolean('match_all');
+        $rules = [
+            'action' => ['required', 'in:verify,activate,reject,deactivate,archive'],
+            'reason' => ['nullable', 'string', 'max:1000'],
+            'match_all' => ['nullable', 'boolean'],
+            'scope' => ['nullable', 'in:publisher,flat,all'],
+            'publisher_id' => ['nullable', 'integer'],
+        ];
+        if (! $matchAll) {
+            $rules['ids'] = ['required', 'array', 'min:1', 'max:50'];
+            $rules['ids.*'] = ['integer', 'distinct'];
+        }
+        $data = $request->validate($rules);
+        $matchedTotal = null;
+        if ($matchAll) {
+            $matched = $this->staffBulkMatchIds($request);
+            $data['ids'] = $matched['ids'];
+            $matchedTotal = $matched['total'];
+            if ($data['ids'] === []) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No matching sites to update.',
+                ], 422);
+            }
+        }
+
+        $actor = $request->user();
+        if ($data['action'] === 'verify' && ! $actor?->isAdmin()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Only admins can verify sites.',
+            ], 403);
+        }
+        if ($data['action'] === 'activate' && ! $actor?->canActivateSites()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You are not allowed to activate sites.',
+            ], 403);
+        }
+        if ($data['action'] === 'reject' && ! $actor?->isAdmin() && ! $actor?->isMarketing()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You are not allowed to reject sites.',
+            ], 403);
+        }
+        if ($data['action'] === 'deactivate' && ! $actor?->canActivateSites()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You are not allowed to deactivate sites.',
+            ], 403);
+        }
+        if ($data['action'] === 'archive' && ! $actor?->isAdmin()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Only admins can archive sites.',
+            ], 403);
+        }
+        if (in_array($data['action'], ['reject', 'deactivate'], true)) {
+            $request->validate([
+                'reason' => ['required', 'string', 'min:10', 'max:1000'],
+            ]);
+            $data['reason'] = trim((string) $request->input('reason'));
+        }
+        if ($data['action'] === 'archive') {
+            $needsReason = false;
+            foreach (array_values(array_unique(array_map('intval', $data['ids'] ?? []))) as $archiveId) {
+                if ($archiveId < 1) {
+                    continue;
+                }
+                $candidate = Site::query()->find($archiveId);
+                if ($candidate
+                    && $this->staffSiteQualifiesForBulkArchive($candidate)
+                    && ! $candidate->canQuietStaffArchive()) {
+                    $needsReason = true;
+                    break;
+                }
+            }
+            if ($needsReason) {
+                $request->validate([
+                    'reason' => ['required', 'string', 'min:10', 'max:1000'],
+                ]);
+            }
+            $data['reason'] = trim((string) $request->input('reason', ''));
+        }
+
+        $updated = [];
+        $skipped = [];
+        $warnings = [];
+
+        foreach (array_values(array_unique(array_map('intval', $data['ids']))) as $id) {
+            if ($id < 1) {
+                continue;
+            }
+
+            if ($data['action'] === 'archive') {
+                $candidate = Site::query()->find($id);
+                if (! $candidate || ! $this->staffSiteQualifiesForBulkArchive($candidate)) {
+                    $skipped[] = [
+                        'id' => $id,
+                        'message' => 'This site cannot be archived from the bulk bar.',
+                    ];
+
+                    continue;
+                }
+            }
+
+            $payload = match ($data['action']) {
+                'verify' => ['verified' => 1],
+                'activate' => ['active' => 1],
+                'reject', 'archive' => ['reason' => $data['reason'] ?? ''],
+                'deactivate' => ['active' => 0, 'reason' => $data['reason']],
+            };
+            $sub = Request::create($request->url(), 'POST', $payload);
+            $sub->headers->set('Accept', 'application/json');
+            $sub->setUserResolver(static fn () => $actor);
+
+            try {
+                $response = match ($data['action']) {
+                    'verify' => $this->verify($sub, $id),
+                    'activate', 'deactivate' => $this->toggleActive($sub, $id),
+                    'reject' => $this->destroy($sub, $id),
+                    'archive' => $this->archive($sub, $id),
+                };
+            } catch (ValidationException $e) {
+                $skipped[] = [
+                    'id' => $id,
+                    'message' => collect($e->errors())->flatten()->first() ?: 'Invalid request.',
+                ];
+
+                continue;
+            } catch (ModelNotFoundException $e) {
+                $skipped[] = ['id' => $id, 'message' => 'Site not found.'];
+
+                continue;
+            }
+
+            $status = $response->getStatusCode();
+            $body = $response->getData(true);
+            if ($status >= 200 && $status < 300 && ! empty($body['success'])) {
+                $updated[] = $id;
+                $warning = trim((string) ($body['warning'] ?? ''));
+                if ($warning !== '' && ! in_array($warning, $warnings, true)) {
+                    $warnings[] = $warning;
+                }
+            } else {
+                $skipped[] = [
+                    'id' => $id,
+                    'message' => (string) ($body['message'] ?? 'Skipped'),
+                ];
+            }
+        }
+
+        $message = count($updated).' updated';
+        if ($skipped !== []) {
+            $reason = trim((string) ($skipped[0]['message'] ?? ''));
+            $message .= ', '.count($skipped).' skipped';
+            if ($reason !== '') {
+                $message .= ': '.$reason;
+                if (count($skipped) > 1) {
+                    $message .= ' (+'.(count($skipped) - 1).' more)';
+                }
+            }
+        }
+        if ($warnings !== []) {
+            $message = rtrim($message, ". \t").'. '.$warnings[0];
+        }
+        if ($matchedTotal !== null && $matchedTotal > count($data['ids'])) {
+            $message .= ' First '.count($data['ids']).' of '.$matchedTotal.'.';
+        }
+
+        $skipIds = array_values(array_filter(array_map(
+            static fn ($row) => (int) ($row['id'] ?? 0),
+            $skipped
+        )));
+        $names = $skipIds === []
+            ? collect()
+            : Site::query()->whereIn('id', $skipIds)->pluck('site_name', 'id');
+        foreach ($skipped as $index => $row) {
+            $id = (int) ($row['id'] ?? 0);
+            $skipped[$index]['name'] = (string) ($names[$id] ?? ('Site #'.$id));
+        }
+
+        return response()->json([
+            'success' => $updated !== [],
+            'updated' => $updated,
+            'skipped' => $skipped,
+            'matched_total' => $matchedTotal,
+            'processed' => count($data['ids'] ?? []),
+            'message' => $message,
+        ], $updated !== [] ? 200 : 422);
+    }
+
+    /**
+     * @return array{ids: list<int>, total: int}
+     */
+    private function staffBulkMatchIds(Request $request): array
+    {
+        $limit = 500;
+        $scope = trim(scalar_text($request->input('scope')));
+        $filters = $this->staffSitesListFilterState($request);
+        $search = trim(scalar_text($request->input('q', '')));
+
+        try {
+            if ($scope === 'publisher') {
+                $publisherId = (int) $request->input('publisher_id');
+                if ($publisherId < 1) {
+                    return ['ids' => [], 'total' => 0];
+                }
+                $needsReviewOnly = $this->requestFlag($request, 'needs_review');
+                $focusSiteId = $this->canonicalStaffId(trim(scalar_text($request->input('site', ''))));
+                $query = Site::query()
+                    ->where('publisher_id', $publisherId)
+                    ->where(function ($outer) use ($filters, $search, $needsReviewOnly, $focusSiteId) {
+                        $outer->where(function ($matched) use ($filters, $search, $needsReviewOnly) {
+                            $matched->whereRaw('1 = 1');
+                            $this->applyStaffSitesArchiveScope($matched, $filters);
+                            if ($search !== '') {
+                                $this->constrainStaffSiteSearch($matched, $search);
+                            }
+                            if ($needsReviewOnly) {
+                                $matched->needsAdminReview();
+                            }
+                            $this->applyStaffSitesListFilters($matched, $filters);
+                        });
+                        if ($focusSiteId !== null) {
+                            $outer->orWhere($outer->getModel()->getTable().'.id', $focusSiteId);
+                        }
+                    });
+                $this->applyStaffSitesListSort($query, (string) ($filters['sort'] ?? ''), 'newest', $focusSiteId);
+            } elseif ($this->requestFlag($request, 'waiting_on_publisher')) {
+                $stage = ($filters['waiting_stage'] ?? '') !== '' ? $filters['waiting_stage'] : null;
+                $query = MarketingOpsQueues::sitesWaitingOnPublisher($stage);
+                $this->applyStaffIndexSiteOrPublisherSearch($query, $search);
+                $this->applyStaffSitesListFilters($query, $filters);
+                $this->applyStaffSitesListSort($query, (string) ($filters['sort'] ?? ''), 'oldest');
+            } elseif ($this->requestFlag($request, 'needs_review')) {
+                $query = MarketingOpsQueues::sitesReadyForStaff();
+                $this->applyStaffIndexSiteOrPublisherSearch($query, $search);
+                $this->applyStaffSitesListFilters($query, $filters);
+                $this->applyStaffSitesListSort($query, (string) ($filters['sort'] ?? ''), 'oldest');
+            } else {
+                $query = $this->staffAllSitesQuery($request, $search, $filters);
+            }
+
+            $total = (int) (clone $query)->count();
+            $ids = $query->limit($limit)->pluck('id')->map(fn ($id) => (int) $id)->all();
+
+            return ['ids' => $ids, 'total' => $total];
+        } catch (\Throwable $e) {
+            report($e);
+
+            return ['ids' => [], 'total' => 0];
+        }
+    }
+
     public function verify(Request $request, $id)
     {
         if (! auth()->user()?->isAdmin()) {
@@ -3143,6 +6569,7 @@ class SiteController extends Controller
                 );
             }
 
+            StaffSitesIndexCounts::forget();
             $this->syncLinkedBulkAfterSiteRemoved($site->bulk_site_request_id);
 
             $action = $site->verified ? 'site.approved' : 'site.rejected';
@@ -3247,6 +6674,16 @@ class SiteController extends Controller
         return $site->staffGoLiveBlockReason($this->isMarketingActor());
     }
 
+    private function staffCanPublishNowSite(Site $site): bool
+    {
+        return $site->staffCanPublishNow();
+    }
+
+    private function staffPublishNowBlockReasonFor(Site $site): ?string
+    {
+        return $site->staffPublishNowBlockReason();
+    }
+
     // TOGGLE ACTIVE STATUS — admin and marketing (shared Sites Management)
     public function toggleActive(Request $request, $id)
     {
@@ -3290,6 +6727,7 @@ class SiteController extends Controller
                 $this->restoreBulkOnboardingAfterStaffUndo($site);
             }
             $site->save();
+            StaffSitesIndexCounts::forget();
             $this->syncLinkedBulkAfterSiteRemoved($site->bulk_site_request_id);
 
             $activeChanged = $oldStatus !== (int) $site->active;
@@ -3395,7 +6833,207 @@ class SiteController extends Controller
         $site->status_reason_by = auth()->id();
     }
 
-    // DELETE — pending never-ordered: hard delete. Live listings: archive.
+    /**
+     * @return array<string, mixed>
+     */
+    private function staffArchiveLockedOutcome(Request $request, Site $site, $user): array
+    {
+        $orderCount = $site->orderItemsCount();
+        if ($orderCount > 0) {
+            return [
+                'http' => 422,
+                'payload' => [
+                    'success' => false,
+                    'message' => $orderCount === 1
+                        ? 'This site has 1 order and cannot be archived. Deactivate it to hide it from the catalog.'
+                        : 'This site has '.$orderCount.' orders and cannot be archived. Deactivate it to hide it from the catalog.',
+                    'order_count' => $orderCount,
+                ],
+            ];
+        }
+
+        if ($site->isArchived()) {
+            return [
+                'http' => 422,
+                'payload' => [
+                    'success' => false,
+                    'message' => 'This site is already archived.',
+                ],
+            ];
+        }
+
+        $quietArchive = $site->canQuietStaffArchive();
+        $rejectionReason = $this->validatedStatusReason($request, ! $quietArchive);
+
+        Site::ensureStatusReasonColumns();
+        $this->applyStatusReason($site, $rejectionReason);
+
+        if (! $site->archiveByStaff($rejectionReason)) {
+            return [
+                'http' => 503,
+                'payload' => [
+                    'success' => false,
+                    'message' => 'Archive is not available yet.',
+                ],
+            ];
+        }
+
+        return [
+            'action' => 'archived',
+            'site' => $site->fresh() ?? $site,
+            'siteName' => $site->site_name,
+            'siteId' => $site->id,
+            'domain' => $site->domain,
+            'bulkRequestId' => $site->bulk_site_request_id,
+            'wasStaffInvite' => filled($site->assigned_by_user_id),
+            'onboarding' => $site->onboarding_status,
+            'rejectionReason' => $rejectionReason,
+            'quietArchive' => $quietArchive,
+            'publisher' => $site->publisher,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $outcome
+     */
+    private function finishStaffArchive(array $outcome, $user)
+    {
+        $site = $outcome['site'];
+        $siteName = $outcome['siteName'];
+        $siteId = $outcome['siteId'];
+        $domain = $outcome['domain'];
+        $bulkRequestId = $outcome['bulkRequestId'];
+        $onboarding = $outcome['onboarding'];
+        $rejectionReason = $outcome['rejectionReason'];
+        $publisher = $outcome['publisher'];
+
+        StaffSitesIndexCounts::forget();
+
+        try {
+            app(InAppNotificationService::class)->completeAdminSiteReviewNotifications($site);
+        } catch (\Throwable $e) {
+            Log::warning('Could not complete site review notifications before archive: '.$e->getMessage());
+        }
+
+        if (empty($outcome['quietArchive'])) {
+            $this->notifyPublisherSiteRemoved($site, $publisher, $rejectionReason, 'archived');
+        }
+
+        ActivityLogger::tryLog(
+            'site.archived',
+            ($user->name ?? 'Staff').' archived site "'.$siteName.'"'.($domain ? ' ('.$domain.')' : ''),
+            $site,
+            [
+                'site_id' => $siteId,
+                'site_name' => $siteName,
+                'domain' => $domain,
+                'bulk_site_request_id' => $bulkRequestId,
+                'onboarding_status' => $onboarding,
+                'archived_by_role' => $user?->activeRole(),
+                'reason' => $rejectionReason,
+                'quiet' => ! empty($outcome['quietArchive']),
+            ],
+            $siteName
+        );
+
+        $this->syncLinkedBulkAfterSiteRemoved($bulkRequestId, (bool) ($outcome['wasStaffInvite'] ?? false));
+
+        return response()->json([
+            'success' => true,
+            'archived' => true,
+            'quiet' => ! empty($outcome['quietArchive']),
+            'message' => ! empty($outcome['quietArchive'])
+                ? 'Site archived and hidden from the catalog. The publisher was not notified.'
+                : 'Site archived and hidden from the catalog.',
+        ]);
+    }
+
+    // Admin archive — quiet for publisher-added / bulk drafts; reason + mail for staff-assigned.
+    public function archive(Request $request, $id)
+    {
+        $user = auth()->user();
+        if (! $user?->isAdmin()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Only admins can archive sites.',
+            ], 403);
+        }
+
+        $outcome = DB::transaction(function () use ($request, $id, $user) {
+            $site = Site::query()->lockForUpdate()->findOrFail($id);
+
+            return $this->staffArchiveLockedOutcome($request, $site, $user);
+        });
+
+        if (isset($outcome['http'])) {
+            return response()->json($outcome['payload'], $outcome['http']);
+        }
+
+        return $this->finishStaffArchive($outcome, $user);
+    }
+
+    public function unarchive(Request $request, $id)
+    {
+        $user = auth()->user();
+        if (! $user?->isAdmin()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Only admins can restore archived sites.',
+            ], 403);
+        }
+
+        if (! Site::hasSitesColumn('archived_at')) {
+            return response()->json(['success' => false, 'message' => 'Archive is not available yet.'], 503);
+        }
+
+        $site = Site::query()->findOrFail($id);
+
+        if (! $site->isArchived()) {
+            return response()->json(['success' => false, 'message' => 'Site is not archived.'], 422);
+        }
+
+        try {
+            if (! $site->unarchiveByStaff()) {
+                return response()->json(['success' => false, 'message' => 'Archive is not available yet.'], 503);
+            }
+            $site->refresh();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'We could not restore this site. Please try again.'),
+            ], 500);
+        }
+
+        StaffSitesIndexCounts::forget();
+
+        ActivityLogger::tryLog(
+            'site.unarchived',
+            ($user->name ?? 'Staff').' restored "'.$site->site_name.'" from archive',
+            $site,
+            [
+                'site_id' => $site->id,
+                'site_name' => $site->site_name,
+                'domain' => $site->domain,
+                'by' => 'admin',
+            ],
+            $site->site_name
+        );
+
+        $message = 'Site restored. It remains inactive until it is activated again.';
+        if ($site->isCatalogVisible()) {
+            $message = 'Site restored to the catalog.';
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => $message,
+        ]);
+    }
+
+    // DELETE — pending never-ordered: hard delete + reason + notify.
+    // Live listings (verified or active) still archive if DELETE is used.
     // Sites with order items cannot be removed (FK restrict + 422).
     public function destroy(Request $request, $id)
     {
@@ -3443,6 +7081,15 @@ class SiteController extends Controller
                 ];
             }
 
+            $shouldArchive = $isAdmin && ((bool) $site->verified || (bool) $site->active);
+
+            if ($shouldArchive) {
+                return $this->staffArchiveLockedOutcome($request, $site, $user) + [
+                    'isAdmin' => $isAdmin,
+                    'isMarketingPendingDelete' => $isMarketingPendingDelete,
+                ];
+            }
+
             $rejectionReason = $this->validatedStatusReason($request, true);
 
             Site::ensureStatusReasonColumns();
@@ -3453,30 +7100,13 @@ class SiteController extends Controller
                 'siteId' => $site->id,
                 'domain' => $site->domain,
                 'bulkRequestId' => $site->bulk_site_request_id,
+                'wasStaffInvite' => filled($site->assigned_by_user_id),
                 'onboarding' => $site->onboarding_status,
                 'rejectionReason' => $rejectionReason,
                 'publisher' => $site->publisher,
                 'isAdmin' => $isAdmin,
                 'isMarketingPendingDelete' => $isMarketingPendingDelete,
             ];
-
-            $shouldArchive = (bool) $site->verified || (bool) $site->active;
-            if ($shouldArchive) {
-                if (! $site->archiveByStaff($rejectionReason)) {
-                    return [
-                        'http' => 503,
-                        'payload' => [
-                            'success' => false,
-                            'message' => 'Archive is not available yet.',
-                        ],
-                    ];
-                }
-
-                return $meta + [
-                    'action' => 'archived',
-                    'site' => $site->fresh() ?? $site,
-                ];
-            }
 
             $notifySnapshot = clone $site;
             if ($rejectionReason) {
@@ -3498,6 +7128,8 @@ class SiteController extends Controller
             return response()->json($outcome['payload'], $outcome['http']);
         }
 
+        StaffSitesIndexCounts::forget();
+
         $siteName = $outcome['siteName'];
         $siteId = $outcome['siteId'];
         $domain = $outcome['domain'];
@@ -3509,38 +7141,7 @@ class SiteController extends Controller
         $isMarketingPendingDelete = $outcome['isMarketingPendingDelete'];
 
         if (($outcome['action'] ?? '') === 'archived') {
-            $site = $outcome['site'];
-            try {
-                app(InAppNotificationService::class)->completeAdminSiteReviewNotifications($site);
-            } catch (\Throwable $e) {
-                Log::warning('Could not complete site review notifications before archive: '.$e->getMessage());
-            }
-
-            $this->notifyPublisherSiteRemoved($site, $publisher, $rejectionReason, 'archived');
-
-            ActivityLogger::tryLog(
-                'site.archived',
-                ($user->name ?? 'Staff').' archived site "'.$siteName.'"'.($domain ? ' ('.$domain.')' : ''),
-                $site,
-                [
-                    'site_id' => $siteId,
-                    'site_name' => $siteName,
-                    'domain' => $domain,
-                    'bulk_site_request_id' => $bulkRequestId,
-                    'onboarding_status' => $onboarding,
-                    'archived_by_role' => $user?->activeRole(),
-                    'reason' => $rejectionReason,
-                ],
-                $siteName
-            );
-
-            $this->syncLinkedBulkAfterSiteRemoved($bulkRequestId);
-
-            return response()->json([
-                'success' => true,
-                'archived' => true,
-                'message' => 'Site archived and hidden from the catalog.',
-            ]);
+            return $this->finishStaffArchive($outcome, $user);
         }
 
         $notifySnapshot = $outcome['notifySnapshot'];
@@ -3565,7 +7166,8 @@ class SiteController extends Controller
 
         // Deleting a seeded draft re-pends the URL+price row (site_id nullOnDelete).
         // That is a staff correction, not a rejection — Done-reject notifies instead.
-        if (! $this->bulkItemWasRepended($bulkRequestId, $domain)) {
+        // Staff-assigned invites are real removals: notify even though the item unlinks.
+        if (($outcome['wasStaffInvite'] ?? false) || ! $this->bulkItemWasRepended($bulkRequestId, $domain)) {
             $this->notifyPublisherSiteRemoved($notifySnapshot, $publisher, $rejectionReason, 'removed');
         }
 
@@ -3586,7 +7188,7 @@ class SiteController extends Controller
             $siteName
         );
 
-        $this->syncLinkedBulkAfterSiteRemoved($bulkRequestId);
+        $this->syncLinkedBulkAfterSiteRemoved($bulkRequestId, (bool) ($outcome['wasStaffInvite'] ?? false));
 
         return response()->json([
             'success' => true,
@@ -3595,7 +7197,7 @@ class SiteController extends Controller
         ]);
     }
 
-    private function syncLinkedBulkAfterSiteRemoved(?int $bulkRequestId): void
+    private function syncLinkedBulkAfterSiteRemoved(?int $bulkRequestId, bool $wasStaffInvite = false): void
     {
         if (! $bulkRequestId) {
             return;
@@ -3604,6 +7206,10 @@ class SiteController extends Controller
         $bulk = BulkSiteRequest::query()->find($bulkRequestId);
         if (! $bulk) {
             return;
+        }
+
+        if ($wasStaffInvite) {
+            $bulk->forgetUnlinkedStaffInviteItems();
         }
 
         $bulk->refreshProgressStatus();

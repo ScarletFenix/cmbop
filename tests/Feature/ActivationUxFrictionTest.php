@@ -52,15 +52,15 @@ class ActivationUxFrictionTest extends TestCase
         ]);
     }
 
-    public function test_guest_marketplace_shows_verified_site_teasers(): void
+    public function test_guest_marketplace_does_not_show_inventory_table(): void
     {
         $this->verifiedSite();
 
         $this->get(route('marketplace'))
             ->assertOk()
-            ->assertSee('Sample verified inventory', false)
-            ->assertSee('Activation Teaser Site', false)
-            ->assertSee('t********.com', false)
+            ->assertDontSee('Sample verified inventory', false)
+            ->assertDontSee('Activation Teaser Site', false)
+            ->assertDontSee('t********.com', false)
             ->assertSee('/register', false);
     }
 
@@ -79,7 +79,8 @@ class ActivationUxFrictionTest extends TestCase
             ->assertOk()
             ->assertSee('Every account includes Advertiser and Publisher workspaces', false)
             ->assertSee('starting workspace', false)
-            ->assertSee('€20 welcome credit', false);
+            ->assertSee('Free to start — no card required', false)
+            ->assertDontSee('€20 welcome credit', false);
     }
 
     public function test_new_advertiser_dashboard_leads_with_catalog(): void

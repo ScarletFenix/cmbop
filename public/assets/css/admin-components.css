@@ -139,6 +139,47 @@
   box-shadow: none;
 }
 
+.admin-sites-pager {
+  display: grid;
+  grid-template-columns: minmax(9rem, 1fr) auto minmax(9rem, 1fr);
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+}
+
+.admin-sites-pager__size {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  justify-self: start;
+  width: auto;
+}
+
+.admin-sites-pager__size .admin-deposits-theme-select,
+.admin-sites-pager__size .form-select {
+  width: 5.75rem;
+  min-width: 5.75rem;
+}
+
+.admin-sites-pager__links {
+  justify-self: center;
+}
+
+.admin-sites-pager__links nav,
+.admin-sites-pager__links .d-sm-flex,
+.admin-sites-pager__links .flex-sm-fill {
+  justify-content: center !important;
+}
+
+.admin-sites-pager__links p,
+.admin-sites-pager__links .small {
+  display: none;
+}
+
+.admin-sites-pager__links .pagination {
+  margin-bottom: 0;
+}
+
 /* ——— Withdrawals ——— */
 
 .status-badge {
@@ -172,13 +213,244 @@
   letter-spacing: 0.5px;
 }
 
+.admin-table-fit:has(.admin-deposits-table),
+.admin-table-fit:has(.admin-deposits-table) > .card-body,
+.admin-table-fit:has(.admin-deposits-table) .table-responsive {
+  overflow-x: auto;
+}
+
+.admin-table-fit .admin-deposits-table {
+  table-layout: auto;
+}
+
+.admin-deposits-table th,
+.admin-deposits-table td {
+  padding-top: 0.85rem;
+  padding-bottom: 0.85rem;
+  vertical-align: middle;
+}
+
+.admin-table-fit .admin-deposits-table .admin-num-col,
+.admin-table-fit .admin-deposits-table .admin-narrow-col,
+.admin-table-fit .admin-deposits-table .admin-status-col,
+.admin-table-fit .admin-deposits-table .admin-actions-col,
+.admin-table-fit .admin-deposits-table .admin-deposit-date,
+.admin-table-fit .admin-deposits-table .admin-deposit-id {
+  width: auto;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: normal;
+  hyphens: manual;
+}
+
 .admin-deposits-table tbody tr:hover {
-  background-color: var(--surface-2);
+  background-color: var(--brand-primary-bg, #e6f5f5);
+}
+
+.admin-deposits-table thead th {
+  background: var(--brand-primary-bg, #e6f5f5);
+  color: var(--brand-primary, #1a585e);
+  font-size: 0.75rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  border-bottom: 1px solid var(--brand-primary-border, #b8e4e4);
+  white-space: nowrap;
+}
+
+.admin-deposits-table td {
+  border-color: #eef4f4;
+}
+
+.admin-deposit-id {
+  color: var(--brand-ink-muted, #697078);
+  font-weight: 600;
+}
+
+.admin-deposit-method {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  background: var(--brand-primary-bg, #e6f5f5);
+  border: 1px solid var(--brand-primary-border, #b8e4e4);
+  color: var(--brand-primary, #1a585e);
+  font-size: 0.75rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.admin-deposits-table .status-badge {
+  white-space: nowrap;
+}
+
+.status-refunded {
+  background-color: #f1f5f9;
+  color: #475569;
+}
+
+.admin-deposit-date {
+  white-space: nowrap;
+  line-height: 1.25;
+}
+
+.admin-deposit-date__time {
+  color: var(--brand-ink-muted, #697078);
+  font-size: 0.75rem;
+}
+
+.admin-deposit-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.admin-deposits-table .view-deposit,
+.admin-deposits-table .btn-outline-secondary {
+  border-color: var(--brand-primary-border, #b8e4e4);
+  color: var(--brand-primary, #1a585e);
+  border-radius: 999px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.admin-deposits-table .view-deposit:hover,
+.admin-deposits-table .btn-outline-secondary:hover {
+  background: var(--brand-primary, #1a585e);
+  border-color: var(--brand-primary, #1a585e);
+  color: #fff;
+}
+
+.admin-deposits-filter-card,
+.admin-deposits-filter-card .card-body,
+.admin-deposits-filters {
+  overflow: visible;
+}
+
+.admin-deposits-filters .admin-deposits-theme-select {
+  position: relative;
+}
+
+.admin-deposits-filters .single-select-input {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  height: 38px;
+  min-height: 38px;
+  padding: 6px 12px;
+  border: 1px solid var(--brand-primary-border, #b8e4e4);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--brand-primary, #1a585e);
   cursor: pointer;
 }
 
+.admin-deposits-filters .single-select-input:hover,
+.admin-deposits-filters .single-select-input[aria-expanded="true"] {
+  border-color: var(--brand-primary-soft, #3faeb2);
+}
+
+.admin-deposits-filters .single-select-input:focus,
+.admin-deposits-filters .single-select-input:focus-visible {
+  outline: none;
+  border-color: var(--brand-primary, #1a585e);
+  box-shadow: 0 0 0 0.2rem var(--focus-ring, rgba(26, 88, 94, 0.18));
+}
+
+.admin-deposits-filters .single-select-value,
+.admin-deposits-filters .single-select-arrow {
+  color: var(--brand-primary, #1a585e);
+}
+
+.admin-deposits-filters .single-select-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-deposits-filters .single-select-dropdown {
+  display: none;
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: #fff;
+  border: 1px solid var(--brand-primary-border, #b8e4e4);
+  border-radius: 10px;
+  box-shadow: 0 12px 28px rgba(26, 88, 94, 0.12);
+  overflow: hidden;
+}
+
+.admin-deposits-filters .single-select-dropdown.show {
+  display: block;
+}
+
+.admin-deposits-filters .single-select-search {
+  padding: 8px;
+  border-bottom: 1px solid var(--brand-primary-border, #b8e4e4);
+  background: #fff;
+}
+
+.admin-deposits-filters .single-select-search input {
+  width: 100%;
+  height: 34px;
+  min-height: 34px;
+  border: 1px solid var(--brand-primary-border, #b8e4e4);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 13px;
+  color: var(--brand-primary, #1a585e);
+}
+
+.admin-deposits-filters .single-select-search input:focus {
+  outline: none;
+  border-color: var(--brand-primary-soft, #3faeb2);
+  box-shadow: 0 0 0 0.2rem rgba(26, 88, 94, 0.18);
+}
+
+.admin-deposits-filters .single-select-empty {
+  padding: 8px 12px 10px;
+  font-size: 13px;
+  color: var(--brand-ink-muted, #697078);
+}
+
+.admin-deposits-filters .single-select-options {
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.admin-deposits-filters .single-select-group {
+  padding: 8px 12px 2px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--brand-ink-muted, #697078);
+}
+
+.admin-deposits-filters .single-select-option {
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--brand-ink, #1e293b);
+}
+
+.admin-deposits-filters .single-select-option:hover {
+  background: var(--brand-primary-bg, #e6f5f5);
+  color: var(--brand-primary, #1a585e);
+}
+
+.admin-deposits-filters .single-select-option.selected {
+  background: var(--brand-primary-bg, #e6f5f5);
+  color: var(--brand-primary, #1a585e);
+  font-weight: 650;
+}
+
 /* Live-search status reserves a line under Search. Collapse it when empty so
-   align-items-end keeps Filter / Reset on the same baseline as the inputs. */
+   the Filter row stays on the same baseline as the inputs. */
 .admin-deposits-filters .slb-search-status:empty {
   min-height: 0;
   height: 0;
@@ -186,8 +458,346 @@
   overflow: hidden;
 }
 
+.admin-deposits-filter-card {
+  container-type: inline-size;
+}
+
+.admin-deposits-filters__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 0.9fr) minmax(0, 0.85fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.85fr) auto;
+  gap: 12px 14px;
+  align-items: end;
+}
+
+.admin-deposits-filters__grid > * {
+  min-width: 0;
+}
+
+.admin-deposits-filters .form-label {
+  display: block;
+  margin-bottom: 0.3rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--brand-ink-muted, #697078);
+}
+
+.admin-deposits-filters .form-control,
+.admin-deposits-filters .form-select {
+  width: 100%;
+  height: 38px;
+  min-height: 38px;
+  border: 1px solid var(--brand-primary-border, #b8e4e4);
+  border-radius: 10px;
+  color: var(--brand-primary, #1a585e);
+  background-color: #fff;
+}
+
+.admin-deposits-filters textarea.form-control,
+.admin-deposits-filters input[type="file"].form-control {
+  height: auto;
+}
+
+.admin-deposits-filters textarea.form-control {
+  min-height: 6rem;
+}
+
+.admin-deposits-filters textarea.site-description-editor__input {
+  min-height: 140px;
+}
+
+.admin-deposits-filters .form-control::placeholder {
+  color: var(--brand-ink-muted, #697078);
+}
+
+.admin-deposits-filters .form-control:hover,
+.admin-deposits-filters .form-select:hover {
+  border-color: var(--brand-primary-soft, #3faeb2);
+}
+
+.admin-deposits-filters .form-control:focus,
+.admin-deposits-filters .form-select:focus {
+  border-color: var(--brand-primary, #1a585e);
+  box-shadow: 0 0 0 0.2rem var(--focus-ring, rgba(26, 88, 94, 0.18));
+}
+
+.admin-deposits-filters .ql-toolbar.ql-snow,
+.admin-deposits-filters .ql-container.ql-snow {
+  width: auto;
+}
+
+.admin-deposits-filters .ql-toolbar .ql-picker {
+  width: auto;
+}
+
+.admin-deposits-filters .form-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='%231a585e' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.7rem center;
+  background-size: 12px 10px;
+  padding-right: 2rem;
+}
+
+.admin-deposits-filters .form-select option {
+  color: var(--brand-primary, #1a585e);
+  background-color: #fff;
+}
+
+.admin-deposits-filters .form-select option:checked {
+  background-color: var(--brand-primary-bg, #e6f5f5);
+  color: var(--brand-primary, #1a585e);
+}
+
 .admin-deposits-filters__actions .btn {
-  min-height: calc(1.5em + 0.75rem + 2px);
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+}
+
+@media (max-width: 1199.98px) {
+  .admin-deposits-filters__grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .admin-deposits-filters__actions {
+    grid-column: 1 / -1;
+  }
+}
+
+@container (max-width: 1320px) {
+  .admin-deposits-filters__grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .admin-deposits-filters__actions {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .admin-deposits-filters__grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.admin-orders-filters__grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px 14px;
+  align-items: end;
+}
+
+.admin-orders-filters__grid > * {
+  min-width: 0;
+}
+
+.admin-orders-filters__grid > input[type="hidden"] {
+  display: none;
+}
+
+.admin-orders-filters__search {
+  grid-column: span 2;
+}
+
+.admin-orders-filters__actions {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 991.98px) {
+  .admin-orders-filters__grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .admin-orders-filters__search {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .admin-orders-filters__grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.staff-site-filters {
+  overflow: visible;
+}
+
+.staff-site-filters > label {
+  min-width: 10.5rem;
+}
+
+.staff-site-filters .single-select-wrapper {
+  min-width: 10.5rem;
+}
+
+/* ——— Deposit details popout ——— */
+
+.deposit-sheet-dialog {
+  max-width: 680px;
+}
+
+#depositModal .modal-content {
+  border: 0;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+#depositModal .modal-header,
+#depositModal .modal-footer {
+  padding: 1.1rem 1.5rem;
+  border-color: #e7f3f3;
+}
+
+#depositModal .modal-title {
+  color: var(--brand-primary, #1a585e);
+  font-weight: 650;
+}
+
+#depositModal .modal-body {
+  padding: 1.35rem 1.5rem 1.5rem;
+}
+
+#depositModal .modal-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+.deposit-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.deposit-sheet__user {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  padding-bottom: 1.1rem;
+  border-bottom: 1px solid #e7f3f3;
+}
+
+.deposit-sheet__avatar {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #1a585e 0%, #3faeb2 100%);
+  color: #fff;
+  font-weight: 650;
+  font-size: 1.05rem;
+}
+
+.deposit-sheet__name {
+  font-weight: 650;
+  color: var(--brand-primary, #1a585e);
+  line-height: 1.3;
+}
+
+.deposit-sheet__name a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.deposit-sheet__name a:hover {
+  text-decoration: underline;
+}
+
+.deposit-sheet__email,
+.deposit-sheet__meta {
+  color: var(--brand-ink-muted, #697078);
+  font-size: 0.85rem;
+}
+
+.deposit-sheet__facts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.15rem 1.75rem;
+  margin: 0;
+}
+
+.deposit-sheet__facts > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.deposit-sheet__facts > .is-wide {
+  grid-column: 1 / -1;
+}
+
+.deposit-sheet__facts dt,
+.deposit-sheet__label {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--brand-ink-muted, #697078);
+}
+
+.deposit-sheet__facts dd {
+  margin: 0;
+  color: var(--brand-ink, #1e293b);
+  line-height: 1.4;
+}
+
+.deposit-sheet__amount {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--brand-primary, #1a585e);
+  line-height: 1.2;
+}
+
+.deposit-sheet__facts code.ref-code {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.deposit-sheet__block {
+  margin-top: 1.25rem;
+}
+
+.deposit-sheet__label {
+  display: block;
+  margin-bottom: 0.45rem;
+}
+
+.deposit-sheet__panel {
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--brand-primary-border, #b8e4e4);
+  border-radius: 12px;
+  background: #fff;
+  line-height: 1.5;
+}
+
+.deposit-sheet__panel .alert {
+  margin-bottom: 0.65rem;
+}
+
+.deposit-sheet__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin-right: auto;
+}
+
+#depositModal .form-control {
+  border: 1px solid var(--brand-primary-border, #b8e4e4);
+  border-radius: 10px;
+  min-height: 96px;
+}
+
+@media (max-width: 575.98px) {
+  .deposit-sheet__facts {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ——— Email centre ——— */
@@ -463,7 +1073,7 @@
 /* Scope to action buttons only — the search clear control is also .btn. */
 .admin-finance-toolbar__action .btn,
 .admin-finance-period__action .btn {
-  min-height: calc(1.5em + 0.5rem + 2px);
+  min-height: 38px;
   display: inline-flex;
   align-items: center;
 }
@@ -504,4 +1114,201 @@
   .finance-ledger-filters__action .btn {
     width: 100%;
   }
+}
+
+/* ——— Community inbox ——— */
+
+.community-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.community-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.9rem;
+  border-radius: 999px;
+  border: 1px solid var(--brand-primary-border);
+  background: var(--surface-1);
+  color: var(--brand-primary);
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.community-tab:hover {
+  background: var(--brand-primary-bg);
+  color: var(--brand-primary-deep);
+  border-color: var(--brand-primary-soft);
+}
+
+.community-tab.is-active {
+  background: var(--brand-primary);
+  border-color: var(--brand-primary);
+  color: #fff;
+}
+
+.community-tab__count {
+  display: inline-flex;
+  min-width: 1.25rem;
+  justify-content: center;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: var(--brand-warning-bg);
+  color: var(--brand-warning-ink);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.community-tab.is-active .community-tab__count {
+  background: #fff;
+  color: var(--brand-primary);
+}
+
+.community-inbox-filters {
+  border: 1px solid var(--border-subtle);
+}
+
+.community-inbox .modern-table thead {
+  background: var(--brand-primary);
+  color: #fff;
+}
+
+.community-inbox .modern-table thead th {
+  border-color: var(--brand-primary-deep);
+}
+
+.community-inbox a:not(.btn):not(.community-tab) {
+  color: var(--brand-primary);
+}
+
+#communityDrawer .offcanvas-header {
+  background: var(--grad-cta-deep);
+  color: #fff;
+  border-bottom: 0;
+}
+
+#communityDrawer .offcanvas-title {
+  color: #fff;
+  font-weight: 650;
+}
+
+#communityDrawer .btn-close {
+  filter: invert(1) grayscale(1);
+  opacity: 0.85;
+}
+
+#communityDrawer dt {
+  color: var(--brand-ink-muted);
+  font-weight: 650;
+}
+
+#communityDrawer dd {
+  color: var(--brand-ink);
+}
+
+#communityDrawer a {
+  color: var(--brand-primary);
+}
+
+.community-inbox-filters .community-theme-select .single-select-input {
+  color: var(--brand-primary);
+  border-color: var(--brand-primary-border);
+}
+
+.community-inbox-filters .community-theme-select .single-select-value,
+.community-inbox-filters .community-theme-select .single-select-arrow {
+  color: var(--brand-primary);
+}
+
+.swal2-container .community-swal .swal2-html-container {
+  overflow: visible;
+}
+
+.swal2-container .community-swal-detail-popup {
+  text-align: left;
+}
+
+.swal2-container .community-swal-detail-html {
+  overflow: auto;
+  max-height: min(70vh, 32rem);
+  text-align: left;
+}
+
+.swal2-container .community-swal-detail {
+  text-align: left;
+}
+
+.swal2-container .community-swal-detail .row {
+  --bs-gutter-x: 0.75rem;
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.swal2-container .community-swal-detail dt {
+  margin-top: 0.65rem;
+}
+
+.swal2-container .community-swal-detail dt:first-child {
+  margin-top: 0;
+}
+
+.swal2-container .community-swal-detail dd,
+.swal2-container .community-swal-detail a {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.swal2-container .community-swal-fields {
+  text-align: left;
+  margin: 0.25rem 0 0;
+}
+
+.swal2-container .community-swal-label {
+  display: block;
+  margin: 0.75rem 0 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 650;
+  color: var(--brand-ink-muted);
+}
+
+.swal2-container .community-swal-label:first-child {
+  margin-top: 0;
+}
+
+.swal2-container .community-swal-fields .form-control,
+.swal2-container .community-theme-select .single-select-input {
+  width: 100%;
+  border: 1px solid var(--brand-primary-border);
+  border-radius: var(--radius-sm, 8px);
+  color: var(--brand-ink);
+  font-family: var(--font-sans, "Poppins", sans-serif);
+  box-shadow: none;
+}
+
+.swal2-container .community-theme-select .single-select-input {
+  color: var(--brand-primary);
+}
+
+.swal2-container .community-theme-select .single-select-value,
+.swal2-container .community-theme-select .single-select-arrow {
+  color: var(--brand-primary);
+}
+
+.swal2-container .community-theme-select .single-select-dropdown {
+  z-index: 30;
+}
+
+.swal2-container .community-theme-select .single-select-option.selected,
+.community-inbox-filters .community-theme-select .single-select-option.selected {
+  background: var(--brand-primary-bg);
+  color: var(--brand-primary-deep);
+}
+
+.swal2-container .community-swal-fields .form-control:focus {
+  border-color: var(--brand-primary-soft);
+  box-shadow: 0 0 0 0.2rem var(--focus-ring, rgba(63, 174, 178, 0.35));
 }

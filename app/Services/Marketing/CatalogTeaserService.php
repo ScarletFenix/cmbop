@@ -226,21 +226,44 @@ class CatalogTeaserService
 
     public function maskDomain(string $host): string
     {
-        $host = trim($host);
+        $host = strtolower(trim($host));
+        $host = preg_replace('/^www\./i', '', $host) ?: $host;
         if ($host === '') {
-            return '••••••.com';
+            return 'site**.com';
         }
 
         $parts = explode('.', $host);
         if (count($parts) < 2) {
-            return substr($host, 0, 1).str_repeat('*', max(3, strlen($host) - 1));
+            $stem = $this->maskStem($host);
+
+            return $stem.'**';
         }
 
         $tld = array_pop($parts);
-        $name = implode('.', $parts);
-        $visible = substr($name, 0, 1);
+        if (
+            $parts !== []
+            && in_array($tld, ['uk', 'au'], true)
+            && strlen((string) end($parts)) <= 3
+        ) {
+            $tld = array_pop($parts).'.'.$tld;
+        }
 
-        return $visible.str_repeat('*', max(3, min(8, strlen($name) - 1))).'.'.$tld;
+        $name = implode('.', $parts);
+
+        return $this->maskStem($name).'**.'.$tld;
+    }
+
+    private function maskStem(string $name): string
+    {
+        $chunks = preg_split('/[^a-z0-9]+/i', $name, 2);
+        $first = strtolower((string) (is_array($chunks) ? ($chunks[0] ?? '') : ''));
+        if ($first === '') {
+            $first = 'site';
+        }
+
+        $keep = min(8, max(3, strlen($first)));
+
+        return substr($first, 0, $keep);
     }
 
     /**

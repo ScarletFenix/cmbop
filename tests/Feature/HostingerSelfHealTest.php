@@ -5,8 +5,10 @@ namespace Tests\Feature;
 use App\Http\Middleware\HealHostingerProduction;
 use App\Support\DotEnvWriter;
 use App\Support\HostingerMediaPath;
+use App\Support\HostingerMysqlHost;
 use App\Support\ProductionReadiness;
 use App\Support\ProductionRepair;
+use App\Support\PublicStorageLink;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Contracts\Http\Kernel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -21,6 +23,17 @@ use Tests\TestCase;
 class HostingerSelfHealTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function tearDown(): void
+    {
+        config([
+            'filesystems.media_path' => '',
+            'filesystems.disks.public.root' => storage_path('app/public'),
+        ]);
+        PublicStorageLink::ensure();
+
+        parent::tearDown();
+    }
 
     public function test_heal_middleware_is_on_the_http_kernel(): void
     {
@@ -53,6 +66,20 @@ class HostingerSelfHealTest extends TestCase
         $this->assertFalse(HostingerMediaPath::looksLikeHostinger('/home/ubuntu/workspace'));
         $this->assertFalse(HostingerMediaPath::looksLikeHostinger('/workspace'));
         $this->assertFalse(HostingerMediaPath::looksLikeHostinger(base_path()));
+    }
+
+    public function test_hostinger_rewrites_loopback_mysql_host_to_socket_localhost(): void
+    {
+        $this->assertSame('localhost', HostingerMysqlHost::preferredHost('127.0.0.1', true));
+        $this->assertNull(HostingerMysqlHost::preferredHost('127.0.0.1', false));
+        $this->assertNull(HostingerMysqlHost::preferredHost('localhost', true));
+
+        config(['database.connections.mysql.host' => '127.0.0.1']);
+        $this->assertTrue(HostingerMysqlHost::applyRuntime(true));
+        $this->assertSame('localhost', config('database.connections.mysql.host'));
+
+        $this->assertFalse(HostingerMysqlHost::applyRuntime(true));
+        $this->assertFalse(HostingerMysqlHost::applyRuntime(false));
     }
 
     public function test_ensure_creates_preferred_dir_and_leaves_public_html(): void
@@ -133,10 +160,15 @@ class HostingerSelfHealTest extends TestCase
             }
         } finally {
             $this->removeDir($dir);
+            config([
+                'filesystems.media_path' => '',
+                'filesystems.disks.public.root' => storage_path('app/public'),
+            ]);
+            PublicStorageLink::ensure();
         }
     }
 
-    public function test_scheduler_is_ok_when_web_heal_is_on(): void
+    public function test_scheduler_warns_in_production_when_web_heal_is_on_without_cron(): void
     {
         $this->seed(RolesTableSeeder::class);
         $this->forceProduction();
@@ -147,8 +179,8 @@ class HostingerSelfHealTest extends TestCase
 
         $scheduler = collect(app(ProductionReadiness::class)->checks())->firstWhere('id', 'scheduler');
         $this->assertNotNull($scheduler);
-        $this->assertSame(ProductionReadiness::SEVERITY_OK, $scheduler['severity']);
-        $this->assertStringContainsString('HOSTINGER_WEB_HEAL', $scheduler['detail']);
+        $this->assertSame(ProductionReadiness::SEVERITY_WARN, $scheduler['severity']);
+        $this->assertStringContainsString('do not run the scheduler', $scheduler['detail']);
     }
 
     public function test_scheduler_warns_in_production_when_web_heal_is_off(): void
@@ -255,7 +287,7 @@ class HostingerSelfHealTest extends TestCase
 
         $this->app->instance(ProductionRepair::class, new class extends ProductionRepair
         {
-            public function run(bool $persistEnv = true): array
+            public function run(bool $persistEnv = true, bool $migrate = true): array
             {
                 return ['migrate failed: later FK'];
             }
@@ -279,7 +311,7 @@ class HostingerSelfHealTest extends TestCase
         {
             public function __construct(private object $state) {}
 
-            public function run(bool $persistEnv = true): array
+            public function run(bool $persistEnv = true, bool $migrate = true): array
             {
                 $this->state->ran = true;
 
@@ -304,6 +336,8 @@ class HostingerSelfHealTest extends TestCase
         $deploy = (string) file_get_contents(base_path('docs/deploy-hostinger.md'));
         $this->assertStringContainsString('HOSTINGER_WEB_HEAL', $deploy);
         $this->assertStringContainsString('ops:production-ready --repair', $deploy);
+        $this->assertStringContainsString('DB_HOST', $deploy);
+        $this->assertStringContainsString('localhost', $deploy);
 
         $agents = (string) file_get_contents(base_path('AGENTS.md'));
         $this->assertStringContainsString('HOSTINGER_WEB_HEAL', $agents);

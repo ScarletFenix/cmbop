@@ -16,6 +16,7 @@ use App\Services\Advertiser\SpendBudgetService;
 use App\Services\ContentModeration\ContentModerationService;
 use App\Services\Orders\OrderRefundService;
 use App\Services\Wallet\WalletLedgerService;
+use App\Support\PlatformCharge;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
@@ -1844,7 +1845,7 @@ class OrderPaymentService
         $schema->ensureCheckoutTables();
 
         $refundedInFinalize = 0.0;
-        $created = DB::transaction(function () use ($package, $referenceCode, $session, $schema, &$refundedInFinalize) {
+        $created = DB::transaction(function () use ($package, $referenceCode, $session, $schema, $meta, &$refundedInFinalize) {
             $already = Order::query()
                 ->where('reference_code', $referenceCode)
                 ->where('payment_method', 'card')
@@ -1923,10 +1924,12 @@ class OrderPaymentService
                     'schedule_timezone' => $schedule['timezone'] ?? 'UTC',
                     'stripe_session_id' => $stripeSessionId,
                     'stripe_payment_intent_id' => $stripePaymentIntentId,
+                    ...$this->lineCharge($meta, (float) ($line['price'] ?? 0)),
                     'stripe_response' => method_exists($session, 'toArray')
                         ? json_encode($session->toArray())
                         : json_encode($session),
                     'paid_at' => now(),
+                    'project_id' => ((int) ($package['project_id'] ?? 0)) ?: null,
                 ]);
 
                 if ($order === null) {
@@ -2265,10 +2268,16 @@ class OrderPaymentService
                     'publication_mode' => $schedule['mode'] ?? 'immediate',
                     'scheduled_publish_at' => $schedule['at'] ?? null,
                     'schedule_timezone' => $schedule['timezone'] ?? 'UTC',
+                    ...$this->lineCharge([
+                        'charge_currency' => $captured['currency'] ?? 'EUR',
+                        'charge_amount' => $captured['charge_amount'] ?? null,
+                        'order_total' => $package['order_total'] ?? $package['amount_due'] ?? 0,
+                    ], (float) ($line['price'] ?? 0)),
                     'paypal_order_id' => $paypalOrderId !== '' ? $paypalOrderId : null,
                     'paypal_capture_id' => $storedCaptureOnFirst ? null : $captureId,
                     'paypal_response' => $captured['raw'] ?? $captured,
                     'paid_at' => now(),
+                    'project_id' => ((int) ($package['project_id'] ?? 0)) ?: null,
                 ]);
                 if ($order === null) {
                     continue;
@@ -2521,9 +2530,22 @@ class OrderPaymentService
             }
 
             try {
-                $submission = ContentSubmission::query()->whereKey($id)->lockForUpdate()->first();
-            } catch (\Throwable) {
-                return 'missing';
+                $query = ContentSubmission::query()->whereKey($id);
+                if (DB::transactionLevel() > 0) {
+                    $query->lockForUpdate();
+                }
+                $submission = $query->first();
+            } catch (\Throwable $e) {
+                report($e);
+                try {
+                    $submission = ContentSubmission::query()->whereKey($id)->first();
+                } catch (\Throwable $fallback) {
+                    report($fallback);
+                    throw new \RuntimeException('Could not read the Content Library article for settlement.', 0, $fallback);
+                }
+                if (! $submission instanceof ContentSubmission) {
+                    throw new \RuntimeException('Could not read the Content Library article for settlement.');
+                }
             }
             if (! $submission) {
                 return 'missing';
@@ -2787,8 +2809,28 @@ class OrderPaymentService
     }
 
     /**
-     * @return array<string, mixed>
+     * @param  array<string, mixed>  $meta
+     * @return array{charge_currency: ?string, charge_amount: ?float}
      */
+    private function lineCharge(array $meta, float $lineEuros): array
+    {
+        $code = strtoupper(trim((string) ($meta['charge_currency'] ?? 'EUR')));
+        $lineEuros = round($lineEuros, 2);
+        $cartCharge = round((float) ($meta['charge_amount'] ?? 0), 2);
+        $cartEuros = round((float) ($meta['order_total'] ?? $meta['expected_amount'] ?? 0), 2);
+        if ($cartCharge > 0 && $cartEuros > 0) {
+            return [
+                'charge_currency' => $code !== '' ? $code : 'EUR',
+                'charge_amount' => round($lineEuros / $cartEuros * $cartCharge, 2),
+            ];
+        }
+        if ($code === '' || $code === 'EUR') {
+            return ['charge_currency' => 'EUR', 'charge_amount' => $lineEuros];
+        }
+
+        return ['charge_currency' => null, 'charge_amount' => null];
+    }
+
     private function sessionMetadataArray(object $session): array
     {
         $meta = $session->metadata ?? null;
@@ -2947,6 +2989,20 @@ class OrderPaymentService
             $stripeCents = (int) $session->amount_total;
         } elseif (isset($session->amount_received) || isset($session->amount)) {
             $stripeCents = (int) ($session->amount_received ?: $session->amount);
+        }
+
+        $metadata = [];
+        if (isset($session->metadata)) {
+            $raw = $session->metadata;
+            $metadata = is_array($raw) ? $raw : (method_exists($raw, 'toArray') ? $raw->toArray() : []);
+        }
+        $fromCharge = app(PlatformCharge::class)->eurosFromStripe($session, $metadata);
+        if ($fromCharge !== null) {
+            return $fromCharge;
+        }
+        $currency = strtolower((string) ($session->currency ?? ($metadata['charge_currency'] ?? 'eur')));
+        if ($currency !== '' && $currency !== 'eur') {
+            return null;
         }
 
         return $stripeCents === null ? null : StripePaymentService::fromCents($stripeCents);

@@ -26,60 +26,60 @@
 @endphp
 
 
-<div class="container-fluid">
+<div class="container-fluid add-funds-page">
 
-    <div class="row mb-3 align-items-end g-3">
-        <div class="col-lg-8">
-            <h2 class="mb-1 fw-semibold">Add funds</h2>
-            <p class="text-muted mb-0">Top up your wallet. Minimum €10.</p>
+    <div class="af-page-header">
+        <div>
+            <h2 class="af-page-title">Add funds</h2>
+            <p class="af-page-sub">Top up your wallet. Minimum €10.</p>
         </div>
-        <div class="col-lg-4 text-lg-end">
-            <button type="button" class="btn btn-sm btn-cta-tertiary" id="withdrawOpenBtn"
+        <div class="af-page-links">
+            <button type="button" class="af-text-link" id="withdrawOpenBtn"
                     data-bs-toggle="modal" data-bs-target="#withdrawModal"
                     @disabled(! $canWithdraw)>
                 Withdraw
             </button>
-            <a href="{{ route('advertiser.billing.index') }}" class="btn btn-sm btn-cta-tertiary">Billing &amp; invoices</a>
-            <a href="{{ route('advertiser.analytics') }}" class="btn btn-sm btn-cta-tertiary">Spending</a>
+            <a href="{{ route('advertiser.billing.index') }}" class="af-text-link">Billing &amp; invoices</a>
+            <a href="{{ route('advertiser.analytics') }}" class="af-text-link">Spending</a>
         </div>
     </div>
 
     <div class="af-spendable mb-3" role="status" aria-label="Spendable balance">
         <div class="af-spendable__main">
             <span class="af-spendable__label">Spendable</span>
-            <span class="af-spendable__value" id="kpiSpendable">{{ $walletUnavailable ? '—' : '€'.number_format($spendable, 2) }}</span>
+            <span class="af-spendable__value" id="kpiSpendable">{{ $walletUnavailable ? '—' : format_money($spendable) }}</span>
             <div class="af-spendable__equation small text-muted">{{ $walletUnavailable ? 'Unavailable' : 'Money + Bonus' }}</div>
         </div>
         <div class="af-spendable__breakdown">
             <div class="af-spendable__chip" title="Withdrawable funds from deposits">
                 <span class="af-spendable__chip-label">Money</span>
-                <span class="af-spendable__chip-value" id="kpiAvailable">{{ $walletUnavailable ? '—' : '€'.number_format($available, 2) }}</span>
+                <span class="af-spendable__chip-value" id="kpiAvailable">{{ $walletUnavailable ? '—' : format_money($available) }}</span>
             </div>
             <div class="af-spendable__chip af-spendable__chip--bonus" title="Promotional credit for marketplace purchases only">
                 <span class="af-spendable__chip-label">Bonus</span>
-                <span class="af-spendable__chip-value" id="kpiBonus">{{ $walletUnavailable ? '—' : '€'.number_format($bonus, 2) }}</span>
+                <span class="af-spendable__chip-value" id="kpiBonus">{{ $walletUnavailable ? '—' : format_money($bonus) }}</span>
             </div>
         </div>
         @if(! $walletUnavailable && $pendingDeposits > 0 && $reservedHold > 0)
             <div class="af-spendable__pending">
-                <span id="kpiPending">€{{ number_format($pending, 2) }}</span>
-                pending — €{{ number_format($pendingDeposits, 2) }} deposit confirmation
-                · €{{ number_format($reservedHold, 2) }} on hold for checkout
+                <span id="kpiPending">{{ format_money($pending) }}</span>
+                pending — {{ format_money($pendingDeposits) }} deposit confirmation
+                · {{ format_money($reservedHold) }} on hold for checkout
             </div>
         @elseif(! $walletUnavailable && $pendingDeposits > 0)
             <div class="af-spendable__pending">
-                <span id="kpiPending">€{{ number_format($pendingDeposits, 2) }}</span> pending deposit confirmation
+                <span id="kpiPending">{{ format_money($pendingDeposits) }}</span> pending deposit confirmation
             </div>
         @elseif(! $walletUnavailable && $reservedHold > 0)
             <div class="af-spendable__pending">
-                <span id="kpiPending">€{{ number_format($reservedHold, 2) }}</span> on hold for checkout
+                <span id="kpiPending">{{ format_money($reservedHold) }}</span> on hold for checkout
             </div>
         @else
-            <span id="kpiPending" class="d-none">€{{ number_format($pending, 2) }}</span>
+            <span id="kpiPending" class="d-none">{{ format_money($pending) }}</span>
         @endif
         @if(! $walletUnavailable && $bonus > 0)
             <p class="af-spendable__note mb-0">
-                <strong>Bonus €{{ number_format($bonus, 2) }}</strong>
+                <strong>Bonus {{ format_money($bonus) }}</strong>
                 (purchases only) — {{ $promotionalBonusMessage ?? \App\Models\Wallet::PROMOTIONAL_BONUS_MESSAGE }}
             </p>
         @endif
@@ -89,19 +89,19 @@
         <aside class="af-role-strip mb-3" id="publisherRoleStrip" aria-label="Publisher earnings">
             <div class="af-role-strip__main">
                 <span class="af-role-strip__label">Publisher earnings</span>
-                <span class="af-role-strip__value" id="publisherEarningsKpi">€{{ number_format((float) $publisher['withdrawable'], 2) }}</span>
+                <span class="af-role-strip__value" id="publisherEarningsKpi">{{ format_money($publisher['withdrawable']) }}</span>
                 <p class="af-role-strip__note mb-0">Withdrawable. Transfers into this wallet are off — open Balance or Withdraw.</p>
             </div>
             <div class="af-role-strip__actions">
-                <a href="{{ route('publisher.balance') }}" class="btn btn-sm btn-outline-secondary" id="publisherBalanceCta">Balance</a>
-                <a href="{{ route('publisher.withdraw') }}" class="btn btn-sm btn-outline-secondary" id="publisherWithdrawCta">Withdraw</a>
+                <a href="{{ route('publisher.balance') }}" class="af-text-link" id="publisherBalanceCta">Balance</a>
+                <a href="{{ route('publisher.withdraw') }}" class="af-text-link" id="publisherWithdrawCta">Withdraw</a>
             </div>
         </aside>
     @endif
-    <span id="kpiDeposits" class="d-none">€{{ number_format($lifetimeDeposits, 2) }}</span>
-    <span id="bonusReceivedLabel" class="d-none">€{{ number_format($bonusReceived, 2) }}</span>
-    <span id="bonusUsedLabel" class="d-none">€{{ number_format($bonusUsed, 2) }}</span>
-    <span id="bonusRemainingLabel" class="d-none">€{{ number_format($bonus, 2) }}</span>
+    <span id="kpiDeposits" class="d-none">{{ format_money($lifetimeDeposits) }}</span>
+    <span id="bonusReceivedLabel" class="d-none">{{ format_money($bonusReceived) }}</span>
+    <span id="bonusUsedLabel" class="d-none">{{ format_money($bonusUsed) }}</span>
+    <span id="bonusRemainingLabel" class="d-none">{{ format_money($bonus) }}</span>
 
     @php
         $walletSavedCards = $savedCards ?? [];
@@ -126,12 +126,12 @@
                     @endphp
                     <li class="d-flex flex-wrap justify-content-between align-items-center gap-2 py-2 {{ $loop->last && $pendingInvoiceCount <= 3 ? '' : 'border-bottom' }}">
                         <div class="small">
-                            <strong>€{{ number_format((float) $deposit->amount, 2) }}</strong>
+                            <strong>{{ format_money($deposit->amount) }}</strong>
                             <span class="text-muted"> · {{ $depositMethodLabels[$deposit->payment_method] ?? ucfirst($deposit->payment_method) }}</span>
                             <code class="ms-1">{{ $pendingRef }}</code>
                         </div>
                         <div class="d-flex flex-wrap gap-2">
-                            <a href="{{ route('advertiser.invoice', $deposit->reference_code) }}" class="btn btn-sm btn-outline-secondary" target="_blank" rel="noopener">
+                            <a href="{{ route('advertiser.invoice.pdf', $deposit->reference_code) }}" class="btn btn-sm btn-outline-secondary" download="invoice-REF{{ $deposit->reference_code }}.pdf">
                                 <i class="fa fa-file-invoice me-1"></i> Invoice
                             </a>
                             @if($deposit->canUserMarkPaid())
@@ -294,13 +294,13 @@
                                             @if($methodReady && ! empty($meta['new_key']))
                                                 <x-feature-new :badge-key="$meta['new_key']" class="payment-option-new" />
                                             @endif
-                                            <div class="payment-option-icon" style="background: {{ $meta['icon_bg'] }};">
+                                            <div class="payment-option-icon{{ $methodKey === 'paypal' ? ' payment-option-icon--paypal' : '' }}" style="background: {{ $meta['icon_bg'] }};">
                                                 @if($methodKey === 'card')
                                                     @include('partials.payment-card-brands')
                                                 @elseif($methodKey === 'bank')
                                                     <i class="fas fa-university" style="font-size: 28px; color: var(--brand-primary, #1a585e);"></i>
                                                 @elseif($methodKey === 'paypal')
-                                                    <img src="{{ asset('assets/img/payments/paypal.svg') }}" alt="" width="40" height="11" style="width:40px;height:auto;" decoding="async">
+                                                    <img src="{{ asset('assets/img/payments/paypal.png') }}" alt="PayPal" width="72" height="71" style="width:72px;height:auto;" decoding="async">
                                                 @elseif($methodKey === 'wise')
                                                     <img src="{{ asset('assets/img/wiseImg-logo.png') }}" alt="Wise Logo" style="width: 32px; height: 32px; object-fit: contain;">
                                                 @else
@@ -335,8 +335,8 @@
                             <div class="fw-semibold mb-1">Invoice ready — transfer this amount with the REF below.</div>
                             <p class="small mb-2">Status stays <strong>Pending</strong> until we confirm and credit your wallet.</p>
                             <div class="d-flex flex-wrap gap-2">
-                                <a id="invoiceReadyView" class="btn btn-sm btn-primary" href="#" target="_blank" rel="noopener">
-                                    <i class="fa fa-file-invoice me-1"></i> View / download invoice
+                                <a id="invoiceReadyView" class="btn btn-sm btn-primary" href="#" download="invoice.pdf">
+                                    <i class="fa fa-file-invoice me-1"></i> Download invoice
                                 </a>
                                 <button type="button" class="btn btn-sm btn-outline-primary" id="invoiceReadyMarkPaid">
                                     <i class="fa fa-check me-1"></i> I paid
@@ -359,9 +359,8 @@
                                     </div>
                                 </div>
                                 
-                                <div class="alert alert-danger py-2 px-3 mb-3" style="background-color: #fee2e2; border-left: 4px solid #dc2626;">
-                                    <i class="fas fa-exclamation-triangle me-1"></i> 
-                                    <strong>Important:</strong> Please include <strong class="ref-code ref-code-display">—</strong> in your payment note. Payments without this reference cannot be tracked.
+                                <div class="alert alert-info py-2 px-3 mb-3 js-manual-ref-alert d-none" role="status">
+                                    Include <strong class="ref-code ref-code-display">—</strong> in the payment note so we can match your transfer.
                                 </div>
                                 
                                 <div style="background: #f9fafb; border-radius: 12px; padding: 20px; border: 1px solid #e5e7eb;">
@@ -370,7 +369,7 @@
                                     <div style="margin-bottom: 16px;">
                                         <p style="font-size: 12px; color: #6b7280; margin-bottom: 4px;">Wise Payment Link</p>
                                         <div id="wisePaymentLink" style="background: white; padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 12px; word-break: break-all; font-family: monospace;">
-                                            {{ rtrim($wisePayUrl ?? config('billing.deposit_payment.wise_pay_url', 'https://wise.com/pay/business/topurlzltd'), '?&') }}?amount=<span class="amount-link">0</span>&currency=EUR
+                                            {{ rtrim($wisePayUrl ?? config('billing.deposit_payment.wise_pay_url', 'https://wise.com/pay/business/teqnoltd'), '?&') }}?amount=<span class="amount-link">0</span>&currency=EUR
                                         </div>
                                         <button type="button" class="copy-btn mt-2" data-target="wisePaymentLink">
                                             <i class="fas fa-copy"></i> Copy Payment Link
@@ -414,9 +413,8 @@
                                     </div>
                                 </div>
                                 
-                                <div class="alert alert-danger py-2 px-3 mb-3" style="background-color: #fee2e2; border-left: 4px solid #dc2626;">
-                                    <i class="fas fa-exclamation-triangle me-1"></i> 
-                                    <strong>Important:</strong> Please include <strong class="ref-code ref-code-display">—</strong> in your payment note. Payments without this reference cannot be tracked.
+                                <div class="alert alert-info py-2 px-3 mb-3 js-manual-ref-alert d-none" role="status">
+                                    Include <strong class="ref-code ref-code-display">—</strong> in the payment note so we can match your transfer.
                                 </div>
                                 
                                 <div style="background: #f9fafb; border-radius: 12px; padding: 20px; border: 1px solid #e5e7eb;">
@@ -452,9 +450,8 @@
                                     </div>
                                 </div>
                                 
-                                <div class="alert alert-danger py-2 px-3 mb-3" style="background-color: #fee2e2; border-left: 4px solid #dc2626;">
-                                    <i class="fas fa-exclamation-triangle me-1"></i> 
-                                    <strong>Important:</strong> Please include <strong class="ref-code ref-code-display">—</strong> in your payment note. Payments without this reference cannot be tracked.
+                                <div class="alert alert-info py-2 px-3 mb-3 js-manual-ref-alert d-none" role="status">
+                                    Include <strong class="ref-code ref-code-display">—</strong> in the payment note so we can match your transfer.
                                 </div>
                                 
                                 <div style="background: #f9fafb; border-radius: 12px; padding: 20px; border: 1px solid #e5e7eb;">
@@ -464,42 +461,9 @@
                                     <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 12px; color: var(--brand-primary, #1a585e);">Bank Account Information</h4>
                                     <div style="margin-bottom: 12px;">
                                         <p style="font-size: 12px; color: #6b7280; margin-bottom: 2px;">Seller / Service Provider:</p>
-                                        <p style="font-weight: 600; margin: 0;">{{ $depositPayment['seller_name'] ?? 'SEOLinkBuildings Partner' }}</p>
+                                        <p style="font-weight: 600; margin: 0;">{{ billing_company_for_documents()['legal_name'] ?? 'SEOLinkBuildings Partners with (Teqno LTD)' }}</p>
                                     </div>
-                                    <div style="margin-bottom: 12px;">
-                                        <p style="font-size: 12px; color: #6b7280; margin-bottom: 2px;">Beneficiary:</p>
-                                        <p style="font-weight: 600; margin: 0;">{{ $depositPayment['beneficiary'] ?? 'Topurlz Ltd' }}</p>
-                                    </div>
-                                    <div style="margin-bottom: 12px;">
-                                        <p style="font-size: 12px; color: #6b7280; margin-bottom: 2px;">IBAN:</p>
-                                        <div id="bankIban" style="background: white; padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 12px; font-family: monospace;">{{ $depositPayment['iban'] ?? 'BE04905543949331' }}</div>
-                                        <button type="button" class="copy-btn mt-1" data-target="bankIban">Copy IBAN</button>
-                                    </div>
-                                    <div style="margin-bottom: 12px;">
-                                        <p style="font-size: 12px; color: #6b7280; margin-bottom: 2px;">BIC/SWIFT:</p>
-                                        <div id="bankBic" style="background: white; padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 12px; font-family: monospace;">{{ $depositPayment['bic'] ?? 'TRWIBEB1XXX' }}</div>
-                                        <button type="button" class="copy-btn mt-1" data-target="bankBic">Copy BIC</button>
-                                    </div>
-                                    @if(!empty($depositPayment['phone']))
-                                        <div style="margin-bottom: 12px;">
-                                            <p style="font-size: 12px; color: #6b7280; margin-bottom: 2px;">Phone no:</p>
-                                            <p style="font-weight: 600; margin: 0;">{{ $depositPayment['phone'] }}</p>
-                                        </div>
-                                    @endif
-                                    @foreach(($depositPayment['address_lines'] ?? []) as $line)
-                                        <div style="margin-bottom: 12px;">
-                                            @if($loop->first)
-                                                <p style="font-size: 12px; color: #6b7280; margin-bottom: 2px;">Address:</p>
-                                            @endif
-                                            <p style="font-weight: 600; margin: 0;">{{ $line }}</p>
-                                        </div>
-                                    @endforeach
-                                    @if(!empty($depositPayment['registration_no']))
-                                        <div style="margin-bottom: 12px;">
-                                            <p style="font-size: 12px; color: #6b7280; margin-bottom: 2px;">Registration No:</p>
-                                            <p style="font-weight: 600; margin: 0;">{{ $depositPayment['registration_no'] }}</p>
-                                        </div>
-                                    @endif
+                                    @include('partials.deposit-bank-account', ['depositPayment' => $depositPayment, 'showExtended' => true, 'showCopy' => true])
                                     <div>
                                         <p style="font-size: 12px; color: #6b7280; margin-bottom: 2px;">VAT:</p>
                                         <p style="font-weight: 600; margin: 0;">{{ $depositPayment['vat_note'] ?? 'Not VAT registered – no VAT charged' }}</p>
@@ -511,8 +475,8 @@
                         <div id="paypalPaymentDetails" class="card border-0 shadow-sm mb-4" style="display: none;">
                             <div class="card-body">
                                 <div style="display: flex; align-items: center; margin-bottom: 16px;">
-                                    <div style="width: 40px; height: 40px; background: #f3f4f6; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-right: 12px;">
-                                        <img src="{{ asset('assets/img/payments/paypal.svg') }}" alt="" width="32" height="9" style="width:32px;height:auto;" decoding="async">
+                                    <div style="width: 64px; height: 64px; background: #f3f4f6; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-right: 12px;">
+                                        <img src="{{ asset('assets/img/payments/paypal.png') }}" alt="PayPal" width="56" height="55" style="width:56px;height:auto;" decoding="async">
                                     </div>
                                     <div>
                                         <h3 style="font-size: 18px; font-weight: 600; margin: 0;">PayPal</h3>
@@ -588,13 +552,12 @@
                             </div>
                         </div>
                     </div>
-                    <div class="alert alert-warning py-2 px-3 mb-3" id="refHintBox">
-                        <i class="fas fa-exclamation-triangle me-1"></i>
+                    <div class="alert alert-light border py-2 px-3 mb-3" id="refHintBox">
                         <small id="refHintPending">Your transfer reference is created with the invoice. Card and PayPal record it automatically.</small>
-                        <small id="refHintReady" class="d-none">Include <strong id="refCodeDisplay" class="ref-code">—</strong> in the payment note. Card and PayPal record the reference automatically.</small>
+                        <small id="refHintReady" class="d-none">Include <strong id="refCodeDisplay" class="ref-code">—</strong> in the payment note.</small>
                     </div>
-                    <button type="button" id="proceedBtn" class="btn btn-primary w-100 mt-2 py-2">
-                        <i class="fa fa-arrow-right me-2"></i> Get invoice &amp; pay
+                    <button type="button" id="proceedBtn" class="btn btn-primary w-100 mt-2 py-2" disabled>
+                        <i class="fa fa-arrow-right me-2"></i> Select an amount
                     </button>
                     <div class="mt-3">
                         @include('partials.payment-trust', ['compact' => true])
@@ -769,8 +732,8 @@
                 <div class="modal-body">
                     <div class="p-3 rounded mb-3" style="background:#e6f5f5;border:1px solid #b8e4e4;">
                         <div class="small text-muted">Available for Withdrawal</div>
-                        <div class="fs-3 fw-bold text-primary" id="withdrawAvailableLabel">€{{ number_format($available, 2) }}</div>
-                        <div class="small text-muted mt-1">Bonus Balance (€{{ number_format($bonus, 2) }}) cannot be withdrawn.</div>
+                        <div class="fs-3 fw-bold text-primary" id="withdrawAvailableLabel">{{ format_money($available) }}</div>
+                        <div class="small text-muted mt-1">Bonus Balance ({{ format_money($bonus) }}) cannot be withdrawn.</div>
                     </div>
 
                     @if(! $canWithdraw)
@@ -852,8 +815,8 @@
     </div>
 </div>
 
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="{{ asset('assets/js/jquery-3.6.0.min.js') }}?v={{ @filemtime(public_path('assets/js/jquery-3.6.0.min.js')) ?: '1' }}"></script>
+<script src="{{ asset('assets/vendor/sweetalert2/sweetalert2.min.js') }}?v={{ @filemtime(public_path('assets/vendor/sweetalert2/sweetalert2.min.js')) ?: '1' }}"></script>
 <script>
 (function () {
     const csrf = '{{ csrf_token() }}';
@@ -882,7 +845,7 @@
     let chartOrderIndex = {};
 
     function money(n) {
-        return '€' + (parseFloat(n || 0)).toFixed(2);
+        return (window.slbFormatMoney || function (x) { return '€' + Number(x).toFixed(2); })(n);
     }
 
     function escapeHtml(str) {
@@ -1044,7 +1007,9 @@
             // handlers bound on document — which is what killed "I paid".
             let actions = '';
             if (row.invoice_download_url) {
-                actions += `<a class="btn btn-sm btn-primary" href="${escapeHtml(row.invoice_download_url)}" download>
+                const pdfMatch = String(row.invoice_download_url).match(/\/invoice\/([^/?]+)\/invoice\.pdf/);
+                const pdfName = pdfMatch ? ` download="invoice-REF${pdfMatch[1]}.pdf"` : '';
+                actions += `<a class="btn btn-sm btn-primary" href="${escapeHtml(row.invoice_download_url)}"${pdfName}>
                     <i class="fa fa-download me-1"></i> Download invoice</a>`;
             } else if (row.invoice_view_url) {
                 actions += `<a class="btn btn-sm btn-outline-secondary" href="${escapeHtml(row.invoice_view_url)}" target="_blank" rel="noopener">
@@ -1301,7 +1266,7 @@
                     y: {
                         beginAtZero: true,
                         grid: { color: 'rgba(148,163,184,.18)' },
-                        ticks: { callback: (v) => '€' + v, color: '#75787B', font: { size: 11 } },
+                        ticks: { callback: (v) => (window.slbFormatMoney || function (x) { return '€' + x; })(v), color: '#75787B', font: { size: 11 } },
                         border: { display: false },
                     },
                     x: {
@@ -1588,16 +1553,17 @@ window.AddFundsBoot = {
     prefillAmount: @json($prefillAmount ?? null),
     prefillMethod: @json($prefillMethod ?? null),
     lastUsedMethod: @json($lastUsedMethod ?? null),
+    paypalLogo: @json(asset('assets/img/payments/paypal.png')),
     openCardsTab: @json((bool) ($openCardsTab ?? false)),
     routes: {
-        store: @json(route('advertiser.add-funds.store')),
-        addFunds: @json(route('advertiser.add-funds')),
-        saveBilling: @json(route('advertiser.save-billing-info')),
-        paySavedCard: @json(route('advertiser.add-funds.pay-saved-card')),
-        createCheckout: @json(route('advertiser.create-checkout-session')),
-        createPaypal: @json(route('advertiser.add-funds.paypal.create')),
-        getBilling: @json(route('advertiser.get-billing-info')),
-        paymentMethodsSetup: @json(route('advertiser.payment-methods.setup')),
+        store: @json(route('advertiser.add-funds.store', absolute: false)),
+        addFunds: @json(route('advertiser.add-funds', absolute: false)),
+        saveBilling: @json(route('advertiser.save-billing-info', absolute: false)),
+        paySavedCard: @json(route('advertiser.add-funds.pay-saved-card', absolute: false)),
+        createCheckout: @json(route('advertiser.create-checkout-session', absolute: false)),
+        createPaypal: @json(route('advertiser.add-funds.paypal.create', absolute: false)),
+        getBilling: @json(route('advertiser.get-billing-info', absolute: false)),
+        paymentMethodsSetup: @json(route('advertiser.payment-methods.setup', absolute: false)),
         paymentMethodsBase: @json(url('/advertiser/payment-methods')),
         // Relative so APP_URL host mismatches do not break the QR <img> request.
         wiseQr: @json(route('advertiser.add-funds.wise-qr', absolute: false)),

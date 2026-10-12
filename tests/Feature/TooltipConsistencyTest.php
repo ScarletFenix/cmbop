@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Support\MarketingCssBundle;
 use Tests\TestCase;
 
 /**
@@ -70,7 +71,12 @@ class TooltipConsistencyTest extends TestCase
         foreach ($layouts as $layout) {
             $markup = file_get_contents(resource_path('views/'.$layout));
 
-            $this->assertStringContainsString('assets/css/glass-tip.css', $markup, "{$layout} must load the tooltip styles.");
+            if ($layout === 'layouts/app.blade.php') {
+                $this->assertStringContainsString('MarketingCssBundle', $markup);
+                $this->assertContains('glass-tip.css', MarketingCssBundle::FILES);
+            } else {
+                $this->assertStringContainsString('assets/css/glass-tip.css', $markup, "{$layout} must load the tooltip styles.");
+            }
             $this->assertStringContainsString('assets/js/glass-tip.js', $markup, "{$layout} must load the tooltip script.");
         }
     }
@@ -101,6 +107,7 @@ class TooltipConsistencyTest extends TestCase
         }
 
         $this->assertStringContainsString("hasAttribute('data-no-tip')", $js, 'Views need an opt-out hook.');
+        $this->assertStringContainsString('#catalogResults, .catalog-results-card', $js);
     }
 
     public function test_glass_tip_rebinds_after_dynamic_rendering(): void
