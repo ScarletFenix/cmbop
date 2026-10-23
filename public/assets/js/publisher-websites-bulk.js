@@ -55,7 +55,8 @@
         const priceLabel = row.querySelector('[data-bulk-price-label]');
         const chip = row.querySelector('[data-bulk-url-price-chip]');
         if (label) label.textContent = urlVal || 'Website URL';
-        if (priceLabel) priceLabel.textContent = priceVal !== '' ? ('€' + priceVal) : 'No price';
+        const priceSymbol = window.__slbListingPriceSymbol || '€';
+        if (priceLabel) priceLabel.textContent = priceVal !== '' ? (priceSymbol + priceVal) : 'No price';
         if (chip) {
             chip.classList.remove('is-empty', 'is-partial', 'is-ready');
             if (!urlVal && priceVal === '') {
@@ -93,7 +94,7 @@
                         '<input type="url" name="sites[' + seq + '][url]" class="form-control" placeholder="https://example.com">' +
                     '</div>' +
                     '<div class="bulk-url-price-field bulk-url-price-field--price">' +
-                        '<label class="form-label">Price (€) <span class="text-danger">*</span></label>' +
+                        '<label class="form-label">Price (' + (window.__slbListingPriceSymbol || '€') + ') <span class="text-danger">*</span></label>' +
                         '<input type="number" name="sites[' + seq + '][price]" step="0.01" min="0" class="form-control" placeholder="99">' +
                     '</div>' +
                 '</div>' +

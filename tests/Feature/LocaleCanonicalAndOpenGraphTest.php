@@ -71,10 +71,14 @@ class LocaleCanonicalAndOpenGraphTest extends TestCase
 
         $enCanonical = url('/blog/english-title');
 
-        foreach (['/blog/english-title', '/us/blog/english-title', '/de/blog/english-title'] as $path) {
-            $tags = $this->headTags($this->get($path)->assertOk()->getContent());
-            $this->assertSame($enCanonical, $tags['canonical'], $path);
-            $this->assertSame($enCanonical, $tags['og_url'], $path);
+        $this->get('/blog/english-title')->assertOk();
+        $tags = $this->headTags($this->get('/blog/english-title')->getContent());
+        $this->assertSame($enCanonical, $tags['canonical']);
+        $this->assertSame($enCanonical, $tags['og_url']);
+
+        foreach (['/us/blog/english-title', '/de/blog/english-title'] as $path) {
+            $this->get($path)->assertRedirect($enCanonical);
+            $this->assertSame(301, $this->get($path)->status(), $path);
         }
     }
 

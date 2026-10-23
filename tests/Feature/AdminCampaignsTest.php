@@ -291,7 +291,8 @@ class AdminCampaignsTest extends TestCase
             ->assertSee('sandbox', false)
             ->assertSee('requestSubmit() throws if the submitter is disabled', false)
             ->assertSee("method: 'POST'", false)
-            ->assertSee("Accept': 'application/json, text/html'", false)
+            ->assertSee("'Accept': 'application/json'", false)
+            ->assertSee("'Accept': 'text/html, application/json'", false)
             ->assertSee('name="include_unverified" value="0"', false)
             ->assertSee('Advertisers: never checked out', false)
             ->assertSee('value="advertisers_no_paid_orders"', false)
@@ -355,6 +356,96 @@ class AdminCampaignsTest extends TestCase
 
         $this->assertStringNotContainsString('/email/unsubscribe/'.$admin->id, $html);
         $this->assertStringNotContainsString((string) $admin->email, $html);
+    }
+
+    public function test_compose_page_lists_email_center_templates(): void
+    {
+        $admin = $this->makeUser('admin');
+
+        $this->actingAs($admin)
+            ->get(route('admin.campaigns.index', ['audience' => 'advertisers']))
+            ->assertOk()
+            ->assertSee('Email Center templates', false)
+            ->assertSee('id="emailTemplatePicker"', false)
+            ->assertSee('data-value="welcome"', false)
+            ->assertSee('data-value="password_reset"', false)
+            ->assertSee('data-value="email_verification"', false)
+            ->assertDontSee('data-value="audience_campaign"', false);
+    }
+
+    public function test_from_template_fills_subject_and_sanitized_body(): void
+    {
+        $admin = $this->makeUser('admin');
+
+        $payload = $this->actingAs($admin)
+            ->postJson(route('admin.campaigns.from-template'), [
+                'template' => 'welcome',
+            ])
+            ->assertOk()
+            ->assertJsonPath('cta_label', 'Click to verify')
+            ->json();
+
+        $this->assertStringContainsString('Welcome to', (string) $payload['subject']);
+        $this->assertStringContainsString('Thanks for joining', (string) $payload['body_html']);
+        $this->assertStringNotContainsString('<html', strtolower((string) $payload['body_html']));
+        $this->assertStringNotContainsString('<script', strtolower((string) $payload['body_html']));
+        $this->assertStringContainsString('/email/verify/preview-id/preview-hash', (string) $payload['cta_url']);
+        $this->assertStringContainsString('Welcome aboard, Sample', (string) $payload['html']);
+        $this->assertStringContainsString('/email/verify/preview-id/preview-hash', (string) $payload['html']);
+    }
+
+    public function test_from_template_loads_framework_email_center_samples(): void
+    {
+        $admin = $this->makeUser('admin');
+
+        $payload = $this->actingAs($admin)
+            ->postJson(route('admin.campaigns.from-template'), [
+                'template' => 'password_reset',
+            ])
+            ->assertOk()
+            ->json();
+
+        $this->assertSame('Password Reset', $payload['subject']);
+        $this->assertSame('Reset Password', $payload['cta_label']);
+        $this->assertStringContainsString('password/reset/preview-token', (string) ($payload['cta_url'] ?? ''));
+        $this->assertStringContainsString('password/reset/preview-token', (string) ($payload['html'] ?? ''));
+    }
+
+    public function test_preview_with_template_matches_email_center(): void
+    {
+        $admin = $this->makeUser('admin');
+
+        $emailCenter = $this->actingAs($admin)
+            ->get(route('admin.emails.preview', 'welcome'))
+            ->assertOk()
+            ->getContent();
+
+        $campaign = $this->actingAs($admin)
+            ->post(route('admin.campaigns.preview'), [
+                'template' => 'welcome',
+            ])
+            ->assertOk()
+            ->getContent();
+
+        $this->assertSame($emailCenter, $campaign);
+        $this->assertStringContainsString('Welcome aboard, Sample', $campaign);
+    }
+
+    public function test_from_template_rejects_unknown_or_campaign_self(): void
+    {
+        $admin = $this->makeUser('admin');
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.campaigns.from-template'), [
+                'template' => 'audience_campaign',
+            ])
+            ->assertStatus(422);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.campaigns.from-template'), [
+                'template' => 'not-a-real-template',
+            ])
+            ->assertStatus(422);
     }
 
     public function test_preview_rejects_empty_body(): void
@@ -546,13 +637,16 @@ class AdminCampaignsTest extends TestCase
         $routes = collect(app('router')->getRoutes());
 
         $preview = $routes->first(fn ($route) => $route->getName() === 'admin.campaigns.preview');
+        $fromTemplate = $routes->first(fn ($route) => $route->getName() === 'admin.campaigns.from-template');
         $send = $routes->first(fn ($route) => $route->getName() === 'admin.campaigns.send');
         $count = $routes->first(fn ($route) => $route->getName() === 'admin.campaigns.recipient-count');
 
         $this->assertNotNull($preview);
+        $this->assertNotNull($fromTemplate);
         $this->assertNotNull($send);
         $this->assertNotNull($count);
         $this->assertContains('throttle:20,1', $preview->gatherMiddleware());
+        $this->assertContains('throttle:20,1', $fromTemplate->gatherMiddleware());
         $this->assertContains('throttle:6,1', $send->gatherMiddleware());
         $this->assertContains('throttle:30,1', $count->gatherMiddleware());
     }

@@ -7,11 +7,11 @@
 
 Hi {{ $firstName }},
 
-You've been on **{{ $brand['name'] ?? config('app.name') }}** for a week.@if(!empty($welcomeBonusEuro)) Your advertiser wallet already includes **{{ $welcomeBonusEuro }} welcome credit** toward guest posts on verified publishers.@endif
+You've been on {{ $brand['name'] ?? config('app.name') }} for a week.@if(!empty($welcomeBonusEuro)) Your advertiser wallet already includes {{ $welcomeBonusEuro }} welcome credit toward guest posts on verified publishers.@endif
 
 To place larger orders, add funds once (card, PayPal, bank, or Wise). Your balance stays in EUR and you only spend when you checkout.
 
-**Suggested next step:** browse the catalog, shortlist 2–3 sites, then add funds so checkout is one click.
+Suggested next step: browse the catalog, shortlist 2–3 sites, then add funds so checkout is one click.
 
 @component('mail::button', ['url' => $catalogUrl])
 Browse catalog

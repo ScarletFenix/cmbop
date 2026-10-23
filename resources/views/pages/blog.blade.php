@@ -1,14 +1,25 @@
 @extends('layouts.app')
 
-@section('title', __('messages.meta_blog_title'))
-@section('description', __('messages.meta_blog_description'))
 @php
+    $blogPage = isset($blog) ? (int) $blog->currentPage() : 1;
+    $blogTitle = __('messages.meta_blog_title');
+    $blogDescription = __('messages.meta_blog_description');
+    if ($blogPage > 1) {
+        $blogTitle .= ' — Page '.$blogPage;
+        $blogDescription = 'Older link-building and digital PR articles from SEOLinkBuildings. Page '.$blogPage.' of the public blog.';
+    }
     $blogCanonical = localized_url('blog');
-    if (isset($blog) && $blog->currentPage() > 1) {
-        $blogCanonical .= '?page='.$blog->currentPage();
+    if ($blogPage > 1) {
+        $blogCanonical .= '?page='.$blogPage;
     }
 @endphp
+@section('title', $blogTitle)
+@section('description', $blogDescription)
 @section('canonical', $blogCanonical)
+@if($blogPage > 1)
+@section('robots', 'noindex, follow')
+@section('skip_hreflang', '1')
+@endif
 
 @push('head')
     @if(isset($blog) && $blog->previousPageUrl())
@@ -29,6 +40,12 @@
 
 <!-- ==================== BLOG CONTENT ==================== -->
 <div class="container py-5" style="max-width:1200px;">
+    @include('components.breadcrumbs', [
+        'items' => [
+            ['name' => __('messages.home'), 'url' => localized_url('/')],
+            ['name' => __('messages.blog'), 'url' => localized_url('blog')],
+        ],
+    ])
 
     <!-- Search and Filter Bar -->
     <div class="row mb-5">
@@ -109,12 +126,15 @@
                             <div class="blog-item mb-4" data-title="{{ strtolower($post->title) }}" data-content="{{ strtolower(strip_tags($post->content)) }}" data-author="{{ strtolower($post->author) }}" data-tags="{{ $post->tags ? implode(',', is_array($post->tags) ? $post->tags : json_decode($post->tags, true) ?? []) : '' }}">
                                 <div class="card border-0 shadow-sm rounded-4 overflow-hidden" style="transition: all 0.3s ease;">
                                     <div class="row g-0">
-                                        @if($post->featured_image)
+                                        @php $postImage = \App\Support\BlogLocaleImages::featuredPublicUrl($post, $post->resolved_locale ?: public_locale()); @endphp
+                                        @if($postImage)
                                             <div class="col-md-4">
                                                 <div style="height: 100%; overflow: hidden;">
-                                                    <img src="{{ $post->featuredImageUrl() }}" 
+                                                    <img src="{{ $postImage }}" 
                                                          class="img-fluid w-100 h-100" 
                                                          alt="{{ $post->title }}"
+                                                         loading="lazy"
+                                                         decoding="async"
                                                          style="object-fit: cover; transition: transform 0.3s;">
                                                 </div>
                                             </div>
@@ -202,9 +222,14 @@
                         @foreach($recentPosts as $recent)
                             <a href="{{ localized_url('blog/'.$recent->slug) }}" class="text-decoration-none d-block mb-3">
                                 <div class="d-flex gap-3 align-items-start">
-                                    @if($recent->featured_image)
-                                        <img src="{{ $recent->featuredImageUrl() }}" 
-                                             alt="{{ $recent->title }}" 
+                                    @php $recentImage = \App\Support\BlogLocaleImages::featuredPublicUrl($recent, $recent->resolved_locale ?: public_locale()); @endphp
+                                    @if($recentImage)
+                                        <img src="{{ $recentImage }}" 
+                                             alt="{{ $recent->title }}"
+                                             width="60"
+                                             height="60"
+                                             loading="lazy"
+                                             decoding="async"
                                              style="width: 60px; height: 60px; object-fit: cover; border-radius: 12px;">
                                     @else
                                         <div style="width: 60px; height: 60px; background:linear-gradient(135deg, #1a585e 0%, #3faeb2 100%); border-radius: 12px;" class="d-flex align-items-center justify-content-center">
@@ -397,5 +422,5 @@ document.getElementById('newsletterForm')?.addEventListener('submit', function(e
 });
 </script>
 
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="{{ asset('assets/vendor/sweetalert2/sweetalert2.min.js') }}?v={{ @filemtime(public_path('assets/vendor/sweetalert2/sweetalert2.min.js')) ?: '1' }}"></script>
 @endsection

@@ -1,6 +1,7 @@
 @extends('advertiser.layouts.app')
 
 @push('page-styles')
+    <link href="{{ asset('assets/css/single-select.css') }}?v={{ @filemtime(public_path('assets/css/single-select.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('assets/css/catalog.css') }}?v={{ @filemtime(public_path('assets/css/catalog.css')) ?: '1' }}" rel="stylesheet">
     {{-- Critical catalog guards: if a stale CDN copy of catalog.css wins the
          race, Chrome still must not paint a stuck busy layer, teal NEW pills,
@@ -9,6 +10,7 @@
         .catalog-results-busy[hidden]{display:none!important}
         .catalog-page button.site-badge-new,
         .catalog-page .site-badge-new{background:#ef4444!important;background-image:none!important;color:#fff!important;border:0!important}
+        .catalog-page button.site-badge-new.catalog-new-ribbon{background:transparent!important;width:56px!important;height:56px!important;padding:0!important;min-width:0!important;border-radius:0!important;box-shadow:none!important}
         .catalog-page .metric-source{width:var(--metric-source-size,20px);height:var(--metric-source-size,20px);max-width:var(--metric-source-size,20px);max-height:var(--metric-source-size,20px);overflow:hidden}
         .catalog-page .metric-source img{width:var(--metric-source-size,20px);height:var(--metric-source-size,20px);max-width:var(--metric-source-size,20px);max-height:var(--metric-source-size,20px)}
         /* Category clamps — must survive a stale CDN catalog.css (chips otherwise
@@ -67,7 +69,8 @@
 
 {{-- catalog-page scopes this page's stylesheet. Without it, rules for .table,
      .badge and .form-control reached the cart drawer and the shell chrome. --}}
-<div class="container-fluid catalog-page">
+<div class="container-fluid catalog-page{{ config('catalog.live_search.enabled', true) ? ' is-live-search' : '' }}">
+    <div id="catalogCartLive" class="visually-hidden" aria-live="polite" aria-atomic="true"></div>
     @include('components.ad-banners', ['placement' => 'marketplace', 'audience' => 'advertiser'])
 
     @if(request()->boolean('wizard') && ! empty(\App\Http\Controllers\Advertiser\GuestPostWizardController::stateFromSession()['language']))
@@ -77,7 +80,7 @@
             'step' => 2,
             'title' => 'Place a guest post · Publishers',
             'subtitle' => 'Ordering “'.($orderingSubmission->title ?: $orderingSubmission->original_filename).'” ('
-                .strtoupper((string) $orderingSubmission->language).'). Browse any sites — language does not have to match — then assign in your cart.',
+                .strtoupper((string) $orderingSubmission->language).'). Browse any listings — language does not have to match — then assign in your cart.',
             'linkAll' => true,
             'contentRoute' => route('advertiser.content-library'),
             'actions' => '<button type="button" class="btn btn-sm btn-primary" onclick="openCart()">Review cart</button>'
@@ -88,19 +91,19 @@
         @include('advertiser.partials.ordering-path', [
             'step' => 2,
             'title' => 'Catalog · Publishers',
-            'subtitle' => 'One job here: pick publishers. Keep browsing with items in your cart — finish payment when ready. Prefer steps? Use Guided.',
+            'subtitle' => 'Browse publisher listings and add sites to your cart. Prefer steps? Use Guided.',
             'linkAll' => true,
             'contentRoute' => route('advertiser.content-library'),
-            'actions' => '<button type="button" class="btn btn-sm btn-outline-primary" onclick="openCart()">Open cart</button>'
-                .'<a href="'.e(route('advertiser.wizard.start')).'" class="btn btn-sm btn-outline-secondary">Guided</a>',
+            'actions' => '<button type="button" class="catalog-plain-action" onclick="openCart()"><i class="fa fa-shopping-cart" aria-hidden="true"></i> Open cart</button>'
+                .'<a href="'.e(route('advertiser.wizard.start')).'" class="catalog-plain-action"><i class="fa fa-compass" aria-hidden="true"></i> Guided</a>',
         ])
     @endif
 
     @if(($approvedArticleCount ?? 0) === 0 && empty($orderingSubmission))
-        <div class="alert alert-info border-0 shadow-sm d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <div class="alert alert-info border-0 shadow-sm d-flex flex-wrap justify-content-between align-items-center gap-2 catalog-article-banner py-2">
             <div class="small mb-0">
                 Each website needs its own <strong>approved</strong> article. You can still add publishers —
-                readiness chips show what’s missing, and the cart checklist walks you through assignment.
+                the cart lists which sites still need an article, then you upload or assign before you pay.
             </div>
             <a href="{{ route('advertiser.content-library', ['upload' => 1]) }}" class="btn btn-sm btn-upload">
                 <i class="fa fa-upload me-1" aria-hidden="true"></i> Upload article
@@ -109,8 +112,17 @@
     @endif
 
     @php
-        $catalogCart = is_array($cart ?? null) ? $cart : session('cart', []);
-        $catalogCartCount = collect(is_array($catalogCart) ? $catalogCart : [])
+        try {
+            $catalogCart = is_array($cart ?? null) ? $cart : session('cart', []);
+            if (! is_array($catalogCart)) {
+                $catalogCart = [];
+            }
+            $catalogCart = array_values(array_filter($catalogCart, 'is_array'));
+        } catch (\Throwable $e) {
+            report($e);
+            $catalogCart = [];
+        }
+        $catalogCartCount = collect($catalogCart)
             ->pluck('id')
             ->filter()
             ->unique()
@@ -133,13 +145,25 @@
         </div>
     @endif
     @if($catalogCartCount > 0)
-        <div class="alert alert-light border shadow-sm d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-            <div class="small mb-0">
-                You have <strong>{{ $catalogCartCount }}</strong> {{ Str::plural('site', $catalogCartCount) }} in your cart.
+        @php
+            $catalogPlacementCount = collect($catalogCart)
+                ->sum(fn ($row) => is_array($row) ? (int) ($row['quantity'] ?? 0) : 0);
+            $catalogCartCountLabel = $catalogCartCount.' '.($catalogCartCount === 1 ? 'site' : 'sites');
+            if ($catalogPlacementCount > $catalogCartCount) {
+                $catalogCartCountLabel .= ' · '.$catalogPlacementCount.' placements';
+            }
+        @endphp
+        <div id="catalogCartBanner" class="alert alert-light border shadow-sm d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+            <div class="small mb-0" data-cart-banner-text>
+                You have <strong>{{ $catalogCartCountLabel }}</strong> in your cart.
                 Keep browsing anytime — open the cart when you are ready to assign articles and pay.
             </div>
-            <button type="button" class="btn btn-sm btn-outline-primary" onclick="openCart()">
-                <i class="fa fa-shopping-cart me-1" aria-hidden="true"></i> Open cart
+        </div>
+    @else
+        <div id="catalogCartBanner" class="alert alert-light border shadow-sm d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3 d-none">
+            <div class="small mb-0" data-cart-banner-text></div>
+            <button type="button" class="catalog-plain-action" onclick="openCart()">
+                <i class="fa fa-shopping-cart" aria-hidden="true"></i> Open cart
             </button>
         </div>
     @endif
@@ -167,9 +191,9 @@
 
     @if(($catalogBonusBalance ?? 0) > 0)
         <p class="small text-muted mb-3">
-            Spendable <strong>€{{ number_format((float) ($catalogSpendableBalance ?? 0), 2) }}</strong>
-            (cash €{{ number_format((float) ($catalogCashBalance ?? 0), 2) }}
-            + bonus €{{ number_format((float) $catalogBonusBalance, 2) }}).
+            Spendable <strong>{{ format_money($catalogSpendableBalance ?? 0) }}</strong>
+            (cash {{ format_money($catalogCashBalance ?? 0) }}
+            + bonus {{ format_money($catalogBonusBalance) }}).
             Apply bonus at checkout.
         </p>
     @endif
@@ -178,20 +202,6 @@
 @include('advertiser.partials.catalog-bulk-deals')
     </div>
 
-
-    <!-- HEADER -->
-    <div class="row mb-3">
-        <div class="col-md-12">
-            <h2 class="mb-1 fw-semibold">Catalog</h2>
-            <p class="text-muted mb-0">
-                @if(!empty($orderingSubmission))
-                    Browse any verified publishers for “{{ $orderingSubmission->title ?: $orderingSubmission->original_filename }}”. Filters stay optional — language does not have to match.
-                @else
-                    Browse verified publishers and add sites to your cart.
-                @endif
-            </p>
-        </div>
-    </div>
 
     <!-- FILTERS SECTION -->
 @php
@@ -248,27 +258,9 @@
     if ($catalogPerPage !== \App\Services\Catalog\CatalogUrlQuery::DEFAULT_PER_PAGE) {
         $activeFilterChips[] = ['label' => $catalogPerPage.' per page', 'key' => 'per_page', 'params' => ['per_page']];
     }
-    $inventoryTotal = $sites->total();
-    $inventoryFrom = $sites->getCollection()->min(fn ($s) => (float) $s->price);
+    $catalogLiveSearch = (bool) config('catalog.live_search.enabled', true);
+    $inventoryFrom = $inventoryFrom ?? null;
 @endphp
-
-{{-- Result-first teaser (CV2): inventory + price under the Catalog title.
-     Filters live just above the results table (no Hide/Show toggle). --}}
-<div class="catalog-inventory-teaser d-flex flex-wrap align-items-center gap-2 mb-3">
-    <div class="small">
-        @if($inventoryTotal > 0)
-            <strong class="text-dark">{{ number_format($inventoryTotal) }}</strong>
-            {{ Str::plural('placement', $inventoryTotal) }} available
-            @if($inventoryFrom !== null)
-                · from <strong class="catalog-inventory-teaser__price">€{{ number_format($inventoryFrom, 2) }}</strong>
-            @endif
-        @else
-            <span class="text-muted">No placements match yet — broaden filters below</span>
-        @endif
-    </div>
-</div>
-
-
 
 <!-- CONTENT AREA -->
     <div class="row">
@@ -409,9 +401,22 @@
                                             </div>
                                         @endforeach
                                         @if(empty($countryPickerSections) || collect($countryPickerSections)->every(fn ($s) => ($s['key'] ?? '') === 'recent' || empty($s['options'])))
-                                            <div class="multi-select-section" data-section="empty-inventory">
-                                                <div class="text-muted small px-2 py-1">No markets with listings yet</div>
-                                            </div>
+                                            @forelse(($availableCountries ?? []) as $code => $name)
+                                                <label class="option-item" role="option" aria-selected="false" tabindex="-1">
+                                                    <input type="checkbox"
+                                                           value="{{ $code }}"
+                                                           data-type="country"
+                                                           data-name="{{ $name }}"
+                                                           data-count="0"
+                                                           onchange="updateMultiFilter(this)"
+                                                           tabindex="-1">
+                                                    <span>{{ $name }}</span>
+                                                </label>
+                                            @empty
+                                                <div class="multi-select-section" data-section="empty-inventory">
+                                                    <div class="text-muted small px-2 py-1">No markets with listings yet</div>
+                                                </div>
+                                            @endforelse
                                         @endif
                                     </div>
                                     <div class="multi-select-empty d-none">No countries found</div>
@@ -478,10 +483,13 @@
                         <!-- Actions -->
                         <div class="col-12 col-lg-2">
                             <label class="form-label fw-semibold small text-muted mb-1 d-none d-md-block">&nbsp;</label>
-                            <div class="d-flex flex-wrap gap-2">
-                                <button type="submit" class="btn btn-sm btn-primary px-3" id="applyFiltersBtn">
-                                    <i class="fa-solid fa-filter me-1" aria-hidden="true"></i> Filter
+                            <div class="d-flex flex-wrap gap-2 align-items-center">
+                                <button type="submit" class="btn btn-sm {{ $catalogLiveSearch ? 'btn-cta-secondary' : 'btn-primary' }} px-3" id="applyFiltersBtn">
+                                    <i class="fa-solid fa-filter me-1" aria-hidden="true"></i> {{ $catalogLiveSearch ? 'Apply' : 'Filter' }}
                                 </button>
+                                @if($catalogLiveSearch)
+                                    <span class="small text-muted catalog-live-apply-hint">Applies as you type</span>
+                                @endif
                                 <button type="button" class="btn btn-sm btn-cta-secondary px-2" id="toggleMoreFiltersBtn" aria-controls="moreFiltersDrawer" aria-expanded="{{ $moreFiltersOpen ? 'true' : 'false' }}">
                                     More
                                     @if($moreFiltersOpen)
@@ -498,16 +506,26 @@
                         </div>
                     </div>
 
-                    <div class="catalog-tag-quick mt-2" role="group" aria-label="Listing tag">
-                        <span class="small text-muted me-1">Tag</span>
-                        @foreach(\App\Support\SiteTag::catalogFilterOptions() as $value => $label)
+                    <div class="catalog-quick-filters mt-2 d-flex flex-wrap align-items-center gap-2">
+                        <div class="catalog-tag-quick" role="group" aria-label="Listing tag">
+                            <span class="small text-muted me-1">Tag</span>
+                            @foreach(\App\Support\SiteTag::catalogFilterOptions() as $value => $label)
+                                <button type="button"
+                                        class="catalog-tag-quick__btn{{ ($catalogTagFilter === $value || ($value === '' && $catalogTagFilter === null)) ? ' is-active' : '' }}"
+                                        data-catalog-tag="{{ $value }}"
+                                        aria-pressed="{{ ($catalogTagFilter === $value || ($value === '' && $catalogTagFilter === null)) ? 'true' : 'false' }}">
+                                    {{ $label }}
+                                </button>
+                            @endforeach
+                        </div>
+                        <div class="catalog-fav-quick" role="group" aria-label="Favorites">
                             <button type="button"
-                                    class="catalog-tag-quick__btn{{ ($catalogTagFilter === $value || ($value === '' && $catalogTagFilter === null)) ? ' is-active' : '' }}"
-                                    data-catalog-tag="{{ $value }}"
-                                    aria-pressed="{{ ($catalogTagFilter === $value || ($value === '' && $catalogTagFilter === null)) ? 'true' : 'false' }}">
-                                {{ $label }}
+                                    class="catalog-tag-quick__btn{{ request('favorites_filter') == '1' ? ' is-active' : '' }}"
+                                    data-catalog-favorites="1"
+                                    aria-pressed="{{ request('favorites_filter') == '1' ? 'true' : 'false' }}">
+                                <i class="fa-regular fa-heart me-1" aria-hidden="true"></i> Favorites
                             </button>
-                        @endforeach
+                        </div>
                     </div>
 
                     <!-- More filters drawer (teal mist theme) -->
@@ -516,30 +534,38 @@
                              this row pulled those cells up so the DA label sat above Tag/Favorites/Blacklist. --}}
                         <div class="row g-3 align-items-start">
                             <div class="col-6 col-md-4 col-lg-3">
-                                <label class="form-label fw-semibold small text-muted mb-1" for="catalogTagFilter">
+                                <label class="form-label fw-semibold small text-muted mb-1" for="catalogTagFilter-trigger">
                                     <abbr class="metric-abbr text-decoration-none" title="{{ \App\Support\SiteTag::FILTER_TOOLTIP }}">Tag</abbr>
                                 </label>
-                                <select name="tag" id="catalogTagFilter" class="form-select form-select-sm" aria-label="Listing tag">
-                                    @foreach(\App\Support\SiteTag::catalogFilterOptions() as $value => $label)
-                                        <option value="{{ $value }}" @selected($catalogTagFilter === $value || ($value === '' && $catalogTagFilter === null))>{{ $label }}</option>
-                                    @endforeach
-                                </select>
+                                @include('advertiser.partials.catalog-theme-select', [
+                                    'selectId' => 'catalogTagFilter',
+                                    'name' => 'tag',
+                                    'label' => 'Listing tag',
+                                    'current' => $catalogTagFilter === null ? '' : (string) $catalogTagFilter,
+                                    'options' => \App\Support\SiteTag::catalogFilterOptions(),
+                                ])
                             </div>
 
                             <div class="col-6 col-md-4 col-lg-3">
-                                <label class="form-label fw-semibold small text-muted mb-1">Favorites</label>
-                                <select name="favorites_filter" class="form-select form-select-sm">
-                                    <option value="">All Sites</option>
-                                    <option value="1" {{ request('favorites_filter') == '1' ? 'selected' : '' }}>Favorites Only</option>
-                                </select>
+                                <label class="form-label fw-semibold small text-muted mb-1" for="catalogFavoritesFilter-trigger">Favorites</label>
+                                @include('advertiser.partials.catalog-theme-select', [
+                                    'selectId' => 'catalogFavoritesFilter',
+                                    'name' => 'favorites_filter',
+                                    'label' => 'Favorites',
+                                    'current' => search_text(request('favorites_filter')),
+                                    'options' => ['' => 'All Sites', '1' => 'Favorites Only'],
+                                ])
                             </div>
 
                             <div class="col-6 col-md-4 col-lg-3">
-                                <label class="form-label fw-semibold small text-muted mb-1">Blacklist</label>
-                                <select name="blacklist_filter" class="form-select form-select-sm">
-                                    <option value="">All Sites</option>
-                                    <option value="1" {{ request('blacklist_filter') == '1' ? 'selected' : '' }}>Blacklisted Only</option>
-                                </select>
+                                <label class="form-label fw-semibold small text-muted mb-1" for="catalogBlacklistFilter-trigger">Blacklist</label>
+                                @include('advertiser.partials.catalog-theme-select', [
+                                    'selectId' => 'catalogBlacklistFilter',
+                                    'name' => 'blacklist_filter',
+                                    'label' => 'Blacklist',
+                                    'current' => search_text(request('blacklist_filter')),
+                                    'options' => ['' => 'All Sites', '1' => 'Blacklisted Only'],
+                                ])
                             </div>
 
                             <div class="col-6 col-md-4 col-lg-3">
@@ -619,13 +645,14 @@
                             </div>
 
                             <div class="col-6 col-md-4 col-lg-3">
-                                <label class="form-label fw-semibold small text-muted mb-1" for="catalogRatingMin">Min rating</label>
-                                <select name="rating_min" id="catalogRatingMin" class="form-select form-select-sm">
-                                    <option value="">Any</option>
-                                    <option value="3" @selected(request('rating_min') === '3')>3.0+</option>
-                                    <option value="4" @selected(request('rating_min') === '4')>4.0+</option>
-                                    <option value="4.5" @selected(request('rating_min') === '4.5')>4.5+</option>
-                                </select>
+                                <label class="form-label fw-semibold small text-muted mb-1" for="catalogRatingMin-trigger">Min rating</label>
+                                @include('advertiser.partials.catalog-theme-select', [
+                                    'selectId' => 'catalogRatingMin',
+                                    'name' => 'rating_min',
+                                    'label' => 'Min rating',
+                                    'current' => search_text(request('rating_min')),
+                                    'options' => ['' => 'Any', '3' => '3.0+', '4' => '4.0+', '4.5' => '4.5+'],
+                                ])
                             </div>
 
                             <div class="col-6 col-md-4 col-lg-3">
@@ -688,45 +715,47 @@
             <div class="catalog-results-bar d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
                 <div class="text-muted small" id="catalogResultsCount" data-catalog-results-count>
                     {{ $catalogResultsCopy['text'] }}
+                    @if($resultTotal > 0 && $inventoryFrom !== null)
+                        <span class="catalog-inventory-from">· from <strong class="catalog-inventory-teaser__price">{{ format_money($inventoryFrom) }}</strong></span>
+                    @endif
                 </div>
                 <div id="catalogLiveStatus" class="visually-hidden" aria-live="polite" aria-atomic="true">{{ $catalogResultsCopy['announce'] }}</div>
                 <div class="d-flex flex-wrap align-items-center gap-2">
-                    <label for="catalogPerPage" class="small text-muted mb-0">Per page</label>
-                    <select id="catalogPerPage"
-                            name="per_page"
-                            form="filterForm"
-                            class="form-select form-select-sm catalog-sort-select"
-                            aria-label="Sites per page">
-                        @foreach(\App\Services\Catalog\CatalogUrlQuery::ALLOWED_PER_PAGE as $size)
-                            <option value="{{ $size }}" @selected($catalogPerPage === $size)>{{ $size }}</option>
-                        @endforeach
-                    </select>
-                    <label for="catalogSort" class="small text-muted mb-0">Sort</label>
-                    <select id="catalogSort"
-                            name="sort"
-                            form="filterForm"
-                            class="form-select form-select-sm catalog-sort-select">
-                        <option value="dr_desc" @selected($sortValue === 'dr_desc')>DR (high → low)</option>
-                        <option value="dr_asc" @selected($sortValue === 'dr_asc')>DR (low → high)</option>
-                        <option value="da_desc" @selected($sortValue === 'da_desc')>DA (high → low)</option>
-                        <option value="da_asc" @selected($sortValue === 'da_asc')>DA (low → high)</option>
-                        <option value="traffic_desc" @selected($sortValue === 'traffic_desc')>Traffic (high → low)</option>
-                        <option value="price_asc" @selected($sortValue === 'price_asc')>Price (low → high)</option>
-                        <option value="price_desc" @selected($sortValue === 'price_desc')>Price (high → low)</option>
-                        <option value="newest" @selected($sortValue === 'newest')>Newest first</option>
-                        <option value="rating_desc" @selected($sortValue === 'rating_desc')>Rating (high → low)</option>
-                    </select>
+                    <button type="button" class="btn btn-sm btn-outline-success btn-suggest-website"
+                            data-search="{{ $catalogSearchText }}">
+                        <i class="fa-solid fa-lightbulb me-1" aria-hidden="true"></i> Suggest a website
+                    </button>
+                    <label for="catalogPerPage-trigger" class="small text-muted mb-0">Per page</label>
+                    @include('advertiser.partials.catalog-theme-select', [
+                        'selectId' => 'catalogPerPage',
+                        'name' => 'per_page',
+                        'form' => 'filterForm',
+                        'label' => 'Sites per page',
+                        'modifier' => 'catalog-theme-select--compact',
+                        'current' => (string) $catalogPerPage,
+                        'options' => collect(\App\Services\Catalog\CatalogUrlQuery::ALLOWED_PER_PAGE)->mapWithKeys(fn ($size) => [(string) $size => (string) $size])->all(),
+                    ])
+                    <label for="catalogSort-trigger" class="small text-muted mb-0">Sort</label>
+                    @include('advertiser.partials.catalog-theme-select', [
+                        'selectId' => 'catalogSort',
+                        'name' => 'sort',
+                        'form' => 'filterForm',
+                        'label' => 'Sort',
+                        'modifier' => 'catalog-theme-select--sort',
+                        'current' => (string) $sortValue,
+                        'options' => [
+                            'dr_desc' => 'DR (high → low)',
+                            'dr_asc' => 'DR (low → high)',
+                            'da_desc' => 'DA (high → low)',
+                            'da_asc' => 'DA (low → high)',
+                            'traffic_desc' => 'Traffic (high → low)',
+                            'price_asc' => 'Price (low → high)',
+                            'price_desc' => 'Price (high → low)',
+                            'newest' => 'Newest first',
+                            'rating_desc' => 'Rating (high → low)',
+                        ],
+                    ])
                 </div>
-            </div>
-
-            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-                <p class="small text-muted mb-0">
-                    Searching for a site that isn’t listed yet?
-                </p>
-                <button type="button" class="btn btn-sm btn-outline-success btn-suggest-website"
-                        data-search="{{ $catalogSearchText }}">
-                    <i class="fa-solid fa-lightbulb me-1" aria-hidden="true"></i> Suggest a website
-                </button>
             </div>
 
 
@@ -769,8 +798,9 @@ window.CatalogConfig = {
         favoritesSave: @json(route('advertiser.favorites.save')),
         blacklistSave: @json(route('advertiser.blacklist.save')),
         websiteSuggestionsStore: @json(route('advertiser.website-suggestions.store')),
+        websiteSuggestionsCheck: @json(route('advertiser.website-suggestions.check')),
         siteClaim: @json(route('advertiser.sites.claim')),
-        siteClaimsIndex: @json(route('site-claims.index')),
+        siteClaimsIndex: @json(route('advertiser.site-claims')),
         revealUrl: @json(route('advertiser.catalog.reveal-url', ['site' => '__SITE__'])),
         hideUrl: @json(route('advertiser.catalog.hide-url', ['site' => '__SITE__'])),
         copyTrack: @json(route('advertiser.catalog.copy-track')),
@@ -779,6 +809,7 @@ window.CatalogConfig = {
     }
 };
 </script>
+<script src="{{ asset('assets/js/single-select.js') }}?v={{ @filemtime(public_path('assets/js/single-select.js')) ?: '1' }}" defer></script>
 <script src="{{ asset('assets/js/catalog.js') }}?v={{ @filemtime(public_path('assets/js/catalog.js')) ?: '1' }}" defer></script>
 
 @endsection

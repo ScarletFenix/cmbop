@@ -17,8 +17,8 @@
     <link rel="dns-prefetch" href="https://fonts.googleapis.com">
     <link rel="dns-prefetch" href="https://fonts.gstatic.com">
 
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ asset('assets/vendor/bootstrap-5.3.0/bootstrap.min.css') }}?v={{ @filemtime(public_path('assets/vendor/bootstrap-5.3.0/bootstrap.min.css')) ?: '1' }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/slb-icons.css') }}?v={{ @filemtime(public_path('assets/css/slb-icons.css')) ?: '1' }}" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link href="{{ asset('assets/css/type-system.css') }}?v={{ @filemtime(public_path('assets/css/type-system.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('assets/css/brand-colors.css') }}?v={{ @filemtime(public_path('assets/css/brand-colors.css')) ?: '1' }}" rel="stylesheet">
@@ -40,7 +40,10 @@
     @stack('page-styles')
     <link href="{{ asset('assets/css/slb-live-search.css') }}?v={{ @filemtime(public_path('assets/css/slb-live-search.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('assets/css/slb-pagination.css') }}?v={{ @filemtime(public_path('assets/css/slb-pagination.css')) ?: '1' }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/slb-loader.css') }}?v={{ @filemtime(public_path('assets/css/slb-loader.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('assets/css/hover-system.css') }}?v={{ @filemtime(public_path('assets/css/hover-system.css')) ?: '1' }}" rel="stylesheet">
+    <script src="{{ asset('assets/vendor/lottie-web/lottie_light.min.js') }}?v={{ @filemtime(public_path('assets/vendor/lottie-web/lottie_light.min.js')) ?: '1' }}" defer></script>
+    <script src="{{ asset('assets/js/slb-loader.js') }}?v={{ @filemtime(public_path('assets/js/slb-loader.js')) ?: '1' }}" defer></script>
     <script src="{{ asset('assets/js/pulse-badge.js') }}?v={{ @filemtime(public_path('assets/js/pulse-badge.js')) ?: '1' }}" defer></script>
     <script src="{{ asset('assets/js/glass-tip.js') }}?v={{ @filemtime(public_path('assets/js/glass-tip.js')) ?: '1' }}" defer></script>
     <script src="{{ asset('assets/js/image-rights.js') }}?v={{ @filemtime(public_path('assets/js/image-rights.js')) ?: '1' }}" defer></script>
@@ -124,10 +127,12 @@
             <span class="nav-label">Projects</span>
         </a>
 
-        <a href="{{ route('site-claims.index') }}" class="{{ request()->routeIs('site-claims.*') ? 'active' : '' }}">
-            <i class="fa fa-user-check" aria-hidden="true"></i>
-            <span class="nav-label">My Claims</span>
-        </a>
+        @if(auth()->user()?->hasRole('publisher'))
+            <a href="{{ route('advertiser.site-claims') }}" class="{{ request()->routeIs('advertiser.site-claims') || request()->routeIs('site-claims.*') ? 'active' : '' }}">
+                <i class="fa fa-user-check" aria-hidden="true"></i>
+                <span class="nav-label">My Claims</span>
+            </a>
+        @endif
 
         <!-- Add Funds -->
         <a href="{{ route('advertiser.add-funds') }}" class="{{ request()->routeIs('advertiser.add-funds*') || request()->routeIs('advertiser.balance*') ? 'active' : '' }}">
@@ -156,7 +161,7 @@
 <div class="top-navbar">
 
     <div class="mobile-left d-flex align-items-center gap-2">
-        <button id="toggleSidebar" class="btn btn-sm btn-outline-secondary" type="button" aria-label="Toggle sidebar navigation" title="Toggle sidebar" aria-controls="sidebar" aria-expanded="true">
+        <button id="toggleSidebar" class="topbar-icon-btn" type="button" aria-label="Toggle sidebar navigation" title="Toggle sidebar" aria-controls="sidebar" aria-expanded="true">
             <span class="arrow" aria-hidden="true"><i class="fa fa-chevron-left"></i></span>
         </button>
 
@@ -174,17 +179,25 @@
 
         <!-- Cart — count + estimated total while browsing -->
         @php
-            $headerCart = is_array($headerCart ?? null) ? $headerCart : session('cart', []);
+            try {
+                $headerCart = is_array($headerCart ?? null) ? $headerCart : session('cart', []);
+                if (! is_array($headerCart)) {
+                    $headerCart = [];
+                }
+                $headerCart = array_values(array_filter($headerCart, 'is_array'));
+            } catch (\Throwable $e) {
+                report($e);
+                $headerCart = [];
+            }
             $headerCartCount = (int) array_sum(array_map(fn ($row) => (int) ($row['quantity'] ?? 0), $headerCart));
             $headerCartTotal = round(array_sum(array_map(
                 fn ($row) => ((float) ($row['price'] ?? 0)) * ((int) ($row['quantity'] ?? 0)),
                 $headerCart
             )), 2);
         @endphp
-        <button id="toggleCart" class="btn btn-outline-secondary btn-sm topbar-action" type="button" aria-label="Open cart" title="Cart">
+        <button id="toggleCart" class="topbar-icon-btn" type="button" aria-label="Open cart" title="Cart" data-cart-fly-target>
             <i class="fa fa-shopping-cart" aria-hidden="true"></i>
-            <span class="d-none d-sm-inline">Cart</span>
-            <span id="cartTotalBadge" class="cart-total-label {{ $headerCartCount > 0 ? '' : 'd-none' }}">€{{ number_format($headerCartTotal, 2) }}</span>
+            <span id="cartTotalBadge" class="visually-hidden">{{ format_money_pay($headerCartTotal) }}</span>
             <span id="cartBadge" class="cart-badge" style="{{ $headerCartCount > 0 ? 'display:flex;' : 'display:none;' }}">{{ $headerCartCount > 0 ? $headerCartCount : 0 }}</span>
         </button>
 
@@ -207,12 +220,12 @@
             }
             $headerBalanceTitle = $headerWalletUnavailable
                 ? 'Spendable unavailable'
-                : ('Spendable €' . number_format($spendableBalance, 2)
-                    . ($reservedBalance > 0 ? ' · On hold: €' . number_format($reservedBalance, 2) : ''));
+                : ('Spendable ' . format_money($spendableBalance)
+                    . ($reservedBalance > 0 ? ' · On hold: ' . format_money($reservedBalance) : ''));
         @endphp
         <a href="{{ route('advertiser.add-funds') }}" class="balance-block text-decoration-none" data-glass-tip data-glass-tip-body="{{ $headerBalanceTitle }}" data-glass-tip-placement="bottom" aria-label="{{ $headerWalletUnavailable ? 'Spendable balance unavailable' : 'Spendable balance '.number_format($spendableBalance, 2).' euros' }}">
             <span class="balance-label">Spendable</span>
-            <span class="balance-amount">{{ $headerWalletUnavailable ? '—' : '€'.number_format($spendableBalance, 2) }}</span>
+            <span class="balance-amount">{{ $headerWalletUnavailable ? '—' : format_money($spendableBalance) }}</span>
         </a>
 
         @include('partials.notification-center')
@@ -276,7 +289,7 @@
             <h5 id="cartTitle" class="mb-0">Your Cart</h5>
             <div id="cartHeaderMeta" class="small text-muted mt-1">Pay with wallet, card, or PayPal at checkout. Sites without an article stay in the cart.</div>
         </div>
-        <button id="closeCart" class="btn btn-sm btn-outline-secondary" type="button" aria-label="Close cart">
+        <button id="closeCart" class="topbar-icon-btn" type="button" aria-label="Close cart">
             <i class="fa fa-times" aria-hidden="true"></i>
         </button>
     </div>
@@ -302,13 +315,18 @@
         <div id="cartProceedHint" class="small text-muted mt-2 d-none">
             Assign an article to at least one website to checkout. Sites without articles stay in your cart.
         </div>
-        <details class="cart-after-pay">
-            <summary>What happens after you pay</summary>
-            @include('partials.buy-confidence')
-        </details>
-        <button id="keepBrowsingCatalog" class="cart-keep-browsing" type="button">
-            Keep browsing publishers
-        </button>
+        <div class="cart-footer-links">
+            <details class="cart-after-pay d-none" id="cartAfterPay">
+                <summary>What happens after you pay</summary>
+                @include('partials.buy-confidence')
+            </details>
+            <button id="keepBrowsingCatalog" class="cart-keep-browsing" type="button">
+                Keep browsing
+            </button>
+            <button id="clearCart" class="cart-clear" type="button">
+                Clear cart
+            </button>
+        </div>
     </div>
 </div>
 
@@ -336,13 +354,19 @@
         @include('partials.payment-trust', ['compact' => true, 'showMethods' => true, 'brief' => true])
     </div>
 </footer>
-@unless(\App\Support\VisitorSupportChat::enabled() || \App\Support\TawkChat::enabled())
-    @include('components.help-feedback-widget')
+@unless(
+    (class_exists(\App\Support\VisitorSupportChat::class) && method_exists(\App\Support\VisitorSupportChat::class, 'enabled') && \App\Support\VisitorSupportChat::enabled() && view()->exists('partials.visitor-support-chat'))
+    || (class_exists(\App\Support\TawkChat::class) && method_exists(\App\Support\TawkChat::class, 'enabled') && \App\Support\TawkChat::enabled())
+)
+    @if (view()->exists('components.help-feedback-widget'))
+        @include('components.help-feedback-widget')
+    @endif
 @endunless
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="{{ asset('assets/vendor/bootstrap-5.3.0/bootstrap.bundle.min.js') }}?v={{ @filemtime(public_path('assets/vendor/bootstrap-5.3.0/bootstrap.bundle.min.js')) ?: '1' }}"></script>
 <script src="{{ asset('assets/js/modal-stack.js') }}?v={{ @filemtime(public_path('assets/js/modal-stack.js')) ?: '1' }}"></script>
 <script src="{{ asset('assets/js/jquery-3.6.0.min.js') }}?v={{ @filemtime(public_path('assets/js/jquery-3.6.0.min.js')) ?: '1' }}"></script>
+@include('partials.money-display')
 @include('partials.app-toast')
 
 <script>
@@ -445,23 +469,133 @@
     let cartSchedule = null;
     let contentLibraryUploadUrl = @json(route('advertiser.content-library', ['upload' => 1]));
     let catalogUrl = @json(route('advertiser.catalog'));
+    const catalogPath = @json(parse_url(route('advertiser.catalog'), PHP_URL_PATH) ?: '/advertiser/catalog');
+
+    function slbCatalogReturn() {
+        try {
+            const stored = sessionStorage.getItem('slb_catalog_return') || '';
+            const path = stored.split('?')[0];
+            if (stored.charAt(0) !== '/' || stored.indexOf('//') !== -1 || stored.indexOf('\\') !== -1) return '';
+            if (path !== catalogPath && path !== catalogPath + '/') return '';
+            return stored;
+        } catch (_) {
+            return '';
+        }
+    }
+
+    function slbRememberCatalog() {
+        try {
+            const here = window.location.pathname || '';
+            if (here !== catalogPath && here !== catalogPath + '/') return;
+            const back = here + (window.location.search || '');
+            if (back.charAt(0) !== '/' || back.indexOf('//') !== -1 || back.indexOf('\\') !== -1) return;
+            sessionStorage.setItem('slb_catalog_return', back);
+        } catch (_) {}
+    }
 
     function applyCartPayload(data) {
         if (Array.isArray(data)) {
             cart = data;
+            window.advertiserCart = cart;
             return;
         }
         cart = Array.isArray(data?.cart) ? data.cart : [];
+        window.advertiserCart = cart;
         approvedArticles = Array.isArray(data?.approved_articles) ? data.approved_articles : [];
         requireSameLanguage = !!data?.require_same_language;
         cartSchedule = data?.schedule && data.schedule.mode === 'scheduled' ? data.schedule : null;
         if (data?.content_library_url) {
             contentLibraryUploadUrl = data.content_library_url;
         }
+        if (window.__slbMoney) {
+            if (data?.fx && data.fx.rate) {
+                window.__slbMoney.cart_rate = Number(data.fx.rate);
+                window.__slbMoney.currency = data.fx.currency || window.__slbMoney.currency;
+                window.__slbMoney.symbol = data.fx.symbol || window.__slbMoney.symbol;
+                window.__slbMoney.guide = (window.__slbMoney.currency || 'EUR') !== 'EUR';
+            } else if (!Array.isArray(cart) || cart.length === 0) {
+                window.__slbMoney.cart_rate = window.__slbMoney.rate;
+            }
+        }
         toastRemovedCartNames(
             Array.isArray(data?.removed_inactive) ? data.removed_inactive : [],
             Array.isArray(data?.removed_owned) ? data.removed_owned : []
         );
+        if (typeof window.catalogSyncInCartButtons === 'function') {
+            window.catalogSyncInCartButtons(cart);
+        }
+        syncCatalogCartBanner();
+    }
+
+    function cartCountSummary(items) {
+        const list = Array.isArray(items) ? items : [];
+        const placements = list.reduce((sum, item) => sum + (parseInt(item.quantity, 10) || 0), 0);
+        const sites = new Set(list.map((item) => String(item.id || '')).filter(Boolean)).size;
+        return { placements: placements, sites: sites };
+    }
+
+    function cartCountLabel(sites, placements) {
+        const siteBit = sites + ' site' + (sites === 1 ? '' : 's');
+        if (placements <= sites) {
+            return siteBit;
+        }
+        return siteBit + ' · ' + placements + ' placement' + (placements === 1 ? '' : 's');
+    }
+
+    function syncCatalogCartBanner() {
+        const banner = document.getElementById('catalogCartBanner');
+        if (!banner) return;
+        const counts = cartCountSummary(cart);
+        const text = banner.querySelector('[data-cart-banner-text]');
+        if (counts.sites <= 0) {
+            banner.classList.add('d-none');
+            return;
+        }
+        banner.classList.remove('d-none');
+        if (text) {
+            text.innerHTML = 'You have <strong>' + escapeHtml(cartCountLabel(counts.sites, counts.placements)) + '</strong> in your cart. Keep browsing anytime — open the cart when you are ready to assign articles and pay.';
+        }
+    }
+
+    function markReturnToCart() {
+        try { sessionStorage.setItem('slb_open_cart_on_load', '1'); } catch (_) {}
+    }
+
+    function configureCartLine(item, changes) {
+        const data = {
+            id: item.id,
+            sensitive_type: item.sensitive_type || '',
+            homepage_days: cartHomepageParam(item),
+            new_sensitive_type: Object.prototype.hasOwnProperty.call(changes, 'sensitive_type')
+                ? (changes.sensitive_type || '')
+                : (item.sensitive_type || ''),
+            new_homepage_days: Object.prototype.hasOwnProperty.call(changes, 'homepage_days')
+                ? changes.homepage_days
+                : cartHomepageParam(item),
+        };
+        $.ajax({
+            url: @json(route('advertiser.cart.configure')),
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                'Accept': 'application/json'
+            },
+            data: data,
+            success: function (payload) {
+                if (!payload.success) {
+                    showToast(payload.error || 'Could not update cart options.', 'error');
+                    loadCart();
+                    return;
+                }
+                applyCartPayload(payload);
+                updateCartDisplay();
+            },
+            error: function (xhr) {
+                const msg = xhr.responseJSON?.error || xhr.responseJSON?.message || 'Could not update cart options.';
+                showToast(msg, 'error');
+                loadCart();
+            }
+        });
     }
 
     function toastRemovedCartNames(removed, removedOwned) {
@@ -606,12 +740,19 @@
         $.ajax({
             url: '{{ route("advertiser.cart.get") }}',
             method: 'GET',
+            headers: {
+                'Accept': 'application/json'
+            },
             success: function(data) {
                 applyCartPayload(data);
                 updateCartDisplay();
             },
-            error: function() {
+            error: function(xhr) {
                 console.error('Failed to load cart');
+                const msg = xhr.responseJSON?.error || xhr.responseJSON?.message;
+                if (msg) {
+                    showToast(msg, 'error');
+                }
             }
         });
     }
@@ -622,7 +763,8 @@
             url: '{{ route("advertiser.cart.save") }}',
             method: 'POST',
             headers: {
-                'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                'Accept': 'application/json'
             },
             contentType: 'application/json',
             data: JSON.stringify({ cart: cart }),
@@ -634,8 +776,10 @@
                 }
                 loadCart();
             },
-            error: function() {
+            error: function(xhr) {
                 console.error('Failed to save cart');
+                const msg = xhr.responseJSON?.error || xhr.responseJSON?.message || 'Could not save your cart.';
+                showToast(msg, 'error');
                 loadCart();
             }
         });
@@ -676,29 +820,155 @@
         });
     }
     
+    function cartThemeSelectMarkup(id, className, dataAttrs, options, ariaLabel) {
+        const current = options.find((opt) => opt.selected && !opt.group) || options.find((opt) => !opt.group) || { value: '', label: '' };
+        let selectOptions = '';
+        let openGroup = false;
+        options.forEach((opt) => {
+            if (opt.group) {
+                if (openGroup) selectOptions += '</optgroup>';
+                selectOptions += '<optgroup label="' + escapeHtml(opt.label) + '">';
+                openGroup = true;
+                return;
+            }
+            selectOptions += '<option value="' + escapeHtml(opt.value) + '"' + (opt.selected ? ' selected' : '') + '>' + escapeHtml(opt.label) + '</option>';
+        });
+        if (openGroup) selectOptions += '</optgroup>';
+        const items = options.map((opt) => {
+            if (opt.group) {
+                return '<div class="single-select-option-group">' + escapeHtml(opt.label) + '</div>';
+            }
+            return '<div class="single-select-option' + (opt.selected ? ' selected' : '') + '" role="option"'
+                + ' data-value="' + escapeHtml(opt.value) + '"'
+                + ' data-label="' + escapeHtml(opt.label) + '"'
+                + ' aria-selected="' + (opt.selected ? 'true' : 'false') + '">'
+                + escapeHtml(opt.label) + '</div>';
+        }).join('');
+        return '<div class="cart-theme-select">'
+            + '<select id="' + escapeHtml(id) + '" class="' + className + ' visually-hidden" tabindex="-1" ' + dataAttrs + '>' + selectOptions + '</select>'
+            + '<button type="button" class="single-select-input" aria-haspopup="listbox" aria-expanded="false" aria-label="' + escapeHtml(ariaLabel) + '">'
+            + '<span class="single-select-value">' + escapeHtml(current.label || '') + '</span>'
+            + '<i class="fa fa-chevron-down single-select-arrow" aria-hidden="true"></i>'
+            + '</button>'
+            + '<div class="single-select-dropdown"><div class="single-select-options" role="listbox">' + items + '</div></div>'
+            + '</div>';
+    }
+
+    function placeCartThemeMenu(dropdown, trigger) {
+        const rect = trigger.getBoundingClientRect();
+        dropdown.style.position = 'fixed';
+        dropdown.style.left = rect.left + 'px';
+        dropdown.style.width = rect.width + 'px';
+        dropdown.style.right = 'auto';
+        dropdown.style.zIndex = '1200';
+        const spaceBelow = window.innerHeight - rect.bottom;
+        if (spaceBelow < 180) {
+            dropdown.style.top = 'auto';
+            dropdown.style.bottom = (window.innerHeight - rect.top + 4) + 'px';
+        } else {
+            dropdown.style.bottom = 'auto';
+            dropdown.style.top = (rect.bottom + 4) + 'px';
+        }
+    }
+
+    function closeCartThemeMenus(except) {
+        document.querySelectorAll('.cart-theme-select .single-select-dropdown.show').forEach((dropdown) => {
+            if (except && dropdown === except) return;
+            dropdown.classList.remove('show');
+            const trigger = dropdown.parentElement && dropdown.parentElement.querySelector('.single-select-input');
+            if (trigger) trigger.setAttribute('aria-expanded', 'false');
+        });
+    }
+
+    function bindCartThemeSelects(root) {
+        if (!root) return;
+        root.querySelectorAll('.cart-theme-select').forEach((wrap) => {
+            if (wrap.dataset.bound === '1') return;
+            wrap.dataset.bound = '1';
+            const select = wrap.querySelector('select');
+            const trigger = wrap.querySelector('.single-select-input');
+            const dropdown = wrap.querySelector('.single-select-dropdown');
+            const valueEl = wrap.querySelector('.single-select-value');
+            if (!select || !trigger || !dropdown) return;
+            const syncLabel = () => {
+                const val = String(select.value);
+                wrap.querySelectorAll('.single-select-option').forEach((opt) => {
+                    const on = String(opt.getAttribute('data-value')) === val;
+                    opt.classList.toggle('selected', on);
+                    opt.setAttribute('aria-selected', on ? 'true' : 'false');
+                });
+                const selected = wrap.querySelector('.single-select-option.selected');
+                if (valueEl) {
+                    valueEl.textContent = selected
+                        ? String(selected.getAttribute('data-label') || selected.textContent || '').trim()
+                        : '';
+                }
+            };
+            trigger.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                const willOpen = !dropdown.classList.contains('show');
+                closeCartThemeMenus(dropdown);
+                dropdown.classList.toggle('show', willOpen);
+                trigger.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+                if (willOpen) placeCartThemeMenu(dropdown, trigger);
+            });
+            wrap.addEventListener('click', (event) => {
+                const opt = event.target.closest('.single-select-option');
+                if (!opt || !wrap.contains(opt)) return;
+                event.preventDefault();
+                const next = String(opt.getAttribute('data-value') ?? '');
+                if (select.value !== next) {
+                    select.value = next;
+                    select.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+                syncLabel();
+                dropdown.classList.remove('show');
+                trigger.setAttribute('aria-expanded', 'false');
+            });
+        });
+    }
+
+    if (!window.__cartThemeDocBound) {
+        window.__cartThemeDocBound = true;
+        document.addEventListener('click', (event) => {
+            if (event.target.closest('.cart-theme-select')) return;
+            closeCartThemeMenus();
+        });
+    }
+
     // Update cart display
     function updateCartDisplay() {
-        const cartCount = cart.reduce((sum, item) => sum + (parseInt(item.quantity, 10) || 0), 0);
+        const counts = cartCountSummary(cart);
+        const cartCount = counts.placements;
         const cartTotal = cart.reduce((sum, item) => sum + ((parseFloat(item.price) || 0) * (parseInt(item.quantity, 10) || 0)), 0);
         
         const badge = document.getElementById('cartBadge');
         if (badge) {
             if (cartCount > 0) {
                 badge.style.display = 'flex';
-                badge.innerText = cartCount;
+                badge.innerText = String(cartCount);
+                badge.title = cartCountLabel(counts.sites, counts.placements);
             } else {
                 badge.style.display = 'none';
+                badge.title = '';
             }
+        }
+        const toggleCart = document.getElementById('toggleCart');
+        if (toggleCart) {
+            toggleCart.setAttribute('aria-label', cartCount > 0
+                ? ('Open cart, ' + cartCountLabel(counts.sites, counts.placements))
+                : 'Open cart');
         }
 
         const totalBadge = document.getElementById('cartTotalBadge');
         if (totalBadge) {
             if (cartCount > 0) {
                 totalBadge.classList.remove('d-none');
-                totalBadge.textContent = '€' + cartTotal.toFixed(2);
+                totalBadge.textContent = slbFormatPay(cartTotal);
             } else {
                 totalBadge.classList.add('d-none');
-                totalBadge.textContent = '€0.00';
+                totalBadge.textContent = slbFormatPay(0);
             }
         }
         
@@ -713,6 +983,11 @@
         const heldNote = document.getElementById('cartHeldNote');
         const totalsEl = document.getElementById('cartTotals');
         const scheduleHint = document.getElementById('cartScheduleHint');
+        const afterPay = document.getElementById('cartAfterPay');
+        const clearBtn = document.getElementById('clearCart');
+        if (clearBtn) {
+            clearBtn.classList.toggle('d-none', cart.length === 0);
+        }
         if (cart.length === 0) {
             container.innerHTML = `
                 <div class="text-center text-muted px-2">
@@ -755,9 +1030,12 @@
                 scheduleHint.hidden = true;
                 scheduleHint.textContent = '';
             }
+            if (afterPay) {
+                afterPay.classList.add('d-none');
+            }
         } else {
             let html = '';
-            const sortedCart = [...cart].sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+            const listedCart = [...cart].reverse();
             const missingLines = cartLinesMissingArticles();
             const missing = missingLines.length;
             const readyCount = Math.max(0, cart.length - missing);
@@ -771,21 +1049,26 @@
             if (totalsEl) {
                 totalsEl.classList.remove('d-none');
             }
+            const cartStatus = missing === 0
+                ? (readyCount + ' ready')
+                : (readyCount === 0
+                    ? (missingSlots === 1 ? '1 article still needed' : missingSlots + ' articles still needed')
+                    : (readyCount + ' ready · ' + missingSlots + ' article' + (missingSlots === 1 ? '' : 's') + ' still needed'));
             if (headerMeta) {
-                headerMeta.textContent = cart.length + ' site' + (cart.length === 1 ? '' : 's')
-                    + ' · ' + readyCount + ' ready to pay';
+                headerMeta.textContent = cartStatus;
             }
             if (checklistEl) {
                 if (missing === 0) {
                     checklistEl.classList.add('d-none');
                     checklistEl.innerHTML = '';
                 } else {
-                    const status = readyCount === 0
-                        ? (missingSlots === 1 ? '1 article still needed' : missingSlots + ' articles still needed')
-                        : (readyCount + ' ready · ' + missingSlots + ' article' + (missingSlots === 1 ? '' : 's') + ' still needed');
-                    checklistEl.innerHTML = '<div class="cart-checklist__status">' + escapeHtml(status) + '</div>';
+                    const status = cartStatus;
+                    const siteList = missingLines.map((item) => '<li>' + escapeHtml(item.name || 'Website') + '</li>').join('');
+                    checklistEl.innerHTML = '<div class="cart-checklist__status">' + escapeHtml(status) + '</div>'
+                        + (siteList ? '<ul class="cart-checklist__sites">' + siteList + '</ul>' : '');
                     checklistEl.classList.remove('d-none');
                 }
+                checklistEl.classList.add('d-none');
             }
             if (readyNote) {
                 // Header already says “N ready to pay”; do not repeat it in the footer.
@@ -826,18 +1109,21 @@
             if (heldNote) {
                 if (readyCount === 0) {
                     heldNote.classList.remove('d-none');
-                    heldNote.textContent = 'In cart €' + cartTotal.toFixed(2);
+                    heldNote.textContent = 'In cart ' + slbFormatPay(cartTotal);
                 } else if (missing > 0) {
                     heldNote.classList.remove('d-none');
                     heldNote.textContent = missing + ' site' + (missing === 1 ? '' : 's')
-                        + ' stay' + (missing === 1 ? 's' : '') + ' in cart (€' + heldTotal.toFixed(2) + ')';
+                        + ' stay' + (missing === 1 ? 's' : '') + ' in cart (' + slbFormatPay(heldTotal) + ')';
                 } else {
                     heldNote.classList.add('d-none');
                     heldNote.textContent = '';
                 }
             }
+            if (afterPay) {
+                afterPay.classList.toggle('d-none', readyCount === 0);
+            }
             
-            sortedCart.forEach((item) => {
+            listedCart.forEach((item) => {
                 const itemKey = getCartItemKey(item);
                 const itemKeyAttr = escapeHtml(itemKey);
                 const sensitiveAttr = escapeHtml(item.sensitive_type || '');
@@ -867,25 +1153,76 @@
                 const placementIds = lineContentIds(item);
                 const qty = Math.max(1, parseInt(item.quantity, 10) || 1);
                 const unitPrice = (parseFloat(item.price) || 0).toFixed(2);
-                const priceLabel = qty > 1 ? ('€' + unitPrice + ' × ' + qty) : ('€' + unitPrice);
-                const sensitiveDisplay = item.sensitive_type ? 
-                    `<div class="cart-item-sensitive"><small>+ ${escapeHtml(item.sensitive_type)} (€${(parseFloat(item.additional_price) || 0).toFixed(2)})</small></div>` : '';
+                const priceLabel = qty > 1 ? (slbFormatPay(unitPrice) + ' × ' + qty) : slbFormatPay(unitPrice);
+                const homepageOptions = Array.isArray(item.homepage_options) ? item.homepage_options : [];
+                const sensitiveOptions = Array.isArray(item.sensitive_options) ? item.sensitive_options : [];
                 const homepageDays = item.homepage_days != null && item.homepage_days !== '' ? parseInt(item.homepage_days, 10) : null;
-                const homepageFee = parseFloat(item.homepage_price) || 0;
-                const homepageDisplay = homepageDays
-                    ? `<div class="cart-item-homepage"><small>Homepage ${homepageDays} day${homepageDays === 1 ? '' : 's'}${homepageFee > 0 ? ' (+€' + homepageFee.toFixed(2) + ')' : ' (Free)'}</small></div>`
-                    : '';
+                const homepageSelectId = 'cart-home-' + itemKey.replace(/[^a-zA-Z0-9_-]/g, '-');
+                const sensitiveSelectId = 'cart-sens-' + itemKey.replace(/[^a-zA-Z0-9_-]/g, '-');
+                let homepageDisplay = '';
+                if (homepageOptions.length > 0) {
+                    const homeOptions = [{ value: 'none', label: 'No homepage', selected: !homepageDays }];
+                    homepageOptions.forEach((opt) => {
+                        const days = parseInt(opt.days, 10);
+                        const fee = parseFloat(opt.price) || 0;
+                        const feeLabel = opt.free || fee <= 0 ? 'Free' : slbFormatPay(fee, { signed: true });
+                        homeOptions.push({
+                            value: String(days),
+                            label: 'Homepage ' + days + ' day' + (days === 1 ? '' : 's') + ' (' + feeLabel + ')',
+                            selected: homepageDays === days,
+                        });
+                    });
+                    homepageDisplay = cartThemeSelectMarkup(
+                        homepageSelectId,
+                        'cart-option-select cart-homepage-select',
+                        'data-id="' + item.id + '" data-sensitive-type="' + sensitiveAttr + '" data-homepage-days="' + cartHomepageParam(item) + '"',
+                        homeOptions,
+                        'Homepage placement for ' + siteName
+                    );
+                }
+                let sensitiveDisplay = '';
+                if (sensitiveOptions.length > 0) {
+                    const sensOptions = [{ value: '', label: 'No sensitive topic', selected: !item.sensitive_type }];
+                    sensitiveOptions.forEach((opt) => {
+                        const type = String(opt.type || '');
+                        sensOptions.push({
+                            value: type,
+                            label: type + ' (' + slbFormatPay(opt.price, { signed: true }) + ')',
+                            selected: (item.sensitive_type || '') === type,
+                        });
+                    });
+                    sensitiveDisplay = cartThemeSelectMarkup(
+                        sensitiveSelectId,
+                        'cart-option-select cart-sensitive-select',
+                        'data-id="' + item.id + '" data-sensitive-type="' + sensitiveAttr + '" data-homepage-days="' + cartHomepageParam(item) + '"',
+                        sensOptions,
+                        'Sensitive topic for ' + siteName
+                    );
+                } else if (item.sensitive_type) {
+                    sensitiveDisplay = `<div class="cart-item-sensitive"><small>+ ${escapeHtml(item.sensitive_type)} (${slbFormatPay(item.additional_price)})</small></div>`;
+                }
                 const socialList = Array.isArray(item.social_channels) ? item.social_channels : [];
+                const socialIcon = {
+                    facebook: 'fa-facebook',
+                    instagram: 'fa-instagram',
+                    x: 'fa-x-twitter',
+                };
                 const socialDisplay = socialList.length
-                    ? `<div class="cart-item-social"><small>Social: ${escapeHtml(socialList.map((c) => c === 'x' ? 'X' : (c.charAt(0).toUpperCase() + c.slice(1))).join(', '))}</small></div>`
+                    ? `<div class="cart-item-social" aria-label="${escapeHtml(socialList.map((c) => c === 'x' ? 'X' : (c.charAt(0).toUpperCase() + c.slice(1))).join(', '))}">${socialList.map((c) => {
+                        const icon = socialIcon[c];
+                        const name = c === 'x' ? 'X' : (c.charAt(0).toUpperCase() + c.slice(1));
+                        return icon
+                            ? `<i class="fa-brands ${icon}" title="${escapeHtml(name)}" aria-hidden="true"></i>`
+                            : '';
+                    }).join('')}</div>`
                     : '';
                 let articleBlock = '';
                 if (approvedArticles.length === 0 && placementIds.every((id) => !id)) {
                     articleBlock = `
                         <div class="cart-item-article needs-document">
                             <div class="cart-item-article-empty">
-                                No approved article.
-                                <a class="cart-item-upload-link cart-item-upload-link--primary" href="${contentLibraryUploadUrl}">Upload article</a>
+                                Each placement needs an approved article before you can pay.
+                                <a class="btn btn-sm btn-primary cart-item-upload-cta" href="${contentLibraryUploadUrl}">Upload article</a>
                             </div>
                         </div>`;
                 } else {
@@ -897,22 +1234,31 @@
                         const other = options.filter((article) => !articleFitsSiteLanguages(article, siteLangs));
                         const slotLabel = placementIds.length > 1
                             ? `Article ${copyIndex + 1} of ${placementIds.length}`
-                            : (selectedId ? 'Article' : 'Add article');
-                        const slotKicker = siteLangLabel ? (slotLabel + ' · site ' + siteLangLabel) : slotLabel;
+                            : 'Article';
+                        const slotKicker = slotLabel;
                         const selectId = 'cart-doc-' + itemKey.replace(/[^a-zA-Z0-9_-]/g, '-') + '-' + copyIndex;
-                        const renderOption = (article) => {
+                        const chooseLabel = placementIds.length > 1
+                            ? ('Choose article ' + (copyIndex + 1) + ' of ' + placementIds.length)
+                            : 'Choose article';
+                        const articleOptions = [{ value: '', label: chooseLabel, selected: !selectedId }];
+                        const pushArticle = (article) => {
                             const optionId = articleId(article.id);
-                            return `<option value="${optionId}" ${optionId === Number(selectedId) ? 'selected' : ''}>${escapeHtml(articlePickerLabel(article))}</option>`;
+                            articleOptions.push({
+                                value: String(optionId),
+                                label: articlePickerLabel(article),
+                                selected: optionId === Number(selectedId),
+                            });
                         };
-                        let opts = `<option value="">— Choose ${placementIds.length > 1 ? 'article ' + (copyIndex + 1) + ' of ' + placementIds.length : 'article'} —</option>`;
                         if (matching.length > 0 && other.length > 0 && !requireSameLanguage) {
-                            opts += `<optgroup label="Matches this site">${matching.map(renderOption).join('')}</optgroup>`;
-                            opts += `<optgroup label="Other languages">${other.map(renderOption).join('')}</optgroup>`;
+                            articleOptions.push({ group: true, label: 'Matches this site' });
+                            matching.forEach(pushArticle);
+                            articleOptions.push({ group: true, label: 'Other languages' });
+                            other.forEach(pushArticle);
                         } else {
-                            options.forEach((article) => { opts += renderOption(article); });
+                            options.forEach(pushArticle);
                         }
                         if (selectedId && !options.some((a) => articleId(a.id) === Number(selectedId))) {
-                            opts += `<option value="${selectedId}" selected>Assigned article</option>`;
+                            articleOptions.push({ value: String(selectedId), label: 'Assigned article', selected: true });
                         }
                         const emptyHint = options.length === 0 && !selectedId
                             ? `<div class="cart-item-article-empty mt-1">Need another article? <a class="cart-item-upload-link cart-item-upload-link--primary" href="${contentLibraryUploadUrl}">Upload article</a></div>`
@@ -924,21 +1270,19 @@
                             ? `<div class="cart-item-language-note" title="Preferred match is the same language as the site">${escapeHtml(item.language_note)}</div>`
                             : noMatchNote;
                         const uploadLink = `<a class="cart-item-upload-link" href="${contentLibraryUploadUrl}">${selectedId ? 'Upload another' : 'Upload new'}</a>`;
+                        const articleSelect = cartThemeSelectMarkup(
+                            selectId,
+                            'cart-article-select',
+                            'data-id="' + item.id + '" data-sensitive-type="' + sensitiveAttr + '" data-homepage-days="' + cartHomepageParam(item) + '" data-copy-index="' + copyIndex + '" data-prev-value="' + (selectedId || '') + '"',
+                            articleOptions,
+                            'Article for ' + siteName + (siteLangLabel ? ' · site ' + siteLangLabel : '')
+                        );
                         return `
                         <div class="cart-item-article ${selectedId ? 'is-assigned' : 'needs-document'}">
                             <div class="cart-item-order-label">
                                 <span class="cart-item-order-kicker">${escapeHtml(slotKicker)}</span>
                             </div>
-                            <label class="visually-hidden" for="${selectId}">Article for ${escapeHtml(siteName)}</label>
-                            <select id="${selectId}"
-                                    class="cart-article-select"
-                                    data-id="${item.id}"
-                                    data-sensitive-type="${sensitiveAttr}"
-                                    data-homepage-days="${cartHomepageParam(item)}"
-                                    data-copy-index="${copyIndex}"
-                                    data-prev-value="${selectedId || ''}">
-                                ${opts}
-                            </select>
+                            ${articleSelect}
                             ${langNote}
                             <div class="cart-item-article-actions">
                                 ${uploadLink}
@@ -947,40 +1291,40 @@
                         </div>`;
                     }).join('');
                 }
-                const qtyNote = qty > 1
-                    ? `<div class="cart-item-qty-note">${qty} placements · ${qty} articles</div>`
-                    : '';
+                const minBulk = parseInt(item.bulk_min_qty, 10) || 3;
+                const isBulkPack = !!item.bulk_pack || (!!item.bulk_eligible && qty >= minBulk);
+                const minQty = isBulkPack ? minBulk : 1;
                 
+                const optionRow = (homepageDisplay || sensitiveDisplay || socialDisplay)
+                    ? `<div class="cart-item-options">${homepageDisplay}${sensitiveDisplay}${socialDisplay}</div>`
+                    : '';
                 html += `
                     <div class="cart-item" data-key="${itemKeyAttr}">
-                        <div class="cart-item-top">
-                            <div class="cart-item-info">
-                                <div class="cart-item-name">${escapeHtml(siteName)}</div>
-                                ${identityMeta ? `<div class="cart-item-meta">${escapeHtml(identityMeta)}</div>` : ''}
-                                ${sensitiveDisplay}
-                                ${homepageDisplay}
-                                ${socialDisplay}
-                                <div class="cart-item-price">${priceLabel}</div>
-                                ${qtyNote}
-                            </div>
-                            <div class="cart-item-quantity">
-                                ${qty > 1 ? `<button type="button" class="decrease-qty" data-id="${item.id}" data-sensitive-type="${sensitiveAttr}" data-homepage-days="${cartHomepageParam(item)}" aria-label="Decrease placements" title="Placements — each needs its own article">
-                                    <i class="fa fa-minus" aria-hidden="true"></i>
-                                </button>` : ''}
-                                <span class="quantity-number" aria-label="Placements ${item.quantity}">${item.quantity}</span>
-                                <button type="button" class="increase-qty" data-id="${item.id}" data-sensitive-type="${sensitiveAttr}" data-homepage-days="${cartHomepageParam(item)}" aria-label="Increase placements — each needs its own article" title="Placements — each needs its own article">
-                                    <i class="fa fa-plus" aria-hidden="true"></i>
-                                </button>
-                            </div>
-                            <button type="button" class="cart-item-remove" data-id="${item.id}" data-sensitive-type="${sensitiveAttr}" data-homepage-days="${cartHomepageParam(item)}" aria-label="Remove ${escapeHtml(siteName)} from cart">
-                                Remove
+                        <div class="cart-item-head">
+                            <div class="cart-item-name">${escapeHtml(siteName)}</div>
+                            <div class="cart-item-price">${priceLabel}</div>
+                            <button type="button" class="cart-item-remove" data-id="${item.id}" data-sensitive-type="${sensitiveAttr}" data-homepage-days="${cartHomepageParam(item)}" aria-label="Remove ${escapeHtml(siteName)} from cart">Remove<i class="fa-solid fa-trash" aria-hidden="true"></i></button>
+                        </div>
+                        ${identityMeta ? `<div class="cart-item-meta">${escapeHtml(identityMeta)}</div>` : ''}
+                        <div class="cart-item-quantity" role="group" aria-label="Placements">
+                            <span class="cart-item-qty-label visually-hidden">Placements</span>
+                            <button type="button" class="decrease-qty" data-id="${item.id}" data-sensitive-type="${sensitiveAttr}" data-homepage-days="${cartHomepageParam(item)}" aria-label="Decrease placements" title="Placements — each needs its own article" ${qty <= minQty ? 'disabled' : ''}>
+                                <i class="fa fa-minus" aria-hidden="true"></i>
+                            </button>
+                            <span class="quantity-number" aria-label="Placements ${item.quantity}">${item.quantity}</span>
+                            <button type="button" class="increase-qty" data-id="${item.id}" data-sensitive-type="${sensitiveAttr}" data-homepage-days="${cartHomepageParam(item)}" aria-label="Increase placements — each needs its own article" title="Placements — each needs its own article">
+                                <i class="fa fa-plus" aria-hidden="true"></i>
                             </button>
                         </div>
-                        ${articleBlock}
+                        ${optionRow}
+                        <div class="cart-item-article-row">
+                            <div class="cart-item-articles">${articleBlock}</div>
+                        </div>
                     </div>
                 `;
             });
             container.innerHTML = html;
+            bindCartThemeSelects(container);
         }
         
         const payEl = document.getElementById('cartTotalAmount');
@@ -988,7 +1332,11 @@
             const payNow = cart.length === 0 ? 0 : cart
                 .filter((item) => lineFullyAssigned(item))
                 .reduce((sum, item) => sum + ((parseFloat(item.price) || 0) * (parseInt(item.quantity, 10) || 0)), 0);
-            payEl.innerHTML = `€${payNow.toFixed(2)}`;
+            payEl.innerHTML = slbFormatPay(payNow);
+        }
+        syncCatalogCartBanner();
+        if (typeof window.catalogSyncInCartButtons === 'function') {
+            window.catalogSyncInCartButtons(cart);
         }
     }
     
@@ -1076,10 +1424,22 @@
             applyCartPayload(data);
             updateCartDisplay();
             const label = sensitiveType ? (name + ' + ' + sensitiveType) : name;
-            showToast(data.message || (label + ' added to cart.'), 'success');
+            const flew = typeof window.catalogFlyToCart === 'function'
+                && window.catalogFlyToCart(opts.flyOrigin, { siteId: id, name: name });
+            if (!opts.quiet) {
+                showToast(data.message || (label + ' added to cart.'), 'success');
+            } else if (!flew) {
+                showToast(label + ' added to cart.', 'success', { delay: 1800, quiet: true });
+            }
+            if (typeof window.catalogAnnounceCart === 'function') {
+                window.catalogAnnounceCart(label);
+            }
             updateCartDisplay();
-            if (opts.openCart || opts.bulk || (Number.isFinite(qty) && qty > 1)) {
+            let firstAdd = false;
+            try { firstAdd = sessionStorage.getItem('slb_cart_drawer_seen') !== '1'; } catch (_) { firstAdd = true; }
+            if (opts.openCart || opts.bulk || (Number.isFinite(qty) && qty > 1) || firstAdd) {
                 try { openCart(); } catch (_) { /* cart chrome may not be ready */ }
+                try { sessionStorage.setItem('slb_cart_drawer_seen', '1'); } catch (_) {}
             }
             return { ok: true, data: data };
         }).catch(function () {
@@ -1108,6 +1468,7 @@
         cartOverlay.classList.add('show');
         document.body.classList.add('cart-open');
         cartSidebar.setAttribute('aria-hidden', 'false');
+        try { sessionStorage.setItem('slb_cart_drawer_seen', '1'); } catch (_) {}
         updateCartDisplay();
         (closeCartBtn || getCartFocusable()[0])?.focus();
     }
@@ -1157,7 +1518,66 @@
         closeCart();
         const onCatalog = {{ request()->routeIs('advertiser.catalog') ? 'true' : 'false' }};
         if (!onCatalog) {
-            window.location.href = catalogUrl;
+            window.location.href = slbCatalogReturn() || catalogUrl;
+        }
+    });
+
+    document.getElementById('clearCart')?.addEventListener('click', function () {
+        if (cart.length === 0) return;
+        window.slbConfirm({
+            title: 'Clear cart?',
+            text: 'Remove every website from this cart. Assigned articles stay in Content Library.',
+            confirmText: 'Clear cart',
+            cancelText: 'Keep items',
+            icon: 'warning',
+        }).then(function (ok) {
+            if (!ok) return;
+            $.ajax({
+                url: @json(route('advertiser.cart.clear')),
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                    'Accept': 'application/json'
+                },
+                success: function (payload) {
+                    applyCartPayload(payload && payload.cart ? payload : { cart: [] });
+                    updateCartDisplay();
+                    showToast('Cart cleared.', 'success');
+                },
+                error: function () {
+                    showToast('Could not clear the cart. Please try again.', 'error');
+                }
+            });
+        });
+    });
+
+    document.getElementById('cartItemsContainer').addEventListener('change', function (e) {
+        const select = e.target.closest('.cart-homepage-select, .cart-sensitive-select');
+        if (!select) return;
+        const id = parseInt(select.dataset.id, 10);
+        const sensitiveType = select.dataset.sensitiveType || null;
+        const homepageDays = Object.prototype.hasOwnProperty.call(select.dataset, 'homepageDays')
+            ? select.dataset.homepageDays
+            : null;
+        const item = cart.find((row) => {
+            if (row.id !== id || (row.sensitive_type || null) !== sensitiveType) {
+                return false;
+            }
+            if (homepageDays === null) return true;
+            return cartHomepageParam(row) === String(homepageDays);
+        });
+        if (!item) return;
+        if (select.classList.contains('cart-homepage-select')) {
+            configureCartLine(item, { homepage_days: select.value || 'none' });
+            return;
+        }
+        configureCartLine(item, { sensitive_type: select.value || '' });
+    });
+
+    document.getElementById('cartItemsContainer').addEventListener('click', function (e) {
+        const upload = e.target.closest('.cart-item-upload-link, .cart-item-upload-cta');
+        if (upload) {
+            markReturnToCart();
         }
     });
     
@@ -1165,7 +1585,7 @@
     document.getElementById('cartItemsContainer').addEventListener('click', function(e) {
         const target = e.target;
         const btn = target.closest('.decrease-qty, .increase-qty, .cart-item-remove');
-        if (!btn) return;
+        if (!btn || btn.disabled) return;
         
         const id = parseInt(btn.dataset.id);
         const sensitiveType = btn.dataset.sensitiveType || null;
@@ -1302,13 +1722,54 @@
         const wizardPay = @json(route('advertiser.wizard.pay'));
         const plainCheckout = @json(route('advertiser.checkout'));
         const inWizard = {{ request()->boolean('wizard') || !empty(\App\Http\Controllers\Advertiser\GuestPostWizardController::stateFromSession()['language'] ?? null) ? 'true' : 'false' }};
+        slbRememberCatalog();
         window.location.href = inWizard ? wizardPay : plainCheckout;
     });
     
     // Load cart on page load
     loadCart();
+    try {
+        if (sessionStorage.getItem('slb_open_cart_on_load') === '1') {
+            sessionStorage.removeItem('slb_open_cart_on_load');
+            openCart();
+        }
+    } catch (_) {}
     // Catalog shows its own banner; other pages toast names already dropped during render.
     const onCatalogPage = {{ request()->routeIs('advertiser.catalog') ? 'true' : 'false' }};
+    if (onCatalogPage) {
+        slbRememberCatalog();
+        ['pushState', 'replaceState'].forEach(function (name) {
+            const original = history[name];
+            if (typeof original !== 'function' || original.__slbCatalog) return;
+            const wrapped = function () {
+                const result = original.apply(this, arguments);
+                slbRememberCatalog();
+                return result;
+            };
+            wrapped.__slbCatalog = true;
+            history[name] = wrapped;
+        });
+        window.addEventListener('popstate', slbRememberCatalog);
+    }
+    document.addEventListener('click', function (event) {
+        const link = event.target && event.target.closest ? event.target.closest('a[href]') : null;
+        if (!link || link.classList.contains('catalog-clear-all')) return;
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+        if (link.target && link.target !== '_self') return;
+        let url;
+        try {
+            url = new URL(link.href, window.location.origin);
+        } catch (_) {
+            return;
+        }
+        if (url.origin !== window.location.origin) return;
+        if (url.pathname !== catalogPath && url.pathname !== catalogPath + '/') return;
+        if (url.search) return;
+        const back = slbCatalogReturn();
+        if (!back || back === url.pathname || back === url.pathname + '/') return;
+        event.preventDefault();
+        window.location.href = back;
+    });
     if (!onCatalogPage) {
         toastRemovedCartNames(
             @json($ssrCartRemovedInactive ?? []),
@@ -1317,8 +1778,9 @@
     }
 </script>
 
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="{{ asset('assets/vendor/sweetalert2/sweetalert2.min.js') }}?v={{ @filemtime(public_path('assets/vendor/sweetalert2/sweetalert2.min.js')) ?: '1' }}"></script>
 <script src="{{ asset('js/slb-confirm.js') }}?v={{ @filemtime(public_path('js/slb-confirm.js')) ?: '1' }}"></script>
+@include('partials.slb-icon-draw')
 <script src="{{ asset('js/slb-live-search.js') }}?v={{ @filemtime(public_path('js/slb-live-search.js')) ?: '1' }}"></script>
 <script src="{{ asset('js/slb-http.js') }}?v={{ @filemtime(public_path('js/slb-http.js')) ?: '1' }}"></script>
 <script>
@@ -1327,7 +1789,10 @@
 <script src="{{ asset('js/order-chat.js') }}?v={{ @filemtime(public_path('js/order-chat.js')) ?: '1' }}" defer></script>
 <script src="{{ asset('js/notification-center.js') }}?v={{ @filemtime(public_path('js/notification-center.js')) ?: '8' }}" defer></script>
 @stack('scripts')
-@include('partials.tawk')
+@if (view()->exists('partials.tawk'))
+    @include('partials.tawk')
+@endif
+@include('partials.slb-loader')
 
 </body>
 </html>

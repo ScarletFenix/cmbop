@@ -332,7 +332,9 @@ class OrderChatHardeningTest extends TestCase
             ->getJson(route('chat.messages', $orphan->id))
             ->assertOk()
             ->assertJsonPath('can_send', true)
-            ->assertJsonPath('composer_note', 'This order is completed. You can still message support about it.')
+            ->assertJsonPath('composer_note', 'Placement details are missing for this order. You can still send a message.')
+            ->assertJsonPath('order_details.details_missing', true)
+            ->assertJsonPath('order_details.has_placement', false)
             ->json();
 
         $this->assertStringNotContainsString(
@@ -394,6 +396,36 @@ class OrderChatHardeningTest extends TestCase
         $ids = collect($response->json('messages'))->pluck('id')->all();
         $this->assertSame([$newer->id], $ids);
         $this->assertFalse($response->json('has_more_older'));
+    }
+
+    public function test_own_read_ids_turn_blue_after_counterpart_opens_chat(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher);
+        $order = $this->orderFor($advertiser, $site);
+
+        $mine = OrderChatMessage::create([
+            'order_id' => $order->id,
+            'user_id' => $advertiser->id,
+            'sender_type' => 'advertiser',
+            'message' => 'Please check',
+            'is_read' => false,
+        ]);
+
+        $this->actingAs($advertiser)
+            ->getJson(route('chat.messages', $order->id))
+            ->assertOk()
+            ->assertJsonPath('own_read_ids', []);
+
+        $this->actingAs($publisher)
+            ->getJson(route('chat.messages', $order->id))
+            ->assertOk();
+
+        $this->actingAs($advertiser)
+            ->getJson(route('chat.messages', $order->id))
+            ->assertOk()
+            ->assertJsonPath('own_read_ids.0', $mine->id);
     }
 
     public function test_messages_ok_when_created_at_is_unparseable(): void

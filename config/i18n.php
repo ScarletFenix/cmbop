@@ -9,10 +9,16 @@ return [
     /** Unprefixed canonical English — treated as UK English for SEO (hreflang en-GB). */
     'default' => 'en',
 
-    'supported' => ['en', 'de', 'fr', 'nl', 'es', 'it', 'us'],
+    'supported' => [
+        'en', 'de', 'fr', 'nl', 'es', 'it', 'pt', 'us',
+        'at', 'ch', 'ro', 'gr', 'dk', 'se', 'no', 'bg', 'hu', 'ee', 'pl', 'be',
+    ],
 
     /** Prefixed locales (UK English has no URL prefix). `us` is US English. */
-    'prefixed' => ['de', 'fr', 'nl', 'es', 'it', 'us'],
+    'prefixed' => [
+        'de', 'fr', 'nl', 'es', 'it', 'pt', 'us',
+        'at', 'ch', 'ro', 'gr', 'dk', 'se', 'no', 'bg', 'hu', 'ee', 'pl', 'be',
+    ],
 
     /**
      * Public marketing path prefixes (after optional locale segment).
@@ -39,9 +45,71 @@ return [
         'guest-posts-uk',
         'guest-posts-italy',
         'guest-posts-spain',
+        'guest-posts-portugal',
         'guest-posts-france',
         'guest-posts-netherlands',
+        'guest-posts-switzerland',
+        'guest-posts-austria',
+        'guest-posts-romania',
+        'guest-posts-greece',
+        'guest-posts-denmark',
+        'guest-posts-sweden',
+        'guest-posts-norway',
+        'guest-posts-bulgaria',
+        'guest-posts-hungary',
+        'guest-posts-estonia',
+        'guest-posts-poland',
+        'guest-posts-belgium',
+        'guest-posts-ireland',
         'guest-post-prices-europe',
+        'comprare-guest-post',
+        'articoli-sponsorizzati',
+        'link-building',
+        'comprare-backlink',
+        'agenzie',
+        'digital-pr',
+        'catalogo',
+        'prezzi-guest-post',
+        'gastbeitrag-kaufen',
+        'advertorial',
+        'linkbuilding',
+        'backlinks-kaufen',
+        'agenturen',
+        'niche-edits',
+        'guest-post-kaufen',
+        'linkaufbau',
+        'preisliste',
+        'fuer-agenturen',
+        'medienplatzierung',
+        'advertorial-kaufen',
+        'backlink-kaufen',
+        'gastartikel-kaufen',
+        'gastbeitrag-bestellen',
+    ],
+
+    /**
+     * Brand ccTLDs (DNS aliases) 301 onto seolinkbuildings.com.
+     * Values are public locales; `en` stays unprefixed. .uk and .co.uk are one UK version.
+     */
+    'country_hosts' => [
+        'seolinkbuildings.de' => 'de',
+        'seolinkbuildings.fr' => 'fr',
+        'seolinkbuildings.it' => 'it',
+        'seolinkbuildings.es' => 'es',
+        'seolinkbuildings.nl' => 'nl',
+        'seolinkbuildings.co.uk' => 'en',
+        'seolinkbuildings.uk' => 'en',
+        'seolinkbuildings.ch' => 'ch',
+        'seolinkbuildings.at' => 'at',
+        'seolinkbuildings.se' => 'se',
+        'seolinkbuildings.no' => 'no',
+        'seolinkbuildings.dk' => 'dk',
+        'seolinkbuildings.hu' => 'hu',
+        'seolinkbuildings.bg' => 'bg',
+        'seolinkbuildings.gr' => 'gr',
+        'seolinkbuildings.ro' => 'ro',
+        'seolinkbuildings.pl' => 'pl',
+        'seolinkbuildings.pt' => 'pt',
     ],
 
     /** Paths that must always render in English (no locale prefix). */
@@ -66,6 +134,33 @@ return [
         'sitemap.xml',
         'robots.txt',
         'up',
+    ],
+
+    /**
+     * First visit to an unprefixed public page. GB stays English (no prefix).
+     * Countries without a locale stay English. Prices still follow fx.country_currency.
+     */
+    'country_locales' => [
+        'US' => 'us',
+        'DE' => 'de',
+        'AT' => 'at',
+        'CH' => 'ch',
+        'FR' => 'fr',
+        'NL' => 'nl',
+        'ES' => 'es',
+        'IT' => 'it',
+        'PT' => 'pt',
+        'RO' => 'ro',
+        'GR' => 'gr',
+        'DK' => 'dk',
+        'SE' => 'se',
+        'NO' => 'no',
+        'BG' => 'bg',
+        'HU' => 'hu',
+        'EE' => 'ee',
+        'PL' => 'pl',
+        'GB' => 'en',
+        'UK' => 'en',
     ],
 
     'cookie' => 'public_locale',

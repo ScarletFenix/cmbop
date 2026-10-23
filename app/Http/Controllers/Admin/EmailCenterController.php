@@ -95,8 +95,8 @@ class EmailCenterController extends Controller
             'mail_connection' => config('email_notifications.queue_connection', config('queue.default')),
             'mail_queue' => config('email_notifications.queue', 'emails'),
             'auto_drain' => (bool) config('email_notifications.auto_drain'),
-            'pending_jobs' => Schema::hasTable('jobs') ? DB::table('jobs')->count() : 0,
-            'failed_jobs' => Schema::hasTable('failed_jobs') ? DB::table('failed_jobs')->count() : 0,
+            'pending_jobs' => $this->schemaTableAvailable('jobs') ? DB::table('jobs')->count() : 0,
+            'failed_jobs' => $this->schemaTableAvailable('failed_jobs') ? DB::table('failed_jobs')->count() : 0,
             'mail_pending_jobs' => $this->queuedMailJobsCount(),
             'mail_failed_jobs' => $this->failedMailJobsCount(),
         ];
@@ -188,17 +188,11 @@ class EmailCenterController extends Controller
         $template = EmailCatalog::get($key);
         abort_unless($template, 404);
 
-        if ($html = $this->frameworkPreviewHtml($key)) {
-            return response($html);
-        }
-
         $audience = $request->query('audience');
-        $mailable = EmailCatalog::makeMailable($key, array_filter([
-            'audience' => is_string($audience) ? $audience : null,
-        ]));
-        abort_unless($mailable, 404);
+        $html = EmailCatalog::previewHtml($key, is_string($audience) ? $audience : null);
+        abort_unless($html, 404);
 
-        return response($mailable->render());
+        return response($html);
     }
 
     public function showLog(EmailLog $emailLog)
@@ -1390,7 +1384,7 @@ class EmailCenterController extends Controller
 
     protected function queuedMailJobsCount(): int
     {
-        if (! Schema::hasTable('jobs')) {
+        if (! $this->schemaTableAvailable('jobs')) {
             return 0;
         }
 
@@ -1399,7 +1393,7 @@ class EmailCenterController extends Controller
 
     protected function failedMailJobsCount(): int
     {
-        if (! Schema::hasTable('failed_jobs')) {
+        if (! $this->schemaTableAvailable('failed_jobs')) {
             return 0;
         }
 
@@ -1541,15 +1535,7 @@ class EmailCenterController extends Controller
 
     protected function frameworkPreviewHtml(string $key): ?string
     {
-        return match ($key) {
-            'password_reset' => $this->renderMarkdown('emails.password-reset-preview', [
-                'resetUrl' => rtrim(app_public_url(), '/').'/password/reset/preview-token',
-            ]),
-            'email_verification' => $this->renderMarkdown('emails.email-verification-preview', [
-                'verifyUrl' => EmailCatalog::previewVerificationUrl(),
-            ]),
-            default => null,
-        };
+        return EmailCatalog::frameworkPreviewHtml($key);
     }
 
     protected function renderMarkdown(string $view, array $data = []): string

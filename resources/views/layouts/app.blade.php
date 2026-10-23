@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="{{ class_exists(\App\Support\PublicI18n::class) ? \App\Support\PublicI18n::htmlLang() : 'en-GB' }}">
+<html lang="{{ (class_exists(\App\Support\PublicI18n::class) && method_exists(\App\Support\PublicI18n::class, 'htmlLang')) ? \App\Support\PublicI18n::htmlLang() : 'en-GB' }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -18,6 +18,18 @@
         );
         $pageCanonical = trim($__env->yieldContent('canonical')) ?: url()->current();
         $pageImage = trim($__env->yieldContent('og_image')) ?: asset('assets/brand/web/og-share-1200x630.png');
+        $pageImagePath = strtolower((string) (parse_url($pageImage, PHP_URL_PATH) ?: $pageImage));
+        $pageImageType = match (true) {
+            str_ends_with($pageImagePath, '.jpg'), str_ends_with($pageImagePath, '.jpeg') => 'image/jpeg',
+            str_ends_with($pageImagePath, '.svg') => 'image/svg+xml',
+            str_ends_with($pageImagePath, '.webp') => 'image/webp',
+            default => 'image/png',
+        };
+        $pageImageAlt = html_entity_decode(
+            trim($__env->yieldContent('og_image_alt')) ?: 'SEOLinkBuildings — Guest post & backlink marketplace',
+            ENT_QUOTES | ENT_HTML5,
+            'UTF-8'
+        );
         $pageLogo = asset('assets/img/logo1.png');
         $pageType = trim($__env->yieldContent('og_type')) ?: 'website';
         $hreflangXDefault = trim($__env->yieldContent('hreflang_x_default')) ?: null;
@@ -40,7 +52,7 @@
                 }
             }
         }
-        $hreflangTags = class_exists(\App\Support\PublicI18n::class)
+        $hreflangTags = (class_exists(\App\Support\PublicI18n::class) && method_exists(\App\Support\PublicI18n::class, 'hreflangTags'))
             ? \App\Support\PublicI18n::hreflangTags(
                 request(),
                 $hreflangXDefault,
@@ -49,65 +61,103 @@
                 $hreflangPathByLocale !== [] ? $hreflangPathByLocale : null
             )
             : [];
+        $pageRobots = trim($__env->yieldContent('robots'))
+            ?: ((class_exists(\App\Support\PublicI18n::class) && method_exists(\App\Support\PublicI18n::class, 'robotsContent'))
+                ? \App\Support\PublicI18n::robotsContent(request())
+                : 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1');
+        $skipHreflang = trim($__env->yieldContent('skip_hreflang')) === '1';
     @endphp
     @include('components.favicon')
     <title>{{ $pageTitle }}</title>
     <meta name="description" content="{{ $pageDescription }}">
-    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+    <meta name="robots" content="{{ $pageRobots }}">
     <meta name="author" content="SEOLinkBuildings">
     <meta name="application-name" content="SEOLinkBuildings">
     @if(($googleSiteVerification = trim((string) config('services.google.site_verification'))) !== '')
         <meta name="google-site-verification" content="{{ $googleSiteVerification }}">
     @endif
     <link rel="canonical" href="{{ $pageCanonical }}">
+    @if(empty($skipHreflang))
     @foreach($hreflangTags as $tag)
         <link rel="alternate" hreflang="{{ $tag['hreflang'] }}" href="{{ $tag['href'] }}">
     @endforeach
+    @endif
+    @if(class_exists(\App\Support\BrandOrganization::class))
+        @php
+            $organizationJsonLd = '';
+            try {
+                if (method_exists(\App\Support\BrandOrganization::class, 'pageGraphJson')) {
+                    $organizationJsonLd = (string) \App\Support\BrandOrganization::pageGraphJson($pageTitle, $pageDescription, $pageCanonical);
+                } elseif (method_exists(\App\Support\BrandOrganization::class, 'schema')) {
+                    $encoded = json_encode(
+                        array_merge(['@context' => 'https://schema.org'], \App\Support\BrandOrganization::schema()),
+                        JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_INVALID_UTF8_SUBSTITUTE
+                    );
+                    $organizationJsonLd = is_string($encoded) && $encoded !== '' && $encoded !== 'null' ? $encoded : '';
+                }
+            } catch (\Throwable) {
+                $organizationJsonLd = '';
+            }
+        @endphp
+        @if($organizationJsonLd !== '')
+    <script type="application/ld+json">
+{!! $organizationJsonLd !!}
+    </script>
+        @endif
+    @endif
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-    <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
-    <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com">
     <link rel="dns-prefetch" href="https://fonts.googleapis.com">
     <link rel="dns-prefetch" href="https://fonts.gstatic.com">
-    <meta property="og:locale" content="{{ class_exists(\App\Support\PublicI18n::class) ? \App\Support\PublicI18n::ogLocale() : 'en_GB' }}">
+    <meta property="og:locale" content="{{ (class_exists(\App\Support\PublicI18n::class) && method_exists(\App\Support\PublicI18n::class, 'ogLocale')) ? \App\Support\PublicI18n::ogLocale() : 'en_GB' }}">
     <meta property="og:type" content="{{ $pageType }}">
     <meta property="og:site_name" content="SEOLinkBuildings">
     <meta property="og:title" content="{{ $pageTitle }}">
     <meta property="og:description" content="{{ $pageDescription }}">
     <meta property="og:url" content="{{ $pageCanonical }}">
     <meta property="og:image" content="{{ $pageImage }}">
-    <meta property="og:image:type" content="image/png">
+    <meta property="og:image:type" content="{{ $pageImageType }}">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
-    <meta property="og:image:alt" content="SEOLinkBuildings — Guest post & backlink marketplace">
+    <meta property="og:image:alt" content="{{ $pageImageAlt }}">
     <meta property="og:logo" content="{{ $pageLogo }}">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="{{ $pageTitle }}">
     <meta name="twitter:description" content="{{ $pageDescription }}">
     <meta name="twitter:image" content="{{ $pageImage }}">
-    <meta name="twitter:image:alt" content="SEOLinkBuildings">
+    <meta name="twitter:image:alt" content="{{ $pageImageAlt }}">
     @stack('head')
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ asset('assets/vendor/bootstrap-5.3.0/bootstrap.min.css') }}?v={{ @filemtime(public_path('assets/vendor/bootstrap-5.3.0/bootstrap.min.css')) ?: '1' }}" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-    <link href="{{ asset('assets/css/type-system.css') }}?v={{ @filemtime(public_path('assets/css/type-system.css')) ?: '1' }}" rel="stylesheet">
-    <link href="{{ asset('assets/css/brand-colors.css') }}?v={{ @filemtime(public_path('assets/css/brand-colors.css')) ?: '1' }}" rel="stylesheet">
-    <link href="{{ asset('assets/css/spacing-system.css') }}?v={{ @filemtime(public_path('assets/css/spacing-system.css')) ?: '1' }}" rel="stylesheet">
-    <link href="{{ asset('assets/css/button-system.css') }}?v={{ @filemtime(public_path('assets/css/button-system.css')) ?: '1' }}" rel="stylesheet">
-    <link href="{{ asset('assets/css/form-system.css') }}?v={{ @filemtime(public_path('assets/css/form-system.css')) ?: '1' }}" rel="stylesheet">
-    <link href="{{ asset('assets/css/glass-tip.css') }}?v={{ @filemtime(public_path('assets/css/glass-tip.css')) ?: '1' }}" rel="stylesheet">
-    <link href="{{ asset('assets/css/marketing-saas.css') }}?v={{ @filemtime(public_path('assets/css/marketing-saas.css')) ?: '1' }}" rel="stylesheet">
-    <link href="{{ asset('assets/css/interaction.css') }}?v={{ @filemtime(public_path('assets/css/interaction.css')) ?: '1' }}" rel="stylesheet">
-    <link href="{{ asset('assets/css/dialog-system.css') }}?v={{ @filemtime(public_path('assets/css/dialog-system.css')) ?: '1' }}" rel="stylesheet">
-    <link href="{{ asset('assets/css/slb-live-search.css') }}?v={{ @filemtime(public_path('assets/css/slb-live-search.css')) ?: '1' }}" rel="stylesheet">
-    <link href="{{ asset('assets/css/hover-system.css') }}?v={{ @filemtime(public_path('assets/css/hover-system.css')) ?: '1' }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/slb-icons.css') }}?v={{ @filemtime(public_path('assets/css/slb-icons.css')) ?: '1' }}" rel="stylesheet">
+    @php
+        $marketingCssUrl = (class_exists(\App\Support\MarketingCssBundle::class) && method_exists(\App\Support\MarketingCssBundle::class, 'urlIfReady'))
+            ? \App\Support\MarketingCssBundle::urlIfReady()
+            : null;
+    @endphp
+    @if($marketingCssUrl)
+        <link href="{{ $marketingCssUrl }}" rel="stylesheet">
+    @else
+        <link href="{{ asset('assets/css/type-system.css') }}?v={{ @filemtime(public_path('assets/css/type-system.css')) ?: '1' }}" rel="stylesheet">
+        <link href="{{ asset('assets/css/brand-colors.css') }}?v={{ @filemtime(public_path('assets/css/brand-colors.css')) ?: '1' }}" rel="stylesheet">
+        <link href="{{ asset('assets/css/spacing-system.css') }}?v={{ @filemtime(public_path('assets/css/spacing-system.css')) ?: '1' }}" rel="stylesheet">
+        <link href="{{ asset('assets/css/button-system.css') }}?v={{ @filemtime(public_path('assets/css/button-system.css')) ?: '1' }}" rel="stylesheet">
+        <link href="{{ asset('assets/css/form-system.css') }}?v={{ @filemtime(public_path('assets/css/form-system.css')) ?: '1' }}" rel="stylesheet">
+        <link href="{{ asset('assets/css/glass-tip.css') }}?v={{ @filemtime(public_path('assets/css/glass-tip.css')) ?: '1' }}" rel="stylesheet">
+        <link href="{{ asset('assets/css/marketing-saas.css') }}?v={{ @filemtime(public_path('assets/css/marketing-saas.css')) ?: '1' }}" rel="stylesheet">
+        <link href="{{ asset('assets/css/interaction.css') }}?v={{ @filemtime(public_path('assets/css/interaction.css')) ?: '1' }}" rel="stylesheet">
+        <link href="{{ asset('assets/css/dialog-system.css') }}?v={{ @filemtime(public_path('assets/css/dialog-system.css')) ?: '1' }}" rel="stylesheet">
+        <link href="{{ asset('assets/css/slb-live-search.css') }}?v={{ @filemtime(public_path('assets/css/slb-live-search.css')) ?: '1' }}" rel="stylesheet">
+        <link href="{{ asset('assets/css/hover-system.css') }}?v={{ @filemtime(public_path('assets/css/hover-system.css')) ?: '1' }}" rel="stylesheet">
+    @endif
     <script src="{{ asset('assets/js/glass-tip.js') }}?v={{ @filemtime(public_path('assets/js/glass-tip.js')) ?: '1' }}" defer></script>
     <style>
         html, body {
             font-family: 'Poppins', sans-serif;
             overflow-x: clip;
+            overflow-y: auto;
             max-width: 100%;
         }
         /* Optional: style for back-to-top button */
@@ -130,13 +180,16 @@
             }
         }
     </style>
+    @stack('page_styles')
 </head>
 <body class="slb-marketing">
 
 <a href="#main-content" class="skip-to-content">Skip to main content</a>
 
 @include('components.navbar')
-@include('components.language-suggestion')
+@if (view()->exists('components.language-suggestion'))
+    @include('components.language-suggestion')
+@endif
 
 <main id="main-content" tabindex="-1">
     <div class="container-fluid px-3 px-md-4">
@@ -158,8 +211,13 @@
 </main>
 
 @include('components.footer')
-@unless(\App\Support\VisitorSupportChat::enabled() || \App\Support\TawkChat::enabled())
-    @include('components.help-feedback-widget')
+@unless(
+    (class_exists(\App\Support\VisitorSupportChat::class) && method_exists(\App\Support\VisitorSupportChat::class, 'enabled') && \App\Support\VisitorSupportChat::enabled() && view()->exists('partials.visitor-support-chat'))
+    || (class_exists(\App\Support\TawkChat::class) && method_exists(\App\Support\TawkChat::class, 'enabled') && \App\Support\TawkChat::enabled())
+)
+    @if (view()->exists('components.help-feedback-widget'))
+        @include('components.help-feedback-widget')
+    @endif
 @endunless
 
 <!-- Back to Top Button -->
@@ -167,11 +225,13 @@
     <i class="fas fa-arrow-up"></i>
 </button>
 
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="{{ asset('assets/js/jquery-3.6.0.min.js') }}?v={{ @filemtime(public_path('assets/js/jquery-3.6.0.min.js')) ?: '1' }}"></script>
+<script src="{{ asset('assets/vendor/bootstrap-5.3.0/bootstrap.bundle.min.js') }}?v={{ @filemtime(public_path('assets/vendor/bootstrap-5.3.0/bootstrap.bundle.min.js')) ?: '1' }}"></script>
+<script src="{{ asset('assets/vendor/sweetalert2/sweetalert2.min.js') }}?v={{ @filemtime(public_path('assets/vendor/sweetalert2/sweetalert2.min.js')) ?: '1' }}"></script>
 <script src="{{ asset('js/slb-confirm.js') }}?v={{ @filemtime(public_path('js/slb-confirm.js')) ?: '1' }}"></script>
+@include('partials.slb-icon-draw')
 <script src="{{ asset('js/slb-live-search.js') }}?v={{ @filemtime(public_path('js/slb-live-search.js')) ?: '1' }}"></script>
+@include('partials.money-display')
 @include('partials.app-toast')
 <script src="{{ asset('js/slb-http.js') }}?v={{ @filemtime(public_path('js/slb-http.js')) ?: '1' }}"></script>
 <script>
@@ -192,7 +252,9 @@ $(document).ready(function() {
     });
 });
 </script>
-@include('partials.tawk')
+@if (view()->exists('partials.tawk'))
+    @include('partials.tawk')
+@endif
 
 </body>
 </html>

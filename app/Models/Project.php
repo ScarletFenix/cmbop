@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\ToleratesMissingSchema;
+use App\Models\Concerns\ToleratesUnparseableDates;
 use App\Support\AdvertiserOrderStatus;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -13,6 +15,8 @@ use Illuminate\Support\Str;
 class Project extends Model
 {
     use HasFactory;
+    use ToleratesMissingSchema;
+    use ToleratesUnparseableDates;
 
     /**
      * Placement-stage buckets shown on the advertiser projects page.
@@ -101,15 +105,23 @@ class Project extends Model
     public static function uniqueSlug(string $name, $userId = null, ?int $ignoreId = null): string
     {
         $owned = self::generateSlug($name, $userId);
+        if (! static::tableAvailable()) {
+            return $owned;
+        }
+
         $candidate = $owned;
         $n = 2;
 
-        while (self::query()
-            ->where('slug', $candidate)
-            ->when($ignoreId, fn ($q) => $q->where('id', '!=', $ignoreId))
-            ->exists()) {
-            $candidate = $owned.'-'.$n;
-            $n++;
+        try {
+            while (self::query()
+                ->where('slug', $candidate)
+                ->when($ignoreId, fn ($q) => $q->where('id', '!=', $ignoreId))
+                ->exists()) {
+                $candidate = $owned.'-'.$n;
+                $n++;
+            }
+        } catch (\Throwable) {
+            return $owned;
         }
 
         return $candidate;
@@ -118,20 +130,29 @@ class Project extends Model
     public static function hostTakenByUser(int $userId, string $url, ?int $ignoreId = null): bool
     {
         $host = self::hostFromUrl($url);
-        if ($host === '') {
+        if ($host === '' || ! static::tableAvailable()) {
             return false;
         }
 
-        return self::query()
-            ->where('user_id', $userId)
-            ->when($ignoreId, fn ($q) => $q->where('id', '!=', $ignoreId))
-            ->get(['id', 'project_url'])
-            ->contains(fn (self $project) => self::hostFromUrl($project->project_url) === $host);
+        try {
+            return self::query()
+                ->where('user_id', $userId)
+                ->when($ignoreId, fn ($q) => $q->where('id', '!=', $ignoreId))
+                ->get(['id', 'project_url'])
+                ->contains(fn (self $project) => self::hostFromUrl($project->project_url) === $host);
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function orders()
+    {
+        return $this->hasMany(Order::class);
     }
 
     /**
@@ -267,6 +288,62 @@ class Project extends Model
         }
 
         return $byHost;
+    }
+
+    /**
+     * Count placements that are assigned to a project via orders.project_id.
+     *
+     * @param  Collection<int, Order>  $orders
+     * @return array<int, array{not_started: int, in_progress: int, in_review: int, waiting_approval: int, needs_improvements: int, completed: int, rejected: int, content_revision?: int}>
+     */
+    public static function stageCountsByAssignedProject(Collection $orders): array
+    {
+        $byId = [];
+
+        foreach ($orders as $order) {
+            $projectId = (int) ($order->project_id ?? 0);
+            if ($projectId <= 0) {
+                continue;
+            }
+
+            foreach ($order->items as $item) {
+                $rawStage = (string) (AdvertiserOrderStatus::meta($order, $item, true)['stage'] ?? '');
+                $bucket = self::stageBucket($rawStage);
+                if ($bucket === null) {
+                    continue;
+                }
+
+                if (! isset($byId[$projectId])) {
+                    $byId[$projectId] = self::emptyStageCounts();
+                }
+
+                $byId[$projectId][$bucket]++;
+                if ($rawStage === 'content_revision') {
+                    $byId[$projectId]['content_revision'] = (int) ($byId[$projectId]['content_revision'] ?? 0) + 1;
+                }
+            }
+        }
+
+        return $byId;
+    }
+
+    /**
+     * @param  array<string, int>  $left
+     * @param  array<string, int>  $right
+     * @return array<string, int>
+     */
+    public static function mergeStageCounts(array $left, array $right): array
+    {
+        $merged = self::emptyStageCounts();
+        foreach (array_keys($merged) as $key) {
+            $merged[$key] = (int) ($left[$key] ?? 0) + (int) ($right[$key] ?? 0);
+        }
+        $revision = (int) ($left['content_revision'] ?? 0) + (int) ($right['content_revision'] ?? 0);
+        if ($revision > 0) {
+            $merged['content_revision'] = $revision;
+        }
+
+        return $merged;
     }
 
     /**
@@ -471,6 +548,29 @@ class Project extends Model
                             if ($host !== '') {
                                 self::constrainItemsByHost($items, $host);
                             }
+                        });
+                })->orWhere(function ($linkDown) use ($host) {
+                    if (! Schema::hasColumn('order_items', 'live_url_check_ok')) {
+                        $linkDown->whereRaw('0 = 1');
+
+                        return;
+                    }
+                    $windowDays = max(1, (int) config('orders.live_url_down_window_days', 90));
+                    $linkDown->where('status', 'completed')
+                        ->where('payment_status', 'paid')
+                        ->whereHas('items', function ($items) use ($host, $windowDays) {
+                            if ($host !== '') {
+                                self::constrainItemsByHost($items, $host);
+                            }
+                            $items->whereNotNull('live_url')
+                                ->where('live_url', '!=', '')
+                                ->where('live_url_check_ok', false)
+                                ->where(function ($recent) use ($windowDays) {
+                                    $recent->where('live_url_checked_at', '>=', now()->subDays($windowDays));
+                                    if (Schema::hasColumn('order_items', 'completed_at')) {
+                                        $recent->orWhere('completed_at', '>=', now()->subDays($windowDays));
+                                    }
+                                });
                         });
                 });
             }), [self::class, 'constrainWithoutFailedPayment']),

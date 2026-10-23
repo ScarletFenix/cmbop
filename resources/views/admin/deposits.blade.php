@@ -479,7 +479,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     </button>` : ''}
                     ${canRefundPaypal ? `
                     <button class="btn btn-outline-danger refund-paypal-deposit" data-id="${deposit.id}">
-                        <i class="fab fa-paypal"></i> Refund PayPal capture
+                        <img src="{{ asset('assets/img/payments/paypal.png') }}" alt="" width="20" height="20" style="width:20px;height:20px;vertical-align:-4px"> Refund PayPal capture
                     </button>` : ''}
                 </div>
             `;
@@ -681,6 +681,6 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 
 <!-- SweetAlert2 -->
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="{{ asset('assets/vendor/sweetalert2/sweetalert2.min.js') }}?v={{ @filemtime(public_path('assets/vendor/sweetalert2/sweetalert2.min.js')) ?: '1' }}"></script>
 
 @endsection

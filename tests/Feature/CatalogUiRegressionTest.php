@@ -117,7 +117,6 @@ class CatalogUiRegressionTest extends TestCase
 
         $this->assertStringContainsString("closest('.reveal-url, .toggle-url')", $js);
         $this->assertStringContainsString('stopImmediatePropagation', $js);
-        $this->assertStringContainsString('catalogActionClick', $js);
         // Eye listeners are gated to hide mode, then capture-phase so reveal
         // runs before any leftover expand handlers.
         $this->assertStringContainsString('if (CatalogConfig && CatalogConfig.inCatalogHideMode) {', $js);
@@ -152,10 +151,11 @@ class CatalogUiRegressionTest extends TestCase
             '/inCatalogHideMode\)\s*\{[\s\S]*?addEventListener\(\s*[\'"]click[\'"]\s*,\s*function\s*\([^)]*\)\s*\{[\s\S]*?reveal-url[\s\S]*?\}\s*,\s*true\s*\)/',
             $js
         );
-        // Whole-row Details toggle is delegated + exclusion-guarded (not a
-        // per-row forEach), so eye / ↗ / Buy near-misses do not steal clicks.
-        $this->assertStringContainsString("closest('tr.site-row')", $js);
-        $this->assertStringContainsString('catalogActionClick(e)', $js);
+        // Details expands from the row / card, or the dedicated Details control.
+        $this->assertStringContainsString('.site-row[data-id]', $js);
+        $this->assertStringContainsString('.catalog-mobile-card[data-id]', $js);
+        $this->assertStringContainsString('.expand-arrow, .catalog-card-details-toggle', $js);
+        $this->assertStringNotContainsString('function catalogActionClick', $js);
         $this->assertDoesNotMatchRegularExpression(
             '/querySelectorAll\(\s*[\'"]\.site-row[\'"]\s*\)\.forEach\([^)]*toggleExpandRow/s',
             $js
@@ -214,9 +214,9 @@ class CatalogUiRegressionTest extends TestCase
             $css
         );
         $this->assertStringContainsString('a.catalog-site-rooted-url.site-open-link', $css);
-        // Order: eye immediately after the domain, then NEW, then Verified chip.
+        // NEW is the corner ribbon; eye + Verified stay on the name row.
         $this->assertMatchesRegularExpression(
-            '/catalog-site-controls[\s\S]*?catalog-url-eye[\s\S]*?site-badge-new[\s\S]*?site-chip--verified/s',
+            '/catalog-new-ribbon[\s\S]*?catalog-site-controls[\s\S]*?catalog-url-eye[\s\S]*?site-chip--verified/s',
             $hideHtml
         );
         $this->assertStringContainsString('Verified Publisher', $hideHtml);

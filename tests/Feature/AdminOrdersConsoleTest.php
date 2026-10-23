@@ -878,8 +878,8 @@ class AdminOrdersConsoleTest extends TestCase
             ->assertSee(route('admin.orders.disputes.dismiss', $dispute), false)
             ->assertSee('data-resolve-url', false)
             ->assertDontSee('/admin/order-disputes/${', false)
-            ->assertDontSee('sweetalert2.all.min.js', false)
-            ->assertSee('cdn.jsdelivr.net/npm/sweetalert2@11', false);
+            ->assertDontSee('cdn.jsdelivr.net/npm/sweetalert2@11', false)
+            ->assertSee('assets/vendor/sweetalert2/sweetalert2.min.js', false);
     }
 
     public function test_order_show_offers_accept_reminder_while_the_publisher_has_not_accepted(): void

@@ -5,15 +5,27 @@
     $resolvedTitle = $activeTranslation?->title ?: $blog->title;
     $resolvedSlug = $activeTranslation?->slug ?: $blog->slug;
     $resolvedExcerpt = $activeTranslation?->excerpt ?: $blog->excerpt;
-    $resolvedContent = \App\Support\WelcomeBonusCopy::scrubGrantAdvertisingHtml(
-        \App\Support\CuratedBlogCatalog::rewriteCatalogLinks(
-            $activeTranslation?->content ?: $blog->content
-        )
-    );
+    $resolvedContent = $activeTranslation?->content ?: $blog->content;
+    if (class_exists(\App\Support\CuratedBlogCatalog::class)
+        && method_exists(\App\Support\CuratedBlogCatalog::class, 'rewriteCatalogLinks')) {
+        $resolvedContent = \App\Support\CuratedBlogCatalog::rewriteCatalogLinks($resolvedContent);
+    }
+    if (class_exists(\App\Support\WelcomeBonusCopy::class)
+        && method_exists(\App\Support\WelcomeBonusCopy::class, 'scrubGrantAdvertisingHtml')) {
+        $resolvedContent = \App\Support\WelcomeBonusCopy::scrubGrantAdvertisingHtml($resolvedContent);
+    }
     $blogCanonical = $canonicalUrl ?? $blog->canonicalUrl($activeTranslation?->locale ?: app()->getLocale(), 'en');
+    $blogLocale = $activeTranslation?->locale ?: 'en';
+    $featuredRelative = \App\Support\BlogLocaleImages::featuredPublicUrl($blog, $blogLocale);
+    $blogShareImage = $featuredRelative
+        ? url($featuredRelative)
+        : asset('assets/brand/web/og-share-1200x630.png');
     $blogDescription = $activeTranslation?->meta_description ?: ($resolvedExcerpt ?: \Illuminate\Support\Str::limit(strip_tags($resolvedContent ?? ''), 160));
     $blogPageTitle = $activeTranslation?->meta_title ?: ($resolvedTitle ?? 'Blog');
-    $blogFaq = \App\Support\CuratedBlogCatalog::faqForBlog($blog, $resolvedSlug);
+    $blogFaq = (class_exists(\App\Support\CuratedBlogCatalog::class)
+        && method_exists(\App\Support\CuratedBlogCatalog::class, 'faqForBlog'))
+        ? \App\Support\CuratedBlogCatalog::faqForBlog($blog, $resolvedSlug)
+        : [];
 @endphp
 
 @section('title', $blogPageTitle.' — SEOLinkBuildings')
@@ -31,38 +43,40 @@
 @section('hreflang_path', $hreflangPath ?? ('blog/'.$resolvedSlug))
 @section('hreflang_path_map', collect($hreflangPathByLocale)->map(fn ($path, $locale) => $locale.'='.$path)->implode(','))
 @section('og_type', 'article')
-@section('og_image', $blog->featuredImageAbsoluteUrl() ?: asset('assets/brand/web/og-share-1200x630.png'))
+@section('og_image', $blogShareImage)
+@section('og_image_alt', $resolvedTitle)
 
 @push('head')
-<script type="application/ld+json">
-{!! json_encode([
-    '@@context' => 'https://schema.org',
-    '@type' => 'BlogPosting',
-    'headline' => $resolvedTitle,
-    'description' => $blogDescription,
-    'inLanguage' => class_exists(\App\Support\PublicI18n::class)
-        ? \App\Support\PublicI18n::htmlLang($activeTranslation?->locale ?: ($blog->primary_locale ?: app()->getLocale()))
-        : 'en-GB',
-    'datePublished' => optional($blog->published_at)?->toIso8601String(),
-    'dateModified' => optional($blog->updated_at)?->toIso8601String(),
-    'author' => [
-        '@type' => 'Person',
-        'name' => $blog->author ?: 'SEOLinkBuildings',
-    ],
-    'publisher' => [
-        '@type' => 'Organization',
-        'name' => 'SEOLinkBuildings',
-        'logo' => [
-            '@type' => 'ImageObject',
-            'url' => asset('assets/img/logo1.png'),
+@php
+    $blogJsonLd = array_filter([
+        '@@context' => 'https://schema.org',
+        '@type' => 'BlogPosting',
+        'headline' => $resolvedTitle,
+        'description' => $blogDescription,
+        'inLanguage' => (class_exists(\App\Support\PublicI18n::class) && method_exists(\App\Support\PublicI18n::class, 'htmlLang'))
+            ? \App\Support\PublicI18n::htmlLang($activeTranslation?->locale ?: ($blog->primary_locale ?: app()->getLocale()))
+            : 'en-GB',
+        'datePublished' => optional($blog->published_at)?->toIso8601String(),
+        'dateModified' => optional($blog->updated_at)?->toIso8601String(),
+        'author' => [
+            '@type' => 'Person',
+            'name' => $blog->author ?: 'SEOLinkBuildings',
         ],
-    ],
-    'image' => $blog->featuredImageAbsoluteUrl()
-        ? [$blog->featuredImageAbsoluteUrl()]
-        : [asset('assets/brand/web/og-share-1200x630.png')],
-    'mainEntityOfPage' => $blogCanonical,
-    'url' => $blogCanonical,
-], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_HEX_TAG|JSON_INVALID_UTF8_SUBSTITUTE) ?: '{}' !!}
+        'publisher' => [
+            '@type' => 'Organization',
+            'name' => 'SEOLinkBuildings',
+            'logo' => [
+                '@type' => 'ImageObject',
+                'url' => asset('assets/img/logo1.png'),
+            ],
+        ],
+        'image' => [$blogShareImage],
+        'mainEntityOfPage' => $blogCanonical,
+        'url' => $blogCanonical,
+    ], static fn ($value) => $value !== null && $value !== '');
+@endphp
+<script type="application/ld+json">
+{!! json_encode($blogJsonLd, JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_HEX_TAG|JSON_INVALID_UTF8_SUBSTITUTE) ?: '{}' !!}
 </script>
 @if(!empty($blogFaq))
 <script type="application/ld+json">
@@ -137,7 +151,7 @@
             </div>
             @if(($fallbackUsed ?? false) === true)
                 <div class="alert alert-info mt-3 mb-0">
-                    This article is currently shown in {{ class_exists(\App\Support\PublicI18n::class) ? \App\Support\PublicI18n::shortLabel($activeTranslation?->locale ?? 'en') : strtoupper((string) ($activeTranslation?->locale ?? 'en')) }} because a {{ class_exists(\App\Support\PublicI18n::class) ? \App\Support\PublicI18n::shortLabel($requestedLocale ?? public_locale()) : strtoupper((string) ($requestedLocale ?? public_locale())) }} translation is not yet available.
+                    This article is currently shown in {{ (class_exists(\App\Support\PublicI18n::class) && method_exists(\App\Support\PublicI18n::class, 'shortLabel')) ? \App\Support\PublicI18n::shortLabel($activeTranslation?->locale ?? 'en') : strtoupper((string) ($activeTranslation?->locale ?? 'en')) }} because a {{ (class_exists(\App\Support\PublicI18n::class) && method_exists(\App\Support\PublicI18n::class, 'shortLabel')) ? \App\Support\PublicI18n::shortLabel($requestedLocale ?? public_locale()) : strtoupper((string) ($requestedLocale ?? public_locale())) }} translation is not yet available.
                 </div>
             @endif
             
@@ -160,9 +174,9 @@
         <!-- Main Content -->
         <div class="col-lg-8 mx-auto">
             <article>
-                @if($blog->featured_image)
+                @if($featuredRelative)
                     <div class="mb-5">
-                        <img src="{{ $blog->featuredImageUrl() }}" 
+                        <img src="{{ $featuredRelative }}" 
                              alt="{{ $resolvedTitle }}" 
                              class="img-fluid rounded-4 shadow-sm w-100">
                     </div>
@@ -217,9 +231,13 @@
 
 <!-- ==================== RECOMMENDED POSTS SECTION ==================== -->
 @php
+    $recommendedQuery = \App\Models\Blog::published();
+    if (method_exists(\App\Models\Blog::class, 'scopeWithoutLegacyRedirects')) {
+        $recommendedQuery = $recommendedQuery->withoutLegacyRedirects();
+    }
     $recommendedPosts = isset($related)
         ? $related
-        : \App\Models\Blog::published()
+        : $recommendedQuery
             ->withPublishedLocale(public_locale())
             ->where('id', '!=', $blog->id)
             ->orderByDesc('published_at')
@@ -239,8 +257,9 @@
                 @foreach($recommendedPosts as $recommended)
                     <div class="col-md-4 mb-4">
                         <div class="card border-0 shadow-sm rounded-4 h-100 overflow-hidden" style="transition: all 0.3s ease;">
-                            @if($recommended->featured_image)
-                                <img src="{{ $recommended->featuredImageUrl() }}" 
+                            @php $recommendedImage = \App\Support\BlogLocaleImages::featuredPublicUrl($recommended, $recommended->resolved_locale ?: public_locale()); @endphp
+                            @if($recommendedImage)
+                                <img src="{{ $recommendedImage }}" 
                                      alt="{{ $recommended->title }}" 
                                      style="height: 200px; object-fit: cover;">
                             @else
@@ -417,5 +436,5 @@
     }
 </style>
 
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="{{ asset('assets/vendor/sweetalert2/sweetalert2.min.js') }}?v={{ @filemtime(public_path('assets/vendor/sweetalert2/sweetalert2.min.js')) ?: '1' }}"></script>
 @endsection

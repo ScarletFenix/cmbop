@@ -151,7 +151,10 @@ class AdminAssignSiteForPublisherTest extends TestCase
             ->assertOk()
             ->getContent();
         $this->assertStringContainsString('Partner article', $html);
+        $this->assertStringContainsString('No tags', $html);
+        $this->assertStringContainsString('As you prefer', $html);
         $this->assertStringNotContainsString('Partner material', $html);
+        $this->assertMatchesRegularExpression('/id="tag_none"[^>]*checked/', $html);
 
         $country = Country::marketplace()->where('code', 'de')->first()
             ?? Country::marketplace()->firstOrFail();

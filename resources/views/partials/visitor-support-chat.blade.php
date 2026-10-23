@@ -1,14 +1,23 @@
 {{-- First-party visitor support chat. Order chat is separate. --}}
 @php
-    $company = \App\Support\VisitorSupportChat::companyName();
+    $company = 'SEOLinkBuildings';
+    $welcome = 'Hi! 👋 How can we help you today?';
+    if (class_exists(\App\Support\VisitorSupportChat::class)) {
+        if (method_exists(\App\Support\VisitorSupportChat::class, 'companyName')) {
+            $company = \App\Support\VisitorSupportChat::companyName();
+        }
+        if (method_exists(\App\Support\VisitorSupportChat::class, 'welcomeMessage')) {
+            $welcome = \App\Support\VisitorSupportChat::welcomeMessage();
+        }
+    }
 @endphp
 <link href="{{ asset('assets/css/visitor-support-chat.css') }}?v={{ @filemtime(public_path('assets/css/visitor-support-chat.css')) ?: '1' }}" rel="stylesheet">
 <div
     class="slb-live-chat"
     id="slbLiveChat"
-    data-endpoint="{{ route('support.chat') }}"
+    data-endpoint="{{ \Illuminate\Support\Facades\Route::has('support.chat') ? route('support.chat') : url('/support/chat') }}"
     data-storage-key="slb-support-chat-v1"
-    data-welcome="{{ \App\Support\VisitorSupportChat::welcomeMessage() }}"
+    data-welcome="{{ $welcome }}"
 >
     <div
         class="slb-live-chat__panel"
@@ -74,9 +83,8 @@
         aria-expanded="false"
         aria-controls="slbLiveChatPanel"
     >
-        <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true" fill="currentColor">
-            <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H5.17L4 17.17V4h16v12z"/>
-        </svg>
+        <span class="slb-live-chat__launcher-lottie" id="slbLiveChatLottie" data-lottie="{{ asset('assets/vendor/lottie/chatbot.json') }}" aria-hidden="true"></span>
     </button>
 </div>
+<script src="{{ asset('assets/vendor/lottie-web/lottie_light.min.js') }}?v={{ @filemtime(public_path('assets/vendor/lottie-web/lottie_light.min.js')) ?: '1' }}" defer></script>
 <script src="{{ asset('js/visitor-support-chat.js') }}?v={{ @filemtime(public_path('js/visitor-support-chat.js')) ?: '1' }}" defer></script>

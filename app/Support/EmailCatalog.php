@@ -77,6 +77,7 @@ use App\Models\User;
 use App\Models\WebsiteSuggestion;
 use App\Models\Withdrawal;
 use Illuminate\Mail\Mailable;
+use Illuminate\Mail\Markdown;
 use Illuminate\Support\Str;
 
 class EmailCatalog
@@ -389,8 +390,8 @@ class EmailCatalog
                 'status' => 'active',
             ],
             'bulk_sites_seeded' => [
-                'name' => 'Bulk Sites Seeded — Complete Details',
-                'description' => 'Publisher asked to finish details after staff seed a bulk request.',
+                'name' => 'Bulk Sites Active',
+                'description' => 'Publisher told their bulk sites are active after staff publish them.',
                 'category' => 'Publishers',
                 'mailable' => BulkSitesSeededNotification::class,
                 'status' => 'active',
@@ -588,6 +589,39 @@ class EmailCatalog
         return self::templates()[$key] ?? null;
     }
 
+    /**
+     * Exact HTML used by Admin → Emails → Preview.
+     */
+    public static function previewHtml(string $key, ?string $audience = null): ?string
+    {
+        if (! self::get($key)) {
+            return null;
+        }
+
+        if ($html = self::frameworkPreviewHtml($key)) {
+            return $html;
+        }
+
+        $mailable = self::makeMailable($key, array_filter([
+            'audience' => is_string($audience) && $audience !== '' ? $audience : null,
+        ]));
+
+        return $mailable?->render();
+    }
+
+    public static function frameworkPreviewHtml(string $key): ?string
+    {
+        return match ($key) {
+            'password_reset' => app(Markdown::class)->render('emails.password-reset-preview', [
+                'resetUrl' => rtrim(app_public_url(), '/').'/password/reset/preview-token',
+            ]),
+            'email_verification' => app(Markdown::class)->render('emails.email-verification-preview', [
+                'verifyUrl' => self::previewVerificationUrl(),
+            ]),
+            default => null,
+        };
+    }
+
     public static function keyFromMailable(?string $class): ?string
     {
         if (! $class) {
@@ -644,6 +678,7 @@ class EmailCatalog
             'your site discount has ended' => 'site_discount_ended',
             'your payout details were updated' => 'payout_profile_updated',
             'bulk site request from' => 'bulk_site_request_submitted',
+            'your bulk sites are active' => 'bulk_sites_seeded',
             'your sites were added to pending sites' => 'bulk_sites_seeded',
             'please accept a website we added' => 'admin_assigned_site',
             'your bulk website request was cancelled' => 'bulk_request_cancelled',

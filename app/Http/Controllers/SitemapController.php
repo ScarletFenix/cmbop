@@ -6,8 +6,20 @@ use App\Models\Blog;
 use App\Models\BlogTranslation;
 use App\Services\CuratedBlogSync;
 use App\Services\Marketing\GuestPostPriceIndex;
+use App\Support\AustrianMoneyLanders;
 use App\Support\CountryLander;
+use App\Support\DutchMoneyLanders;
+use App\Support\FrenchMoneyLanders;
+use App\Support\GermanMoneyLanders;
+use App\Support\IrishMoneyLanders;
+use App\Support\ItalianMoneyLanders;
+use App\Support\MoneyLanderCatalog;
+use App\Support\PortugueseMoneyLanders;
 use App\Support\PublicI18n;
+use App\Support\RomanianMoneyLanders;
+use App\Support\SpanishMoneyLanders;
+use App\Support\SwissMoneyLanders;
+use App\Support\ThinBlogRedirects;
 use Illuminate\Http\Response;
 
 class SitemapController extends Controller
@@ -65,21 +77,114 @@ class SitemapController extends Controller
             $urls[] = $this->urlEntry($page['path'], $locale, $page['changefreq'], $page['priority']);
         }
 
-        // English-only auth entry points appear only on the English sitemap
-        if ($locale === $this->defaultLocale()) {
-            $urls[] = [
-                'loc' => $base.'/login',
-                'changefreq' => 'monthly',
-                'priority' => '0.4',
-                'alternates' => [],
-            ];
-            $urls[] = [
-                'loc' => $base.'/register',
-                'changefreq' => 'monthly',
-                'priority' => '0.5',
-                'alternates' => [],
-            ];
+        if ($locale === 'it' && class_exists(ItalianMoneyLanders::class)) {
+            foreach (ItalianMoneyLanders::slugs() as $slug) {
+                [$locales, $paths] = $this->moneyLanderSitemapCluster($slug, ['it']);
+                $urls[] = $this->urlEntry($slug, $locale, 'weekly', '0.85', $locales, $paths);
+            }
+        }
 
+        if ($locale === 'de' && class_exists(GermanMoneyLanders::class)) {
+            foreach (GermanMoneyLanders::slugs() as $slug) {
+                [$locales, $paths] = $this->moneyLanderSitemapCluster($slug, ['de']);
+                $urls[] = $this->urlEntry($slug, $locale, 'weekly', '0.85', $locales, $paths);
+            }
+        }
+
+        if ($locale === 'at' && class_exists(AustrianMoneyLanders::class)) {
+            foreach (AustrianMoneyLanders::slugs() as $slug) {
+                [$locales, $paths] = $this->moneyLanderSitemapCluster($slug, ['at']);
+                $urls[] = $this->urlEntry($slug, $locale, 'weekly', '0.85', $locales, $paths);
+            }
+        }
+
+        if ($locale === 'ch' && class_exists(SwissMoneyLanders::class)) {
+            foreach (SwissMoneyLanders::slugs() as $slug) {
+                [$locales, $paths] = $this->moneyLanderSitemapCluster($slug, ['ch']);
+                $urls[] = $this->urlEntry($slug, $locale, 'weekly', '0.85', $locales, $paths);
+            }
+        }
+
+        if ($locale === 'es' && class_exists(SpanishMoneyLanders::class)) {
+            foreach (SpanishMoneyLanders::slugs() as $slug) {
+                [$locales, $paths] = $this->moneyLanderSitemapCluster($slug, ['es']);
+                $urls[] = $this->urlEntry($slug, $locale, 'weekly', '0.85', $locales, $paths);
+            }
+        }
+
+        if ($locale === 'pt' && class_exists(PortugueseMoneyLanders::class)) {
+            foreach (PortugueseMoneyLanders::slugs() as $slug) {
+                [$locales, $paths] = $this->moneyLanderSitemapCluster($slug, ['pt']);
+                $urls[] = $this->urlEntry($slug, $locale, 'weekly', '0.85', $locales, $paths);
+            }
+        }
+
+        if ($locale === 'ro' && class_exists(RomanianMoneyLanders::class)) {
+            foreach (RomanianMoneyLanders::slugs() as $slug) {
+                [$locales, $paths] = $this->moneyLanderSitemapCluster($slug, ['ro']);
+                $urls[] = $this->urlEntry($slug, $locale, 'weekly', '0.85', $locales, $paths);
+            }
+        }
+
+        if ($locale === 'nl' && class_exists(DutchMoneyLanders::class)) {
+            foreach (DutchMoneyLanders::slugs() as $slug) {
+                [$locales, $paths] = $this->moneyLanderSitemapCluster($slug, ['nl']);
+                $urls[] = $this->urlEntry($slug, $locale, 'weekly', '0.85', $locales, $paths);
+            }
+        }
+
+        if ($locale === 'fr' && class_exists(FrenchMoneyLanders::class)) {
+            foreach (FrenchMoneyLanders::slugs() as $slug) {
+                [$locales, $paths] = $this->moneyLanderSitemapCluster($slug, ['fr']);
+                $urls[] = $this->urlEntry($slug, $locale, 'weekly', '0.85', $locales, $paths);
+            }
+        }
+
+        if ($locale === 'ch' && class_exists(SwissMoneyLanders::class)) {
+            foreach (SwissMoneyLanders::slugs() as $slug) {
+                [$locales, $paths] = $this->moneyLanderSitemapCluster($slug, ['ch']);
+                $urls[] = $this->urlEntry($slug, $locale, 'weekly', '0.85', $locales, $paths);
+            }
+        }
+
+        if ($locale === 'es' && class_exists(SpanishMoneyLanders::class)) {
+            foreach (SpanishMoneyLanders::slugs() as $slug) {
+                [$locales, $paths] = $this->moneyLanderSitemapCluster($slug, ['es']);
+                $urls[] = $this->urlEntry($slug, $locale, 'weekly', '0.85', $locales, $paths);
+            }
+        }
+
+        if (class_exists(MoneyLanderCatalog::class)
+            && method_exists(MoneyLanderCatalog::class, 'chromeLocales')
+            && in_array($locale, MoneyLanderCatalog::chromeLocales(), true)) {
+            $class = MoneyLanderCatalog::classFor($locale);
+            if (is_string($class) && class_exists($class) && method_exists($class, 'slugs')) {
+                foreach ($class::slugs() as $slug) {
+                    [$locales, $paths] = $this->moneyLanderSitemapCluster($slug, [$locale]);
+                    $urls[] = $this->urlEntry($slug, $locale, 'weekly', '0.85', $locales, $paths);
+                }
+            }
+        } elseif (class_exists(MoneyLanderCatalog::class)
+            && method_exists(MoneyLanderCatalog::class, 'nordicCeeLocales')
+            && in_array($locale, MoneyLanderCatalog::nordicCeeLocales(), true)) {
+            $class = MoneyLanderCatalog::classFor($locale);
+            if (is_string($class) && class_exists($class) && method_exists($class, 'slugs')) {
+                foreach ($class::slugs() as $slug) {
+                    [$locales, $paths] = $this->moneyLanderSitemapCluster($slug, [$locale]);
+                    $urls[] = $this->urlEntry($slug, $locale, 'weekly', '0.85', $locales, $paths);
+                }
+            }
+        }
+
+        if ($locale === $this->defaultLocale() && class_exists(IrishMoneyLanders::class) && method_exists(IrishMoneyLanders::class, 'slugs')) {
+            foreach (IrishMoneyLanders::slugs() as $slug) {
+                $path = 'uk/'.$slug;
+                $urls[] = $this->urlEntry($path, $locale, 'weekly', '0.85', ['en'], ['en' => $path]);
+            }
+        }
+
+        // Auth stays noindex — do not list login/register in sitemaps.
+        if ($locale === $this->defaultLocale()) {
             if (class_exists(CountryLander::class)) {
                 foreach (CountryLander::slugs() as $landerPath) {
                     $urls[] = $this->urlEntry($landerPath, $locale, 'weekly', '0.8', ['en'], ['en' => $landerPath]);
@@ -94,14 +199,27 @@ class SitemapController extends Controller
 
         $translations = collect();
         try {
-            $translations = BlogTranslation::query()
+            $published = Blog::published();
+            if (method_exists(Blog::class, 'scopeWithoutLegacyRedirects')) {
+                $published = $published->withoutLegacyRedirects();
+            }
+
+            $query = BlogTranslation::query()
                 ->select('blog_translations.*')
                 ->join('blogs', 'blogs.id', '=', 'blog_translations.blog_id')
-                ->whereIn('blogs.id', Blog::published()->select('blogs.id'))
+                ->whereIn('blogs.id', $published->select('blogs.id'))
                 ->where('blog_translations.locale', $locale)
-                ->where('blog_translations.is_published', true)
-                ->orderByDesc('blogs.published_at')
-                ->get();
+                ->where('blog_translations.is_published', true);
+
+            if (class_exists(ThinBlogRedirects::class) && method_exists(ThinBlogRedirects::class, 'legacySlugs')) {
+                $legacy = ThinBlogRedirects::legacySlugs();
+                if ($legacy !== []) {
+                    $query->whereNotIn('blog_translations.slug', $legacy)
+                        ->whereNotIn('blogs.slug', $legacy);
+                }
+            }
+
+            $translations = $query->orderByDesc('blogs.published_at')->get();
         } catch (\Throwable) {
             // Static money pages still ship if translations are mid-heal.
         }
@@ -130,11 +248,44 @@ class SitemapController extends Controller
     }
 
     /**
+     * @param  list<string>  $fallback
+     * @return array{0: list<string>, 1: array<string, string>}
+     */
+    private function moneyLanderSitemapCluster(string $slug, array $fallback): array
+    {
+        if (class_exists(PublicI18n::class) && method_exists(PublicI18n::class, 'moneyLanderLocales')) {
+            $locales = PublicI18n::moneyLanderLocales($slug);
+            if ($locales !== []) {
+                $paths = method_exists(PublicI18n::class, 'moneyLanderPathByLocale')
+                    ? PublicI18n::moneyLanderPathByLocale($slug)
+                    : [];
+                if ($paths === []) {
+                    $paths = [];
+                    foreach ($locales as $locale) {
+                        $paths[$locale] = $slug;
+                    }
+                }
+
+                return [$locales, $paths];
+            }
+        }
+
+        $paths = [];
+        foreach ($fallback as $locale) {
+            $paths[$locale] = $slug;
+        }
+
+        return [$fallback, $paths];
+    }
+
+    /**
      * @return array{loc: string, changefreq: string, priority: string, alternates: list<array{hreflang: string, href: string}>}
      */
     private function urlEntry(string $path, string $locale, string $changefreq, string $priority, ?array $availableLocales = null, ?array $pathByLocale = null): array
     {
-        if (! class_exists(PublicI18n::class)) {
+        if (! class_exists(PublicI18n::class)
+            || ! method_exists(PublicI18n::class, 'urlForLocale')
+            || ! method_exists(PublicI18n::class, 'hreflang')) {
             $path = ltrim($path, '/');
 
             return [
@@ -146,7 +297,11 @@ class SitemapController extends Controller
         }
 
         $alternates = [];
-        $altLocales = $availableLocales ?: PublicI18n::supported();
+        $altLocales = $availableLocales ?: (
+            method_exists(PublicI18n::class, 'supported')
+                ? PublicI18n::supported()
+                : $this->supportedLocales()
+        );
         foreach ($altLocales as $alt) {
             $altPath = ltrim((string) ($pathByLocale[$alt] ?? $path), '/');
             $alternates[] = [
@@ -154,7 +309,10 @@ class SitemapController extends Controller
                 'href' => PublicI18n::urlForLocale($altPath, $alt),
             ];
         }
-        $xDefault = in_array(PublicI18n::default(), $altLocales, true) ? PublicI18n::default() : $locale;
+        $defaultLocale = method_exists(PublicI18n::class, 'default')
+            ? PublicI18n::default()
+            : $this->defaultLocale();
+        $xDefault = in_array($defaultLocale, $altLocales, true) ? $defaultLocale : $locale;
         $xDefaultPath = ltrim((string) ($pathByLocale[$xDefault] ?? $path), '/');
         $alternates[] = [
             'hreflang' => 'x-default',
@@ -174,8 +332,14 @@ class SitemapController extends Controller
      */
     private function supportedLocales(): array
     {
-        if (class_exists(PublicI18n::class)) {
-            return PublicI18n::supported();
+        if (class_exists(PublicI18n::class) && method_exists(PublicI18n::class, 'supported')) {
+            $fromSupported = PublicI18n::supported();
+            if (is_array($fromSupported) && $fromSupported !== []) {
+                return array_values(array_filter(
+                    $fromSupported,
+                    static fn ($locale) => is_string($locale) && $locale !== ''
+                ));
+            }
         }
 
         return array_values(array_filter(
@@ -186,7 +350,7 @@ class SitemapController extends Controller
 
     private function defaultLocale(): string
     {
-        if (class_exists(PublicI18n::class)) {
+        if (class_exists(PublicI18n::class) && method_exists(PublicI18n::class, 'default')) {
             return PublicI18n::default();
         }
 

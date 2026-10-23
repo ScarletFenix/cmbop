@@ -8,7 +8,7 @@
         <div class="col-md-12">
             <h2 class="mb-1 fw-semibold">Reports</h2>
             <p class="text-muted mb-0">
-                View your campaign performance, funds activity, and order history.
+                Wallet ledger and order history. Spend charts live under Spending.
             </p>
         </div>
     </div>
@@ -222,7 +222,7 @@
 
 </style>
 
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="{{ asset('assets/js/jquery-3.6.0.min.js') }}?v={{ @filemtime(public_path('assets/js/jquery-3.6.0.min.js')) ?: '1' }}"></script>
 
 <script>
 var repFundsPage = 1;

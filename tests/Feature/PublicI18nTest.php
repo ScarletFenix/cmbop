@@ -11,6 +11,30 @@ class PublicI18nTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_austria_and_switzerland_localize_german_copy(): void
+    {
+        $at = $this->get('/at')->assertOk()->getContent();
+        $this->assertStringContainsString('Österreichischer Marktplatz für Gastbeiträge, Backlinks und Linkbuilding.', $at);
+        $this->assertStringContainsString('Marktplatz für Gastbeiträge in Österreich | SEOLinkBuildings', $at);
+        $this->assertStringContainsString('Marktplatz', $at);
+        $this->assertStringNotContainsString('The guest post marketplace for verified publisher sites.', $at);
+        $this->assertStringNotContainsString('Publisher-Marktplatz für Gastbeiträge | SEOLinkBuildings', $at);
+
+        $ch = $this->get('/ch')->assertOk()->getContent();
+        $this->assertStringContainsString('Schweizer Marktplatz für Gastbeiträge, Backlinks und Linkbuilding.', $ch);
+        $this->assertStringContainsString('Marktplatz für Gastbeiträge in der Schweiz | SEOLinkBuildings', $ch);
+        $this->assertStringContainsString('Marktplatz', $ch);
+        $this->assertStringNotContainsString('The guest post marketplace for verified publisher sites.', $ch);
+        $this->assertStringNotContainsString('Publisher-Marktplatz für Gastbeiträge | SEOLinkBuildings', $ch);
+
+        $this->get('/at')->assertSee('lang="de-AT"', false);
+        $this->get('/ch')->assertSee('lang="de-CH"', false);
+        $this->get('/ro')
+            ->assertOk()
+            ->assertSee('Marketplace de guest post, backlinkuri și link building pentru România.', false)
+            ->assertSee('lang="ro"', false);
+    }
+
     public function test_german_home_is_localized_with_hreflang(): void
     {
         $this->get('/de')
@@ -28,8 +52,8 @@ class PublicI18nTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        $this->assertStringContainsString('Gastbeiträge kaufen — Gastbeitrag-Marktplatz | SEOLinkBuildings', $html);
-        $this->assertStringContainsString('Gastbeitrag-Marktplatz für geprüfte Publisher.', $html);
+        $this->assertStringContainsString('Publisher-Marktplatz für Gastbeiträge | SEOLinkBuildings', $html);
+        $this->assertStringContainsString('Der Publisher-Marktplatz für Gastbeiträge, Backlinks und Linkbuilding.', $html);
         $this->assertStringNotContainsString('Guest-Post-Marktplatz für SEO-Backlinks', $html);
         $this->assertStringNotContainsString('The guest post marketplace for verified publisher sites.', $html);
     }
@@ -38,24 +62,24 @@ class PublicI18nTest extends TestCase
     {
         $pages = [
             '/de' => [
-                'Gastbeiträge kaufen — Gastbeitrag-Marktplatz | SEOLinkBuildings',
-                'Gastbeitrag-Marktplatz für geprüfte Publisher.',
+                'Publisher-Marktplatz für Gastbeiträge | SEOLinkBuildings',
+                'Der Publisher-Marktplatz für Gastbeiträge, Backlinks und Linkbuilding.',
             ],
             '/fr' => [
-                'Acheter des guest posts chez des éditeurs vérifiés | SEOLinkBuildings',
-                'Achetez des guest posts sur des sites d’éditeurs vérifiés.',
+                'Marketplace de netlinking en France | SEOLinkBuildings',
+                'Marketplace de guest posts, backlinks et netlinking pour la France.',
             ],
             '/it' => [
-                'Comprare guest post da editori verificati | SEOLinkBuildings',
-                'Comprate guest post su siti di editori verificati.',
+                'Marketplace guest post e link building | SEOLinkBuildings',
+                'Il marketplace di guest post e link building per l’Italia.',
             ],
             '/es' => [
-                'Comprar guest posts de editores verificados | SEOLinkBuildings',
-                'Compre guest posts en sitios de editores verificados.',
+                'Marketplace de guest posts en España | SEOLinkBuildings',
+                'Marketplace de guest posts, backlinks y link building para España.',
             ],
             '/nl' => [
-                'Guest posts kopen bij geverifieerde publishers | SEOLinkBuildings',
-                'Guest posts kopen bij geverifieerde publishers.',
+                'Linkbuilding-marktplaats Nederland | SEOLinkBuildings',
+                'Marktplaats voor gastblogs, backlinks en linkbuilding in Nederland.',
             ],
         ];
 
@@ -174,6 +198,12 @@ class PublicI18nTest extends TestCase
 
         $this->get('/us/register')
             ->assertRedirect('/register');
+
+        $this->get('/at/login')
+            ->assertRedirect('/login');
+
+        $this->get('/ro/register')
+            ->assertRedirect('/register');
     }
 
     public function test_english_login_has_no_language_switcher(): void
@@ -210,6 +240,14 @@ class PublicI18nTest extends TestCase
 
         $this->get('/us/about')->assertOk();
         $this->get('/de/blog')->assertOk();
+        $this->get('/at/about')->assertRedirect('/at/ueber-uns');
+        $this->get('/ch/marketplace')->assertRedirect('/ch/marktplatz');
+        $this->get('/ro/about')->assertRedirect('/ro/despre-noi');
+        $this->get('/se/pricing')->assertRedirect('/se/priser');
+        $this->get('/pl/about')->assertRedirect('/pl/o-nas');
+        $this->get('/pl/marketplace')->assertRedirect('/pl/rynek');
+        $this->get('/be/pricing')->assertRedirect('/be/prijzen');
+        $this->get('/be/how-it-works')->assertRedirect('/be/hoe-het-werkt');
     }
 
     public function test_language_switcher_uses_localized_page_paths(): void
@@ -229,7 +267,8 @@ class PublicI18nTest extends TestCase
             ->assertSee('sitemap-de.xml', false)
             ->assertSee('sitemap-es.xml', false)
             ->assertSee('sitemap-it.xml', false)
-            ->assertSee('sitemap-us.xml', false);
+            ->assertSee('sitemap-us.xml', false)
+            ->assertSee('sitemap-pl.xml', false);
 
         $this->get('/sitemap-de.xml')
             ->assertOk()
@@ -295,14 +334,14 @@ class PublicI18nTest extends TestCase
             ->assertOk()
             ->assertSee('Iniciar sesión', false)
             ->assertSee('Registrarse', false)
-            ->assertSee('El marketplace global de link building', false)
+            ->assertSee('Marketplace de guest posts, backlinks y link building para España.', false)
             ->assertSee('Cómo funciona', false);
 
         $this->get('/it')
             ->assertOk()
             ->assertSee('Accedi', false)
             ->assertSee('Registrati', false)
-            ->assertSee('Il marketplace globale di link building', false)
+            ->assertSee('Piattaforma self-service: catalogo di editori', false)
             ->assertSee('Come funziona', false);
     }
 

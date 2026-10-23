@@ -52,15 +52,15 @@ class ActivationUxFrictionTest extends TestCase
         ]);
     }
 
-    public function test_guest_marketplace_shows_verified_site_teasers(): void
+    public function test_guest_marketplace_does_not_show_inventory_table(): void
     {
         $this->verifiedSite();
 
         $this->get(route('marketplace'))
             ->assertOk()
-            ->assertSee('Sample verified inventory', false)
-            ->assertSee('Activation Teaser Site', false)
-            ->assertSee('t********.com', false)
+            ->assertDontSee('Sample verified inventory', false)
+            ->assertDontSee('Activation Teaser Site', false)
+            ->assertDontSee('t********.com', false)
             ->assertSee('/register', false);
     }
 

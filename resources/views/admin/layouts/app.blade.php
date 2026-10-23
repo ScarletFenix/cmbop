@@ -9,8 +9,8 @@
     @include('components.favicon')
 
     <!-- Bootstrap 5 CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ asset('assets/vendor/bootstrap-5.3.0/bootstrap.min.css') }}?v={{ @filemtime(public_path('assets/vendor/bootstrap-5.3.0/bootstrap.min.css')) ?: '1' }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/slb-icons.css') }}?v={{ @filemtime(public_path('assets/css/slb-icons.css')) ?: '1' }}" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link href="{{ asset('assets/css/type-system.css') }}?v={{ @filemtime(public_path('assets/css/type-system.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('assets/css/brand-colors.css') }}?v={{ @filemtime(public_path('assets/css/brand-colors.css')) ?: '1' }}" rel="stylesheet">
@@ -30,7 +30,10 @@
     <link href="{{ asset('assets/css/admin-components.css') }}?v={{ @filemtime(public_path('assets/css/admin-components.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('assets/css/staff-sites.css') }}?v={{ @filemtime(public_path('assets/css/staff-sites.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('assets/css/slb-live-search.css') }}?v={{ @filemtime(public_path('assets/css/slb-live-search.css')) ?: '1' }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/slb-loader.css') }}?v={{ @filemtime(public_path('assets/css/slb-loader.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('assets/css/hover-system.css') }}?v={{ @filemtime(public_path('assets/css/hover-system.css')) ?: '1' }}" rel="stylesheet">
+    <script src="{{ asset('assets/vendor/lottie-web/lottie_light.min.js') }}?v={{ @filemtime(public_path('assets/vendor/lottie-web/lottie_light.min.js')) ?: '1' }}" defer></script>
+    <script src="{{ asset('assets/js/slb-loader.js') }}?v={{ @filemtime(public_path('assets/js/slb-loader.js')) ?: '1' }}" defer></script>
     <script src="{{ asset('assets/js/pulse-badge.js') }}?v={{ @filemtime(public_path('assets/js/pulse-badge.js')) ?: '1' }}" defer></script>
     <script src="{{ asset('assets/js/glass-tip.js') }}?v={{ @filemtime(public_path('assets/js/glass-tip.js')) ?: '1' }}" defer></script>
     <script src="{{ asset('assets/js/admin-pagination.js') }}?v={{ @filemtime(public_path('assets/js/admin-pagination.js')) ?: '1' }}" defer></script>
@@ -73,10 +76,18 @@
             </span>
         </a>
         <a href="{{ staff_route('bulk-site-requests.index') }}" class="{{ request()->routeIs($staffPrefix.'bulk-site-requests.*') ? 'active' : '' }}">
-            <i class="fa fa-layer-group"></i> <span>Bulk requests</span>
+            <i class="fa fa-layer-group"></i>
+            <span class="d-flex align-items-center w-100">
+                <span>Bulk requests</span>
+                <span id="navBadgeBulk" class="badge bg-warning text-dark rounded-pill ms-auto" style="display:none;">0</span>
+            </span>
         </a>
         <a href="{{ staff_route('site-enrichment.index') }}" class="{{ request()->routeIs($staffPrefix.'site-enrichment.*') ? 'active' : '' }}">
-            <i class="fa fa-chart-line"></i> <span>Enrichment</span>
+            <i class="fa fa-chart-line"></i>
+            <span class="d-flex align-items-center w-100">
+                <span>Enrichment</span>
+                <span id="navBadgeEnrichment" class="badge bg-warning text-dark rounded-pill ms-auto" style="display:none;">0</span>
+            </span>
         </a>
         <a href="{{ staff_route('staff-handbook') }}" class="{{ request()->routeIs($staffPrefix.'staff-handbook') ? 'active' : '' }}">
             <i class="fa fa-book"></i> <span>Staff handbook</span>
@@ -139,7 +150,11 @@
             <i class="fa fa-blog"></i> <span>Blogs</span>
         </a>
         <a href="{{ route('admin.emails.index') }}" class="{{ request()->routeIs('admin.emails.*') ? 'active' : '' }}">
-            <i class="fa fa-envelope-open-text"></i> <span>Email Center</span>
+            <i class="fa fa-envelope-open-text"></i>
+            <span class="d-flex align-items-center w-100">
+                <span>Email Center</span>
+                <span id="navBadgeMail" class="badge bg-danger text-white rounded-pill ms-auto" style="display:none;">0</span>
+            </span>
         </a>
         <a href="{{ route('admin.campaigns.index') }}" class="{{ request()->routeIs('admin.campaigns.*') ? 'active' : '' }}">
             <i class="fa fa-paper-plane"></i> <span>Campaigns</span>
@@ -151,7 +166,11 @@
             <i class="fa fa-bullhorn"></i> <span>Promotions</span>
         </a>
         <a href="{{ route('admin.moderation.index') }}" class="{{ request()->routeIs('admin.moderation.*') ? 'active' : '' }}">
-            <i class="fa fa-shield-alt"></i> <span>Moderation</span>
+            <i class="fa fa-shield-alt"></i>
+            <span class="d-flex align-items-center w-100">
+                <span>Moderation</span>
+                <span id="navBadgeModeration" class="badge bg-danger text-white rounded-pill ms-auto" style="display:none;">0</span>
+            </span>
         </a>
         <a href="{{ route('admin.content-library.index') }}" class="{{ request()->routeIs('admin.content-library.*') ? 'active' : '' }}">
             <i class="fa fa-folder-open"></i> <span>Content Library</span>
@@ -161,7 +180,11 @@
             <i class="fa fa-history"></i> <span>Activity History</span>
         </a>
         <a href="{{ route('admin.catalog-activity') }}" class="{{ request()->routeIs('admin.catalog-activity*') ? 'active' : '' }}" title="Hide-mode and copy-strike queue">
-            <i class="fa fa-eye"></i> <span>Catalog Activity</span>
+            <i class="fa fa-eye"></i>
+            <span class="d-flex align-items-center w-100">
+                <span>Catalog Activity</span>
+                <span id="navBadgeCatalog" class="badge bg-warning text-dark rounded-pill ms-auto" style="display:none;">0</span>
+            </span>
         </a>
         @endif
     </div>
@@ -241,14 +264,17 @@
     © {{ date('Y') }} SEOLinkBuildings
 </footer>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="{{ asset('assets/vendor/bootstrap-5.3.0/bootstrap.bundle.min.js') }}?v={{ @filemtime(public_path('assets/vendor/bootstrap-5.3.0/bootstrap.bundle.min.js')) ?: '1' }}"></script>
 <script src="{{ asset('assets/js/modal-stack.js') }}?v={{ @filemtime(public_path('assets/js/modal-stack.js')) ?: '1' }}"></script>
 <script src="{{ asset('assets/js/admin-manage-dropdown.js') }}?v={{ @filemtime(public_path('assets/js/admin-manage-dropdown.js')) ?: '1' }}"></script>
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="{{ asset('assets/vendor/sweetalert2/sweetalert2.min.js') }}?v={{ @filemtime(public_path('assets/vendor/sweetalert2/sweetalert2.min.js')) ?: '1' }}"></script>
 <script src="{{ same_origin_asset('js/slb-confirm.js') }}?v={{ @filemtime(public_path('js/slb-confirm.js')) ?: '1' }}"></script>
+@include('partials.slb-icon-draw')
 <script src="{{ asset('js/slb-live-search.js') }}?v={{ @filemtime(public_path('js/slb-live-search.js')) ?: '1' }}"></script>
+@include('partials.money-display')
 @include('partials.app-toast')
 <script src="{{ asset('js/slb-http.js') }}?v={{ @filemtime(public_path('js/slb-http.js')) ?: '1' }}"></script>
+@include('partials.slb-loader')
 
 
 <script>
@@ -307,6 +333,11 @@
             setNavBadge('navBadgeSites', data.unverified_sites || 0);
             setNavBadge('navBadgePayments', data.pending_payments || 0);
             setNavBadge('navBadgeCommunity', data.pending_community || data.pending_claims || 0);
+            setNavBadge('navBadgeBulk', data.open_bulk_requests || 0);
+            setNavBadge('navBadgeEnrichment', data.enrichment_failed || 0);
+            setNavBadge('navBadgeMail', data.failed_mail || 0);
+            setNavBadge('navBadgeModeration', data.moderation_errors || 0);
+            setNavBadge('navBadgeCatalog', data.catalog_hide || 0);
         })
         .catch(() => {});
     }

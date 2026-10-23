@@ -8,11 +8,11 @@
 Dear {{ $deposit->user?->name ?? 'Advertiser' }},
 
 @if($isPaypal)
-Your PayPal payment succeeded and **€{{ number_format($deposit->amount, 2) }}** has been added to your wallet.
+Your PayPal payment succeeded and €{{ number_format($deposit->amount, 2) }} has been added to your wallet.
 @elseif($isCard)
-Your card payment succeeded and **€{{ number_format($deposit->amount, 2) }}** has been added to your wallet.
+Your card payment succeeded and €{{ number_format($deposit->amount, 2) }} has been added to your wallet.
 @else
-Your deposit request has been **approved** and the funds have been added to your wallet.
+Your deposit request has been approved and the funds have been added to your wallet.
 @endif
 
 @if($receipt)
@@ -21,21 +21,21 @@ Your deposit receipt PDF is attached.
 
 ## Deposit Details:
 
-- **Amount:** €{{ number_format($deposit->amount, 2) }}
-- **Reference Code:** {{ $deposit->reference_code }}
-- **Payment method:** {{ \App\Models\Invoice::paymentMethodLabel($deposit->payment_method) }}
+- Amount: €{{ number_format($deposit->amount, 2) }}
+- Reference Code: {{ $deposit->reference_code }}
+- Payment method: {{ \App\Models\Invoice::paymentMethodLabel($deposit->payment_method) }}
 @if($isInstant)
-- **Credited At:** {{ optional($deposit->approved_at ?? $deposit->paid_at)->format('M d, Y H:i') ?? now()->format('M d, Y H:i') }}
+- Credited At: {{ optional($deposit->approved_at ?? $deposit->paid_at)->format('M d, Y H:i') ?? now()->format('M d, Y H:i') }}
 @else
-- **Approved At:** {{ optional($deposit->approved_at)->format('M d, Y H:i') ?? now()->format('M d, Y H:i') }}
+- Approved At: {{ optional($deposit->approved_at)->format('M d, Y H:i') ?? now()->format('M d, Y H:i') }}
 @endif
 @if($receipt)
-- **Receipt:** {{ $receipt->invoice_number }}
+- Receipt: {{ $receipt->invoice_number }}
 @endif
 
 ## Your Current Balance:
 
-**€{{ number_format($walletBalance ?? 0, 2) }}**
+€{{ number_format($walletBalance ?? 0, 2) }}
 
 @component('mail::button', ['url' => $balanceUrl, 'color' => 'primary'])
 View Balance

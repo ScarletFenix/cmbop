@@ -117,6 +117,23 @@
 
       row.appendChild(bubble);
       row.appendChild(meta);
+
+      var reactions = document.createElement('div');
+      reactions.className = 'slb-live-chat__reactions';
+      ['👍', '❤️', '🙏'].forEach(function (emoji) {
+        var button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'slb-live-chat__reaction' + (m.reaction === emoji ? ' is-on' : '');
+        button.textContent = emoji;
+        button.setAttribute('aria-label', 'React ' + emoji);
+        button.addEventListener('click', function () {
+          m.reaction = m.reaction === emoji ? '' : emoji;
+          saveState();
+          render();
+        });
+        reactions.appendChild(button);
+      });
+      row.appendChild(reactions);
       logEl.appendChild(row);
     });
     if (typing) {
@@ -211,7 +228,18 @@
     }
   }
 
+  function openTawk() {
+    if (!window.Tawk_API || typeof window.Tawk_API.maximize !== 'function') return false;
+    window.slbTawkKeepOpen = true;
+    if (typeof window.Tawk_API.showWidget === 'function') window.Tawk_API.showWidget();
+    document.documentElement.classList.add('tawk-open');
+    window.Tawk_API.maximize();
+    if (typeof window.slbPinTawk === 'function') window.slbPinTawk();
+    return true;
+  }
+
   function toggleChat() {
+    if (openTawk()) return;
     if (isOpen()) closeChat();
     else openChat();
   }
@@ -270,6 +298,33 @@
   }
   render();
 
+  function initLauncherLottie() {
+    var box = document.getElementById('slbLiveChatLottie');
+    if (!box || !window.lottie || typeof window.lottie.loadAnimation !== 'function') return;
+    var src = box.getAttribute('data-lottie');
+    if (!src || box._slbLottie) return;
+    var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var anim = window.lottie.loadAnimation({
+      container: box,
+      renderer: 'svg',
+      loop: true,
+      autoplay: false,
+      path: src,
+    });
+    box._slbLottie = anim;
+    anim.addEventListener('DOMLoaded', function () {
+      anim.goToAndStop(0, true);
+    });
+    if (reduce || !launcher) return;
+    launcher.addEventListener('mouseenter', function () {
+      anim.goToAndPlay(0, true);
+    });
+    launcher.addEventListener('mouseleave', function () {
+      anim.goToAndStop(0, true);
+    });
+  }
+
+  initLauncherLottie();
   if (launcher) launcher.addEventListener('click', toggleChat);
   if (closer) closer.addEventListener('click', closeChat);
   if (form) {
@@ -302,5 +357,8 @@
   syncKeyboard();
 
   window.sendChatMessage = sendChatMessage;
-  window.slbOpenSupport = openChat;
+  window.slbOpenSupport = function () {
+    if (openTawk()) return;
+    openChat();
+  };
 })();

@@ -380,7 +380,7 @@
 
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="{{ asset('assets/vendor/sweetalert2/sweetalert2.min.js') }}?v={{ @filemtime(public_path('assets/vendor/sweetalert2/sweetalert2.min.js')) ?: '1' }}"></script>
 
 <script>
 const ROLE_UPDATE_URL = @json(route('admin.users.updateRoles', ['id' => '__ID__']));

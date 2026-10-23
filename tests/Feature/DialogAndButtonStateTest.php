@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Support\MarketingCssBundle;
 use Tests\TestCase;
 
 /**
@@ -58,9 +59,16 @@ class DialogAndButtonStateTest extends TestCase
     public function test_every_layout_loads_the_dialog_theme(): void
     {
         foreach ($this->layouts() as $layout) {
+            $markup = file_get_contents(resource_path('views/'.$layout));
+            if ($layout === 'layouts/app.blade.php') {
+                $this->assertStringContainsString('MarketingCssBundle', $markup);
+                $this->assertContains('dialog-system.css', MarketingCssBundle::FILES);
+
+                continue;
+            }
             $this->assertStringContainsString(
                 'assets/css/dialog-system.css',
-                file_get_contents(resource_path('views/'.$layout)),
+                $markup,
                 "{$layout} must load the dialog theme."
             );
         }

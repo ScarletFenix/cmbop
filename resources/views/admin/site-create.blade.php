@@ -237,12 +237,13 @@
 
                     <div class="col-md-6">
                         <label class="form-label fw-semibold d-block">Site tag</label>
-                        <div class="d-flex flex-wrap gap-3">
+                        <div class="d-flex flex-wrap gap-3" role="radiogroup" aria-label="Site tag">
                             @foreach(\App\Support\SiteTag::staffFormOptions() as $value => $label)
+                                @php $tagId = $value === '' ? 'tag_none' : 'tag_'.$value; @endphp
                                 <div class="form-check">
-                                    <input class="form-check-input" type="radio" name="site_tag" id="tag_{{ $value }}"
-                                           value="{{ $value }}" @checked(old_text('site_tag', 'as_you_prefer') === $value)>
-                                    <label class="form-check-label" for="tag_{{ $value }}">{{ $label }}</label>
+                                    <input class="form-check-input" type="radio" name="site_tag" id="{{ $tagId }}"
+                                           value="{{ $value }}" @checked(old_text('site_tag', '') === $value)>
+                                    <label class="form-check-label" for="{{ $tagId }}">{{ $label }}</label>
                                 </div>
                             @endforeach
                         </div>

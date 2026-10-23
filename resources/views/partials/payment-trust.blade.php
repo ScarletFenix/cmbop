@@ -3,10 +3,20 @@
     $brief = $brief ?? false;
     $showMethods = $showMethods ?? true;
     $asset = fn (string $file) => asset('assets/img/payments/'.$file);
-    $paypalConfigured = app(\App\Services\PaypalCheckoutService::class)->configured();
-    $refundUrl = function_exists('localized_url')
-        ? localized_url('refund-policy')
-        : url('/refund-policy');
+    $paypalConfigured = false;
+    try {
+        $paypalConfigured = app(\App\Services\PaypalCheckoutService::class)->configured();
+    } catch (\Throwable) {
+        $paypalConfigured = false;
+    }
+    $refundUrl = url('/refund-policy');
+    try {
+        $refundUrl = function_exists('localized_url')
+            ? localized_url('refund-policy')
+            : url('/refund-policy');
+    } catch (\Throwable) {
+        $refundUrl = url('/refund-policy');
+    }
 @endphp
 <div class="payment-trust {{ $compact ? 'payment-trust--compact' : '' }}" role="note" aria-label="Secure payments">
     <div class="payment-trust__secure">
@@ -26,7 +36,7 @@
                 <img class="payment-trust__logo payment-trust__logo--card" src="{{ $asset('apple-pay.svg') }}" alt="Apple Pay" title="Apple Pay" width="56" height="30" loading="lazy" decoding="async">
             @endif
             <img class="payment-trust__logo payment-trust__logo--bank" src="{{ $asset('bank.svg') }}" alt="Bank transfer" title="Bank transfer" width="72" height="36" loading="lazy" decoding="async">
-            <img class="payment-trust__logo payment-trust__logo--paypal{{ $paypalConfigured ? '' : ' is-offline' }}" src="{{ $asset('paypal.svg') }}" alt="PayPal" title="{{ $paypalConfigured ? 'PayPal' : 'PayPal (temporarily unavailable)' }}" width="48" height="16" loading="lazy" decoding="async">
+            <img class="payment-trust__logo payment-trust__logo--paypal{{ $paypalConfigured ? '' : ' is-offline' }}" src="{{ $asset('paypal.png') }}" alt="PayPal" title="{{ $paypalConfigured ? 'PayPal' : 'PayPal (temporarily unavailable)' }}" width="48" height="47" loading="lazy" decoding="async">
             <img class="payment-trust__logo payment-trust__logo--wise" src="{{ $asset('wise.png') }}" alt="Wise" title="Wise" width="72" height="16" loading="lazy" decoding="async">
             <img class="payment-trust__logo payment-trust__logo--crypto" src="{{ $asset('bitcoin.svg') }}" alt="Cryptocurrency" title="Cryptocurrency" width="24" height="24" loading="lazy" decoding="async">
         </div>
@@ -101,7 +111,7 @@
             height: 16px;
         }
         .payment-trust__logo--paypal {
-            height: 16px;
+            height: 40px;
         }
         .payment-trust__logo.is-offline {
             opacity: 0.45;
@@ -123,6 +133,9 @@
         .payment-trust--compact .payment-trust__logo--crypto {
             height: 20px;
             width: 20px;
+        }
+        .payment-trust--compact .payment-trust__logo--paypal {
+            height: 32px;
         }
         .payment-trust--compact {
             font-size: 11px;

@@ -20,10 +20,13 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Storage;
+use Tests\Support\CreatesBlogUploads;
 use Tests\TestCase;
 
 class MarketingBulkSiteOpsTest extends TestCase
 {
+    use CreatesBlogUploads;
     use RefreshDatabase;
 
     private User $publisher;
@@ -35,6 +38,7 @@ class MarketingBulkSiteOpsTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        Storage::fake('public');
 
         $this->seed(RolesTableSeeder::class);
         $this->seed(CountriesTableSeeder::class);
@@ -72,6 +76,23 @@ class MarketingBulkSiteOpsTest extends TestCase
             ?? Language::marketplace()->firstOrFail();
 
         return [strtolower($country->code), strtolower($language->code)];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function publishableDoneFields(string $category): array
+    {
+        return [
+            'example_url' => 'https://example.com/sample-article',
+            'turnaround_time' => '3days',
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'site_tag' => 'as_you_prefer',
+            'description' => 'Guest posts on this website stay published and the link remains dofollow for advertisers.',
+            'categories' => $category,
+            'site_image' => $this->fakeBlogUpload('cover.jpg', 80, 80),
+        ];
     }
 
     private function makeBulkRequest(): BulkSiteRequest
@@ -126,20 +147,19 @@ class MarketingBulkSiteOpsTest extends TestCase
         [$country, $language] = $this->marketplaceCodes();
         $bulk = $this->makeBulkRequest();
 
-        $rows = "https://seed-mkt.example,99,40,45,12000,{$language},{$country},Seed Mkt";
+        $niche = Category::query()->firstOrFail()->name;
+        $rows = "https://seed-mkt.example,99,40,45,12000,{$language},{$country},Seed Mkt,https://seed-mkt.example/sample,3days,permanent,dofollow,as_you_prefer,{$niche},Guest posts on this website stay published and the link remains dofollow for advertisers.";
 
         $this->actingAs($this->marketer)
             ->post(route('marketing.bulk-site-requests.seed', $bulk), ['rows' => $rows])
             ->assertRedirect()
-            ->assertSessionHas('success', fn ($message) => is_string($message) && str_starts_with($message, 'Seed —'));
+            ->assertSessionHas('error', 'All rows failed validation.');
 
-        $this->assertDatabaseHas('sites', [
+        $this->assertDatabaseMissing('sites', [
             'domain' => 'seed-mkt.example',
-            'bulk_site_request_id' => $bulk->id,
-            'onboarding_status' => Site::ONBOARDING_AWAITING_DETAILS,
         ]);
 
-        $this->assertDatabaseHas('activity_logs', [
+        $this->assertDatabaseMissing('activity_logs', [
             'action' => 'bulk_request.seeded',
             'user_id' => $this->marketer->id,
         ]);
@@ -149,13 +169,13 @@ class MarketingBulkSiteOpsTest extends TestCase
             ->assertOk()
             ->assertSee('History')
             ->assertSee('Cannot be deleted')
-            ->assertSee('<div class="fw-semibold">Seed</div>', false)
+            ->assertDontSee('<div class="fw-semibold">Seed</div>', false)
             ->assertDontSee('<div class="fw-semibold">Done</div>', false)
             ->assertDontSee('>bulk_request.seeded<', false)
             ->getContent();
 
         $this->assertStringContainsString('Append-only', $html);
-        $this->assertStringContainsString('Done — add sites', $html);
+        $this->assertStringContainsString('Done — publish sites', $html);
     }
 
     public function test_marketer_seed_rejects_price_that_would_overflow_decimal(): void
@@ -206,7 +226,7 @@ class MarketingBulkSiteOpsTest extends TestCase
                         'da' => 150,
                         'dr' => 25,
                         'traffic' => 1000,
-                        'categories' => $category->name,
+                        ...$this->publishableDoneFields($category->name),
                     ],
                 ],
             ])
@@ -259,7 +279,7 @@ class MarketingBulkSiteOpsTest extends TestCase
                         'da' => 40,
                         'dr' => 45,
                         'traffic' => 1_500_000_000,
-                        'categories' => $category->name,
+                        ...$this->publishableDoneFields($category->name),
                     ],
                 ],
             ])
@@ -305,7 +325,7 @@ class MarketingBulkSiteOpsTest extends TestCase
                         'da' => 20,
                         'dr' => 25,
                         'traffic' => 1000,
-                        'categories' => $category->name,
+                        ...$this->publishableDoneFields($category->name),
                     ],
                 ],
             ])
@@ -325,7 +345,7 @@ class MarketingBulkSiteOpsTest extends TestCase
                         'da' => 22,
                         'dr' => 28,
                         'traffic' => 2000,
-                        'categories' => $category->name,
+                        ...$this->publishableDoneFields($category->name),
                     ],
                 ],
             ])
@@ -412,7 +432,7 @@ class MarketingBulkSiteOpsTest extends TestCase
                         'da' => 21,
                         'dr' => 22,
                         'traffic' => 1500,
-                        'categories' => $category->name,
+                        ...$this->publishableDoneFields($category->name),
                     ],
                 ],
             ])
@@ -467,7 +487,7 @@ class MarketingBulkSiteOpsTest extends TestCase
                 'da' => 30,
                 'dr' => 35,
                 'traffic' => 15000,
-                'categories' => $category->name,
+                ...$this->publishableDoneFields($category->name),
             ];
         }
 
@@ -480,7 +500,11 @@ class MarketingBulkSiteOpsTest extends TestCase
 
         $this->assertSame($max, Site::query()->where('bulk_site_request_id', $bulk->id)->count());
         $this->assertSame(0, $bulk->items()->whereNull('site_id')->count());
-        $this->assertSame(BulkSiteRequest::STATUS_AWAITING_PUBLISHER, $bulk->fresh()->status);
+        $this->assertSame(BulkSiteRequest::STATUS_COMPLETED, $bulk->fresh()->status);
+        $this->assertSame(
+            $max,
+            Site::query()->where('bulk_site_request_id', $bulk->id)->where('active', 1)->where('verified', 0)->count()
+        );
     }
 
     public function test_bulk_done_over_max_rows_is_validation_error_not_500(): void
@@ -556,7 +580,7 @@ class MarketingBulkSiteOpsTest extends TestCase
                         'da' => 20,
                         'dr' => 25,
                         'traffic' => 1000,
-                        'categories' => $category->name,
+                        ...$this->publishableDoneFields($category->name),
                     ],
                     $itemB->id => [
                         'language' => $language,
@@ -564,7 +588,7 @@ class MarketingBulkSiteOpsTest extends TestCase
                         'da' => 22,
                         'dr' => 28,
                         'traffic' => 2000,
-                        'categories' => $category->name,
+                        ...$this->publishableDoneFields($category->name),
                     ],
                 ],
             ])
@@ -574,8 +598,9 @@ class MarketingBulkSiteOpsTest extends TestCase
         $this->assertDatabaseHas('sites', [
             'domain' => 'mkt-done-a.example',
             'publisher_id' => $this->publisher->id,
-            'onboarding_status' => Site::ONBOARDING_AWAITING_DETAILS,
-            'active' => 0,
+            'onboarding_status' => null,
+            'active' => 1,
+            'verified' => 0,
         ]);
 
         $this->assertDatabaseHas('in_app_notifications', [
@@ -584,7 +609,7 @@ class MarketingBulkSiteOpsTest extends TestCase
         $this->assertTrue(
             InAppNotification::query()
                 ->where('user_id', $this->publisher->id)
-                ->where('title', 'like', '%Pending sites%')
+                ->where('title', 'like', '%active on the platform%')
                 ->exists()
         );
 

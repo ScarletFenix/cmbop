@@ -31,9 +31,8 @@ class PerformanceUiWeightTest extends TestCase
 
         $this->assertStringNotContainsString('google.com/recaptcha/api.js', $html);
         $this->assertStringContainsString('rel="preconnect"', $html);
-        $this->assertStringContainsString('dashboard.webp', $html);
-        $this->assertStringContainsString('width="1200"', $html);
-        $this->assertStringContainsString('height="518"', $html);
+        $this->assertStringNotContainsString('dashboard.webp', $html);
+        $this->assertStringNotContainsString('dashboard.png', $html);
     }
 
     public function test_no_page_loads_recaptcha(): void
@@ -97,6 +96,6 @@ class PerformanceUiWeightTest extends TestCase
             ->getContent();
 
         $this->assertStringNotContainsString('bootstrap@5.1.3', $html);
-        $this->assertStringContainsString('bootstrap@5.3.0', $html);
+        $this->assertStringContainsString('bootstrap-5.3.0', $html);
     }
 }

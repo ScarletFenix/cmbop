@@ -40,18 +40,18 @@
     'name' => __('messages.how_page_howto_name'),
     'description' => welcome_bonus_message('meta_how_it_works_description', 'meta_how_it_works_description_off'),
     'url' => localized_url('how-it-works'),
-    'inLanguage' => class_exists(\App\Support\PublicI18n::class)
+    'inLanguage' => (class_exists(\App\Support\PublicI18n::class) && method_exists(\App\Support\PublicI18n::class, 'htmlLang'))
         ? \App\Support\PublicI18n::htmlLang()
         : 'en-GB',
     'step' => $howToSteps,
-], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) !!}
+], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_HEX_TAG|JSON_HEX_AMP|JSON_INVALID_UTF8_SUBSTITUTE) ?: '{}' !!}
 </script>
 <script type="application/ld+json">
 {!! json_encode([
     '@@context' => 'https://schema.org',
     '@type' => 'FAQPage',
     'mainEntity' => $faqEntities,
-], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) !!}
+], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_HEX_TAG|JSON_HEX_AMP|JSON_INVALID_UTF8_SUBSTITUTE) ?: '{}' !!}
 </script>
 @endpush
 

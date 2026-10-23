@@ -56,16 +56,16 @@ body.layout-dark,
 }
 
 .glass-tip-icon {
-  width: 16px;
-  height: 16px;
+  width: 10px;
+  height: 10px;
   display: block;
   flex-shrink: 0;
   pointer-events: none;
 }
 
 .glass-tip-trigger--lg .glass-tip-icon {
-  width: 18px;
-  height: 18px;
+  width: 11px;
+  height: 11px;
 }
 
 [data-glass-tip].site-chip,

@@ -54,10 +54,10 @@
     'name' => __('messages.meta_about_title'),
     'url' => localized_url('about'),
     'description' => __('messages.meta_about_description'),
-    'inLanguage' => class_exists(\App\Support\PublicI18n::class)
+    'inLanguage' => (class_exists(\App\Support\PublicI18n::class) && method_exists(\App\Support\PublicI18n::class, 'htmlLang'))
         ? \App\Support\PublicI18n::htmlLang()
         : 'en-GB',
-    'mainEntity' => class_exists(\App\Support\BrandOrganization::class)
+    'mainEntity' => (class_exists(\App\Support\BrandOrganization::class) && method_exists(\App\Support\BrandOrganization::class, 'schema'))
         ? \App\Support\BrandOrganization::schema([
         'foundingLocation' => [
             '@type' => 'Place',
@@ -88,14 +88,14 @@
         ],
     ])
         : ['@type' => 'Organization', 'name' => 'SEOLinkBuildings'],
-], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) !!}
+], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_HEX_TAG|JSON_HEX_AMP|JSON_INVALID_UTF8_SUBSTITUTE) ?: '{}' !!}
 </script>
 <script type="application/ld+json">
 {!! json_encode([
     '@@context' => 'https://schema.org',
     '@type' => 'FAQPage',
     'mainEntity' => $faqEntities,
-], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) !!}
+], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_HEX_TAG|JSON_HEX_AMP|JSON_INVALID_UTF8_SUBSTITUTE) ?: '{}' !!}
 </script>
 @endpush
 

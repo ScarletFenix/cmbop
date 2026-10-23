@@ -96,6 +96,7 @@ class AdminPanelSmokeTest extends TestCase
             ['admin.sites.index'],
             ['admin.sites.create'],
             ['admin.sites.records'],
+            ['admin.sites.on-demand.index'],
             ['admin.bulk-site-requests.index'],
             ['admin.site-enrichment.index'],
             ['admin.staff-handbook'],

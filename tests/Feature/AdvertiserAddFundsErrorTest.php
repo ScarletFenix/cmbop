@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Mail\DepositRequestSubmitted;
 use App\Models\DepositRequest;
 use App\Models\Invoice;
 use App\Models\Role;
@@ -11,6 +12,8 @@ use App\Models\WalletTransaction;
 use App\Services\Wallet\WalletOverviewService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
@@ -59,6 +62,124 @@ class AdvertiserAddFundsErrorTest extends TestCase
             ->assertStatus(422)
             ->assertJsonValidationErrors('amount')
             ->assertJsonMissingPath('exception');
+    }
+
+    public function test_store_validation_is_json_even_without_accept_json_header(): void
+    {
+        $advertiser = $this->advertiser();
+
+        $this->actingAs($advertiser)
+            ->from(route('advertiser.add-funds'))
+            ->post(route('advertiser.add-funds.store'), [
+                'amount' => 5,
+                'payment_method' => 'wise',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false)
+            ->assertJsonStructure(['success', 'message', 'errors']);
+    }
+
+    public function test_store_creates_invoice_from_html_form_post(): void
+    {
+        $advertiser = $this->advertiser();
+
+        $this->actingAs($advertiser)
+            ->post(route('advertiser.add-funds.store'), [
+                'amount' => 50,
+                'payment_method' => 'bank',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $code = (string) DepositRequest::query()->where('user_id', $advertiser->id)->value('reference_code');
+        $this->assertMatchesRegularExpression('/^\d{6}$/', $code);
+    }
+
+    public function test_store_does_not_persist_dummy_xxxxxxxx_placeholder(): void
+    {
+        $advertiser = $this->advertiser();
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.add-funds.store'), [
+                'amount' => 40,
+                'payment_method' => 'wise',
+                'reference_code' => 'XXXXXXXX',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonMissing(['reference_code' => 'XXXXXXXX']);
+
+        $this->assertDatabaseMissing('deposit_requests', [
+            'user_id' => $advertiser->id,
+            'reference_code' => 'XXXXXXXX',
+        ]);
+    }
+
+    public function test_store_skips_admin_mail_when_no_mailbox_is_configured(): void
+    {
+        config([
+            'mail.admin_email' => '',
+            'email_notifications.brand.support_email' => '',
+        ]);
+        Mail::fake();
+        Log::spy();
+
+        $advertiser = $this->advertiser();
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.add-funds.store'), [
+                'amount' => 50,
+                'payment_method' => 'wise',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        Mail::assertNothingOutgoing();
+        Log::shouldNotHaveReceived(
+            'error',
+            fn (...$args) => is_string($args[0] ?? null)
+                && str_contains($args[0], 'Failed to send deposit notification email')
+        );
+    }
+
+    public function test_store_uses_support_fallback_when_admin_email_is_empty(): void
+    {
+        config([
+            'mail.admin_email' => '',
+            'email_notifications.brand.support_email' => 'ops@seolinkbuildings.com',
+        ]);
+        Mail::fake();
+
+        $advertiser = $this->advertiser();
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.add-funds.store'), [
+                'amount' => 50,
+                'payment_method' => 'bank',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        Mail::assertQueued(DepositRequestSubmitted::class, function ($mail) {
+            return $mail->hasTo('ops@seolinkbuildings.com');
+        });
+    }
+
+    public function test_store_survives_missing_users_company_name_column(): void
+    {
+        $advertiser = $this->advertiser();
+        Schema::table('users', function ($table) {
+            $table->dropColumn('company_name');
+        });
+
+        $this->actingAs($advertiser->fresh())
+            ->postJson(route('advertiser.add-funds.store'), [
+                'amount' => 50,
+                'payment_method' => 'wise',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertDontSee('SQLSTATE');
     }
 
     public function test_stripe_checkout_validation_is_422_not_wrapped_success(): void

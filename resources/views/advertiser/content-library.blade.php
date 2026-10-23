@@ -1,11 +1,15 @@
 @extends('advertiser.layouts.app')
 
+@push('page-styles')
+<link href="{{ asset('assets/css/single-select.css') }}?v={{ @filemtime(public_path('assets/css/single-select.css')) ?: '1' }}" rel="stylesheet">
+@endpush
+
 @section('content')
-<link href="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.snow.css" rel="stylesheet">
+<link href="{{ asset('assets/vendor/quill-2.0.2/quill.snow.css') }}?v={{ @filemtime(public_path('assets/vendor/quill-2.0.2/quill.snow.css')) ?: '1' }}" rel="stylesheet">
 <link href="{{ asset('assets/css/content-library.css') }}?v={{ @filemtime(public_path('assets/css/content-library.css')) ?: '1' }}" rel="stylesheet">
 
 
-<div class="container-fluid">
+<div class="container-fluid library-page">
     @include('advertiser.partials.ordering-path', [
         'step' => 3,
         'title' => 'Place a guest post · Content',
@@ -14,8 +18,8 @@
         'contentRoute' => route('advertiser.content-library'),
     ])
 
-    <div class="mb-3">
-        <h2 class="mb-1 fw-semibold">Content Library</h2>
+    <div class="library-page-header mb-3">
+        <h2 class="library-page-title">Content Library</h2>
         <div class="library-page-actions">
             @include('advertiser.partials.upload-article-button', [
                 'uploadButtonId' => 'openUploadModalBtn',
@@ -95,35 +99,51 @@
             </div>
             <div class="library-filter-bar__select">
                 <label class="visually-hidden" for="libraryCountryFilter">Country</label>
-                <select name="country" id="libraryCountryFilter" class="form-select form-select-sm">
-                    <option value="all" @selected(($countryFilter ?? 'all') === 'all')>All countries</option>
-                    @foreach(($groupedByCountry ?? []) as $countryCode => $count)
-                        <option value="{{ $countryCode }}" @selected(($countryFilter ?? 'all') === $countryCode)>
-                            {{ strtoupper($countryCode) }} ({{ $count }})
-                        </option>
-                    @endforeach
-                </select>
+                @include('advertiser.partials.library-theme-select', [
+                    'selectId' => 'libraryCountryFilter',
+                    'name' => 'country',
+                    'label' => 'Country',
+                    'current' => $countryFilter ?? 'all',
+                    'options' => array_merge(
+                        [['value' => 'all', 'label' => 'All countries']],
+                        collect($groupedByCountry ?? [])->map(fn ($count, $code) => [
+                            'value' => $code,
+                            'label' => strtoupper((string) $code).' ('.$count.')',
+                        ])->values()->all()
+                    ),
+                ])
             </div>
             <div class="library-filter-bar__select">
                 <label class="visually-hidden" for="libraryLanguageFilter">Language</label>
-                <select name="language" id="libraryLanguageFilter" class="form-select form-select-sm">
-                    <option value="all" @selected(($languageFilter ?? 'all') === 'all')>All languages</option>
-                    @foreach(($groupedByLanguage ?? []) as $langCode => $count)
-                        <option value="{{ $langCode }}" @selected(($languageFilter ?? 'all') === $langCode)>
-                            {{ strtoupper($langCode) }} ({{ $count }})
-                        </option>
-                    @endforeach
-                </select>
+                @include('advertiser.partials.library-theme-select', [
+                    'selectId' => 'libraryLanguageFilter',
+                    'name' => 'language',
+                    'label' => 'Language',
+                    'current' => $languageFilter ?? 'all',
+                    'options' => array_merge(
+                        [['value' => 'all', 'label' => 'All languages']],
+                        collect($groupedByLanguage ?? [])->map(fn ($count, $code) => [
+                            'value' => $code,
+                            'label' => strtoupper((string) $code).' ('.$count.')',
+                        ])->values()->all()
+                    ),
+                ])
             </div>
             <div class="library-filter-bar__select">
                 <label class="visually-hidden" for="librarySortFilter">Sort</label>
-                <select name="sort" id="librarySortFilter" class="form-select form-select-sm">
-                    <option value="latest" @selected(($sort ?? 'latest') === 'latest')>Newest</option>
-                    <option value="title" @selected(($sort ?? '') === 'title')>Title</option>
-                    <option value="expires" @selected(($sort ?? '') === 'expires')>Expiry</option>
-                    <option value="uniqueness" @selected(($sort ?? '') === 'uniqueness')>Uniqueness</option>
-                    <option value="quality" @selected(($sort ?? '') === 'quality')>Quality</option>
-                </select>
+                @include('advertiser.partials.library-theme-select', [
+                    'selectId' => 'librarySortFilter',
+                    'name' => 'sort',
+                    'label' => 'Sort',
+                    'current' => $sort ?? 'latest',
+                    'options' => [
+                        ['value' => 'latest', 'label' => 'Newest'],
+                        ['value' => 'title', 'label' => 'Title'],
+                        ['value' => 'expires', 'label' => 'Expiry'],
+                        ['value' => 'uniqueness', 'label' => 'Uniqueness'],
+                        ['value' => 'quality', 'label' => 'Quality'],
+                    ],
+                ])
             </div>
             <div class="library-filter-bar__score">
                 <label class="visually-hidden" for="libraryMinUniqueness">Minimum uniqueness</label>
@@ -346,7 +366,7 @@
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.js"></script>
+<script src="{{ asset('assets/vendor/quill-2.0.2/quill.js') }}?v={{ @filemtime(public_path('assets/vendor/quill-2.0.2/quill.js')) ?: '1' }}"></script>
 <script src="{{ asset('assets/js/article-preview-tools.js') }}?v={{ @filemtime(public_path('assets/js/article-preview-tools.js')) ?: '1' }}"></script>
 <script>
 window.ContentLibraryBoot = {
@@ -371,6 +391,7 @@ window.ContentLibraryBoot = {
     phpMaxKilobytes: @json((int) ($uploadCfg['php_max_kilobytes'] ?? 0)),
 };
 </script>
+<script src="{{ asset('assets/js/single-select.js') }}?v={{ @filemtime(public_path('assets/js/single-select.js')) ?: '1' }}" defer></script>
 <script src="{{ asset('assets/js/content-library.js') }}?v={{ @filemtime(public_path('assets/js/content-library.js')) ?: '1' }}-c512" defer></script>
 
 @endsection

@@ -79,6 +79,9 @@ class CheckoutReferenceCodeTest extends TestCase
         preg_match('/id="referenceCode"[^>]*>\s*(\d{6})\s*</', $html, $match);
         $ref = $match[1];
         $this->assertStringContainsString('REF'.$ref, $html);
+        $this->assertStringNotContainsString('XXXXXXXX', $html);
+        $this->assertStringNotContainsString('manual payment notes', $html);
+        $this->assertStringNotContainsString('Please include', $html);
 
         $reload = $this->actingAs($advertiser)
             ->get(route('advertiser.checkout'))

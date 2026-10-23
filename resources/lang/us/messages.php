@@ -65,7 +65,7 @@ return [
     'meta_home_description' => 'Buy dofollow guest posts from verified publishers on Seolinkbuildings.com. EUR wallet, transparent prices, €20 welcome credit. Scale link building and digital PR.',
     'meta_home_description_off' => 'Buy dofollow guest posts from verified publishers on Seolinkbuildings.com. EUR wallet, transparent prices. Scale link building and digital PR.',
     'meta_about_title' => 'About SEOLinkBuildings — Europe Guest Post Marketplace',
-    'meta_about_description' => 'Learn how SEOLinkBuildings connects advertisers and publishers for ethical guest posts and digital PR across Europe and English-speaking markets. The public site is available in English (UK/US), German, French, Dutch, Spanish, and Italian. Operated by Topurlz Ltd (UK).',
+    'meta_about_description' => 'Learn how SEOLinkBuildings connects advertisers and publishers for ethical guest posts and digital PR across Europe and English-speaking markets. The public site is available in English (UK/US) and several European languages. Operated by Topurlz Ltd (UK).',
     'meta_faq_title' => 'FAQ — Guest Posts, Payments and Publishing | SEOLinkBuildings',
     'meta_faq_description' => 'Answers on wallets, orders, refunds, verification, and publishing. Learn how the Seolinkbuildings.com marketplace works before you buy or sell.',
     'meta_pricing_title' => 'Guest Post and Digital PR Pricing | SEOLinkBuildings',
@@ -92,7 +92,7 @@ return [
     'meta_privacy_description' => 'How SEOLinkBuildings collects, uses, and protects personal data on Seolinkbuildings.com for advertisers, publishers, and visitors.',
     'meta_terms_title' => 'Terms of Service | SEOLinkBuildings',
     'meta_terms_description' => 'Terms governing use of the SEOLinkBuildings guest-post marketplace, wallets, orders, and publisher placements on Seolinkbuildings.com.',
-    'meta_login_title' => 'Sign In | SEOLinkBuildings',
+    'meta_login_title' => 'Sign In to Your Guest Post Account | SEOLinkBuildings',
     'meta_login_description' => 'Sign in to your SEOLinkBuildings account to manage guest-post orders, publisher sites, wallet balance, and campaigns.',
     'meta_register_title' => 'Create Account — €20 Welcome Credit | SEOLinkBuildings',
     'meta_register_title_off' => 'Create Account | SEOLinkBuildings',
@@ -219,6 +219,8 @@ return [
     'marketplace_teaser_title' => 'Sample verified inventory',
     'marketplace_teaser_subtitle' => 'A preview of live placements — create a free account to browse the full catalog.',
     'marketplace_catalog_note' => 'The live catalog opens after login and stays in English.',
+    'marketplace_eu_index_label' => 'EU guest-post price index',
+    'marketplace_eu_index_caption' => 'median advertiser prices by European publisher country.',
 
     // Become publisher
     'become_publisher_kicker' => 'Publishers',

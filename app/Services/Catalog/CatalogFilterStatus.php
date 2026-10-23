@@ -517,7 +517,11 @@ class CatalogFilterStatus
      */
     private function neighborMarkets(Request $request, array $selected): array
     {
-        $counts = $this->inventory->counts();
+        try {
+            $counts = $this->inventory->counts();
+        } catch (\Throwable) {
+            return [];
+        }
         $selectedLookup = array_fill_keys($selected, true);
         $candidateCodes = [];
 

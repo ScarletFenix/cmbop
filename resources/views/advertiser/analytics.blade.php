@@ -1,5 +1,12 @@
 @extends('advertiser.layouts.app')
 
+@section('title', 'Spending History')
+
+@push('page-styles')
+<link href="{{ asset('assets/css/single-select.css') }}?v={{ @filemtime(public_path('assets/css/single-select.css')) ?: '1' }}" rel="stylesheet">
+<link href="{{ asset('assets/css/advertiser-analytics.css') }}?v={{ @filemtime(public_path('assets/css/advertiser-analytics.css')) ?: '1' }}" rel="stylesheet">
+@endpush
+
 @section('content')
 @php
     $a = $analytics;
@@ -8,23 +15,113 @@
     $summary = $a['summary'] ?? [];
     $dimension = $dimension ?? 'payment_method';
     $budgetStatus = $budgetStatus ?? ['has_budget' => false];
+    $range = $range ?? [];
+    $from = $range['from'] ?? request('from');
+    $to = $range['to'] ?? request('to');
+    $today = now()->toDateString();
+    $last30 = now()->subDays(29)->toDateString();
+    $monthStart = now()->startOfMonth()->toDateString();
+    $activePreset = 'all';
+    if ($from === $last30 && $to === $today) {
+        $activePreset = '30d';
+    } elseif ($from === $monthStart && $to === $today) {
+        $activePreset = 'month';
+    } elseif ($from || $to) {
+        $activePreset = 'custom';
+    }
+    $budgetPercent = (float) ($budgetStatus['percent'] ?? 0);
+    $budgetMeter = max(0, min(100, $budgetPercent));
 @endphp
 
-<link href="{{ asset('assets/css/advertiser-analytics.css') }}?v={{ @filemtime(public_path('assets/css/advertiser-analytics.css')) ?: '1' }}" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
-<div class="an-page">
-    <div class="an-hero d-flex flex-wrap justify-content-between gap-3 align-items-start">
+<div class="container-fluid an-page">
+    <div class="an-page-header">
         <div>
-            <h2>Spending History</h2>
-            <p class="mb-0">Solid bars are completed spend. Dim bars are paid orders still in progress — they become spent when the order completes.</p>
+            <h2 class="an-page-title">Spending History</h2>
+            <p class="an-page-sub">
+                Solid bars are completed spend. Dim bars are paid orders still in progress — they become spent when the order completes.
+            </p>
         </div>
-        <div class="d-flex flex-wrap gap-2">
+        <div class="an-page-links">
             <a class="btn btn-sm btn-outline-secondary"
                href="{{ route('advertiser.analytics.export-csv', request()->only(['from','to'])) }}">Export CSV</a>
             <a class="btn btn-sm btn-outline-secondary"
                href="{{ route('advertiser.analytics.export-pdf', request()->only(['from','to'])) }}">Export PDF</a>
         </div>
+    </div>
+
+    <div class="an-card an-filter-card mb-3">
+        <form method="GET" action="{{ route('advertiser.analytics') }}" class="an-filter-bar" id="analyticsRangeForm"
+              data-today="{{ $today }}" data-last30="{{ $last30 }}" data-month-start="{{ $monthStart }}">
+            <div class="an-filter-bar__row">
+                <div class="an-filter-bar__select">
+                    <label class="form-label fw-semibold small text-muted mb-1" for="analyticsRangeFilter">Range</label>
+                    @include('advertiser.partials.library-theme-select', [
+                        'selectId' => 'analyticsRangeFilter',
+                        'name' => 'range_preset',
+                        'label' => 'Range',
+                        'current' => $activePreset,
+                        'options' => [
+                            ['value' => 'all', 'label' => 'All time'],
+                            ['value' => '30d', 'label' => 'Last 30 days'],
+                            ['value' => 'month', 'label' => 'This month'],
+                            ['value' => 'custom', 'label' => 'Custom dates'],
+                        ],
+                    ])
+                </div>
+                <div class="an-filter-bar__select">
+                    <label class="form-label fw-semibold small text-muted mb-1" for="analyticsViewFilter">Chart</label>
+                    @include('advertiser.partials.library-theme-select', [
+                        'selectId' => 'analyticsViewFilter',
+                        'name' => 'view',
+                        'label' => 'Chart',
+                        'current' => $view,
+                        'options' => [
+                            ['value' => 'day', 'label' => 'By day'],
+                            ['value' => 'month', 'label' => 'By month'],
+                            ['value' => 'order', 'label' => 'By order'],
+                        ],
+                    ])
+                </div>
+                <div class="an-filter-bar__select">
+                    <label class="form-label fw-semibold small text-muted mb-1" for="analyticsBreakdownFilter">Breakdown</label>
+                    @include('advertiser.partials.library-theme-select', [
+                        'selectId' => 'analyticsBreakdownFilter',
+                        'name' => 'breakdown',
+                        'label' => 'Breakdown',
+                        'current' => $dimension,
+                        'options' => [
+                            ['value' => 'payment_method', 'label' => 'Method'],
+                            ['value' => 'country', 'label' => 'Country'],
+                            ['value' => 'category', 'label' => 'Category'],
+                            ['value' => 'site', 'label' => 'Site'],
+                            ['value' => 'sensitive', 'label' => 'Sensitive'],
+                        ],
+                    ])
+                </div>
+                <div class="an-filter-bar__dates">
+                    <span class="form-label fw-semibold small text-muted mb-1">Date range</span>
+                    <div class="an-date-range">
+                        <label class="visually-hidden" for="analyticsFrom">From</label>
+                        <input type="date" name="from" id="analyticsFrom" class="form-control form-control-sm" value="{{ $from }}">
+                        <label class="visually-hidden" for="analyticsTo">To</label>
+                        <input type="date" name="to" id="analyticsTo" class="form-control form-control-sm" value="{{ $to }}">
+                    </div>
+                </div>
+                <div class="an-filter-bar__actions">
+                    <span class="form-label fw-semibold small text-muted mb-1 an-filter-bar__action-label" aria-hidden="true">&nbsp;</span>
+                    <div class="an-filter-bar__action-row">
+                        <button type="submit" class="btn btn-sm btn-primary px-3">
+                            <i class="fa-solid fa-filter" aria-hidden="true"></i> Filter
+                        </button>
+                        <a href="{{ route('advertiser.analytics') }}" class="btn btn-sm btn-cta-secondary px-3">
+                            <i class="fa-solid fa-rotate-right" aria-hidden="true"></i> Reset
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </form>
     </div>
 
     <div class="an-summary mb-3">
@@ -62,14 +159,6 @@
                 <div class="an-card">
                     <div class="an-toolbar">
                         <h5 class="mb-0">Spend over time</h5>
-                        <div class="an-toggle" role="group" aria-label="Chart view">
-                            <a href="{{ route('advertiser.analytics', array_merge(request()->only(['from','to','breakdown']), ['view' => 'order'])) }}"
-                               class="{{ $view === 'order' ? 'active' : '' }}">By order</a>
-                            <a href="{{ route('advertiser.analytics', array_merge(request()->only(['from','to','breakdown']), ['view' => 'day'])) }}"
-                               class="{{ $view === 'day' ? 'active' : '' }}">By day</a>
-                            <a href="{{ route('advertiser.analytics', array_merge(request()->only(['from','to','breakdown']), ['view' => 'month'])) }}"
-                               class="{{ $view === 'month' ? 'active' : '' }}">By month</a>
-                        </div>
                     </div>
                     <div class="an-chart-wrap">
                         <canvas id="spendChart" height="120"></canvas>
@@ -110,30 +199,27 @@
                                @checked(old('notify_email', $budget?->notify_email ?? true))>
                         <label class="form-check-label small" for="notifyEmail">Email alerts</label>
                     </div>
-                    <button class="btn btn-sm btn-primary w-100" type="submit">Save budget</button>
+                    <button class="btn btn-sm btn-primary w-100 an-budget-save" type="submit">Save budget</button>
                 </form>
                 @if(!empty($budgetStatus['monthly_limit']))
-                    <p class="small text-muted mt-3 mb-0">
-                        This month committed:
-                        <strong>€{{ number_format((float) $budgetStatus['committed'], 2) }}</strong>
-                        / €{{ number_format((float) $budgetStatus['monthly_limit'], 2) }}
-                        ({{ number_format((float) $budgetStatus['percent'], 1) }}%)
-                    </p>
+                    <div class="an-budget-status">
+                        <div class="an-budget-meter" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ round($budgetMeter) }}">
+                            <span style="width: {{ $budgetMeter }}%;"></span>
+                        </div>
+                        <p class="small text-muted mb-0">
+                            This month committed:
+                            <strong>€{{ number_format((float) $budgetStatus['committed'], 2) }}</strong>
+                            / €{{ number_format((float) $budgetStatus['monthly_limit'], 2) }}
+                            ({{ number_format((float) $budgetStatus['percent'], 1) }}%)
+                        </p>
+                    </div>
                 @endif
             </div>
 
             <div class="an-card">
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                    <h5 class="mb-0">Breakdown</h5>
-                </div>
-                <div class="d-flex flex-wrap gap-1 mb-3">
-                    @foreach(['payment_method' => 'Method', 'country' => 'Country', 'category' => 'Category', 'site' => 'Site', 'sensitive' => 'Sensitive'] as $key => $label)
-                        <a class="btn btn-sm {{ $dimension === $key ? 'btn-primary' : 'btn-outline-secondary' }}"
-                           href="{{ route('advertiser.analytics', array_merge(request()->only(['view','from','to']), ['breakdown' => $key])) }}">{{ $label }}</a>
-                    @endforeach
-                </div>
+                <h5 class="mb-3">Breakdown</h5>
                 <div class="table-responsive">
-                    <table class="table table-sm mb-0">
+                    <table class="table table-sm mb-0 an-break-table">
                         <thead>
                             <tr>
                                 <th>Label</th>
@@ -253,3 +339,8 @@ document.addEventListener('DOMContentLoaded', function () {
 </script>
 @endif
 @endsection
+
+@push('scripts')
+<script src="{{ asset('assets/js/single-select.js') }}?v={{ @filemtime(public_path('assets/js/single-select.js')) ?: '1' }}" defer></script>
+<script src="{{ asset('assets/js/advertiser-analytics.js') }}?v={{ @filemtime(public_path('assets/js/advertiser-analytics.js')) ?: '1' }}" defer></script>
+@endpush

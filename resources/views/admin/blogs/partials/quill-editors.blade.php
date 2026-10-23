@@ -1,6 +1,6 @@
-<link href="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.snow.css" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<link href="{{ asset('assets/vendor/quill-2.0.2/quill.snow.css') }}?v={{ @filemtime(public_path('assets/vendor/quill-2.0.2/quill.snow.css')) ?: '1' }}" rel="stylesheet">
+<script src="{{ asset('assets/vendor/quill-2.0.2/quill.js') }}?v={{ @filemtime(public_path('assets/vendor/quill-2.0.2/quill.js')) ?: '1' }}"></script>
+<script src="{{ asset('assets/vendor/sweetalert2/sweetalert2.min.js') }}?v={{ @filemtime(public_path('assets/vendor/sweetalert2/sweetalert2.min.js')) ?: '1' }}"></script>
 <script src="{{ asset('assets/js/admin-blog-images.js') }}"></script>
 
 <input type="file" id="quillImageInput" class="d-none" accept="image/*">
@@ -10,7 +10,7 @@ var quillUploadUrl = @json(route('admin.blogs.upload-image'));
 var quillDeleteUrl = @json(route('admin.blogs.delete-content-image'));
 var csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
 var articleImagesManager = null;
-@php($editorLocales = $locales ?? (class_exists(\App\Support\PublicI18n::class) ? \App\Support\PublicI18n::supported() : ['en']))
+@php($editorLocales = $locales ?? ((class_exists(\App\Support\PublicI18n::class) && method_exists(\App\Support\PublicI18n::class, 'supported')) ? \App\Support\PublicI18n::supported() : ['en']))
 var blogEditorLocales = @json($editorLocales);
 
 function isEmptyQuillHtml(html) {

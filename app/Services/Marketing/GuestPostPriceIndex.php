@@ -63,29 +63,7 @@ class GuestPostPriceIndex
         $europePrices = [];
 
         try {
-            Site::query()
-                ->catalogVisible()
-                ->select(['id', 'country', 'countries', 'price'])
-                ->orderBy('id')
-                ->chunkById(500, function ($sites) use (&$pricesByCountry, &$europePrices, $europeCodes) {
-                    foreach ($sites as $site) {
-                        $code = $this->normalizeEuropeCode(
-                            $this->countries->primaryCountryCode($site->country, $site->countries)
-                        );
-                        if ($code === null || ! isset($europeCodes[$code])) {
-                            continue;
-                        }
-
-                        $publisher = (float) $site->price;
-                        if ($publisher <= 0) {
-                            continue;
-                        }
-
-                        $advertiser = $this->fees->advertiserBase($publisher);
-                        $pricesByCountry[$code][] = $advertiser;
-                        $europePrices[] = $advertiser;
-                    }
-                });
+            $this->collectEuropePrices($pricesByCountry, $europePrices, $europeCodes);
         } catch (Throwable) {
             return $this->emptySnapshot();
         }
@@ -151,6 +129,58 @@ class GuestPostPriceIndex
             'countries' => [],
             'has_index' => false,
         ];
+    }
+
+    /**
+     * @param  array<string, list<float>>  $pricesByCountry
+     * @param  list<float>  $europePrices
+     * @param  array<string, true>  $europeCodes
+     */
+    private function collectEuropePrices(array &$pricesByCountry, array &$europePrices, array $europeCodes): void
+    {
+        $tally = function (array $columns) use (&$pricesByCountry, &$europePrices, $europeCodes): void {
+            Site::query()
+                ->catalogVisible()
+                ->select($columns)
+                ->orderBy('id')
+                ->chunkById(500, function ($sites) use (&$pricesByCountry, &$europePrices, $europeCodes) {
+                    foreach ($sites as $site) {
+                        $code = $this->normalizeEuropeCode(
+                            $this->countries->primaryCountryCode($site->country, $site->countries ?? null)
+                        );
+                        if ($code === null || ! isset($europeCodes[$code])) {
+                            continue;
+                        }
+
+                        $publisher = (float) $site->price;
+                        if ($publisher <= 0) {
+                            continue;
+                        }
+
+                        $advertiser = $this->fees->advertiserBase($publisher);
+                        $pricesByCountry[$code][] = $advertiser;
+                        $europePrices[] = $advertiser;
+                    }
+                });
+        };
+
+        if (Site::hasSitesColumn('countries')) {
+            try {
+                $tally(['id', 'country', 'countries', 'price']);
+
+                return;
+            } catch (Throwable $e) {
+                $message = $e->getMessage();
+                $missingJson = str_contains($message, 'Unknown column')
+                    || str_contains($message, 'no such column')
+                    || str_contains($message, '42S22');
+                if (! $missingJson || ! str_contains($message, 'countries')) {
+                    throw $e;
+                }
+            }
+        }
+
+        $tally(['id', 'country', 'price']);
     }
 
     /**

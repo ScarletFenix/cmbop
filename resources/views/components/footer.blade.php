@@ -9,7 +9,11 @@
             <div class="col-lg-3 col-md-6">
                 <a href="{{ localized_url('/') }}" class="slb-footer-brand d-inline-block">
                     <img src="{{ asset('assets/img/logo1.png') }}?v={{ @filemtime(public_path('assets/img/logo1.png')) ?: '1' }}"
-                         alt="SEOLinkBuildings">
+                         alt="SEOLinkBuildings"
+                         width="1006"
+                         height="280"
+                         loading="lazy"
+                         decoding="async">
                 </a>
                 <p class="mt-3 small">
                     {{ __('messages.professional_services') }}
@@ -26,10 +30,114 @@
                     <li><a href="{{ localized_url('marketplace') }}" class="text-dark text-decoration-none d-block mb-2">{{ __('messages.nav_marketplace') }}</a></li>
                     <li><a href="{{ localized_url('pricing') }}" class="text-dark text-decoration-none d-block mb-2">{{ __('messages.nav_pricing') }}</a></li>
                     <li><a href="{{ localized_url('how-it-works') }}" class="text-dark text-decoration-none d-block mb-2">{{ __('messages.nav_how_it_works') }}</a></li>
+                    <li><a href="{{ localized_url('why-choose-us') }}" class="text-dark text-decoration-none d-block mb-2">{{ __('messages.why_choose_title') }}</a></li>
                     <li><a href="{{ localized_url('become-a-publisher') }}" class="text-dark text-decoration-none d-block mb-2">{{ __('messages.nav_become_publisher') }}</a></li>
                     <li><a href="{{ localized_url('faq') }}" class="text-dark text-decoration-none d-block mb-2">{{ __('messages.nav_faq') }}</a></li>
                     <li><a href="{{ localized_url('contact') }}" class="text-dark text-decoration-none d-block mb-2">{{ __('messages.contact') }}</a></li>
                     <li><a href="{{ $blogIndexUrl }}" class="text-dark text-decoration-none d-block mb-2">{{ __('messages.blog') }}</a></li>
+                    @if(function_exists('public_locale') && public_locale() === 'it')
+                        <li><a href="{{ url('/it/comprare-guest-post') }}" class="text-dark text-decoration-none d-block mb-2">Acquistare guest post</a></li>
+                        <li><a href="{{ url('/it/articoli-sponsorizzati') }}" class="text-dark text-decoration-none d-block mb-2">Articoli sponsorizzati</a></li>
+                        <li><a href="{{ url('/it/comprare-backlink') }}" class="text-dark text-decoration-none d-block mb-2">Acquistare backlink</a></li>
+                        <li><a href="{{ url('/it/link-building') }}" class="text-dark text-decoration-none d-block mb-2">Link building</a></li>
+                        <li><a href="{{ url('/it/agenzie') }}" class="text-dark text-decoration-none d-block mb-2">Per agenzie</a></li>
+                        <li><a href="{{ url('/it/digital-pr') }}" class="text-dark text-decoration-none d-block mb-2">Digital PR</a></li>
+                    @endif
+                    @if(function_exists('public_locale') && public_locale() === 'de')
+                        <li><a href="{{ url('/de/gastbeitrag-kaufen') }}" class="text-dark text-decoration-none d-block mb-2">Gastbeitrag kaufen</a></li>
+                        <li><a href="{{ url('/de/advertorial') }}" class="text-dark text-decoration-none d-block mb-2">Advertorials</a></li>
+                        <li><a href="{{ url('/de/backlinks-kaufen') }}" class="text-dark text-decoration-none d-block mb-2">Backlinks kaufen</a></li>
+                        <li><a href="{{ url('/de/linkbuilding') }}" class="text-dark text-decoration-none d-block mb-2">Linkbuilding</a></li>
+                        <li><a href="{{ url('/de/agenturen') }}" class="text-dark text-decoration-none d-block mb-2">Für Agenturen</a></li>
+                        <li><a href="{{ url('/de/digital-pr') }}" class="text-dark text-decoration-none d-block mb-2">Digital PR</a></li>
+                    @endif
+                    @if(function_exists('public_locale') && public_locale() === 'at')
+                        <li><a href="{{ url('/at/gastbeitrag-kaufen') }}" class="text-dark text-decoration-none d-block mb-2">Gastbeitrag kaufen</a></li>
+                        <li><a href="{{ url('/at/advertorial') }}" class="text-dark text-decoration-none d-block mb-2">Advertorials</a></li>
+                        <li><a href="{{ url('/at/backlinks-kaufen') }}" class="text-dark text-decoration-none d-block mb-2">Backlinks kaufen</a></li>
+                        <li><a href="{{ url('/at/linkbuilding') }}" class="text-dark text-decoration-none d-block mb-2">Linkbuilding</a></li>
+                        <li><a href="{{ url('/at/agenturen') }}" class="text-dark text-decoration-none d-block mb-2">Für Agenturen</a></li>
+                        <li><a href="{{ url('/at/digital-pr') }}" class="text-dark text-decoration-none d-block mb-2">Digital PR</a></li>
+                    @endif
+                    @if(function_exists('public_locale') && public_locale() === 'ch')
+                        <li><a href="{{ url('/ch/gastbeitrag-kaufen') }}" class="text-dark text-decoration-none d-block mb-2">Gastbeitrag kaufen</a></li>
+                        <li><a href="{{ url('/ch/advertorial') }}" class="text-dark text-decoration-none d-block mb-2">Advertorials</a></li>
+                        <li><a href="{{ url('/ch/backlinks-kaufen') }}" class="text-dark text-decoration-none d-block mb-2">Backlinks kaufen</a></li>
+                        <li><a href="{{ url('/ch/linkbuilding') }}" class="text-dark text-decoration-none d-block mb-2">Linkbuilding</a></li>
+                        <li><a href="{{ url('/ch/agenturen') }}" class="text-dark text-decoration-none d-block mb-2">Für Agenturen</a></li>
+                        <li><a href="{{ url('/ch/digital-pr') }}" class="text-dark text-decoration-none d-block mb-2">Digital PR</a></li>
+                    @endif
+                    @if(function_exists('public_locale') && public_locale() === 'es')
+                        <li><a href="{{ url('/es/comprar-guest-post') }}" class="text-dark text-decoration-none d-block mb-2">Comprar guest post</a></li>
+                        <li><a href="{{ url('/es/articulo-patrocinado') }}" class="text-dark text-decoration-none d-block mb-2">Artículo patrocinado</a></li>
+                        <li><a href="{{ url('/es/comprar-backlinks') }}" class="text-dark text-decoration-none d-block mb-2">Comprar backlinks</a></li>
+                        <li><a href="{{ url('/es/link-building') }}" class="text-dark text-decoration-none d-block mb-2">Link building</a></li>
+                        <li><a href="{{ url('/es/agencias') }}" class="text-dark text-decoration-none d-block mb-2">Para agencias</a></li>
+                        <li><a href="{{ url('/es/digital-pr') }}" class="text-dark text-decoration-none d-block mb-2">Digital PR</a></li>
+                    @endif
+                    @if(function_exists('public_locale') && public_locale() === 'pt')
+                        <li><a href="{{ url('/pt/comprar-guest-post') }}" class="text-dark text-decoration-none d-block mb-2">Comprar guest post</a></li>
+                        <li><a href="{{ url('/pt/artigo-patrocinado') }}" class="text-dark text-decoration-none d-block mb-2">Artigo patrocinado</a></li>
+                        <li><a href="{{ url('/pt/comprar-backlinks') }}" class="text-dark text-decoration-none d-block mb-2">Comprar backlinks</a></li>
+                        <li><a href="{{ url('/pt/link-building') }}" class="text-dark text-decoration-none d-block mb-2">Link building</a></li>
+                        <li><a href="{{ url('/pt/agencias') }}" class="text-dark text-decoration-none d-block mb-2">Para agências</a></li>
+                        <li><a href="{{ url('/pt/digital-pr') }}" class="text-dark text-decoration-none d-block mb-2">Digital PR</a></li>
+                        <li><a href="{{ url('/pt/guia') }}" class="text-dark text-decoration-none d-block mb-2">Guia</a></li>
+                    @endif
+                    @if(function_exists('public_locale') && public_locale() === 'ro')
+                        <li><a href="{{ url('/ro/cumpara-guest-post') }}" class="text-dark text-decoration-none d-block mb-2">Cumpără guest post</a></li>
+                        <li><a href="{{ url('/ro/articol-sponsorizat') }}" class="text-dark text-decoration-none d-block mb-2">Articol sponsorizat</a></li>
+                        <li><a href="{{ url('/ro/cumpara-backlink') }}" class="text-dark text-decoration-none d-block mb-2">Cumpără backlinkuri</a></li>
+                        <li><a href="{{ url('/ro/link-building') }}" class="text-dark text-decoration-none d-block mb-2">Link building</a></li>
+                        <li><a href="{{ url('/ro/agentii') }}" class="text-dark text-decoration-none d-block mb-2">Pentru agenții</a></li>
+                        <li><a href="{{ url('/ro/digital-pr') }}" class="text-dark text-decoration-none d-block mb-2">Digital PR</a></li>
+                        <li><a href="{{ url('/ro/ghid') }}" class="text-dark text-decoration-none d-block mb-2">Ghid</a></li>
+                    @endif
+                    @if(function_exists('public_locale') && public_locale() === 'ch' && class_exists(\App\Support\SwissMoneyLanders::class) && method_exists(\App\Support\SwissMoneyLanders::class, 'clusterLinks'))
+                        @foreach(\App\Support\SwissMoneyLanders::clusterLinks('home') as $item)
+                            @if(!in_array($item['slug'] ?? '', ['home', 'marktplatz', 'preise'], true))
+                                <li><a href="{{ $item['url'] }}" class="text-dark text-decoration-none d-block mb-2">{{ $item['label'] }}</a></li>
+                            @endif
+                        @endforeach
+                    @endif
+                    @if(function_exists('public_locale') && public_locale() === 'es' && class_exists(\App\Support\SpanishMoneyLanders::class) && method_exists(\App\Support\SpanishMoneyLanders::class, 'clusterLinks'))
+                        @foreach(\App\Support\SpanishMoneyLanders::clusterLinks('home') as $item)
+                            @if(!in_array($item['slug'] ?? '', ['home', 'mercado', 'precios'], true))
+                                <li><a href="{{ $item['url'] }}" class="text-dark text-decoration-none d-block mb-2">{{ $item['label'] }}</a></li>
+                            @endif
+                        @endforeach
+                    @endif
+                    @if(function_exists('public_locale') && public_locale() === 'nl' && class_exists(\App\Support\DutchMoneyLanders::class) && method_exists(\App\Support\DutchMoneyLanders::class, 'clusterLinks'))
+                        @foreach(\App\Support\DutchMoneyLanders::clusterLinks('home') as $item)
+                            @if(!in_array($item['slug'] ?? '', ['home', 'marktplaats', 'prijzen'], true))
+                                <li><a href="{{ $item['url'] }}" class="text-dark text-decoration-none d-block mb-2">{{ $item['label'] }}</a></li>
+                            @endif
+                        @endforeach
+                    @endif
+                    @if(function_exists('public_locale') && public_locale() === 'fr' && class_exists(\App\Support\FrenchMoneyLanders::class) && method_exists(\App\Support\FrenchMoneyLanders::class, 'clusterLinks'))
+                        @foreach(\App\Support\FrenchMoneyLanders::clusterLinks('home') as $item)
+                            @if(!in_array($item['slug'] ?? '', ['home', 'marche', 'tarifs'], true))
+                                <li><a href="{{ $item['url'] }}" class="text-dark text-decoration-none d-block mb-2">{{ $item['label'] }}</a></li>
+                            @endif
+                        @endforeach
+                    @endif
+                    @php
+                        $nordicFooter = class_exists(\App\Support\MoneyLanderCatalog::class)
+                            ? \App\Support\MoneyLanderCatalog::chrome(function_exists('public_locale') ? (string) public_locale() : '')
+                            : null;
+                    @endphp
+                    @if(!empty($nordicFooter['footer_links']))
+                        @foreach($nordicFooter['footer_links'] as $item)
+                            <li><a href="{{ $item['url'] }}" class="text-dark text-decoration-none d-block mb-2">{{ $item['label'] }}</a></li>
+                        @endforeach
+                    @endif
+                    @if(function_exists('public_locale') && public_locale() === 'en' && class_exists(\App\Support\IrishMoneyLanders::class) && method_exists(\App\Support\IrishMoneyLanders::class, 'footerLinks'))
+                        @foreach(\App\Support\IrishMoneyLanders::footerLinks() as $item)
+                            @if(!in_array($item['slug'] ?? '', ['marketplace-ireland', 'pricing-ireland'], true))
+                                <li><a href="{{ $item['url'] }}" class="text-dark text-decoration-none d-block mb-2">{{ $item['label'] }}</a></li>
+                            @endif
+                        @endforeach
+                    @endif
                 </ul>
             </div>
 

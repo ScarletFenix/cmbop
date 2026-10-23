@@ -2462,6 +2462,63 @@ function syncLibraryFiltersFromParams(params) {
     setNamed('sort', params.get('sort') || 'latest');
     setNamed('min_uniqueness', params.get('min_uniqueness') || '');
     setNamed('min_quality', params.get('min_quality') || '');
+    refreshLibraryThemeSelects();
+}
+
+function refreshLibraryThemeSelects() {
+    document.querySelectorAll('[data-theme-select]').forEach(function (wrap) {
+        const select = wrap.querySelector('select');
+        const valueEl = wrap.querySelector('.single-select-value');
+        if (!select || !valueEl) return;
+        const val = String(select.value);
+        wrap.querySelectorAll('.single-select-option').forEach(function (opt) {
+            const on = String(opt.getAttribute('data-value')) === val;
+            opt.classList.toggle('selected', on);
+            opt.setAttribute('aria-selected', on ? 'true' : 'false');
+        });
+        const selected = wrap.querySelector('.single-select-option.selected');
+        valueEl.textContent = selected
+            ? String(selected.getAttribute('data-label') || selected.textContent || '').trim()
+            : String((select.options[select.selectedIndex] && select.options[select.selectedIndex].text) || '').trim();
+    });
+}
+
+function bindLibraryThemeSelects() {
+    document.querySelectorAll('[data-theme-select]').forEach(function (wrap) {
+        if (wrap.dataset.bound === '1') return;
+        wrap.dataset.bound = '1';
+        const select = wrap.querySelector('select');
+        const trigger = wrap.querySelector('.single-select-input');
+        const dropdown = wrap.querySelector('.single-select-dropdown');
+        if (!select || !trigger || !dropdown) return;
+
+        trigger.addEventListener('click', function (e) {
+            e.preventDefault();
+            const willOpen = !dropdown.classList.contains('show');
+            document.querySelectorAll('.library-theme-select .single-select-dropdown.show').forEach(function (dd) {
+                if (dd === dropdown) return;
+                dd.classList.remove('show');
+                const other = dd.previousElementSibling;
+                if (other) other.setAttribute('aria-expanded', 'false');
+            });
+            dropdown.classList.toggle('show', willOpen);
+            trigger.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+        });
+
+        wrap.querySelectorAll('.single-select-option').forEach(function (opt) {
+            opt.addEventListener('click', function () {
+                const next = String(opt.getAttribute('data-value') || '');
+                if (select.value !== next) {
+                    select.value = next;
+                    select.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+                refreshLibraryThemeSelects();
+                dropdown.classList.remove('show');
+                trigger.setAttribute('aria-expanded', 'false');
+            });
+        });
+    });
+    refreshLibraryThemeSelects();
 }
 
 function refreshLibraryListAfterRowChange(id) {
@@ -2588,6 +2645,8 @@ function bootLibraryLiveSearch() {
         e.preventDefault();
         runFetch({ reason: 'enter', historyMode: 'push' });
     });
+
+    bindLibraryThemeSelects();
 
     ['libraryCountryFilter', 'libraryLanguageFilter', 'librarySortFilter', 'libraryMinUniqueness', 'libraryMinQuality'].forEach(function (id) {
         document.getElementById(id)?.addEventListener('change', function () {

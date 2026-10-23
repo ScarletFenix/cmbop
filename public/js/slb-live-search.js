@@ -24,6 +24,10 @@
         return String(input && input.value != null ? input.value : '').trim();
     }
 
+    function isAdminPanel() {
+        return !!(document.body && document.body.classList.contains('role-shell-admin'));
+    }
+
     function resolveEl(ref, root) {
         if (!ref) return null;
         if (typeof ref !== 'string') return ref;
@@ -139,9 +143,12 @@
 
             // Form mode: Enter / Clear submit. Typing only shows the 2-char
             // hint — a full GET on every keystroke steals focus.
-            if (mode === 'form') {
+            // Admin (and form-live) also GET on debounce so panel searches
+            // stay live without a Filter click.
+            if (mode === 'form' || mode === 'form-live') {
                 var reason = payload.reason || 'input';
-                if (reason === 'enter' || reason === 'clear') {
+                var liveOnType = mode === 'form-live' || isAdminPanel();
+                if (reason === 'enter' || reason === 'clear' || (liveOnType && reason === 'input')) {
                     navigateForm(input, payload.historyMode);
                 }
             }

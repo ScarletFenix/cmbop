@@ -48,7 +48,7 @@ class ActionConfirmDialogsTest extends TestCase
             $this->assertFileExists($layout);
             $html = file_get_contents($layout);
             $this->assertStringContainsString('js/slb-confirm.js', $html, $layout);
-            $this->assertStringContainsString('sweetalert2@11', $html, $layout);
+            $this->assertStringContainsString('assets/vendor/sweetalert2/sweetalert2.min.js', $html, $layout);
         }
     }
 
@@ -95,8 +95,8 @@ class ActionConfirmDialogsTest extends TestCase
         $this->assertFileExists($path);
         $html = file_get_contents($path);
 
-        $this->assertStringContainsString("confirmTitle = 'Seed draft sites?'", $html);
-        $this->assertStringContainsString("confirmTextBtn = 'Add drafts'", $html);
+        $this->assertStringContainsString("confirmTitle = 'Publish these sites?'", $html);
+        $this->assertStringContainsString("confirmTextBtn = 'Publish sites'", $html);
         $this->assertStringContainsString('title: confirmTitle', $html);
         $this->assertStringContainsString('confirmText: confirmTextBtn', $html);
         $this->assertStringContainsString('slbBulkAllowSubmit', $html);

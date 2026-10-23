@@ -37,7 +37,7 @@
                 <i class="fa fa-info-circle me-1"></i>
                 Paying {{ (int) ($payableCount ?? 0) }} ready site{{ (int) ($payableCount ?? 0) === 1 ? '' : 's' }}
                 @if((float) $total > 0)
-                    · €{{ number_format($total, 2) }}
+                    · {{ format_money_pay($total) }}
                 @endif
             </div>
             <div class="small text-muted mb-0">
@@ -132,9 +132,9 @@
                                             <div class="site-summary-price text-end">
                                                 <div class="site-summary-price-label">{{ !empty($item['paying_now']) ? 'Charged now' : 'Not charged yet' }}</div>
                                                 @if(!empty($item['discount_amount']) && $item['discount_amount'] > 0)
-                                                    <div class="small text-muted text-decoration-line-through">€{{ number_format(($item['list_total'] ?? $item['price']) + (float) ($item['homepage_price'] ?? 0), 2) }}</div>
+                                                    <div class="small text-muted text-decoration-line-through">{{ format_money_pay(($item['list_total'] ?? $item['price']) + (float) ($item['homepage_price'] ?? 0)) }}</div>
                                                 @endif
-                                                <div class="site-summary-price-value {{ empty($item['paying_now']) ? 'text-muted' : '' }}">€{{ number_format($item['price'], 2) }}</div>
+                                                <div class="site-summary-price-value {{ empty($item['paying_now']) ? 'text-muted' : '' }}">{{ format_money_pay($item['price']) }}</div>
                                                 @if(!empty($item['discount_labels']))
                                                     <div class="small text-success">{{ implode(' · ', $item['discount_labels']) }}</div>
                                                 @endif
@@ -144,12 +144,12 @@
                                         <div class="site-summary-details">
                                             <div class="site-summary-row">
                                                 <span>Base price</span>
-                                                <span class="site-summary-amount">€{{ number_format($item['base_price'], 2) }}</span>
+                                                <span class="site-summary-amount">{{ format_money_pay($item['base_price']) }}</span>
                                             </div>
                                             @if(!empty($item['discount_amount']) && $item['discount_amount'] > 0)
                                             <div class="site-summary-row">
                                                 <span>Discount savings</span>
-                                                <span class="site-summary-amount text-success">−€{{ number_format($item['discount_amount'], 2) }}</span>
+                                                <span class="site-summary-amount text-success">−{{ format_money_pay($item['discount_amount']) }}</span>
                                             </div>
                                             @endif
                                             @if($hasSensitive)
@@ -158,7 +158,7 @@
                                                         Sensitive topic
                                                         <strong>{{ ucfirst($item['sensitive_type']) }}</strong>
                                                     </span>
-                                                    <span class="site-summary-amount site-summary-amount-accent">+€{{ number_format($item['additional_price'], 2) }}</span>
+                                                    <span class="site-summary-amount site-summary-amount-accent">{{ format_money_pay($item['additional_price'], ['signed' => true]) }}</span>
                                                 </div>
                                             @endif
                                             @if(!empty($item['homepage_days']))
@@ -169,7 +169,7 @@
                                                     </span>
                                                     <span class="site-summary-amount">
                                                         @if(($item['homepage_price'] ?? 0) > 0)
-                                                            +€{{ number_format($item['homepage_price'], 2) }}
+                                                            {{ format_money_pay($item['homepage_price'], ['signed' => true]) }}
                                                         @else
                                                             Free
                                                         @endif
@@ -235,6 +235,56 @@
                                     @endfor
                                 @endforeach
                             </div>
+                        </div>
+                    </div>
+
+                    @php
+                        $checkoutProjects = $checkoutProjects ?? collect();
+                        $checkoutSelectedProjectId = $checkoutSelectedProjectId ?? null;
+                        $checkoutSuggestedProjectId = $checkoutSuggestedProjectId ?? null;
+                        $checkoutDuplicateHosts = $checkoutDuplicateHosts ?? [];
+                    @endphp
+                    <div class="card border-0 shadow-sm mb-4" id="checkoutProjectCard">
+                        <div class="card-header bg-white fw-semibold">
+                            <i class="fa fa-folder-open me-2"></i> Assign to a project
+                        </div>
+                        <div class="card-body">
+                            <p class="small text-muted mb-3">
+                                Optional. Attach these orders to a client project so Projects counts stay accurate even if the article destination host differs.
+                            </p>
+                            <label class="form-label fw-semibold" for="checkoutProjectId">Project</label>
+                            <select name="project_id" id="checkoutProjectId" class="form-select">
+                                <option value="">No project</option>
+                                @foreach($checkoutProjects as $checkoutProject)
+                                    <option value="{{ $checkoutProject->id }}"
+                                        @selected((int) $checkoutSelectedProjectId === (int) $checkoutProject->id)>
+                                        {{ $checkoutProject->project_name }}
+                                    </option>
+                                @endforeach
+                            </select>
+                            @if($checkoutProjects->isEmpty())
+                                <p class="small text-muted mt-2 mb-0">
+                                    No projects yet.
+                                    <a href="{{ route('advertiser.projects.index') }}">Create one</a>
+                                    to group placements by client site.
+                                </p>
+                            @elseif($checkoutSuggestedProjectId && (int) $checkoutSelectedProjectId === (int) $checkoutSuggestedProjectId)
+                                <p class="small text-muted mt-2 mb-0">Preselected from the article destination host.</p>
+                            @endif
+                            @if($checkoutDuplicateHosts !== [])
+                                <div class="alert alert-warning mt-3 mb-0" id="checkoutDuplicateHostWarning" role="status">
+                                    <div class="fw-semibold mb-1">You already have a placement on this destination</div>
+                                    <ul class="small mb-0 ps-3">
+                                        @foreach($checkoutDuplicateHosts as $dup)
+                                            <li>
+                                                {{ $dup['host'] }} · order {{ $dup['order_number'] }}
+                                                ({{ $dup['status'] }}@if(!empty($dup['project_name'])) · {{ $dup['project_name'] }}@endif)
+                                            </li>
+                                        @endforeach
+                                    </ul>
+                                    <p class="small mb-0 mt-2">You can still place this order if you want another link on the same site.</p>
+                                </div>
+                            @endif
                         </div>
                     </div>
 
@@ -372,8 +422,8 @@
                                  @if(empty($paypalConfigured)) aria-disabled="true" data-paypal-disabled="1" @endif
                                  @if(! $paypalNeedsAmount) aria-disabled="true" data-zero-amount="1" @endif>
                                 <div class="payment-option-card">
-                                    <div style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: #f3f4f6; border-radius: 8px; flex-shrink:0;">
-                                        <img src="{{ asset('assets/img/payments/paypal.svg') }}" alt="" width="40" height="11" style="width:40px;height:auto;" decoding="async">
+                                    <div style="width: 80px; height: 80px; display: flex; align-items: center; justify-content: center; background: #f3f4f6; border-radius: 8px; flex-shrink:0;">
+                                        <img src="{{ asset('assets/img/payments/paypal.png') }}" alt="PayPal" width="72" height="71" style="width:72px;height:auto;" decoding="async">
                                     </div>
                                     <div class="flex-grow-1">
                                         <span style="display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;">
@@ -477,7 +527,7 @@
                                     <div style="margin-bottom: 16px;">
                                         <p style="font-size: 14px; color: #6b7280; margin-bottom: 8px;">Amount to Pay:</p>
                                         <p style="font-size: 20px; font-weight: 600; color: #1f2937; margin: 0;" id="walletAmountDue">
-                                            €{{ number_format($total, 2) }}
+                                            {{ format_money_pay($total) }}
                                         </p>
                                     </div>
                                     
@@ -685,8 +735,8 @@
                         <div id="paypalPaymentDetails" class="card border-0 shadow-sm mb-4" style="display: none;">
                             <div class="card-body">
                                 <div style="display: flex; align-items: center; margin-bottom: 16px;">
-                                    <div style="width: 40px; height: 40px; background: #f3f4f6; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-right: 12px;">
-                                        <img src="{{ asset('assets/img/payments/paypal.svg') }}" alt="" width="32" height="9" style="width:32px;height:auto;" decoding="async">
+                                    <div style="width: 64px; height: 64px; background: #f3f4f6; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-right: 12px;">
+                                        <img src="{{ asset('assets/img/payments/paypal.png') }}" alt="PayPal" width="56" height="55" style="width:56px;height:auto;" decoding="async">
                                     </div>
                                     <div>
                                         <h3 style="font-size: 18px; font-weight: 600; margin: 0;">PayPal</h3>
@@ -713,7 +763,7 @@
                         <div class="card-body">
                             <div class="d-flex justify-content-between mb-2">
                                 <span class="text-muted">Subtotal:</span>
-                                <span id="subtotal">€{{ number_format($total, 2) }}</span>
+                                <span id="subtotal">{{ format_money_pay($total) }}</span>
                             </div>
                             <div class="d-flex justify-content-between mb-2">
                                 <span class="text-muted">Tax (0%):</span>
@@ -741,10 +791,10 @@
                             <hr>
                             <div class="d-flex justify-content-between mb-1">
                                 <strong>Amount due:</strong>
-                                <strong class="checkout-theme-price fs-5" id="grandTotal">€{{ number_format($total, 2) }}</strong>
+                                <strong class="checkout-theme-price fs-5" id="grandTotal">{{ format_money_pay($total) }}</strong>
                             </div>
                             @if(!empty($savings) && $savings > 0)
-                                <div class="small text-success mb-3">You save €{{ number_format($savings, 2) }} with active discounts</div>
+                                <div class="small text-success mb-3">You save {{ format_money_pay($savings) }} with active discounts</div>
                             @else
                                 <div class="mb-3"></div>
                             @endif
@@ -762,10 +812,10 @@
                                 </div>
                             </div>
 
-                            <div class="alert alert-warning py-2 px-3 mb-3">
-                                <i class="fas fa-exclamation-triangle me-1"></i>
-                                <small>Please include <strong id="refCodeDisplay">REF{{ $checkoutReferenceCode }}</strong> in your payment note for manual payments. For card payments, reference is auto-recorded.</small>
-                            </div>
+                            <p class="small text-muted mb-3" id="refHintBox">
+                                Wallet, card, and PayPal record <strong id="refCodeDisplay" class="font-monospace">REF{{ $checkoutReferenceCode }}</strong> automatically.
+                                Bank, Wise, and crypto use Add Funds first.
+                            </p>
 
                             <button type="button" id="placeOrderBtn" class="btn btn-primary w-100 mt-3">
                                 <i class="fa fa-check-circle"></i> Place Order
@@ -775,9 +825,22 @@
                                 @include('partials.payment-trust', ['compact' => true, 'showMethods' => false])
                             </div>
 
-                            <a href="{{ route('advertiser.catalog') }}" class="btn btn-outline-secondary w-100 mt-2">
+                            <a href="{{ route('advertiser.catalog') }}" id="continueShopping" class="btn btn-outline-secondary w-100 mt-2">
                                 <i class="fa fa-arrow-left"></i> Continue Shopping
                             </a>
+                            <script>
+                            (function () {
+                                try {
+                                    var stored = sessionStorage.getItem('slb_catalog_return') || '';
+                                    var catalogPath = @json(parse_url(route('advertiser.catalog'), PHP_URL_PATH) ?: '/advertiser/catalog');
+                                    var path = stored.split('?')[0];
+                                    if (stored.charAt(0) !== '/' || stored.indexOf('//') !== -1 || stored.indexOf('\\') !== -1) return;
+                                    if (path !== catalogPath && path !== catalogPath + '/') return;
+                                    var link = document.getElementById('continueShopping');
+                                    if (link) link.setAttribute('href', stored);
+                                } catch (_) {}
+                            })();
+                            </script>
                         </div>
                     </div>
                 </div>
@@ -1249,10 +1312,15 @@ document.addEventListener('DOMContentLoaded', function() {
     const refCodeTexts = document.querySelectorAll('.ref-code-display');
     
     function updateReferenceCode() {
-        if (refCodeDisplay) refCodeDisplay.innerText = referenceCode;
-        if (refCodeDisplaySpan) refCodeDisplaySpan.innerText = `REF${referenceCode}`;
+        const raw = String(referenceCode || '').trim();
+        const digits = raw.replace(/^REF/i, '');
+        if (!digits || /^x+$/i.test(digits) || digits === '—' || digits === '-') {
+            return;
+        }
+        if (refCodeDisplay) refCodeDisplay.innerText = digits;
+        if (refCodeDisplaySpan) refCodeDisplaySpan.innerText = `REF${digits}`;
         refCodeTexts.forEach(el => {
-            el.innerText = `REF${referenceCode}`;
+            el.innerText = `REF${digits}`;
         });
     }
     
@@ -1263,7 +1331,11 @@ document.addEventListener('DOMContentLoaded', function() {
             const targetId = this.dataset.target;
             const textEl = document.getElementById(targetId);
             if (textEl) {
-                const textToCopy = `REF${textEl.innerText}`;
+                const digits = String(textEl.innerText || '').replace(/^REF/i, '').trim();
+                if (!digits || /^x+$/i.test(digits) || digits === '—') {
+                    return;
+                }
+                const textToCopy = `REF${digits}`;
                 navigator.clipboard.writeText(textToCopy).then(() => {
                     const originalHtml = this.innerHTML;
                     this.innerHTML = '<i class="fas fa-check"></i> Copied!';
@@ -1308,7 +1380,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function moneyFmt(n) {
-        return '€' + Number(n || 0).toFixed(2);
+        return (window.slbFormatPay || function (v) { return '€' + Number(v || 0).toFixed(2); })(n);
     }
 
     function refreshBonusUi() {
@@ -1589,6 +1661,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 scheduled_date: schedule.scheduled_date || null,
                 scheduled_time: schedule.scheduled_time || null,
                 timezone: schedule.timezone || null,
+                project_id: (function () {
+                    const el = document.getElementById('checkoutProjectId');
+                    return el && el.value ? el.value : null;
+                })(),
                 payment_method_id: (function () {
                     const picked = document.querySelector('input[name="saved_card_choice"]:checked');
                     if (selectedMethod !== 'card') return null;
@@ -1742,8 +1818,9 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 
 <!-- SweetAlert2 for better alerts -->  
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="{{ asset('assets/vendor/sweetalert2/sweetalert2.min.js') }}?v={{ @filemtime(public_path('assets/vendor/sweetalert2/sweetalert2.min.js')) ?: '1' }}"></script>
 <!-- Font Awesome -->
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+<link href="{{ asset('assets/css/slb-icons.css') }}?v={{ @filemtime(public_path('assets/css/slb-icons.css')) ?: '1' }}" rel="stylesheet">
+@include('partials.slb-icon-draw')
 
 @endsection

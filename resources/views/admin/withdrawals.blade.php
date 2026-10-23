@@ -231,8 +231,8 @@
 </div>
 
 
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="{{ asset('assets/js/jquery-3.6.0.min.js') }}?v={{ @filemtime(public_path('assets/js/jquery-3.6.0.min.js')) ?: '1' }}"></script>
+<script src="{{ asset('assets/vendor/sweetalert2/sweetalert2.min.js') }}?v={{ @filemtime(public_path('assets/vendor/sweetalert2/sweetalert2.min.js')) ?: '1' }}"></script>
 
 <script>
 let currentPage = 1;
@@ -308,7 +308,7 @@ function getStatusClass(status) {
 function getPaymentMethodBadge(method) {
     const badges = {
         bank: '<span class="badge bg-secondary bg-opacity-10 text-secondary px-2 py-1"><i class="fa fa-university me-1"></i>Bank</span>',
-        paypal: '<span class="badge bg-primary bg-opacity-10 text-primary px-2 py-1"><i class="fab fa-paypal me-1"></i>PayPal</span>',
+        paypal: '<span class="badge bg-primary bg-opacity-10 text-primary px-2 py-1"><img src="{{ asset('assets/img/payments/paypal.png') }}" alt="" width="20" height="20" style="width:20px;height:20px;vertical-align:-4px;margin-right:4px">PayPal</span>',
         wise: '<span class="badge bg-info bg-opacity-10 text-info px-2 py-1"><i class="fa fa-exchange-alt me-1"></i>Wise</span>',
         crypto: '<span class="badge bg-warning bg-opacity-10 text-warning px-2 py-1"><i class="fab fa-bitcoin me-1"></i>Crypto</span>'
     };

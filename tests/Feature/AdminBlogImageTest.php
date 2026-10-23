@@ -450,11 +450,16 @@ class AdminBlogImageTest extends TestCase
             '/media/blogs/featured/gastbeitraege-europa-featured.jpg',
             $blog->featuredImageUrl()
         );
+        $this->assertNull($blog->publicFeaturedImageUrl());
 
         Storage::disk('public')->put('blogs/content/gastbeitraege-europa-featured.jpg', 'content-copy');
         $this->assertSame(
             '/media/blogs/content/gastbeitraege-europa-featured.jpg',
             $blog->featuredImageUrl()
+        );
+        $this->assertSame(
+            '/media/blogs/content/gastbeitraege-europa-featured.jpg',
+            $blog->publicFeaturedImageUrl()
         );
 
         Storage::disk('public')->put('blogs/featured/gastbeitraege-europa-featured.jpg', 'featured-copy');

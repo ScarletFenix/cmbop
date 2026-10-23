@@ -35,7 +35,7 @@ class AdminBlogLocaleTabsTest extends TestCase
 
         $this->assertStringContainsString('locale-pane-en', $html);
         $this->assertStringContainsString('UK', $html);
-        foreach (['us', 'es', 'it', 'de', 'fr', 'nl'] as $locale) {
+        foreach (PublicI18n::prefixed() as $locale) {
             $this->assertStringContainsString('locale-pane-'.$locale, $html);
             $this->assertStringContainsString('quillEditor-'.$locale, $html);
         }

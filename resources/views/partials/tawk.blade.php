@@ -1,24 +1,122 @@
 {{-- Visitor chat (public + advertiser/publisher). Order chat is separate. --}}
-@if (\App\Support\VisitorSupportChat::enabled())
-    @include('partials.visitor-support-chat')
 @php
+    $useFirstParty = class_exists(\App\Support\VisitorSupportChat::class)
+        && method_exists(\App\Support\VisitorSupportChat::class, 'enabled')
+        && \App\Support\VisitorSupportChat::enabled()
+        && view()->exists('partials.visitor-support-chat');
     $tawkSrc = null;
-@endphp
-@else
-@php
-    $tawkSrc = \App\Support\TawkChat::embedSrc();
     $tawkVisitor = null;
-    if ($tawkSrc && auth()->check()) {
-        $user = auth()->user();
-        $name = trim((string) ($user->name ?? ''));
-        $email = trim((string) ($user->email ?? ''));
-        if ($name !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            $tawkVisitor = ['name' => $name, 'email' => $email];
+    $supportRole = 'guest';
+    if (auth()->check()) {
+        $roleUser = auth()->user();
+        $roleName = '';
+        if (is_object($roleUser) && method_exists($roleUser, 'activeRoleModel')) {
+            $activeRole = $roleUser->activeRoleModel();
+            $roleName = strtolower(trim((string) ($activeRole->name ?? '')));
+        }
+        if (in_array($roleName, ['advertiser', 'publisher'], true)) {
+            $supportRole = $roleName;
+        }
+    }
+    $supportQuestions = match ($supportRole) {
+        'advertiser' => [
+            'How do I place an order?',
+            'How does the wallet work?',
+            'Where do I track a live URL?',
+        ],
+        'publisher' => [
+            'How do I add a website?',
+            'When do payouts arrive?',
+            'How do I accept an order?',
+        ],
+        default => [
+            'How do I create an account?',
+            'How does the marketplace work?',
+            'What does a placement cost?',
+        ],
+    };
+    if (class_exists(\App\Support\TawkChat::class)
+        && method_exists(\App\Support\TawkChat::class, 'embedSrc')) {
+        $tawkSrc = \App\Support\TawkChat::embedSrc();
+        if ($tawkSrc && auth()->check()) {
+            $user = auth()->user();
+            $name = trim((string) ($user->name ?? ''));
+            $email = trim((string) ($user->email ?? ''));
+            if ($name !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                $tawkVisitor = ['name' => $name, 'email' => $email];
+            }
         }
     }
 @endphp
 @if ($tawkSrc)
+<script src="{{ asset('assets/vendor/lottie-web/lottie_light.min.js') }}?v={{ @filemtime(public_path('assets/vendor/lottie-web/lottie_light.min.js')) ?: '1' }}" defer></script>
 <script>
+(function () {
+  if (!window.fetch || window.fetch.__slbTheme) return;
+  var nativeFetch = window.fetch.bind(window);
+  var supportQuestions = @json($supportQuestions);
+  function paintTheme(data) {
+    var widget = data && data.data && data.data.widget;
+    if (!widget) return;
+    var theme = widget.theme || (widget.theme = {});
+    theme.header = theme.header || {};
+    theme.header.background = '#1a585e';
+    theme.header.text = '#ffffff';
+    theme.agent = theme.agent || {};
+    theme.agent.messageBackground = '#1a585e';
+    theme.agent.messageText = '#ffffff';
+    walkWidget(widget);
+    addQuestions(widget);
+  }
+  function walkWidget(node) {
+    if (!node || typeof node !== 'object') return;
+    if (typeof node.value === 'string' && node.value.trim().toLowerCase() === 'customer support') {
+      node.value = 'SEOLinkBuildings';
+    }
+    if (Array.isArray(node.options) && node.options.length && node.options[0] && typeof node.options[0].text === 'string') {
+      node.options = supportQuestions.map(function (question, index) {
+        var copy = Object.assign({}, node.options[Math.min(index, node.options.length - 1)] || {});
+        copy.text = question;
+        return copy;
+      });
+    }
+    Object.keys(node).forEach(function (key) { walkWidget(node[key]); });
+  }
+  function addQuestions(widget) {
+    var states = widget.states || {};
+    Object.keys(states).forEach(function (key) {
+      var state = states[key];
+      if (!state || !Array.isArray(state.body)) return;
+      if (state.body.some(function (card) { return card && String(card.id || '').indexOf('slb-q-') === 0; })) return;
+      supportQuestions.forEach(function (question, index) {
+        state.body.push({
+          id: 'slb-q-' + index,
+          type: 'text',
+          content: { value: question, alignment: 'left' }
+        });
+      });
+    });
+  }
+  var wrapped = function (input, init) {
+    var url = typeof input === 'string' ? input : (input && input.url) || '';
+    var pending = nativeFetch(input, init);
+    if (url.indexOf('va.tawk.to/v1/widget-settings') === -1) return pending;
+    return pending.then(function (response) {
+      return response.clone().json().then(function (data) {
+        paintTheme(data);
+        var headers = new Headers(response.headers);
+        headers.delete('content-length');
+        return new Response(JSON.stringify(data), {
+          status: response.status,
+          statusText: response.statusText,
+          headers: headers
+        });
+      }).catch(function () { return response; });
+    });
+  };
+  wrapped.__slbTheme = true;
+  window.fetch = wrapped;
+})();
 var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date();
 Tawk_API.customStyle = {
   zIndex: 1080,
@@ -31,135 +129,136 @@ Tawk_API.customStyle = {
 Tawk_API.visitor = {!! json_encode($tawkVisitor, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) !!};
 @endif
 (function () {
-  var pinning = false;
-  var observer = null;
-  var bootCollapse = true;
-  var tawkIframes = 'iframe[title="chat widget"], iframe[title="Chat widget"], iframe[src*="tawk.to"]';
+  var launcher = document.createElement('button');
+  launcher.type = 'button';
+  launcher.className = 'slb-chat-mark';
+  launcher.setAttribute('aria-label', 'Open chat');
+  launcher.style.cssText = 'position:fixed;right:16px;bottom:20px;z-index:1081;width:84px;height:84px;padding:0;border:0;background:transparent;cursor:pointer;line-height:0;overflow:hidden';
+  document.body.appendChild(launcher);
 
-  function pinBox(el) {
-    if (!el || !el.style) return;
-    el.style.setProperty('position', 'fixed', 'important');
-    el.style.setProperty('top', 'auto', 'important');
-    el.style.setProperty('left', 'auto', 'important');
-    el.style.setProperty('right', '16px', 'important');
-    el.style.setProperty('bottom', '20px', 'important');
-    el.style.setProperty('margin', '0', 'important');
-    el.style.setProperty('transform', 'none', 'important');
-    el.style.setProperty('z-index', '1080', 'important');
-    el.style.setProperty('flex', '0 0 auto', 'important');
-    el.style.setProperty('align-self', 'flex-end', 'important');
-  }
-
-  function setOpen(open) {
-    document.documentElement.classList.toggle('tawk-open', !!open);
-  }
-
-  function watchTawk() {
-    if (!observer || !document.body) return;
-    observer.disconnect();
-    observer.observe(document.body, { childList: true, subtree: true });
-    document.querySelectorAll(tawkIframes).forEach(function (iframe) {
-      observer.observe(iframe, { attributes: true, attributeFilter: ['style', 'src', 'title'] });
-      var wrap = iframe.parentElement;
-      if (wrap && wrap !== document.body && wrap !== document.documentElement) {
-        observer.observe(wrap, { attributes: true, attributeFilter: ['style'] });
+  function paintMark() {
+    if (!window.lottie || launcher.dataset.ready === '1') return;
+    launcher.dataset.ready = '1';
+    var anim = window.lottie.loadAnimation({
+      container: launcher,
+      renderer: 'svg',
+      loop: false,
+      autoplay: false,
+      path: @json(asset('assets/vendor/lottie/chat-box.json').'?v='.(@filemtime(public_path('assets/vendor/lottie/chat-box.json')) ?: '1'))
+    });
+    function restMark() {
+      anim.loop = false;
+      anim.goToAndStop(40, true);
+    }
+    anim.addEventListener('DOMLoaded', function () {
+      restMark();
+      var svg = launcher.querySelector('svg');
+      if (svg) {
+        svg.style.width = '84px';
+        svg.style.height = '84px';
       }
     });
+    launcher.addEventListener('mouseenter', function () {
+      anim.loop = true;
+      anim.play();
+    });
+    launcher.addEventListener('mouseleave', restMark);
+  }
+  if (document.readyState === 'complete') paintMark();
+  window.addEventListener('load', paintMark);
+  var paintTimer = setInterval(function () {
+    if (window.lottie) { clearInterval(paintTimer); paintMark(); }
+  }, 50);
+
+  function lockPage(open) {
+    document.documentElement.classList.toggle('slb-tawk-open', !!open);
+    launcher.classList.remove('is-hidden');
+    launcher.setAttribute('aria-label', open ? 'Close chat' : 'Open chat');
+    launcher.style.zIndex = open ? '1000003' : '1081';
   }
 
-  window.slbPinTawk = function () {
-    if (pinning) return;
-    pinning = true;
-    if (observer) observer.disconnect();
+  var hidingBubble = false;
+  function hideBubble() {
+    if (hidingBubble) return;
+    hidingBubble = true;
     try {
-      var open = document.documentElement.classList.contains('tawk-open');
-      document.querySelectorAll(tawkIframes).forEach(function (iframe) {
-        pinBox(iframe);
-        if (open) {
-          iframe.style.setProperty('max-width', 'min(400px, calc(100vw - 24px))', 'important');
-          iframe.style.setProperty('max-height', 'min(640px, calc(100dvh - 24px))', 'important');
-        } else {
-          iframe.style.removeProperty('max-width');
-          iframe.style.removeProperty('max-height');
-        }
-        var wrap = iframe.parentElement;
-        if (wrap && wrap !== document.body && wrap !== document.documentElement) {
-          pinBox(wrap);
-          wrap.style.setProperty('width', 'auto', 'important');
-          wrap.style.setProperty('height', 'auto', 'important');
+      document.querySelectorAll('iframe[title="chat widget"], iframe[title="Chat widget"]').forEach(function (iframe) {
+        if (iframe.offsetWidth > 0 && iframe.offsetWidth < 160 && iframe.offsetHeight < 160 && iframe.style.visibility !== 'hidden') {
+          iframe.style.setProperty('visibility', 'hidden', 'important');
+          iframe.style.setProperty('pointer-events', 'none', 'important');
         }
       });
+      if (!document.documentElement.classList.contains('slb-tawk-open') && window.Tawk_API && typeof window.Tawk_API.hideWidget === 'function') {
+        window.Tawk_API.hideWidget();
+      }
     } finally {
-      pinning = false;
-      watchTawk();
+      hidingBubble = false;
     }
-  };
+  }
+  new MutationObserver(function () { hideBubble(); }).observe(document.body, { childList: true, subtree: true });
 
-  function collapseUnlessRequested() {
-    if (window.slbTawkKeepOpen) return;
-    setOpen(false);
+  function closeChat() {
+    window.slbTawkKeepOpen = false;
+    lockPage(false);
     if (window.Tawk_API && typeof window.Tawk_API.minimize === 'function') {
       window.Tawk_API.minimize();
     }
-    window.slbPinTawk();
+    hideBubble();
   }
 
-  if (document.body) {
-    observer = new MutationObserver(function () { window.slbPinTawk(); });
-    watchTawk();
+  function openChat() {
+    if (!(window.Tawk_API && typeof window.Tawk_API.maximize === 'function')) return false;
+    window.slbTawkKeepOpen = true;
+    if (typeof window.Tawk_API.showWidget === 'function') window.Tawk_API.showWidget();
+    window.Tawk_API.maximize();
+    lockPage(true);
+    return true;
   }
-  window.addEventListener('resize', function () { window.slbPinTawk(); });
+
+  launcher.addEventListener('click', function (event) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (document.documentElement.classList.contains('slb-tawk-open')) closeChat();
+    else openChat();
+  });
+
+  document.addEventListener('pointerdown', function (event) {
+    if (!document.documentElement.classList.contains('slb-tawk-open')) return;
+    if (launcher.contains(event.target)) return;
+    if (event.target && event.target.closest && event.target.closest('iframe[src*="tawk.to"], iframe[title="chat widget"], iframe[title="Chat widget"]')) return;
+    closeChat();
+  });
 
   Tawk_API.onLoad = function () {
-    collapseUnlessRequested();
-    setTimeout(collapseUnlessRequested, 400);
-    setTimeout(function () {
-      collapseUnlessRequested();
-      bootCollapse = false;
-    }, 1500);
-  };
-  Tawk_API.onChatMaximized = function () {
-    if (bootCollapse && !window.slbTawkKeepOpen) {
-      collapseUnlessRequested();
-      return;
-    }
-    setOpen(true);
-    window.slbPinTawk();
+    if (window.slbTawkKeepOpen) return;
+    if (typeof Tawk_API.minimize === 'function') Tawk_API.minimize();
+    hideBubble();
+    lockPage(false);
   };
   Tawk_API.onChatMinimized = function () {
     window.slbTawkKeepOpen = false;
-    setOpen(false);
-    window.slbPinTawk();
+    hideBubble();
+    lockPage(false);
+  };
+  Tawk_API.onChatMaximized = function () {
+    lockPage(true);
+  };
+
+  window.slbOpenSupport = function () {
+    window.slbTawkKeepOpen = true;
+    if (openChat()) return;
+    var tries = 0;
+    var timer = setInterval(function () {
+      tries += 1;
+      if (openChat() || tries > 25) {
+        clearInterval(timer);
+        if (!(window.Tawk_API && window.Tawk_API.isChatMaximized && window.Tawk_API.isChatMaximized())) {
+          window.slbTawkKeepOpen = false;
+        }
+      }
+    }, 200);
   };
 })();
-window.slbOpenSupport = function () {
-  window.slbTawkKeepOpen = true;
-  function openTawk() {
-    if (window.Tawk_API && typeof window.Tawk_API.maximize === 'function') {
-      document.documentElement.classList.add('tawk-open');
-      window.Tawk_API.maximize();
-      window.slbPinTawk && window.slbPinTawk();
-      return true;
-    }
-    return false;
-  }
-  if (openTawk()) return;
-  var toggle = document.getElementById('helpFeedbackToggle');
-  if (toggle) {
-    toggle.click();
-    return;
-  }
-  var tries = 0;
-  var timer = setInterval(function () {
-    tries += 1;
-    if (openTawk() || tries > 25) {
-      clearInterval(timer);
-      if (!document.documentElement.classList.contains('tawk-open')) {
-        window.slbTawkKeepOpen = false;
-      }
-    }
-  }, 200);
-};
 (function(){
 var s1=document.createElement('script'),s0=document.getElementsByTagName('script')[0];
 s1.async=true;
@@ -169,6 +268,8 @@ s1.setAttribute('crossorigin','*');
 s0.parentNode.insertBefore(s1,s0);
 })();
 </script>
+@elseif ($useFirstParty)
+    @include('partials.visitor-support-chat')
 @else
 <script>
 window.slbOpenSupport = function () {
@@ -176,5 +277,4 @@ window.slbOpenSupport = function () {
   if (toggle) toggle.click();
 };
 </script>
-@endif
 @endif

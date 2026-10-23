@@ -1,20 +1,19 @@
 @extends('advertiser.layouts.app')
 
 @push('page-styles')
+<link href="{{ asset('assets/css/single-select.css') }}?v={{ @filemtime(public_path('assets/css/single-select.css')) ?: '1' }}" rel="stylesheet">
 <link rel="stylesheet" href="{{ same_origin_asset('assets/css/advertiser-orders.css') }}?v={{ @filemtime(public_path('assets/css/advertiser-orders.css')) ?: '1' }}">
 @endpush
 
 @section('content')
-<div class="container-fluid">
+<div class="container-fluid orders-page">
     
     <!-- HEADER -->
-    <div class="row mb-4">
-        <div class="col-md-12">
-            <h2 class="mb-1 fw-semibold">My Orders</h2>
-            <p class="text-muted mb-0">
-                Track each order from payment to live publication.
-            </p>
-        </div>
+    <div class="orders-page-header">
+        <h2 class="orders-page-title">My Orders</h2>
+        <p class="orders-page-sub">
+            Track each order from payment to live publication.
+        </p>
     </div>
 
     <!-- Funnel KPIs -->
@@ -104,41 +103,59 @@
 
                     <div class="orders-filter-bar__select">
                         <label class="form-label fw-semibold small text-muted mb-1" for="statusFilter">Order Status</label>
-                        <select name="status" id="statusFilter" class="form-select form-select-sm">
-                            <option value="">All Status</option>
-                            <option value="awaiting_payment" {{ request('status') == 'awaiting_payment' ? 'selected' : '' }}>Awaiting payment</option>
-                            <option value="awaiting_publisher" {{ request('status') == 'awaiting_publisher' ? 'selected' : '' }}>Awaiting publisher</option>
-                            <option value="in_progress" {{ request('status') == 'in_progress' ? 'selected' : '' }}>In progress</option>
-                            <option value="needs_action" {{ request('status') == 'needs_action' ? 'selected' : '' }}>Needs your attention</option>
-                            <option value="processing" {{ request('status') == 'processing' ? 'selected' : '' }}>Publisher working</option>
-                            <option value="review" {{ request('status') == 'review' ? 'selected' : '' }}>Needs your review</option>
-                            <option value="completed" {{ request('status') == 'completed' ? 'selected' : '' }}>Completed</option>
-                            <option value="cancelled" {{ request('status') == 'cancelled' ? 'selected' : '' }}>Cancelled</option>
-                        </select>
+                        @include('advertiser.partials.library-theme-select', [
+                            'selectId' => 'statusFilter',
+                            'name' => 'status',
+                            'label' => 'Order Status',
+                            'current' => search_text(request('status')),
+                            'options' => [
+                                ['value' => '', 'label' => 'All Status'],
+                                ['value' => 'awaiting_payment', 'label' => 'Awaiting payment'],
+                                ['value' => 'awaiting_publisher', 'label' => 'Awaiting publisher'],
+                                ['value' => 'in_progress', 'label' => 'In progress'],
+                                ['value' => 'needs_action', 'label' => 'Needs your attention'],
+                                ['value' => 'processing', 'label' => 'Publisher working'],
+                                ['value' => 'review', 'label' => 'Needs your review'],
+                                ['value' => 'completed', 'label' => 'Completed'],
+                                ['value' => 'cancelled', 'label' => 'Cancelled'],
+                            ],
+                        ])
                     </div>
 
                     <div class="orders-filter-bar__select">
                         <label class="form-label fw-semibold small text-muted mb-1" for="paymentMethodFilter">Payment Method</label>
-                        <select name="payment_method" id="paymentMethodFilter" class="form-select form-select-sm">
-                            <option value="">All Methods</option>
-                            <option value="wallet" {{ request('payment_method') == 'wallet' ? 'selected' : '' }}>Wallet Balance</option>
-                            <option value="wise" {{ request('payment_method') == 'wise' ? 'selected' : '' }}>Wise Transfer</option>
-                            <option value="crypto" {{ request('payment_method') == 'crypto' ? 'selected' : '' }}>Cryptocurrency</option>
-                            <option value="bank" {{ request('payment_method') == 'bank' ? 'selected' : '' }}>Bank Transfer</option>
-                            <option value="card" {{ request('payment_method') == 'card' ? 'selected' : '' }}>Card Payment</option>
-                            <option value="paypal" {{ request('payment_method') == 'paypal' ? 'selected' : '' }}>PayPal</option>
-                        </select>
+                        @include('advertiser.partials.library-theme-select', [
+                            'selectId' => 'paymentMethodFilter',
+                            'name' => 'payment_method',
+                            'label' => 'Payment Method',
+                            'current' => search_text(request('payment_method')),
+                            'options' => [
+                                ['value' => '', 'label' => 'All Methods'],
+                                ['value' => 'wallet', 'label' => 'Wallet Balance'],
+                                ['value' => 'wise', 'label' => 'Wise Transfer'],
+                                ['value' => 'crypto', 'label' => 'Cryptocurrency'],
+                                ['value' => 'bank', 'label' => 'Bank Transfer'],
+                                ['value' => 'card', 'label' => 'Card Payment'],
+                                ['value' => 'paypal', 'label' => 'PayPal'],
+                            ],
+                        ])
                     </div>
 
                     <div class="orders-filter-bar__select">
                         <label class="form-label fw-semibold small text-muted mb-1" for="paymentStatusFilter">Payment Status</label>
-                        <select name="payment_status" id="paymentStatusFilter" class="form-select form-select-sm">
-                            <option value="">All Status</option>
-                            <option value="paid" {{ request('payment_status') == 'paid' ? 'selected' : '' }}>Paid</option>
-                            <option value="pending" {{ request('payment_status') == 'pending' ? 'selected' : '' }}>Pending</option>
-                            <option value="failed" {{ request('payment_status') == 'failed' ? 'selected' : '' }}>Failed</option>
-                            <option value="refunded" {{ request('payment_status') == 'refunded' ? 'selected' : '' }}>Refunded</option>
-                        </select>
+                        @include('advertiser.partials.library-theme-select', [
+                            'selectId' => 'paymentStatusFilter',
+                            'name' => 'payment_status',
+                            'label' => 'Payment Status',
+                            'current' => search_text(request('payment_status')),
+                            'options' => [
+                                ['value' => '', 'label' => 'All Status'],
+                                ['value' => 'paid', 'label' => 'Paid'],
+                                ['value' => 'pending', 'label' => 'Pending'],
+                                ['value' => 'failed', 'label' => 'Failed'],
+                                ['value' => 'refunded', 'label' => 'Refunded'],
+                            ],
+                        ])
                     </div>
 
                     <div class="orders-filter-bar__dates">
@@ -163,10 +180,10 @@
 
                     <div class="orders-filter-bar__actions">
                         <button type="submit" class="btn btn-sm btn-primary px-3">
-                            <i class="fa-solid fa-filter me-1"></i> Filter
+                            <i class="fa-solid fa-filter" aria-hidden="true"></i> Filter
                         </button>
                         <button type="button" id="resetFilters" class="btn btn-sm btn-cta-secondary px-3">
-                            <i class="fa-solid fa-rotate-right me-1"></i> Reset
+                            <i class="fa-solid fa-rotate-right" aria-hidden="true"></i> Reset
                         </button>
                     </div>
                 </div>
@@ -212,12 +229,22 @@
             </div>
             <div class="orders-history-head__meta">
                 <label class="small text-muted mb-0" for="ordersSort">Sort</label>
-                <select id="ordersSort" name="sort" class="form-select form-select-sm orders-sort-select" aria-label="Sort orders">
-                    <option value="attention" {{ search_text(request('sort')) === '' || search_text(request('sort')) === 'attention' ? 'selected' : '' }}>Needs attention first</option>
-                    <option value="date_desc" {{ search_text(request('sort')) === 'date_desc' ? 'selected' : '' }}>Newest first</option>
-                    <option value="date_asc" {{ search_text(request('sort')) === 'date_asc' ? 'selected' : '' }}>Oldest first</option>
-                    <option value="total_desc" {{ search_text(request('sort')) === 'total_desc' ? 'selected' : '' }}>Highest total</option>
-                </select>
+                <div class="orders-sort-select">
+                    @include('advertiser.partials.library-theme-select', [
+                        'selectId' => 'ordersSort',
+                        'name' => 'sort',
+                        'label' => 'Sort orders',
+                        'current' => in_array(search_text(request('sort')), ['date_desc', 'date_asc', 'total_desc'], true)
+                            ? search_text(request('sort'))
+                            : 'attention',
+                        'options' => [
+                            ['value' => 'attention', 'label' => 'Needs attention first'],
+                            ['value' => 'date_desc', 'label' => 'Newest first'],
+                            ['value' => 'date_asc', 'label' => 'Oldest first'],
+                            ['value' => 'total_desc', 'label' => 'Highest total'],
+                        ],
+                    ])
+                </div>
                 <small class="text-muted" id="resultsCount"></small>
             </div>
         </div>
@@ -318,5 +345,6 @@ window.AdvertiserOrdersConfig = {
     },
 };
 </script>
+<script src="{{ asset('assets/js/single-select.js') }}?v={{ @filemtime(public_path('assets/js/single-select.js')) ?: '1' }}" defer></script>
 <script src="{{ same_origin_asset('assets/js/advertiser-orders.js') }}?v={{ @filemtime(public_path('assets/js/advertiser-orders.js')) ?: '1' }}" defer></script>
 @endpush

@@ -17,6 +17,12 @@ class LocalizedPublicPathTest extends TestCase
         $this->assertSame('blog', LocalizedPublicPath::for('blog', 'de'));
         $this->assertSame('about', LocalizedPublicPath::for('about', 'en'));
         $this->assertSame('about', LocalizedPublicPath::for('about', 'us'));
+        $this->assertSame('ueber-uns', LocalizedPublicPath::for('about', 'at'));
+        $this->assertSame('marktplatz', LocalizedPublicPath::for('marketplace', 'ch'));
+        $this->assertSame('despre-noi', LocalizedPublicPath::for('about', 'ro'));
+        $this->assertSame('agora', LocalizedPublicPath::for('marketplace', 'gr'));
+        $this->assertSame('o-nas', LocalizedPublicPath::for('about', 'pl'));
+        $this->assertSame('rynek', LocalizedPublicPath::for('marketplace', 'pl'));
     }
 
     public function test_canonicalize_round_trips_localized_segments(): void

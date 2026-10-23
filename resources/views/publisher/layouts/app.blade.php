@@ -17,8 +17,8 @@
     <link rel="dns-prefetch" href="https://fonts.googleapis.com">
     <link rel="dns-prefetch" href="https://fonts.gstatic.com">
 
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ asset('assets/vendor/bootstrap-5.3.0/bootstrap.min.css') }}?v={{ @filemtime(public_path('assets/vendor/bootstrap-5.3.0/bootstrap.min.css')) ?: '1' }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/slb-icons.css') }}?v={{ @filemtime(public_path('assets/css/slb-icons.css')) ?: '1' }}" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link href="{{ asset('assets/css/type-system.css') }}?v={{ @filemtime(public_path('assets/css/type-system.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('assets/css/brand-colors.css') }}?v={{ @filemtime(public_path('assets/css/brand-colors.css')) ?: '1' }}" rel="stylesheet">
@@ -36,7 +36,10 @@
     <link href="{{ asset('assets/css/dialog-system.css') }}?v={{ @filemtime(public_path('assets/css/dialog-system.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('assets/css/slb-live-search.css') }}?v={{ @filemtime(public_path('assets/css/slb-live-search.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('assets/css/publisher-dashboard.css') }}?v={{ @filemtime(public_path('assets/css/publisher-dashboard.css')) ?: '1' }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/slb-loader.css') }}?v={{ @filemtime(public_path('assets/css/slb-loader.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('assets/css/hover-system.css') }}?v={{ @filemtime(public_path('assets/css/hover-system.css')) ?: '1' }}" rel="stylesheet">
+    <script src="{{ asset('assets/vendor/lottie-web/lottie_light.min.js') }}?v={{ @filemtime(public_path('assets/vendor/lottie-web/lottie_light.min.js')) ?: '1' }}" defer></script>
+    <script src="{{ asset('assets/js/slb-loader.js') }}?v={{ @filemtime(public_path('assets/js/slb-loader.js')) ?: '1' }}" defer></script>
     <script src="{{ asset('assets/js/glass-tip.js') }}?v={{ @filemtime(public_path('assets/js/glass-tip.js')) ?: '1' }}" defer></script>
     <script src="{{ asset('assets/js/pulse-badge.js') }}?v={{ @filemtime(public_path('assets/js/pulse-badge.js')) ?: '1' }}" defer></script>
     <script src="{{ asset('assets/js/single-select.js') }}?v={{ @filemtime(public_path('assets/js/single-select.js')) ?: '1' }}" defer></script>
@@ -146,30 +149,32 @@
             $headerEarnings = 0.0;
             $headerWithdrawable = 0.0;
             $headerReserved = 0.0;
-            $headerAdvertiserWallet = null;
+            $headerBalanceTitle = 'Earnings €0.00 · Withdrawable €0.00';
             try {
                 $headerPublisherRoleId = \App\Models\Wallet::publisherRoleId();
                 $headerAdvertiserRoleId = \App\Models\Wallet::advertiserRoleId();
-                $headerWallets = $headerUser->wallets()
-                    ->whereIn('role_id', array_filter([$headerPublisherRoleId, $headerAdvertiserRoleId]))
-                    ->get()
-                    ->keyBy(fn ($wallet) => (int) $wallet->role_id);
+                $headerWallets = $headerUser
+                    ? $headerUser->wallets()
+                        ->whereIn('role_id', array_filter([$headerPublisherRoleId, $headerAdvertiserRoleId]))
+                        ->get()
+                        ->keyBy(fn ($wallet) => (int) $wallet->role_id)
+                    : collect();
                 $headerPublisherWallet = $headerPublisherRoleId ? $headerWallets->get((int) $headerPublisherRoleId) : null;
-                $headerAdvertiserWallet = ($headerAdvertiserRoleId && $headerUser->hasRole('advertiser'))
+                $headerAdvertiserWallet = ($headerAdvertiserRoleId && $headerUser && $headerUser->hasRole('advertiser'))
                     ? $headerWallets->get((int) $headerAdvertiserRoleId)
                     : null;
                 $headerEarnings = (float) ($headerPublisherWallet?->balance ?? 0);
                 $headerWithdrawable = $headerPublisherWallet ? $headerPublisherWallet->withdrawableBalance() : 0;
                 $headerReserved = (float) ($headerPublisherWallet?->reserved_balance ?? 0);
+                $headerBalanceTitle = 'Earnings €'.number_format($headerEarnings, 2)
+                    .' · Withdrawable €'.number_format($headerWithdrawable, 2)
+                    .($headerReserved > 0 ? ' · On hold €'.number_format($headerReserved, 2) : '')
+                    .($headerAdvertiserWallet
+                        ? ' · Advertiser spendable €'.number_format((float) ($headerAdvertiserWallet->balance ?? 0), 2)
+                        : '');
             } catch (\Throwable $e) {
                 report($e);
             }
-            $headerBalanceTitle = 'Earnings €'.number_format($headerEarnings, 2)
-                .' · Withdrawable €'.number_format($headerWithdrawable, 2)
-                .($headerReserved > 0 ? ' · On hold €'.number_format($headerReserved, 2) : '')
-                .($headerAdvertiserWallet
-                    ? ' · Advertiser spendable €'.number_format((float) $headerAdvertiserWallet->balance, 2)
-                    : '');
         @endphp
         <a href="{{ route('publisher.balance') }}" class="balance-block text-decoration-none" data-glass-tip data-glass-tip-body="{{ $headerBalanceTitle }}" data-glass-tip-placement="bottom" aria-label="Publisher earnings {{ number_format($headerEarnings, 2) }} euros, withdrawable {{ number_format($headerWithdrawable, 2) }}">
             <span class="balance-label">Earnings</span>
@@ -183,7 +188,7 @@
                     data-bs-toggle="dropdown"
                     aria-expanded="false"
                     aria-label="Account menu">
-                @php $user = auth()->user(); @endphp
+                @php $user = $headerUser ?? auth()->user(); @endphp
                 @include('partials.user-avatar', ['user' => $user, 'size' => 36])
             </button>
 
@@ -192,8 +197,8 @@
                     <div class="d-flex align-items-center gap-2">
                         @include('partials.user-avatar', ['user' => $user, 'size' => 32])
                         <div>
-                            <strong>{{ $user->name }}</strong><br>
-                            <small class="text-muted">{{ $user->email }}</small>
+                            <strong>{{ $user?->name }}</strong><br>
+                            <small class="text-muted">{{ $user?->email }}</small>
                         </div>
                     </div>
                 </li>
@@ -256,17 +261,24 @@
         @include('partials.payment-trust', ['compact' => true, 'showMethods' => true, 'brief' => true])
     </div>
 </footer>
-@unless(\App\Support\VisitorSupportChat::enabled() || \App\Support\TawkChat::enabled())
-    @include('components.help-feedback-widget')
+@unless(
+    (class_exists(\App\Support\VisitorSupportChat::class) && method_exists(\App\Support\VisitorSupportChat::class, 'enabled') && \App\Support\VisitorSupportChat::enabled() && view()->exists('partials.visitor-support-chat'))
+    || (class_exists(\App\Support\TawkChat::class) && method_exists(\App\Support\TawkChat::class, 'enabled') && \App\Support\TawkChat::enabled())
+)
+    @if (view()->exists('components.help-feedback-widget'))
+        @include('components.help-feedback-widget')
+    @endif
 @endunless
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="{{ asset('assets/vendor/bootstrap-5.3.0/bootstrap.bundle.min.js') }}?v={{ @filemtime(public_path('assets/vendor/bootstrap-5.3.0/bootstrap.bundle.min.js')) ?: '1' }}"></script>
 <script src="{{ asset('assets/js/modal-stack.js') }}?v={{ @filemtime(public_path('assets/js/modal-stack.js')) ?: '1' }}"></script>
 <script src="{{ same_origin_asset('assets/js/jquery-3.6.0.min.js') }}?v={{ @filemtime(public_path('assets/js/jquery-3.6.0.min.js')) ?: '1' }}"></script>
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="{{ asset('assets/vendor/sweetalert2/sweetalert2.min.js') }}?v={{ @filemtime(public_path('assets/vendor/sweetalert2/sweetalert2.min.js')) ?: '1' }}"></script>
 <script src="{{ same_origin_asset('js/slb-confirm.js') }}?v={{ @filemtime(public_path('js/slb-confirm.js')) ?: '1' }}"></script>
+@include('partials.slb-icon-draw')
 <script src="{{ asset('js/slb-live-search.js') }}?v={{ @filemtime(public_path('js/slb-live-search.js')) ?: '1' }}"></script>
 <script src="{{ asset('js/slb-http.js') }}?v={{ @filemtime(public_path('js/slb-http.js')) ?: '1' }}"></script>
+@include('partials.money-display')
 @include('partials.app-toast')
 
 <script>
@@ -342,7 +354,10 @@
 <script src="{{ asset('js/order-chat.js') }}?v={{ @filemtime(public_path('js/order-chat.js')) ?: '1' }}" defer></script>
 <script src="{{ asset('js/notification-center.js') }}?v={{ @filemtime(public_path('js/notification-center.js')) ?: '8' }}" defer></script>
 @stack('scripts')
-@include('partials.tawk')
+@if (view()->exists('partials.tawk'))
+    @include('partials.tawk')
+@endif
+@include('partials.slb-loader')
 
 </body>
 </html>

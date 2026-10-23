@@ -61,6 +61,8 @@
       });
     }
 
+    this.bindEmojiPicker();
+
     if (modal) {
       var onHidden = function () {
         self.stopPoll();
@@ -188,6 +190,7 @@
           if (numEl) numEl.innerText = data.order_details.order_number;
         }
         self.applyComposerState(data.can_send !== false, data.composer_note || (data.order_details && data.order_details.composer_note));
+        self.applyReadReceipts(data.own_read_ids || []);
 
         if (typeof self.config.renderOrderDetails === 'function') {
           self.config.renderOrderDetails(data.order_details || null);
@@ -249,6 +252,9 @@
       input.placeholder = enabled ? 'Type your message...' : 'Chat is read-only for this order';
     }
     if (btn) btn.disabled = !enabled;
+    document.querySelectorAll('#chatEmojiStrip button').forEach(function (emojiBtn) {
+      emojiBtn.disabled = !enabled;
+    });
     if (noteEl) {
       if (note) {
         noteEl.textContent = note;
@@ -317,6 +323,9 @@
     var blockedNote = isBlocked
       ? '<div class="chat-bubble__blocked-note">Not delivered — personal contact details aren’t allowed.</div>'
       : '';
+    var ticks = isOwn
+      ? '<span class="chat-ticks' + (msg.is_read ? ' chat-ticks--read' : '') + '" aria-hidden="true"><i class="fa-solid fa-check-double"></i></span>'
+      : '';
     return (
       '<div class="d-flex ' +
       alignClass +
@@ -335,8 +344,93 @@
       messageText +
       '</div>' +
       blockedNote +
+      ticks +
       '</div></div>'
     );
+  };
+
+  OrderChat.prototype.applyReadReceipts = function (ids) {
+    var seen = {};
+    (ids || []).forEach(function (id) {
+      seen[String(id)] = true;
+    });
+    document.querySelectorAll('#chatMessages [data-message-id] .chat-ticks').forEach(function (el) {
+      var wrap = el.closest('[data-message-id]');
+      var id = wrap ? wrap.getAttribute('data-message-id') : '';
+      el.classList.toggle('chat-ticks--read', !!seen[id]);
+    });
+  };
+
+  OrderChat.prototype.bindEmojiPicker = function () {
+    var strip = document.getElementById('chatEmojiStrip');
+    var input = document.getElementById('chatMessageInput');
+    if (!strip || !input) {
+      return;
+    }
+
+    var combos = [
+      [':think:', '🤔'],
+      [':idea:', '💡'],
+      [':clap:', '👏'],
+      [':wave:', '👋'],
+      [':pray:', '🙏'],
+      [':-)', '😊'],
+      [':)', '😊'],
+      ['<3', '❤️'],
+      ['+1', '👍'],
+    ];
+
+    function insertEmoji(emoji) {
+      if (!emoji || input.disabled) {
+        return;
+      }
+      var start = input.selectionStart || input.value.length;
+      var end = input.selectionEnd || input.value.length;
+      input.value = input.value.slice(0, start) + emoji + input.value.slice(end);
+      var caret = start + emoji.length;
+      input.focus();
+      input.setSelectionRange(caret, caret);
+    }
+
+    function applyKeyboardCombo() {
+      if (input.disabled) {
+        return;
+      }
+      var caret = input.selectionStart;
+      if (caret !== input.selectionEnd) {
+        return;
+      }
+      var before = input.value.slice(0, caret);
+      var after = input.value.slice(caret);
+      var i;
+      for (i = 0; i < combos.length; i++) {
+        var from = combos[i][0];
+        var to = combos[i][1];
+        if (before.slice(-from.length) !== from) {
+          continue;
+        }
+        if (from === '+1') {
+          var prev = before.charAt(before.length - from.length - 1);
+          if (prev && !/\s/.test(prev)) {
+            continue;
+          }
+        }
+        input.value = before.slice(0, -from.length) + to + after;
+        var nextCaret = before.length - from.length + to.length;
+        input.setSelectionRange(nextCaret, nextCaret);
+        return;
+      }
+    }
+
+    strip.addEventListener('click', function (e) {
+      var option = e.target.closest('button[data-emoji]');
+      if (!option || !strip.contains(option)) {
+        return;
+      }
+      insertEmoji(option.getAttribute('data-emoji') || '');
+    });
+
+    input.addEventListener('input', applyKeyboardCombo);
   };
 
   OrderChat.prototype.send = function () {

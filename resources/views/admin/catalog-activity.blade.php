@@ -29,14 +29,11 @@
         @if($copyFilter === 'all')
             <input type="hidden" name="copy" value="all">
         @endif
-        <div class="input-group" style="max-width: 28rem;">
-            <input type="search" name="q" value="{{ $q }}" class="form-control form-control-sm"
-                   placeholder="Search email or name" aria-label="Search accounts">
+        <div class="d-flex flex-wrap align-items-end gap-2" style="max-width: 28rem;">
+            <div class="flex-grow-1">
+                <x-slb-search-field name="q" id="adminCatalogActivitySearch" :value="$q" placeholder="Search email or name" label="Search accounts" label-class="visually-hidden" />
+            </div>
             <button type="submit" class="btn btn-sm btn-outline-secondary">Search</button>
-            @if($q !== '')
-                <a href="{{ route('admin.catalog-activity', array_filter($queryBase, fn ($k) => $k !== 'q', ARRAY_FILTER_USE_KEY)) }}"
-                   class="btn btn-sm btn-outline-secondary">Clear</a>
-            @endif
         </div>
     </form>
 

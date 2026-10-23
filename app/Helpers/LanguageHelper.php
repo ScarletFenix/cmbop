@@ -2,16 +2,25 @@
 
 use App\Models\ActivityLog;
 use App\Models\User;
+use App\Support\LeftoverPublicI18nSlugs;
 use App\Support\MarketingHistoryDisplay;
 use App\Support\PublicI18n;
 use App\Support\WelcomeBonusCopy;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Request;
 
+$leftoverPublicI18nSlugs = __DIR__.'/../Support/LeftoverPublicI18nSlugs.php';
+if (is_file($leftoverPublicI18nSlugs)) {
+    require_once $leftoverPublicI18nSlugs;
+    if (class_exists(LeftoverPublicI18nSlugs::class)) {
+        LeftoverPublicI18nSlugs::ensureEnglishOnlyMarketingSlugsMethod();
+    }
+}
+
 if (! function_exists('get_language_switcher_url')) {
     function get_language_switcher_url($locale)
     {
-        if (! class_exists(PublicI18n::class)) {
+        if (! class_exists(PublicI18n::class) || ! method_exists(PublicI18n::class, 'switchUrl')) {
             return url('/');
         }
 
@@ -22,7 +31,7 @@ if (! function_exists('get_language_switcher_url')) {
 if (! function_exists('localized_url')) {
     function localized_url($path = '', $locale = null)
     {
-        if (! class_exists(PublicI18n::class)) {
+        if (! class_exists(PublicI18n::class) || ! method_exists(PublicI18n::class, 'urlForLocale')) {
             $path = ltrim((string) $path, '/');
 
             return $path === '' ? url('/') : url($path);
@@ -42,28 +51,35 @@ if (! function_exists('public_locale')) {
 if (! function_exists('welcome_bonus_can_grant')) {
     function welcome_bonus_can_grant(): bool
     {
-        return WelcomeBonusCopy::canGrant();
+        return class_exists(WelcomeBonusCopy::class) && method_exists(WelcomeBonusCopy::class, 'canGrant')
+            ? WelcomeBonusCopy::canGrant()
+            : false;
     }
 }
 
 if (! function_exists('welcome_bonus_euro')) {
     function welcome_bonus_euro(): string
     {
-        return WelcomeBonusCopy::euro();
+        return class_exists(WelcomeBonusCopy::class) && method_exists(WelcomeBonusCopy::class, 'euro')
+            ? WelcomeBonusCopy::euro()
+            : '20';
     }
 }
 
 if (! function_exists('welcome_bonus_message')) {
     function welcome_bonus_message(string $key, ?string $offKey = null): string
     {
-        return WelcomeBonusCopy::message($key, $offKey);
+        return class_exists(WelcomeBonusCopy::class) && method_exists(WelcomeBonusCopy::class, 'message')
+            ? WelcomeBonusCopy::message($key, $offKey)
+            : __("messages.{$key}");
     }
 }
 
 if (! function_exists('show_public_language_switcher')) {
     function show_public_language_switcher(): bool
     {
-        if (! class_exists(PublicI18n::class)) {
+        if (! class_exists(PublicI18n::class)
+            || ! method_exists(PublicI18n::class, 'shouldShowLanguageSwitcher')) {
             return false;
         }
 
@@ -82,11 +98,27 @@ if (! function_exists('get_available_locales')) {
             'nl' => ['name' => 'Nederlands', 'flag' => '🇳🇱', 'code' => 'nl'],
             'es' => ['name' => 'Español', 'flag' => '🇪🇸', 'code' => 'es'],
             'it' => ['name' => 'Italiano', 'flag' => '🇮🇹', 'code' => 'it'],
+            'at' => ['name' => 'Deutsch (Österreich)', 'flag' => '🇦🇹', 'code' => 'at'],
+            'ch' => ['name' => 'Deutsch (Schweiz)', 'flag' => '🇨🇭', 'code' => 'ch'],
+            'ro' => ['name' => 'Română', 'flag' => '🇷🇴', 'code' => 'ro'],
+            'gr' => ['name' => 'Ελληνικά', 'flag' => '🇬🇷', 'code' => 'gr'],
+            'dk' => ['name' => 'Dansk', 'flag' => '🇩🇰', 'code' => 'dk'],
+            'se' => ['name' => 'Svenska', 'flag' => '🇸🇪', 'code' => 'se'],
+            'no' => ['name' => 'Norsk', 'flag' => '🇳🇴', 'code' => 'no'],
+            'bg' => ['name' => 'Български', 'flag' => '🇧🇬', 'code' => 'bg'],
+            'hu' => ['name' => 'Magyar', 'flag' => '🇭🇺', 'code' => 'hu'],
+            'ee' => ['name' => 'Eesti', 'flag' => '🇪🇪', 'code' => 'ee'],
+            'pl' => ['name' => 'Polski', 'flag' => '🇵🇱', 'code' => 'pl'],
+            'be' => ['name' => 'Nederlands (België)', 'flag' => '🇧🇪', 'code' => 'be'],
         ];
 
-        $supported = class_exists(PublicI18n::class)
-            ? array_flip(PublicI18n::supported())
-            : ['en' => 0];
+        $supported = ['en' => 0];
+        if (class_exists(PublicI18n::class) && method_exists(PublicI18n::class, 'supported')) {
+            $fromSupported = PublicI18n::supported();
+            if (is_array($fromSupported) && $fromSupported !== []) {
+                $supported = array_flip($fromSupported);
+            }
+        }
 
         return array_filter($catalog, fn ($code) => isset($supported[$code]), ARRAY_FILTER_USE_KEY);
     }

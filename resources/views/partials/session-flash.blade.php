@@ -16,8 +16,8 @@
 @if($flashSuccess || $flashError || $flashWarning || $flashInfo || $errors->any())
     <div class="slb-flash-stack" data-slb-flash>
         @if($flashSuccess)
-            <div class="alert alert-success alert-dismissible fade show d-flex align-items-start gap-2"
-                 role="status" aria-live="polite">
+            <div class="alert alert-success alert-dismissible fade show d-flex align-items-start gap-2 slb-flash-soft"
+                 role="status" aria-live="polite" data-slb-flash-toast="success">
                 <i class="fa fa-circle-check mt-1" aria-hidden="true"></i>
                 <div class="flex-grow-1">{{ $flashSuccess }}</div>
                 <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Dismiss message"></button>

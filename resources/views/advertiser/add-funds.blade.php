@@ -26,21 +26,21 @@
 @endphp
 
 
-<div class="container-fluid">
+<div class="container-fluid add-funds-page">
 
-    <div class="row mb-3 align-items-end g-3">
-        <div class="col-lg-8">
-            <h2 class="mb-1 fw-semibold">Add funds</h2>
-            <p class="text-muted mb-0">Top up your wallet. Minimum €10.</p>
+    <div class="af-page-header">
+        <div>
+            <h2 class="af-page-title">Add funds</h2>
+            <p class="af-page-sub">Top up your wallet. Minimum €10.</p>
         </div>
-        <div class="col-lg-4 text-lg-end">
-            <button type="button" class="btn btn-sm btn-cta-tertiary" id="withdrawOpenBtn"
+        <div class="af-page-links">
+            <button type="button" class="af-text-link" id="withdrawOpenBtn"
                     data-bs-toggle="modal" data-bs-target="#withdrawModal"
                     @disabled(! $canWithdraw)>
                 Withdraw
             </button>
-            <a href="{{ route('advertiser.billing.index') }}" class="btn btn-sm btn-cta-tertiary">Billing &amp; invoices</a>
-            <a href="{{ route('advertiser.analytics') }}" class="btn btn-sm btn-cta-tertiary">Spending</a>
+            <a href="{{ route('advertiser.billing.index') }}" class="af-text-link">Billing &amp; invoices</a>
+            <a href="{{ route('advertiser.analytics') }}" class="af-text-link">Spending</a>
         </div>
     </div>
 
@@ -93,8 +93,8 @@
                 <p class="af-role-strip__note mb-0">Withdrawable. Transfers into this wallet are off — open Balance or Withdraw.</p>
             </div>
             <div class="af-role-strip__actions">
-                <a href="{{ route('publisher.balance') }}" class="btn btn-sm btn-outline-secondary" id="publisherBalanceCta">Balance</a>
-                <a href="{{ route('publisher.withdraw') }}" class="btn btn-sm btn-outline-secondary" id="publisherWithdrawCta">Withdraw</a>
+                <a href="{{ route('publisher.balance') }}" class="af-text-link" id="publisherBalanceCta">Balance</a>
+                <a href="{{ route('publisher.withdraw') }}" class="af-text-link" id="publisherWithdrawCta">Withdraw</a>
             </div>
         </aside>
     @endif
@@ -294,13 +294,13 @@
                                             @if($methodReady && ! empty($meta['new_key']))
                                                 <x-feature-new :badge-key="$meta['new_key']" class="payment-option-new" />
                                             @endif
-                                            <div class="payment-option-icon" style="background: {{ $meta['icon_bg'] }};">
+                                            <div class="payment-option-icon{{ $methodKey === 'paypal' ? ' payment-option-icon--paypal' : '' }}" style="background: {{ $meta['icon_bg'] }};">
                                                 @if($methodKey === 'card')
                                                     @include('partials.payment-card-brands')
                                                 @elseif($methodKey === 'bank')
                                                     <i class="fas fa-university" style="font-size: 28px; color: var(--brand-primary, #1a585e);"></i>
                                                 @elseif($methodKey === 'paypal')
-                                                    <img src="{{ asset('assets/img/payments/paypal.svg') }}" alt="" width="40" height="11" style="width:40px;height:auto;" decoding="async">
+                                                    <img src="{{ asset('assets/img/payments/paypal.png') }}" alt="PayPal" width="72" height="71" style="width:72px;height:auto;" decoding="async">
                                                 @elseif($methodKey === 'wise')
                                                     <img src="{{ asset('assets/img/wiseImg-logo.png') }}" alt="Wise Logo" style="width: 32px; height: 32px; object-fit: contain;">
                                                 @else
@@ -359,9 +359,8 @@
                                     </div>
                                 </div>
                                 
-                                <div class="alert alert-danger py-2 px-3 mb-3" style="background-color: #fee2e2; border-left: 4px solid #dc2626;">
-                                    <i class="fas fa-exclamation-triangle me-1"></i> 
-                                    <strong>Important:</strong> Please include <strong class="ref-code ref-code-display">—</strong> in your payment note. Payments without this reference cannot be tracked.
+                                <div class="alert alert-info py-2 px-3 mb-3 js-manual-ref-alert d-none" role="status">
+                                    Include <strong class="ref-code ref-code-display">—</strong> in the payment note so we can match your transfer.
                                 </div>
                                 
                                 <div style="background: #f9fafb; border-radius: 12px; padding: 20px; border: 1px solid #e5e7eb;">
@@ -414,9 +413,8 @@
                                     </div>
                                 </div>
                                 
-                                <div class="alert alert-danger py-2 px-3 mb-3" style="background-color: #fee2e2; border-left: 4px solid #dc2626;">
-                                    <i class="fas fa-exclamation-triangle me-1"></i> 
-                                    <strong>Important:</strong> Please include <strong class="ref-code ref-code-display">—</strong> in your payment note. Payments without this reference cannot be tracked.
+                                <div class="alert alert-info py-2 px-3 mb-3 js-manual-ref-alert d-none" role="status">
+                                    Include <strong class="ref-code ref-code-display">—</strong> in the payment note so we can match your transfer.
                                 </div>
                                 
                                 <div style="background: #f9fafb; border-radius: 12px; padding: 20px; border: 1px solid #e5e7eb;">
@@ -452,9 +450,8 @@
                                     </div>
                                 </div>
                                 
-                                <div class="alert alert-danger py-2 px-3 mb-3" style="background-color: #fee2e2; border-left: 4px solid #dc2626;">
-                                    <i class="fas fa-exclamation-triangle me-1"></i> 
-                                    <strong>Important:</strong> Please include <strong class="ref-code ref-code-display">—</strong> in your payment note. Payments without this reference cannot be tracked.
+                                <div class="alert alert-info py-2 px-3 mb-3 js-manual-ref-alert d-none" role="status">
+                                    Include <strong class="ref-code ref-code-display">—</strong> in the payment note so we can match your transfer.
                                 </div>
                                 
                                 <div style="background: #f9fafb; border-radius: 12px; padding: 20px; border: 1px solid #e5e7eb;">
@@ -511,8 +508,8 @@
                         <div id="paypalPaymentDetails" class="card border-0 shadow-sm mb-4" style="display: none;">
                             <div class="card-body">
                                 <div style="display: flex; align-items: center; margin-bottom: 16px;">
-                                    <div style="width: 40px; height: 40px; background: #f3f4f6; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-right: 12px;">
-                                        <img src="{{ asset('assets/img/payments/paypal.svg') }}" alt="" width="32" height="9" style="width:32px;height:auto;" decoding="async">
+                                    <div style="width: 64px; height: 64px; background: #f3f4f6; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-right: 12px;">
+                                        <img src="{{ asset('assets/img/payments/paypal.png') }}" alt="PayPal" width="56" height="55" style="width:56px;height:auto;" decoding="async">
                                     </div>
                                     <div>
                                         <h3 style="font-size: 18px; font-weight: 600; margin: 0;">PayPal</h3>
@@ -588,13 +585,12 @@
                             </div>
                         </div>
                     </div>
-                    <div class="alert alert-warning py-2 px-3 mb-3" id="refHintBox">
-                        <i class="fas fa-exclamation-triangle me-1"></i>
+                    <div class="alert alert-light border py-2 px-3 mb-3" id="refHintBox">
                         <small id="refHintPending">Your transfer reference is created with the invoice. Card and PayPal record it automatically.</small>
-                        <small id="refHintReady" class="d-none">Include <strong id="refCodeDisplay" class="ref-code">—</strong> in the payment note. Card and PayPal record the reference automatically.</small>
+                        <small id="refHintReady" class="d-none">Include <strong id="refCodeDisplay" class="ref-code">—</strong> in the payment note.</small>
                     </div>
-                    <button type="button" id="proceedBtn" class="btn btn-primary w-100 mt-2 py-2">
-                        <i class="fa fa-arrow-right me-2"></i> Get invoice &amp; pay
+                    <button type="button" id="proceedBtn" class="btn btn-primary w-100 mt-2 py-2" disabled>
+                        <i class="fa fa-arrow-right me-2"></i> Select an amount
                     </button>
                     <div class="mt-3">
                         @include('partials.payment-trust', ['compact' => true])
@@ -852,8 +848,8 @@
     </div>
 </div>
 
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="{{ asset('assets/js/jquery-3.6.0.min.js') }}?v={{ @filemtime(public_path('assets/js/jquery-3.6.0.min.js')) ?: '1' }}"></script>
+<script src="{{ asset('assets/vendor/sweetalert2/sweetalert2.min.js') }}?v={{ @filemtime(public_path('assets/vendor/sweetalert2/sweetalert2.min.js')) ?: '1' }}"></script>
 <script>
 (function () {
     const csrf = '{{ csrf_token() }}';
@@ -1588,16 +1584,17 @@ window.AddFundsBoot = {
     prefillAmount: @json($prefillAmount ?? null),
     prefillMethod: @json($prefillMethod ?? null),
     lastUsedMethod: @json($lastUsedMethod ?? null),
+    paypalLogo: @json(asset('assets/img/payments/paypal.png')),
     openCardsTab: @json((bool) ($openCardsTab ?? false)),
     routes: {
-        store: @json(route('advertiser.add-funds.store')),
-        addFunds: @json(route('advertiser.add-funds')),
-        saveBilling: @json(route('advertiser.save-billing-info')),
-        paySavedCard: @json(route('advertiser.add-funds.pay-saved-card')),
-        createCheckout: @json(route('advertiser.create-checkout-session')),
-        createPaypal: @json(route('advertiser.add-funds.paypal.create')),
-        getBilling: @json(route('advertiser.get-billing-info')),
-        paymentMethodsSetup: @json(route('advertiser.payment-methods.setup')),
+        store: @json(route('advertiser.add-funds.store', absolute: false)),
+        addFunds: @json(route('advertiser.add-funds', absolute: false)),
+        saveBilling: @json(route('advertiser.save-billing-info', absolute: false)),
+        paySavedCard: @json(route('advertiser.add-funds.pay-saved-card', absolute: false)),
+        createCheckout: @json(route('advertiser.create-checkout-session', absolute: false)),
+        createPaypal: @json(route('advertiser.add-funds.paypal.create', absolute: false)),
+        getBilling: @json(route('advertiser.get-billing-info', absolute: false)),
+        paymentMethodsSetup: @json(route('advertiser.payment-methods.setup', absolute: false)),
         paymentMethodsBase: @json(url('/advertiser/payment-methods')),
         // Relative so APP_URL host mismatches do not break the QR <img> request.
         wiseQr: @json(route('advertiser.add-funds.wise-qr', absolute: false)),
