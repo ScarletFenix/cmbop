@@ -28,6 +28,9 @@ class AdvertiserApiPublisherNotifier
             }
             $order->loadMissing('items');
             foreach ($order->items as $item) {
+                if (method_exists($item, 'isManagedBySlb') && $item->isManagedBySlb()) {
+                    continue;
+                }
                 if (! app(ArticleWritingService::class)->publisherCanSee($item)) {
                     continue;
                 }

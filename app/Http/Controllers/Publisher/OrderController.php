@@ -12,6 +12,7 @@ use App\Models\ContentSubmission;
 use App\Models\Order;
 use App\Models\OrderChatMessage;
 use App\Models\OrderItem;
+use App\Models\OrderPack;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\Advertiser\AdvertiserOrderWebhookBridge;
@@ -20,7 +21,6 @@ use App\Services\ContentUpload\ArticlePreviewHtml;
 use App\Services\InAppNotificationService;
 use App\Services\LiveUrlHealthChecker;
 use App\Services\Marketplace\WritingFeeService;
-use App\Models\OrderPack;
 use App\Services\Orders\ContentRevisionService;
 use App\Services\Orders\OrderPackService;
 use App\Services\Orders\OrderRefundService;
@@ -34,6 +34,7 @@ use App\Support\OrderLifecycleMailSuppressor;
 use App\Support\PublisherNeedsAction;
 use App\Support\SocialPostUrlValidator;
 use App\Support\UserFacingError;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -133,6 +134,7 @@ class OrderController extends Controller
                         ->orWhereNull('content_source')
                         ->orWhereIn('writing_status', ['article_approved', 'released_to_publisher']);
                 })
+                ->publisherFulfilment()
                 ->orderBy('created_at', 'desc');
             if (OrderItem::hasSandboxColumn()) {
                 $query->notSandbox();
@@ -556,7 +558,7 @@ class OrderController extends Controller
     /**
      * Accept every remaining pending article in a pack for this publisher.
      */
-    public function acceptPack(Request $request, OrderPack $pack): \Illuminate\Http\JsonResponse
+    public function acceptPack(Request $request, OrderPack $pack): JsonResponse
     {
         $userId = (int) auth()->id();
         $packService = app(OrderPackService::class);

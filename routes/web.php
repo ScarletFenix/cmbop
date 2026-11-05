@@ -21,6 +21,7 @@ use App\Http\Controllers\Admin\EmailCenterController as AdminEmailCenterControll
 use App\Http\Controllers\Admin\FinanceController as AdminFinanceController;
 use App\Http\Controllers\Admin\InvoiceController as AdminInvoiceController;
 use App\Http\Controllers\Admin\LinkGuaranteeController as AdminLinkGuaranteeController;
+use App\Http\Controllers\Admin\ManagedOrderController as AdminManagedOrderController;
 use App\Http\Controllers\Admin\OnDemandContactController;
 use App\Http\Controllers\Admin\OrderController as AdminOrderController;
 use App\Http\Controllers\Admin\OrderDisputeController as AdminOrderDisputeController;
@@ -58,6 +59,7 @@ use App\Http\Controllers\Advertiser\ContentModerationController as AdvertiserCon
 use App\Http\Controllers\Advertiser\ContentSubmissionController;
 use App\Http\Controllers\Advertiser\DashboardController as AdvertiserDashboardController;
 use App\Http\Controllers\Advertiser\GuestPostWizardController;
+use App\Http\Controllers\Advertiser\OrderPackController;
 use App\Http\Controllers\Advertiser\PaymentMethodController;
 use App\Http\Controllers\Advertiser\ProjectController;
 use App\Http\Controllers\Advertiser\ReportsController;
@@ -68,7 +70,6 @@ use App\Http\Controllers\Advertiser\SiteUrlConcealController;
 use App\Http\Controllers\Advertiser\SiteUrlRevealController;
 use App\Http\Controllers\Advertiser\SiteVisitController;
 use App\Http\Controllers\Advertiser\WebsiteSuggestionController;
-use App\Http\Controllers\Advertiser\OrderPackController;
 use App\Http\Controllers\AnnouncementClickController;
 use App\Http\Controllers\AnnouncementDismissController;
 use App\Http\Controllers\ApiDocs\AdvertiserApiDocsController;
@@ -116,6 +117,7 @@ use App\Http\Middleware\RoleMiddleware;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\Marketing\CatalogTeaserService;
+use App\Services\Orders\OrderPackService;
 use App\Support\AustrianMoneyLanders;
 use App\Support\BrandPerson;
 use App\Support\CountryLander;
@@ -1528,6 +1530,20 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
             ->name('writing-queue.upload');
         Route::get('/writing-queue/{orderItem}/download', [AdminWritingQueueController::class, 'download'])
             ->name('writing-queue.download');
+        Route::get('/managed-orders', [AdminManagedOrderController::class, 'index'])
+            ->name('managed-orders.index');
+        Route::get('/managed-orders/{orderItem}', [AdminManagedOrderController::class, 'show'])
+            ->name('managed-orders.show');
+        Route::post('/orders/{order}/managed', [AdminManagedOrderController::class, 'mark'])
+            ->middleware('throttle:30,1')
+            ->name('managed-orders.mark');
+        Route::post('/managed-orders/{orderItem}', [AdminManagedOrderController::class, 'update'])
+            ->name('managed-orders.update');
+        Route::post('/managed-orders/{orderItem}/live-url', [AdminManagedOrderController::class, 'attachLiveUrl'])
+            ->name('managed-orders.live-url');
+        Route::post('/managed-orders/{orderItem}/complete', [AdminManagedOrderController::class, 'complete'])
+            ->middleware('throttle:30,1')
+            ->name('managed-orders.complete');
         Route::get('/catalog-activity', [AdminCatalogActivityController::class, 'index'])
             ->name('catalog-activity');
         Route::get('/catalog-activity/{user}', [AdminCatalogActivityController::class, 'show'])
@@ -2213,7 +2229,7 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
         // so checkout shows the pack price-change notice (screenshots / manual QA).
         if (app()->environment(['local', 'testing'])) {
             Route::get('/dev/seed-pack-price-change', function () {
-                $site = \App\Models\Site::query()
+                $site = Site::query()
                     ->where('domain', 'pack-demo.example')
                     ->orWhere('bulk_discount_enabled', 1)
                     ->orderByDesc('id')
@@ -2222,7 +2238,7 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
                     return redirect()->route('advertiser.catalog')
                         ->with('error', 'No bulk-discount site available to seed.');
                 }
-                $svc = app(\App\Services\Orders\OrderPackService::class);
+                $svc = app(OrderPackService::class);
                 $line = [
                     'id' => $site->id,
                     'name' => $site->site_name,

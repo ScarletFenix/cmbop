@@ -27,6 +27,8 @@ use App\Models\UserFavorite;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
 use App\Services\ActivityLogger;
+use App\Services\Advertiser\AdvertiserApiSerializer;
+use App\Services\Advertiser\AdvertiserCartPersistence;
 use App\Services\Advertiser\AdvertiserOrderSearchQuery;
 use App\Services\Advertiser\AdvertiserProjectCheckout;
 use App\Services\Advertiser\LibraryArticlePlacement;
@@ -52,12 +54,11 @@ use App\Services\Marketplace\ArticleWritingService;
 use App\Services\Marketplace\CheckoutAddOnService;
 use App\Services\Marketplace\CountryLanguagePairs;
 use App\Services\Marketplace\WritingFeeService;
-use App\Services\Advertiser\AdvertiserCartPersistence;
 use App\Services\Mcp\SavedCartSync;
 use App\Services\OrderChatContactGuard;
 use App\Services\OrderPaymentService;
-use App\Services\Advertiser\AdvertiserApiSerializer;
 use App\Services\Orders\ContentRevisionService;
+use App\Services\Orders\ManagedFulfilmentService;
 use App\Services\Orders\OrderClawbackService;
 use App\Services\Orders\OrderPackService;
 use App\Services\Orders\OrderRefundService;
@@ -1425,7 +1426,7 @@ class CatalogController extends Controller
         $line['writing_target_url'] = trim((string) ($line['writing_target_url'] ?? ''));
         $line['writing_anchor_text'] = trim((string) ($line['writing_anchor_text'] ?? ''));
         $line = $addons->decorateCartLine($line, $site);
-        $line = app(\App\Services\Orders\OrderPackService::class)->stampQuotedPrice($line);
+        $line = app(OrderPackService::class)->stampQuotedPrice($line);
 
         return $this->applyCartLineContentIds($line, $this->cartLineContentIds($line));
     }
@@ -5039,7 +5040,7 @@ class CatalogController extends Controller
             }
 
             try {
-                app(\App\Services\Orders\OrderPackService::class)->linkCreatedOrders(
+                app(OrderPackService::class)->linkCreatedOrders(
                     $createdOrders,
                     ['lines' => array_map(function ($line) {
                         $oi = is_array($line['orderItem'] ?? null) ? $line['orderItem'] : [];
@@ -5597,9 +5598,30 @@ class CatalogController extends Controller
             DB::beginTransaction();
 
             $touchedPublisher = false;
+            $touchedManaged = false;
             $partnerOnly = true;
             foreach ($order->items as $item) {
                 if ($item->isPayoutComplete()) {
+                    continue;
+                }
+                if ($item->isManagedBySlb()) {
+                    $partnerOnly = false;
+                    $touchedManaged = true;
+                    $payload = [
+                        'modification_requested' => 'yes',
+                        'modification_requested_at' => now(),
+                        'live_url_submitted_at' => now(),
+                        'auto_approve_triggered' => false,
+                        'managed_internal_status' => ManagedFulfilmentService::STATUS_WITH_PUBLISHER,
+                    ];
+                    if (Schema::hasColumn('order_items', 'auto_approve_reminder_sent_at')) {
+                        $payload['auto_approve_reminder_sent_at'] = null;
+                    }
+                    if (Schema::hasColumn('order_items', 'completion_notes')) {
+                        $payload['completion_notes'] = $request->reason;
+                    }
+                    $item->update(app(CheckoutSchemaService::class)->filterExistingColumns('order_items', $payload));
+
                     continue;
                 }
                 if (class_exists(PartnerChannel::class)
@@ -5627,16 +5649,18 @@ class CatalogController extends Controller
             }
 
             // Partner corrections wait for admin relay; do not bounce the order yet.
-            if ($touchedPublisher || ! $partnerOnly) {
+            if ($touchedPublisher || $touchedManaged || ! $partnerOnly) {
                 $order->update(['status' => 'processing']);
             }
 
             DB::commit();
 
-            // Persist a chat message so publishers see the revision request in the thread.
-            // Contact-detail share/ask in the reason is saved but not delivered to the publisher.
+            // Persist a chat message so publishers / SLB staff see the revision request in the thread.
+            // Contact-detail share/ask in the reason is saved but not delivered to the counterpart.
             try {
-                $chatBody = "Revision requested: {$request->reason}\nPlease update the article, then paste the corrected live URL in this chat to resubmit.";
+                $chatBody = $touchedManaged && ! $touchedPublisher
+                    ? "Revision requested: {$request->reason}\nOur team will handle this correction."
+                    : "Revision requested: {$request->reason}\nPlease update the article, then paste the corrected live URL in this chat to resubmit.";
                 $guard = app(OrderChatContactGuard::class)->inspect($chatBody, OrderChatContactGuard::MODE_CONTENT);
                 OrderChatMessage::create([
                     'order_id' => $order->id,
@@ -5656,7 +5680,7 @@ class CatalogController extends Controller
 
             $publishers = [];
             foreach ($order->items as $item) {
-                if ($item->isPayoutComplete()) {
+                if ($item->isPayoutComplete() || $item->isManagedBySlb()) {
                     continue;
                 }
                 $publisher = $item->site?->publisher;
@@ -5676,11 +5700,31 @@ class CatalogController extends Controller
                 }
             }
 
-            app(InAppNotificationService::class)->notifyModificationRequested($order, $request->reason);
+            if ($touchedManaged && ! $touchedPublisher) {
+                try {
+                    foreach (app(ManagedFulfilmentService::class)->chatStaffReceivers($order) as $staff) {
+                        if (! $staff->email) {
+                            continue;
+                        }
+                        Mail::to($staff->email)->send(new ModificationRequested($order, $request->reason));
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning('Managed revision staff mail failed', [
+                        'order_id' => $order->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+
+            if ($touchedPublisher) {
+                app(InAppNotificationService::class)->notifyModificationRequested($order, $request->reason);
+            }
 
             return response()->json([
                 'success' => true,
-                'message' => 'Change request sent to the publisher.',
+                'message' => $touchedManaged && ! $touchedPublisher
+                    ? 'Change request sent to our team.'
+                    : 'Change request sent to the publisher.',
             ]);
 
         } catch (\Throwable $e) {
@@ -6989,6 +7033,16 @@ class CatalogController extends Controller
 
                 if ($site && $site->publisher_id) {
                     $publisher = User::find($site->publisher_id);
+
+                    // Managed by SLB: settled off-platform — never credit the catalog publisher wallet.
+                    if ($orderItem->isManagedBySlb()) {
+                        Log::info('Skipping publisher wallet credit for Managed by SLB approval', [
+                            'order_id' => $order->id,
+                            'order_item_id' => $orderItem->id,
+                        ]);
+
+                        continue;
+                    }
 
                     if ($publisher && class_exists(PartnerSettlement::class)
                         && app(PartnerSettlement::class)->settleOnApproval($orderItem)) {

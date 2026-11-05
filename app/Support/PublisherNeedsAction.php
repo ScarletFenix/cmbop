@@ -30,7 +30,8 @@ class PublisherNeedsAction
             ->whereHas('order', function ($q) {
                 $q->where('payment_status', 'paid')
                     ->whereIn('status', ['pending', 'processing', 'review']);
-            });
+            })
+            ->publisherFulfilment();
     }
 
     /**

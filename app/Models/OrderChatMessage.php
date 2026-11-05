@@ -86,9 +86,12 @@ class OrderChatMessage extends Model
             ->notBlocked()
             ->where('user_id', '!=', $userId)
             ->when($userType === 'advertiser', function ($q) {
-                $q->where('sender_type', 'publisher');
+                $q->whereIn('sender_type', ['publisher', 'admin']);
             })
             ->when($userType === 'publisher', function ($q) {
+                $q->where('sender_type', 'advertiser');
+            })
+            ->when($userType === 'admin', function ($q) {
                 $q->where('sender_type', 'advertiser');
             });
     }

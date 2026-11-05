@@ -420,6 +420,9 @@ class EmailNotificationService
         // used to email a tasks deep-link before payment landed.
         if ($order->payment_status === 'paid') {
             foreach ($order->items as $item) {
+                if (method_exists($item, 'isManagedBySlb') && $item->isManagedBySlb()) {
+                    continue;
+                }
                 $publisher = $item->site?->publisher;
                 if (! $publisher && $item->site?->publisher_id) {
                     $publisher = User::query()->find($item->site->publisher_id);
