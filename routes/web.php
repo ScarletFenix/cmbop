@@ -1532,6 +1532,14 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
             ->name('writing-queue.download');
         Route::get('/managed-orders', [AdminManagedOrderController::class, 'index'])
             ->name('managed-orders.index');
+        Route::get('/managed-orders/create', [AdminManagedOrderController::class, 'create'])
+            ->name('managed-orders.create');
+        Route::post('/managed-orders/confirm', [AdminManagedOrderController::class, 'confirm'])
+            ->middleware('throttle:30,1')
+            ->name('managed-orders.confirm');
+        Route::post('/managed-orders', [AdminManagedOrderController::class, 'store'])
+            ->middleware('throttle:20,1')
+            ->name('managed-orders.store');
         Route::get('/managed-orders/{orderItem}', [AdminManagedOrderController::class, 'show'])
             ->name('managed-orders.show');
         Route::post('/orders/{order}/managed', [AdminManagedOrderController::class, 'mark'])

@@ -5,15 +5,18 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Services\Orders\AdminManagedOrderCreateService;
 use App\Services\Orders\ManagedFulfilmentService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class ManagedOrderController extends Controller
 {
     public function __construct(
         private ManagedFulfilmentService $managed,
+        private AdminManagedOrderCreateService $createService,
     ) {}
 
     public function index(Request $request): View
@@ -33,6 +36,88 @@ class ManagedOrderController extends Controller
             'statuses' => ManagedFulfilmentService::internalStatuses(),
             'assignees' => $this->managed->staffAssignees(),
         ]);
+    }
+
+    public function create(Request $request): View
+    {
+        $advertiserSearch = trim((string) $request->input('advertiser_q', ''));
+        $siteSearch = trim((string) $request->input('site_q', ''));
+
+        return view('admin.managed-orders.create', [
+            'advertisers' => $this->createService->advertiserOptions($advertiserSearch !== '' ? $advertiserSearch : null),
+            'sites' => $this->createService->siteOptions($siteSearch !== '' ? $siteSearch : null),
+            'assignees' => $this->managed->staffAssignees(),
+            'advertiserSearch' => $advertiserSearch,
+            'siteSearch' => $siteSearch,
+        ]);
+    }
+
+    public function confirm(Request $request): View|RedirectResponse
+    {
+        $data = $request->validate([
+            'advertiser_id' => 'required|integer',
+            'site_id' => 'required|integer',
+            'anchor_text' => 'required|string|max:500',
+            'target_url' => 'required|string|max:2000',
+            'content_source' => 'required|in:buyer,slb',
+            'content_url' => 'nullable|string|max:2000',
+            'managed_assignee_id' => 'nullable|integer',
+            'managed_notes' => 'nullable|string|max:5000',
+        ]);
+
+        try {
+            $preview = $this->createService->preview($data);
+        } catch (ValidationException $e) {
+            return redirect()
+                ->route('admin.managed-orders.create')
+                ->withErrors($e->errors())
+                ->withInput();
+        }
+
+        $idempotencyKey = $this->createService->newIdempotencyKey();
+
+        return view('admin.managed-orders.confirm', [
+            'preview' => $preview,
+            'form' => $data,
+            'idempotencyKey' => $idempotencyKey,
+            'assignees' => $this->managed->staffAssignees(),
+        ]);
+    }
+
+    public function store(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'advertiser_id' => 'required|integer',
+            'site_id' => 'required|integer',
+            'anchor_text' => 'required|string|max:500',
+            'target_url' => 'required|string|max:2000',
+            'content_source' => 'required|in:buyer,slb',
+            'content_url' => 'nullable|string|max:2000',
+            'managed_assignee_id' => 'nullable|integer',
+            'managed_notes' => 'nullable|string|max:5000',
+            'idempotency_key' => 'required|string|min:8|max:64',
+            'confirm_charge' => 'accepted',
+        ]);
+
+        try {
+            $order = $this->createService->create($request->user(), $data);
+        } catch (ValidationException $e) {
+            return redirect()
+                ->route('admin.managed-orders.create')
+                ->withErrors($e->errors())
+                ->withInput($request->except(['idempotency_key', 'confirm_charge']));
+        }
+
+        $item = $order->items->first();
+        if (! $item) {
+            return redirect()
+                ->route('admin.managed-orders.index')
+                ->with('success', 'Order #'.($order->order_number ?: $order->id).' created.');
+        }
+
+        return redirect()
+            ->route('admin.managed-orders.show', $item)
+            ->with('success', 'Order #'.($order->order_number ?: $order->id).' created · Managed by SLB. Advertiser wallet charged once.');
     }
 
     public function show(OrderItem $orderItem): View

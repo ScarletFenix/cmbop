@@ -7,6 +7,9 @@
     @include('admin.partials.page-header', [
         'title' => 'Managed by SLB',
         'subtitle' => 'Email-managed placements tracked by the team. Publishers do not see these in Tasks and are not paid through the portal.',
+        'actionUrl' => route('admin.managed-orders.create'),
+        'actionLabel' => 'Create order',
+        'actionIcon' => 'fa-plus',
     ])
 
     @if(session('success'))
