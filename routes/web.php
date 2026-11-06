@@ -2137,6 +2137,9 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
         Route::post('/cart/add', [CatalogController::class, 'addToCart'])->name('cart.add');
         Route::post('/cart/assign-article', [CatalogController::class, 'assignCartArticle'])
             ->name('cart.assign-article');
+        Route::post('/cart/upload-article', [CatalogController::class, 'uploadCartArticle'])
+            ->middleware('throttle:30,1')
+            ->name('cart.upload-article');
         Route::post('/cart/remove', [CatalogController::class, 'removeFromCart'])->name('cart.remove');
         Route::post('/cart/update', [CatalogController::class, 'updateCartQuantity'])->name('cart.update');
         Route::post('/cart/configure', [CatalogController::class, 'configureCartLine'])->name('cart.configure');

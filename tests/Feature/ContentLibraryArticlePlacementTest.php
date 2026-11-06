@@ -522,7 +522,8 @@ class ContentLibraryArticlePlacementTest extends TestCase
     public function test_cart_drawer_script_parses_and_includes_reverse_sign(): void
     {
         $layout = (string) file_get_contents(resource_path('views/advertiser/layouts/app.blade.php'));
-        $this->assertStringContainsString('const uploadPickers', $layout);
+        $this->assertStringContainsString('data-cart-dropzone', $layout);
+        $this->assertStringContainsString('function openCartArticlePicker', $layout);
         $this->assertStringContainsString('cart-existing-article', $layout);
         $this->assertStringNotContainsString("}).join('') : '';", $layout);
 

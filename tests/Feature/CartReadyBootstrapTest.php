@@ -130,6 +130,7 @@ class CartReadyBootstrapTest extends TestCase
         $config = json_decode(html_entity_decode($matches[1], ENT_QUOTES | ENT_HTML5), true);
         $this->assertIsArray($config);
         $this->assertSame(route('advertiser.cart.add'), $config['addUrl'] ?? null);
+        $this->assertSame(route('advertiser.cart.upload-article'), $config['uploadUrl'] ?? null);
         $this->assertNotSame('', $config['csrf'] ?? '');
     }
 
@@ -228,7 +229,7 @@ class CartReadyBootstrapTest extends TestCase
             }
         }
         $this->assertNotSame('', $cartScript, 'Advertiser layout cart script was not rendered');
-        $this->assertStringContainsString('const pickerMarkup = written ? \'\' : placementIds.map', $cartScript);
+        $this->assertStringContainsString('const pickerMarkup = (written || !choseUpload) ? \'\' : placementIds.map', $cartScript);
         $this->assertStringContainsString('${pickerMarkup}', $cartScript);
         $this->assertStringNotContainsString('${uploadPickers}', $cartScript);
         $this->assertStringNotContainsString("}).join('') : '';", $cartScript);

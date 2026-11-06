@@ -97,6 +97,7 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -2540,6 +2541,291 @@ class CatalogController extends Controller
                 'message' => $message,
             ], 500);
         }
+    }
+
+    /**
+     * Upload a .docx for one cart placement, then assign it when the article is orderable.
+     * Chunked bodies use the same protocol as Content Library (Hostinger LiteSpeed).
+     */
+    public function uploadCartArticle(Request $request)
+    {
+        try {
+            return $this->uploadCartArticlePayload($request);
+        } catch (ValidationException $e) {
+            $message = collect($e->errors())->flatten()->first()
+                ?: 'The article could not be uploaded. Please try again.';
+
+            return response()->json([
+                'success' => false,
+                'error' => $message,
+                'message' => $message,
+            ], 422);
+        } catch (\Throwable $e) {
+            report($e);
+
+            $message = UserFacingError::message($e, 'The article could not be uploaded. Please try again.');
+
+            return response()->json([
+                'success' => false,
+                'error' => $message,
+                'message' => $message,
+            ], 500);
+        }
+    }
+
+    private function uploadCartArticlePayload(Request $request)
+    {
+        $uploads = app(ContentUploadService::class);
+        if (! $uploads->uploadsEnabled()) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Content uploads are temporarily turned off. You can still choose a saved article or have the article written.',
+                'message' => 'Content uploads are temporarily turned off. You can still choose a saved article or have the article written.',
+            ], 403);
+        }
+
+        $data = $request->validate([
+            'id' => ['required', 'integer'],
+            'sensitive_type' => ['nullable', 'string', 'max:50'],
+            'homepage_days' => ['nullable'],
+            'copy_index' => ['nullable', 'integer', 'min:0'],
+            'original_filename' => ['nullable', 'string', 'max:200'],
+        ]);
+
+        $siteId = (int) $data['id'];
+        $sensitiveType = $data['sensitive_type'] ?? null;
+        $hasHomepageInput = array_key_exists('homepage_days', $data) || $request->exists('homepage_days');
+        $homepageDays = $hasHomepageInput
+            ? ($data['homepage_days'] ?? $request->input('homepage_days'))
+            : null;
+        $copyIndex = max(0, (int) ($data['copy_index'] ?? 0));
+
+        $cart = $this->leftoverSessionCart();
+        $lineKey = null;
+        foreach ($cart as $key => $item) {
+            $matches = $hasHomepageInput
+                ? $this->cartLineMatches($item, $siteId, $sensitiveType, $homepageDays)
+                : ((int) ($item['id'] ?? 0) === $siteId
+                    && (($item['sensitive_type'] ?? null) == ($sensitiveType ?: null)));
+            if ($matches) {
+                $lineKey = $key;
+                break;
+            }
+        }
+
+        if ($lineKey === null) {
+            return response()->json(['success' => false, 'error' => 'That website is not in your cart.', 'message' => 'That website is not in your cart.'], 404);
+        }
+
+        $site = Site::query()->catalogVisible()->where('id', $siteId)->first();
+        if (! $site) {
+            $this->putCatalogVisibleCart($cart);
+
+            return response()->json(['success' => false, 'error' => 'Site not found or inactive.', 'message' => 'Site not found or inactive.'], 404);
+        }
+
+        $ids = $this->cartLineContentIds($cart[$lineKey]);
+        if ($copyIndex >= count($ids)) {
+            return response()->json([
+                'success' => false,
+                'error' => 'That placement does not exist for this cart quantity.',
+                'message' => 'That placement does not exist for this cart quantity.',
+            ], 422);
+        }
+
+        $market = $this->cartUploadMarket($site);
+        if ($market === null) {
+            return response()->json([
+                'success' => false,
+                'error' => 'This site’s country and language are not set up for article uploads. Open Content Library to choose a market.',
+                'message' => 'This site’s country and language are not set up for article uploads. Open Content Library to choose a market.',
+                'content_library_url' => route('advertiser.content-library', ['upload' => 1]),
+            ], 422);
+        }
+
+        $user = auth()->user();
+        if (! $user instanceof User) {
+            abort(403);
+        }
+
+        try {
+            $cfg = $uploads->effectiveConfig();
+            $maxKb = $uploads->effectiveMaxKilobytes($cfg);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'error' => UserFacingError::message($e, 'The article could not be uploaded. Please try again.'),
+                'message' => UserFacingError::message($e, 'The article could not be uploaded. Please try again.'),
+            ], 500);
+        }
+
+        $uploadedFile = $request->file('file');
+        $chunk = $uploads->receiveArticleChunk($request, $user);
+        if (is_array($chunk)) {
+            if (! ($chunk['ok'] ?? false)) {
+                return response()->json([
+                    'success' => false,
+                    'error' => $chunk['message'] ?? 'The article could not be uploaded. Please try again.',
+                    'message' => $chunk['message'] ?? 'The article could not be uploaded. Please try again.',
+                ], 422);
+            }
+            if (! ($chunk['complete'] ?? false)) {
+                return response()->json([
+                    'success' => true,
+                    'chunk_received' => true,
+                    'received' => $chunk['received'] ?? 0,
+                    'total' => $chunk['total'] ?? 0,
+                ]);
+            }
+            $uploadedFile = $chunk['file'];
+            $request->files->set('file', $uploadedFile);
+        }
+
+        $displayName = $uploads->safeDocxFilename(scalar_text($request->input('original_filename')));
+        if (
+            $uploadedFile instanceof UploadedFile
+            && $uploadedFile->isValid()
+            && $displayName !== ''
+            && $displayName !== 'article.docx'
+        ) {
+            $realPath = $uploadedFile->getRealPath();
+            if (is_string($realPath) && $realPath !== '') {
+                $uploadedFile = new UploadedFile(
+                    $realPath,
+                    $displayName,
+                    $uploadedFile->getMimeType() ?: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                    $uploadedFile->getError(),
+                    true
+                );
+                $request->files->set('file', $uploadedFile);
+            }
+        }
+
+        [$contentLength, $clientBytes] = $uploads->uploadByteHints($request);
+        if ($message = $uploads->rejectedUploadMessage(
+            $uploadedFile,
+            $cfg,
+            $contentLength,
+            $clientBytes,
+        )) {
+            return response()->json([
+                'success' => false,
+                'error' => $message,
+                'message' => $message,
+            ], 422);
+        }
+
+        $request->validate([
+            'file' => ['required', 'file', 'max:'.$maxKb, 'extensions:docx'],
+        ], $uploads->uploadValidationMessages($cfg));
+
+        try {
+            $result = $uploads->uploadAndProcess(
+                file: $uploadedFile instanceof UploadedFile
+                    ? $uploadedFile
+                    : $request->file('file'),
+                user: $user,
+                siteId: $siteId,
+                copyIndex: $copyIndex,
+                cartKey: $this->cartIdentityKey($cart[$lineKey]),
+                replace: null,
+                title: pathinfo($displayName !== '' ? $displayName : ($uploadedFile?->getClientOriginalName() ?? 'article.docx'), PATHINFO_FILENAME),
+                country: $market['country'],
+                language: $market['language'],
+                imageRights: ContentSubmission::IMAGE_RIGHTS_NONE,
+            );
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'error' => UserFacingError::message($e, 'The article could not be uploaded. Please try again.'),
+                'message' => UserFacingError::message($e, 'The article could not be uploaded. Please try again.'),
+            ], 500);
+        }
+
+        if (! ($result['ok'] ?? false)) {
+            $message = $result['message'] ?? 'Unable to upload document.';
+
+            return response()->json([
+                'success' => false,
+                'error' => $message,
+                'message' => $message,
+                'title' => $result['title'] ?? 'Upload failed',
+            ], 422);
+        }
+
+        $submission = $result['submission'] ?? null;
+        if (! $submission instanceof ContentSubmission) {
+            return response()->json([
+                'success' => false,
+                'error' => 'The article could not be uploaded. Please try again.',
+                'message' => 'The article could not be uploaded. Please try again.',
+            ], 500);
+        }
+
+        $submission = $submission->fresh() ?? $submission;
+        if (! $submission->canOrderFromLibrary()) {
+            $message = $submission->libraryFixSummary()
+                ?: ($result['message'] ?? 'Article uploaded, but it still needs a fix in Content Library before this placement is ready.');
+
+            return response()->json(array_merge([
+                'success' => false,
+                'error' => $message,
+                'message' => $message,
+                'approved' => false,
+                'content_library_url' => route('advertiser.content-library', ['upload' => 1, 'edit' => $submission->id]),
+            ], $this->cartPayloadForClient()), 422);
+        }
+
+        $request->merge([
+            'content_submission_id' => $submission->id,
+            'copy_index' => $copyIndex,
+        ]);
+
+        $assigned = $this->assignCartArticlePayload($request);
+        $payload = $assigned->getData(true);
+        if (! is_array($payload)) {
+            $payload = [];
+        }
+        $payload['uploaded'] = true;
+        $payload['approved'] = true;
+        $payload['filename'] = $submission->original_filename ?: $displayName;
+        $payload['submission_id'] = $submission->id;
+        if (! isset($payload['message']) || $payload['message'] === '') {
+            $payload['message'] = 'Article uploaded and assigned to this placement.';
+        }
+
+        return response()->json($payload, $assigned->getStatusCode());
+    }
+
+    /**
+     * @return array{country: string, language: string}|null
+     */
+    private function cartUploadMarket(Site $site): ?array
+    {
+        $pairs = app(CountryLanguagePairs::class);
+        $countries = array_values(array_filter(array_map(
+            static fn ($code) => strtolower(trim((string) $code)),
+            $site->countryCodes() !== [] ? $site->countryCodes() : [(string) $site->country]
+        )));
+        $languages = array_values(array_filter(array_map(
+            static fn ($code) => strtolower(trim((string) $code)),
+            $site->languageCodes() !== [] ? $site->languageCodes() : [(string) $site->language]
+        )));
+
+        foreach ($countries as $country) {
+            foreach ($languages as $language) {
+                if ($pairs->isAllowedPair($country, $language)) {
+                    return ['country' => $country, 'language' => $language];
+                }
+            }
+            foreach ($pairs->languageCodesForCountry($country) as $language) {
+                if ($pairs->isAllowedPair($country, $language)) {
+                    return ['country' => $country, 'language' => $language];
+                }
+            }
+        }
+
+        return null;
     }
 
     private function assignCartArticlePayload(Request $request)
