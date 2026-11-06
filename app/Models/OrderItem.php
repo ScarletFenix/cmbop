@@ -89,6 +89,7 @@ class OrderItem extends Model
         'managed_assignee_id',
         'managed_internal_status',
         'managed_notes',
+        'managed_external_reference',
         'managed_marked_at',
         'managed_completed_by',
         'writing_fee',

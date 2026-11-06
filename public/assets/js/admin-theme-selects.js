@@ -75,10 +75,7 @@
                 event.stopPropagation();
             });
             searchInput.addEventListener('keydown', function (event) {
-                if (event.key === 'Enter') {
-                    event.preventDefault();
-                    event.stopPropagation();
-                }
+                handleListKeydown(event);
             });
             searchInput.addEventListener('input', function () {
                 if (select.dataset.adminSelectSearchUrl) {
@@ -195,6 +192,82 @@
             }
         }
 
+        function visibleOptions() {
+            return Array.from(options.querySelectorAll('.single-select-option')).filter(function (el) {
+                return !el.hidden;
+            });
+        }
+
+        function clearActive() {
+            options.querySelectorAll('.single-select-option.is-active').forEach(function (el) {
+                el.classList.remove('is-active');
+            });
+        }
+
+        function setActive(el) {
+            clearActive();
+            if (!el) return;
+            el.classList.add('is-active');
+            if (typeof el.scrollIntoView === 'function') {
+                el.scrollIntoView({ block: 'nearest' });
+            }
+        }
+
+        function pickOption(el) {
+            if (!el) return;
+            select.value = el.getAttribute('data-value') || '';
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+            dropdown.classList.remove('show');
+            trigger.setAttribute('aria-expanded', 'false');
+            clearActive();
+
+            const root = select.closest('.admin-deposits-filters');
+            if (root && root.dataset.adminFilterLive === '1') {
+                root.dispatchEvent(new CustomEvent('admin-filter-pick', { bubbles: true }));
+                return;
+            }
+            const form = select.form;
+            if (form && (form.dataset.adminSelectNoSubmit === '1' || form.classList.contains('staff-assign-site-form'))) {
+                return;
+            }
+            if (form && form.classList.contains('admin-deposits-filters')) {
+                if (typeof form.requestSubmit === 'function') form.requestSubmit();
+                else form.submit();
+            }
+        }
+
+        function handleListKeydown(event) {
+            const open = dropdown.classList.contains('show');
+            if (!open && (event.key === 'ArrowDown' || event.key === 'Enter' || event.key === ' ')) {
+                event.preventDefault();
+                trigger.click();
+                return;
+            }
+            if (!open) return;
+            const list = visibleOptions();
+            const active = options.querySelector('.single-select-option.is-active');
+            const idx = active ? list.indexOf(active) : -1;
+            if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                event.stopPropagation();
+                setActive(list[Math.min(list.length - 1, idx + 1)] || list[0]);
+            } else if (event.key === 'ArrowUp') {
+                event.preventDefault();
+                event.stopPropagation();
+                setActive(list[Math.max(0, idx - 1)] || list[0]);
+            } else if (event.key === 'Enter') {
+                event.preventDefault();
+                event.stopPropagation();
+                pickOption(active || list[0]);
+            } else if (event.key === 'Escape') {
+                event.preventDefault();
+                dropdown.classList.remove('show');
+                trigger.setAttribute('aria-expanded', 'false');
+                clearActive();
+                trigger.focus();
+            }
+        }
+
         function appendOption(opt, current) {
             const el = document.createElement('div');
             const on = opt.value === current;
@@ -260,6 +333,7 @@
             trigger.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
             if (willOpen && searchInput) {
                 searchInput.value = '';
+                clearActive();
                 if (select.dataset.adminSelectSearchUrl) {
                     remoteSearch('');
                 } else {
@@ -269,35 +343,26 @@
             }
         });
 
+        trigger.addEventListener('keydown', function (event) {
+            handleListKeydown(event);
+        });
+
         dropdown.addEventListener('click', function (event) {
             const opt = event.target.closest('.single-select-option');
             if (!opt) return;
             event.stopPropagation();
-            select.value = opt.getAttribute('data-value') || '';
-            select.dispatchEvent(new Event('change', { bubbles: true }));
-            dropdown.classList.remove('show');
-            trigger.setAttribute('aria-expanded', 'false');
-
-            const root = select.closest('.admin-deposits-filters');
-            if (root && root.dataset.adminFilterLive === '1') {
-                root.dispatchEvent(new CustomEvent('admin-filter-pick', { bubbles: true }));
-                return;
-            }
-            const form = select.form;
-            if (form && (form.dataset.adminSelectNoSubmit === '1' || form.classList.contains('staff-assign-site-form'))) {
-                return;
-            }
-            if (form && form.classList.contains('admin-deposits-filters')) {
-                if (typeof form.requestSubmit === 'function') form.requestSubmit();
-                else form.submit();
-            }
+            pickOption(opt);
         });
 
         sync();
     }
 
-    function boot() {
-        document.querySelectorAll('.admin-deposits-filters select').forEach(enhance);
+    function boot(root) {
+        const scope = root && root.querySelectorAll ? root : document;
+        scope.querySelectorAll('.admin-deposits-filters select').forEach(function (select) {
+            if (select.closest('.admin-deposits-theme-select, .community-theme-select')) return;
+            enhance(select);
+        });
     }
 
     document.addEventListener('click', function () {
@@ -308,8 +373,13 @@
         });
     });
 
+    window.AdminThemeSelects = {
+        enhance: enhance,
+        boot: boot,
+    };
+
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', boot);
+        document.addEventListener('DOMContentLoaded', function () { boot(); });
     } else {
         boot();
     }

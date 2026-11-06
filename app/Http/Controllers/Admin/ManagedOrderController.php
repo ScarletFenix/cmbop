@@ -7,6 +7,7 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Services\Orders\AdminManagedOrderCreateService;
 use App\Services\Orders\ManagedFulfilmentService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -40,32 +41,71 @@ class ManagedOrderController extends Controller
 
     public function create(Request $request): View
     {
-        $advertiserSearch = trim((string) $request->input('advertiser_q', ''));
-        $siteSearch = trim((string) $request->input('site_q', ''));
-
         return view('admin.managed-orders.create', [
-            'advertisers' => $this->createService->advertiserOptions($advertiserSearch !== '' ? $advertiserSearch : null),
-            'sites' => $this->createService->siteOptions($siteSearch !== '' ? $siteSearch : null),
             'assignees' => $this->managed->staffAssignees(),
-            'advertiserSearch' => $advertiserSearch,
-            'siteSearch' => $siteSearch,
+            'advertiserSearchUrl' => route('admin.managed-orders.advertisers-search'),
+            'siteSearchUrl' => route('admin.managed-orders.sites-search'),
+            'librarySearchUrl' => route('admin.managed-orders.library-search'),
+            'quoteUrl' => route('admin.managed-orders.quote'),
+            'slbWritingFee' => \App\Services\Marketplace\WritingFeeService::SLB_FLAT_EUR,
         ]);
+    }
+
+    public function searchAdvertisers(Request $request): JsonResponse
+    {
+        $q = search_text($request->query('q'));
+        $selected = (int) $request->query('selected', 0) ?: null;
+
+        return response()->json([
+            'options' => $this->createService->searchAdvertisers($q !== '' ? $q : null, $selected),
+        ]);
+    }
+
+    public function searchSites(Request $request): JsonResponse
+    {
+        $q = search_text($request->query('q'));
+        $selected = (int) $request->query('selected', 0) ?: null;
+
+        return response()->json([
+            'options' => $this->createService->searchSites($q !== '' ? $q : null, $selected),
+        ]);
+    }
+
+    public function searchLibrary(Request $request): JsonResponse
+    {
+        $advertiserId = (int) $request->query('advertiser_id', 0);
+        $q = search_text($request->query('q'));
+        $selected = (int) $request->query('selected', 0) ?: null;
+
+        return response()->json([
+            'options' => $this->createService->searchLibraryArticles(
+                $advertiserId,
+                $q !== '' ? $q : null,
+                $selected
+            ),
+        ]);
+    }
+
+    public function quote(Request $request): JsonResponse
+    {
+        try {
+            $data = $this->validatedCreatePayload($request, false);
+            $quote = $this->createService->quote($data);
+
+            return response()->json(['success' => true, 'quote' => $quote]);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => collect($e->errors())->flatten()->first() ?: 'Could not price this order.',
+                'errors' => $e->errors(),
+            ], 422);
+        }
     }
 
     public function confirm(Request $request): View|RedirectResponse
     {
-        $data = $request->validate([
-            'advertiser_id' => 'required|integer',
-            'site_id' => 'required|integer',
-            'anchor_text' => 'required|string|max:500',
-            'target_url' => 'required|string|max:2000',
-            'content_source' => 'required|in:buyer,slb',
-            'content_url' => 'nullable|string|max:2000',
-            'managed_assignee_id' => 'nullable|integer',
-            'managed_notes' => 'nullable|string|max:5000',
-        ]);
-
         try {
+            $data = $this->validatedCreatePayload($request, false);
             $preview = $this->createService->preview($data);
         } catch (ValidationException $e) {
             return redirect()
@@ -78,6 +118,7 @@ class ManagedOrderController extends Controller
 
         return view('admin.managed-orders.confirm', [
             'preview' => $preview,
+            'quote' => $preview['quote'],
             'form' => $data,
             'idempotencyKey' => $idempotencyKey,
             'assignees' => $this->managed->staffAssignees(),
@@ -86,20 +127,8 @@ class ManagedOrderController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
-        $data = $request->validate([
-            'advertiser_id' => 'required|integer',
-            'site_id' => 'required|integer',
-            'anchor_text' => 'required|string|max:500',
-            'target_url' => 'required|string|max:2000',
-            'content_source' => 'required|in:buyer,slb',
-            'content_url' => 'nullable|string|max:2000',
-            'managed_assignee_id' => 'nullable|integer',
-            'managed_notes' => 'nullable|string|max:5000',
-            'idempotency_key' => 'required|string|min:8|max:64',
-            'confirm_charge' => 'accepted',
-        ]);
-
         try {
+            $data = $this->validatedCreatePayload($request, true);
             $order = $this->createService->create($request->user(), $data);
         } catch (ValidationException $e) {
             return redirect()
@@ -109,15 +138,22 @@ class ManagedOrderController extends Controller
         }
 
         $item = $order->items->first();
+        $count = Order::query()
+            ->where('reference_code', $order->reference_code)
+            ->where('payment_status', 'paid')
+            ->count();
+        $msg = 'Order #'.($order->order_number ?: $order->id).' created · Managed by SLB. Advertiser wallet charged once.';
+        if ($count > 1) {
+            $msg = $count.' placements created under ref '.$order->reference_code.'. Advertiser wallet charged once.';
+        }
+
         if (! $item) {
-            return redirect()
-                ->route('admin.managed-orders.index')
-                ->with('success', 'Order #'.($order->order_number ?: $order->id).' created.');
+            return redirect()->route('admin.managed-orders.index')->with('success', $msg);
         }
 
         return redirect()
             ->route('admin.managed-orders.show', $item)
-            ->with('success', 'Order #'.($order->order_number ?: $order->id).' created · Managed by SLB. Advertiser wallet charged once.');
+            ->with('success', $msg);
     }
 
     public function show(OrderItem $orderItem): View
@@ -182,6 +218,7 @@ class ManagedOrderController extends Controller
             'managed_assignee_id' => 'nullable|integer',
             'managed_internal_status' => 'nullable|string|max:40',
             'managed_notes' => 'nullable|string|max:5000',
+            'managed_external_reference' => 'nullable|string|max:500',
         ]);
 
         $this->managed->updateDesk(
@@ -198,6 +235,15 @@ class ManagedOrderController extends Controller
                 'notes' => array_key_exists('managed_notes', $data),
             ],
         );
+
+        if (array_key_exists('managed_external_reference', $data)
+            && \Illuminate\Support\Facades\Schema::hasColumn('order_items', 'managed_external_reference')) {
+            $orderItem->forceFill([
+                'managed_external_reference' => filled($data['managed_external_reference'])
+                    ? trim((string) $data['managed_external_reference'])
+                    : null,
+            ])->save();
+        }
 
         return back()->with('success', 'Managed desk row updated.');
     }
@@ -232,5 +278,52 @@ class ManagedOrderController extends Controller
         return redirect()
             ->route('admin.managed-orders.show', $orderItem)
             ->with('success', 'Order completed · Managed by SLB. Publisher wallet was not credited.');
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function validatedCreatePayload(Request $request, bool $forStore): array
+    {
+        $rules = [
+            'advertiser_id' => 'required|integer',
+            'managed_assignee_id' => 'nullable|integer',
+            'managed_notes' => 'nullable|string|max:5000',
+            'managed_external_reference' => 'nullable|string|max:500',
+            'sites' => 'required|array|min:1|max:20',
+            'sites.*.site_id' => 'required|integer',
+            'sites.*.quantity' => 'nullable|integer|min:1|max:10',
+            'sites.*.content_source' => 'required|in:buyer,slb,library',
+            'sites.*.content_url' => 'nullable|string|max:2000',
+            'sites.*.content_submission_id' => 'nullable|integer',
+            'sites.*.writing_brief_notes' => 'nullable|string|max:5000',
+            'sites.*.links' => 'required|array|min:1|max:3',
+            'sites.*.links.*.anchor' => 'nullable|string|max:500',
+            'sites.*.links.*.url' => 'nullable|string|max:2000',
+        ];
+
+        // Legacy single-site fields still accepted.
+        if (! $request->has('sites') && $request->filled('site_id')) {
+            $rules = [
+                'advertiser_id' => 'required|integer',
+                'site_id' => 'required|integer',
+                'anchor_text' => 'required|string|max:500',
+                'target_url' => 'required|string|max:2000',
+                'content_source' => 'required|in:buyer,slb,library',
+                'content_url' => 'nullable|string|max:2000',
+                'content_submission_id' => 'nullable|integer',
+                'writing_brief_notes' => 'nullable|string|max:5000',
+                'managed_assignee_id' => 'nullable|integer',
+                'managed_notes' => 'nullable|string|max:5000',
+                'managed_external_reference' => 'nullable|string|max:500',
+            ];
+        }
+
+        if ($forStore) {
+            $rules['idempotency_key'] = 'required|string|min:8|max:64';
+            $rules['confirm_charge'] = 'accepted';
+        }
+
+        return $request->validate($rules);
     }
 }

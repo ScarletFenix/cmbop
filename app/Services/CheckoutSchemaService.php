@@ -159,6 +159,7 @@ class CheckoutSchemaService
         $this->addColumn('order_items', 'managed_assignee_id', 'bigint unsigned NULL');
         $this->addColumn('order_items', 'managed_internal_status', 'varchar(40) NULL');
         $this->addColumn('order_items', 'managed_notes', 'text NULL');
+        $this->addColumn('order_items', 'managed_external_reference', 'varchar(500) NULL');
         $this->addColumn('order_items', 'managed_marked_at', 'timestamp NULL');
         $this->addColumn('order_items', 'managed_completed_by', 'bigint unsigned NULL');
         $this->addColumn('order_items', 'writing_fee', 'decimal(10,2) NOT NULL DEFAULT 0');

@@ -449,6 +449,13 @@
   font-weight: 650;
 }
 
+.admin-deposits-filters .single-select-option.is-active {
+  background: var(--brand-primary-bg, #e6f5f5);
+  color: var(--brand-primary, #1a585e);
+  outline: 1px solid var(--brand-primary, #1a585e);
+  outline-offset: -1px;
+}
+
 /* Live-search status reserves a line under Search. Collapse it when empty so
    the Filter row stays on the same baseline as the inputs. */
 .admin-deposits-filters .slb-search-status:empty {

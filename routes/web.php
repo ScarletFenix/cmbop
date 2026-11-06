@@ -1534,6 +1534,18 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
             ->name('managed-orders.index');
         Route::get('/managed-orders/create', [AdminManagedOrderController::class, 'create'])
             ->name('managed-orders.create');
+        Route::get('/managed-orders/advertisers-search', [AdminManagedOrderController::class, 'searchAdvertisers'])
+            ->middleware('throttle:60,1')
+            ->name('managed-orders.advertisers-search');
+        Route::get('/managed-orders/sites-search', [AdminManagedOrderController::class, 'searchSites'])
+            ->middleware('throttle:60,1')
+            ->name('managed-orders.sites-search');
+        Route::get('/managed-orders/library-search', [AdminManagedOrderController::class, 'searchLibrary'])
+            ->middleware('throttle:60,1')
+            ->name('managed-orders.library-search');
+        Route::post('/managed-orders/quote', [AdminManagedOrderController::class, 'quote'])
+            ->middleware('throttle:60,1')
+            ->name('managed-orders.quote');
         Route::post('/managed-orders/confirm', [AdminManagedOrderController::class, 'confirm'])
             ->middleware('throttle:30,1')
             ->name('managed-orders.confirm');
