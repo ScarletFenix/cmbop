@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\BulkSiteRequest;
 use App\Models\DepositRequest;
 use App\Models\InAppNotification;
+use App\Models\InAppNotificationPreference;
 use App\Models\Order;
 use App\Models\OrderActivity;
 use App\Models\OrderItem;
@@ -100,7 +101,7 @@ class InAppNotificationService
             $category = $options['category'] ?? $this->categoryForType($type);
 
             // Bell category mute (defaults on when preferences table is missing).
-            if (! \App\Models\InAppNotificationPreference::allows($userId, $category)) {
+            if (! InAppNotificationPreference::allows($userId, $category)) {
                 return null;
             }
 
@@ -1328,6 +1329,9 @@ class InAppNotificationService
         );
 
         foreach ($order->items as $item) {
+            if (method_exists($item, 'isManagedBySlb') && $item->isManagedBySlb()) {
+                continue;
+            }
             $site = Site::find($item->site_id);
             if (! $site?->publisher_id) {
                 continue;

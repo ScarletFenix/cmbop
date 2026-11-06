@@ -98,6 +98,9 @@
         <a href="{{ route('admin.writing-queue.index') }}" class="{{ request()->routeIs('admin.writing-queue*') ? 'active' : '' }}">
             <i class="fa fa-pen-nib"></i> <span>Writing queue</span>
         </a>
+        <a href="{{ route('admin.managed-orders.index') }}" class="{{ request()->routeIs('admin.managed-orders*') ? 'active' : '' }}">
+            <i class="fa fa-headset"></i> <span>Managed by SLB</span>
+        </a>
         @endif
         <a href="{{ staff_route('sites.index') }}" class="{{ request()->routeIs($staffPrefix.'sites.*') ? 'active' : '' }}" title="Sites Management — all publishers">
             <i class="fa fa-globe"></i>

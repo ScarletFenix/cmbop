@@ -17,6 +17,7 @@ use App\Services\ContentModeration\ContentModerationService;
 use App\Services\Marketplace\ArticleWritingService;
 use App\Services\Marketplace\CheckoutAddOnService;
 use App\Services\Marketplace\WritingFeeService;
+use App\Services\Orders\OrderPackService;
 use App\Services\Orders\OrderRefundService;
 use App\Services\Partners\PartnerAlertService;
 use App\Services\Wallet\WalletLedgerService;
@@ -2094,7 +2095,7 @@ class OrderPaymentService
         }
 
         try {
-            app(\App\Services\Orders\OrderPackService::class)->linkCreatedOrders($created, $package);
+            app(OrderPackService::class)->linkCreatedOrders($created, $package);
         } catch (\Throwable $e) {
             Log::warning('Pack link after Stripe finalize failed: '.$e->getMessage(), [
                 'reference_code' => $referenceCode,
@@ -2410,7 +2411,7 @@ class OrderPaymentService
         }
 
         try {
-            app(\App\Services\Orders\OrderPackService::class)->linkCreatedOrders($created, $package);
+            app(OrderPackService::class)->linkCreatedOrders($created, $package);
         } catch (\Throwable $e) {
             Log::warning('Pack link after PayPal finalize failed: '.$e->getMessage(), [
                 'reference_code' => $referenceCode,
@@ -3206,7 +3207,7 @@ class OrderPaymentService
                 if ($ref !== '') {
                     $package = $this->getPendingCheckout($ref);
                 }
-                app(\App\Services\Orders\OrderPackService::class)->linkCreatedOrders($orders, is_array($package) ? $package : null);
+                app(OrderPackService::class)->linkCreatedOrders($orders, is_array($package) ? $package : null);
             } catch (\Throwable $e) {
                 Log::warning('Pack link after paid checkout failed: '.$e->getMessage());
             }
@@ -3236,6 +3237,9 @@ class OrderPaymentService
             $siteOrders = [];
             foreach ($orders as $order) {
                 foreach ($order->items as $item) {
+                    if (method_exists($item, 'isManagedBySlb') && $item->isManagedBySlb()) {
+                        continue;
+                    }
                     $siteId = $item->site_id;
                     if (! isset($siteOrders[$siteId])) {
                         $site = Site::find($siteId);

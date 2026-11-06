@@ -62,6 +62,7 @@ class AutoApproveOrders extends Command
         $notYetDueAt = Carbon::now()->subHours($windowHours);
 
         $query = OrderItem::query()
+            ->publisherFulfilment()
             ->whereNotNull('live_url')
             ->where('live_url', '!=', '')
             ->whereLiveUrlSubmittedAtIsRecorded()
@@ -151,6 +152,7 @@ class AutoApproveOrders extends Command
     protected function autoApproveDueOrders(int $windowHours): int
     {
         $query = OrderItem::query()
+            ->publisherFulfilment()
             ->whereNotNull('live_url')
             ->where('live_url', '!=', '')
             ->whereLiveUrlSubmittedAtIsRecorded()
@@ -273,7 +275,13 @@ class AutoApproveOrders extends Command
                     Site::refreshCompletedOrdersCount((int) $site->id);
                 }
 
-                if ($site && $site->publisher_id && $publisherRoleId && ! $partnerSettled) {
+                if ($lockedItem->isManagedBySlb()) {
+                    // Managed by SLB is completed by staff, never auto-paid to the catalog publisher.
+                    Log::info('Auto-approve skipped publisher credit for Managed by SLB item', [
+                        'order_id' => $order->id,
+                        'order_item_id' => $lockedItem->id,
+                    ]);
+                } elseif ($site && $site->publisher_id && $publisherRoleId && ! $partnerSettled) {
                     $publisher = User::find($site->publisher_id);
 
                     if ($publisher) {

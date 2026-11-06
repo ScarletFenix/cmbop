@@ -81,6 +81,7 @@ class NudgePublishers extends Command
         $sent = 0;
 
         $items = OrderItem::query()
+            ->publisherFulfilment()
             ->whereAcceptedAtIsMissing()
             ->where(fn ($q) => $q->whereNull('live_url')->orWhere('live_url', ''))
             ->where('accept_nudge_stage', '<', count($stages))
@@ -183,6 +184,7 @@ class NudgePublishers extends Command
         $batchThreshold = max(2, (int) config('reminders.publisher_publish.batch_threshold', 3));
 
         $items = OrderItem::query()
+            ->publisherFulfilment()
             ->whereAcceptedAtIsRecorded()
             ->where(fn ($q) => $q->whereNull('live_url')->orWhere('live_url', ''))
             ->where('publish_nudge_stage', '<', $maxStage)

@@ -183,6 +183,16 @@
                                 <div class="mb-2"><span class="text-muted small">Publisher stage</span>
                                     <div>{{ $line->publisher_status ? ucfirst((string) $line->publisher_status) : '—' }}</div>
                                 </div>
+                                <div class="mb-2"><span class="text-muted small">Fulfilment</span>
+                                    <div>
+                                        @if($line->isManagedBySlb())
+                                            <span class="badge text-bg-light text-dark border">Managed by SLB</span>
+                                            <a class="small ms-1" href="{{ route('admin.managed-orders.show', $line) }}">Open desk</a>
+                                        @else
+                                            Publisher portal
+                                        @endif
+                                    </div>
+                                </div>
                                 <div class="mb-2"><span class="text-muted small">Site</span>
                                     <div class="fw-semibold">
                                         @if($lineSite)
@@ -295,6 +305,46 @@
                         </div>
                     </div>
                 </div>
+                @if($order->payment_status === 'paid' && ! in_array($order->status, ['completed', 'cancelled'], true) && $order->items->contains(fn ($line) => ! $line->isManagedBySlb()))
+                <div class="col-12">
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-header bg-white border-0"><strong>Managed by SLB</strong></div>
+                        <div class="card-body">
+                            <p class="small text-muted mb-3">
+                                Switch fulfilment to the SLB team (email-managed). The advertiser keeps this order on My Orders;
+                                the catalog publisher will not see it in Tasks, get chat or nudges, or receive a platform payout.
+                            </p>
+                            <form method="POST" action="{{ route('admin.managed-orders.mark', $order) }}" class="row g-2 align-items-end">
+                                @csrf
+                                @if($order->items->count() > 1)
+                                    <div class="col-md-4">
+                                        <label class="form-label" for="managed_order_item_id">Placement</label>
+                                        <select name="order_item_id" id="managed_order_item_id" class="form-select">
+                                            <option value="">All unmarked placements</option>
+                                            @foreach($order->items as $markLine)
+                                                @continue($markLine->isManagedBySlb())
+                                                <option value="{{ $markLine->id }}">{{ $markLine->site_name ?: ('Item #'.$markLine->id) }}</option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                @endif
+                                <div class="col-md-4">
+                                    <label class="form-label" for="mark_managed_assignee">Assignee (optional)</label>
+                                    <select name="managed_assignee_id" id="mark_managed_assignee" class="form-select">
+                                        <option value="">Unassigned</option>
+                                        @foreach(app(\App\Services\Orders\ManagedFulfilmentService::class)->staffAssignees() as $staffUser)
+                                            <option value="{{ $staffUser->id }}">{{ $staffUser->name }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <button type="submit" class="btn btn-outline-primary">Mark Managed by SLB</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                @endif
                 <div class="col-12">
                     <div class="card border-0 shadow-sm">
                         <div class="card-header bg-white border-0"><strong>Order details</strong></div>

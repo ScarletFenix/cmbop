@@ -130,6 +130,12 @@ class AdvertiserOrderStatus
         $query->where('status', 'review')
             ->whereHas('items', function ($items) {
                 $items->whereNotNull('live_url')->where('live_url', '!=', '');
+                if (Schema::hasColumn('order_items', 'fulfilment_source')) {
+                    $items->where(function ($q) {
+                        $q->whereNull('fulfilment_source')
+                            ->orWhere('fulfilment_source', '!=', 'managed_by_slb');
+                    });
+                }
             });
         static::constrainWithoutFailedPayment($query);
 
@@ -218,6 +224,22 @@ class AdvertiserOrderStatus
               AND order_items.live_url IS NOT NULL
               AND order_items.live_url != ''
         )";
+    }
+
+    public static function isManagedBySlb(Order $order, ?OrderItem $item = null): bool
+    {
+        try {
+            if ($item && method_exists($item, 'isManagedBySlb') && $item->isManagedBySlb()) {
+                return true;
+            }
+            if (! Schema::hasColumn('order_items', 'fulfilment_source')) {
+                return false;
+            }
+
+            return $order->items->contains(fn ($line) => method_exists($line, 'isManagedBySlb') && $line->isManagedBySlb());
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     /**
@@ -361,6 +383,16 @@ class AdvertiserOrderStatus
                 ];
             }
 
+            if (static::isManagedBySlb($order, $item)) {
+                return [
+                    'label' => 'In progress · Managed by SLB',
+                    'next' => 'Our team is managing this placement. You’ll get the live URL here when it’s published.',
+                    'cls' => 'status-processing',
+                    'stage' => 'managed',
+                    'auto_approve_hint' => null,
+                ];
+            }
+
             return [
                 'label' => 'Paid · waiting for publisher',
                 'next' => 'Publisher will accept the order and start working.',
@@ -381,6 +413,16 @@ class AdvertiserOrderStatus
         }
 
         if ($status === 'processing' && $modRequested) {
+            if (static::isManagedBySlb($order, $item)) {
+                return [
+                    'label' => 'In progress · Managed by SLB',
+                    'next' => 'Our team is handling your correction request.',
+                    'cls' => 'status-processing',
+                    'stage' => 'managed_revision',
+                    'auto_approve_hint' => null,
+                ];
+            }
+
             return [
                 'label' => 'Revision requested',
                 'next' => 'Waiting on the publisher to update the post and resubmit the live URL.',
@@ -391,6 +433,16 @@ class AdvertiserOrderStatus
         }
 
         if ($status === 'processing') {
+            if (static::isManagedBySlb($order, $item)) {
+                return [
+                    'label' => 'In progress · Managed by SLB',
+                    'next' => 'Our team is managing this placement. You’ll get the live URL here when it’s published.',
+                    'cls' => 'status-processing',
+                    'stage' => 'managed',
+                    'auto_approve_hint' => null,
+                ];
+            }
+
             $accepted = $item && ! empty($item->accepted_at);
 
             return [
@@ -403,6 +455,18 @@ class AdvertiserOrderStatus
         }
 
         if ($status === 'review') {
+            if (static::isManagedBySlb($order, $item)) {
+                return [
+                    'label' => $hasLiveUrl ? 'In progress · Managed by SLB' : 'In progress · Managed by SLB',
+                    'next' => $hasLiveUrl
+                        ? 'Your article is live. Open it from My Orders. If you need a correction, reply in order chat — our team will handle it.'
+                        : 'Our team is managing this placement. You’ll get the live URL here when it’s published.',
+                    'cls' => 'status-review',
+                    'stage' => $hasLiveUrl ? 'managed_url' : 'managed',
+                    'auto_approve_hint' => null,
+                ];
+            }
+
             return [
                 'label' => $hasLiveUrl ? 'URL delivered · your review' : 'In review',
                 'next' => $hasLiveUrl
@@ -429,6 +493,29 @@ class AdvertiserOrderStatus
                 return [
                     'label' => 'Completed',
                     'next' => 'Placement details are missing for this order.',
+                    'cls' => 'status-completed',
+                    'stage' => 'completed',
+                    'auto_approve_hint' => null,
+                ];
+            }
+
+            if (static::isManagedBySlb($order, $item)) {
+                $linkDown = $hasLiveUrl && $item->live_url_check_ok === false;
+                if ($linkDown) {
+                    return [
+                        'label' => 'Completed · Managed by SLB',
+                        'next' => 'The live URL did not respond. Recheck it, or open the published page. Reply in order chat if you need help.',
+                        'cls' => 'status-review',
+                        'stage' => 'completed',
+                        'auto_approve_hint' => null,
+                    ];
+                }
+
+                return [
+                    'label' => 'Completed · Managed by SLB',
+                    'next' => $hasLiveUrl
+                        ? 'Your article is live. Open it from My Orders. If you need a correction, reply in order chat — our team will handle it.'
+                        : 'Placement finished · Managed by SLB.',
                     'cls' => 'status-completed',
                     'stage' => 'completed',
                     'auto_approve_hint' => null,

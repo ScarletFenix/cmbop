@@ -85,6 +85,12 @@ class OrderItem extends Model
         'review_nudge_sent_at',
         'stalled_notice_sent_at',
         'content_source',
+        'fulfilment_source',
+        'managed_assignee_id',
+        'managed_internal_status',
+        'managed_notes',
+        'managed_marked_at',
+        'managed_completed_by',
         'writing_fee',
         'listing_writing_fee',
         'writing_status',
@@ -166,6 +172,7 @@ class OrderItem extends Model
         'article_approved_at' => 'datetime',
         'writing_reminder_sent_at' => 'datetime',
         'article_revision_used' => 'integer',
+        'managed_marked_at' => 'datetime',
     ];
 
     protected $hidden = [
@@ -343,9 +350,60 @@ class OrderItem extends Model
         return $this->belongsTo(User::class, 'writing_assignee_id');
     }
 
+    public function managedAssignee(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'managed_assignee_id');
+    }
+
+    public function managedCompletedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'managed_completed_by');
+    }
+
     public function contentSubmission(): BelongsTo
     {
         return $this->belongsTo(ContentSubmission::class);
+    }
+
+    /**
+     * Placement fulfilled off-platform by SLB staff (email-managed), not the site publisher portal.
+     */
+    public function isManagedBySlb(): bool
+    {
+        if (! Schema::hasColumn($this->getTable(), 'fulfilment_source')) {
+            return false;
+        }
+
+        return (string) ($this->fulfilment_source ?? 'publisher') === 'managed_by_slb';
+    }
+
+    /**
+     * @param  \Illuminate\Database\Eloquent\Builder<static>  $query
+     * @return \Illuminate\Database\Eloquent\Builder<static>
+     */
+    public function scopePublisherFulfilment($query)
+    {
+        if (! Schema::hasColumn($this->getTable(), 'fulfilment_source')) {
+            return $query;
+        }
+
+        return $query->where(function ($q) {
+            $q->whereNull('fulfilment_source')
+                ->orWhere('fulfilment_source', '!=', 'managed_by_slb');
+        });
+    }
+
+    /**
+     * @param  \Illuminate\Database\Eloquent\Builder<static>  $query
+     * @return \Illuminate\Database\Eloquent\Builder<static>
+     */
+    public function scopeManagedBySlb($query)
+    {
+        if (! Schema::hasColumn($this->getTable(), 'fulfilment_source')) {
+            return $query->whereRaw('0 = 1');
+        }
+
+        return $query->where('fulfilment_source', 'managed_by_slb');
     }
 
     /**
@@ -965,6 +1023,10 @@ class OrderItem extends Model
      */
     public function canAdminRemindPublisher(?Order $order = null): bool
     {
+        if ($this->isManagedBySlb()) {
+            return false;
+        }
+
         $order ??= $this->relationLoaded('order') ? $this->order : $this->order()->first();
         if (! $order || $order->payment_status !== 'paid') {
             return false;

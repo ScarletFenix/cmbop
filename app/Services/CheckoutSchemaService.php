@@ -155,6 +155,12 @@ class CheckoutSchemaService
         $this->addColumn('order_items', 'review_nudge_sent_at', 'timestamp NULL');
         $this->addColumn('order_items', 'stalled_notice_sent_at', 'timestamp NULL');
         $this->addColumn('order_items', 'content_source', "varchar(20) NOT NULL DEFAULT 'buyer'");
+        $this->addColumn('order_items', 'fulfilment_source', "varchar(32) NOT NULL DEFAULT 'publisher'");
+        $this->addColumn('order_items', 'managed_assignee_id', 'bigint unsigned NULL');
+        $this->addColumn('order_items', 'managed_internal_status', 'varchar(40) NULL');
+        $this->addColumn('order_items', 'managed_notes', 'text NULL');
+        $this->addColumn('order_items', 'managed_marked_at', 'timestamp NULL');
+        $this->addColumn('order_items', 'managed_completed_by', 'bigint unsigned NULL');
         $this->addColumn('order_items', 'writing_fee', 'decimal(10,2) NOT NULL DEFAULT 0');
         $this->addColumn('order_items', 'listing_writing_fee', 'decimal(12,2) NULL');
         $this->addColumn('order_items', 'writing_status', 'varchar(32) NULL');
