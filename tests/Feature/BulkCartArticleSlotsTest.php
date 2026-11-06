@@ -325,7 +325,7 @@ class BulkCartArticleSlotsTest extends TestCase
         $this->assertSame('Choose an article option above to continue', $payload['article_copy']['proceed_hint'] ?? null);
 
         $layout = (string) file_get_contents(resource_path('views/advertiser/layouts/app.blade.php'));
-        $this->assertStringContainsString('const pickerMarkup = written ? \'\' : placementIds.map', $layout);
+        $this->assertStringContainsString('const pickerMarkup = (written || !choseUpload) ? \'\' : placementIds.map', $layout);
         $this->assertStringContainsString('${pickerMarkup}', $layout);
         $this->assertStringNotContainsString('${uploadPickers}', $layout);
         $this->assertStringContainsString('data-cart-retry-line', $layout);

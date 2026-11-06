@@ -39,9 +39,9 @@ class CartDrawerDensityTest extends TestCase
         $this->assertStringContainsString('itemKeyAttr', $layout);
         $this->assertStringContainsString('sensitiveAttr', $layout);
         $this->assertStringContainsString('Choose an article option above to continue', $layout);
-        $this->assertStringContainsString('Have the article written', $layout);
+        $this->assertStringContainsString('cartArticleCopy.write_label', $layout);
         $this->assertStringContainsString('Have all articles written', $layout);
-        $this->assertStringContainsString('With writing:', $layout);
+        $this->assertStringContainsString('function lineWithWritingLabel', $layout);
         $this->assertStringContainsString('function lineIsWritten', $layout);
         $this->assertStringContainsString('function linePayAmount', $layout);
         $this->assertStringContainsString('function lineWithWritingAmount', $layout);
@@ -71,7 +71,16 @@ class CartDrawerDensityTest extends TestCase
         $this->assertStringNotContainsString('Before Pay', $layout);
         $this->assertStringNotContainsString('Order document', $layout);
         $this->assertStringContainsString('cartArticleCopy.upload_label', $layout);
-        $this->assertStringContainsString('Upload another', $layout);
+        $this->assertStringContainsString('id="cartArticleFileInput"', $layout);
+        $this->assertStringContainsString('data-cart-dropzone', $layout);
+        $this->assertStringContainsString('function openCartArticlePicker', $layout);
+        $this->assertStringContainsString('function uploadCartArticleFile', $layout);
+        $this->assertStringContainsString("getElementById('cartArticleFileInput')", $layout);
+        $this->assertStringContainsString('input.click()', $layout);
+        $this->assertStringContainsString('Or use a saved article', $layout);
+        $this->assertStringContainsString('cartArticleCopy.saved_article_label', $layout);
+        $this->assertStringNotContainsString('window.location.href = contentLibraryUploadUrl', $layout);
+        $this->assertStringNotContainsString('Upload another', $layout);
         $this->assertStringContainsString('function articleTitleLooksLikeId', $layout);
         $this->assertStringContainsString('function articlePickerLabel', $layout);
         $this->assertStringContainsString('function articleId', $layout);
@@ -146,6 +155,12 @@ class CartDrawerDensityTest extends TestCase
         $this->assertStringContainsString('.cart-item-qty-label', $css);
         $this->assertStringContainsString('.cart-checklist__sites', $css);
         $this->assertStringContainsString('.cart-item-upload-cta', $css);
+        $this->assertStringContainsString('.cart-dropzone', $css);
+        $this->assertStringContainsString('.cart-dropzone.is-ready', $css);
+        $this->assertStringContainsString('.cart-dropzone.is-uploading', $css);
+        $this->assertStringContainsString('.cart-item-saved-article', $css);
+        $this->assertStringNotContainsString('#ffc', strtolower($css));
+        $this->assertStringNotContainsString('yellow', strtolower($css));
         $this->assertStringContainsString('.cart-item-write-cta', $css);
         $this->assertStringContainsString('.cart-source-choices', $css);
         $this->assertStringContainsString('.cart-source-card.is-selected', $css);
@@ -183,6 +198,8 @@ class CartDrawerDensityTest extends TestCase
             ->assertDontSee('Assign a document to each website', false)
             ->assertDontSee('Before Pay', false)
             ->assertSee('id="clearCart"', false)
-            ->assertSee('cart-option-select', false);
+            ->assertSee('cart-option-select', false)
+            ->assertSee('id="cartArticleFileInput"', false)
+            ->assertSee('accept=".docx', false);
     }
 }

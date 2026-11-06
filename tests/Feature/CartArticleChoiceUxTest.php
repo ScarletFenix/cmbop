@@ -74,6 +74,13 @@ class CartArticleChoiceUxTest extends TestCase
         $this->assertSame("Choose how you'll get the article", $copy['heading']);
         $this->assertSame('Have the article written', $copy['write_label']);
         $this->assertSame('Upload article', $copy['upload_label']);
+        $this->assertSame('Or use a saved article', $copy['saved_article_label']);
+        $this->assertSame('Drop a .docx or click to choose', $copy['dropzone_idle']);
+        $this->assertSame('Microsoft Word (.docx) only, max 10 MB', $copy['dropzone_hint']);
+        $this->assertSame('Uploading…', $copy['upload_progress']);
+        $this->assertSame('Uploaded', $copy['upload_done']);
+        $this->assertSame('Replace file', $copy['upload_replace']);
+        $this->assertSame('Choose article', $copy['choose_article']);
         $this->assertSame('Have all articles written', $copy['write_all']);
         $this->assertSame('Optional: add a 12-month link guarantee at checkout', $copy['guarantee_note']);
         $this->assertSame('Optional add-on', $copy['guarantee_optional_label']);

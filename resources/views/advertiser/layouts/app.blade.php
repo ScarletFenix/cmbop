@@ -29,10 +29,14 @@
         'url' => url()->current(),
     ])
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <script type="application/json" id="advertiser-cart-config">@json([
-        'addUrl' => route('advertiser.cart.add'),
-        'csrf' => csrf_token(),
-    ])</script>
+    @php
+        $advertiserCartConfig = [
+            'addUrl' => route('advertiser.cart.add'),
+            'uploadUrl' => route('advertiser.cart.upload-article'),
+            'csrf' => csrf_token(),
+        ];
+    @endphp
+    <script type="application/json" id="advertiser-cart-config">@json($advertiserCartConfig)</script>
     {{-- No defer: Buy buttons in catalog.js need window.addToCart even if the
          large drawer script below fails to parse or throws during init. --}}
     <script src="{{ asset('assets/js/advertiser-cart.js') }}?v={{ @filemtime(public_path('assets/js/advertiser-cart.js')) ?: '1' }}"></script>
@@ -376,6 +380,7 @@
             </button>
         </div>
     </div>
+    <input type="file" id="cartArticleFileInput" class="visually-hidden" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" tabindex="-1" aria-hidden="true">
 </div>
 
 <main id="main-content" tabindex="-1">
@@ -569,6 +574,12 @@
     let writingStepsUpload = @json(app(\App\Services\Marketplace\CheckoutAddOnService::class)->writingStepsUpload())
         || 'You upload → you assign → publisher publishes';
     let contentLibraryUploadUrl = @json(route('advertiser.content-library', ['upload' => 1]));
+    const cartArticleUploadUrl = @json(route('advertiser.cart.upload-article'));
+    const cartUploadMaxBytes = {{ (int) \App\Services\ContentUpload\ContentUploadService::MAX_KILOBYTES }} * 1024;
+    const cartUploadChunkBytes = {{ (int) \App\Services\ContentUpload\ContentUploadService::CHUNK_KILOBYTES }} * 1024;
+    let cartUploadState = {};
+    let cartUploadTarget = null;
+    let cartUploadAbort = null;
     let catalogUrl = @json(route('advertiser.catalog'));
     let cartArticleCopy = @json(app(\App\Services\Marketplace\CheckoutAddOnService::class)->cartArticleCopy());
     const catalogPath = @json(parse_url(route('advertiser.catalog'), PHP_URL_PATH) ?: '/advertiser/catalog');
@@ -1025,6 +1036,283 @@
         });
     }
 
+    function cartUploadStateKey(item, copyIndex) {
+        return getCartItemKey(item) + ':' + String(copyIndex || 0);
+    }
+
+    function cartAssignedArticleName(selectedId) {
+        const article = approvedArticles.find((row) => articleId(row.id) === Number(selectedId));
+        if (!article) return selectedId ? 'Assigned article' : '';
+        return articlePickerLabel(article);
+    }
+
+    function cartFileSizeLabel(bytes) {
+        const n = Number(bytes) || 0;
+        if (n < 1024) return n + ' B';
+        if (n < 1024 * 1024) return Math.round(n / 1024) + ' KB';
+        return (n / (1024 * 1024)).toFixed(1).replace(/\.0$/, '') + ' MB';
+    }
+
+    function cartSafeDocxFilename(name) {
+        const base = String(name || 'article')
+            .replace(/\.docx$/i, '')
+            .replace(/['’`]/g, '')
+            .replace(/[^\w.\- ]+/g, '')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .slice(0, 80) || 'article';
+        return base + '.docx';
+    }
+
+    function cartNewUploadId() {
+        if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+            return window.crypto.randomUUID();
+        }
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (ch) {
+            const n = Math.random() * 16 | 0;
+            const v = ch === 'x' ? n : (n & 0x3 | 0x8);
+            return v.toString(16);
+        });
+    }
+
+    function cartFileRejectMessage(file) {
+        if (!file) return 'Drop a .docx or click to choose a file.';
+        const name = String(file.name || '');
+        if (!/\.docx$/i.test(name)) {
+            return 'Word .docx only — not PDF, Google Doc, or pasted text.';
+        }
+        if (file.size > cartUploadMaxBytes) {
+            return 'That file is over the 10 MB limit.';
+        }
+        return '';
+    }
+
+    function cartUploadTransportMessage(status, fileBytes, serverMessage) {
+        if (status === 419) return 'Your session expired. Refresh the page and try again.';
+        if (status === 429) return 'Too many upload attempts. Wait a minute and try again.';
+        const text = String(serverMessage || '').trim();
+        if (fileBytes > cartUploadMaxBytes) return 'That file is over the 10 MB limit.';
+        if (status === 413 || status === 0) {
+            return text || 'The article could not be uploaded. Please try again.';
+        }
+        return text || 'The article could not be uploaded. Please try again.';
+    }
+
+    function setCartUploadUi(item, copyIndex, patch) {
+        const key = cartUploadStateKey(item, copyIndex);
+        cartUploadState[key] = Object.assign({}, cartUploadState[key] || {}, patch || {});
+        const card = document.querySelector(
+            '.cart-item-upload[data-id="' + item.id + '"][data-copy-index="' + copyIndex + '"]'
+            + '[data-homepage-days="' + cartHomepageParam(item) + '"]'
+        );
+        if (!card) {
+            updateCartDisplay();
+            return;
+        }
+        const zone = card.querySelector('[data-cart-dropzone]');
+        const bar = card.querySelector('.cart-dropzone__bar');
+        const progress = card.querySelector('.cart-dropzone__progress');
+        const title = card.querySelector('.cart-dropzone__title');
+        const meta = card.querySelector('.cart-dropzone__meta');
+        const state = cartUploadState[key];
+        if (zone && state.status === 'uploading') {
+            zone.classList.add('is-uploading');
+            zone.classList.remove('is-error', 'is-ready');
+            if (title) title.textContent = state.name || (cartArticleCopy.upload_progress || 'Uploading…');
+            if (meta) meta.textContent = (cartArticleCopy.upload_progress || 'Uploading…') + ' ' + (state.percent || 0) + '%';
+            if (bar) bar.style.width = String(state.percent || 0) + '%';
+            if (progress) progress.setAttribute('aria-valuenow', String(state.percent || 0));
+        }
+        let err = card.querySelector('.cart-dropzone__error');
+        if (state.error) {
+            if (!err) {
+                err = document.createElement('p');
+                err.className = 'cart-dropzone__error';
+                zone?.after(err);
+            }
+            err.innerHTML = state.error;
+            zone?.classList.add('is-error');
+        } else if (err) {
+            err.remove();
+            zone?.classList.remove('is-error');
+        }
+    }
+
+    function firstUnreadyCopyIndex(item) {
+        const ids = lineContentIds(item);
+        const idx = ids.findIndex((id) => !id);
+        return idx >= 0 ? idx : 0;
+    }
+
+    function openCartArticlePicker(item, copyIndex) {
+        cartUploadTarget = {
+            id: item.id,
+            sensitiveType: item.sensitive_type || null,
+            homepageDays: cartHomepageParam(item),
+            copyIndex: copyIndex || 0,
+        };
+        const input = document.getElementById('cartArticleFileInput');
+        if (!input) return;
+        input.value = '';
+        input.click();
+    }
+
+    function cartUploadHeaders(bytes) {
+        const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+        return {
+            'X-CSRF-TOKEN': token,
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-Upload-Bytes': String(bytes),
+        };
+    }
+
+    function cartUploadUrlWithBytes(bytes) {
+        const join = cartArticleUploadUrl.indexOf('?') === -1 ? '?' : '&';
+        return cartArticleUploadUrl + join + 'client_bytes=' + encodeURIComponent(String(bytes));
+    }
+
+    function cartUploadFormData(item, copyIndex, filePart, originalName, bytes, chunkMeta) {
+        const fd = new FormData();
+        fd.set('id', String(item.id));
+        fd.set('sensitive_type', item.sensitive_type || '');
+        fd.set('homepage_days', cartHomepageParam(item));
+        fd.set('copy_index', String(copyIndex || 0));
+        fd.set('file', filePart, 'article.docx');
+        fd.set('original_filename', cartSafeDocxFilename(originalName));
+        fd.set('client_bytes', String(bytes));
+        if (chunkMeta) {
+            fd.set('chunk_index', String(chunkMeta.index));
+            fd.set('chunk_total', String(chunkMeta.total));
+            fd.set('upload_id', chunkMeta.uploadId);
+        }
+        return fd;
+    }
+
+    function postCartArticlePart(body, bytes, onProgress) {
+        return new Promise(function (resolve) {
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', cartUploadUrlWithBytes(bytes));
+            const headers = cartUploadHeaders(bytes);
+            Object.keys(headers).forEach(function (key) {
+                xhr.setRequestHeader(key, headers[key]);
+            });
+            xhr.responseType = 'json';
+            xhr.upload.onprogress = function (ev) {
+                if (!onProgress || !ev.lengthComputable) return;
+                onProgress(ev.loaded, ev.total);
+            };
+            xhr.onload = function () {
+                const data = xhr.response && typeof xhr.response === 'object' ? xhr.response : null;
+                resolve({ status: xhr.status, data: data });
+            };
+            xhr.onerror = function () {
+                resolve({ status: 0, data: null });
+            };
+            xhr.onabort = function () {
+                resolve({ status: 0, data: { aborted: true } });
+            };
+            cartUploadAbort = xhr;
+            xhr.send(body);
+        });
+    }
+
+    async function uploadCartArticleFile(item, copyIndex, file) {
+        const reject = cartFileRejectMessage(file);
+        if (reject) {
+            setCartUploadUi(item, copyIndex, { status: 'error', error: escapeHtml(reject), name: file && file.name });
+            showToast(reject, 'error');
+            return;
+        }
+        if (cartUploadAbort && typeof cartUploadAbort.abort === 'function') {
+            try { cartUploadAbort.abort(); } catch (e) {}
+        }
+        const safeName = cartSafeDocxFilename(file.name);
+        setCartUploadUi(item, copyIndex, {
+            status: 'uploading',
+            name: safeName + ' · ' + cartFileSizeLabel(file.size),
+            percent: 0,
+            error: '',
+        });
+        const onChunkProgress = function (done, total) {
+            const percent = Math.round((done / Math.max(1, total)) * 100);
+            setCartUploadUi(item, copyIndex, { status: 'uploading', percent: percent });
+        };
+        let last = null;
+        try {
+            if (file.size <= cartUploadChunkBytes) {
+                last = await postCartArticlePart(
+                    cartUploadFormData(item, copyIndex, file, safeName, file.size, null),
+                    file.size,
+                    function (loaded, total) {
+                        onChunkProgress(loaded, total);
+                    }
+                );
+            } else {
+                const total = Math.ceil(file.size / cartUploadChunkBytes);
+                const uploadId = cartNewUploadId();
+                for (let i = 0; i < total; i++) {
+                    const blob = file.slice(i * cartUploadChunkBytes, (i + 1) * cartUploadChunkBytes);
+                    last = await postCartArticlePart(
+                        cartUploadFormData(item, copyIndex, blob, safeName, file.size, {
+                            index: i,
+                            total: total,
+                            uploadId: uploadId,
+                        }),
+                        file.size
+                    );
+                    onChunkProgress(i + 1, total);
+                    if (!last.data || !last.data.success) {
+                        break;
+                    }
+                    if (i < total - 1) {
+                        if (!last.data.chunk_received) {
+                            break;
+                        }
+                    } else if (last.data.chunk_received || !last.data.cart) {
+                        last = {
+                            status: last.status,
+                            data: {
+                                success: false,
+                                message: 'The article could not be uploaded. Please try again.',
+                            },
+                        };
+                    }
+                }
+            }
+        } catch (e) {
+            last = { status: 0, data: null };
+        }
+        cartUploadAbort = null;
+        const data = last && last.data ? last.data : null;
+        if (data && data.aborted) {
+            setCartUploadUi(item, copyIndex, { status: '', percent: 0 });
+            return;
+        }
+        if (!data || !data.success || last.status < 200 || last.status >= 300) {
+            const msg = cartUploadTransportMessage(
+                last ? last.status : 0,
+                file.size,
+                data && (data.error || data.message)
+            );
+            let html = escapeHtml(msg);
+            if (data && data.content_library_url) {
+                html += ' <a href="' + escapeHtml(data.content_library_url) + '">Open Content Library</a>';
+            }
+            setCartUploadUi(item, copyIndex, { status: 'error', error: html, percent: 0 });
+            if (data && (Array.isArray(data.cart) || Array.isArray(data))) {
+                applyCartPayload(data);
+                updateCartDisplay();
+            }
+            showToast(msg, 'error');
+            return;
+        }
+        delete cartUploadState[cartUploadStateKey(item, copyIndex)];
+        applyCartPayload(data);
+        updateCartDisplay();
+        showToast(data.message || 'Article uploaded and assigned to this placement.', 'success');
+    }
+
     function assignCartArticle(siteId, sensitiveType, submissionId, copyIndex, homepageDays) {
         $.ajax({
             url: '{{ route("advertiser.cart.assign-article") }}',
@@ -1047,6 +1335,18 @@
                     showToast(data.error || 'Could not assign article.', 'error');
                     loadCart();
                     return;
+                }
+                const assigned = (Array.isArray(data.cart) ? data.cart : cart).find((row) =>
+                    articleId(row.id) === articleId(siteId)
+                    && (row.sensitive_type || null) === (sensitiveType || null)
+                    && cartHomepageParam(row) === String(
+                        (homepageDays === undefined || homepageDays === null || homepageDays === '')
+                            ? 'none'
+                            : homepageDays
+                    )
+                );
+                if (assigned) {
+                    delete cartUploadState[cartUploadStateKey(assigned, copyIndex || 0)];
                 }
                 applyCartPayload(data);
                 updateCartDisplay();
@@ -1510,16 +1810,15 @@
                         <input type="text" class="form-control form-control-sm cart-writing-anchor mt-1" id="cart-write-anchor-${itemKeyAttr}" placeholder="Anchor text (optional)" maxlength="160" value="${escapeHtml(item.writing_anchor_text || '')}" data-id="${item.id}" data-sensitive-type="${sensitiveAttr}" data-homepage-days="${cartHomepageParam(item)}">
                         <div class="small text-muted mt-1">Editable at checkout.</div>
                     </div>` : '';
-                const pickerMarkup = written ? '' : placementIds.map((selectedId, copyIndex) => {
+                const pickerMarkup = (written || !choseUpload) ? '' : placementIds.map((selectedId, copyIndex) => {
                     const options = articlesForCartPlacement(item, copyIndex);
                     const siteLangs = siteLanguageCodes(item);
                     const siteLangLabel = siteLanguageLabel(item);
                     const matching = options.filter((article) => articleFitsSiteLanguages(article, siteLangs));
                     const other = options.filter((article) => !articleFitsSiteLanguages(article, siteLangs));
                     const selectId = 'cart-doc-' + itemKey.replace(/[^a-zA-Z0-9_-]/g, '-') + '-' + copyIndex;
-                    const chooseLabel = placementIds.length > 1
-                        ? ('Choose article ' + (copyIndex + 1) + ' of ' + placementIds.length)
-                        : 'Choose article';
+                    const chooseLabel = (cartArticleCopy.choose_article || 'Choose article')
+                        + (placementIds.length > 1 ? (' ' + (copyIndex + 1) + ' of ' + placementIds.length) : '');
                     const articleOptions = [{ value: '', label: chooseLabel, selected: !selectedId }];
                     const pushArticle = (article) => {
                         const optionId = articleId(article.id);
@@ -1540,32 +1839,70 @@
                     if (selectedId && !options.some((a) => articleId(a.id) === Number(selectedId))) {
                         articleOptions.push({ value: String(selectedId), label: 'Assigned article', selected: true });
                     }
-                    const emptyHint = options.length === 0 && !selectedId
-                        ? `<div class="cart-item-article-empty mt-1">Need another article? <a class="cart-item-upload-link cart-item-upload-link--primary" href="${contentLibraryUploadUrl}">Upload article</a></div>`
-                        : '';
                     const noMatchNote = (!requireSameLanguage && !selectedId && matching.length === 0 && other.length > 0)
                         ? `<div class="cart-item-language-note">This site is ${escapeHtml(siteLangLabel || 'unknown')}. None of your articles match — you can still assign one.</div>`
                         : '';
                     const langNote = (selectedId && item.language_note)
                         ? `<div class="cart-item-language-note" title="Preferred match is the same language as the site">${escapeHtml(item.language_note)}</div>`
                         : noMatchNote;
-                    const uploadLink = `<a class="cart-item-upload-link" href="${contentLibraryUploadUrl}">${selectedId ? 'Upload another' : 'Upload new'}</a>`;
-                    const articleSelect = cartThemeSelectMarkup(
-                        selectId,
-                        'cart-article-select',
-                        'data-id="' + item.id + '" data-sensitive-type="' + sensitiveAttr + '" data-homepage-days="' + cartHomepageParam(item) + '" data-copy-index="' + copyIndex + '" data-prev-value="' + (selectedId || '') + '"',
-                        articleOptions,
-                        'Article for ' + siteName + (siteLangLabel ? ' · site ' + siteLangLabel : '')
-                    );
+                    const articleSelect = (options.length > 0 || selectedId)
+                        ? cartThemeSelectMarkup(
+                            selectId,
+                            'cart-article-select',
+                            'data-id="' + item.id + '" data-sensitive-type="' + sensitiveAttr + '" data-homepage-days="' + cartHomepageParam(item) + '" data-copy-index="' + copyIndex + '" data-prev-value="' + (selectedId || '') + '"',
+                            articleOptions,
+                            'Article for ' + siteName + (siteLangLabel ? ' · site ' + siteLangLabel : '')
+                        )
+                        : '';
+                    const savedBlock = articleSelect
+                        ? `<div class="cart-item-saved-article">
+                                <label class="cart-item-saved-article__label" for="${escapeHtml(selectId)}">${escapeHtml(cartArticleCopy.saved_article_label || 'Or use a saved article')}</label>
+                                ${articleSelect}
+                                ${langNote}
+                           </div>`
+                        : langNote;
+                    const uploadKey = cartUploadStateKey(item, copyIndex);
+                    const uploadUi = cartUploadState[uploadKey] || {};
+                    const uploading = uploadUi.status === 'uploading';
+                    const uploadError = String(uploadUi.error || '');
+                    const assignedName = selectedId ? cartAssignedArticleName(selectedId) : '';
+                    const fileName = String(uploadUi.name || assignedName || '');
+                    const percent = Math.max(0, Math.min(100, parseInt(uploadUi.percent, 10) || 0));
+                    const zoneClass = uploading ? ' is-uploading' : (uploadError ? ' is-error' : (selectedId ? ' is-ready' : ''));
+                    const placementLabel = placementIds.length > 1
+                        ? ('Placement ' + (copyIndex + 1) + ' of ' + placementIds.length)
+                        : '';
+                    let dropInner = '';
+                    if (uploading) {
+                        dropInner = `
+                            <span class="cart-dropzone__icon" aria-hidden="true"><i class="fa-regular fa-file-word"></i></span>
+                            <span class="cart-dropzone__title">${escapeHtml(fileName || (cartArticleCopy.upload_progress || 'Uploading…'))}</span>
+                            <span class="cart-dropzone__meta">${escapeHtml(cartArticleCopy.upload_progress || 'Uploading…')} ${percent}%</span>
+                            <span class="cart-dropzone__progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"><span class="cart-dropzone__bar" style="width:${percent}%"></span></span>`;
+                    } else if (selectedId) {
+                        dropInner = `
+                            <span class="cart-dropzone__icon" aria-hidden="true"><i class="fa-solid fa-check"></i></span>
+                            <span class="cart-dropzone__title">${escapeHtml(fileName || (cartArticleCopy.upload_done || 'Uploaded'))}</span>
+                            <span class="cart-dropzone__meta">${escapeHtml(cartArticleCopy.upload_done || 'Uploaded')}</span>
+                            <span class="cart-dropzone__replace">${escapeHtml(cartArticleCopy.upload_replace || 'Replace file')}</span>`;
+                    } else {
+                        dropInner = `
+                            <span class="cart-dropzone__icon" aria-hidden="true"><i class="fa-regular fa-upload"></i></span>
+                            <span class="cart-dropzone__title">${escapeHtml(cartArticleCopy.dropzone_idle || 'Drop a .docx or click to choose')}</span>
+                            <span class="cart-dropzone__hint">${escapeHtml(cartArticleCopy.dropzone_hint || cartArticleCopy.upload_help || '')}</span>`;
+                    }
                     return `
-                        <div class="cart-item-article-picker">
-                            ${articleSelect}
-                            ${langNote}
-                            <div class="cart-item-article-actions">${uploadLink}</div>
-                            ${emptyHint}
+                        <div class="cart-item-upload" data-id="${item.id}" data-sensitive-type="${sensitiveAttr}" data-homepage-days="${cartHomepageParam(item)}" data-copy-index="${copyIndex}">
+                            ${placementLabel ? `<span class="cart-item-upload__label">${escapeHtml(placementLabel)}</span>` : ''}
+                            <div class="cart-dropzone${zoneClass}" data-cart-dropzone role="button" tabindex="0" aria-label="${escapeHtml(cartArticleCopy.upload_label || 'Upload article')}">
+                                ${dropInner}
+                            </div>
+                            ${uploadError ? `<p class="cart-dropzone__error">${uploadError}</p>` : ''}
+                            ${savedBlock}
                         </div>`;
                 }).join('');
-                const articleState = written ? 'is-written' : (choseUpload ? 'is-assigned' : 'needs-choice');
+                const fullyReady = lineFullyAssigned(item);
+                const articleState = written ? 'is-written' : (fullyReady ? 'is-assigned' : 'needs-choice');
                 const guaranteeTip = escapeHtml(cartArticleCopy.guarantee_tooltip || '');
                 const guaranteeOptionalText = item.guarantee_offered ? lineGuaranteeOptionalText(item) : '';
                 const guaranteeNote = item.guarantee_offered
@@ -1595,12 +1932,12 @@
                     <div class="cart-item-article ${articleState}">
                         <div class="cart-choice-options" role="radiogroup" aria-label="${escapeHtml(cartArticleCopy.heading)}">
                             <button type="button" class="cart-choice-option cart-item-write-cta${written ? ' is-selected' : ''}" data-id="${item.id}" data-sensitive-type="${sensitiveAttr}" data-homepage-days="${cartHomepageParam(item)}" role="radio" aria-checked="${written ? 'true' : 'false'}">
-                                <span class="cart-choice-option__icon" aria-hidden="true"><i class="fa-solid fa-pen"></i></span>
+                                <span class="cart-choice-option__icon" aria-hidden="true"><i class="fa-regular fa-pen-to-square"></i></span>
                                 <span class="cart-choice-option__title">${escapeHtml(cartArticleCopy.write_label)}</span>
                                 <span class="cart-choice-option__fee">+${escapeHtml(writingQtyLabel)}</span>
                             </button>
                             <button type="button" class="cart-choice-option cart-choose-upload${choseUpload ? ' is-selected' : ''}" data-id="${item.id}" data-sensitive-type="${sensitiveAttr}" data-homepage-days="${cartHomepageParam(item)}" role="radio" aria-checked="${choseUpload ? 'true' : 'false'}">
-                                <span class="cart-choice-option__icon" aria-hidden="true"><i class="fa-solid fa-upload"></i></span>
+                                <span class="cart-choice-option__icon" aria-hidden="true"><i class="fa-regular fa-upload"></i></span>
                                 <span class="cart-choice-option__title">${escapeHtml(cartArticleCopy.upload_label)}</span>
                                 <span class="cart-choice-option__help">${escapeHtml(cartArticleCopy.upload_help || '')}</span>
                             </button>
@@ -1622,7 +1959,7 @@
                     ? `<p class="cart-existing-article"><span>You already have an article for this site</span> <a href="${escapeHtml(occupancy.url || contentLibraryUploadUrl)}">View article</a></p>`
                     : '';
                 html += `
-                    <div class="cart-item${articleState === 'needs-choice' ? ' is-unready' : ''}" data-key="${itemKeyAttr}">
+                    <div class="cart-item${fullyReady ? '' : ' is-unready'}" data-key="${itemKeyAttr}">
                         <div class="cart-item-head">
                             <div class="cart-item-name">${escapeHtml(siteName)}</div>
                             <div class="cart-item-price">${priceLabel}</div>
@@ -1975,19 +2312,80 @@
             configureCartLine(item, { content_source: 'written' });
             return;
         }
+        const dropzone = e.target.closest('[data-cart-dropzone]');
+        if (dropzone) {
+            e.preventDefault();
+            if (dropzone.classList.contains('is-uploading')) return;
+            const wrap = dropzone.closest('.cart-item-upload');
+            const item = wrap ? cartItemFromDataset(wrap) : null;
+            if (!item) return;
+            const copyIndex = parseInt(wrap.dataset.copyIndex || '0', 10) || 0;
+            openCartArticlePicker(item, copyIndex);
+            return;
+        }
         const uploadInstead = e.target.closest('.cart-choose-upload');
         if (uploadInstead) {
             e.preventDefault();
             const item = cartItemFromDataset(uploadInstead);
             if (!item) return;
-            if (lineIsWritten(item)) {
+            const needsSwitch = lineIsWritten(item) || !lineChoseUpload(item);
+            if (needsSwitch) {
+                item.content_source = 'buyer';
+                item.article_choice = 'upload';
+                updateCartDisplay();
                 configureCartLine(item, { content_source: 'buyer' });
             }
-            if (approvedArticles.length === 0) {
-                markReturnToCart();
-                window.location.href = contentLibraryUploadUrl;
-            }
+            openCartArticlePicker(item, firstUnreadyCopyIndex(item));
         }
+    });
+
+    document.getElementById('cartItemsContainer')?.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        const dropzone = e.target.closest('[data-cart-dropzone]');
+        if (!dropzone) return;
+        e.preventDefault();
+        const wrap = dropzone.closest('.cart-item-upload');
+        const item = wrap ? cartItemFromDataset(wrap) : null;
+        if (!item) return;
+        openCartArticlePicker(item, parseInt(wrap.dataset.copyIndex || '0', 10) || 0);
+    });
+
+    document.getElementById('cartItemsContainer')?.addEventListener('dragover', function (e) {
+        if (!e.target.closest('[data-cart-dropzone]')) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+        e.target.closest('[data-cart-dropzone]').classList.add('is-dragover');
+    });
+
+    document.getElementById('cartItemsContainer')?.addEventListener('dragleave', function (e) {
+        const zone = e.target.closest('[data-cart-dropzone]');
+        if (zone) zone.classList.remove('is-dragover');
+    });
+
+    document.getElementById('cartItemsContainer')?.addEventListener('drop', function (e) {
+        const zone = e.target.closest('[data-cart-dropzone]');
+        if (!zone) return;
+        e.preventDefault();
+        zone.classList.remove('is-dragover');
+        const wrap = zone.closest('.cart-item-upload');
+        const item = wrap ? cartItemFromDataset(wrap) : null;
+        if (!item) return;
+        const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+        if (!file) return;
+        uploadCartArticleFile(item, parseInt(wrap.dataset.copyIndex || '0', 10) || 0, file);
+    });
+
+    document.getElementById('cartArticleFileInput')?.addEventListener('change', function (e) {
+        const file = e.target.files && e.target.files[0];
+        e.target.value = '';
+        if (!file || !cartUploadTarget) return;
+        const item = cart.find((row) => {
+            if (articleId(row.id) !== articleId(cartUploadTarget.id)) return false;
+            if ((row.sensitive_type || null) !== cartUploadTarget.sensitiveType) return false;
+            return cartHomepageParam(row) === String(cartUploadTarget.homepageDays);
+        });
+        if (!item) return;
+        uploadCartArticleFile(item, cartUploadTarget.copyIndex || 0, file);
     });
 
     document.getElementById('cartWriteAll')?.addEventListener('click', function () {
