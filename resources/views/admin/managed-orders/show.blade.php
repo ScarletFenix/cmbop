@@ -55,6 +55,9 @@
                             <div class="small text-muted">No content link</div>
                         @endif
                     </div>
+                    <div class="mb-2"><span class="text-muted small">External reference</span>
+                        <div class="text-break">{{ filled($item->managed_external_reference) ? $item->managed_external_reference : '—' }}</div>
+                    </div>
                     <div><span class="text-muted small">Marked</span><div>{{ optional($item->managed_marked_at)->format('Y-m-d H:i') ?: '—' }}</div></div>
                 </div>
             </div>
@@ -82,6 +85,12 @@
                                     <option value="{{ $st }}" @selected($item->managed_internal_status === $st)>{{ $statusLabels[$st] ?? $st }}</option>
                                 @endforeach
                             </select>
+                        </div>
+                        <div>
+                            <label class="form-label" for="managed_external_reference">External reference</label>
+                            <input type="text" name="managed_external_reference" id="managed_external_reference" class="form-control" maxlength="500"
+                                   value="{{ old('managed_external_reference', $item->managed_external_reference) }}"
+                                   placeholder="Email subject or thread link">
                         </div>
                         <div>
                             <label class="form-label" for="managed_notes">Notes</label>

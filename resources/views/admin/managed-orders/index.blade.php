@@ -40,6 +40,7 @@
                         <th>Order</th>
                         <th>Advertiser</th>
                         <th>Site</th>
+                        <th>Ext. ref</th>
                         <th>Amount</th>
                         <th>Assignee</th>
                         <th>Internal status</th>
@@ -59,6 +60,7 @@
                                 <div class="small text-muted">{{ $item->order?->user?->email }}</div>
                             </td>
                             <td>{{ $item->site_name ?: ($item->site?->site_name ?? '—') }}</td>
+                            <td class="small text-break" style="max-width:10rem;">{{ filled($item->managed_external_reference) ? \Illuminate\Support\Str::limit($item->managed_external_reference, 48) : '—' }}</td>
                             <td>€{{ number_format((float) $item->price, 2) }}</td>
                             <td>{{ $item->managedAssignee?->name ?? 'Unassigned' }}</td>
                             <td><span class="badge text-bg-light text-dark border">{{ str_replace('_', ' ', (string) ($item->managed_internal_status ?: '—')) }}</span></td>
@@ -73,7 +75,7 @@
                             <td><a href="{{ route('admin.managed-orders.show', $item) }}">Open</a></td>
                         </tr>
                     @empty
-                        <tr><td colspan="9" class="text-muted p-3">No managed placements yet. Mark a paid order from the order page.</td></tr>
+                        <tr><td colspan="10" class="text-muted p-3">No managed placements yet. Mark a paid order from the order page.</td></tr>
                     @endforelse
                 </tbody>
             </table>
