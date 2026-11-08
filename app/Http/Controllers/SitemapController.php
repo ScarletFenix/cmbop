@@ -271,6 +271,7 @@ class SitemapController extends Controller
 
     /**
      * Newest published translation per locale, for the sitemap index lastmod.
+     * Locales with no posts omit lastmod — do not copy another locale's date.
      *
      * @return array<string, string>
      */
@@ -298,18 +299,6 @@ class SitemapController extends Controller
                 $lastmods[$locale] = Carbon::parse($lastmod)->toAtomString();
             } catch (\Throwable) {
                 continue;
-            }
-        }
-
-        $fallback = null;
-        if ($lastmods !== []) {
-            $stamps = array_values($lastmods);
-            rsort($stamps);
-            $fallback = $stamps[0];
-        }
-        foreach ($this->supportedLocales() as $locale) {
-            if (empty($lastmods[$locale]) && $fallback !== null) {
-                $lastmods[$locale] = $fallback;
             }
         }
 

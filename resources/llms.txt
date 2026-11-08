@@ -11,7 +11,7 @@
 ## Product
 SEOLinkBuildings (seolinkbuildings.com) is a two-sided marketplace for buying and selling editorial guest-post placements. Advertisers browse a catalog of publisher sites, fund a EUR wallet, assign approved articles, and track orders to live URL. Publishers list sites, fulfil placement tasks, and withdraw earnings.
 
-Public marketing site languages: English UK (default, unprefixed), English US (/us), German (/de), French (/fr), Dutch (/nl), Spanish (/es), Portuguese (/pt), Italian (/it), Polish (/pl), plus additional European locale prefixes (/at, /ch, /ro, /gr, /dk, /se, /no, /bg, /hu, /ee). Logged-in SaaS dashboard is English. Country guest-post landers (English URLs only) include Germany, UK, Italy, Spain, France, Netherlands, Switzerland, Austria, Romania, Greece, Denmark, Sweden, Norway, Bulgaria, Hungary, Estonia, and Poland.
+Public marketing site languages: English UK (default, unprefixed), German (/de), French (/fr), Dutch (/nl), Spanish (/es), Portuguese (/pt), Italian (/it), Polish (/pl), plus additional European locale prefixes (/at, /ch, /ro, /gr, /dk, /se, /no, /bg, /hu, /ee). `/us` is a convenience overlay of UK English and is served `noindex, follow` — it is not a second indexable site. Logged-in SaaS dashboard is English. Country guest-post landers (English URLs only) include Germany, UK, Italy, Spain, France, Netherlands, Switzerland, Austria, Romania, Greece, Denmark, Sweden, Norway, Bulgaria, Hungary, Estonia, and Poland.
 
 The live canonical host is [https://seolinkbuildings.com](https://seolinkbuildings.com) (www redirects to apex). Brand country-code domains 301 onto seolinkbuildings.com locale paths; they are not separate indexable sites.
 
@@ -240,20 +240,10 @@ The indexable public pages and published blog posts are the sitemap. Account pag
 - [/it/blog/dofollow-vs-nofollow](https://seolinkbuildings.com/it/blog/dofollow-vs-nofollow)
 
 ### Portuguese (`/pt/`)
+Indexable unique copy and money landers only. Thin English-fallback chrome (about, contact, blog, legal) is `noindex, follow` with a parent canonical — do not treat those URLs as a second site.
 - [/pt/](https://seolinkbuildings.com/pt/)
 - [/pt/marketplace](https://seolinkbuildings.com/pt/marketplace)
 - [/pt/precos](https://seolinkbuildings.com/pt/precos)
-- [/pt/como-funciona](https://seolinkbuildings.com/pt/como-funciona)
-- [/pt/porque-nos](https://seolinkbuildings.com/pt/porque-nos)
-- [/pt/tornar-se-publisher](https://seolinkbuildings.com/pt/tornar-se-publisher)
-- [/pt/sobre-nos](https://seolinkbuildings.com/pt/sobre-nos)
-- [/pt/perguntas-frequentes](https://seolinkbuildings.com/pt/perguntas-frequentes)
-- [/pt/contacto](https://seolinkbuildings.com/pt/contacto)
-- [/pt/blog](https://seolinkbuildings.com/pt/blog)
-- [/pt/privacidade](https://seolinkbuildings.com/pt/privacidade)
-- [/pt/termos](https://seolinkbuildings.com/pt/termos)
-- [/pt/cookies](https://seolinkbuildings.com/pt/cookies)
-- [/pt/reembolso](https://seolinkbuildings.com/pt/reembolso)
 - [/pt/comprar-guest-post](https://seolinkbuildings.com/pt/comprar-guest-post)
 - [/pt/artigo-patrocinado](https://seolinkbuildings.com/pt/artigo-patrocinado)
 - [/pt/link-building](https://seolinkbuildings.com/pt/link-building)
@@ -264,36 +254,13 @@ The indexable public pages and published blog posts are the sitemap. Account pag
 - [/pt/guia](https://seolinkbuildings.com/pt/guia)
 
 ### US English (`/us/`)
-- [/us/](https://seolinkbuildings.com/us/)
-- [/us/marketplace](https://seolinkbuildings.com/us/marketplace)
-- [/us/pricing](https://seolinkbuildings.com/us/pricing)
-- [/us/how-it-works](https://seolinkbuildings.com/us/how-it-works)
-- [/us/why-choose-us](https://seolinkbuildings.com/us/why-choose-us)
-- [/us/become-a-publisher](https://seolinkbuildings.com/us/become-a-publisher)
-- [/us/about](https://seolinkbuildings.com/us/about)
-- [/us/faq](https://seolinkbuildings.com/us/faq)
-- [/us/contact](https://seolinkbuildings.com/us/contact)
-- [/us/blog](https://seolinkbuildings.com/us/blog)
-- [/us/privacy-policy](https://seolinkbuildings.com/us/privacy-policy)
-- [/us/terms-of-services](https://seolinkbuildings.com/us/terms-of-services)
-- [/us/cookie-policy](https://seolinkbuildings.com/us/cookie-policy)
-- [/us/refund-policy](https://seolinkbuildings.com/us/refund-policy)
+`/us` is a convenience overlay of UK English. Pages under `/us/` are served `noindex, follow` and canonicalise to the unprefixed English URLs (`/`, `/marketplace`, `/about`, …). Do not list `/us/*` as indexable key URLs.
 
 ### Austrian (`/at/`)
+Indexable unique copy and money landers only. Thin German-fallback chrome (about, contact, blog, legal) is `noindex, follow` with a `/de/` parent canonical.
 - [/at/](https://seolinkbuildings.com/at/)
 - [/at/marktplatz](https://seolinkbuildings.com/at/marktplatz)
 - [/at/preise](https://seolinkbuildings.com/at/preise)
-- [/at/so-funktioniert-es](https://seolinkbuildings.com/at/so-funktioniert-es)
-- [/at/warum-wir](https://seolinkbuildings.com/at/warum-wir)
-- [/at/publisher-werden](https://seolinkbuildings.com/at/publisher-werden)
-- [/at/ueber-uns](https://seolinkbuildings.com/at/ueber-uns)
-- [/at/haeufige-fragen](https://seolinkbuildings.com/at/haeufige-fragen)
-- [/at/kontakt](https://seolinkbuildings.com/at/kontakt)
-- [/at/blog](https://seolinkbuildings.com/at/blog)
-- [/at/datenschutz](https://seolinkbuildings.com/at/datenschutz)
-- [/at/agb](https://seolinkbuildings.com/at/agb)
-- [/at/cookie-richtlinie](https://seolinkbuildings.com/at/cookie-richtlinie)
-- [/at/rueckerstattung](https://seolinkbuildings.com/at/rueckerstattung)
 - [/at/gastbeitrag-kaufen](https://seolinkbuildings.com/at/gastbeitrag-kaufen)
 - [/at/advertorial](https://seolinkbuildings.com/at/advertorial)
 - [/at/linkbuilding](https://seolinkbuildings.com/at/linkbuilding)

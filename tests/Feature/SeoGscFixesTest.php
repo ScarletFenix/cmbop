@@ -114,28 +114,28 @@ class SeoGscFixesTest extends TestCase
         $this->assertStringContainsString('/author/m-arslan', $en);
     }
 
-    public function test_swedish_and_dutch_money_x_default_points_at_english_landers(): void
+    public function test_swedish_and_dutch_money_x_default_is_self_reciprocal(): void
     {
-        $this->assertSame('en', PublicI18n::moneyLanderXDefault('kopa-backlinks'));
-        $this->assertSame('en', PublicI18n::moneyLanderXDefault('gastblog-kopen'));
+        $this->assertSame('se', PublicI18n::moneyLanderXDefault('kopa-backlinks'));
+        $this->assertSame('nl', PublicI18n::moneyLanderXDefault('gastblog-kopen'));
         $this->assertSame('it', PublicI18n::moneyLanderXDefault('digital-pr'));
 
         $se = $this->get('/se/kopa-backlinks')->assertOk()->getContent();
         $this->assertStringContainsString('rel="canonical" href="'.url('/se/kopa-backlinks').'"', $se);
         $this->assertStringContainsString('hreflang="sv-SE" href="'.url('/se/kopa-backlinks').'"', $se);
-        $this->assertStringContainsString('hreflang="x-default" href="'.url('/guest-posts-sweden').'"', $se);
-        $this->assertStringNotContainsString('hreflang="x-default" href="'.url('/se/kopa-backlinks').'"', $se);
+        $this->assertStringContainsString('hreflang="x-default" href="'.url('/se/kopa-backlinks').'"', $se);
+        $this->assertStringNotContainsString('hreflang="x-default" href="'.url('/guest-posts-sweden').'"', $se);
 
         $nl = $this->get('/nl/gastblog-kopen')->assertOk()->getContent();
         $this->assertStringContainsString('hreflang="nl" href="'.url('/nl/gastblog-kopen').'"', $nl);
-        $this->assertStringContainsString('hreflang="x-default" href="'.url('/guest-posts-netherlands').'"', $nl);
-        $this->assertStringNotContainsString('hreflang="x-default" href="'.url('/nl/gastblog-kopen').'"', $nl);
+        $this->assertStringContainsString('hreflang="x-default" href="'.url('/nl/gastblog-kopen').'"', $nl);
+        $this->assertStringNotContainsString('hreflang="x-default" href="'.url('/guest-posts-netherlands').'"', $nl);
 
         $seXml = $this->get('/sitemap-se.xml')->assertOk()->getContent();
         $this->assertStringContainsString('/se/kopa-backlinks', $seXml);
         $this->assertStringContainsString('hreflang="x-default"', $seXml);
         $this->assertMatchesRegularExpression(
-            '#<loc>'.preg_quote(url('/se/kopa-backlinks'), '#').'</loc>.*?hreflang="x-default"[^>]*href="'.preg_quote(url('/guest-posts-sweden'), '#').'"#s',
+            '#<loc>'.preg_quote(url('/se/kopa-backlinks'), '#').'</loc>.*?hreflang="x-default"[^>]*href="'.preg_quote(url('/se/kopa-backlinks'), '#').'"#s',
             $seXml
         );
     }

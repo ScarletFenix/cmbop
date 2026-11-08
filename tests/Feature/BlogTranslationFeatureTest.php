@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Services\CuratedBlogSync;
 use App\Support\BlogTranslationSlug;
 use App\Support\GastbeitraegeEuropaBlogPost;
+use App\Support\LocaleIndexability;
 use App\Support\PublicI18n;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
@@ -165,9 +166,13 @@ class BlogTranslationFeatureTest extends TestCase
 
         $this->assertSame('blog', PublicI18n::blogPathForLocale('english-title', 'de'));
 
+        $deBlog = LocaleIndexability::isIndexable('de', 'blog')
+            ? url('/de/blog')
+            : PublicI18n::withExplicitLocaleQuery(url('/blog'), 'en');
+
         $this->get('/blog/english-title')
             ->assertOk()
-            ->assertSee(url('/de/blog'), false)
+            ->assertSee($deBlog, false)
             ->assertDontSee(url('/de/blog/english-title'), false);
     }
 

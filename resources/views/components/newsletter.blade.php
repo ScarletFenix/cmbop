@@ -97,7 +97,7 @@
 }
 .slb-newsletter-aside-title {
   color: #1a585e;
-  font-family: var(--slb-font-display, Sora, sans-serif);
+  font-family: var(--slb-font-display, Poppins, sans-serif);
 }
 
 .slb-newsletter-consent {

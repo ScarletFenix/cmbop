@@ -362,6 +362,7 @@ Route::group([], function () use ($registerPublicMarketingRoutes, $registerEngli
 // Short legal aliases used in citations / the SEO workbook Pages tab.
 Route::get('/privacy', fn () => Redirect::to('/privacy-policy', 301));
 Route::get('/terms', fn () => Redirect::to('/terms-of-services', 301));
+Route::get('/terms-of-service', fn () => Redirect::to('/terms-of-services', 301));
 Route::get('/contact-us', function () {
     $query = request()->getQueryString();
     $to = '/contact';

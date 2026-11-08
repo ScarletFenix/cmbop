@@ -1,6 +1,8 @@
 @extends('layouts.app')
 
 @section('title', 'Confirm deposit approval - SEOLinkBuildings')
+@section('robots', 'noindex, nofollow')
+@section('skip_hreflang', '1')
 
 @section('content')
 <div class="container py-5">

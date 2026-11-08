@@ -20,12 +20,15 @@
   <div class="container">
 
     <a class="navbar-brand fw-bold d-flex align-items-center flex-shrink-0" href="{{ $homeUrl }}" aria-label="SEOLinkBuildings home">
-      <img src="{{ asset('assets/img/logo1.png') }}?v={{ @filemtime(public_path('assets/img/logo1.png')) ?: '1' }}"
-           alt="SEOLinkBuildings"
-           class="navbar-logo"
-           width="1006"
-           height="280"
-           decoding="async">
+      <picture>
+        <source type="image/webp" srcset="{{ asset('assets/img/logo1-hero.webp') }}?v={{ @filemtime(public_path('assets/img/logo1-hero.webp')) ?: '1' }}">
+        <img src="{{ asset('assets/img/logo1.png') }}?v={{ @filemtime(public_path('assets/img/logo1.png')) ?: '1' }}"
+             alt="SEOLinkBuildings"
+             class="navbar-logo"
+             width="1006"
+             height="280"
+             decoding="async">
+      </picture>
     </a>
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContent"

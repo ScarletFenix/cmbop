@@ -47,10 +47,19 @@ class BrandOrganization
             $node['founder'] = BrandPerson::citation();
         }
 
+        $origin = function_exists('canonical_public_origin')
+            ? rtrim((string) canonical_public_origin(), '/')
+            : rtrim((string) url('/'), '/');
+        $home = $origin.'/';
+        $logo = asset('assets/img/logo1.png');
+        if (function_exists('canonical_public_url')) {
+            $logo = canonical_public_url($logo);
+        }
+
         return array_merge($node, [
             'identifier' => $registrationNo,
-            'url' => url('/'),
-            'logo' => asset('assets/img/logo1.png'),
+            'url' => $home,
+            'logo' => $logo,
             'email' => $supportEmail,
             'sameAs' => self::sameAs($companiesHouse),
             'address' => [
@@ -70,12 +79,20 @@ class BrandOrganization
 
     public static function organizationId(): string
     {
-        return rtrim((string) url('/'), '/').'/#organization';
+        $origin = function_exists('canonical_public_origin')
+            ? rtrim((string) canonical_public_origin(), '/')
+            : rtrim((string) url('/'), '/');
+
+        return $origin.'/#organization';
     }
 
     public static function websiteId(): string
     {
-        return rtrim((string) url('/'), '/').'/#website';
+        $origin = function_exists('canonical_public_origin')
+            ? rtrim((string) canonical_public_origin(), '/')
+            : rtrim((string) url('/'), '/');
+
+        return $origin.'/#website';
     }
 
     /**

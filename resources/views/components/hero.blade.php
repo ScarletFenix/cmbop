@@ -201,7 +201,7 @@
 
   .slb-hero-title {
     margin: 0;
-    font-family: var(--slb-font-display, 'Sora', sans-serif);
+    font-family: var(--slb-font-display, 'Poppins', sans-serif);
     font-size: clamp(1.65rem, 3.2vw, 2.55rem);
     line-height: 1.15;
     font-weight: 700;

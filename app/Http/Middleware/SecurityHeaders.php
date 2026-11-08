@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Support\LocaleIndexability;
+use App\Support\PublicI18n;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -48,7 +49,23 @@ class SecurityHeaders
         }
 
         $first = $request->segment(1);
-        if (in_array($first, ['login', 'register', 'forgot-password', 'reset-password', 'feedback'], true)) {
+        $robots = null;
+        if (class_exists(PublicI18n::class)
+            && method_exists(PublicI18n::class, 'robotsContent')) {
+            try {
+                $robots = PublicI18n::robotsContent($request);
+            } catch (\Throwable) {
+                $robots = null;
+            }
+        }
+
+        if (is_string($robots) && str_contains($robots, 'noindex')) {
+            $response->headers->set('X-Robots-Tag', $robots);
+        } elseif (in_array($first, [
+            'login', 'register', 'forgot-password', 'reset-password', 'feedback',
+            'admin', 'advertiser', 'publisher', 'marketing', 'oauth', 'onboard',
+            'profile', 'chat', 'notifications', 'billing', 'invoices',
+        ], true)) {
             $response->headers->set('X-Robots-Tag', 'noindex, nofollow');
         } elseif (class_exists(LocaleIndexability::class)
             && method_exists(LocaleIndexability::class, 'isThinDuplicate')) {

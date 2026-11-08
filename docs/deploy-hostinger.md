@@ -79,3 +79,6 @@ production page view. It does not migrate and it does not run the scheduler.
 
 Off-site: `backup:drive` (Google Drive, 03:00 Asia/Karachi) — see [`BACKUPS.md`](BACKUPS.md).
 Also back up `/home/USER/persistent/media` (zip / Hostinger backup / `tar`).
+
+Country ccTLD DNS/hosting is **not** part of a code deploy. Owner checklist:
+[`ops-country-domains.md`](ops-country-domains.md).
