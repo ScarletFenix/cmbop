@@ -50,8 +50,10 @@ Fail closed. A paid order is never written as consent.
 
 Unknown (no consent row, no topic opt-in) is **not** granted, even with a paid order. Global `marketing_emails = false`, topic off, invalid address, and permanent SMTP failures already on `email_logs` all block. Signed unsubscribe uses an opaque token (no user id in the URL) and does not open-redirect.
 
+The footer is the SEOLinkBuildings brand, a support line, preference link, and unsubscribe. Invoice issuer copy (Teqno Ltd trading name, company number, registered office) stays on invoices only.
+
 ## What the email may not include
 
-Publisher contacts or identities beyond the public listing, buying rates, markup, advertiser counts/order volume, private wallet, internal notes. Missing DA/DR/traffic/price/screenshot are omitted, not invented. Homepage images use the existing screenshot pipeline only; otherwise a labelled preview card (not claimed as a screenshot).
+Publisher contacts or identities beyond the public listing, buying rates, markup, advertiser counts/order volume, private wallet, internal notes. Missing DA/DR/traffic/price/screenshot are omitted, not invented. Homepage images use the existing screenshot pipeline only; otherwise a labelled preview card (not claimed as a screenshot). Invoice legal-entity copy is not included.
 
 Click/order reporting is observational (“paid order for the same site after a click”) and is not causal attribution.

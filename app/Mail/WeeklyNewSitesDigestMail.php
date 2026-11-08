@@ -9,7 +9,7 @@ use App\Services\WeeklyNewSites\CardPresenter;
 use App\Services\WeeklyNewSites\DigestDispatcher;
 use App\Services\WeeklyNewSites\MatchSelector;
 use App\Services\WeeklyNewSites\PermissionGate;
-use App\Support\LegalIdentity;
+use App\Support\MailNotificationPresenter;
 use App\Support\WeeklyNewSitesLink;
 use Illuminate\Support\Collection;
 use Symfony\Component\Mime\Email;
@@ -142,8 +142,6 @@ class WeeklyNewSitesDigestMail extends PlatformMailable
      */
     private function viewData(string $unsub, string $prefs): array
     {
-        $address = LegalIdentity::registeredOffice();
-
         return [
             'firstName' => $this->firstName($this->advertiser),
             'cards' => $this->cards,
@@ -152,10 +150,7 @@ class WeeklyNewSitesDigestMail extends PlatformMailable
             'unsubscribeUrl' => $unsub,
             'preferencesUrl' => $prefs,
             'brand' => $this->brand(),
-            'legalName' => LegalIdentity::issuerName(),
-            'legalFooter' => LegalIdentity::footer(),
-            'legalAddress' => $address,
-            'companyNumber' => LegalIdentity::COMPANY_NUMBER,
+            'supportLine' => MailNotificationPresenter::supportLine('account'),
         ];
     }
 }

@@ -36,10 +36,9 @@ Browse matching sites:
 @endforeach
 @endif
 
-{{ $legalName }}
-{{ $legalFooter }}
-@if(!empty($legalAddress))
-{{ $legalAddress }}
+{{ $brand['name'] ?? 'SEOLinkBuildings' }}
+@if(!empty($supportLine))
+{{ $supportLine }}
 @endif
 
 Manage new-site email preferences: {{ $preferencesUrl }}

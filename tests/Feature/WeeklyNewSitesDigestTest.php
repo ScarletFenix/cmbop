@@ -19,7 +19,6 @@ use App\Models\WeeklyNewSitesToken;
 use App\Services\WeeklyNewSites\PermissionGate;
 use App\Services\WeeklyNewSites\Watermark;
 use App\Support\EmailCatalog;
-use App\Support\LegalIdentity;
 use App\Support\WeeklyNewSitesLink;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -172,9 +171,14 @@ class WeeklyNewSitesDigestTest extends TestCase
             ->get(route('admin.emails.preview', 'weekly_new_sites'))
             ->assertOk()
             ->assertSee('New sites in your niches', false)
-            ->assertSee('Teqno Ltd trading as SEOLinkBuildings', false)
-            ->assertSee('17392540', false)
-            ->assertSee('Preview card for', false);
+            ->assertSee('SEOLinkBuildings', false)
+            ->assertSee('Manage new-site email preferences', false)
+            ->assertSee('Unsubscribe from this digest', false)
+            ->assertSee('Preview card for', false)
+            ->assertDontSee('Teqno Ltd', false)
+            ->assertDontSee('17392540', false)
+            ->assertDontSee('trading as', false)
+            ->assertDontSee('20 Wenlock Road', false);
     }
 
     public function test_schedule_registers_monday_karachi_command(): void
@@ -550,9 +554,15 @@ class WeeklyNewSitesDigestTest extends TestCase
             $this->assertStringContainsString('priced-a.example', $html);
             $this->assertStringContainsString('View site details', $html);
             $this->assertStringContainsString('Browse matching sites', $html);
-            $this->assertStringContainsString(LegalIdentity::ISSUER_NAME, $html);
-            $this->assertStringContainsString('17392540', $html);
-            $this->assertStringContainsString('20 Wenlock Road', $html);
+            $this->assertStringContainsString('SEOLinkBuildings', $html);
+            $this->assertStringContainsString('Manage new-site email preferences', $html);
+            $this->assertStringContainsString('Unsubscribe from this digest', $html);
+            $this->assertStringContainsString('contact support', strtolower($html));
+            $this->assertStringNotContainsString('Teqno', $html);
+            $this->assertStringNotContainsString('17392540', $html);
+            $this->assertStringNotContainsString('trading as', $html);
+            $this->assertStringNotContainsString('Registered in England', $html);
+            $this->assertStringNotContainsString('20 Wenlock Road', $html);
             $this->assertStringNotContainsString($publisher->email, $html);
             $this->assertStringNotContainsString('publisher_price', $html);
             $this->assertStringNotContainsString('platform_fee', $html);
@@ -569,11 +579,16 @@ class WeeklyNewSitesDigestTest extends TestCase
                 'browseLinks' => $mail->browseLinks,
                 'unsubscribeUrl' => 'https://example.test/unsub',
                 'preferencesUrl' => 'https://example.test/prefs',
-                'legalName' => LegalIdentity::issuerName(),
-                'legalFooter' => LegalIdentity::footer(),
-                'legalAddress' => LegalIdentity::registeredOffice(),
+                'brand' => ['name' => 'SEOLinkBuildings'],
+                'supportLine' => 'If you have questions, contact support at support@seolinkbuildings.com.',
             ])->render();
             $this->assertStringContainsString('priced-a.example', $text);
+            $this->assertStringContainsString('SEOLinkBuildings', $text);
+            $this->assertStringContainsString('Manage new-site email preferences', $text);
+            $this->assertStringContainsString('Unsubscribe from this digest', $text);
+            $this->assertStringNotContainsString('Teqno', $text);
+            $this->assertStringNotContainsString('17392540', $text);
+            $this->assertStringNotContainsString('20 Wenlock Road', $text);
             foreach ($mail->cards as $card) {
                 $this->assertNotNull($card['price']);
                 $this->assertGreaterThan(0, (float) $card['price']);

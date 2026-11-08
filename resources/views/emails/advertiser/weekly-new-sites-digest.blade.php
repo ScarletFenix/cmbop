@@ -91,10 +91,9 @@
                 </tr>
                 <tr>
                     <td style="padding:16px 24px;border-top:1px solid {{ $line }};font-size:12px;line-height:1.5;color:{{ $grey }};">
-                        <p style="margin:0 0 8px 0;">{{ $legalName }}</p>
-                        <p style="margin:0 0 8px 0;">{{ $legalFooter }}</p>
-                        @if(!empty($legalAddress))
-                            <p style="margin:0 0 8px 0;">{{ $legalAddress }}</p>
+                        <p style="margin:0 0 8px 0;">{{ $brand['name'] ?? 'SEOLinkBuildings' }}</p>
+                        @if(!empty($supportLine))
+                            <p style="margin:0 0 8px 0;">{{ $supportLine }}</p>
                         @endif
                         <p style="margin:0 0 8px 0;">
                             <a href="{{ $preferencesUrl }}" style="color:{{ $teal }};">Manage new-site email preferences</a>
