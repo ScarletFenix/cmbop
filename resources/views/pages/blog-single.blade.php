@@ -21,6 +21,9 @@
         && method_exists(\App\Support\CuratedBlogCatalog::class, 'faqForBlog'))
         ? \App\Support\CuratedBlogCatalog::faqForBlog($blog, $resolvedSlug)
         : [];
+    $featuredDims = (method_exists($blog, 'publicFeaturedImageDimensions')
+        ? $blog->publicFeaturedImageDimensions()
+        : null);
 @endphp
 
 @section('title', $blogPageTitle.' — SEOLinkBuildings')
@@ -40,6 +43,10 @@
 @section('og_type', 'article')
 @section('og_image', $blog->featuredImageAbsoluteUrl() ?: asset('assets/brand/web/og-share-1200x630.png'))
 @section('og_image_alt', $resolvedTitle)
+@if(is_array($featuredDims) && isset($featuredDims['width'], $featuredDims['height']))
+@section('og_image_width', (string) $featuredDims['width'])
+@section('og_image_height', (string) $featuredDims['height'])
+@endif
 
 @push('head')
 @php
@@ -188,9 +195,15 @@
             <article>
                 @if($blog->publicFeaturedImageUrl())
                     <div class="mb-5">
-                        <img src="{{ $blog->publicFeaturedImageUrl() }}" 
-                             alt="{{ $resolvedTitle }}" 
-                             class="img-fluid rounded-4 shadow-sm w-100">
+                        <img src="{{ $blog->publicFeaturedImageUrl() }}"
+                             alt="{{ $resolvedTitle }}"
+                             class="img-fluid rounded-4 shadow-sm w-100"
+                             @if(is_array($featuredDims) && isset($featuredDims['width'], $featuredDims['height']))
+                                 width="{{ $featuredDims['width'] }}"
+                                 height="{{ $featuredDims['height'] }}"
+                             @endif
+                             fetchpriority="high"
+                             decoding="async">
                     </div>
                 @endif
                 
@@ -270,8 +283,19 @@
                     <div class="col-md-4 mb-4">
                         <div class="card border-0 shadow-sm rounded-4 h-100 overflow-hidden" style="transition: all 0.3s ease;">
                             @if($recommended->publicFeaturedImageUrl())
-                                <img src="{{ $recommended->publicFeaturedImageUrl() }}" 
-                                     alt="{{ $recommended->title }}" 
+                                @php
+                                    $recommendedDims = method_exists($recommended, 'publicFeaturedImageDimensions')
+                                        ? $recommended->publicFeaturedImageDimensions()
+                                        : null;
+                                @endphp
+                                <img src="{{ $recommended->publicFeaturedImageUrl() }}"
+                                     alt="{{ $recommended->title }}"
+                                     @if(is_array($recommendedDims) && isset($recommendedDims['width'], $recommendedDims['height']))
+                                         width="{{ $recommendedDims['width'] }}"
+                                         height="{{ $recommendedDims['height'] }}"
+                                     @endif
+                                     loading="lazy"
+                                     decoding="async"
                                      style="height: 200px; object-fit: cover;">
                             @else
                                 <div style="height: 200px; background: linear-gradient(135deg, #1a585e 0%, #3faeb2 100%);" class="d-flex align-items-center justify-content-center">

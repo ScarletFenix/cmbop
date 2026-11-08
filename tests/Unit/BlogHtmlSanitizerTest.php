@@ -85,6 +85,45 @@ class BlogHtmlSanitizerTest extends TestCase
         $this->assertStringNotContainsString('/storage/blogs/content/b.png', $clean);
     }
 
+    public function test_body_images_default_to_lazy_async_and_keep_paired_html_dims(): void
+    {
+        $clean = $this->sanitizer->sanitize(
+            '<img src="https://cdn.example.com/a.png" alt="A" width="1200" height="675" fetchpriority="high">'
+        );
+
+        $this->assertStringContainsString('src="https://cdn.example.com/a.png"', $clean);
+        $this->assertStringContainsString('alt="A"', $clean);
+        $this->assertStringContainsString('width="1200"', $clean);
+        $this->assertStringContainsString('height="675"', $clean);
+        $this->assertStringContainsString('loading="lazy"', $clean);
+        $this->assertStringContainsString('decoding="async"', $clean);
+        $this->assertStringNotContainsString('fetchpriority', $clean);
+    }
+
+    public function test_unpaired_or_non_numeric_html_dims_are_omitted(): void
+    {
+        $clean = $this->sanitizer->sanitize(
+            '<img src="https://cdn.example.com/a.png" alt="A" width="1200">'
+            .'<img src="https://cdn.example.com/b.png" alt="B" width="0" height="675">'
+            .'<img src="https://cdn.example.com/c.png" alt="C" width="99999" height="10">'
+        );
+
+        $this->assertStringNotContainsString('width="', $clean);
+        $this->assertStringNotContainsString('height="', $clean);
+        $this->assertStringContainsString('loading="lazy"', $clean);
+    }
+
+    public function test_explicit_eager_loading_is_preserved_on_body_images(): void
+    {
+        $clean = $this->sanitizer->sanitize(
+            '<img src="https://cdn.example.com/hero.png" alt="Hero" loading="eager" decoding="sync">'
+        );
+
+        $this->assertStringContainsString('loading="eager"', $clean);
+        $this->assertStringContainsString('decoding="sync"', $clean);
+        $this->assertStringNotContainsString('loading="lazy"', $clean);
+    }
+
     public function test_protocol_relative_images_are_kept_as_https(): void
     {
         $clean = $this->sanitizer->sanitize(

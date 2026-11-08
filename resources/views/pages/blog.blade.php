@@ -127,12 +127,29 @@
                                 <div class="card border-0 shadow-sm rounded-4 overflow-hidden" style="transition: all 0.3s ease;">
                                     <div class="row g-0">
                                         @if($post->publicFeaturedImageUrl())
+                                            @php
+                                                $listingDims = method_exists($post, 'publicFeaturedImageDimensions')
+                                                    ? $post->publicFeaturedImageDimensions()
+                                                    : null;
+                                                $listingEager = $loop->first;
+                                            @endphp
                                             <div class="col-md-4">
                                                 <div style="height: 100%; overflow: hidden;">
-                                                    <img src="{{ $post->publicFeaturedImageUrl() }}" 
-                                                         class="img-fluid w-100 h-100" 
+                                                    <img src="{{ $post->publicFeaturedImageUrl() }}"
+                                                         class="img-fluid w-100 h-100"
                                                          alt="{{ $post->title }}"
-                                                         loading="lazy"
+                                                         @if(is_array($listingDims) && isset($listingDims['width'], $listingDims['height']))
+                                                             width="{{ $listingDims['width'] }}"
+                                                             height="{{ $listingDims['height'] }}"
+                                                         @endif
+                                                         @if($listingEager)
+                                                             loading="eager"
+                                                             @if($blogPage === 1)
+                                                                 fetchpriority="high"
+                                                             @endif
+                                                         @else
+                                                             loading="lazy"
+                                                         @endif
                                                          decoding="async"
                                                          style="object-fit: cover; transition: transform 0.3s;">
                                                 </div>
