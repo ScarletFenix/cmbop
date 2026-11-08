@@ -131,6 +131,7 @@ class DanishMoneyLanders
         $niche = self::url('niche-edits');
         $guide = self::url('vejledning');
         $publisher = self::marketingUrl('become-a-publisher');
+        $enGuide = '/blog/link-building-guide';
 
         return [
             'koeb-gaesteindlaeg' => [
@@ -245,7 +246,7 @@ class DanishMoneyLanders
                 'h1' => 'Køb backlinks i Danmark',
                 'subtitle' => 'Backlinks her er links fra publikationer, du køber på rigtige sites — ikke en anonym pose URL’er.',
                 'meta_title' => 'Køb backlinks i Danmark | SEOLinkBuildings',
-                'meta_description' => 'Danske backlinks fra gæsteindlæg på rigtige sites. Pris i EUR, dofollow eller sponsored på katalogreglen, live-URL i ordren.',
+                'meta_description' => 'Køb backlinks i Danmark via gæsteindlæg: vælg site, tjek niche og rel sponsored/nofollow, betal i euro. Ingen rankinggaranti.',
                 'teaser_countries' => ['dk'],
                 'teaser_title' => 'Sites .dk til backlinks',
                 'teaser_subtitle' => 'Forhåndsvisning af katalogregler med hovedland Danmark. Vist traffic er opgivet, ikke lovet.',
@@ -260,7 +261,7 @@ class DanishMoneyLanders
                     ],
                     [
                         'title' => 'Dofollow er ikke standard',
-                        'body' => 'Filtrer på linktype. Publisheren står for den live HTML.',
+                        'body' => 'Filtrer på linktype. Mange betalte publikationer bærer rel="sponsored" eller rel="nofollow". Publisheren står for den live HTML — det er reklame, ikke en omgåelse af søgeregler.',
                     ],
                     [
                         'title' => 'Ingen PBN',
@@ -271,6 +272,14 @@ class DanishMoneyLanders
                     [
                         'h2' => 'Sådan vælger du',
                         'body' => 'Start i <a href="'.$market.'">kataloget</a>, filtrér Danmark, sammenlign pris og ankerregler. Derefter <a href="'.$guest.'">køb gæsteindlæg</a> eller en <a href="'.$sponsored.'">sponsoreret artikel</a>.',
+                    ],
+                    [
+                        'h2' => 'Sådan tjekker du, om sitet passer',
+                        'body' => '<p>«Køb backlinks» betyder her et link i en publiceret artikel på et site, du vælger — ofte .dk, ofte på dansk — ikke en pose anonyme URL’er. Efter login læser du niche, sprog, ankerregler og opgivet traffic. DA/DR er et filter, ikke et kvalitetsstempel. Et site i en fremmed branche er et dårligt match, også hvis scoren er høj.</p><p>Passer rækken: læg den i kurven, send titel, tekst eller briefing, og følg live-URL’en. Forløbet: <a href="'.$how.'">sådan virker det</a>. Prisen er sitets i euro, ikke en fast platformtakst. Næste skridt: <a href="'.$register.'">opret konto</a>.</p>',
+                    ],
+                    [
+                        'h2' => 'Redaktionelle vilkår og link-attribut',
+                        'body' => '<p>Hvert listing har sitets egne regler: længde, emner, antal links, leveringstid og om publikationen er tidsbegrænset. Vi opfinder ikke permanente dofollow-links og lover ikke positioner. Betalte placeringer er reklame; mange publishers sætter <code>rel="sponsored"</code> eller <code>rel="nofollow"</code>.</p><p>Dansk overblik: <a href="'.$guide.'">vejledningen</a>. Der findes ikke en dansk søjleartikel; den engelske strategi-guide er <a href="'.$enGuide.'">Link Building Guide</a>.</p>',
                     ],
                 ],
                 'faqs' => [
@@ -292,6 +301,8 @@ class DanishMoneyLanders
                 'see_also' => [
                     ['label' => 'Priser', 'url' => $prices],
                     ['label' => 'Køb gæsteindlæg', 'url' => $guest],
+                    ['label' => 'Vejledning', 'url' => $guide],
+                    ['label' => 'Link Building Guide', 'url' => $enGuide],
                     ['label' => 'Niche edits', 'url' => $niche],
                 ],
             ],

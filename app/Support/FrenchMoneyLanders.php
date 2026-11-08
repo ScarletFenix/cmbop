@@ -204,6 +204,7 @@ class FrenchMoneyLanders
         $pr = '/fr/digital-pr';
         $niche = '/fr/niche-edits';
         $guide = '/fr/guide';
+        $blogGuide = '/fr/blog/guide-netlinking';
         $publisher = '/fr/devenir-editeur';
 
         return [
@@ -325,7 +326,7 @@ class FrenchMoneyLanders
                 'h1' => 'Acheter des backlinks en France',
                 'subtitle' => 'Des liens placés dans un contenu publié chez un éditeur du catalogue, filtrables par pays, thématique et métriques affichées.',
                 'meta_title' => 'Acheter des backlinks en France | SEOLinkBuildings',
-                'meta_description' => 'Acheter des liens SEO sur des sites français : pertinence, trafic déclaré, dofollow ou sponsored, prix en euros sur la fiche. Pas de promesse de positions.',
+                'meta_description' => 'Acheter des backlinks français: choisissez un site, lisez les règles et le rel sponsored, suivez l’URL live. Pas de promesse de positions.',
                 'teaser_countries' => ['fr'],
                 'teaser_title' => 'Sites .fr pour des backlinks',
                 'teaser_subtitle' => 'Aperçu des fiches dont le pays principal est la France.',
@@ -336,7 +337,7 @@ class FrenchMoneyLanders
                 'points' => [
                     [
                         'title' => 'Dofollow et liens sponsored',
-                        'body' => 'Les backlinks dofollow existent lorsque la fiche l’indique. Beaucoup de publications payantes portent rel sponsored. C’est écrit avant le paiement.',
+                        'body' => 'Les backlinks dofollow existent lorsque la fiche l’indique. Beaucoup de publications payantes portent rel="sponsored" ou rel="nofollow". C’est de la publicité, pas un contournement des règles de Google, et c’est écrit avant le paiement.',
                     ],
                     [
                         'title' => 'Sites .fr',
@@ -352,6 +353,14 @@ class FrenchMoneyLanders
                         'h2' => 'Pertinence plutôt que volume',
                         'body' => 'Un lien hors sujet sur un site fort reste un mauvais lien. Choisissez la thématique dans le catalogue. Les niches (e-commerce, finance, tech, santé) sont des filtres, pas des pages doorway.',
                     ],
+                    [
+                        'h2' => 'Choisir un site français et vérifier l’adéquation',
+                        'body' => '<p>« Acheter des backlinks français » décrit ici un filtre: pays France, souvent un éditeur .fr, thématique alignée avec votre URL. Après inscription, le catalogue montre la niche, la langue, les règles d’ancre, le trafic déclaré et le prix en euros — un prix de fiche, pas un forfait unique. Un score DA/DR élevé ne remplace pas la pertinence.</p><p>Si la fiche ne correspond pas, passez. Ensuite: briefing ou texte, paiement depuis le portefeuille, URL live sur la commande. Parcours: <a href="'.$how.'">comment ça marche</a>. Même catalogue: <a href="'.$guest.'">acheter un guest post</a>. Compte: <a href="'.$register.'">créer un compte</a>.</p>',
+                    ],
+                    [
+                        'h2' => 'Conditions éditoriales et attributs de lien',
+                        'body' => '<p>Chaque média fixe longueur, sujets acceptés, nombre de liens et durée. Nous ne vendons pas un backlink dofollow permanent générique et ne promettons pas un classement. Une publication payante est de la publicité: beaucoup d’éditeurs posent <code>rel="sponsored"</code> ou <code>rel="nofollow"</code>.</p><p>Stratégie en français: <a href="'.$blogGuide.'">guide de netlinking</a>. Page marketplace: <a href="'.$guide.'">guide</a>.</p>',
+                    ],
                 ],
                 'faqs' => [
                     [
@@ -366,8 +375,9 @@ class FrenchMoneyLanders
                 'see_also' => [
                     ['label' => 'Netlinking', 'url' => $netlinking],
                     ['label' => 'Guest post', 'url' => $guest],
-                    ['label' => 'Niche edits', 'url' => $niche],
+                    ['label' => 'Guide de netlinking', 'url' => $blogGuide],
                     ['label' => 'Guide', 'url' => $guide],
+                    ['label' => 'Niche edits', 'url' => $niche],
                 ],
                 'cta_primary' => ['label' => 'Filtrer le catalogue', 'url' => $marche],
                 'cta_secondary' => ['label' => 'Créer un compte', 'url' => $register],

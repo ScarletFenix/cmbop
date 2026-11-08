@@ -83,6 +83,9 @@ class LinkBuildingGuideBlogPost
         $buyGuide = '/blog/how-to-buy-guest-posts-on-seolinkbuildings-advertiser-guide';
         $catalog = '/marketplace';
         $how = '/how-it-works';
+        $deGuest = '/de/gastbeitrag-kaufen';
+        $frLinks = '/fr/acheter-backlinks';
+        $dkLinks = '/dk/koeb-backlinks';
         $imgRoadmap = BlogInlineImages::publicUrl(self::IMAGE_ROADMAP);
 
         return <<<HTML
@@ -211,6 +214,7 @@ class LinkBuildingGuideBlogPost
 <li>Internal linking and content quality as the floor, not a side project</li>
 </ul>
 <p>Marketplaces are a procurement tool inside that mix. They are not a substitute for the mix. Ordering notes: <a href="{$buyGuide}">how to buy guest posts on SEOLinkBuildings</a>.</p>
+<p>Local commercial pages use path prefixes on this site, not separate country domains: German guest posts at <a href="{$deGuest}">Gastbeitrag kaufen</a>, French backlinks at <a href="{$frLinks}">acheter des backlinks</a>, Danish backlinks at <a href="{$dkLinks}">køb backlinks</a>. English catalog browsing starts at <a href="{$catalog}">the marketplace</a> after registration.</p>
 
 <h2>Beginner roadmap</h2>
 <figure>

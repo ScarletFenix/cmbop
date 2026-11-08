@@ -62,6 +62,7 @@ class LinkBuildingGuideI18n
         $catalog = '/de/marktplatz';
         $how = '/de/so-funktioniert-es';
         $lb = '/de/linkbuilding';
+        $deHub = '/de';
         $img = BlogInlineImages::publicUrl(LinkBuildingGuideBlogPost::IMAGE_ROADMAP);
 
         return <<<HTML
@@ -78,6 +79,9 @@ class LinkBuildingGuideI18n
 <h2>Taktiken</h2>
 <p>Content-led Assets; Digital PR (manchmal nur eine Erwähnung — siehe <a href="{$aeo}">Guest Posts und Brand Mentions</a>); Gastbeiträge auf relevanten Hosts; Ressourcen- und Broken-Link-Outreach; Competitor-Referring-Domains nach Relevanz sortieren, nicht nach Score. Outreach: <a href="{$outreach}">Marketplace vs. Cold Email vs. PR</a>. Katalog: <a href="{$catalog}">SEOLinkBuildings</a>, <a href="{$how}">So funktioniert es</a>, <a href="{$chooseSite}">Publisher wählen</a>.</p>
 <p>Anker: Satz zuerst, dann klickbare Wörter. Attribute: <a href="{$dofollow}">Dofollow, Nofollow, Ankertexte</a>. Interne Links sind der günstigste Weg, Hubs zu markieren.</p>
+
+<h2>Gastbeitrag kaufen oder selbst Outreach?</h2>
+<p>Dieser Leitfaden bleibt Strategie. Wenn Sie eine bezahlte Veröffentlichung auf einer geprüften Publisher-Site bestellen wollen — Briefing, Wallet in Euro, Live-URL am Auftrag — öffnen Sie <a href="{$buyGuide}">Gastbeitrag kaufen</a>. „Gastartikel kaufen“ ist dieselbe Bestellung. Der Publisher kennzeichnet bezahlte Links nach seiner Policy (<code>rel="sponsored"</code> oder <code>rel="nofollow"</code>); das umgeht Googles Regeln nicht und verspricht keine Position. Deutscher Hub: <a href="{$deHub}">Marktplatz auf Deutsch</a>.</p>
 
 <h2>Messen, Fehler, Risiko</h2>
 <p>Eine primäre URL. Verweisende Domains, Live-URLs mit Attributen, Indexierung, Referral, Impressionen in Search Console, Verluste — <a href="{$live}">Live-Link-Checkliste</a>. Kein „50 Backlinks“, wenn 40 aus einem Netz kommen.</p>
@@ -131,9 +135,11 @@ HTML;
         $outreach = '/blog/marketplace-vs-cold-outreach-vs-digital-pr';
         $live = '/blog/what-to-check-after-the-live-link-indexation-attributes-rankings';
         $aeo = '/blog/ai-aeo-seo-why-guest-posts-and-brand-mentions-matter';
-        $buyGuide = '/blog/how-to-buy-guest-posts-on-seolinkbuildings-advertiser-guide';
-        $catalog = '/marketplace';
-        $how = '/how-it-works';
+        $buyGuest = '/fr/acheter-guest-post';
+        $buyLinks = '/fr/acheter-backlinks';
+        $catalog = '/fr/marche';
+        $how = '/fr/comment-ca-marche';
+        $frHub = '/fr';
         $img = BlogInlineImages::publicUrl(LinkBuildingGuideBlogPost::IMAGE_ROADMAP);
 
         return <<<HTML
@@ -153,12 +159,15 @@ HTML;
 <p>Une URL primaire. Domaines, URLs live, indexation, referrals, impressions Search Console, pertes — <a href="{$live}">checklist lien live</a>. Pas « 50 backlinks » si 40 viennent d’un réseau.</p>
 <p>À éviter: PBN, commentaires/profils auto, fermes, réciproques industrielles, domaines expirés, guest posting hors sujet à grande échelle, dofollow non qualifié vendu comme ranking.</p>
 
+<h2>Backlinks achetés ou gagnés</h2>
+<p>Cette page reste de la stratégie. Un backlink français acheté ici est une publication sur un site du catalogue, avec les règles de la fiche et souvent <code>rel="sponsored"</code> ou <code>rel="nofollow"</code>. Ce n’est pas un classement promis et ce n’est pas un contournement des règles de Google. Commande: <a href="{$buyLinks}">acheter des backlinks</a> ou <a href="{$buyGuest}">acheter un guest post</a>. Hub: <a href="{$frHub}">marketplace France</a>.</p>
+
 <h2>Stratégie durable et feuille de route</h2>
 <figure>
 <img src="{$img}" alt="Feuille de route netlinking: débutant, intermédiaire, avancé" loading="lazy" width="1200" height="675">
 <figcaption>Apprenez la qualité d’hôte avant d’ajouter du volume.</figcaption>
 </figure>
-<p>Un ou deux assets entretenus. Un petit programme contributeur. Sponsoring étiqueté de temps en temps. RP quand il y a une histoire. Liens internes comme base. Commande: <a href="{$buyGuide}">acheter des guest posts</a>.</p>
+<p>Un ou deux assets entretenus. Un petit programme contributeur. Sponsoring étiqueté de temps en temps. RP quand il y a une histoire. Liens internes comme base. Commande marketplace: <a href="{$buyGuest}">acheter un guest post</a> ou <a href="{$buyLinks}">acheter des backlinks</a>.</p>
 <p>Débutant: une URL, liens internes, cinq citations, recontrôle. Intermédiaire: un asset, domaines concurrents, mix. Avancé: roster, localisation, revue du profil. Pas de disavow de panique.</p>
 
 <h2>Checklist</h2>
