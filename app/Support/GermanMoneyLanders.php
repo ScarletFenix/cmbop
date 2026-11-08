@@ -182,7 +182,7 @@ class GermanMoneyLanders
                 'h1' => 'Gastbeiträge kaufen – relevante Publisher für Ihre SEO',
                 'subtitle' => 'Gastbeitrag kaufen auf geprüften deutschen und europäischen Publisher-Seiten: Nische, DA/DR und Preis in Euro vergleichen, Briefing senden, Live-URL im Auftrag verfolgen.',
                 'meta_title' => 'Gastbeitrag kaufen in Deutschland | SEOLinkBuildings',
-                'meta_description' => 'Gastbeitrag kaufen bei geprüften Publishern. Filtern Sie Nische, DA/DR und EUR-Preis, bestellen Sie dofollow oder sponsored und verfolgen Sie die Live-URL.',
+                'meta_description' => 'Gastbeitrag oder Gastartikel kaufen: Nische und EUR-Preis filtern, redaktionelle Regeln und Link-Attribut prüfen, Live-URL im Auftrag. Kein Ranking-Versprechen.',
                 'teaser_countries' => ['de'],
                 'teaser_title' => 'Beispiel-Sites für Gastbeiträge in Deutschland',
                 'teaser_subtitle' => 'Maskierte Vorschau aktiver Deutschland-Listings. Vollständige Domains sehen Sie nach der Registrierung.',
@@ -201,7 +201,7 @@ class GermanMoneyLanders
                     ],
                     [
                         'title' => 'Dofollow und Sponsored',
-                        'body' => 'Das Link-Attribut steht auf dem Listing. Viele Sites kennzeichnen bezahlte Veröffentlichungen. Lesen Sie den Linktyp vor der Bestellung — kein „Dofollow um jeden Preis“.',
+                        'body' => 'Das Link-Attribut steht auf dem Listing. Viele Sites kennzeichnen bezahlte Veröffentlichungen mit rel="sponsored" oder rel="nofollow". Lesen Sie den Linktyp vor der Bestellung — kein „Dofollow um jeden Preis“. Vertiefung: <a href="'.$blogDofollow.'">Dofollow vs. Nofollow</a>.',
                     ],
                 ],
                 'sections' => [
@@ -216,6 +216,14 @@ class GermanMoneyLanders
                     [
                         'h2' => 'Pakete, Dauerhaftigkeit, Nischen',
                         'body' => 'Es gibt kein festes „günstiges Gastbeitrag-Paket“. Der Preis folgt der Site. Für Volumen und White Label: <a href="'.$agencies.'">Gastbeiträge für Agenturen</a>. Abgrenzung zum Media-Kit-Vokabular: <a href="'.$advertorial.'">Advertorial kaufen</a>. Grundlagen: <a href="'.$blogGuest.'">Was ist ein Gastbeitrag?</a>',
+                    ],
+                    [
+                        'h2' => 'Gastartikel kaufen: dieselbe Bestellung',
+                        'body' => '<p>In der Suche stehen „Gastartikel kaufen“ und „Gastbeitrag kaufen“ für dieselbe Absicht: eine bezahlte Veröffentlichung auf einer Site, die Sie nicht besitzen. Das ist hier keine zweite Produktlinie. Sie wählen die Publisher-Site, zahlen den Listing-Preis in Euro und senden Briefing oder Text. Der Publisher entscheidet nach seinen Regeln über Länge, Thema, Linkanzahl und Kennzeichnung.</p><p>Bezahlte Platzierungen sind Werbung. Sie umgehen Googles Richtlinien nicht. Viele Sites setzen <code>rel="sponsored"</code> oder <code>rel="nofollow"</code> — das steht auf dem Listing, nicht als Ranking-Garantie. Strategie-Kontext: <a href="'.$blogLb.'">Linkaufbau-Strategien</a>.</p>',
+                    ],
+                    [
+                        'h2' => 'Passung prüfen, bevor Sie zahlen',
+                        'body' => '<p>Nach der Registrierung filtern Sie Land Deutschland und Sprache Deutsch. Lesen Sie Nische, akzeptierte Themen, Ankerregeln und das deklarierte Link-Attribut. DA und DR helfen beim Aussortieren; sie ersetzen keine inhaltliche Passung. Wenn die Site nicht zu Ihrer Ziel-URL passt, lassen Sie die Zeile weg — es gibt kein anonymes Linkpaket als Ersatz.</p><p>Nächster Schritt: <a href="'.$register.'">Konto anlegen</a>, Site in den Warenkorb, Briefing am Auftrag. Ablauf: <a href="'.$how.'">So funktioniert es</a>. Advertiser-Preise sind listingspezifisch, nicht eine feste Plattformpauschale.</p>',
                     ],
                 ],
                 'faqs' => [
@@ -242,6 +250,8 @@ class GermanMoneyLanders
                     ['label' => 'Publisher-Katalog', 'url' => $marktplatz],
                     ['label' => 'Was kostet ein Gastbeitrag', 'url' => $preise],
                     ['label' => 'Was ist ein Gastbeitrag', 'url' => $blogGuest],
+                    ['label' => 'Linkaufbau-Strategien', 'url' => $blogLb],
+                    ['label' => 'Dofollow vs. Nofollow', 'url' => $blogDofollow],
                 ],
             ],
             'advertorial' => [
