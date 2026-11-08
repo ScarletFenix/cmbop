@@ -257,7 +257,9 @@ class SeoAndSecurityHeadersTest extends TestCase
     {
         $this->get('/privacy')->assertRedirect('/privacy-policy');
         $this->get('/terms')->assertRedirect('/terms-of-services');
+        $this->get('/terms-of-service')->assertRedirect('/terms-of-services');
         $this->assertSame(301, $this->get('/privacy')->status());
+        $this->assertSame(301, $this->get('/terms-of-service')->status());
     }
 
     public function test_blog_page_two_has_rel_prev_and_self_canonical(): void

@@ -122,6 +122,7 @@ return [
         'onboard',
         'email',
         'auth',
+        'oauth',
         'advertiser',
         'publisher',
         'admin',

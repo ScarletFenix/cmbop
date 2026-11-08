@@ -11,7 +11,7 @@
   --slb-line: rgba(26, 88, 94, 0.12);
   --slb-glow: rgba(14, 165, 233, 0.18);
   --slb-radius: 16px;
-  --slb-font-display: 'Sora', 'Poppins', system-ui, sans-serif;
+  --slb-font-display: 'Poppins', system-ui, sans-serif;
 }
 
 body.slb-marketing {
@@ -355,7 +355,7 @@ footer.slb-footer .slb-footer-brand img {
 }
 
 .pricing-card-price {
-  font-family: var(--slb-font-display, Sora, sans-serif);
+  font-family: var(--slb-font-display, Poppins, sans-serif);
   font-size: 1.65rem;
   font-weight: 700;
   color: var(--slb-ink);
@@ -448,7 +448,7 @@ footer.slb-footer .slb-footer-brand img {
 }
 
 .slb-bottom-cta-title {
-  font-family: var(--slb-font-display, Sora, sans-serif);
+  font-family: var(--slb-font-display, Poppins, sans-serif);
   font-size: clamp(1.5rem, 2.8vw, 2rem);
   font-weight: 700;
   letter-spacing: -0.02em;

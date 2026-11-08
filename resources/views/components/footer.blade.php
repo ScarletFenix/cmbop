@@ -8,12 +8,15 @@
 
             <div class="col-lg-3 col-md-6">
                 <a href="{{ localized_url('/') }}" class="slb-footer-brand d-inline-block">
-                    <img src="{{ asset('assets/img/logo1.png') }}?v={{ @filemtime(public_path('assets/img/logo1.png')) ?: '1' }}"
-                         alt="SEOLinkBuildings"
-                         width="1006"
-                         height="280"
-                         loading="lazy"
-                         decoding="async">
+                    <picture>
+                        <source type="image/webp" srcset="{{ asset('assets/img/logo1-hero.webp') }}?v={{ @filemtime(public_path('assets/img/logo1-hero.webp')) ?: '1' }}">
+                        <img src="{{ asset('assets/img/logo1.png') }}?v={{ @filemtime(public_path('assets/img/logo1.png')) ?: '1' }}"
+                             alt="SEOLinkBuildings"
+                             width="1006"
+                             height="280"
+                             loading="lazy"
+                             decoding="async">
+                    </picture>
                 </a>
                 <p class="mt-3 small">
                     {{ __('messages.professional_services') }}
@@ -94,20 +97,6 @@
                         <li><a href="{{ url('/ro/digital-pr') }}" class="text-dark text-decoration-none d-block mb-2">Digital PR</a></li>
                         <li><a href="{{ url('/ro/ghid') }}" class="text-dark text-decoration-none d-block mb-2">Ghid</a></li>
                     @endif
-                    @if(function_exists('public_locale') && public_locale() === 'ch' && class_exists(\App\Support\SwissMoneyLanders::class) && method_exists(\App\Support\SwissMoneyLanders::class, 'clusterLinks'))
-                        @foreach(\App\Support\SwissMoneyLanders::clusterLinks('home') as $item)
-                            @if(!in_array($item['slug'] ?? '', ['home', 'marktplatz', 'preise'], true))
-                                <li><a href="{{ $item['url'] }}" class="text-dark text-decoration-none d-block mb-2">{{ $item['label'] }}</a></li>
-                            @endif
-                        @endforeach
-                    @endif
-                    @if(function_exists('public_locale') && public_locale() === 'es' && class_exists(\App\Support\SpanishMoneyLanders::class) && method_exists(\App\Support\SpanishMoneyLanders::class, 'clusterLinks'))
-                        @foreach(\App\Support\SpanishMoneyLanders::clusterLinks('home') as $item)
-                            @if(!in_array($item['slug'] ?? '', ['home', 'mercado', 'precios'], true))
-                                <li><a href="{{ $item['url'] }}" class="text-dark text-decoration-none d-block mb-2">{{ $item['label'] }}</a></li>
-                            @endif
-                        @endforeach
-                    @endif
                     @php
                         $nordicFooter = class_exists(\App\Support\MoneyLanderCatalog::class)
                             ? \App\Support\MoneyLanderCatalog::chrome(function_exists('public_locale') ? (string) public_locale() : '')
@@ -171,6 +160,24 @@
             </div>
 
         </div>
+
+        @if(class_exists(\App\Support\CountryLander::class) && method_exists(\App\Support\CountryLander::class, 'siblings'))
+            <div class="row mt-4">
+                <div class="col-12">
+                    <h5 class="mb-3">{{ __('messages.footer_markets') }}</h5>
+                    <ul class="list-unstyled small d-flex flex-wrap column-gap-4 row-gap-2 mb-0">
+                        <li>
+                            <a href="{{ url('/guest-post-prices-europe') }}" class="text-dark text-decoration-none">{{ __('messages.footer_europe_prices') }}</a>
+                        </li>
+                        @foreach(\App\Support\CountryLander::siblings() as $market)
+                            <li>
+                                <a href="{{ $market['url'] }}" class="text-dark text-decoration-none">{{ $market['market'] }}</a>
+                            </li>
+                        @endforeach
+                    </ul>
+                </div>
+            </div>
+        @endif
 
         <hr class="my-4">
 

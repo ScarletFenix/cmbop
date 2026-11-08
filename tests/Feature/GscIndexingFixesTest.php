@@ -166,9 +166,13 @@ class GscIndexingFixesTest extends TestCase
         $this->assertStringContainsString('sitemap-en.xml', $index);
         $this->assertStringContainsString('sitemap-pl.xml', $index);
         $this->assertStringNotContainsString('sitemap-us.xml', $index);
-        $this->assertSame(
-            substr_count($index, '<sitemap>'),
-            substr_count($index, '<lastmod>')
+        $this->assertMatchesRegularExpression(
+            '#<loc>[^<]*sitemap-en.xml</loc>\s*<lastmod>#',
+            $index
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '#<loc>[^<]*sitemap-pl.xml</loc>\s*<lastmod>#',
+            $index
         );
     }
 }

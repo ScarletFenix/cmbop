@@ -273,14 +273,17 @@ class PublicI18n
     public static function moneyLanderXDefault(string $slug): string
     {
         $locales = self::moneyLanderLocales($slug);
+        if ($locales === []) {
+            return self::default();
+        }
         if (in_array(self::default(), $locales, true)) {
             return self::default();
         }
-        // A slug that exists in only one locale has no English twin at the
-        // same path. x-default must not point at itself — use the English
-        // country lander (or home) as the unmatched-language fallback.
-        if (count($locales) <= 1) {
-            return self::default();
+        // Single-locale slugs have no English twin. x-default must be the
+        // money page itself (reciprocal), not a different commercial lander.
+        // Do not invent translations or mark thin fallbacks indexable.
+        if (count($locales) === 1) {
+            return $locales[0];
         }
         foreach (['it', 'de', 'at', 'pt', 'ro', 'dk', 'se', 'no', 'bg', 'ee', 'hu', 'pl'] as $preferred) {
             if (in_array($preferred, $locales, true)) {
@@ -346,10 +349,6 @@ class PublicI18n
         $paths = [];
         foreach (self::moneyLanderLocales($slug) as $locale) {
             $paths[$locale] = trim($slug, '/');
-        }
-        $xDefault = self::moneyLanderXDefault($slug);
-        if ($xDefault === self::default() && ! isset($paths[$xDefault])) {
-            $paths[$xDefault] = self::moneyLanderEnglishFallbackPath($slug);
         }
 
         return $paths;
@@ -534,6 +533,7 @@ class PublicI18n
             'onboard',
             'email',
             'auth',
+            'oauth',
         ], true);
     }
 
@@ -559,6 +559,11 @@ class PublicI18n
     public static function robotsContent(Request $request): string
     {
         if (self::isPublicAuthEntryPath($request)) {
+            return 'noindex, nofollow';
+        }
+
+        $first = self::firstPathSegment($request);
+        if (in_array($first, ['admin', 'advertiser', 'publisher', 'marketing'], true)) {
             return 'noindex, nofollow';
         }
 
@@ -808,11 +813,30 @@ class PublicI18n
 
     private static function switchTargetUrl(string $path, string $targetLocale): string
     {
-        if (self::isDefaultEnglish($targetLocale)) {
+        $path = ltrim($path, '/');
+        $resolvedLocale = $targetLocale;
+
+        if (class_exists(LocaleIndexability::class) && method_exists(LocaleIndexability::class, 'isIndexable')) {
+            try {
+                if (! LocaleIndexability::isIndexable($targetLocale, $path)) {
+                    $parent = method_exists(LocaleIndexability::class, 'parentLocale')
+                        ? LocaleIndexability::parentLocale($targetLocale)
+                        : self::default();
+                    if (LocaleIndexability::isIndexable($parent, $path)) {
+                        $resolvedLocale = $parent;
+                    } elseif (LocaleIndexability::isIndexable(self::default(), $path)) {
+                        $resolvedLocale = self::default();
+                    }
+                }
+            } catch (\Throwable) {
+            }
+        }
+
+        if (self::isDefaultEnglish($resolvedLocale)) {
             return self::withExplicitLocaleQuery(self::urlForLocale($path, self::default()), self::default());
         }
 
-        return self::urlForLocale($path, $targetLocale);
+        return self::urlForLocale($path, $resolvedLocale);
     }
 
     /**
@@ -876,6 +900,11 @@ class PublicI18n
     ): array {
         if (! self::isPublicMarketingPath($request)) {
             if (! self::isPublicAuthEntryPath($request)) {
+                return [];
+            }
+            // OAuth HTML is private consent chrome. Keep it crawlable so
+            // noindex can be observed, but do not attach a public cluster.
+            if (self::firstPathSegment($request) === 'oauth') {
                 return [];
             }
 

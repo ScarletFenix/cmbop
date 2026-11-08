@@ -54,13 +54,13 @@
                 <div class="row g-3 align-items-center">
                     <!-- Search Box -->
                     <div class="col-md-6">
-                        <label class="form-label fw-semibold small text-muted mb-1" for="liveSearch">Search</label>
+                        <label class="form-label fw-semibold small text-muted mb-1" for="liveSearch">{{ __('messages.blog_search_label') }}</label>
                         <div class="position-relative slb-search-wrap">
                             <i class="fa fa-search" style="position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: #999; z-index: 1;" aria-hidden="true"></i>
                             <input type="search"
                                    id="liveSearch"
                                    class="form-control"
-                                   placeholder="Search articles by title, content, or author..."
+                                   placeholder="{{ __('messages.blog_search_placeholder') }}"
                                    style="padding-left: 45px; height: 50px; border-radius: 12px; border:1px solid #eef0f3;"
                                    title="Type at least 2 characters, or press Enter. Clear restores the full list."
                                    autocomplete="off"
@@ -68,7 +68,7 @@
                                    aria-describedby="liveSearchStatus"
                                    data-slb-live-clear="liveSearchClear"
                                    data-slb-live-status="liveSearchStatus">
-                            <button type="button" id="liveSearchClear" class="btn btn-sm btn-link slb-search-clear d-none" aria-label="Clear search">
+                            <button type="button" id="liveSearchClear" class="btn btn-sm btn-link slb-search-clear d-none" aria-label="{{ __('messages.blog_clear_search') }}">
                                 <i class="fa-solid fa-xmark" aria-hidden="true"></i>
                             </button>
                         </div>
@@ -78,7 +78,7 @@
                     <!-- Tags Filter -->
                     <div class="col-md-6">
                         <div class="d-flex flex-wrap gap-2" id="tagCloud">
-                            <span class="tag-filter active" data-tag="" style="background:#5bc4c7; color:white; padding:6px 16px; border-radius:25px; font-size:0.85rem; cursor:pointer; transition:all 0.2s;">All Posts</span>
+                            <span class="tag-filter active" data-tag="" style="background:#5bc4c7; color:white; padding:6px 16px; border-radius:25px; font-size:0.85rem; cursor:pointer; transition:all 0.2s;">{{ __('messages.blog_all_posts') }}</span>
                             @php
                                 $allTags = [];
                                 if(isset($blog) && $blog->count() > 0) {
@@ -111,10 +111,10 @@
         <!-- Main Blog Posts -->
         <div class="col-lg-8">
             <div class="d-flex justify-content-between align-items-center mb-4">
-                <h2 class="fw-bold mb-0" style="color:#1a1a2e; font-size:1.5rem;">Recent Articles</h2>
+                <h2 class="fw-bold mb-0" style="color:#1a1a2e; font-size:1.5rem;">{{ __('messages.blog_recent_articles') }}</h2>
                 <div id="resultCount" class="text-muted" style="font-size:0.9rem;">
                     @if(isset($blog) && $blog->count() > 0)
-                        Showing {{ $blog->firstItem() ?? 0 }} - {{ $blog->lastItem() ?? 0 }} of {{ $blog->total() ?? 0 }} posts
+                        {{ __('messages.blog_showing', ['from' => $blog->firstItem() ?? 0, 'to' => $blog->lastItem() ?? 0, 'total' => $blog->total() ?? 0]) }}
                     @endif
                 </div>
             </div>
@@ -156,7 +156,7 @@
                                                         {{ Str::limit(strip_tags($post->content), 120) }}
                                                     </p>
                                                     <a href="{{ $post->listingUrl() }}" class="btn btn-link text-decoration-none p-0" style="color:#5bc4c7; font-weight:600;">
-                                                        Read More <i class="fa fa-arrow-right ms-1"></i>
+                                                        {{ __('messages.blog_read_more') }} <i class="fa fa-arrow-right ms-1"></i>
                                                     </a>
                                                 </div>
                                             </div>
@@ -180,7 +180,7 @@
                                                         {{ Str::limit(strip_tags($post->content), 150) }}
                                                     </p>
                                                     <a href="{{ $post->listingUrl() }}" class="btn btn-link text-decoration-none p-0" style="color:#5bc4c7; font-weight:600;">
-                                                        Read More <i class="fa fa-arrow-right ms-1"></i>
+                                                        {{ __('messages.blog_read_more') }} <i class="fa fa-arrow-right ms-1"></i>
                                                     </a>
                                                 </div>
                                             </div>
@@ -198,8 +198,7 @@
                 @else
                     <div class="text-center py-5 px-4 rounded-4" style="background:#f8f9fa;">
                         <i class="fa fa-newspaper-o fa-4x mb-3" style="color:#cbd5e1;"></i>
-                        <h4 style="color:#1a1a2e;">No Blog Posts Yet</h4>
-                        <p class="text-muted">Check back soon for interesting articles and insights.</p>
+                        <h4 style="color:#1a1a2e;">{{ __('messages.blog_empty') }}</h4>
                     </div>
                 @endif
             </div>
@@ -216,7 +215,7 @@
                 <div class="card border-0 shadow-sm rounded-4 mb-4">
                     <div class="card-body p-4">
                         <h3 class="h5 fw-bold mb-3" style="color:#1a1a2e;">
-                            <i class="fa fa-clock-o me-2" style="color:#5bc4c7;"></i> Recent Posts
+                            <i class="fa fa-clock-o me-2" style="color:#5bc4c7;"></i> {{ __('messages.blog_recent_posts') }}
                         </h3>
                         @foreach($recentPosts as $recent)
                             <a href="{{ $recent->listingUrl() }}" class="text-decoration-none d-block mb-3">

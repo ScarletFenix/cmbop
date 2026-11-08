@@ -341,7 +341,7 @@ class NordicCeeMoneyLanderTest extends TestCase
     {
         $this->assertSame(['dk'], DanishMoneyLanders::copyRedirectLocales());
         $this->assertSame(['dk'], PublicI18n::moneyLanderLocales('koeb-gaesteindlaeg'));
-        $this->assertSame('en', PublicI18n::moneyLanderXDefault('koeb-gaesteindlaeg'));
+        $this->assertSame('dk', PublicI18n::moneyLanderXDefault('koeb-gaesteindlaeg'));
         $this->assertSame(['hu'], PublicI18n::moneyLanderLocales('linkepites'));
         $this->assertContains('pl', PublicI18n::moneyLanderLocales('link-building'));
         $this->assertContains('it', PublicI18n::moneyLanderLocales('link-building'));
