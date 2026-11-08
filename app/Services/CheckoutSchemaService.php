@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Site;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -24,6 +25,7 @@ class CheckoutSchemaService
         $this->ensureCheckoutIntentsTable();
         $this->ensurePaypalWebhookLogsTable();
         $this->ensureDepositPaypalColumns();
+        $this->ensureOrderPacks();
     }
 
     /**
@@ -69,6 +71,8 @@ class CheckoutSchemaService
 
         $this->addColumn('orders', 'stripe_session_id', 'varchar(255) NULL');
         $this->addColumn('orders', 'checkout_line_key', 'varchar(96) NULL');
+        $this->addColumn('orders', 'order_pack_id', 'bigint unsigned NULL');
+        $this->addIndexIfMissing('orders', 'order_pack_id');
         $this->addColumn('orders', 'stripe_payment_intent_id', 'varchar(255) NULL');
         $this->addColumn('orders', 'publication_mode', "varchar(20) NOT NULL DEFAULT 'immediate'");
         $this->addColumn('orders', 'scheduled_publish_at', 'timestamp NULL');
@@ -85,6 +89,17 @@ class CheckoutSchemaService
         $this->addColumn('orders', 'paypal_capture_id', 'varchar(255) NULL');
         $this->addColumn('orders', 'paypal_refund_id', 'varchar(255) NULL');
         $this->addNullableJsonColumn('orders', 'paypal_response');
+        $this->addColumn('orders', 'project_id', 'bigint unsigned NULL');
+        $this->addColumn('orders', 'link_guarantee', 'tinyint(1) NOT NULL DEFAULT 0');
+        $this->addColumn('orders', 'link_guarantee_fee', 'decimal(10,2) NOT NULL DEFAULT 0');
+        $this->addColumn('orders', 'link_guarantee_covered_amount', 'decimal(10,2) NOT NULL DEFAULT 0');
+        $this->addColumn('orders', 'link_guarantee_status', 'varchar(32) NULL');
+        $this->addColumn('orders', 'link_guarantee_starts_at', 'timestamp NULL');
+        $this->addColumn('orders', 'link_guarantee_ends_at', 'timestamp NULL');
+        $this->addColumn('orders', 'link_guarantee_restore_due_at', 'timestamp NULL');
+        $this->addColumn('orders', 'link_guarantee_refunded_at', 'timestamp NULL');
+        $this->addColumn('orders', 'link_guarantee_publisher_choice', 'varchar(32) NULL');
+        $this->addIndexIfMissing('orders', 'project_id');
         $this->addIndexIfMissing('orders', 'paypal_order_id');
         $this->addUniqueIfMissing('orders', 'paypal_capture_id');
         $this->addUniqueIfMissing('orders', 'paypal_refund_id');
@@ -108,6 +123,11 @@ class CheckoutSchemaService
         $this->addColumn('order_items', 'publisher_price', 'decimal(10,2) NULL');
         $this->addColumn('order_items', 'platform_fee_percent', 'decimal(5,2) NULL');
         $this->addColumn('order_items', 'platform_fee_amount', 'decimal(10,2) NULL');
+        $this->addColumn('order_items', 'advertiser_eur_amount', 'decimal(12,2) NULL');
+        $this->addColumn('order_items', 'publisher_amount', 'decimal(12,2) NULL');
+        $this->addColumn('order_items', 'publisher_currency', 'varchar(3) NULL');
+        $this->addColumn('order_items', 'fx_rate', 'decimal(16,8) NULL');
+        $this->addColumn('order_items', 'fx_buffer_percent', 'decimal(5,2) NULL');
         $this->addColumn('order_items', 'publisher_status', "varchar(40) NULL DEFAULT 'pending'");
         $this->addColumn('order_items', 'accepted_at', 'timestamp NULL');
         $this->addColumn('order_items', 'rejected_at', 'timestamp NULL');
@@ -134,6 +154,25 @@ class CheckoutSchemaService
         $this->addColumn('order_items', 'publish_nudge_sent_at', 'timestamp NULL');
         $this->addColumn('order_items', 'review_nudge_sent_at', 'timestamp NULL');
         $this->addColumn('order_items', 'stalled_notice_sent_at', 'timestamp NULL');
+        $this->addColumn('order_items', 'content_source', "varchar(20) NOT NULL DEFAULT 'buyer'");
+        $this->addColumn('order_items', 'fulfilment_source', "varchar(32) NOT NULL DEFAULT 'publisher'");
+        $this->addColumn('order_items', 'managed_assignee_id', 'bigint unsigned NULL');
+        $this->addColumn('order_items', 'managed_internal_status', 'varchar(40) NULL');
+        $this->addColumn('order_items', 'managed_notes', 'text NULL');
+        $this->addColumn('order_items', 'managed_external_reference', 'varchar(500) NULL');
+        $this->addColumn('order_items', 'managed_marked_at', 'timestamp NULL');
+        $this->addColumn('order_items', 'managed_completed_by', 'bigint unsigned NULL');
+        $this->addColumn('order_items', 'writing_fee', 'decimal(10,2) NOT NULL DEFAULT 0');
+        $this->addColumn('order_items', 'listing_writing_fee', 'decimal(12,2) NULL');
+        $this->addColumn('order_items', 'writing_status', 'varchar(32) NULL');
+        $this->addColumn('order_items', 'writing_assignee_id', 'bigint unsigned NULL');
+        $this->addColumn('order_items', 'writing_deadline_at', 'timestamp NULL');
+        $this->addColumn('order_items', 'writing_brief_notes', 'text NULL');
+        $this->addColumn('order_items', 'writing_language', 'varchar(16) NULL');
+        $this->addColumn('order_items', 'article_revision_used', 'tinyint unsigned NOT NULL DEFAULT 0');
+        $this->addColumn('order_items', 'article_submitted_at', 'timestamp NULL');
+        $this->addColumn('order_items', 'article_approved_at', 'timestamp NULL');
+        $this->addColumn('order_items', 'writing_reminder_sent_at', 'timestamp NULL');
     }
 
     private function ensureCheckoutIntentsTable(): void
@@ -197,6 +236,52 @@ class CheckoutSchemaService
     }
 
     /**
+     * Article pack parent rows + nullable FK on orders/invoices.
+     */
+    private function ensureOrderPacks(): void
+    {
+        if (! $this->tableExists('order_packs')) {
+            try {
+                Schema::create('order_packs', function (Blueprint $table) {
+                    $table->id();
+                    $table->unsignedBigInteger('user_id');
+                    $table->unsignedBigInteger('site_id')->nullable();
+                    $table->string('reference_code', 32)->nullable()->index();
+                    $table->unsignedTinyInteger('pack_size');
+                    $table->unsignedTinyInteger('discount_tier')->nullable();
+                    $table->decimal('discount_percent', 5, 2)->nullable();
+                    $table->string('status', 40)->default('in_progress')->index();
+                    $table->string('payment_method', 40)->nullable();
+                    $table->decimal('total_amount', 12, 2)->default(0);
+                    $table->unsignedTinyInteger('published_count')->default(0);
+                    $table->unsignedTinyInteger('refunded_count')->default(0);
+                    $table->unsignedTinyInteger('completed_count')->default(0);
+                    $table->timestamp('completed_at')->nullable();
+                    $table->timestamps();
+                    $table->index(['user_id', 'created_at']);
+                    $table->index(['site_id', 'reference_code']);
+                });
+                Log::info('Created missing order_packs table');
+            } catch (\Throwable $e) {
+                Log::warning('Could not create order_packs table', [
+                    'error' => $e->getMessage(),
+                    'hint' => 'Run database/sql/add_order_packs.sql in phpMyAdmin',
+                ]);
+            }
+        }
+
+        if ($this->tableExists('orders')) {
+            $this->addColumn('orders', 'order_pack_id', 'bigint unsigned NULL');
+            $this->addIndexIfMissing('orders', 'order_pack_id');
+        }
+
+        if ($this->tableExists('invoices')) {
+            $this->addColumn('invoices', 'order_pack_id', 'bigint unsigned NULL');
+            $this->addIndexIfMissing('invoices', 'order_pack_id');
+        }
+    }
+
+    /**
      * Site counters touched during Approve / auto-approve payouts.
      */
     private function ensureSitesColumns(): void
@@ -210,6 +295,14 @@ class CheckoutSchemaService
         // Catalog GET and Site::countWithHomepagePlacement() query these JSON columns.
         $this->addNullableJsonColumn('sites', 'homepage_placement_prices');
         $this->addNullableJsonColumn('sites', 'social_promotion');
+        $this->addColumn('sites', 'listing_currency', "varchar(3) NOT NULL DEFAULT 'EUR'");
+        $this->addColumn('sites', 'listing_price', 'decimal(10,2) NULL');
+        $this->addNullableJsonColumn('sites', 'listing_sensitive_prices');
+        $this->addNullableJsonColumn('sites', 'listing_homepage_prices');
+        $this->addColumn('sites', 'listing_gbp_prompt_dismissed_at', 'timestamp NULL');
+        $this->addColumn('sites', 'writing_enabled', 'tinyint(1) NOT NULL DEFAULT 1');
+        $this->addColumn('sites', 'writing_fee', 'decimal(10,2) NULL');
+        $this->addColumn('sites', 'listing_writing_fee', 'decimal(12,2) NULL');
     }
 
     /**
@@ -236,6 +329,9 @@ class CheckoutSchemaService
             Schema::table($table, function (Blueprint $blueprint) use ($column) {
                 $blueprint->json($column)->nullable();
             });
+            if ($table === 'sites') {
+                Site::forgetColumnCache();
+            }
             Log::info("Added missing {$table}.{$column} for checkout");
 
             return;
@@ -339,6 +435,9 @@ class CheckoutSchemaService
 
         try {
             DB::statement("ALTER TABLE `{$table}` ADD COLUMN `{$column}` {$definition}");
+            if ($table === 'sites') {
+                Site::forgetColumnCache();
+            }
             Log::info("Added missing {$table}.{$column} for checkout");
         } catch (\Throwable $e) {
             try {

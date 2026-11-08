@@ -348,15 +348,27 @@ class SiteClaimHardeningTest extends TestCase
         $this->assertTrue($visible);
     }
 
-    public function test_advertiser_shell_links_to_my_claims(): void
+    public function test_advertiser_only_shell_hides_my_claims(): void
     {
         $claimer = $this->userWithRole('advertiser');
 
         $this->actingAs($claimer)
             ->get(route('advertiser.dashboard'))
             ->assertOk()
+            ->assertDontSee('>My Claims</span>', false);
+    }
+
+    public function test_dual_role_advertiser_shell_links_to_my_claims(): void
+    {
+        $user = $this->userWithRole('advertiser');
+        $publisher = Role::firstOrCreate(['name' => 'publisher']);
+        $user->roles()->syncWithoutDetaching([$publisher->id]);
+
+        $this->actingAs($user->fresh())
+            ->get(route('advertiser.dashboard'))
+            ->assertOk()
             ->assertSee('My Claims', false)
-            ->assertSee(route('site-claims.index'), false);
+            ->assertSee(route('advertiser.site-claims'), false);
     }
 
     public function test_reject_notifies_claimer(): void
@@ -505,9 +517,11 @@ class SiteClaimHardeningTest extends TestCase
         $this->pendingClaimFor($site, $claimer);
 
         $this->actingAs($claimer)
-            ->get(route('site-claims.index'))
+            ->get(route('advertiser.site-claims'))
             ->assertOk()
-            ->assertSee('Your ownership claims');
+            ->assertSee('My Claims')
+            ->assertSee('Your ownership claims')
+            ->assertSee('role-shell-advertiser', false);
     }
 
     public function test_hide_mode_claim_by_site_id_does_not_fill_listing_url(): void
@@ -554,7 +568,7 @@ class SiteClaimHardeningTest extends TestCase
         ])->assertOk()->assertJson(['success' => true]);
 
         $html = $this->actingAs($claimer->fresh())
-            ->get(route('site-claims.index'))
+            ->get(route('advertiser.site-claims'))
             ->assertOk()
             ->getContent();
 
@@ -574,7 +588,7 @@ class SiteClaimHardeningTest extends TestCase
         $this->pendingClaimFor($site, $claimer);
 
         $html = $this->actingAs($claimer->fresh())
-            ->get(route('site-claims.index'))
+            ->get(route('advertiser.site-claims'))
             ->assertOk()
             ->assertSee('Your ownership claims')
             ->getContent();
@@ -601,7 +615,7 @@ class SiteClaimHardeningTest extends TestCase
         $this->pendingClaimFor($site, $claimer);
 
         $this->actingAs($claimer)
-            ->get(route('site-claims.index'))
+            ->get(route('advertiser.site-claims'))
             ->assertOk()
             ->assertSee('Owned News Daily')
             ->assertSee('owned-news.example');

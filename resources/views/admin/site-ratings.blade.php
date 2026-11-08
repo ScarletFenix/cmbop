@@ -12,14 +12,19 @@
         @endif
     </div>
 
-    <form method="get" class="card border-0 shadow-sm mb-3">
-        <div class="card-body row g-2 align-items-end">
-            <div class="col-md-4">
-                <x-slb-search-field name="q" id="adminSiteRatingsSearch" :value="request('q')" placeholder="Site, user, comment…" />
+    <form method="get" class="card border-0 shadow-sm mb-3 admin-deposits-filter-card admin-deposits-filters admin-orders-filters">
+        <div class="card-body">
+            <div class="admin-orders-filters__grid">
+            <div class="admin-orders-filters__search">
+                <x-slb-search-field name="q" id="adminSiteRatingsSearch" :value="request('q')" placeholder="Site, user, comment…" input-class="form-control" label-class="form-label" />
             </div>
-            <div class="col-md-3">
-                <label class="form-label small text-muted mb-1">Site</label>
-                <select name="site_id" class="form-select form-select-sm">
+            <div>
+                <label class="form-label" for="adminRatingsSite">Site</label>
+                <select name="site_id" id="adminRatingsSite" class="form-select"
+                        data-admin-select-search="1"
+                        data-admin-select-search-url="{{ route('admin.site-ratings.sites-search') }}"
+                        data-admin-select-search-label="Search sites by name or domain"
+                        data-admin-select-search-empty="No sites match">
                     <option value="">All sites</option>
                     @foreach($sites as $site)
                         <option value="{{ $site->id }}" @selected((string) (is_scalar(request('site_id')) ? request('site_id') : '') === (string) $site->id)>
@@ -28,18 +33,21 @@
                     @endforeach
                 </select>
             </div>
-            <div class="col-md-2">
-                <label class="form-label small text-muted mb-1">Status</label>
-                <select name="status" class="form-select form-select-sm">
+            <div>
+                <label class="form-label" for="adminRatingsStatus">Status</label>
+                <select name="status" id="adminRatingsStatus" class="form-select">
                     <option value="">All</option>
                     @foreach(['approved','hidden','pending'] as $st)
                         <option value="{{ $st }}" @selected(request('status') === $st)>{{ ucfirst($st) }}</option>
                     @endforeach
                 </select>
             </div>
-            <div class="col-md-3 d-flex gap-2">
-                <button class="btn btn-sm btn-outline-primary">Filter</button>
-                <a href="{{ route('admin.site-ratings.index') }}" class="btn btn-sm btn-outline-secondary">Reset</a>
+            <div class="admin-deposits-filters__actions admin-orders-filters__actions">
+                <div class="d-flex flex-wrap gap-2">
+                <button class="btn btn-primary">Filter</button>
+                <a href="{{ route('admin.site-ratings.index') }}" class="btn btn-outline-secondary">Reset</a>
+                </div>
+            </div>
             </div>
         </div>
     </form>
@@ -118,7 +126,7 @@
 
 <script>
 const CSRF = '{{ csrf_token() }}';
-const SITE_OPTIONS = @json($sites->map(fn ($s) => ['id' => $s->id, 'label' => $s->site_name.' ('.$s->domain.')'])->values());
+const SITE_SEARCH = @json(route('admin.site-ratings.sites-search'));
 const RATING_STORE = @json(route('admin.site-ratings.store'));
 const RATING_UPDATE = @json(route('admin.site-ratings.update', ['id' => '__ID__']));
 const RATING_DESTROY = @json(route('admin.site-ratings.destroy', ['id' => '__ID__']));
@@ -160,13 +168,23 @@ async function postRatingJson(url, options) {
     return true;
 }
 
+async function loadSiteOptions(term) {
+    const url = new URL(SITE_SEARCH, window.location.origin);
+    url.searchParams.set('q', String(term || '').trim());
+    const res = await fetch(url.toString(), { headers: { 'Accept': 'application/json' } });
+    const data = await res.json();
+    return Array.isArray(data.options) ? data.options : [];
+}
+
 document.getElementById('addRatingBtn')?.addEventListener('click', async () => {
-    const siteOptionsHtml = SITE_OPTIONS
-        .map(s => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.label)}</option>`)
+    const initial = await loadSiteOptions('');
+    const siteOptionsHtml = initial
+        .map(s => `<option value="${escapeHtml(s.value)}">${escapeHtml(s.label)}</option>`)
         .join('');
     const { value: form } = await Swal.fire({
         title: 'Add rating',
         html: `
+            <input id="swal-site-q" class="swal2-input" placeholder="Search site name or domain" autocomplete="off">
             <select id="swal-site" class="swal2-input" style="width:90%">${siteOptionsHtml}</select>
             <input id="swal-rating" type="number" min="1" max="5" class="swal2-input" placeholder="Rating 1–5" value="5">
             <input id="swal-comment" class="swal2-input" placeholder="Optional comment">
@@ -176,14 +194,35 @@ document.getElementById('addRatingBtn')?.addEventListener('click', async () => {
                 <option value="pending">pending</option>
             </select>
         `,
+        didOpen: () => {
+            const search = document.getElementById('swal-site-q');
+            const select = document.getElementById('swal-site');
+            let timer = null;
+            search.addEventListener('input', () => {
+                clearTimeout(timer);
+                timer = setTimeout(async () => {
+                    const options = await loadSiteOptions(search.value);
+                    select.innerHTML = options
+                        .map(s => `<option value="${escapeHtml(s.value)}">${escapeHtml(s.label)}</option>`)
+                        .join('');
+                }, 250);
+            });
+        },
         showCancelButton: true,
         confirmButtonText: 'Save',
-        preConfirm: () => ({
-            site_id: document.getElementById('swal-site').value,
-            rating: document.getElementById('swal-rating').value,
-            comment: document.getElementById('swal-comment').value,
-            status: document.getElementById('swal-status').value,
-        }),
+        preConfirm: () => {
+            const siteId = document.getElementById('swal-site').value;
+            if (!siteId) {
+                Swal.showValidationMessage('Choose a site');
+                return false;
+            }
+            return {
+                site_id: siteId,
+                rating: document.getElementById('swal-rating').value,
+                comment: document.getElementById('swal-comment').value,
+                status: document.getElementById('swal-status').value,
+            };
+        },
     });
     if (!form) return;
     await postRatingJson(RATING_STORE, {

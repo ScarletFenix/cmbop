@@ -14,6 +14,12 @@
 
 <!-- ==================== CONTACT CONTENT ==================== -->
 <div class="container py-5" style="max-width:900px;">
+    @include('components.breadcrumbs', [
+        'items' => [
+            ['name' => __('messages.home'), 'url' => localized_url('/')],
+            ['name' => __('messages.contact'), 'url' => localized_url('contact')],
+        ],
+    ])
 
     <!-- ===== CEO SECTION ===== -->
     <div class="mb-5 p-4 p-md-5 rounded-4 shadow-sm" style="background:white; border:1px solid #eef0f3;">
@@ -21,6 +27,8 @@
             <div style="width:90px; height:90px; border-radius:50%; overflow:hidden; flex-shrink:0; border:3px solid #5bc4c7; box-shadow:0 4px 12px rgba(63, 174, 178,0.25);">
                 <img src="{{ asset('assets/img/support-avatar.jpg') }}?v={{ @filemtime(public_path('assets/img/support-avatar.jpg')) ?: '1' }}"
                      alt="M Arslan - Founder & CEO"
+                     width="90"
+                     height="90"
                      style="width:100%; height:100%; object-fit:cover;">
             </div>
             <div>
@@ -49,7 +57,7 @@
                     </div>
                     <div class="contact-info-body min-w-0">
                         <p class="fw-bold mb-1" style="color:#1a1a2e;">{{ __('messages.contact_email_label') }}</p>
-                        <a href="mailto:support@seolinkbuildings.com" class="contact-info-link" style="color:#5bc4c7; text-decoration:none; font-weight:500;">
+                        <a href="mailto:support@seolinkbuildings.com" class="contact-info-link" style="color:#1a585e; text-decoration:none; font-weight:600;">
                             support@seolinkbuildings.com
                         </a>
                     </div>
@@ -101,6 +109,37 @@
         </div>
     </div>
 
+
+    <!-- ===== CONTACT FORM ===== -->
+    <div class="mb-5 p-4 p-md-5 rounded-4 shadow-sm" style="background:white; border:1px solid #eef0f3;">
+        <h2 class="fw-bold mb-3" style="color:#1a1a2e; font-size:1.5rem;">{{ __('messages.contact_form_title') }}</h2>
+        <form method="POST" action="{{ route('contact.store') }}" class="contact-form">
+            @csrf
+            <div class="visually-hidden" aria-hidden="true">
+                <label for="contactWebsite">{{ __('messages.contact_form_honeypot') }}</label>
+                <input type="text" name="website" id="contactWebsite" tabindex="-1" autocomplete="off">
+            </div>
+            <div class="mb-3">
+                <label class="form-label fw-semibold" for="contactName">{{ __('messages.contact_form_name') }}</label>
+                <input type="text" name="name" id="contactName" class="form-control @error('name') is-invalid @enderror"
+                       value="{{ old('name') }}" required maxlength="120" autocomplete="name">
+                @error('name') <div class="invalid-feedback">{{ $message }}</div> @enderror
+            </div>
+            <div class="mb-3">
+                <label class="form-label fw-semibold" for="contactEmail">{{ __('messages.contact_form_email') }}</label>
+                <input type="email" name="email" id="contactEmail" class="form-control @error('email') is-invalid @enderror"
+                       value="{{ old('email') }}" required maxlength="190" autocomplete="email">
+                @error('email') <div class="invalid-feedback">{{ $message }}</div> @enderror
+            </div>
+            <div class="mb-3">
+                <label class="form-label fw-semibold" for="contactMessage">{{ __('messages.contact_form_message') }}</label>
+                <textarea name="message" id="contactMessage" rows="6" class="form-control @error('message') is-invalid @enderror"
+                          required minlength="10" maxlength="5000">{{ old('message') }}</textarea>
+                @error('message') <div class="invalid-feedback">{{ $message }}</div> @enderror
+            </div>
+            <button type="submit" class="btn btn-primary">{{ __('messages.contact_form_submit') }}</button>
+        </form>
+    </div>
 
     <!-- ===== ABOUT SECTION ===== -->
     <div class="mb-5 p-4 p-md-5 rounded-4" style="background:linear-gradient(135deg, #e6f5f5, #f7fafb); border:1px solid #b8e4e4;">
@@ -173,6 +212,12 @@
         max-width: 100%;
         overflow-wrap: anywhere;
         word-break: break-word;
+        color: #1a585e;
+    }
+    .contact-info-link:hover,
+    .contact-info-link:focus-visible {
+        color: #123f42;
+        text-decoration: underline;
     }
 
     /* Inverted CTA: this section sits on the brand gradient, so the button is

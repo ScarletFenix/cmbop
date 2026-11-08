@@ -4,7 +4,9 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\ExcludesSandbox;
 use App\Models\Concerns\ToleratesUnparseableDates;
+use App\Support\ListingMoney;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -13,6 +15,7 @@ use Illuminate\Support\Facades\Schema;
 
 class OrderItem extends Model
 {
+    use ExcludesSandbox;
     use ToleratesUnparseableDates;
 
     /**
@@ -20,6 +23,9 @@ class OrderItem extends Model
      * Example: listing €100 → advertiser pays €115; publisher receives €100.
      */
     public const PLATFORM_MARKUP_RATE = 1.15;
+
+    /** Stored when a written article has no file yet (content_link is NOT NULL on SQLite). */
+    public const PENDING_WRITTEN_LINK = 'awaiting-article';
 
     protected $fillable = [
         'order_id',
@@ -51,6 +57,11 @@ class OrderItem extends Model
         'publisher_price',
         'platform_fee_percent',
         'platform_fee_amount',
+        'advertiser_eur_amount',
+        'publisher_amount',
+        'publisher_currency',
+        'fx_rate',
+        'fx_buffer_percent',
         'publisher_status',
         'accepted_at',
         'rejected_at',
@@ -73,6 +84,42 @@ class OrderItem extends Model
         'publish_nudge_sent_at',
         'review_nudge_sent_at',
         'stalled_notice_sent_at',
+        'content_source',
+        'fulfilment_source',
+        'managed_assignee_id',
+        'managed_internal_status',
+        'managed_notes',
+        'managed_external_reference',
+        'managed_marked_at',
+        'managed_completed_by',
+        'writing_fee',
+        'listing_writing_fee',
+        'writing_status',
+        'writing_assignee_id',
+        'writing_deadline_at',
+        'writing_brief_notes',
+        'writing_language',
+        'article_revision_used',
+        'article_submitted_at',
+        'article_approved_at',
+        'writing_reminder_sent_at',
+        'hold_until',
+        'keep_live_until',
+        'payout_mode_at_submission',
+        'first_submitted_at',
+        'partner_corrections_used',
+        'partner_dispute_status',
+        'partner_earnings_status',
+        'hold_released_at',
+        'link_alert',
+        'keep_live_terms_version',
+        'partner_awaiting_relay',
+        'partner_payout_eur',
+        'slb_price_eur_internal',
+        'is_sandbox',
+        'live_url_href_found',
+        'live_url_rel',
+        'live_url_anchor_match',
     ];
 
     protected $casts = [
@@ -85,12 +132,27 @@ class OrderItem extends Model
         'publisher_price' => 'decimal:2',
         'platform_fee_percent' => 'decimal:2',
         'platform_fee_amount' => 'decimal:2',
+        'advertiser_eur_amount' => 'decimal:2',
+        'publisher_amount' => 'decimal:2',
+        'fx_rate' => 'decimal:8',
+        'fx_buffer_percent' => 'decimal:2',
         'accepted_at' => 'datetime',
         'rejected_at' => 'datetime',
         'completed_at' => 'datetime',
         'live_url_submitted_at' => 'datetime',
         'live_url_checked_at' => 'datetime',
+        'hold_until' => 'datetime',
+        'keep_live_until' => 'datetime',
+        'first_submitted_at' => 'datetime',
+        'hold_released_at' => 'datetime',
+        'link_alert' => 'boolean',
+        'partner_awaiting_relay' => 'boolean',
+        'partner_payout_eur' => 'decimal:2',
+        'slb_price_eur_internal' => 'decimal:2',
         'live_url_check_ok' => 'boolean',
+        'is_sandbox' => 'boolean',
+        'live_url_href_found' => 'boolean',
+        'live_url_anchor_match' => 'boolean',
         'modification_requested_at' => 'datetime',
         'content_revision_requested_at' => 'datetime',
         'content_revision_resolved_at' => 'datetime',
@@ -104,6 +166,18 @@ class OrderItem extends Model
         'publish_nudge_sent_at' => 'datetime',
         'review_nudge_sent_at' => 'datetime',
         'stalled_notice_sent_at' => 'datetime',
+        'writing_fee' => 'decimal:2',
+        'listing_writing_fee' => 'decimal:2',
+        'writing_deadline_at' => 'datetime',
+        'article_submitted_at' => 'datetime',
+        'article_approved_at' => 'datetime',
+        'writing_reminder_sent_at' => 'datetime',
+        'article_revision_used' => 'integer',
+        'managed_marked_at' => 'datetime',
+    ];
+
+    protected $hidden = [
+        'slb_price_eur_internal',
     ];
 
     /**
@@ -199,7 +273,7 @@ class OrderItem extends Model
      */
     public function scopeRecognizedForFinance($query)
     {
-        if (! OrderItemDispute::tableAvailable()) {
+        if (! static::disputesStatusReady()) {
             return $query;
         }
 
@@ -217,7 +291,7 @@ class OrderItem extends Model
      */
     public function scopeClawedBack($query)
     {
-        if (! OrderItemDispute::tableAvailable()) {
+        if (! static::disputesStatusReady()) {
             return $query->whereRaw('0 = 1');
         }
 
@@ -272,9 +346,65 @@ class OrderItem extends Model
         return $this->belongsTo(Site::class);
     }
 
+    public function assignee(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'writing_assignee_id');
+    }
+
+    public function managedAssignee(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'managed_assignee_id');
+    }
+
+    public function managedCompletedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'managed_completed_by');
+    }
+
     public function contentSubmission(): BelongsTo
     {
         return $this->belongsTo(ContentSubmission::class);
+    }
+
+    /**
+     * Placement fulfilled off-platform by SLB staff (email-managed), not the site publisher portal.
+     */
+    public function isManagedBySlb(): bool
+    {
+        if (! Schema::hasColumn($this->getTable(), 'fulfilment_source')) {
+            return false;
+        }
+
+        return (string) ($this->fulfilment_source ?? 'publisher') === 'managed_by_slb';
+    }
+
+    /**
+     * @param  \Illuminate\Database\Eloquent\Builder<static>  $query
+     * @return \Illuminate\Database\Eloquent\Builder<static>
+     */
+    public function scopePublisherFulfilment($query)
+    {
+        if (! Schema::hasColumn($this->getTable(), 'fulfilment_source')) {
+            return $query;
+        }
+
+        return $query->where(function ($q) {
+            $q->whereNull('fulfilment_source')
+                ->orWhere('fulfilment_source', '!=', 'managed_by_slb');
+        });
+    }
+
+    /**
+     * @param  \Illuminate\Database\Eloquent\Builder<static>  $query
+     * @return \Illuminate\Database\Eloquent\Builder<static>
+     */
+    public function scopeManagedBySlb($query)
+    {
+        if (! Schema::hasColumn($this->getTable(), 'fulfilment_source')) {
+            return $query->whereRaw('0 = 1');
+        }
+
+        return $query->where('fulfilment_source', 'managed_by_slb');
     }
 
     /**
@@ -304,7 +434,12 @@ class OrderItem extends Model
             return null;
         }
 
-        return filled($this->content_link) ? (string) $this->content_link : null;
+        $link = trim((string) ($this->content_link ?: ''));
+        if ($link === '' || in_array($link, [self::PENDING_WRITTEN_LINK, 'publisher-written'], true)) {
+            return null;
+        }
+
+        return $link;
     }
 
     /**
@@ -480,17 +615,88 @@ class OrderItem extends Model
     }
 
     /**
-     * Amount credited to the publisher on approval.
-     * Publisher gets their entered base + sensitive add-ons; platform keeps the hidden fee.
+     * Amount credited to the publisher on approval, in publisherPayoutCurrency().
+     * Publisher gets their entered listing + add-ons; platform keeps the hidden fee.
      */
     public function publisherPayoutAmount(): float
     {
+        if ($this->publisher_amount !== null && $this->publisher_amount !== '') {
+            return round((float) $this->publisher_amount, 2);
+        }
+
         return round(
             $this->publisherBasePrice()
             + (float) ($this->additional_price ?? 0)
             + (float) ($this->homepage_price ?? 0),
             2
         );
+    }
+
+    public function publisherPayoutCurrency(): string
+    {
+        $code = strtoupper(trim((string) ($this->publisher_currency ?? '')));
+
+        return in_array($code, ['EUR', 'GBP', 'USD'], true) ? $code : 'EUR';
+    }
+
+    public function advertiserEurAmount(): float
+    {
+        if ($this->advertiser_eur_amount !== null && $this->advertiser_eur_amount !== '') {
+            return round((float) $this->advertiser_eur_amount, 2);
+        }
+
+        return round((float) $this->price, 2);
+    }
+
+    public function lockedFxRate(): ?float
+    {
+        $rate = $this->fx_rate;
+        if ($rate === null || $rate === '') {
+            return null;
+        }
+        $rate = (float) $rate;
+
+        return $rate > 0 ? $rate : null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $pricing
+     * @return array<string, mixed>
+     */
+    public static function fxSnapshotFromPricing(array $pricing): array
+    {
+        return [
+            'advertiser_eur_amount' => $pricing['advertiser_eur_amount'] ?? $pricing['price'] ?? $pricing['total'] ?? null,
+            'publisher_amount' => $pricing['publisher_amount'] ?? $pricing['publisher_price'] ?? null,
+            'publisher_currency' => $pricing['publisher_currency'] ?? 'EUR',
+            'fx_rate' => $pricing['fx_rate'] ?? null,
+            'fx_buffer_percent' => $pricing['fx_buffer_percent'] ?? 0,
+        ];
+    }
+
+    /**
+     * @return array{amount: float, currency: string, advertiser_eur: float, uncapped: float, capped: bool, platform_fee_eur: float}
+     */
+    public function cappedPublisherCredit(): array
+    {
+        $uncapped = $this->publisherPayoutAmount();
+        $currency = $this->publisherPayoutCurrency();
+        $advertiserEur = $this->advertiserEurAmount();
+        $amount = app(ListingMoney::class)->capPublisherAmount(
+            $uncapped,
+            $advertiserEur,
+            $currency,
+            $this->lockedFxRate()
+        );
+
+        return [
+            'amount' => $amount,
+            'currency' => $currency,
+            'advertiser_eur' => $advertiserEur,
+            'uncapped' => $uncapped,
+            'capped' => $amount + 0.001 < $uncapped,
+            'platform_fee_eur' => $this->platformFeeAmount(),
+        ];
     }
 
     /**
@@ -527,8 +733,10 @@ class OrderItem extends Model
         }
 
         $qualified = $table === '' ? '' : rtrim($table, '.').'.';
-        $base = "({$qualified}price - COALESCE({$qualified}additional_price, 0) - COALESCE({$qualified}homepage_price, 0))";
-        $extras = "COALESCE({$qualified}additional_price, 0) + COALESCE({$qualified}homepage_price, 0)";
+        $additional = static::optionalNumericSql($qualified, 'additional_price');
+        $homepage = static::optionalNumericSql($qualified, 'homepage_price');
+        $base = "({$qualified}price - {$additional} - {$homepage})";
+        $extras = "{$additional} + {$homepage}";
         $legacyPayout = "{$base} / {$rate}";
 
         $publisherBase = $legacyPayout;
@@ -541,6 +749,35 @@ class OrderItem extends Model
         }
 
         return DB::raw("ROUND({$publisherBase} + {$extras}, 2)");
+    }
+
+    /**
+     * COALESCE only when the leftover Hostinger column exists.
+     */
+    private static function optionalNumericSql(string $qualified, string $column): string
+    {
+        try {
+            if (Schema::hasColumn('order_items', $column)) {
+                return "COALESCE({$qualified}{$column}, 0)";
+            }
+        } catch (\Throwable) {
+            // Mixed schema — treat the add-on as zero.
+        }
+
+        return '0';
+    }
+
+    private static function disputesStatusReady(): bool
+    {
+        if (! OrderItemDispute::tableAvailable()) {
+            return false;
+        }
+
+        try {
+            return Schema::hasColumn('order_item_disputes', 'status');
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     /**
@@ -787,6 +1024,10 @@ class OrderItem extends Model
      */
     public function canAdminRemindPublisher(?Order $order = null): bool
     {
+        if ($this->isManagedBySlb()) {
+            return false;
+        }
+
         $order ??= $this->relationLoaded('order') ? $this->order : $this->order()->first();
         if (! $order || $order->payment_status !== 'paid') {
             return false;
@@ -923,6 +1164,13 @@ class OrderItem extends Model
 
         // Must not have modification requested
         if ($this->isModificationRequested()) {
+            return false;
+        }
+
+        if (Schema::hasColumn('order_items', 'partner_awaiting_relay') && $this->partner_awaiting_relay) {
+            return false;
+        }
+        if ((string) ($this->partner_dispute_status ?? '') === 'open') {
             return false;
         }
 

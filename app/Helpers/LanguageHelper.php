@@ -2,16 +2,26 @@
 
 use App\Models\ActivityLog;
 use App\Models\User;
+use App\Support\LeftoverPublicI18nSlugs;
 use App\Support\MarketingHistoryDisplay;
+use App\Support\MarketplacePicker;
 use App\Support\PublicI18n;
 use App\Support\WelcomeBonusCopy;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Request;
 
+$leftoverPublicI18nSlugs = __DIR__.'/../Support/LeftoverPublicI18nSlugs.php';
+if (is_file($leftoverPublicI18nSlugs)) {
+    require_once $leftoverPublicI18nSlugs;
+    if (class_exists(LeftoverPublicI18nSlugs::class)) {
+        LeftoverPublicI18nSlugs::ensureEnglishOnlyMarketingSlugsMethod();
+    }
+}
+
 if (! function_exists('get_language_switcher_url')) {
     function get_language_switcher_url($locale)
     {
-        if (! class_exists(PublicI18n::class)) {
+        if (! class_exists(PublicI18n::class) || ! method_exists(PublicI18n::class, 'switchUrl')) {
             return url('/');
         }
 
@@ -22,7 +32,7 @@ if (! function_exists('get_language_switcher_url')) {
 if (! function_exists('localized_url')) {
     function localized_url($path = '', $locale = null)
     {
-        if (! class_exists(PublicI18n::class)) {
+        if (! class_exists(PublicI18n::class) || ! method_exists(PublicI18n::class, 'urlForLocale')) {
             $path = ltrim((string) $path, '/');
 
             return $path === '' ? url('/') : url($path);
@@ -42,28 +52,35 @@ if (! function_exists('public_locale')) {
 if (! function_exists('welcome_bonus_can_grant')) {
     function welcome_bonus_can_grant(): bool
     {
-        return WelcomeBonusCopy::canGrant();
+        return class_exists(WelcomeBonusCopy::class) && method_exists(WelcomeBonusCopy::class, 'canGrant')
+            ? WelcomeBonusCopy::canGrant()
+            : false;
     }
 }
 
 if (! function_exists('welcome_bonus_euro')) {
     function welcome_bonus_euro(): string
     {
-        return WelcomeBonusCopy::euro();
+        return class_exists(WelcomeBonusCopy::class) && method_exists(WelcomeBonusCopy::class, 'euro')
+            ? WelcomeBonusCopy::euro()
+            : '';
     }
 }
 
 if (! function_exists('welcome_bonus_message')) {
     function welcome_bonus_message(string $key, ?string $offKey = null): string
     {
-        return WelcomeBonusCopy::message($key, $offKey);
+        return class_exists(WelcomeBonusCopy::class) && method_exists(WelcomeBonusCopy::class, 'message')
+            ? WelcomeBonusCopy::message($key, $offKey)
+            : __("messages.{$key}");
     }
 }
 
 if (! function_exists('show_public_language_switcher')) {
     function show_public_language_switcher(): bool
     {
-        if (! class_exists(PublicI18n::class)) {
+        if (! class_exists(PublicI18n::class)
+            || ! method_exists(PublicI18n::class, 'shouldShowLanguageSwitcher')) {
             return false;
         }
 
@@ -82,11 +99,26 @@ if (! function_exists('get_available_locales')) {
             'nl' => ['name' => 'Nederlands', 'flag' => '🇳🇱', 'code' => 'nl'],
             'es' => ['name' => 'Español', 'flag' => '🇪🇸', 'code' => 'es'],
             'it' => ['name' => 'Italiano', 'flag' => '🇮🇹', 'code' => 'it'],
+            'at' => ['name' => 'Deutsch (Österreich)', 'flag' => '🇦🇹', 'code' => 'at'],
+            'ch' => ['name' => 'Deutsch (Schweiz)', 'flag' => '🇨🇭', 'code' => 'ch'],
+            'ro' => ['name' => 'Română', 'flag' => '🇷🇴', 'code' => 'ro'],
+            'gr' => ['name' => 'Ελληνικά', 'flag' => '🇬🇷', 'code' => 'gr'],
+            'dk' => ['name' => 'Dansk', 'flag' => '🇩🇰', 'code' => 'dk'],
+            'se' => ['name' => 'Svenska', 'flag' => '🇸🇪', 'code' => 'se'],
+            'no' => ['name' => 'Norsk', 'flag' => '🇳🇴', 'code' => 'no'],
+            'bg' => ['name' => 'Български', 'flag' => '🇧🇬', 'code' => 'bg'],
+            'hu' => ['name' => 'Magyar', 'flag' => '🇭🇺', 'code' => 'hu'],
+            'ee' => ['name' => 'Eesti', 'flag' => '🇪🇪', 'code' => 'ee'],
+            'pl' => ['name' => 'Polski', 'flag' => '🇵🇱', 'code' => 'pl'],
         ];
 
-        $supported = class_exists(PublicI18n::class)
-            ? array_flip(PublicI18n::supported())
-            : ['en' => 0];
+        $supported = ['en' => 0];
+        if (class_exists(PublicI18n::class) && method_exists(PublicI18n::class, 'supported')) {
+            $fromSupported = PublicI18n::supported();
+            if (is_array($fromSupported) && $fromSupported !== []) {
+                $supported = array_flip($fromSupported);
+            }
+        }
 
         return array_filter($catalog, fn ($code) => isset($supported[$code]), ARRAY_FILTER_USE_KEY);
     }
@@ -244,6 +276,26 @@ if (! function_exists('fullCountry')) {
         $key = strtolower((string) $code);
 
         return $countries[$key] ?? strtoupper((string) $code);
+    }
+}
+
+if (! function_exists('marketplace_option_code')) {
+    /**
+     * ISO code from a picker row that may be a model, array, or plain string.
+     */
+    function marketplace_option_code(mixed $item): string
+    {
+        return MarketplacePicker::code($item);
+    }
+}
+
+if (! function_exists('marketplace_option_name')) {
+    /**
+     * Display label from a picker row that may be a model, array, or plain string.
+     */
+    function marketplace_option_name(mixed $item, string $kind = 'country'): string
+    {
+        return MarketplacePicker::name($item, $kind);
     }
 }
 
@@ -422,6 +474,53 @@ if (! function_exists('url_is_loopback')) {
     }
 }
 
+if (! function_exists('canonical_public_origin')) {
+    /**
+     * Public origin for canonical / hreflang / sitemap URLs.
+     * Live host is always https://seolinkbuildings.com (no www, no http).
+     * Local / test hosts are left alone.
+     */
+    function canonical_public_origin(?string $origin = null): string
+    {
+        $origin = rtrim((string) ($origin ?: (function_exists('app_public_url') ? app_public_url() : '')), '/');
+        $host = strtolower((string) (parse_url($origin, PHP_URL_HOST) ?: ''));
+        if ($host === 'www.seolinkbuildings.com' || $host === 'seolinkbuildings.com') {
+            return 'https://seolinkbuildings.com';
+        }
+
+        return $origin !== '' ? $origin : 'https://seolinkbuildings.com';
+    }
+}
+
+if (! function_exists('canonical_public_url')) {
+    /**
+     * Rewrite www / http seolinkbuildings.com URLs onto the HTTPS apex.
+     * Path and query are preserved. Other hosts (localhost, tests) pass through.
+     */
+    function canonical_public_url(?string $url): string
+    {
+        $url = trim((string) $url);
+        if ($url === '' || $url === '/') {
+            return canonical_public_origin();
+        }
+
+        if (! preg_match('#^https?://#i', $url)) {
+            return rtrim(canonical_public_origin(), '/').'/'.ltrim($url, '/');
+        }
+
+        $parts = parse_url($url);
+        $host = strtolower((string) ($parts['host'] ?? ''));
+        if ($host !== 'www.seolinkbuildings.com' && $host !== 'seolinkbuildings.com') {
+            return $url;
+        }
+
+        $path = (string) ($parts['path'] ?? '');
+        $query = isset($parts['query']) && $parts['query'] !== '' ? '?'.$parts['query'] : '';
+
+        return 'https://seolinkbuildings.com'.($path === '' || $path === '/' ? '' : $path).$query;
+    }
+}
+
 if (! function_exists('brand_public_origin')) {
     /**
      * Public site origin for customer documents and invoice emails.
@@ -462,6 +561,11 @@ if (! function_exists('billing_company_for_documents')) {
             $company['name'] = 'SEOLinkBuildings';
         }
         $company['website_url'] = brand_public_origin();
+        $company['legal_name'] = \App\Support\LegalIdentity::normalizeLegalName(
+            (string) ($company['legal_name'] ?? '')
+        );
+        $company['issuer_name'] = \App\Support\LegalIdentity::issuerName();
+        $company['legal_footer'] = \App\Support\LegalIdentity::footer();
 
         return $company;
     }
@@ -667,6 +771,11 @@ if (! function_exists('marketing_task_labels')) {
             'site.approved' => 'Approved site',
             'site.deactivated' => 'Deactivated site',
             'site.assigned_for_acceptance' => 'Assigned site to publisher',
+            'site.staff_published' => 'Published site for publisher',
+            'bulk_request.staff_assigned' => 'Opened staff invite batch',
+            'bulk_request.staff_published' => 'Published staff batch',
+            'bulk_request.assigned' => 'Assigned bulk request',
+            'bulk_request.publisher_reminded' => 'Reminded publisher on bulk request',
             'site.image_uploaded' => 'Uploaded site image',
             'site.metrics_refreshed' => 'Refreshed metrics',
             'site.metrics_refresh_queued' => 'Queued metrics refresh',
@@ -717,6 +826,7 @@ if (! function_exists('activity_action_labels')) {
             'site.claim_rejected' => 'Rejected site claim',
             'site.assignment_accepted' => 'Accepted site assignment',
             'site.featured' => 'Featured site',
+            'site.featured_credit' => 'Featured site (credit)',
             'site.featured_stripe' => 'Featured site (Stripe)',
             'site.feature_stripe_credited' => 'Credited Stripe feature payment',
             'site.discount_set' => 'Set site discount',
@@ -724,6 +834,9 @@ if (! function_exists('activity_action_labels')) {
             'site.bulk_discount_joined' => 'Joined bulk discount',
             'site.bulk_discount_updated' => 'Updated bulk discount',
             'site.bulk_discount_left' => 'Left bulk discount',
+            'site.bulk_discount_admin_set' => 'Set pack discount',
+            'site.bulk_discount_admin_updated' => 'Updated pack discount',
+            'site.bulk_discount_admin_removed' => 'Removed pack discount',
             'site.bulk_imported' => 'Bulk-imported site',
             'site.rating_saved' => 'Saved site rating',
             'site.rating_updated' => 'Updated site rating',
@@ -731,7 +844,22 @@ if (! function_exists('activity_action_labels')) {
             'site.metrics_api_unlocked' => 'Allowed API overwrite',
             'agency_import.submitted' => 'Submitted agency import',
             'bulk_request.created' => 'Created bulk request',
+            'bulk_request.claimed' => 'Claimed bulk request',
+            'bulk_request.assigned' => 'Assigned bulk request',
+            'bulk_request.publisher_reminded' => 'Reminded publisher on bulk request',
+            'bulk_request.notes_updated' => 'Updated bulk request notes',
+            'bulk_request.items_rejected' => 'Rejected bulk request items',
+            'deposit.bulk_approved' => 'Bulk-approved deposits',
+            'deposit.exported' => 'Exported deposits',
+            'content.rescore_needs_fix' => 'Rescored library articles',
+            'email.dismissed' => 'Dismissed failed emails',
+            'user.suspended' => 'Suspended user',
+            'user.unsuspended' => 'Reactivated user',
+            'user.note_added' => 'Added user note',
+            'user.email_verified' => 'Marked user email verified',
+            'user.exported' => 'Exported users',
             'user.company_updated' => 'Updated company name',
+            'user.display_currency_updated' => 'Updated display currency',
             'user.payout_profile_updated' => 'Updated payout profile',
             'user.marketing_granted' => 'Granted marketing access',
             'user.marketing_revoked' => 'Revoked marketing access',
@@ -767,6 +895,8 @@ if (! function_exists('activity_action_labels')) {
             'moderation.override_reverted' => 'Reverted moderation override',
             'moderation.settings_updated' => 'Updated moderation settings',
             'feedback.problem' => 'Reported a problem',
+            'feedback.problem_updated' => 'Updated a problem report',
+            'feedback.problem_deleted' => 'Withdrew a problem report',
             'feedback.suggestion' => 'Sent a suggestion',
             'website.suggested' => 'Suggested a website',
             'problem.report_updated' => 'Updated problem report',
@@ -788,6 +918,7 @@ if (! function_exists('activity_action_labels')) {
             'content.archived' => 'Archived library article',
             'content.restored' => 'Restored library article',
             'content.re_evaluated' => 'Re-evaluated library article',
+            'content.overridden' => 'Overrode library article',
             'announcement.created' => 'Created announcement',
             'announcement.updated' => 'Updated announcement',
             'announcement.deleted' => 'Deleted announcement',
@@ -867,7 +998,9 @@ if (! function_exists('activity_action_label')) {
             return $method !== '' ? 'Verified site ('.$method.')' : 'Verified site';
         }
 
-        return $action;
+        $human = trim(preg_replace('/\s+/', ' ', str_replace(['.', '_', '-'], ' ', $action)) ?? '');
+
+        return $human === '' ? $action : ucwords($human);
     }
 }
 

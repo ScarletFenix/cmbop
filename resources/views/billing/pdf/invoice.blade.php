@@ -148,6 +148,7 @@
                 <img src="{{ $logoDataUri }}" alt="{{ $company['name'] ?? 'SEOLinkBuildings' }}" style="height:42px;width:auto;max-width:220px;margin:0 0 10px 0;display:block;">
             @endif
             <p class="brand-name">{{ $company['name'] ?? 'SEOLinkBuildings' }}</p>
+            <div class="muted">{{ $company['issuer_name'] ?? ($company['legal_name'] ?? 'Teqno Ltd trading as SEOLinkBuildings') }}</div>
             @foreach(($company['address_lines'] ?? []) as $line)
                 <div class="muted">{{ $line }}</div>
             @endforeach
@@ -178,16 +179,16 @@
                     <td><strong>{{ $invoice->invoice_number }}</strong></td>
                 </tr>
                 <tr>
-                    <td class="muted">Date: {{ optional($invoice->invoice_date)->format('M j, Y') }}</td>
+                    <td class="muted">Date: {{ \App\Support\MailNotificationPresenter::formatDateTime($invoice->invoice_date) }}</td>
                 </tr>
                 @if($invoice->due_date)
                     <tr>
-                        <td class="muted">Due: {{ $invoice->due_date->format('M j, Y') }}</td>
+                        <td class="muted">Due: {{ \App\Support\MailNotificationPresenter::formatDateTime($invoice->due_date) }}</td>
                     </tr>
                 @endif
                 @if($invoice->paid_at)
                     <tr>
-                        <td class="muted">Paid: {{ $invoice->paid_at->format('M j, Y') }}</td>
+                        <td class="muted">Paid: {{ \App\Support\MailNotificationPresenter::formatDateTime($invoice->paid_at) }}</td>
                     </tr>
                 @endif
             </table>
@@ -239,10 +240,33 @@
                         <td class="v">#{{ $invoice->order_number }}</td>
                     </tr>
                 @endunless
-                @if($invoice->reference_code)
+                @php
+                    $depositPaymentRef = trim((string) data_get($invoice->meta, 'payment_reference', ''));
+                    if ($depositPaymentRef === '' && ! empty($isDeposit)) {
+                        try {
+                            $depositId = $invoice->depositRequestId();
+                            if ($depositId && \App\Models\DepositRequest::tableAvailable()) {
+                                $linkedDeposit = \App\Models\DepositRequest::query()->find($depositId);
+                                $depositPaymentRef = $linkedDeposit?->paymentReferenceLabel() ?: '';
+                            }
+                        } catch (\Throwable) {
+                            $depositPaymentRef = '';
+                        }
+                    }
+                @endphp
+                @if($depositPaymentRef !== '')
                     <tr>
-                        <td class="k">Ref</td>
-                        <td class="v">{{ $invoice->reference_code }}</td>
+                        <td class="k">Payment reference</td>
+                        <td class="v">{{ $depositPaymentRef }}</td>
+                    </tr>
+                @endif
+                @php
+                    $checkoutRef = \App\Support\InvoiceLinePresenter::checkoutReference($invoice);
+                @endphp
+                @if($checkoutRef)
+                    <tr>
+                        <td class="k">{{ $checkoutRef['label'] }}</td>
+                        <td class="v">{{ $checkoutRef['value'] }}</td>
                     </tr>
                 @endif
                 <tr>
@@ -290,7 +314,7 @@
     <div class="box" style="margin-bottom:16px;">
         <h4>Refund details</h4>
         <div>Refund amount: <strong>{{ $symbol }}{{ number_format((float) $invoice->total_amount, 2) }}</strong></div>
-        <div>Refund date: {{ optional($invoice->invoice_date)->format('M j, Y g:i A') }}</div>
+        <div>Refund date: {{ \App\Support\MailNotificationPresenter::formatDateTime($invoice->invoice_date) }}</div>
         @if($invoice->parentInvoice)
             <div>Original invoice: <strong>{{ $invoice->parentInvoice->invoice_number }}</strong></div>
         @elseif(!empty(data_get($invoice->meta, 'original_invoice')))
@@ -324,7 +348,7 @@
                 @if($isDeposit || $isPayout)
                     Reference
                 @else
-                    Publisher website
+                    Website
                 @endif
             </th>
             <th class="num">Qty</th>
@@ -335,15 +359,12 @@
     <tbody>
         @php
             // Legacy payout payloads stored the fee as a negative line item AND in totals.
-            $displayLines = collect($invoice->line_items ?? [])
+            $displayLines = collect(\App\Support\InvoiceLinePresenter::displayLines($invoice))
                 ->filter(function ($line) use ($isPayout) {
-                    if (! is_array($line)) {
-                        return false;
-                    }
                     if (! $isPayout) {
                         return true;
                     }
-                    $total = (float) ($line['line_total'] ?? $line['unit_price'] ?? 0);
+                    $total = (float) ($line['line_total'] ?? 0);
                     $desc = strtolower((string) ($line['description'] ?? ''));
 
                     return $total >= 0
@@ -354,17 +375,22 @@
         @endphp
         @forelse($displayLines as $line)
             <tr>
-                <td>{{ $line['description'] ?? 'Service' }}</td>
+                <td>
+                    {{ $line['description'] ?? 'Service' }}
+                    @if(!empty($line['live_url']))
+                        <div class="muted" style="margin-top:4px;word-break:break-all;">Live URL: <a href="{{ $line['live_url'] }}">{{ $line['live_url'] }}</a></div>
+                    @endif
+                </td>
                 <td>
                     @if($isDeposit || $isPayout)
                         {{ $line['reference'] ?? '—' }}
                     @else
-                        {{ $line['publisher_website'] ?? ($line['site_url'] ?? '—') }}
+                        {{ $line['website'] ?? '—' }}
                     @endif
                 </td>
                 <td class="num">{{ $line['quantity'] ?? 1 }}</td>
-                <td class="num">{{ $symbol }}{{ number_format((float) ($line['unit_price'] ?? $line['price'] ?? 0), 2) }}</td>
-                <td class="num">{{ $symbol }}{{ number_format((float) ($line['line_total'] ?? $line['total'] ?? 0), 2) }}</td>
+                <td class="num">{{ $symbol }}{{ number_format((float) ($line['unit_price'] ?? 0), 2) }}</td>
+                <td class="num">{{ $symbol }}{{ number_format((float) ($line['line_total'] ?? 0), 2) }}</td>
             </tr>
         @empty
             <tr>
@@ -399,6 +425,16 @@
             <td colspan="4" class="num">{{ $isPayout ? 'Net payout' : 'Total' }}</td>
             <td class="num">{{ $symbol }}{{ number_format((float) $invoice->total_amount, 2) }}</td>
         </tr>
+        @php
+            $chargedCurrency = strtoupper((string) data_get($invoice->meta, 'charge_currency', ''));
+            $chargedAmount = data_get($invoice->meta, 'charge_amount');
+        @endphp
+        @if($chargedCurrency !== '' && $chargedCurrency !== 'EUR' && $chargedAmount !== null)
+            <tr>
+                <td colspan="4" class="num label">Charged on card / PayPal</td>
+                <td class="num">{{ $chargedCurrency }} {{ number_format((float) $chargedAmount, 2) }}</td>
+            </tr>
+        @endif
     </tfoot>
 </table>
 
@@ -424,8 +460,8 @@
 
 <table class="footer">
     <tr>
-        <td>{{ $company['legal_name'] ?? ($company['name'] ?? 'SEOLinkBuildings') }} · {{ $company['support_email'] ?? '' }}</td>
-        <td class="end">Document {{ $invoice->invoice_number }} · Generated {{ now()->format('M j, Y g:i A') }}</td>
+        <td>{{ $company['legal_footer'] ?? \App\Support\LegalIdentity::footer() }}@if(!empty($company['support_email'])) · {{ $company['support_email'] }}@endif</td>
+        <td class="end">Document {{ $invoice->invoice_number }} · Generated {{ \App\Support\MailNotificationPresenter::formatDateTime(now()) }}</td>
     </tr>
 </table>
 </body>

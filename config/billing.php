@@ -9,14 +9,14 @@ return [
     */
     'company' => [
         'name' => env('BILLING_COMPANY_NAME') ?: 'SEOLinkBuildings',
-        'legal_name' => env('BILLING_LEGAL_NAME') ?: 'SEOLinkBuildings Partners with (Topurlz LTD)',
+        'legal_name' => env('BILLING_LEGAL_NAME') ?: 'Teqno Ltd trading as SEOLinkBuildings',
         'address_lines' => array_values(array_filter([
             env('BILLING_ADDRESS_LINE1') ?: '20 Wenlock Road, London, England, N1 7GU',
             env('BILLING_ADDRESS_LINE2') ?: null,
             env('BILLING_ADDRESS_LINE3') ?: null,
             env('BILLING_ADDRESS_COUNTRY') ?: null,
         ])),
-        'registration_no' => env('BILLING_REGISTRATION_NO') ?: '16607074',
+        'registration_no' => env('BILLING_REGISTRATION_NO') ?: '17392540',
         'support_email' => env('BILLING_SUPPORT_EMAIL')
             ?: env('MAIL_SUPPORT_EMAIL', 'support@seolinkbuildings.com'),
         // Never fall back to leftover APP_URL (localhost). brand_public_origin()
@@ -33,19 +33,26 @@ return [
     |--------------------------------------------------------------------------
     */
     'deposit_payment' => [
-        'seller_name' => env('BILLING_DEPOSIT_SELLER_NAME') ?: 'SEOLinkBuildings Partner',
-        'beneficiary' => env('BILLING_DEPOSIT_BENEFICIARY') ?: 'Topurlz Ltd',
-        'bic' => env('BILLING_DEPOSIT_BIC') ?: 'TRWIBEB1XXX',
-        'iban' => env('BILLING_DEPOSIT_IBAN') ?: 'BE04905543949331',
+        'seller_name' => env('BILLING_DEPOSIT_SELLER_NAME') ?: 'Teqno Ltd',
+        'beneficiary' => env('BILLING_DEPOSIT_BENEFICIARY') ?: 'Teqno Ltd',
+        'bic' => env('BILLING_DEPOSIT_BIC') ?: 'TRWIGB2LXXX',
+        'iban' => env('BILLING_DEPOSIT_IBAN') ?: 'GB30 TRWI 2308 0132 9321 94',
+        // Dedicated Wise EUR (SEPA) rail. Independent of the GBP IBAN/BIC.
+        'eur_bic' => env('BILLING_DEPOSIT_EUR_BIC') ?: 'TRWIBEB1XXX',
+        'eur_iban' => env('BILLING_DEPOSIT_EUR_IBAN') ?: 'BE40 9059 9538 0863',
+        'uk_account_number' => env('BILLING_DEPOSIT_UK_ACCOUNT') ?: '32932194',
+        'uk_sort_code' => env('BILLING_DEPOSIT_UK_SORT') ?: '23-08-01',
+        'uk_transfer_note' => env('BILLING_DEPOSIT_UK_NOTE') ?: 'Use this GBP account when sending pounds from a UK bank',
+        'intl_transfer_note' => env('BILLING_DEPOSIT_INTL_NOTE') ?: 'SEPA payers need only the IBAN.',
         'phone' => env('BILLING_DEPOSIT_PHONE') ?: '+447445152374',
         'address_lines' => array_values(array_filter([
             env('BILLING_DEPOSIT_ADDRESS_LINE1') ?: '20 Wenlock Road, London, England, N1 7GU',
             env('BILLING_DEPOSIT_ADDRESS_LINE2') ?: null,
             env('BILLING_DEPOSIT_ADDRESS_LINE3') ?: null,
         ])),
-        'registration_no' => env('BILLING_DEPOSIT_REGISTRATION_NO') ?: '16607074',
+        'registration_no' => env('BILLING_DEPOSIT_REGISTRATION_NO') ?: '17392540',
         'vat_note' => env('BILLING_DEPOSIT_VAT_NOTE') ?: 'Not VAT registered – no VAT charged',
-        'wise_pay_url' => env('BILLING_WISE_PAY_URL') ?: 'https://wise.com/pay/business/topurlzltd',
+        'wise_pay_url' => env('BILLING_WISE_PAY_URL') ?: 'https://wise.com/pay/business/teqnoltd',
         /*
          * Deposit crypto rails (Option A: USDT TRC20). Empty address = hidden.
          * Aligns with common withdraw USDT TRC20; other chains are opt-in via env.
@@ -86,6 +93,12 @@ return [
 
     'currency' => env('BILLING_CURRENCY', 'EUR'),
     'currency_symbol' => env('BILLING_CURRENCY_SYMBOL', '€'),
+
+    /*
+    | Wallet top-up amount bounds (EUR). Used by Add Funds store / QR / checkout.
+    */
+    'deposit_min' => (float) env('BILLING_DEPOSIT_MIN', 10),
+    'deposit_max' => (float) env('BILLING_DEPOSIT_MAX', 50000),
 
     /*
     |--------------------------------------------------------------------------
@@ -149,6 +162,13 @@ return [
         'exclusion_note' => 'Site feature / promo purchases are excluded from tax invoicing.',
     ],
 
+    'fx_tolerance_note' => env('BILLING_FX_TOLERANCE_NOTE')
+        ?: 'Because of exchange rates and bank fees, the amount we receive may differ slightly (about ±2%). We\'ll credit your wallet with the euro value of what actually arrives.',
+
+    'currency_guide_url' => env('BILLING_CURRENCY_GUIDE_URL') ?: '/help/currencies',
+    'currency_guide_label' => env('BILLING_CURRENCY_GUIDE_LABEL')
+        ?: 'Paying in another currency? Read our currency guide',
+
     'deposit_receipt_note' => env('BILLING_DEPOSIT_RECEIPT_NOTE')
         ?: 'Funds added to your prepaid wallet balance. A wallet top-up is not a supply of services, so no VAT is charged on this receipt. Tax invoices are issued when you spend the balance on an order.',
 
@@ -194,6 +214,23 @@ return [
     |--------------------------------------------------------------------------
     */
     'withdrawal_min_amount' => (float) env('WITHDRAWAL_MIN_AMOUNT', 20),
+
+    /*
+    | Minimum publisher withdrawal per wallet currency. Falls back to
+    | withdrawal_min_amount when a currency key is missing.
+    */
+    'withdrawal_min_amounts' => [
+        'EUR' => (float) env('WITHDRAWAL_MIN_AMOUNT_EUR', env('WITHDRAWAL_MIN_AMOUNT', 20)),
+        'GBP' => (float) env('WITHDRAWAL_MIN_AMOUNT_GBP', env('WITHDRAWAL_MIN_AMOUNT', 20)),
+        'USD' => (float) env('WITHDRAWAL_MIN_AMOUNT_USD', env('WITHDRAWAL_MIN_AMOUNT', 20)),
+    ],
+
+    /*
+    | Conversion fee on USD publisher withdrawals (PayPal, Wise, USD bank).
+    | EUR and GBP withdrawals are not charged this fee. Advertiser USD bank
+    | deposits stay blocked separately — this is payout-only.
+    */
+    'withdrawal_usd_conversion_fee_percent' => (float) env('WITHDRAWAL_USD_CONVERSION_FEE_PERCENT', 0.5),
 
     /*
     |--------------------------------------------------------------------------

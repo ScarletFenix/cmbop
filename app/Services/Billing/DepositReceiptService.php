@@ -94,7 +94,7 @@ class DepositReceiptService
         $paidAt = $deposit->paid_at ?: $deposit->approved_at ?: now();
 
         return [
-            'invoice_number' => $this->numbers->nextReceipt(),
+            'invoice_number' => $this->numbers->nextReceipt($this->numbers->yearFromDate($paidAt)),
             'type' => Invoice::TYPE_DEPOSIT_RECEIPT,
             'status' => Invoice::STATUS_PAID,
             'user_id' => $deposit->user_id,
@@ -129,7 +129,7 @@ class DepositReceiptService
             ],
             'line_items' => [[
                 'description' => 'Wallet top-up',
-                'reference' => $deposit->reference_code,
+                'reference' => $deposit->paymentReferenceLabel() ?: $deposit->reference_code,
                 'quantity' => 1,
                 'unit_price' => $amount,
                 'line_total' => $amount,
@@ -139,6 +139,10 @@ class DepositReceiptService
             'meta' => [
                 'deposit_request_id' => $deposit->id,
                 'document' => 'deposit_receipt',
+                'charge_currency' => $deposit->charge_currency,
+                'charge_amount' => $deposit->charge_amount,
+                'wallet_euros' => $amount,
+                'payment_reference' => $deposit->paymentReferenceLabel(),
             ],
         ];
     }

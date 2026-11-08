@@ -10,22 +10,31 @@ use App\Mail\SiteOwnerOrderNotification;
 use App\Models\Category;
 use App\Models\ContentSubmission;
 use App\Models\Country;
+use App\Models\InAppNotification;
 use App\Models\Language;
 use App\Models\Order;
 use App\Models\OrderChatMessage;
 use App\Models\OrderItem;
 use App\Models\OrderItemDispute;
+use App\Models\ProblemReport;
 use App\Models\Project;
 use App\Models\Site;
 use App\Models\SiteUrlReveal;
 use App\Models\User;
 use App\Models\UserBlacklist;
+use App\Models\UserCatalogNote;
 use App\Models\UserFavorite;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
+use App\Services\ActivityLogger;
+use App\Services\Advertiser\AdvertiserApiSerializer;
+use App\Services\Advertiser\AdvertiserCartPersistence;
 use App\Services\Advertiser\AdvertiserOrderSearchQuery;
+use App\Services\Advertiser\AdvertiserProjectCheckout;
+use App\Services\Advertiser\LibraryArticlePlacement;
 use App\Services\Advertiser\SpendBudgetService;
 use App\Services\CartPricingService;
+use App\Services\Catalog\CatalogAdvertiserPriceFilter;
 use App\Services\Catalog\CatalogCountryInventory;
 use App\Services\Catalog\CatalogLanguageFilter;
 use App\Services\Catalog\CatalogSearchQuery;
@@ -34,18 +43,29 @@ use App\Services\Catalog\RevealPaceGuard;
 use App\Services\Catalog\SiteUrlVisibility;
 use App\Services\CheckoutIntentService;
 use App\Services\CheckoutSchemaService;
+use App\Services\CommunityInboxNotifier;
 use App\Services\ContentModeration\ContentModerationService;
 use App\Services\ContentUpload\ContentUploadService;
 use App\Services\ContentUpload\ScheduledOrderService;
 use App\Services\EmailNotificationService;
 use App\Services\InAppNotificationService;
 use App\Services\LiveUrlHealthChecker;
+use App\Services\Marketplace\ArticleWritingService;
+use App\Services\Marketplace\CheckoutAddOnService;
 use App\Services\Marketplace\CountryLanguagePairs;
+use App\Services\Marketplace\WritingFeeService;
+use App\Services\Mcp\SavedCartSync;
 use App\Services\OrderChatContactGuard;
 use App\Services\OrderPaymentService;
 use App\Services\Orders\ContentRevisionService;
+use App\Services\Orders\ManagedFulfilmentService;
 use App\Services\Orders\OrderClawbackService;
+use App\Services\Orders\OrderPackService;
 use App\Services\Orders\OrderRefundService;
+use App\Services\Partners\PartnerAlertService;
+use App\Services\Partners\PartnerChannel;
+use App\Services\Partners\PartnerCorrectionService;
+use App\Services\Partners\PartnerSettlement;
 use App\Services\PaypalCheckoutService;
 use App\Services\PaypalPaymentNotifier;
 use App\Services\PlatformFeeService;
@@ -54,18 +74,32 @@ use App\Services\StripePaymentService;
 use App\Services\Wallet\WalletLedgerService;
 use App\Support\AdvertiserOrderDetails;
 use App\Support\AdvertiserOrderStatus;
+use App\Support\BulkDiscount;
+use App\Support\CartDisplayFx;
+use App\Support\CatalogGoogleNews;
+use App\Support\CatalogProblemReport;
+use App\Support\CatalogSensitiveTopics;
+use App\Support\CatalogTurnaroundFilter;
 use App\Support\CatalogVisitUrl;
+use App\Support\DepositPaymentConfig;
+use App\Support\ListingMoney;
 use App\Support\PaypalPaymentError;
+use App\Support\PlatformCharge;
+use App\Support\PublicationDuration;
+use App\Support\SiteDescriptionRules;
 use App\Support\SiteTag;
 use App\Support\UserFacingError;
 use App\Support\UserMessages;
 use Carbon\CarbonInterface;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -88,10 +122,23 @@ class CatalogController extends Controller
      * Used for other people's listings (bulk rail, etc.). Own listings are not
      * orderable and show the entered publisher price instead.
      */
-    private function advertiserCatalogListPrice(float|int|string $publisherBase): float
+    private function advertiserCatalogListPrice(float|int|string $unbufferedEur, ?string $listingCurrency = null): float
     {
-        return app(PlatformFeeService::class)
-            ->advertiserBase((float) $publisherBase);
+        $buyerEuros = app(ListingMoney::class)
+            ->buyerFacingEuros((float) $unbufferedEur, $listingCurrency);
+
+        return app(PlatformFeeService::class)->advertiserBase($buyerEuros);
+    }
+
+    /**
+     * Price filters compare the same buyer-facing advertiser total as the
+     * catalog row / cart (unbuffered sites.price + per-buyer buffer + fee).
+     *
+     * @param  Builder<Site>  $query
+     */
+    private function constrainCatalogAdvertiserPrice($query, ?float $min, ?float $max, ListingMoney $listing): void
+    {
+        app(CatalogAdvertiserPriceFilter::class)->constrain($query, $min, $max, $listing);
     }
 
     /**
@@ -131,11 +178,13 @@ class CatalogController extends Controller
     private function getAvailableCountries()
     {
         try {
-            return Country::marketplace()
-                ->orderBy('name')
-                ->pluck('name', 'code')
-                ->mapWithKeys(fn ($name, $code) => [strtolower($code) => $name])
-                ->all();
+            return Cache::remember('catalog.available_countries', 300, function () {
+                return Country::marketplace()
+                    ->orderBy('name')
+                    ->pluck('name', 'code')
+                    ->mapWithKeys(fn ($name, $code) => [strtolower($code) => $name])
+                    ->all();
+            });
         } catch (\Throwable $e) {
             Log::warning('Catalog countries lookup failed', ['error' => $e->getMessage()]);
 
@@ -144,21 +193,135 @@ class CatalogController extends Controller
     }
 
     /**
+     * Leftover fallback when CatalogCountryInventory cannot build picker sections
+     * (missing class, missing sites.countries JSON, etc.). Same shape as the view.
+     *
+     * @return list<array{key: string, label: string, options: list<array{code: string, name: string, count: int}>}>
+     */
+    private function staticCountryPickerSections(): array
+    {
+        $options = [];
+        foreach ($this->getAvailableCountries() as $code => $name) {
+            $options[] = [
+                'code' => strtolower((string) $code),
+                'name' => (string) $name,
+                'count' => 0,
+            ];
+        }
+
+        if ($options === [] && function_exists('marketplace_countries')) {
+            foreach (marketplace_countries() as $code => $name) {
+                $options[] = [
+                    'code' => strtolower((string) $code),
+                    'name' => (string) $name,
+                    'count' => 0,
+                ];
+            }
+        }
+
+        if ($options === []) {
+            return [];
+        }
+
+        return [[
+            'key' => 'all_other',
+            'label' => 'Countries',
+            'options' => $options,
+        ]];
+    }
+
+    /**
      * Marketplace languages.
      */
     private function getAvailableLanguages()
     {
         try {
-            return Language::marketplace()
-                ->orderBy('name')
-                ->pluck('name', 'code')
-                ->mapWithKeys(fn ($name, $code) => [strtolower($code) => $name])
-                ->all();
+            return Cache::remember('catalog.available_languages', 300, function () {
+                return Language::marketplace()
+                    ->orderBy('name')
+                    ->pluck('name', 'code')
+                    ->mapWithKeys(fn ($name, $code) => [strtolower($code) => $name])
+                    ->all();
+            });
         } catch (\Throwable $e) {
             Log::warning('Catalog languages lookup failed', ['error' => $e->getMessage()]);
 
             return [];
         }
+    }
+
+    private static ?bool $orderItemsHasCompletedAt = null;
+
+    private function orderItemsHasCompletedAt(): bool
+    {
+        if (self::$orderItemsHasCompletedAt !== null) {
+            return self::$orderItemsHasCompletedAt;
+        }
+
+        try {
+            return self::$orderItemsHasCompletedAt = Schema::hasColumn('order_items', 'completed_at');
+        } catch (\Throwable $e) {
+            return self::$orderItemsHasCompletedAt = false;
+        }
+    }
+
+    /**
+     * One grouped MAX(completed_at) join instead of a correlated subquery per row.
+     *
+     * @param  Builder<Site>  $query
+     */
+    private function joinCatalogLastCompletedAt($query): void
+    {
+        if (! $this->orderItemsHasCompletedAt()) {
+            return;
+        }
+
+        try {
+            $latest = DB::table('order_items')
+                ->select('site_id', DB::raw('MAX(completed_at) as last_completed_at'))
+                ->whereNotNull('completed_at')
+                ->groupBy('site_id');
+
+            $query->select('sites.*')
+                ->leftJoinSub($latest, 'catalog_last_pub', function ($join) {
+                    $join->on('catalog_last_pub.site_id', '=', 'sites.id');
+                })
+                ->addSelect('catalog_last_pub.last_completed_at as last_completed_at');
+        } catch (\Throwable $e) {
+            Log::warning('Catalog last-published join failed', ['error' => $e->getMessage()]);
+            try {
+                $query->withMax('orderItems as last_completed_at', 'completed_at');
+            } catch (\Throwable) {
+            }
+        }
+    }
+
+    /**
+     * Filtered-set min advertiser price. Cached 60s on the filter hash (not page/sort).
+     *
+     * @param  Builder<Site>  $query
+     */
+    private function catalogInventoryFrom(Request $request, $query, string $advPriceSql, ListingMoney $listing): ?float
+    {
+        $filters = CatalogUrlQuery::fromRequest($request);
+        unset($filters['page'], $filters['sort'], $filters['per_page'], $filters['wizard']);
+        $cacheKey = 'catalog.inventory_from.v2.'.sha1(json_encode([
+            $filters,
+            $listing->buyerCurrency(),
+        ]));
+
+        try {
+            $minRaw = Cache::remember($cacheKey, 60, function () use ($query, $advPriceSql) {
+                return (clone $query)->min(DB::raw('('.$advPriceSql.')'));
+            });
+            if ($minRaw !== null && $minRaw !== false && is_numeric($minRaw)) {
+                return round((float) $minRaw, 2);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Catalog inventory min price failed', ['error' => $e->getMessage()]);
+        }
+
+        return null;
     }
 
     /**
@@ -199,7 +362,12 @@ class CatalogController extends Controller
             'sites' => $sites,
             'favorites' => [],
             'blacklist' => [],
+            'catalogNotes' => [],
+            'catalogReports' => [],
+            'catalogReported' => [],
             'showBlacklistedOnly' => search_text($request->input('blacklist_filter')) === '1',
+            'inventoryFrom' => null,
+            'pageRedirect' => null,
         ];
     }
 
@@ -232,10 +400,17 @@ class CatalogController extends Controller
             );
             $listing = $this->emptyCatalogListing($request);
         }
+        if (! empty($listing['pageRedirect']) && is_array($listing['pageRedirect'])) {
+            return redirect()->route('advertiser.catalog', $listing['pageRedirect']);
+        }
         $sites = $listing['sites'];
         $favorites = $listing['favorites'];
         $blacklist = $listing['blacklist'];
+        $catalogNotes = $listing['catalogNotes'] ?? [];
+        $catalogReports = $listing['catalogReports'] ?? [];
+        $catalogReported = $listing['catalogReported'] ?? [];
         $showBlacklistedOnly = $listing['showBlacklistedOnly'];
+        $inventoryFrom = $listing['inventoryFrom'] ?? null;
 
         // Get predefined countries for filter dropdown (flat map kept for compat).
         $availableCountries = $this->getAvailableCountries();
@@ -266,15 +441,17 @@ class CatalogController extends Controller
             $siteCategories = $predefinedCategories;
         }
 
-        // Drop hidden/owned lines before the banner, wizard chrome, and header badge render.
+        // Merge saved cart first, then prune once. The layout composer reuses
+        // CartPricingService's per-request memo so it does not Site::whereIn again.
+        $this->leftoverSessionCart();
         try {
             $cartRemovedInactive = $this->syncPrunedSessionCart();
-            $cart = session()->get('cart', []);
         } catch (\Throwable $e) {
             report($e);
             $cartRemovedInactive = false;
-            $cart = session()->get('cart', []);
         }
+        $sessionCart = session()->get('cart', []);
+        $cart = is_array($sessionCart) ? array_values(array_filter($sessionCart, 'is_array')) : [];
 
         // Bulk discount marketplace section — follows Catalog country= (Option 1).
         // Option 2: hide the Spendable rail when More → Bulk deals only is on
@@ -338,6 +515,9 @@ class CatalogController extends Controller
             'siteCategories',
             'favorites',
             'blacklist',
+            'catalogNotes',
+            'catalogReports',
+            'catalogReported',
             'cart',
             'cartRemovedInactive',
             'showBlacklistedOnly',
@@ -350,7 +530,8 @@ class CatalogController extends Controller
             'catalogCashBalance',
             'catalogSpendableBalance',
             'currentUser',
-            'urlVisibility'
+            'urlVisibility',
+            'inventoryFrom'
         ));
     }
 
@@ -380,13 +561,20 @@ class CatalogController extends Controller
             report($e);
         }
 
+        $cart = $this->leftoverSessionCart();
+
         return response()
             ->view('advertiser.partials.catalog-results', [
                 'sites' => $listing['sites'],
                 'favorites' => $listing['favorites'],
                 'blacklist' => $listing['blacklist'],
+                'catalogNotes' => $listing['catalogNotes'] ?? [],
+                'catalogReports' => $listing['catalogReports'] ?? [],
+                'catalogReported' => $listing['catalogReported'] ?? [],
                 'currentUser' => $currentUser,
                 'urlVisibility' => $urlVisibility,
+                'inventoryFrom' => $listing['inventoryFrom'] ?? null,
+                'cart' => $cart,
             ])
             ->header('Cache-Control', 'no-store, private');
     }
@@ -426,6 +614,7 @@ class CatalogController extends Controller
             ->view('advertiser.partials.catalog-bulk-deals', [
                 'bulkDeals' => $bulkDeals,
                 'urlVisibility' => $urlVisibility,
+                'cart' => $this->leftoverSessionCart(),
             ])
             ->header('Cache-Control', 'no-store, private');
     }
@@ -441,14 +630,13 @@ class CatalogController extends Controller
      */
     private function loadBulkDeals(Request $request, array $blacklist, bool $showBlacklistedOnly)
     {
-        if (! Schema::hasColumn('sites', 'bulk_discount_enabled')) {
+        if (! Site::hasSitesColumn('bulk_discount_enabled')) {
             return collect();
         }
 
         $query = Site::query()
-            ->catalogVisible()
-            ->where('bulk_discount_enabled', 1)
-            ->whereNotNull('bulk_discount_percent');
+            ->catalogVisible();
+        BulkDiscount::constrainJoined($query);
 
         // Dual-role publishers cannot order their own listings.
         if (auth()->id()) {
@@ -457,7 +645,7 @@ class CatalogController extends Controller
                 $q->whereNull('publisher_id')
                     ->orWhere('publisher_id', '!=', $uid);
             });
-            if (Schema::hasColumn('sites', 'owner_id')) {
+            if (Site::hasSitesColumn('owner_id')) {
                 $query->where(function ($q) use ($uid) {
                     $q->whereNull('owner_id')
                         ->orWhere('owner_id', '!=', $uid);
@@ -500,35 +688,87 @@ class CatalogController extends Controller
             SiteTag::constrainQuery($query, $tagFilter);
         }
 
+        $minRailDr = max(0, (int) config('site_promotions.bulk.min_rail_dr', 10));
+        if ($minRailDr > 0) {
+            $query->where('dr', '>=', $minRailDr);
+        }
+
+        $visibility = app(SiteUrlVisibility::class);
+
+        // One ordered collection feeds the default rail and every pager page
+        // (Blade chunks of 6; catalog.js rebuildPanels keeps this order).
         $bulkDeals = $query
-            ->orderByDesc('bulk_discount_percent')
             ->orderByDesc('dr')
+            ->orderByDesc('bulk_discount_percent')
             // Enough for several 6-deal batches without loading the whole catalog.
             ->limit(36)
             ->get()
+            ->unique('id')
+            ->unique(function (Site $site) use ($visibility) {
+                $host = strtolower($visibility->host($site->site_url));
+
+                return $host !== '' ? $host : 'id:'.$site->id;
+            })
             ->reject(fn (Site $site) => $site->isOwnedBy(auth()->user()))
             ->values();
 
         foreach ($bulkDeals as $dealSite) {
-            // Pack totals use CartPricingService so the rail “now” price floors
-            // at publisher payout the same way checkout does.
-            $packQty = (int) config('site_promotions.bulk.min_qty', 3);
-            $packPricing = $this->cartPricing()->priceForAdvertiser($dealSite, null, $packQty);
-            $dealSite->bulk_pack_qty = $packQty;
-            $dealSite->bulk_pack_list_total = round($packPricing['list_total'] * $packQty, 2);
-            $dealSite->bulk_pack_now_total = round($packPricing['total'] * $packQty, 2);
-            // Badge % must match better-of pricing (custom can beat bulk on the pack).
-            $dealSite->bulk_pack_discount_percent = (float) ($packPricing['discount_percent'] ?? 0);
-            $customPct = $dealSite->activeCustomDiscountPercent();
-            $bulkPct = (float) ($dealSite->bulk_discount_percent ?? 0);
-            $dealSite->bulk_pack_badge_kind = ($customPct !== null && (float) $customPct >= $bulkPct)
-                ? 'sale'
-                : 'bulk';
-            $dealSite->original_price = $dealSite->price;
-            $dealSite->price = $this->advertiserCatalogListPrice($dealSite->price);
+            try {
+                // Pack totals use CartPricingService so the rail “now” price floors
+                // at publisher payout the same way checkout does.
+                $packQty = (int) config('site_promotions.bulk.min_qty', 3);
+                $packPricing = $this->cartPricing()->priceForAdvertiser($dealSite, null, $packQty);
+                $dealSite->bulk_pack_qty = $packQty;
+                $dealSite->bulk_pack_list_total = round($packPricing['list_total'] * $packQty, 2);
+                $dealSite->bulk_pack_now_total = round($packPricing['total'] * $packQty, 2);
+                // Badge % must match better-of pricing (custom can beat bulk on the pack).
+                $dealSite->bulk_pack_discount_percent = (float) ($packPricing['discount_percent'] ?? 0);
+                $customPct = $dealSite->activeCustomDiscountPercent();
+                $bulkPct = (float) (BulkDiscount::bestPercent($dealSite->bulkDiscountTiers()) ?? 0);
+                $dealSite->bulk_pack_badge_kind = ($customPct !== null && (float) $customPct >= $bulkPct)
+                    ? 'sale'
+                    : 'bulk';
+                $dealSite->bulk_pack_tiers_label = BulkDiscount::labelForSite($dealSite);
+                $dealSite->original_price = $dealSite->price;
+                $dealSite->price = $this->advertiserCatalogListPrice($dealSite->price, $dealSite->listingCurrency());
+            } catch (\Throwable $e) {
+                report($e);
+            }
         }
 
-        return $bulkDeals;
+        return $this->sortBulkDealCollection($bulkDeals, $this->bulkDealSortMode($request));
+    }
+
+    /**
+     * Strip sort: discount | price | dr. Collection-only — no extra SQL.
+     */
+    private function bulkDealSortMode(Request $request): string
+    {
+        $sort = strtolower(trim((string) $request->input('bulk_sort', 'discount')));
+
+        return in_array($sort, ['discount', 'price', 'dr'], true) ? $sort : 'discount';
+    }
+
+    /**
+     * @param  Collection<int, Site>  $bulkDeals
+     * @return Collection<int, Site>
+     */
+    private function sortBulkDealCollection($bulkDeals, string $sort)
+    {
+        return $bulkDeals
+            ->sortBy(function (Site $site) use ($sort) {
+                $discount = (float) ($site->bulk_pack_discount_percent ?? 0);
+                $price = (float) ($site->bulk_pack_now_total ?? 0);
+                $dr = (int) ($site->dr ?? 0);
+                $id = (int) $site->id;
+
+                return match ($sort) {
+                    'price' => [$price, -$discount, -$dr, $id],
+                    'dr' => [-$dr, -$discount, $id],
+                    default => [-$discount, -$dr, $id],
+                };
+            })
+            ->values();
     }
 
     /**
@@ -562,13 +802,8 @@ class CatalogController extends Controller
      */
     protected function buildCatalogListing(Request $request): array
     {
-        // Hostinger often deploys without migrate — ensure placement JSON columns exist
-        // so Site Details can show Homepage promotions + Social when publishers offer them.
-        try {
-            app(CheckoutSchemaService::class)->ensureCheckoutTables();
-        } catch (\Throwable $e) {
-            Log::warning('Catalog schema ensure failed', ['error' => $e->getMessage()]);
-        }
+        // Listing reads only. Checkout/order actions still call
+        // CheckoutSchemaService::ensureCheckoutTables() — do not ALTER on browse.
 
         $userId = auth()->id();
         $currentUser = auth()->user();
@@ -684,7 +919,7 @@ class CatalogController extends Controller
             // category= uses `|` (publisher-aligned). Legacy comma URLs are parsed
             // longest-first against known niches — never blindly explode(',').
             // Include unknown tokens so niches not yet in `categories` still filter.
-            $categories = Category::catalogFilterNicheNames($categoryRaw);
+            $categories = array_slice(Category::catalogFilterNicheNames($categoryRaw), 0, 15);
             if ($categories !== []) {
                 Category::constrainQueryToNicheNames($query, $categories);
             }
@@ -692,9 +927,9 @@ class CatalogController extends Controller
 
         $countryRaw = search_text($request->input('country'));
         if ($countryRaw !== '') {
-            $countries = array_values(array_filter(array_map(function ($c) {
+            $countries = array_slice(array_values(array_filter(array_map(function ($c) {
                 return strtolower(trim($c));
-            }, explode(',', $countryRaw))));
+            }, explode(',', $countryRaw)))), 0, 20);
             // Primary country only (scalar sites.country) — matches catalog flag /
             // inventory counts. Do not match JSON countries "contains".
             app(CatalogCountryInventory::class)
@@ -706,7 +941,7 @@ class CatalogController extends Controller
             // Option A: language-only → all sites offering these languages (any country).
             // With country= also set, constraints AND. Never auto-sets country.
             // When country is set, drop language codes that are not paired with those countries.
-            $languageCodes = explode(',', $languageRaw);
+            $languageCodes = array_slice(explode(',', $languageRaw), 0, 15);
             if ($countryRaw !== '') {
                 $countryCodes = array_values(array_filter(array_map(
                     static fn ($c) => strtolower(trim((string) $c)),
@@ -726,28 +961,48 @@ class CatalogController extends Controller
             }
         }
 
-        $advPriceSql = app(PlatformFeeService::class)->advertiserBaseSqlExpression('price');
+        $listingMoney = app(ListingMoney::class);
+        $priceFilter = app(CatalogAdvertiserPriceFilter::class);
+        $advPriceSql = $priceFilter->buyerPaySql($listingMoney);
 
-        $priceMin = filter_number($request->input('price_min'));
-        if ($priceMin !== null) {
-            $query->whereRaw("({$advPriceSql}) >= ?", [$priceMin]);
-        }
-        $priceMax = filter_number($request->input('price_max'));
-        if ($priceMax !== null) {
-            $query->whereRaw("({$advPriceSql}) <= ?", [$priceMax]);
-        }
+        $this->constrainCatalogAdvertiserPrice(
+            $query,
+            filter_number($request->input('price_min')),
+            filter_number($request->input('price_max')),
+            $listingMoney
+        );
 
         $tagFilter = SiteTag::catalogFilterFromRequest($request);
         if ($tagFilter !== null) {
             SiteTag::constrainQuery($query, $tagFilter);
         }
 
+        $linkType = strtolower(search_text($request->input('link_type')));
+        if (in_array($linkType, ['dofollow', 'nofollow'], true)) {
+            $query->where('link_type', $linkType);
+        }
+
+        CatalogTurnaroundFilter::constrainQuery($query, $request->input('turnaround_max'));
+
+        if ($request->input('sensitive_topics') == '1' || $request->input('sensitive_topics') === 1) {
+            CatalogSensitiveTopics::constrainQuery($query);
+        }
+
+        $googleNewsColumn = CatalogGoogleNews::column();
+        if ($googleNewsColumn !== null
+            && ($request->input('google_news') == '1' || $request->input('google_news') === 1)) {
+            $query->where($googleNewsColumn, 1);
+        }
+
+        $publication = PublicationDuration::normalize($request->input('publication_time'));
+        if ($publication !== null) {
+            $query->where('publication_time', $publication);
+        }
+
         // More → Bulk deals — pack program only (not custom Sale −%).
         if ($request->input('bulk_deals') == '1' || $request->input('bulk_deals') === 1) {
-            if (Schema::hasColumn('sites', 'bulk_discount_enabled')) {
-                $query->where('bulk_discount_enabled', 1)
-                    ->whereNotNull('bulk_discount_percent')
-                    ->where('bulk_discount_percent', '>', 0);
+            if (Site::hasSitesColumn('bulk_discount_enabled')) {
+                BulkDiscount::constrainJoined($query);
             } else {
                 $query->whereRaw('1 = 0');
             }
@@ -758,12 +1013,22 @@ class CatalogController extends Controller
             $query->onDiscount();
         }
 
+        if (($request->input('featured') == '1' || $request->input('featured') === 1)
+            && Site::hasSitesColumn('featured_until')) {
+            $query->whereNotNull('featured_until')
+                ->where('featured_until', '>', now())
+                ->where('featured_until', '<=', Site::PLAUSIBLE_SQL_DATETIME_CEIL);
+        }
+
         if ($request->filled('new_badge') && $request->new_badge == 1) {
             $query->where('created_at', '>=', now()->subDays(30))
                 ->where('created_at', '<=', Site::PLAUSIBLE_SQL_DATETIME_CEIL);
         }
 
-        if (Schema::hasColumn('sites', 'featured_until')) {
+        // Filtered-set min (advertiser-facing), not the current page min.
+        $inventoryFrom = $this->catalogInventoryFrom($request, $query, $advPriceSql, $listingMoney);
+
+        if (Site::hasSitesColumn('featured_until')) {
             $query->orderByRaw(
                 '(featured_until IS NOT NULL AND featured_until > ? AND featured_until <= ?) DESC',
                 [now(), Site::PLAUSIBLE_SQL_DATETIME_CEIL]
@@ -795,44 +1060,58 @@ class CatalogController extends Controller
         // Pagination links always target the full catalog page (not /results),
         // and only carry the allowlisted listing query (URL source of truth).
         $perPage = CatalogUrlQuery::perPage($request);
-        $sites = $query->paginate($perPage);
+        $this->joinCatalogLastCompletedAt($query);
+        $requestedPage = max(1, (int) $request->input('page', 1));
+        $sites = (clone $query)->paginate($perPage, ['*'], 'page', $requestedPage);
+        $pageRedirect = null;
+        if ($requestedPage > 1 && $requestedPage > $sites->lastPage()) {
+            $clamped = max(1, $sites->lastPage());
+            $request->merge(['page' => (string) $clamped]);
+            $sites = (clone $query)->paginate($perPage, ['*'], 'page', $clamped);
+            $pageRedirect = CatalogUrlQuery::fromRequest($request);
+        }
         $sites->appends(CatalogUrlQuery::fromRequest($request));
         $sites->setPath(route('advertiser.catalog', absolute: false));
 
         foreach ($sites as $site) {
-            $site->original_price = $site->price;
-            // Own listings stay at the entered publisher price so leftover
-            // Add-to-cart markup cannot paint a fee-inclusive number.
-            if (! $site->isOwnedBy(auth()->user())) {
-                $site->price = $this->advertiserCatalogListPrice($site->price);
+            try {
+                $site->categories_list = $site->nicheBadgeLabels();
+            } catch (\Throwable $e) {
+                report($e);
             }
-
-            if ($site->sensitive_prices) {
-                $sensitivePrices = is_string($site->sensitive_prices)
-                    ? json_decode($site->sensitive_prices, true)
-                    : $site->sensitive_prices;
-
-                if (is_array($sensitivePrices)) {
-                    $processedSensitive = [];
-                    foreach ($sensitivePrices as $type => $additionalPrice) {
-                        $processedSensitive[$type] = $additionalPrice;
-                    }
-                    $site->sensitive_prices = $processedSensitive;
-                }
-            }
-
-            $site->categories_list = $site->nicheBadgeLabels();
         }
 
         $this->hydrateCatalogTrustCounters($sites);
+
+        // Private reminders for this advertiser only. Never attached to the public listing.
+        $pageSiteIds = $sites->getCollection()->pluck('id')->all();
+        $catalogNotes = $this->privateCatalogNotesFor((int) $userId, $pageSiteIds);
+        $catalogReports = $this->catalogReportsFor((int) $userId, $pageSiteIds);
+        $catalogReported = array_map('intval', array_keys($catalogReports));
 
         // index()/results() own the full page chrome; this helper only builds the listing.
         return [
             'sites' => $sites,
             'favorites' => $favorites,
             'blacklist' => $blacklist,
+            'catalogNotes' => $catalogNotes,
+            'catalogReports' => $catalogReports,
+            'catalogReported' => $catalogReported,
             'showBlacklistedOnly' => $showBlacklistedOnly,
+            'inventoryFrom' => $inventoryFrom,
+            'pageRedirect' => $pageRedirect,
         ];
+    }
+
+    /**
+     * Same listing as Advertiser → Catalog, for the token catalog API.
+     * Does not change HTML catalog behavior.
+     *
+     * @return array<string, mixed>
+     */
+    public function listingForExternalRequest(Request $request): array
+    {
+        return $this->buildCatalogListing($request);
     }
 
     /**
@@ -852,14 +1131,20 @@ class CatalogController extends Controller
             return;
         }
 
-        $cancelledBySite = OrderItem::query()
-            ->whereIn('site_id', $ids)
-            ->whereHas('order', function ($q) {
-                $q->where('status', 'cancelled');
-            })
-            ->selectRaw('site_id, COUNT(*) as cancelled_count')
-            ->groupBy('site_id')
-            ->pluck('cancelled_count', 'site_id');
+        try {
+            $cancelledBySite = OrderItem::query()
+                ->whereIn('site_id', $ids)
+                ->whereHas('order', function ($q) {
+                    $q->where('status', 'cancelled');
+                })
+                ->selectRaw('site_id, COUNT(*) as cancelled_count')
+                ->groupBy('site_id')
+                ->pluck('cancelled_count', 'site_id');
+        } catch (\Throwable $e) {
+            report($e);
+
+            return;
+        }
 
         foreach ($collection as $site) {
             $site->setAttribute(
@@ -951,6 +1236,16 @@ class CatalogController extends Controller
         for ($i = 0; $i < $qty; $i++) {
             $normalized[$i] = max(0, (int) ($ids[$i] ?? 0));
         }
+        $previous = [];
+        if (! empty($line['content_submission_ids']) && is_array($line['content_submission_ids'])) {
+            foreach ($line['content_submission_ids'] as $i => $id) {
+                $previous[(int) $i] = (int) $id;
+            }
+        }
+        if ((! isset($previous[0]) || $previous[0] <= 0) && ! empty($line['content_submission_id'])) {
+            $previous[0] = (int) $line['content_submission_id'];
+        }
+
         $line['quantity'] = $qty;
         $line['content_submission_ids'] = $normalized;
         if (($normalized[0] ?? 0) > 0) {
@@ -958,6 +1253,19 @@ class CatalogController extends Controller
         } else {
             unset($line['content_submission_id']);
         }
+
+        $assignedAt = is_array($line['content_assigned_at'] ?? null) ? $line['content_assigned_at'] : [];
+        $now = now()->toIso8601String();
+        foreach ($normalized as $i => $id) {
+            if ($id > 0) {
+                if ((int) ($previous[$i] ?? 0) !== $id || empty($assignedAt[$i])) {
+                    $assignedAt[$i] = $now;
+                }
+            } else {
+                unset($assignedAt[$i]);
+            }
+        }
+        $line['content_assigned_at'] = $assignedAt;
 
         return $line;
     }
@@ -1013,7 +1321,7 @@ class CatalogController extends Controller
     }
 
     /**
-     * Clamp bulk-pack quantities to the configured 3–5 band, resize article slots,
+     * Clamp bulk-pack quantities to the configured 3–10 band, resize article slots,
      * and reprice from the live listing so the discount cannot vanish silently.
      *
      * @param  array<string, mixed>  $line
@@ -1022,7 +1330,7 @@ class CatalogController extends Controller
     private function normalizeCartLineForSite(Site $site, array $line): array
     {
         $minBulk = (int) config('site_promotions.bulk.min_qty', 3);
-        $maxBulk = (int) config('site_promotions.bulk.max_qty', 5);
+        $maxBulk = (int) config('site_promotions.bulk.max_qty', 10);
         $qty = max(1, (int) ($line['quantity'] ?? 1));
         $joinsBulk = $site->joinsBulkDiscount();
         $bulkPack = ! empty($line['bulk_pack']);
@@ -1098,7 +1406,7 @@ class CatalogController extends Controller
         $line['list_total'] = $pricing['list_total'];
         $line['discount_percent'] = $pricing['discount_percent'];
         $line['name'] = $line['name'] ?? $site->site_name;
-        $line['url'] = $line['url'] ?? $site->site_url;
+        $line['url'] = $this->leftoverSafeCartUrl($line['url'] ?? $site->site_url ?? '');
         // Always refresh market codes from the live listing so the drawer
         // matches ContentSubmission::languageFitsSiteLanguages() (not only primary).
         $line['language'] = $site->language;
@@ -1109,8 +1417,150 @@ class CatalogController extends Controller
         $line['da'] = self::cartMetricInt($site->da);
         $line['dr'] = self::cartMetricInt($site->dr);
         $line['domain'] = trim((string) ($site->domain ?: ''));
+        [$line['homepage_options'], $line['sensitive_options']] = $this->cartLineChoiceOptions($site);
+
+        $addons = app(CheckoutAddOnService::class);
+        $line['content_source'] = $addons->normalizeSourceForSite(
+            (string) ($line['content_source'] ?? ''),
+            $site
+        );
+        $line['writing_target_url'] = trim((string) ($line['writing_target_url'] ?? ''));
+        $line['writing_anchor_text'] = trim((string) ($line['writing_anchor_text'] ?? ''));
+        $line = $addons->decorateCartLine($line, $site);
+        $line = app(OrderPackService::class)->stampQuotedPrice($line);
 
         return $this->applyCartLineContentIds($line, $this->cartLineContentIds($line));
+    }
+
+    private function leftoverSafeCartUrl(mixed $url): string
+    {
+        try {
+            $raw = trim((string) $url);
+            if ($raw === '') {
+                return '';
+            }
+
+            return function_exists('safe_external_url') && safe_external_url($raw) !== '#'
+                ? $raw
+                : '';
+        } catch (\Throwable $e) {
+            report($e);
+
+            return '';
+        }
+    }
+
+    /**
+     * Homepage / sensitive choices the drawer can edit without returning to the catalog.
+     *
+     * @return array{0: list<array{days: int, price: float, free: bool}>, 1: list<array{type: string, price: float}>}
+     */
+    private function cartLineChoiceOptions(Site $site): array
+    {
+        $homepage = [];
+        $sensitive = [];
+        try {
+            foreach ($site->advertiserFacingHomepageOptions() as $days => $price) {
+                $homepage[] = [
+                    'days' => (int) $days,
+                    'price' => round((float) $price, 2),
+                    'free' => (float) $price <= 0,
+                ];
+            }
+
+            foreach ($site->advertiserFacingSensitivePrices() as $type => $price) {
+                $label = trim((string) $type);
+                if ($label === '' || ! is_numeric($price) || (float) $price <= 0) {
+                    continue;
+                }
+                $sensitive[] = [
+                    'type' => $label,
+                    'price' => round((float) $price, 2),
+                ];
+            }
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        return [$homepage, $sensitive];
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $cart
+     * @return array{cart_count: int, placement_count: int, site_count: int}
+     */
+    private function cartCountMeta(array $cart): array
+    {
+        $cart = array_values(array_filter($cart, 'is_array'));
+        $placements = (int) array_sum(array_map(
+            static fn ($item) => (int) ($item['quantity'] ?? 0),
+            $cart
+        ));
+        $sites = collect($cart)
+            ->pluck('id')
+            ->filter()
+            ->map(static fn ($id) => (int) $id)
+            ->unique()
+            ->count();
+
+        return [
+            'cart_count' => $placements,
+            'placement_count' => $placements,
+            'site_count' => $sites,
+        ];
+    }
+
+    /**
+     * Minimal empty-cart JSON when a leftover DB miss happens after the session cart is already empty.
+     *
+     * @return array<string, mixed>
+     */
+    private function emptyCartClientPayload(): array
+    {
+        return array_merge($this->cartCountMeta([]), $this->writingChoiceClientCopy(), [
+            'cart' => [],
+            'cart_total' => 0,
+            'approved_articles' => [],
+            'removed_inactive' => [],
+            'removed_inactive_count' => 0,
+            'removed_owned' => [],
+            'removed_owned_count' => 0,
+            'article_copy' => app(CheckoutAddOnService::class)->cartArticleCopy(),
+        ]);
+    }
+
+    /**
+     * @return array{writing_explainer: string, writing_turnaround_text: string, writing_guarantee_note: string, writing_steps_write: string, writing_steps_upload: string}
+     */
+    private function writingChoiceClientCopy(): array
+    {
+        $copy = app(CheckoutAddOnService::class)->writingChoiceCopy();
+
+        return [
+            'writing_explainer' => $copy['explainer'],
+            'writing_turnaround_text' => $copy['turnaround_text'],
+            'writing_guarantee_note' => $copy['guarantee_note'],
+            'writing_steps_write' => $copy['steps_write'],
+            'writing_steps_upload' => $copy['steps_upload'],
+        ];
+    }
+
+    /**
+     * Cart mutations that leave an empty session should still 200 JSON when payload enrichment fails.
+     */
+    private function jsonSuccessfulCartPayload(): JsonResponse
+    {
+        try {
+            return response()->json(array_merge(['success' => true], $this->cartPayloadForClient()));
+        } catch (\Throwable $e) {
+            if ($this->leftoverSessionCart() !== []) {
+                throw $e;
+            }
+
+            report($e);
+
+            return response()->json(array_merge(['success' => true], $this->emptyCartClientPayload()));
+        }
     }
 
     /**
@@ -1193,6 +1643,51 @@ class CatalogController extends Controller
         return false;
     }
 
+    private function articlePlacement(): LibraryArticlePlacement
+    {
+        return app(LibraryArticlePlacement::class);
+    }
+
+    /**
+     * @param  array<int, mixed>  $cart
+     */
+    private function cartSiteName(array $cart, ?int $siteId): ?string
+    {
+        if ($siteId === null || $siteId <= 0) {
+            return null;
+        }
+        foreach ($cart as $line) {
+            if (is_array($line) && (int) ($line['id'] ?? 0) === $siteId) {
+                $name = trim((string) ($line['name'] ?? ''));
+                if ($name !== '') {
+                    return $name;
+                }
+            }
+        }
+        try {
+            $site = Site::query()->find($siteId);
+
+            return $site?->site_name;
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * @param  array<int, mixed>  $cart
+     * @return array<int, array<string, mixed>>
+     */
+    private function occupiedSitesPayload(array $cart): array
+    {
+        try {
+            return $this->articlePlacement()->occupiedSites((int) auth()->id(), $cart);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return [];
+        }
+    }
+
     /**
      * Drop session cart lines whose sites are missing, not catalog-visible, or owned by the shopper.
      *
@@ -1220,17 +1715,60 @@ class CatalogController extends Controller
     }
 
     /**
+     * @return list<array<string, mixed>>
+     */
+    private function leftoverSessionCart(): array
+    {
+        try {
+            app(SavedCartSync::class)->mergeIntoSession();
+            $cart = session()->get('cart', []);
+            if (! is_array($cart)) {
+                return [];
+            }
+
+            return array_values(array_filter($cart, 'is_array'));
+        } catch (\Throwable $e) {
+            report($e);
+
+            return [];
+        }
+    }
+
+    /**
      * @param  array<int, array<string, mixed>>  $cart
      */
     private function putCatalogVisibleCart(array $cart): void
     {
         $pruned = $this->pruneInactiveCartLines($cart);
         session()->put('cart', array_values($pruned['cart']));
+        $this->persistAdvertiserCart(array_values($pruned['cart']));
+    }
+
+    /**
+     * @param  array<int, mixed>  $cart
+     */
+    private function persistAdvertiserCart(array $cart): void
+    {
+        try {
+            app(AdvertiserCartPersistence::class)->persistFromSession(auth()->user(), $cart);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+    }
+
+    private function forgetAdvertiserSessionCart(): void
+    {
+        session()->forget('cart');
+        try {
+            app(AdvertiserCartPersistence::class)->clear(auth()->user());
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 
     private function cartPayloadForClient(): array
     {
-        $cart = array_values(session()->get('cart', []));
+        $cart = $this->leftoverSessionCart();
         $removedInactive = [];
         $removedOwned = [];
         $buyer = auth()->user();
@@ -1258,13 +1796,13 @@ class CatalogController extends Controller
 
                 continue;
             }
-            // Clamp bulk packs to 3–5, resize slots, and reprice from the live listing.
+            // Clamp bulk packs to 3–10, resize slots, and reprice from the live listing.
             $kept[] = $this->normalizeCartLineForSite($site, $line);
         }
         $removedInactive = array_values(array_unique($removedInactive));
         $removedOwned = array_values(array_unique($removedOwned));
         $cart = $kept;
-        $sessionCart = array_values(session()->get('cart', []));
+        $sessionCart = $this->leftoverSessionCart();
         // Repriced lines (sensitive add-ons / live listing) should persist.
         // Compare a canonical fingerprint so key order / 0 vs unset id does not rewrite every load.
         $cartChanged = $removedInactive !== [] || $removedOwned !== []
@@ -1344,7 +1882,7 @@ class CatalogController extends Controller
 
         if ($cartChanged || $removedInactive !== [] || $removedOwned !== []) {
             session()->put('cart', array_values($cart));
-            $cart = array_values(session()->get('cart', []));
+            $cart = $this->leftoverSessionCart();
         }
 
         $articles = $approved->map(fn (ContentSubmission $s) => [
@@ -1372,9 +1910,8 @@ class CatalogController extends Controller
             $cart
         )), 2);
 
-        return [
+        return array_merge($this->cartCountMeta($cart), $this->writingChoiceClientCopy(), [
             'cart' => $cart,
-            'cart_count' => (int) array_sum(array_map(fn ($item) => (int) ($item['quantity'] ?? 0), $cart)),
             'cart_total' => $cartTotal,
             'approved_articles' => $articles,
             'ordering_from_library' => (bool) session('ordering_from_library'),
@@ -1386,7 +1923,10 @@ class CatalogController extends Controller
             'removed_owned_count' => count($removedOwned),
             'require_same_language' => $requireSame,
             'schedule' => $this->checkoutScheduleClientHint(),
-        ];
+            'fx' => app(CartDisplayFx::class)->syncWithCart($cart),
+            'article_copy' => app(CheckoutAddOnService::class)->cartArticleCopy(),
+            'occupied_sites' => $this->occupiedSitesPayload($cart),
+        ]);
     }
 
     /**
@@ -1492,10 +2032,12 @@ class CatalogController extends Controller
             ]);
         } catch (ValidationException $e) {
             throw $e;
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Error saving favorites: '.$e->getMessage());
 
-            return response()->json(['success' => false, 'error' => UserFacingError::message($e, 'Could not update your saved sites. Please try again.')], 500);
+            $message = UserFacingError::message($e, 'Could not update your saved sites. Please try again.');
+
+            return response()->json(['success' => false, 'error' => $message, 'message' => $message], 500);
         }
     }
 
@@ -1530,11 +2072,354 @@ class CatalogController extends Controller
             ]);
         } catch (ValidationException $e) {
             throw $e;
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Error saving blacklist: '.$e->getMessage());
 
-            return response()->json(['success' => false, 'error' => UserFacingError::message($e, 'Could not update your blocked sites. Please try again.')], 500);
+            $message = UserFacingError::message($e, 'Could not update your blocked sites. Please try again.');
+
+            return response()->json(['success' => false, 'error' => $message, 'message' => $message], 500);
         }
+    }
+
+    /**
+     * Private reminder for the signed-in advertiser. Not shown on the listing,
+     * not sent to the publisher, and not visible to any other account.
+     *
+     * @param  list<int>  $siteIds
+     * @return array<int, string>
+     */
+    private function privateCatalogNotesFor(int $userId, array $siteIds): array
+    {
+        $siteIds = array_values(array_filter(array_map('intval', $siteIds)));
+        if ($userId <= 0 || $siteIds === [] || ! Schema::hasTable('user_catalog_notes')) {
+            return [];
+        }
+
+        try {
+            return UserCatalogNote::query()
+                ->where('user_id', $userId)
+                ->whereIn('site_id', $siteIds)
+                ->pluck('body', 'site_id')
+                ->map(fn ($body) => $this->sanitizeCatalogPlainText($body, 2000))
+                ->all();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return [];
+        }
+    }
+
+    /**
+     * Plain text only: no HTML, no control characters, capped length.
+     */
+    private function sanitizeCatalogPlainText(mixed $raw, int $maxChars): string
+    {
+        return CatalogProblemReport::sanitizePlain($raw, $maxChars);
+    }
+
+    /**
+     * Latest catalog report text this advertiser sent for each listing.
+     *
+     * @param  list<int>  $siteIds
+     * @return array<int, string>
+     */
+    private function catalogReportsFor(int $userId, array $siteIds): array
+    {
+        $siteIds = array_values(array_filter(array_map('intval', $siteIds)));
+        if ($userId <= 0 || $siteIds === [] || ! Schema::hasTable('problem_reports')) {
+            return [];
+        }
+
+        $wanted = array_fill_keys($siteIds, true);
+
+        try {
+            $rows = ProblemReport::query()
+                ->where('user_id', $userId)
+                ->where('subject', 'like', 'Catalog site:%')
+                ->where(function ($q) use ($siteIds) {
+                    foreach ($siteIds as $id) {
+                        $q->orWhere('message', 'like', '%Site ID: '.$id.'%');
+                    }
+                })
+                ->orderByDesc('id')
+                ->limit(count($siteIds) * 4)
+                ->get(['id', 'message']);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return [];
+        }
+
+        $found = [];
+        foreach ($rows as $row) {
+            $full = (string) $row->message;
+            $id = CatalogProblemReport::siteId($full);
+            if ($id === null || ! isset($wanted[$id]) || isset($found[$id])) {
+                continue;
+            }
+            $body = CatalogProblemReport::userMessage($full);
+            if ($body !== '') {
+                $found[$id] = $body;
+            }
+        }
+
+        return $found;
+    }
+
+    /**
+     * @return Collection<int, ProblemReport>
+     */
+    private function catalogProblemReportsForSite(User $user, Site $site)
+    {
+        if (! Schema::hasTable('problem_reports')) {
+            return collect();
+        }
+
+        $siteId = (int) $site->id;
+
+        return ProblemReport::query()
+            ->where('user_id', $user->id)
+            ->where('subject', 'like', 'Catalog site:%')
+            ->orderByDesc('id')
+            ->get()
+            ->filter(fn (ProblemReport $row) => CatalogProblemReport::siteId((string) $row->message) === $siteId)
+            ->values();
+    }
+
+    private function catalogReportEnvelope(Site $site, User $user, string $message): array
+    {
+        return CatalogProblemReport::envelope($site, $user, $message);
+    }
+
+    private function forgetCatalogReportNotifications(array $reportIds): void
+    {
+        $reportIds = array_values(array_filter(array_map('intval', $reportIds)));
+        if ($reportIds === [] || ! Schema::hasTable('in_app_notifications')) {
+            return;
+        }
+
+        try {
+            InAppNotification::query()
+                ->where('related_type', ProblemReport::class)
+                ->whereIn('related_id', $reportIds)
+                ->delete();
+        } catch (\Throwable $e) {
+            report($e);
+        }
+    }
+
+    /**
+     * Save or clear this advertiser's private reminder for one listing.
+     */
+    public function saveSiteNote(Request $request, Site $site)
+    {
+        $request->validate([
+            'note' => 'nullable|string|max:4000',
+        ]);
+
+        $user = $request->user();
+        if (! $user) {
+            abort(403);
+        }
+
+        if (! Schema::hasTable('user_catalog_notes')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Notes are not available yet. Please try again shortly.',
+            ], 503);
+        }
+
+        $note = $this->sanitizeCatalogPlainText($request->input('note'), 2000);
+
+        try {
+            if ($note === '') {
+                UserCatalogNote::query()
+                    ->where('user_id', $user->id)
+                    ->where('site_id', $site->id)
+                    ->delete();
+            } else {
+                UserCatalogNote::query()->updateOrCreate(
+                    ['user_id' => $user->id, 'site_id' => $site->id],
+                    ['body' => $note]
+                );
+            }
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'Could not save that note. Please try again.'),
+            ], 500);
+        }
+
+        return response()->json([
+            'success' => true,
+            'note' => $note,
+        ]);
+    }
+
+    /**
+     * Send a catalog-site report to the admin community inbox, with the listing
+     * and the advertiser who sent it.
+     */
+    public function reportSite(Request $request, Site $site)
+    {
+        $request->validate([
+            'message' => 'required|string|max:4000',
+        ]);
+
+        $user = $request->user();
+        if (! $user) {
+            abort(403);
+        }
+
+        $message = $this->sanitizeCatalogPlainText($request->input('message'), 800);
+        if ($message === '' || SiteDescriptionRules::wordCount($message) < 1) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Write a short report before sending.',
+            ], 422);
+        }
+        if (SiteDescriptionRules::wordCount($message) > 80) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Keep the report to 80 words or fewer.',
+            ], 422);
+        }
+
+        $envelope = $this->catalogReportEnvelope($site, $user, $message);
+        $existing = $this->catalogProblemReportsForSite($user, $site);
+        $updated = $existing->isNotEmpty();
+
+        try {
+            if ($updated) {
+                $report = $existing->first();
+                $report->fill([
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'subject' => $envelope['subject'],
+                    'message' => $envelope['message'],
+                    'page_url' => $envelope['page_url'],
+                    'role_context' => $user->activeRole(),
+                    'status' => 'pending',
+                ]);
+                $report->save();
+                $extras = $existing->slice(1);
+                if ($extras->isNotEmpty()) {
+                    $this->forgetCatalogReportNotifications($extras->pluck('id')->all());
+                    ProblemReport::query()->whereIn('id', $extras->pluck('id')->all())->delete();
+                }
+            } else {
+                $report = ProblemReport::create([
+                    'user_id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'subject' => $envelope['subject'],
+                    'message' => $envelope['message'],
+                    'page_url' => $envelope['page_url'],
+                    'role_context' => $user->activeRole(),
+                    'status' => 'pending',
+                ]);
+            }
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'We could not submit that report. Please try again.'),
+            ], 500);
+        }
+
+        try {
+            ActivityLogger::log(
+                $updated ? 'feedback.problem_updated' : 'feedback.problem',
+                $user->name.' '.($updated ? 'updated' : 'reported').' catalog site #'.$site->id.' ('.$envelope['site_name'].')',
+                $report,
+                ['report_id' => $report->id, 'site_id' => $site->id, 'email' => $user->email],
+                $envelope['subject']
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Failed to log catalog site report: '.$e->getMessage(), [
+                'report_id' => $report->id,
+            ]);
+        }
+
+        if (! $updated) {
+            try {
+                app(CommunityInboxNotifier::class)->notifyAdminsNewProblem($report);
+            } catch (\Throwable $e) {
+                Log::warning('Failed to notify admins about catalog site report: '.$e->getMessage());
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'reported' => true,
+            'site_id' => (int) $site->id,
+            'report' => $message,
+            'message' => $updated
+                ? 'Your report was updated.'
+                : 'Thanks — your report was sent to the team.',
+        ]);
+    }
+
+    /**
+     * Advertiser withdraws a catalog report. The admin inbox row is deleted too.
+     */
+    public function deleteSiteReport(Request $request, Site $site)
+    {
+        $user = $request->user();
+        if (! $user) {
+            abort(403);
+        }
+
+        $reports = $this->catalogProblemReportsForSite($user, $site);
+        if ($reports->isEmpty()) {
+            return response()->json([
+                'success' => true,
+                'reported' => false,
+                'site_id' => (int) $site->id,
+                'report' => '',
+                'message' => 'That report was already removed.',
+            ]);
+        }
+
+        $ids = $reports->pluck('id')->all();
+
+        try {
+            $this->forgetCatalogReportNotifications($ids);
+            ProblemReport::query()
+                ->where('user_id', $user->id)
+                ->whereIn('id', $ids)
+                ->delete();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'We could not remove that report. Please try again.'),
+            ], 500);
+        }
+
+        try {
+            ActivityLogger::log(
+                'feedback.problem_deleted',
+                $user->name.' withdrew a catalog report for site #'.$site->id,
+                $user,
+                ['site_id' => $site->id, 'report_ids' => $ids],
+                'Catalog report withdrawn'
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Failed to log catalog report delete: '.$e->getMessage());
+        }
+
+        return response()->json([
+            'success' => true,
+            'reported' => false,
+            'site_id' => (int) $site->id,
+            'report' => '',
+            'message' => 'Report removed. The team will no longer see it.',
+        ]);
     }
 
     /**
@@ -1550,7 +2435,7 @@ class CatalogController extends Controller
 
             // Preserve article assignments when the client omits them.
             $existingByKey = [];
-            foreach (session()->get('cart', []) as $row) {
+            foreach ($this->leftoverSessionCart() as $row) {
                 if (! is_array($row)) {
                     continue;
                 }
@@ -1591,16 +2476,27 @@ class CatalogController extends Controller
                 if (! array_key_exists('homepage_days', $row) && array_key_exists('homepage_days', $prev)) {
                     $row['homepage_days'] = $prev['homepage_days'];
                 }
+                if (search_text($row['content_source'] ?? '') === '' && search_text($prev['content_source'] ?? '') !== '') {
+                    $row['content_source'] = $prev['content_source'];
+                }
+                if (search_text($row['writing_target_url'] ?? '') === '' && search_text($prev['writing_target_url'] ?? '') !== '') {
+                    $row['writing_target_url'] = $prev['writing_target_url'];
+                }
+                if (search_text($row['writing_anchor_text'] ?? '') === '' && search_text($prev['writing_anchor_text'] ?? '') !== '') {
+                    $row['writing_anchor_text'] = $prev['writing_anchor_text'];
+                }
                 $merged[] = $this->normalizeCartLineForSite($site, $row);
             }
 
             $this->putCatalogVisibleCart($merged);
 
-            return response()->json(array_merge(['success' => true], $this->cartPayloadForClient()));
-        } catch (\Exception $e) {
+            return $this->jsonSuccessfulCartPayload();
+        } catch (\Throwable $e) {
             Log::error('Error saving cart: '.$e->getMessage());
 
-            return response()->json(['success' => false, 'error' => UserFacingError::message($e, 'Could not save your cart. Please try again.')], 500);
+            $message = UserFacingError::message($e, 'Could not save your cart. Please try again.');
+
+            return response()->json(['success' => false, 'error' => $message, 'message' => $message], 500);
         }
     }
 
@@ -1647,6 +2543,291 @@ class CatalogController extends Controller
         }
     }
 
+    /**
+     * Upload a .docx for one cart placement, then assign it when the article is orderable.
+     * Chunked bodies use the same protocol as Content Library (Hostinger LiteSpeed).
+     */
+    public function uploadCartArticle(Request $request)
+    {
+        try {
+            return $this->uploadCartArticlePayload($request);
+        } catch (ValidationException $e) {
+            $message = collect($e->errors())->flatten()->first()
+                ?: 'The article could not be uploaded. Please try again.';
+
+            return response()->json([
+                'success' => false,
+                'error' => $message,
+                'message' => $message,
+            ], 422);
+        } catch (\Throwable $e) {
+            report($e);
+
+            $message = UserFacingError::message($e, 'The article could not be uploaded. Please try again.');
+
+            return response()->json([
+                'success' => false,
+                'error' => $message,
+                'message' => $message,
+            ], 500);
+        }
+    }
+
+    private function uploadCartArticlePayload(Request $request)
+    {
+        $uploads = app(ContentUploadService::class);
+        if (! $uploads->uploadsEnabled()) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Content uploads are temporarily turned off. You can still choose a saved article or have the article written.',
+                'message' => 'Content uploads are temporarily turned off. You can still choose a saved article or have the article written.',
+            ], 403);
+        }
+
+        $data = $request->validate([
+            'id' => ['required', 'integer'],
+            'sensitive_type' => ['nullable', 'string', 'max:50'],
+            'homepage_days' => ['nullable'],
+            'copy_index' => ['nullable', 'integer', 'min:0'],
+            'original_filename' => ['nullable', 'string', 'max:200'],
+        ]);
+
+        $siteId = (int) $data['id'];
+        $sensitiveType = $data['sensitive_type'] ?? null;
+        $hasHomepageInput = array_key_exists('homepage_days', $data) || $request->exists('homepage_days');
+        $homepageDays = $hasHomepageInput
+            ? ($data['homepage_days'] ?? $request->input('homepage_days'))
+            : null;
+        $copyIndex = max(0, (int) ($data['copy_index'] ?? 0));
+
+        $cart = $this->leftoverSessionCart();
+        $lineKey = null;
+        foreach ($cart as $key => $item) {
+            $matches = $hasHomepageInput
+                ? $this->cartLineMatches($item, $siteId, $sensitiveType, $homepageDays)
+                : ((int) ($item['id'] ?? 0) === $siteId
+                    && (($item['sensitive_type'] ?? null) == ($sensitiveType ?: null)));
+            if ($matches) {
+                $lineKey = $key;
+                break;
+            }
+        }
+
+        if ($lineKey === null) {
+            return response()->json(['success' => false, 'error' => 'That website is not in your cart.', 'message' => 'That website is not in your cart.'], 404);
+        }
+
+        $site = Site::query()->catalogVisible()->where('id', $siteId)->first();
+        if (! $site) {
+            $this->putCatalogVisibleCart($cart);
+
+            return response()->json(['success' => false, 'error' => 'Site not found or inactive.', 'message' => 'Site not found or inactive.'], 404);
+        }
+
+        $ids = $this->cartLineContentIds($cart[$lineKey]);
+        if ($copyIndex >= count($ids)) {
+            return response()->json([
+                'success' => false,
+                'error' => 'That placement does not exist for this cart quantity.',
+                'message' => 'That placement does not exist for this cart quantity.',
+            ], 422);
+        }
+
+        $market = $this->cartUploadMarket($site);
+        if ($market === null) {
+            return response()->json([
+                'success' => false,
+                'error' => 'This site’s country and language are not set up for article uploads. Open Content Library to choose a market.',
+                'message' => 'This site’s country and language are not set up for article uploads. Open Content Library to choose a market.',
+                'content_library_url' => route('advertiser.content-library', ['upload' => 1]),
+            ], 422);
+        }
+
+        $user = auth()->user();
+        if (! $user instanceof User) {
+            abort(403);
+        }
+
+        try {
+            $cfg = $uploads->effectiveConfig();
+            $maxKb = $uploads->effectiveMaxKilobytes($cfg);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'error' => UserFacingError::message($e, 'The article could not be uploaded. Please try again.'),
+                'message' => UserFacingError::message($e, 'The article could not be uploaded. Please try again.'),
+            ], 500);
+        }
+
+        $uploadedFile = $request->file('file');
+        $chunk = $uploads->receiveArticleChunk($request, $user);
+        if (is_array($chunk)) {
+            if (! ($chunk['ok'] ?? false)) {
+                return response()->json([
+                    'success' => false,
+                    'error' => $chunk['message'] ?? 'The article could not be uploaded. Please try again.',
+                    'message' => $chunk['message'] ?? 'The article could not be uploaded. Please try again.',
+                ], 422);
+            }
+            if (! ($chunk['complete'] ?? false)) {
+                return response()->json([
+                    'success' => true,
+                    'chunk_received' => true,
+                    'received' => $chunk['received'] ?? 0,
+                    'total' => $chunk['total'] ?? 0,
+                ]);
+            }
+            $uploadedFile = $chunk['file'];
+            $request->files->set('file', $uploadedFile);
+        }
+
+        $displayName = $uploads->safeDocxFilename(scalar_text($request->input('original_filename')));
+        if (
+            $uploadedFile instanceof UploadedFile
+            && $uploadedFile->isValid()
+            && $displayName !== ''
+            && $displayName !== 'article.docx'
+        ) {
+            $realPath = $uploadedFile->getRealPath();
+            if (is_string($realPath) && $realPath !== '') {
+                $uploadedFile = new UploadedFile(
+                    $realPath,
+                    $displayName,
+                    $uploadedFile->getMimeType() ?: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                    $uploadedFile->getError(),
+                    true
+                );
+                $request->files->set('file', $uploadedFile);
+            }
+        }
+
+        [$contentLength, $clientBytes] = $uploads->uploadByteHints($request);
+        if ($message = $uploads->rejectedUploadMessage(
+            $uploadedFile,
+            $cfg,
+            $contentLength,
+            $clientBytes,
+        )) {
+            return response()->json([
+                'success' => false,
+                'error' => $message,
+                'message' => $message,
+            ], 422);
+        }
+
+        $request->validate([
+            'file' => ['required', 'file', 'max:'.$maxKb, 'extensions:docx'],
+        ], $uploads->uploadValidationMessages($cfg));
+
+        try {
+            $result = $uploads->uploadAndProcess(
+                file: $uploadedFile instanceof UploadedFile
+                    ? $uploadedFile
+                    : $request->file('file'),
+                user: $user,
+                siteId: $siteId,
+                copyIndex: $copyIndex,
+                cartKey: $this->cartIdentityKey($cart[$lineKey]),
+                replace: null,
+                title: pathinfo($displayName !== '' ? $displayName : ($uploadedFile?->getClientOriginalName() ?? 'article.docx'), PATHINFO_FILENAME),
+                country: $market['country'],
+                language: $market['language'],
+                imageRights: ContentSubmission::IMAGE_RIGHTS_NONE,
+            );
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'error' => UserFacingError::message($e, 'The article could not be uploaded. Please try again.'),
+                'message' => UserFacingError::message($e, 'The article could not be uploaded. Please try again.'),
+            ], 500);
+        }
+
+        if (! ($result['ok'] ?? false)) {
+            $message = $result['message'] ?? 'Unable to upload document.';
+
+            return response()->json([
+                'success' => false,
+                'error' => $message,
+                'message' => $message,
+                'title' => $result['title'] ?? 'Upload failed',
+            ], 422);
+        }
+
+        $submission = $result['submission'] ?? null;
+        if (! $submission instanceof ContentSubmission) {
+            return response()->json([
+                'success' => false,
+                'error' => 'The article could not be uploaded. Please try again.',
+                'message' => 'The article could not be uploaded. Please try again.',
+            ], 500);
+        }
+
+        $submission = $submission->fresh() ?? $submission;
+        if (! $submission->canOrderFromLibrary()) {
+            $message = $submission->libraryFixSummary()
+                ?: ($result['message'] ?? 'Article uploaded, but it still needs a fix in Content Library before this placement is ready.');
+
+            return response()->json(array_merge([
+                'success' => false,
+                'error' => $message,
+                'message' => $message,
+                'approved' => false,
+                'content_library_url' => route('advertiser.content-library', ['upload' => 1, 'edit' => $submission->id]),
+            ], $this->cartPayloadForClient()), 422);
+        }
+
+        $request->merge([
+            'content_submission_id' => $submission->id,
+            'copy_index' => $copyIndex,
+        ]);
+
+        $assigned = $this->assignCartArticlePayload($request);
+        $payload = $assigned->getData(true);
+        if (! is_array($payload)) {
+            $payload = [];
+        }
+        $payload['uploaded'] = true;
+        $payload['approved'] = true;
+        $payload['filename'] = $submission->original_filename ?: $displayName;
+        $payload['submission_id'] = $submission->id;
+        if (! isset($payload['message']) || $payload['message'] === '') {
+            $payload['message'] = 'Article uploaded and assigned to this placement.';
+        }
+
+        return response()->json($payload, $assigned->getStatusCode());
+    }
+
+    /**
+     * @return array{country: string, language: string}|null
+     */
+    private function cartUploadMarket(Site $site): ?array
+    {
+        $pairs = app(CountryLanguagePairs::class);
+        $countries = array_values(array_filter(array_map(
+            static fn ($code) => strtolower(trim((string) $code)),
+            $site->countryCodes() !== [] ? $site->countryCodes() : [(string) $site->country]
+        )));
+        $languages = array_values(array_filter(array_map(
+            static fn ($code) => strtolower(trim((string) $code)),
+            $site->languageCodes() !== [] ? $site->languageCodes() : [(string) $site->language]
+        )));
+
+        foreach ($countries as $country) {
+            foreach ($languages as $language) {
+                if ($pairs->isAllowedPair($country, $language)) {
+                    return ['country' => $country, 'language' => $language];
+                }
+            }
+            foreach ($pairs->languageCodesForCountry($country) as $language) {
+                if ($pairs->isAllowedPair($country, $language)) {
+                    return ['country' => $country, 'language' => $language];
+                }
+            }
+        }
+
+        return null;
+    }
+
     private function assignCartArticlePayload(Request $request)
     {
         $data = $request->validate([
@@ -1666,7 +2847,7 @@ class CatalogController extends Controller
         $submissionId = isset($data['content_submission_id']) ? (int) $data['content_submission_id'] : 0;
         $copyIndex = max(0, (int) ($data['copy_index'] ?? 0));
 
-        $cart = session()->get('cart', []);
+        $cart = $this->leftoverSessionCart();
         $lineKey = null;
         foreach ($cart as $key => $item) {
             $matches = $hasHomepageInput
@@ -1720,10 +2901,15 @@ class CatalogController extends Controller
             ], 422);
         }
 
-        if ($this->cartUsesSubmissionId($cart, $submissionId, $lineKey, $copyIndex)) {
+        if ($this->cartUsesSubmissionId($cart, $submissionId, $lineKey, $copyIndex)
+            || $this->articlePlacement()->isLockedToAnotherSite($submission, $cart, $siteId, $copyIndex)) {
+            $lockedSiteId = $this->articlePlacement()->lockedSiteId($submission, $cart, $copyIndex);
+            $lockedName = $this->cartSiteName($cart, $lockedSiteId);
+
             return response()->json([
                 'success' => false,
-                'error' => 'That article is already assigned to another placement in your cart. Each article can only be published on one site.',
+                'error' => $this->articlePlacement()->lockMessage($lockedName),
+                'message' => $this->articlePlacement()->lockMessage($lockedName),
             ], 422);
         }
 
@@ -1762,10 +2948,10 @@ class CatalogController extends Controller
         $submission = $submission->fresh() ?? $submission;
 
         $ids[$copyIndex] = $submission->id;
-        $cart[$lineKey] = $this->normalizeCartLineForSite(
-            $site,
-            $this->applyCartLineContentIds($cart[$lineKey], $ids)
-        );
+        $assigned = $this->applyCartLineContentIds($cart[$lineKey], $ids);
+        $assigned['content_source'] = WritingFeeService::SOURCE_BUYER;
+        $assigned['article_choice'] = 'upload';
+        $cart[$lineKey] = $this->normalizeCartLineForSite($site, $assigned);
         $mismatchNote = ContentSubmission::languageMismatchLabel(
             (string) $submission->language,
             $site->languageCodes()
@@ -1804,7 +2990,7 @@ class CatalogController extends Controller
 
             $site = Site::query()->catalogVisible()->where('id', $id)->first();
             if (! $site) {
-                $this->putCatalogVisibleCart(session()->get('cart', []));
+                $this->putCatalogVisibleCart($this->leftoverSessionCart());
 
                 return response()->json([
                     'success' => false,
@@ -1834,9 +3020,10 @@ class CatalogController extends Controller
             }
             $resolvedHomepageDays = $homepageResolved['days'];
 
-            $cart = session()->get('cart', []);
+            $cart = $this->leftoverSessionCart();
             $attachArticleId = null;
             $librarySubmission = null;
+            $libraryLockMessage = null;
 
             if (session('ordering_from_library') && session('checkout_content_submission_id')) {
                 $sessionArticleId = (int) session('checkout_content_submission_id');
@@ -1864,7 +3051,8 @@ class CatalogController extends Controller
                         ], 422);
                     }
 
-                    $alreadyAssigned = $this->cartUsesSubmissionId($cart, (int) $librarySubmission->id);
+                    $alreadyAssigned = $this->cartUsesSubmissionId($cart, (int) $librarySubmission->id)
+                        || $this->articlePlacement()->isLockedToAnotherSite($librarySubmission, $cart, (int) $id);
                     $existingLineKey = null;
                     foreach ($cart as $key => $item) {
                         if ($this->cartLineMatches($item, (int) $id, $sensitiveType, $resolvedHomepageDays)) {
@@ -1874,6 +3062,13 @@ class CatalogController extends Controller
                     }
                     $slotEmpty = $existingLineKey === null
                         || (($this->cartLineContentIds($cart[$existingLineKey])[0] ?? 0) <= 0);
+                    $libraryLockMessage = null;
+                    if ($alreadyAssigned) {
+                        $lockedSiteId = $this->articlePlacement()->lockedSiteId($librarySubmission, $cart);
+                        $libraryLockMessage = $this->articlePlacement()->lockMessage(
+                            $this->cartSiteName($cart, $lockedSiteId)
+                        );
+                    }
 
                     if (! $alreadyAssigned && $slotEmpty) {
                         if (! app(OrderPaymentService::class)->replaceUnpaidLeftoversIfStillOrderable(
@@ -1906,11 +3101,11 @@ class CatalogController extends Controller
             }
 
             $minBulk = (int) config('site_promotions.bulk.min_qty', 3);
-            $maxBulk = (int) config('site_promotions.bulk.max_qty', 5);
+            $maxBulk = (int) config('site_promotions.bulk.max_qty', 10);
             $wantsBulk = $request->boolean('bulk') || $request->boolean('bulk_hint');
             $requestedQty = (int) $request->input('quantity', 0);
 
-            // Bulk deals (Buy 3–5) start as a multi-article pack so the cart
+            // Bulk deals (Buy 3–10) start as a multi-article pack so the cart
             // opens with one document slot per placement to publish separately.
             $isBulkPackAdd = false;
             if ($wantsBulk && $site->joinsBulkDiscount()) {
@@ -2046,6 +3241,8 @@ class CatalogController extends Controller
                 if ($attachNote) {
                     $message .= ' Note: '.$attachNote.' (preferred match is same language).';
                 }
+            } elseif ($libraryLockMessage) {
+                $message = $libraryLockMessage;
             } elseif ($nextQty > 1) {
                 $message = 'Added '.$nextQty.' article placements. Attach a separate Content Library document for each before checkout.';
             } else {
@@ -2057,13 +3254,18 @@ class CatalogController extends Controller
                 'cart_count' => $cartCount,
                 'cart_total' => $cartTotal,
                 'message' => $message,
+                'article_locked' => $libraryLockMessage !== null,
             ], $this->cartPayloadForClient()));
         } catch (\InvalidArgumentException $e) {
-            return response()->json(['success' => false, 'error' => UserFacingError::message($e, 'This site could not be added to your cart.')], 422);
-        } catch (\Exception $e) {
+            $message = UserFacingError::message($e, 'This site could not be added to your cart.');
+
+            return response()->json(['success' => false, 'error' => $message, 'message' => $message], 422);
+        } catch (\Throwable $e) {
             Log::error('Error adding to cart: '.$e->getMessage());
 
-            return response()->json(['success' => false, 'error' => UserFacingError::message($e, 'Could not add this site to your cart. Please try again.')], 500);
+            $message = UserFacingError::message($e, 'Could not add this site to your cart. Please try again.');
+
+            return response()->json(['success' => false, 'error' => $message, 'message' => $message], 500);
         }
     }
 
@@ -2079,7 +3281,7 @@ class CatalogController extends Controller
             $sensitiveType = $sensitiveType !== '' ? $sensitiveType : null;
             $hasHomepageInput = $request->exists('homepage_days');
             $homepageDays = $hasHomepageInput ? $request->input('homepage_days') : null;
-            $cart = session()->get('cart', []);
+            $cart = $this->leftoverSessionCart();
 
             foreach ($cart as $key => $item) {
                 $matches = $hasHomepageInput
@@ -2094,11 +3296,13 @@ class CatalogController extends Controller
 
             $this->putCatalogVisibleCart(array_values($cart));
 
-            return response()->json(array_merge(['success' => true], $this->cartPayloadForClient()));
-        } catch (\Exception $e) {
+            return $this->jsonSuccessfulCartPayload();
+        } catch (\Throwable $e) {
             Log::error('Error removing from cart: '.$e->getMessage());
 
-            return response()->json(['success' => false, 'error' => UserFacingError::message($e, 'Could not remove this item from your cart. Please try again.')], 500);
+            $message = UserFacingError::message($e, 'Could not remove this item from your cart. Please try again.');
+
+            return response()->json(['success' => false, 'error' => $message, 'message' => $message], 500);
         }
     }
 
@@ -2115,7 +3319,7 @@ class CatalogController extends Controller
             $sensitiveType = $sensitiveType !== '' ? $sensitiveType : null;
             $hasHomepageInput = $request->exists('homepage_days');
             $homepageDays = $hasHomepageInput ? $request->input('homepage_days') : null;
-            $cart = session()->get('cart', []);
+            $cart = $this->leftoverSessionCart();
 
             foreach ($cart as $key => $item) {
                 $matches = $hasHomepageInput
@@ -2144,12 +3348,241 @@ class CatalogController extends Controller
 
             $this->putCatalogVisibleCart($cart);
 
-            return response()->json(array_merge(['success' => true], $this->cartPayloadForClient()));
-        } catch (\Exception $e) {
+            return $this->jsonSuccessfulCartPayload();
+        } catch (\Throwable $e) {
             Log::error('Error updating cart: '.$e->getMessage());
 
-            return response()->json(['success' => false, 'error' => UserFacingError::message($e, 'Could not update your cart. Please try again.')], 500);
+            $message = UserFacingError::message($e, 'Could not update your cart. Please try again.');
+
+            return response()->json(['success' => false, 'error' => $message, 'message' => $message], 500);
         }
+    }
+
+    /**
+     * Change homepage duration or sensitive topic on an existing cart line.
+     */
+    public function configureCartLine(Request $request)
+    {
+        try {
+            $rawId = $request->input('id');
+            $id = is_numeric($rawId) ? (int) $rawId : 0;
+            $sensitiveType = search_text($request->input('sensitive_type'));
+            $sensitiveType = $sensitiveType !== '' ? $sensitiveType : null;
+            $hasHomepageInput = $request->exists('homepage_days');
+            $homepageDays = $hasHomepageInput ? $request->input('homepage_days') : null;
+
+            $newSensitiveRaw = $request->exists('new_sensitive_type')
+                ? $request->input('new_sensitive_type')
+                : $request->input('sensitive_type');
+            $newSensitive = search_text($newSensitiveRaw);
+            $newSensitive = $newSensitive !== '' ? $newSensitive : null;
+
+            $newHome = $request->exists('new_homepage_days')
+                ? $request->input('new_homepage_days')
+                : $homepageDays;
+
+            $site = Site::query()->catalogVisible()->where('id', $id)->first();
+            if (! $site) {
+                $this->putCatalogVisibleCart($this->leftoverSessionCart());
+
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Site not found or inactive.',
+                ], 404);
+            }
+
+            try {
+                $resolved = $this->cartPricing()->resolveHomepageSelection($site, $newHome, false);
+            } catch (\InvalidArgumentException $e) {
+                return response()->json([
+                    'success' => false,
+                    'error' => UserFacingError::message($e, 'That homepage promotion option is not available for this site.'),
+                ], 422);
+            }
+
+            try {
+                $this->cartPricing()->resolveSensitiveAdditional($site, $newSensitive);
+            } catch (\InvalidArgumentException $e) {
+                return response()->json([
+                    'success' => false,
+                    'error' => UserFacingError::message($e, 'That sensitive topic is not available for this site.'),
+                ], 422);
+            }
+
+            $cart = $this->leftoverSessionCart();
+            $fromKey = null;
+            foreach ($cart as $key => $item) {
+                if (! is_array($item)) {
+                    continue;
+                }
+                $matches = $hasHomepageInput
+                    ? $this->cartLineMatches($item, $id, $sensitiveType, $homepageDays)
+                    : ((int) ($item['id'] ?? 0) === $id
+                        && (($item['sensitive_type'] ?? null) == ($sensitiveType ?: null)));
+                if ($matches) {
+                    $fromKey = $key;
+                    break;
+                }
+            }
+
+            if ($fromKey === null) {
+                return response()->json(array_merge([
+                    'success' => false,
+                    'error' => 'That cart line is no longer there.',
+                ], $this->cartPayloadForClient()), 404);
+            }
+
+            $line = $cart[$fromKey];
+            $line['sensitive_type'] = $newSensitive;
+            $line['homepage_days'] = $resolved['days'];
+            if ($request->exists('content_source')
+                || $request->exists('writing_target_url')
+                || $request->exists('writing_anchor_text')) {
+                $line = app(CheckoutAddOnService::class)->applyWritingChoiceToLine(
+                    $line,
+                    $site,
+                    (string) $request->input('content_source', $line['content_source'] ?? WritingFeeService::SOURCE_BUYER),
+                    $request->exists('writing_target_url') ? (string) $request->input('writing_target_url') : null,
+                    $request->exists('writing_anchor_text') ? (string) $request->input('writing_anchor_text') : null
+                );
+                if (CheckoutAddOnService::isWrittenSource($line)) {
+                    $line = $this->applyCartLineContentIds(
+                        $line,
+                        array_fill(0, max(1, (int) ($line['quantity'] ?? 1)), 0)
+                    );
+                }
+            }
+
+            $toKey = null;
+            foreach ($cart as $key => $item) {
+                if ($key === $fromKey || ! is_array($item)) {
+                    continue;
+                }
+                if ($this->cartLineMatches($item, $id, $newSensitive, $resolved['days'])) {
+                    $toKey = $key;
+                    break;
+                }
+            }
+
+            if ($toKey !== null) {
+                $target = $cart[$toKey];
+                $maxBulk = (int) config('site_promotions.bulk.max_qty', 10);
+                $mergedQty = min(
+                    $maxBulk,
+                    max(1, (int) ($target['quantity'] ?? 1)) + max(1, (int) ($line['quantity'] ?? 1))
+                );
+                $assigned = [];
+                foreach (array_merge($this->cartLineContentIds($target), $this->cartLineContentIds($line)) as $submissionId) {
+                    if ((int) $submissionId > 0) {
+                        $assigned[] = (int) $submissionId;
+                    }
+                }
+                $padded = array_fill(0, $mergedQty, 0);
+                foreach ($assigned as $i => $submissionId) {
+                    if ($i >= $mergedQty) {
+                        break;
+                    }
+                    $padded[$i] = $submissionId;
+                }
+                $target['quantity'] = $mergedQty;
+                $target['sensitive_type'] = $newSensitive;
+                $target['homepage_days'] = $resolved['days'];
+                $target = $this->applyCartLineContentIds($target, $padded);
+                $cart[$toKey] = $this->normalizeCartLineForSite($site, $target);
+                unset($cart[$fromKey]);
+            } else {
+                $cart[$fromKey] = $this->normalizeCartLineForSite($site, $line);
+            }
+
+            $this->putCatalogVisibleCart(array_values($cart));
+
+            return $this->jsonSuccessfulCartPayload();
+        } catch (\InvalidArgumentException $e) {
+            $message = UserFacingError::message($e, 'Those cart options could not be saved.');
+
+            return response()->json([
+                'success' => false,
+                'error' => $message,
+                'message' => $message,
+            ], 422);
+        } catch (\Throwable $e) {
+            Log::error('Error configuring cart line: '.$e->getMessage());
+
+            $message = UserFacingError::message($e, 'Could not update those cart options. Please try again.');
+
+            return response()->json([
+                'success' => false,
+                'error' => $message,
+                'message' => $message,
+            ], 500);
+        }
+    }
+
+    /**
+     * Apply writing to every cart line that still lacks an article.
+     */
+    public function writeAllUnreadyCartLines(Request $request)
+    {
+        try {
+            $cart = $this->leftoverSessionCart();
+            $addons = app(CheckoutAddOnService::class);
+            $siteIds = collect($cart)->pluck('id')->filter()->unique()->values();
+            $sites = $siteIds->isEmpty()
+                ? collect()
+                : Site::query()->catalogVisible()->whereIn('id', $siteIds)->get()->keyBy('id');
+
+            foreach ($cart as $i => $line) {
+                if (! is_array($line) || $this->cartLineHasArticleOrWriting($line)) {
+                    continue;
+                }
+                $site = $sites->get((int) ($line['id'] ?? 0));
+                if (! $site instanceof Site) {
+                    continue;
+                }
+                $line = $addons->applyWritingChoiceToLine(
+                    $line,
+                    $site,
+                    WritingFeeService::SOURCE_WRITTEN
+                );
+                $line = $this->applyCartLineContentIds(
+                    $line,
+                    array_fill(0, max(1, (int) ($line['quantity'] ?? 1)), 0)
+                );
+                $cart[$i] = $this->normalizeCartLineForSite($site, $line);
+            }
+
+            $this->putCatalogVisibleCart(array_values($cart));
+
+            return $this->jsonSuccessfulCartPayload();
+        } catch (\Throwable $e) {
+            Log::error('Error writing all unready cart lines: '.$e->getMessage());
+
+            $message = UserFacingError::message($e, 'Could not order writing for those sites. Please try again.');
+
+            return response()->json([
+                'success' => false,
+                'error' => $message,
+                'message' => $message,
+            ], 500);
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $line
+     */
+    private function cartLineHasArticleOrWriting(array $line): bool
+    {
+        if (CheckoutAddOnService::isWrittenSource($line)) {
+            return true;
+        }
+
+        foreach ($this->cartLineContentIds($line) as $submissionId) {
+            if ((int) $submissionId > 0) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -2157,9 +3590,10 @@ class CatalogController extends Controller
      */
     public function clearCart(Request $request)
     {
-        session()->forget(['cart', 'checkout_content_submission_id', 'checkout_schedule', 'ordering_from_library', GuestPostWizardController::SESSION_KEY]);
+        session()->forget(['checkout_content_submission_id', 'checkout_schedule', 'ordering_from_library', GuestPostWizardController::SESSION_KEY]);
+        $this->forgetAdvertiserSessionCart();
 
-        return response()->json(['success' => true]);
+        return $this->jsonSuccessfulCartPayload();
     }
 
     /**
@@ -2192,7 +3626,7 @@ class CatalogController extends Controller
     private function renderCheckoutPage(Request $request)
     {
         $this->syncPrunedSessionCart();
-        $cart = session()->get('cart', []);
+        $cart = $this->leftoverSessionCart();
 
         if (empty($cart)) {
             return redirect()->route('advertiser.catalog')->with('error', 'Your cart is empty or contains sites you can’t order.');
@@ -2227,12 +3661,19 @@ class CatalogController extends Controller
 
             return [$key => true];
         })->all();
-        $cartItems = collect($cartItems)->map(function (array $item) use ($payableSiteKeys) {
+        $deferredSiteKeys = collect($deferredCart)->mapWithKeys(function ($row) {
+            $key = $this->cartIdentityKey($row);
+
+            return [$key => true];
+        })->all();
+        $cartItems = collect($cartItems)->map(function (array $item) use ($payableSiteKeys, $deferredSiteKeys) {
             $key = $this->cartIdentityKey($item);
             $item['paying_now'] = isset($payableSiteKeys[$key]);
+            $item['stays_in_cart'] = isset($deferredSiteKeys[$key]);
 
             return $item;
         })->all();
+        $cartItems = app(CheckoutAddOnService::class)->checkoutViewItems($cartItems);
 
         if (empty($cartItems)) {
             session()->forget(['cart', 'checkout_content_submission_id', 'checkout_schedule', GuestPostWizardController::SESSION_KEY]);
@@ -2302,6 +3743,46 @@ class CatalogController extends Controller
         );
         session(['checkout_reference_code' => $checkoutReferenceCode]);
 
+        $checkoutProject = app(AdvertiserProjectCheckout::class)->checkoutContext(
+            (int) auth()->id(),
+            $request->input('project_id', session('checkout_project_id')),
+            $checkoutArticles
+        );
+        $checkoutProjects = $checkoutProject['projects'];
+        $checkoutSelectedProjectId = $checkoutProject['selected_project_id'];
+        $checkoutSuggestedProjectId = $checkoutProject['suggested_project_id'];
+        $checkoutDuplicateHosts = $checkoutProject['duplicate_hosts'];
+        $bankTransferAllowed = DepositPaymentConfig::allowsBankTransfer(
+            auth()->user(),
+            $checkoutWallet?->currency ?? null
+        );
+
+        // Re-normalize so pack quoted vs live prices are stamped for the notice.
+        $packPriceChanges = [];
+        try {
+            $noticeSites = collect($cart)->pluck('id')->filter()->unique()->values();
+            $noticeSiteModels = $noticeSites->isEmpty()
+                ? collect()
+                : Site::query()->whereIn('id', $noticeSites)->get()->keyBy('id');
+            $normalizedForNotices = [];
+            foreach ($cart as $noticeLine) {
+                if (! is_array($noticeLine)) {
+                    continue;
+                }
+                $noticeSite = $noticeSiteModels->get((int) ($noticeLine['id'] ?? 0));
+                if (! $noticeSite) {
+                    continue;
+                }
+                $normalizedForNotices[] = $this->normalizeCartLineForSite($noticeSite, $noticeLine);
+            }
+            $packPriceChanges = app(OrderPackService::class)->priceChangeNotices(
+                $normalizedForNotices !== [] ? $normalizedForNotices : $cart
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Pack price-change notices failed: '.$e->getMessage());
+            $packPriceChanges = [];
+        }
+
         return view('advertiser.checkout', array_merge(compact(
             'cartItems',
             'deferredItems',
@@ -2322,6 +3803,12 @@ class CatalogController extends Controller
             'stripeConfigured',
             'paypalConfigured',
             'checkoutReferenceCode',
+            'checkoutProjects',
+            'checkoutSelectedProjectId',
+            'checkoutSuggestedProjectId',
+            'checkoutDuplicateHosts',
+            'bankTransferAllowed',
+            'packPriceChanges',
         ), $scheduleContext));
     }
 
@@ -2337,7 +3824,7 @@ class CatalogController extends Controller
 
         try {
             $prunedCart = $this->cartPricing()->syncAdvertiserSessionCart(auth()->user());
-            $cart = session()->get('cart', []);
+            $cart = app(CheckoutAddOnService::class)->applyRequestToCart($this->leftoverSessionCart(), $request);
 
             if (empty($cart)) {
                 if (($prunedCart['removed_owned'] ?? []) !== []) {
@@ -2364,6 +3851,14 @@ class CatalogController extends Controller
             // Bank / Wise / crypto never create an order here. Do not cancel
             // leftovers before sending the advertiser to Add Funds.
             if (in_array($paymentMethod, ['wise', 'crypto', 'bank'], true)) {
+                if ($paymentMethod === 'bank'
+                    && ! DepositPaymentConfig::allowsBankTransfer(auth()->user())) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => DepositPaymentConfig::bankUnavailableMessage(),
+                    ], 422);
+                }
+
                 $cartTotal = $this->estimateCartTotal($cart, (int) $userId);
 
                 return response()->json([
@@ -2420,7 +3915,7 @@ class CatalogController extends Controller
             if ($preview['payable'] === []) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'No websites are ready for checkout yet. Assign an approved article to at least one site, then pay.',
+                    'message' => 'No websites are ready for checkout yet. Assign an approved article or choose writing on at least one site, then pay.',
                 ], 422);
             }
 
@@ -2459,6 +3954,7 @@ class CatalogController extends Controller
             }
 
             $this->persistCheckoutScheduleSession($checkoutContent['schedule']);
+            $this->rememberCheckoutProject((int) $userId, $request->input('project_id'), $checkoutContent);
 
             // Do not cancel leftovers here. Stripe session create, saved-card
             // charge, and wallet attach can still fail; Pay again must survive
@@ -2470,7 +3966,7 @@ class CatalogController extends Controller
             if ($payableCart === []) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'No websites are ready for checkout yet. Assign an approved article to at least one site, then pay.',
+                    'message' => 'No websites are ready for checkout yet. Assign an approved article or choose writing on at least one site, then pay.',
                 ], 422);
             }
 
@@ -2600,6 +4096,7 @@ class CatalogController extends Controller
                 'lines' => $packageLines,
                 'payment_method' => 'paypal',
                 'paypal_order_id' => null,
+                'project_id' => $this->checkoutProjectId((int) $userId),
             ]);
 
             if ($bonusApplied > 0) {
@@ -2675,7 +4172,11 @@ class CatalogController extends Controller
             $orderItem = $line['orderItem'] ?? [];
             $submission = $line['submission'] ?? null;
             $site = is_array($orderItem) ? ($orderItem['site'] ?? null) : null;
-            if (! $site instanceof Site || ! $submission instanceof ContentSubmission) {
+            if (! $site instanceof Site) {
+                continue;
+            }
+            $written = is_array($orderItem) && CheckoutAddOnService::isWrittenSource($orderItem);
+            if (! $written && ! $submission instanceof ContentSubmission) {
                 continue;
             }
             if ((int) $site->publisher_id === (int) $userId) {
@@ -2686,6 +4187,9 @@ class CatalogController extends Controller
                 'site_name' => $site->site_name,
                 'site_url' => $site->site_url,
                 'price' => $orderItem['price'],
+                'bulk_pack' => ! empty($orderItem['bulk_pack']),
+                'discount_percent' => $orderItem['discount_percent'] ?? null,
+                'copy_number' => $orderItem['copy_number'] ?? null,
                 'sensitive_type' => $orderItem['sensitive_type'] ?? null,
                 'additional_price' => $orderItem['additional_price'] ?? 0,
                 'homepage_days' => $orderItem['homepage_days'] ?? null,
@@ -2695,16 +4199,28 @@ class CatalogController extends Controller
                 'publisher_price' => $orderItem['publisher_price'] ?? null,
                 'platform_fee_percent' => $orderItem['platform_fee_percent'] ?? null,
                 'platform_fee_amount' => $orderItem['platform_fee_amount'] ?? null,
-                'content_submission_id' => $submission->id,
-                'content_link' => route('advertiser.content-submissions.download', $submission),
-                'content_disk' => $submission->disk,
-                'content_path' => $submission->path,
-                'content_original_name' => $submission->original_filename,
-                'content_mime' => $submission->mime,
-                'anchor_text' => $submission->anchor_text,
-                'target_url' => $submission->target_url,
-                'feature_image_url' => $submission->feature_image_url,
-                'moderation_status' => $submission->moderation_status,
+                ...OrderItem::fxSnapshotFromPricing($orderItem),
+                ...app(CheckoutAddOnService::class)->orderColumns($orderItem),
+                ...app(CheckoutAddOnService::class)->orderItemColumns($orderItem),
+                'content_source' => $orderItem['content_source'] ?? WritingFeeService::SOURCE_BUYER,
+                'writing_target_url' => $orderItem['writing_target_url'] ?? null,
+                'writing_anchor_text' => $orderItem['writing_anchor_text'] ?? null,
+                'content_submission_id' => $submission instanceof ContentSubmission ? $submission->id : null,
+                'content_link' => $submission instanceof ContentSubmission
+                    ? route('advertiser.content-submissions.download', $submission)
+                    : (CheckoutAddOnService::isWrittenSource($orderItem) ? OrderItem::PENDING_WRITTEN_LINK : null),
+                'content_disk' => $submission instanceof ContentSubmission ? $submission->disk : null,
+                'content_path' => $submission instanceof ContentSubmission ? $submission->path : null,
+                'content_original_name' => $submission instanceof ContentSubmission ? $submission->original_filename : null,
+                'content_mime' => $submission instanceof ContentSubmission ? $submission->mime : null,
+                'anchor_text' => $submission instanceof ContentSubmission
+                    ? $submission->anchor_text
+                    : ($orderItem['writing_anchor_text'] ?? null),
+                'target_url' => $submission instanceof ContentSubmission
+                    ? $submission->target_url
+                    : ($orderItem['writing_target_url'] ?? null),
+                'feature_image_url' => $submission instanceof ContentSubmission ? $submission->feature_image_url : null,
+                'moderation_status' => $submission instanceof ContentSubmission ? $submission->moderation_status : null,
             ];
         }
 
@@ -2910,7 +4426,7 @@ class CatalogController extends Controller
         try {
             $orderNumbers = $paidOrders->pluck('order_number')->implode(', ');
             $paidCount = $paidOrders->count();
-            $remaining = count(session('cart', []));
+            $remaining = count($this->leftoverSessionCart());
             $scheduledOrders = $paidOrders->filter(fn (Order $order) => ($order->publication_mode ?? '') === 'scheduled');
             $successMsg = $paidCount.' order(s) paid successfully! Order numbers: '.$orderNumbers;
             if ($scheduledOrders->isNotEmpty()) {
@@ -3066,12 +4582,15 @@ class CatalogController extends Controller
                         'sensitive_type' => $orderItem['sensitive_type'],
                         'additional_price' => $orderItem['additional_price'],
                         'paid_at' => now(),
-                    ], $this->scheduleOrderFields($schedule))));
+                    ], $this->scheduleOrderFields($schedule), $this->checkoutProjectFields((int) $userId), app(CheckoutAddOnService::class)->orderColumns($orderItem))));
                     $item = OrderItem::create($schema->filterExistingColumns(
                         'order_items',
-                        $this->orderItemPayload($order->id, $site, $orderItem, $submission)
+                        $this->orderItemPayload($order->id, $site, $orderItem, $submission instanceof ContentSubmission ? $submission : null)
                     ));
-                    $this->attachSubmissionToOrder($submission, $order, $item);
+                    if ($submission instanceof ContentSubmission) {
+                        $this->attachSubmissionToOrder($submission, $order, $item);
+                    }
+                    app(ArticleWritingService::class)->initializePaidItem($item, $site instanceof Site ? $site : null);
                     $created->push($order);
                 }
                 if ($created->isEmpty()) {
@@ -3154,6 +4673,7 @@ class CatalogController extends Controller
             'schedule' => $schedule,
             'lines' => $packageLines,
             'stripe_session_id' => OrderPaymentService::PENDING_STRIPE_SESSION_ID,
+            'project_id' => $this->checkoutProjectId((int) $userId),
         ]);
 
         if ($bonusApplied > 0) {
@@ -3179,18 +4699,19 @@ class CatalogController extends Controller
         // Same Stripe Checkout pattern as Add Funds — no pending order rows yet.
         try {
             Stripe::setApiKey(config('services.stripe.secret'));
+            $charge = app(PlatformCharge::class)->quote((float) $amountDue);
 
             $sessionPayload = [
                 'payment_method_types' => ['card'],
                 'line_items' => [[
                     'price_data' => [
-                        'currency' => 'eur',
+                        'currency' => $charge['stripe'],
                         'product_data' => [
                             'name' => 'Order Package - '.count($packageLines).' item(s)',
                             'description' => 'Order reference: '.$referenceCode
                                 .($bonusApplied > 0 ? ' (bonus −€'.number_format($bonusApplied, 2).')' : ''),
                         ],
-                        'unit_amount' => StripePaymentService::toCents($amountDue),
+                        'unit_amount' => StripePaymentService::toCents($charge['amount']),
                     ],
                     'quantity' => 1,
                 ]],
@@ -3203,6 +4724,9 @@ class CatalogController extends Controller
                     'user_id' => (string) $userId,
                     'order_count' => (string) count($packageLines),
                     'expected_amount' => (string) $amountDue,
+                    'eur_amount' => (string) $charge['euros'],
+                    'charge_currency' => $charge['code'],
+                    'charge_amount' => (string) $charge['amount'],
                     'order_total' => (string) $totalAmount,
                     'bonus_applied' => (string) $bonusApplied,
                 ],
@@ -3213,6 +4737,9 @@ class CatalogController extends Controller
                         'user_id' => (string) $userId,
                         'bonus_applied' => (string) $bonusApplied,
                         'expected_amount' => (string) $amountDue,
+                        'eur_amount' => (string) $charge['euros'],
+                        'charge_currency' => $charge['code'],
+                        'charge_amount' => (string) $charge['amount'],
                         'order_total' => (string) $totalAmount,
                     ],
                 ],
@@ -3303,16 +4830,20 @@ class CatalogController extends Controller
         }
 
         try {
+            $charge = app(PlatformCharge::class)->quote((float) $amountDue);
             $payResult = app(StripeCustomerService::class)->payWithSavedCard(
                 $user,
                 $paymentMethodId,
-                StripePaymentService::toCents($amountDue),
+                StripePaymentService::toCents($charge['amount']),
                 [
                     'type' => 'order_payment',
                     'reference_code' => $referenceCode,
                     'user_id' => (string) $userId,
                     'order_count' => (string) $itemCount,
                     'expected_amount' => (string) $amountDue,
+                    'eur_amount' => (string) $charge['euros'],
+                    'charge_currency' => $charge['code'],
+                    'charge_amount' => (string) $charge['amount'],
                     'order_total' => (string) $totalAmount,
                     'bonus_applied' => (string) $bonusApplied,
                 ],
@@ -3758,13 +5289,16 @@ class CatalogController extends Controller
                     'sensitive_type' => $orderItem['sensitive_type'],
                     'additional_price' => $orderItem['additional_price'],
                     'paid_at' => now(),
-                ], $this->scheduleOrderFields($schedule))));
+                ], $this->scheduleOrderFields($schedule), $this->checkoutProjectFields((int) $userId), app(CheckoutAddOnService::class)->orderColumns($orderItem))));
 
                 $item = OrderItem::create($schema->filterExistingColumns(
                     'order_items',
-                    $this->orderItemPayload($order->id, $site, $orderItem, $submission)
+                    $this->orderItemPayload($order->id, $site, $orderItem, $submission instanceof ContentSubmission ? $submission : null)
                 ));
-                $this->attachSubmissionToOrder($submission, $order, $item);
+                if ($submission instanceof ContentSubmission) {
+                    $this->attachSubmissionToOrder($submission, $order, $item);
+                }
+                app(ArticleWritingService::class)->initializePaidItem($item, $site instanceof Site ? $site : null);
 
                 $createdOrders[] = $order;
             }
@@ -3789,6 +5323,27 @@ class CatalogController extends Controller
                         ]),
                     ]);
                 }
+            }
+
+            try {
+                app(OrderPackService::class)->linkCreatedOrders(
+                    $createdOrders,
+                    ['lines' => array_map(function ($line) {
+                        $oi = is_array($line['orderItem'] ?? null) ? $line['orderItem'] : [];
+                        $site = $oi['site'] ?? null;
+
+                        return [
+                            'site_id' => $site instanceof Site ? $site->id : ($oi['id'] ?? null),
+                            'bulk_pack' => ! empty($oi['bulk_pack']),
+                            'discount_percent' => $oi['discount_percent'] ?? null,
+                            'price' => $oi['price'] ?? null,
+                        ];
+                    }, $fulfillableLines)]
+                );
+            } catch (\Throwable $e) {
+                Log::warning('Pack link after wallet checkout failed: '.$e->getMessage(), [
+                    'reference_code' => $referenceCode,
+                ]);
             }
 
             DB::commit();
@@ -3890,10 +5445,13 @@ class CatalogController extends Controller
                     'status' => $this->initialOrderStatus($schedule),
                     'sensitive_type' => $orderItem['sensitive_type'],
                     'additional_price' => $orderItem['additional_price'],
-                ], $this->scheduleOrderFields($schedule)));
+                ], $this->scheduleOrderFields($schedule), $this->checkoutProjectFields((int) $userId), app(CheckoutAddOnService::class)->orderColumns($orderItem)));
 
-                $item = OrderItem::create($this->orderItemPayload($order->id, $site, $orderItem, $submission));
-                $this->attachSubmissionToOrder($submission, $order, $item);
+                $item = OrderItem::create($this->orderItemPayload($order->id, $site, $orderItem, $submission instanceof ContentSubmission ? $submission : null));
+                if ($submission instanceof ContentSubmission) {
+                    $this->attachSubmissionToOrder($submission, $order, $item);
+                }
+                app(ArticleWritingService::class)->initializePaidItem($item, $site instanceof Site ? $site : null);
 
                 $createdOrders[] = $order;
             }
@@ -4128,7 +5686,7 @@ class CatalogController extends Controller
 
             $orderNumbers = $paidOrders->pluck('order_number')->implode(', ');
             $paidCount = $paidOrders->count();
-            $remaining = count(session('cart', []));
+            $remaining = count($this->leftoverSessionCart());
             $scheduledOrders = $paidOrders->filter(fn (Order $order) => ($order->publication_mode ?? '') === 'scheduled');
             $successMsg = $paidCount.' order(s) paid successfully! Order numbers: '.$orderNumbers;
             if ($scheduledOrders->isNotEmpty()) {
@@ -4236,6 +5794,10 @@ class CatalogController extends Controller
                 }
 
                 try {
+                    if (class_exists(PartnerAlertService::class)
+                        && app(PartnerAlertService::class)->sendNewOrderIfPartner($publisher, $site, $siteOrdersList)) {
+                        continue;
+                    }
                     Mail::to($publisher->email)->send(new SiteOwnerOrderNotification($site, $siteOrdersList));
                     Log::info('Order notification email sent to publisher', [
                         'site_id' => $site->id,
@@ -4321,18 +5883,42 @@ class CatalogController extends Controller
 
             DB::beginTransaction();
 
-            // Update order status back to 'processing'
-            $order->update([
-                'status' => 'processing',
-            ]);
-
-            // Mark unpaid lines as modification requested AND RESET TIMER.
-            // Do not rewind a line that already paid the publisher.
+            $touchedPublisher = false;
+            $touchedManaged = false;
+            $partnerOnly = true;
             foreach ($order->items as $item) {
                 if ($item->isPayoutComplete()) {
                     continue;
                 }
+                if ($item->isManagedBySlb()) {
+                    $partnerOnly = false;
+                    $touchedManaged = true;
+                    $payload = [
+                        'modification_requested' => 'yes',
+                        'modification_requested_at' => now(),
+                        'live_url_submitted_at' => now(),
+                        'auto_approve_triggered' => false,
+                        'managed_internal_status' => ManagedFulfilmentService::STATUS_WITH_PUBLISHER,
+                    ];
+                    if (Schema::hasColumn('order_items', 'auto_approve_reminder_sent_at')) {
+                        $payload['auto_approve_reminder_sent_at'] = null;
+                    }
+                    if (Schema::hasColumn('order_items', 'completion_notes')) {
+                        $payload['completion_notes'] = $request->reason;
+                    }
+                    $item->update(app(CheckoutSchemaService::class)->filterExistingColumns('order_items', $payload));
 
+                    continue;
+                }
+                if (class_exists(PartnerChannel::class)
+                    && PartnerChannel::itemIsPartner($item)) {
+                    app(PartnerCorrectionService::class)
+                        ->buyerRequest($item, $reason, auth()->user());
+
+                    continue;
+                }
+                $partnerOnly = false;
+                $touchedPublisher = true;
                 $payload = [
                     'modification_requested' => 'yes',
                     'modification_requested_at' => now(),
@@ -4348,12 +5934,19 @@ class CatalogController extends Controller
                 $item->update($payload);
             }
 
+            // Partner corrections wait for admin relay; do not bounce the order yet.
+            if ($touchedPublisher || $touchedManaged || ! $partnerOnly) {
+                $order->update(['status' => 'processing']);
+            }
+
             DB::commit();
 
-            // Persist a chat message so publishers see the revision request in the thread.
-            // Contact-detail share/ask in the reason is saved but not delivered to the publisher.
+            // Persist a chat message so publishers / SLB staff see the revision request in the thread.
+            // Contact-detail share/ask in the reason is saved but not delivered to the counterpart.
             try {
-                $chatBody = "Revision requested: {$request->reason}\nPlease update the article, then paste the corrected live URL in this chat to resubmit.";
+                $chatBody = $touchedManaged && ! $touchedPublisher
+                    ? "Revision requested: {$request->reason}\nOur team will handle this correction."
+                    : "Revision requested: {$request->reason}\nPlease update the article, then paste the corrected live URL in this chat to resubmit.";
                 $guard = app(OrderChatContactGuard::class)->inspect($chatBody, OrderChatContactGuard::MODE_CONTENT);
                 OrderChatMessage::create([
                     'order_id' => $order->id,
@@ -4373,7 +5966,7 @@ class CatalogController extends Controller
 
             $publishers = [];
             foreach ($order->items as $item) {
-                if ($item->isPayoutComplete()) {
+                if ($item->isPayoutComplete() || $item->isManagedBySlb()) {
                     continue;
                 }
                 $publisher = $item->site?->publisher;
@@ -4384,17 +5977,40 @@ class CatalogController extends Controller
 
             foreach ($publishers as $publisher) {
                 try {
+                    if ($publisher->isSupplyPartner()) {
+                        continue;
+                    }
                     Mail::to($publisher->email)->send(new ModificationRequested($order, $request->reason));
                 } catch (\Throwable $e) {
                     Log::error('Failed to send email: '.$e->getMessage());
                 }
             }
 
-            app(InAppNotificationService::class)->notifyModificationRequested($order, $request->reason);
+            if ($touchedManaged && ! $touchedPublisher) {
+                try {
+                    foreach (app(ManagedFulfilmentService::class)->chatStaffReceivers($order) as $staff) {
+                        if (! $staff->email) {
+                            continue;
+                        }
+                        Mail::to($staff->email)->send(new ModificationRequested($order, $request->reason));
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning('Managed revision staff mail failed', [
+                        'order_id' => $order->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+
+            if ($touchedPublisher) {
+                app(InAppNotificationService::class)->notifyModificationRequested($order, $request->reason);
+            }
 
             return response()->json([
                 'success' => true,
-                'message' => 'Change request sent to the publisher.',
+                'message' => $touchedManaged && ! $touchedPublisher
+                    ? 'Change request sent to our team.'
+                    : 'Change request sent to the publisher.',
             ]);
 
         } catch (\Throwable $e) {
@@ -4526,17 +6142,17 @@ class CatalogController extends Controller
         try {
             // Keep badge in sync: drop inactive/missing lines before counting.
             $this->syncPrunedSessionCart();
-            $cart = session()->get('cart', []);
-            $count = array_sum(array_column($cart, 'quantity'));
+            $cart = $this->leftoverSessionCart();
+            $counts = $this->cartCountMeta($cart);
             $total = round(array_sum(array_map(
                 fn ($item) => ((float) ($item['price'] ?? 0)) * ((int) ($item['quantity'] ?? 0)),
                 $cart
             )), 2);
 
-            return response()->json([
-                'count' => $count,
+            return response()->json(array_merge($counts, [
+                'count' => $counts['cart_count'],
                 'cart_total' => $total,
-            ]);
+            ]));
         } catch (\Throwable $e) {
             report($e);
 
@@ -4736,17 +6352,18 @@ class CatalogController extends Controller
             }
 
             Stripe::setApiKey(config('services.stripe.secret'));
+            $retryCharge = app(PlatformCharge::class)->quote((float) $chargeAmount);
 
             $retryPayload = [
                 'payment_method_types' => ['card'],
                 'line_items' => [[
                     'price_data' => [
-                        'currency' => 'eur',
+                        'currency' => $retryCharge['stripe'],
                         'product_data' => [
                             'name' => 'Order retry - '.$package->count().' item(s)',
                             'description' => 'Order reference: '.$referenceCode,
                         ],
-                        'unit_amount' => StripePaymentService::toCents($chargeAmount),
+                        'unit_amount' => StripePaymentService::toCents($retryCharge['amount']),
                     ],
                     'quantity' => 1,
                 ]],
@@ -4763,6 +6380,9 @@ class CatalogController extends Controller
                     'user_id' => (string) auth()->id(),
                     'order_count' => (string) $package->count(),
                     'expected_amount' => (string) $chargeAmount,
+                    'eur_amount' => (string) $retryCharge['euros'],
+                    'charge_currency' => $retryCharge['code'],
+                    'charge_amount' => (string) $retryCharge['amount'],
                     'order_total' => (string) $packageTotal,
                     'bonus_applied' => '0',
                     'is_retry' => '1',
@@ -4896,10 +6516,7 @@ class CatalogController extends Controller
             return null;
         }
 
-        return Project::query()
-            ->where('user_id', $userId)
-            ->whereKey($projectId)
-            ->first();
+        return app(AdvertiserProjectCheckout::class)->owned($userId, $projectId);
     }
 
     /**
@@ -4920,7 +6537,7 @@ class CatalogController extends Controller
             }
 
             $query = AdvertiserOrderStatus::needsActionQuery($userId);
-            Project::constrainOrdersByHost($query, (string) $project->project_url);
+            app(AdvertiserProjectCheckout::class)->constrainOrdersToProject($query, $project, 'needs_you');
 
             return $query->count();
         } catch (\Throwable) {
@@ -4944,10 +6561,47 @@ class CatalogController extends Controller
         }
 
         $stage = strtolower(search_text($request->input('project_stage')));
-        Project::constrainOrdersByHost($query, (string) $project->project_url);
-        if (Project::isKnownStageFilter($stage)) {
-            Project::constrainOrdersByStage($query, $stage, (string) $project->project_url);
+        app(AdvertiserProjectCheckout::class)->constrainOrdersToProject(
+            $query,
+            $project,
+            Project::isKnownStageFilter($stage) ? $stage : null
+        );
+    }
+
+    /**
+     * Persist the checkout project so wallet, Stripe, and PayPal creates share it.
+     *
+     * @param  array{lines?: array<int, array{submission?: mixed}>}  $checkoutContent
+     */
+    private function rememberCheckoutProject(int $userId, mixed $raw, array $checkoutContent): ?int
+    {
+        $urls = [];
+        foreach ($checkoutContent['lines'] ?? [] as $line) {
+            $submission = $line['submission'] ?? null;
+            if (is_object($submission) && isset($submission->target_url)) {
+                $urls[] = (string) $submission->target_url;
+            }
         }
+
+        $id = app(AdvertiserProjectCheckout::class)->resolveId($userId, $raw, $urls);
+        session(['checkout_project_id' => $id]);
+
+        return $id;
+    }
+
+    private function checkoutProjectId(int $userId): ?int
+    {
+        return app(AdvertiserProjectCheckout::class)->resolveId($userId, session('checkout_project_id'));
+    }
+
+    /**
+     * @return array{project_id?: int}
+     */
+    private function checkoutProjectFields(int $userId): array
+    {
+        $id = $this->checkoutProjectId($userId);
+
+        return $id ? ['project_id' => $id] : [];
     }
 
     /**
@@ -5027,6 +6681,15 @@ class CatalogController extends Controller
         }
 
         if ($scanned === 0 && ($checkoutContent['lines'] ?? []) !== []) {
+            $writtenOnly = collect($checkoutContent['lines'])->every(function ($line) {
+                $orderItem = is_array($line['orderItem'] ?? null) ? $line['orderItem'] : [];
+
+                return CheckoutAddOnService::isWrittenSource($orderItem);
+            });
+            if ($writtenOnly) {
+                return null;
+            }
+
             return response()->json([
                 'success' => false,
                 'message' => 'A Content Library article no longer passes content policy. Edit it and try again.',
@@ -5155,7 +6818,11 @@ class CatalogController extends Controller
             $loadItems = AdvertiserOrderStatus::itemsTableAvailable();
             $query = Order::where('user_id', $userId);
             if ($loadItems) {
-                $query->with(OrderItemDispute::tableAvailable() ? ['items.latestDispute'] : ['items']);
+                $with = OrderItemDispute::tableAvailable() ? ['items.latestDispute'] : ['items'];
+                if (Schema::hasColumn('orders', 'project_id') && Schema::hasTable('projects')) {
+                    $with[] = 'project:id,project_name';
+                }
+                $query->with($with);
             }
 
             $search = search_text($request->input('search'));
@@ -5239,14 +6906,49 @@ class CatalogController extends Controller
             } else {
                 $query->orderBy('created_at', 'desc')->orderBy('id', 'desc');
             }
-            $orders = $query->paginate(20);
+            $packService = app(OrderPackService::class);
+            $page = max(1, (int) $request->input('page', 1));
+            $perPage = 20;
+            $pageUnits = null;
+            $pageOrders = collect();
+            $pagination = null;
+
+            if ($packService->available()) {
+                $orderedRows = collect(
+                    (clone $query)->toBase()->select('orders.id', 'orders.order_pack_id')->get()
+                );
+                $units = $packService->collapseOrderedRowsToUnits($orderedRows);
+                $pageSlice = $packService->paginateUnits($units, $page, $perPage);
+                $pageUnits = $packService->expandPackUnitSiblingOrderIds($pageSlice['units']);
+                $pageIds = $packService->flattenUnitIds($pageUnits);
+                $pagination = $pageSlice['pagination'];
+
+                if ($pageIds !== []) {
+                    $loaded = (clone $query)->whereIn('orders.id', $pageIds)->get()->keyBy('id');
+                    $pageOrders = collect($pageIds)
+                        ->map(fn ($id) => $loaded->get((int) $id))
+                        ->filter();
+                }
+            } else {
+                $paginator = $query->paginate($perPage);
+                $pageOrders = collect($paginator->items());
+                $pagination = [
+                    'current_page' => $paginator->currentPage(),
+                    'last_page' => $paginator->lastPage(),
+                    'per_page' => $paginator->perPage(),
+                    'total' => $paginator->total(),
+                    'from' => $paginator->firstItem(),
+                    'to' => $paginator->lastItem(),
+                ];
+            }
+
             if (! $loadItems) {
-                foreach ($orders->items() as $order) {
+                foreach ($pageOrders as $order) {
                     $order->setRelation('items', collect());
                 }
             }
 
-            $orderIds = collect($orders->items())->pluck('id');
+            $orderIds = $pageOrders->pluck('id');
             $unreadByOrder = collect();
             try {
                 if (Schema::hasTable('order_chat_messages') && $orderIds->isNotEmpty()) {
@@ -5263,7 +6965,7 @@ class CatalogController extends Controller
             }
 
             $clawbacks = app(OrderClawbackService::class);
-            $ordersPayload = collect($orders->items())->map(function ($order) use ($unreadByOrder, $clawbacks) {
+            $ordersPayload = $pageOrders->map(function ($order) use ($unreadByOrder, $clawbacks) {
                 $order->unread_chat = (int) ($unreadByOrder[$order->id] ?? 0);
                 try {
                     $order->items_count = $order->items->count();
@@ -5292,18 +6994,14 @@ class CatalogController extends Controller
 
             $needsAction = $this->advertiserNeedsActionCount($request, (int) $userId);
 
+            $grouped = $packService->groupOrderPayloads($ordersPayload, $pageUnits);
+
             return response()->json([
                 'success' => true,
-                'orders' => $ordersPayload,
+                'orders' => $ordersPayload->values()->all(),
+                'grouped' => $grouped,
                 'needs_action' => $needsAction,
-                'pagination' => [
-                    'current_page' => $orders->currentPage(),
-                    'last_page' => $orders->lastPage(),
-                    'per_page' => $orders->perPage(),
-                    'total' => $orders->total(),
-                    'from' => $orders->firstItem(),
-                    'to' => $orders->lastItem(),
-                ],
+                'pagination' => $pagination,
             ]);
         } catch (\Throwable $e) {
             Log::error('Stack trace: '.$e->getTraceAsString());
@@ -5396,8 +7094,12 @@ class CatalogController extends Controller
         }
 
         try {
+            $with = OrderItemDispute::tableAvailable()
+                ? ['items.latestDispute', 'items.site']
+                : ['items.site'];
+
             return Order::where('user_id', $userId)
-                ->with(OrderItemDispute::tableAvailable() ? ['items.latestDispute'] : ['items'])
+                ->with($with)
                 ->find($id);
         } catch (\Throwable $e) {
             try {
@@ -5618,24 +7320,40 @@ class CatalogController extends Controller
                 if ($site && $site->publisher_id) {
                     $publisher = User::find($site->publisher_id);
 
-                    if ($publisher && $publisherRoleId) {
-                        $publisherWallet = Wallet::lockOrCreateForRole($publisher->id, $publisherRoleId);
+                    // Managed by SLB: settled off-platform — never credit the catalog publisher wallet.
+                    if ($orderItem->isManagedBySlb()) {
+                        Log::info('Skipping publisher wallet credit for Managed by SLB approval', [
+                            'order_id' => $order->id,
+                            'order_item_id' => $orderItem->id,
+                        ]);
 
-                        // Publisher payout excludes the platform markup retained on the base price
-                        $amount = (float) $orderItem->publisherPayoutAmount();
-                        $advertiserPaid = round((float) $orderItem->price, 2);
-                        // Never credit more than the advertiser paid for this line
-                        // (guards legacy rows / discount edge cases).
-                        if ($amount > $advertiserPaid) {
+                        continue;
+                    }
+
+                    if ($publisher && class_exists(PartnerSettlement::class)
+                        && app(PartnerSettlement::class)->settleOnApproval($orderItem)) {
+                        continue;
+                    }
+
+                    if ($publisher && $publisherRoleId) {
+                        $credit = $orderItem->cappedPublisherCredit();
+                        $publisherWallet = Wallet::lockOrCreateForRole(
+                            $publisher->id,
+                            $publisherRoleId,
+                            $credit['currency']
+                        );
+                        $amount = $credit['amount'];
+                        $advertiserPaid = $credit['advertiser_eur'];
+                        if ($credit['capped']) {
                             Log::warning('Capping publisher payout to advertiser-paid amount', [
                                 'order_id' => $order->id,
                                 'order_item_id' => $orderItem->id,
                                 'advertiser_paid' => $advertiserPaid,
-                                'uncapped_payout' => $amount,
+                                'uncapped_payout' => $credit['uncapped'],
+                                'publisher_currency' => $credit['currency'],
                             ]);
-                            $amount = $advertiserPaid;
                         }
-                        $platformFee = max(0, round($advertiserPaid - $amount, 2));
+                        $platformFee = $credit['platform_fee_eur'];
                         $publisherWallet->credit($amount);
 
                         try {
@@ -5733,6 +7451,21 @@ class CatalogController extends Controller
                 }
             } catch (\Throwable $e) {
                 Log::error('Order approved but completion notification failed', [
+                    'order_id' => $order->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
+            try {
+                $packService = app(OrderPackService::class);
+                if ($packService->available() && $order->order_pack_id) {
+                    $pack = $packService->findForOrder($order->fresh());
+                    if ($pack) {
+                        $packService->refreshStatus($pack);
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Pack status refresh after approve failed', [
                     'order_id' => $order->id,
                     'error' => $e->getMessage(),
                 ]);
@@ -5890,7 +7623,26 @@ class CatalogController extends Controller
         $payload['empty_items_message'] = AdvertiserOrderDetails::emptyItemsMessage($order);
         $payload['policy_note'] = AdvertiserOrderDetails::policyNote($order);
         $payload['has_live_url'] = AdvertiserOrderDetails::hasLiveUrl($order);
+        $payload['has_article_approved'] = AdvertiserOrderDetails::hasArticleApproved($order);
+        $payload['article_approved_at'] = AdvertiserOrderDetails::articleApprovedAt($order)?->toIso8601String();
         $payload['timeline_steps'] = AdvertiserOrderStatus::timelineSteps($order);
+        $payload['invoice_download_url'] = AdvertiserOrderDetails::invoiceDownloadUrl($order);
+        $payload['link_terms'] = AdvertiserOrderDetails::linkTerms($order);
+        $payload['project_id'] = Schema::hasColumn('orders', 'project_id')
+            ? ($order->project_id ? (int) $order->project_id : null)
+            : null;
+        $payload['project_name'] = $order->relationLoaded('project')
+            ? ($order->project?->project_name)
+            : null;
+        $payload['order_pack_id'] = Schema::hasColumn('orders', 'order_pack_id') && $order->order_pack_id
+            ? (int) $order->order_pack_id
+            : null;
+        if (! array_key_exists('can_cancel', $payload)) {
+            $payload['can_cancel'] = app(AdvertiserApiSerializer::class)->cancellable($order);
+        }
+        $payload['pack'] = $payload['order_pack_id']
+            ? app(OrderPackService::class)->summaryForOrder($order)
+            : null;
 
         return $payload;
     }
@@ -5946,7 +7698,11 @@ class CatalogController extends Controller
     private function resolveCheckoutContent(array $cart, ?array $contentSubmissions, array $scheduleInput, bool $allowReplaceableLeftover = false): array|JsonResponse
     {
         try {
-            $expandedOrders = $this->cartPricing()->expandCart($cart, auth()->id());
+            $expandedOrders = app(CheckoutAddOnService::class)->decorateExpandedOrders(
+                $this->cartPricing()->expandCart($cart, auth()->id()),
+                $cart,
+                request()
+            );
         } catch (\Throwable $e) {
             $message = UserFacingError::message($e, 'Some items in your cart are no longer available. Please review your cart.');
             $status = str_contains($e->getMessage(), 'own websites') ? 422 : 200;
@@ -5988,6 +7744,26 @@ class CatalogController extends Controller
                 ?? null;
 
             if (! $submissionId) {
+                if (CheckoutAddOnService::isWrittenSource($orderItem)
+                    || CheckoutAddOnService::isWrittenSource(is_array($cartLine) ? $cartLine : [])) {
+                    $target = trim((string) ($orderItem['writing_target_url'] ?? ''));
+                    if ($target === '') {
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'Add a target URL for each written article.',
+                        ], 422);
+                    }
+                    if (! preg_match('#^https://#i', $target)) {
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'The writing target URL must start with https://.',
+                        ], 422);
+                    }
+                    $lines[] = ['orderItem' => $orderItem, 'submission' => null];
+
+                    continue;
+                }
+
                 return response()->json([
                     'success' => false,
                     'message' => 'Select an approved article from your Content Library before placing this order.',
@@ -5997,7 +7773,7 @@ class CatalogController extends Controller
             if (isset($seen[$submissionId])) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Each Content Library article can only be ordered on one website.',
+                    'message' => LibraryArticlePlacement::LOCK_MESSAGE,
                 ], 422);
             }
 
@@ -6018,6 +7794,15 @@ class CatalogController extends Controller
                     'success' => false,
                     'message' => $submission?->libraryFixSummary()
                         ?: 'Only approved Content Library articles can be ordered. Edit and resubmit articles that need correction.',
+                ], 422);
+            }
+
+            if ($this->articlePlacement()->isLockedToAnotherSite($submission, $cart, (int) $site->id, $copyIndex)) {
+                $lockedSiteId = $this->articlePlacement()->lockedSiteId($submission, $cart, $copyIndex);
+
+                return response()->json([
+                    'success' => false,
+                    'message' => $this->articlePlacement()->lockMessage($this->cartSiteName($cart, $lockedSiteId)),
                 ], 422);
             }
 
@@ -6079,6 +7864,10 @@ class CatalogController extends Controller
         foreach ($checkoutContent['lines'] as $index => $line) {
             $submission = $line['submission'] ?? null;
             if (! $submission instanceof ContentSubmission) {
+                if (CheckoutAddOnService::isWrittenSource($line['orderItem'] ?? [])) {
+                    continue;
+                }
+
                 return response()->json([
                     'success' => false,
                     'message' => 'Only approved Content Library articles can be ordered. Edit and resubmit articles that need correction.',
@@ -6293,24 +8082,28 @@ class CatalogController extends Controller
      * @param  array<string, mixed>  $orderItem
      * @return array<string, mixed>
      */
-    private function orderItemPayload(int $orderId, Site $site, array $orderItem, ContentSubmission $submission): array
+    private function orderItemPayload(int $orderId, Site $site, array $orderItem, ?ContentSubmission $submission = null): array
     {
-        return [
+        $addons = app(CheckoutAddOnService::class)->orderItemColumns($orderItem);
+
+        return array_merge([
             'order_id' => $orderId,
             'site_id' => $site->id,
             'site_name' => $site->site_name,
             'site_url' => $site->site_url,
             'price' => $orderItem['price'],
-            'content_link' => route('advertiser.content-submissions.download', $submission),
-            'content_submission_id' => $submission->id,
-            'content_disk' => $submission->disk,
-            'content_path' => $submission->path,
-            'content_original_name' => $submission->original_filename,
-            'content_mime' => $submission->mime,
-            'anchor_text' => $submission->anchor_text,
-            'target_url' => $submission->target_url,
-            'feature_image_url' => $submission->feature_image_url,
-            'moderation_status' => $submission->moderation_status,
+            'content_link' => $submission
+                ? route('advertiser.content-submissions.download', $submission)
+                : (CheckoutAddOnService::isWrittenSource($orderItem) ? OrderItem::PENDING_WRITTEN_LINK : null),
+            'content_submission_id' => $submission?->id,
+            'content_disk' => $submission?->disk,
+            'content_path' => $submission?->path,
+            'content_original_name' => $submission?->original_filename,
+            'content_mime' => $submission?->mime,
+            'anchor_text' => $submission?->anchor_text ?: ($orderItem['writing_anchor_text'] ?? null),
+            'target_url' => $submission?->target_url ?: ($orderItem['writing_target_url'] ?? null),
+            'feature_image_url' => $submission?->feature_image_url,
+            'moderation_status' => $submission?->moderation_status,
             'sensitive_type' => $orderItem['sensitive_type'],
             'additional_price' => $orderItem['additional_price'],
             'homepage_days' => $orderItem['homepage_days'] ?? null,
@@ -6320,7 +8113,8 @@ class CatalogController extends Controller
             'publisher_price' => $orderItem['publisher_price'] ?? null,
             'platform_fee_percent' => $orderItem['platform_fee_percent'] ?? null,
             'platform_fee_amount' => $orderItem['platform_fee_amount'] ?? null,
-        ];
+            ...OrderItem::fxSnapshotFromPricing($orderItem),
+        ], $addons);
     }
 
     private function attachSubmissionToOrder(ContentSubmission $submission, Order $order, OrderItem $item): void
@@ -6438,6 +8232,55 @@ class CatalogController extends Controller
                 $line['orderItem'] = $orderItem;
             }
             $lines[] = $line;
+        }
+
+        // Pack lines (3–10 on one site) are all-or-nothing: if any pack site
+        // left the catalog, drop every line for that site so we never mint a
+        // partial pack under one reference.
+        $bySite = [];
+        foreach ($lines as $idx => $line) {
+            $orderItem = is_array($line['orderItem'] ?? null) ? $line['orderItem'] : [];
+            $site = $orderItem['site'] ?? null;
+            $siteId = $site instanceof Site ? (int) $site->id : (int) ($orderItem['id'] ?? 0);
+            $bySite[$siteId][] = $idx;
+        }
+        $drop = [];
+        foreach ($bySite as $siteId => $indexes) {
+            if ($siteId <= 0 || count($indexes) < BulkDiscount::minQty()) {
+                continue;
+            }
+            $isPack = false;
+            foreach ($indexes as $idx) {
+                $oi = $lines[$idx]['orderItem'] ?? [];
+                if (! empty($oi['bulk_pack'])) {
+                    $isPack = true;
+                    break;
+                }
+            }
+            if (! $isPack && count($indexes) < BulkDiscount::minQty()) {
+                continue;
+            }
+            $originalCount = 0;
+            foreach ($checkoutContent['lines'] ?? [] as $raw) {
+                $oi = is_array($raw['orderItem'] ?? null) ? $raw['orderItem'] : [];
+                $s = $oi['site'] ?? null;
+                $sid = $s instanceof Site ? (int) $s->id : (int) ($oi['id'] ?? 0);
+                if ($sid === (int) $siteId) {
+                    $originalCount++;
+                }
+            }
+            if ($originalCount >= BulkDiscount::minQty() && count($indexes) < $originalCount) {
+                foreach ($indexes as $idx) {
+                    $drop[$idx] = true;
+                }
+            }
+        }
+        if ($drop !== []) {
+            $lines = array_values(array_filter(
+                $lines,
+                fn ($line, $idx) => ! isset($drop[$idx]),
+                ARRAY_FILTER_USE_BOTH
+            ));
         }
 
         return $lines;
@@ -6585,6 +8428,12 @@ class CatalogController extends Controller
                 continue;
             }
 
+            if (CheckoutAddOnService::isWrittenSource($item)) {
+                $payable[] = $item;
+
+                continue;
+            }
+
             $quantity = max(1, (int) ($item['quantity'] ?? 1));
             $lineReady = true;
             $resolvedIds = [];
@@ -6681,7 +8530,8 @@ class CatalogController extends Controller
             return;
         }
 
-        session()->forget('cart');
+        $this->forgetAdvertiserSessionCart();
+        app(CartDisplayFx::class)->forget();
     }
 
     /**
@@ -6730,7 +8580,8 @@ class CatalogController extends Controller
         }
 
         if ($remaining === []) {
-            session()->forget('cart');
+            $this->forgetAdvertiserSessionCart();
+            app(CartDisplayFx::class)->forget();
         } else {
             $this->putCatalogVisibleCart($remaining);
         }
@@ -6867,7 +8718,7 @@ class CatalogController extends Controller
 
         $paymentService->forgetPendingCheckoutKeepLeftoverHold($referenceCode, $userId);
 
-        $restoredCart = session('cart', []);
+        $restoredCart = $this->leftoverSessionCart();
         $submissionId = session('checkout_content_submission_id');
 
         foreach ($canceled as $order) {
@@ -6876,7 +8727,7 @@ class CatalogController extends Controller
                     continue;
                 }
                 $exists = collect($restoredCart)->contains(
-                    fn ($row) => (int) ($row['id'] ?? 0) === (int) $item->site_id
+                    fn ($row) => is_array($row) && (int) ($row['id'] ?? 0) === (int) $item->site_id
                 );
                 if (! $exists) {
                     $restoredCart[] = [
@@ -6898,6 +8749,9 @@ class CatalogController extends Controller
                 : Site::query()->catalogVisible()->whereIn('id', $siteIds)->get()->keyBy('id');
             $normalized = [];
             foreach ($restoredCart as $line) {
+                if (! is_array($line)) {
+                    continue;
+                }
                 $site = $sites->get((int) ($line['id'] ?? 0));
                 if (! $site) {
                     continue;
@@ -7111,7 +8965,11 @@ class CatalogController extends Controller
         }
 
         try {
-            $expanded = $this->cartPricing()->expandCart($payableCart, $userId);
+            $expanded = app(CheckoutAddOnService::class)->decorateExpandedOrders(
+                $this->cartPricing()->expandCart($payableCart, $userId),
+                $payableCart,
+                request()
+            );
         } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,

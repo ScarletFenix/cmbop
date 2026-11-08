@@ -1,0 +1,238 @@
+<?php
+
+namespace Tests\Unit;
+
+use App\Support\CartDisplayFx;
+use App\Support\FxRate;
+use App\Support\MoneyDisplay;
+use App\Support\ViewerCountry;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
+use Tests\TestCase;
+
+class MoneyDisplayTest extends TestCase
+{
+    protected function setUp(): void
+    {
+        parent::setUp();
+        Cache::flush();
+    }
+
+    public function test_european_viewer_sees_euros(): void
+    {
+        $this->withLocalCountry(null);
+
+        $this->assertSame('EUR', app(MoneyDisplay::class)->currency());
+        $this->assertSame('€12.00', format_money(12));
+        $this->assertSame('€12.00', format_money_pay(12));
+        $this->assertSame('−€40.00', format_money(-40));
+        $this->assertSame('−€40.00', format_eur_admin(-40));
+        $this->assertSame('€12.00', format_eur_admin(12));
+        $this->assertSame('−€40.00', format_money_pay(-40));
+        $this->assertSame('+€12.00', format_money(12, ['signed' => true]));
+        $this->assertSame('−€40.00', format_money(-40, ['signed' => true]));
+        $this->assertFalse(app(MoneyDisplay::class)->displaysUsd());
+    }
+
+    public function test_javascript_money_helper_puts_minus_before_the_symbol(): void
+    {
+        $js = file_get_contents(public_path('js/slb-money.js'));
+        $this->assertIsString($js);
+        $this->assertStringContainsString("var MINUS = '\\u2212'", $js);
+        $this->assertStringNotContainsString("prefix + local + ' (≈ €' + grouped(eur) + ')'", $js);
+        $this->assertStringNotContainsString(' · about ', $js);
+        $this->assertStringContainsString('function grouped(n)', $js);
+        $this->assertStringContainsString('if (value < 0) return MINUS', $js);
+    }
+
+    public function test_us_viewer_sees_dollars_with_euro_guide(): void
+    {
+        $this->fakeFrankfurter(['USD' => 1.10, 'GBP' => 0.85]);
+        $this->withLocalCountry('US');
+
+        $this->assertTrue(app(ViewerCountry::class)->isUs());
+        $this->assertTrue(app(MoneyDisplay::class)->displaysUsd());
+        $this->assertSame('USD', app(MoneyDisplay::class)->currency());
+        $this->assertSame('$13.20', format_money(12));
+        $this->assertSame('$13.20', format_money_pay(12));
+        $this->assertStringNotContainsString('≈', format_money(12));
+        $this->assertStringNotContainsString('about', format_money_pay(12));
+    }
+
+    public function test_canada_australia_see_dollars_and_uk_sees_pounds(): void
+    {
+        $this->fakeFrankfurter(['USD' => 1.10, 'GBP' => 0.85]);
+
+        foreach (['CA', 'AU'] as $country) {
+            $this->withLocalCountry($country);
+            $this->assertSame('USD', app(MoneyDisplay::class)->currency(), $country);
+            $this->assertSame('$13.20', format_money(12), $country);
+        }
+
+        foreach (['GB', 'UK'] as $country) {
+            $this->withLocalCountry($country);
+            $this->assertSame('GBP', app(MoneyDisplay::class)->currency(), $country);
+            $this->assertSame('£10.20', format_money(12), $country);
+        }
+    }
+
+    public function test_local_cf_header_is_enough_without_cloudflare_peer(): void
+    {
+        $this->fakeFrankfurter(['USD' => 2.00, 'GBP' => 0.85]);
+        config(['fx.fake_country' => '', 'fx.force_display' => '']);
+
+        $request = Request::create('/', 'GET', [], [], [], [
+            'HTTP_CF_IPCOUNTRY' => 'US',
+            'REMOTE_ADDR' => '127.0.0.1',
+        ]);
+        $this->app->instance('request', $request);
+
+        $this->assertTrue(app(ViewerCountry::class)->isUs($request));
+        $this->assertSame('$24.00', app(MoneyDisplay::class)->format(12));
+    }
+
+    public function test_local_cf_header_canada_and_uk(): void
+    {
+        $this->fakeFrankfurter(['USD' => 1.10, 'GBP' => 0.90]);
+        config(['fx.fake_country' => '', 'fx.force_display' => '']);
+
+        $ca = Request::create('/', 'GET', [], [], [], [
+            'HTTP_CF_IPCOUNTRY' => 'CA',
+            'REMOTE_ADDR' => '127.0.0.1',
+        ]);
+        $this->assertSame('USD', app(ViewerCountry::class)->displayCurrency($ca));
+
+        $uk = Request::create('/', 'GET', [], [], [], [
+            'HTTP_CF_IPCOUNTRY' => 'UK',
+            'REMOTE_ADDR' => '127.0.0.1',
+        ]);
+        $this->assertSame('GBP', app(ViewerCountry::class)->displayCurrency($uk));
+    }
+
+    public function test_force_display_gbp_override(): void
+    {
+        $this->fakeFrankfurter(['USD' => 1.10, 'GBP' => 0.85]);
+        config(['fx.fake_country' => '', 'fx.force_display' => 'gbp']);
+
+        $this->assertSame('£10.20', format_money(12));
+    }
+
+    public function test_fx_falls_back_when_live_feed_fails(): void
+    {
+        Http::fake([
+            'api.frankfurter.app/*' => Http::response('nope', 503),
+            'www.ecb.europa.eu/*' => Http::response('nope', 503),
+        ]);
+        config([
+            'fx.currencies.USD.fallback' => 1.25,
+            'fx.force_display' => 'usd',
+        ]);
+
+        $this->assertSame(1.25, app(FxRate::class)->usdPerEur());
+        $this->assertSame('$15.00', format_money(12));
+    }
+
+    public function test_js_payload_includes_currency_and_rate(): void
+    {
+        $this->fakeFrankfurter(['USD' => 1.10, 'GBP' => 0.85]);
+        $this->withLocalCountry('AU');
+
+        $this->assertSame([
+            'currency' => 'USD',
+            'usd' => true,
+            'rate' => 1.10,
+            'cart_rate' => 1.10,
+            'symbol' => '$',
+            'guide' => true,
+        ], money_js());
+    }
+
+    public function test_cart_pay_label_locks_rate_when_live_fx_moves(): void
+    {
+        $this->fakeFrankfurter(['USD' => 1.10, 'GBP' => 0.85]);
+        config(['fx.fake_country' => 'US', 'fx.force_display' => 'usd']);
+        session([
+            'cart' => [['id' => 1, 'price' => 12, 'quantity' => 1]],
+        ]);
+        app(CartDisplayFx::class)->remember();
+
+        $this->assertSame('$13.20', format_money_pay(12));
+        $this->assertSame('$24.00', format_money_pay(12, ['rate' => 2.0]));
+        $this->assertSame(1.10, app(CartDisplayFx::class)->rate());
+        $this->assertSame(1.10, money_js()['cart_rate']);
+
+        app(CartDisplayFx::class)->forget();
+        $this->assertNull(app(CartDisplayFx::class)->rate());
+    }
+
+    /**
+     * @param  array<string, float>  $rates
+     */
+    public function test_public_ip_country_sets_display_currency_without_cloudflare(): void
+    {
+        $this->fakeFrankfurter(['USD' => 1.10, 'GBP' => 0.85]);
+        config(['fx.fake_country' => '', 'fx.force_display' => '']);
+        $this->app['env'] = 'production';
+        Http::fake([
+            'api.frankfurter.app/*' => Http::response(['rates' => ['USD' => 1.10, 'GBP' => 0.85]], 200),
+            'ipwho.is/*' => Http::response(['success' => true, 'country_code' => 'US'], 200),
+        ]);
+
+        $request = Request::create('/', 'GET', [], [], [], [
+            'REMOTE_ADDR' => '8.8.8.8',
+        ]);
+        $this->app->instance('request', $request);
+
+        $this->assertSame('US', app(ViewerCountry::class)->code($request));
+        $this->assertSame('USD', app(ViewerCountry::class)->displayCurrency($request));
+    }
+
+    private function fakeFrankfurter(array $rates): void
+    {
+        Http::fake([
+            'api.frankfurter.app/*' => Http::response(['rates' => $rates], 200),
+        ]);
+    }
+
+    public function test_deposit_local_amount_converts_to_euros_and_back(): void
+    {
+        $this->fakeFrankfurter(['USD' => 1.10, 'GBP' => 0.85]);
+        $this->withLocalCountry('GB');
+
+        $money = app(MoneyDisplay::class);
+        $this->assertSame('GBP', $money->currency());
+        $this->assertSame('£', $money->symbol());
+        $this->assertSame(58.82, $money->toEuros(50, 'GBP'));
+        $this->assertSame(42.5, $money->fromEuros(50, 'GBP'));
+        $this->assertSame(8.5, $money->fromEuros(10));
+        $this->assertSame('£50', $money->quickAmountLabel(50 / 0.85));
+        $this->assertSame('£8.50', $money->format(10));
+    }
+
+    public function test_listing_to_euros_uses_site_country_not_one_to_one(): void
+    {
+        $this->fakeFrankfurter(['USD' => 1.10, 'GBP' => 0.85]);
+        $this->withLocalCountry(null);
+
+        $money = app(MoneyDisplay::class);
+        $this->assertSame('USD', $money->currencyForCountry('us'));
+        $this->assertSame('GBP', $money->currencyForCountry('uk'));
+        $this->assertSame('EUR', $money->currencyForCountry('de'));
+        $this->assertSame('$', listing_price_symbol('us'));
+        $this->assertSame('£', listing_price_symbol('gb'));
+        $this->assertSame(12.0, $money->toEuros(13.20, 'USD'));
+        $this->assertSame(13.20, $money->fromEuros(12, 'USD'));
+        $this->assertSame(12.0, $money->toEuros(12, 'EUR'));
+    }
+
+    private function withLocalCountry(?string $country): void
+    {
+        config([
+            'fx.fake_country' => $country ?? '',
+            'fx.force_display' => '',
+            'fx.geo_display' => true,
+            'fx.currencies.USD.fallback' => 1.08,
+        ]);
+    }
+}

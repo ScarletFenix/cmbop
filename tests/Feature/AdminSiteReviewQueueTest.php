@@ -279,7 +279,7 @@ class AdminSiteReviewQueueTest extends TestCase
             ->first();
 
         $this->assertSame(InAppNotification::STATUS_ARCHIVED, $note?->status);
-        $this->assertDatabaseMissing('sites', ['id' => $siteId]);
+        $this->assertNotNull(Site::query()->find($siteId)?->archived_at);
     }
 
     public function test_queue_counts_exclude_awaiting_details_drafts(): void
@@ -315,6 +315,32 @@ class AdminSiteReviewQueueTest extends TestCase
             ]);
     }
 
+    public function test_queue_counts_exclude_archived_review_sites(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $publisher = $this->userWithRole('publisher');
+
+        $this->makePendingSite($publisher, [
+            'site_name' => 'Open Review',
+            'site_url' => 'https://open-review.example',
+            'domain' => 'open-review.example',
+        ]);
+        $this->makePendingSite($publisher, [
+            'site_name' => 'Archived Review',
+            'site_url' => 'https://archived-review.example',
+            'domain' => 'archived-review.example',
+            'archived_at' => now(),
+        ]);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.dashboard.queue-counts'))
+            ->assertOk()
+            ->assertJson([
+                'success' => true,
+                'unverified_sites' => 1,
+            ]);
+    }
+
     public function test_sites_index_needs_review_filter_and_user_sites_flags(): void
     {
         $admin = $this->userWithRole('admin');
@@ -336,7 +362,7 @@ class AdminSiteReviewQueueTest extends TestCase
             ->assertSee('Needs review queue', false)
             ->assertSee($publisher->email, false)
             ->assertDontSee($other->email, false)
-            ->assertSee('1 new', false)
+            ->assertSee('1 needs review', false)
             ->assertSee('dropNeedsReviewQueryParam', false)
             ->getContent();
 
@@ -432,5 +458,44 @@ class AdminSiteReviewQueueTest extends TestCase
         $this->assertFalse((bool) $byId[$verified->id]['needs_review']);
         $this->assertTrue((bool) $byId[$activated->id]['active']);
         $this->assertTrue((bool) $byId[$verified->id]['verified']);
+    }
+
+    public function test_sites_index_keeps_queue_strip_and_review_drawer(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $publisher = $this->userWithRole('publisher');
+        $site = $this->makePendingSite($publisher, [
+            'site_name' => 'Strip Queue Site',
+        ]);
+        $site->forceFill(['created_at' => now()->subDays(10)])->save();
+
+        $html = $this->actingAs($admin)
+            ->get(route('admin.sites.index', ['needs_review' => 1, 'flat' => 1]))
+            ->assertOk()
+            ->assertSee('staff-sites-strip', false)
+            ->assertSee('Needs review', false)
+            ->assertSee('Waiting on publisher', false)
+            ->assertSee('Live unverified', false)
+            ->assertSee('Scan failed', false)
+            ->assertSee('Add site for publisher', false)
+            ->assertSee('Websites records sheet', false)
+            ->assertSee('Submitted and waiting for a staff decision', false)
+            ->assertSee('data-staff-review', false)
+            ->assertSee('staffSiteReviewDrawer', false)
+            ->assertSee('>CSV</a>', false)
+            ->assertSee('Listed', false)
+            ->assertSee('10d', false)
+            ->getContent();
+
+        $flatStart = strpos($html, 'data-flat-queue="1"');
+        $usersStart = strpos($html, 'id="usersSection"');
+        $this->assertNotFalse($flatStart);
+        $this->assertNotFalse($usersStart);
+        $flatHtml = substr($html, $flatStart, $usersStart - $flatStart);
+        $this->assertSame(1, substr_count($flatHtml, 'name="q"'));
+        $this->assertStringNotContainsString('type="hidden" name="q"', $flatHtml);
+        $this->assertStringContainsString('renderStaffBulkResult', $html);
+        $this->assertStringContainsString('Edit site', $html);
+        $this->assertStringContainsString('Search catalog', $html);
     }
 }

@@ -4,6 +4,7 @@ namespace App\Services\Billing;
 
 use App\Models\Invoice;
 use App\Models\InvoiceSequence;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -78,11 +79,34 @@ class InvoiceNumberGenerator
         return match ($type) {
             Invoice::TYPE_DEPOSIT_RECEIPT => $this->nextReceipt($year),
             Invoice::TYPE_PAYMENT_RECEIPT,
-            Invoice::TYPE_PAYMENT_FAILURE => $this->nextPaymentReceipt($year),
+            Invoice::TYPE_PAYMENT_FAILURE,
+            Invoice::TYPE_PACK_RECEIPT => $this->nextPaymentReceipt($year),
             Invoice::TYPE_REFUND_RECEIPT => $this->nextCreditNote($year),
             Invoice::TYPE_WITHDRAWAL_PAYOUT => $this->nextPayoutStatement($year),
             default => $this->next($year),
         };
+    }
+
+    /**
+     * Calendar year for a paid_at / invoice_date. Existing numbers are never rewritten.
+     */
+    public function yearFromDate(mixed $date): ?int
+    {
+        if ($date instanceof \DateTimeInterface) {
+            $year = (int) $date->format('Y');
+
+            return ($year >= 2000 && $year <= 2100) ? $year : null;
+        }
+
+        if (is_string($date) && trim($date) !== '') {
+            try {
+                return $this->yearFromDate(Carbon::parse($date));
+            } catch (\Throwable) {
+                return null;
+            }
+        }
+
+        return null;
     }
 
     /**

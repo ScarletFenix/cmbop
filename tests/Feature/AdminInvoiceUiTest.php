@@ -9,6 +9,7 @@ use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\Billing\BillingDocumentService;
+use App\Services\Billing\InvoiceRepairQueue;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
@@ -44,7 +45,7 @@ class AdminInvoiceUiTest extends TestCase
         return $user;
     }
 
-    private function paidOrder(User $advertiser): Order
+    private function paidOrder(User $advertiser, string $paymentStatus = 'paid'): Order
     {
         $publisher = User::factory()->create();
         $site = Site::create([
@@ -66,7 +67,7 @@ class AdminInvoiceUiTest extends TestCase
             'active' => true,
         ]);
 
-        $order = DB::transaction(function () use ($advertiser, $site) {
+        $order = DB::transaction(function () use ($advertiser, $site, $paymentStatus) {
             $order = Order::create([
                 'user_id' => $advertiser->id,
                 'order_number' => 'ORD-'.uniqid(),
@@ -75,7 +76,7 @@ class AdminInvoiceUiTest extends TestCase
                 'tax' => 0,
                 'total_amount' => 115,
                 'payment_method' => 'wallet',
-                'payment_status' => 'paid',
+                'payment_status' => $paymentStatus,
                 'status' => 'pending',
                 'paid_at' => now(),
             ]);
@@ -191,7 +192,7 @@ class AdminInvoiceUiTest extends TestCase
             ->assertSee($invoice->invoice_number, false)
             ->getContent();
 
-        $this->assertStringContainsString(route('admin.users.show', $advertiser->id), $html);
+        $this->assertStringContainsString(route('admin.finance.user', $advertiser->id), $html);
         $this->assertStringContainsString(route('admin.orders.show', $order->id), $html);
         $this->assertStringContainsString('text-bg-success', $html);
     }
@@ -209,7 +210,7 @@ class AdminInvoiceUiTest extends TestCase
         $this->actingAs($admin)
             ->get(route('admin.invoices.view', $invoice))
             ->assertOk()
-            ->assertHeader('content-type', 'application/pdf');
+            ->assertSee('INVOICE #', false);
 
         $this->assertSame(0, (int) $invoice->fresh()->download_count);
     }
@@ -228,7 +229,7 @@ class AdminInvoiceUiTest extends TestCase
         $this->actingAs($admin)
             ->get(route('admin.invoices.view', $invoice))
             ->assertOk()
-            ->assertHeader('content-type', 'application/pdf');
+            ->assertSee('INVOICE #', false);
 
         $this->actingAs($admin)
             ->get(route('admin.invoices.download', $invoice))
@@ -266,7 +267,7 @@ class AdminInvoiceUiTest extends TestCase
             ->assertSee('Subtotal', false)
             ->assertSee($receipt->invoice_number, false)
             ->assertSee(route('admin.invoices.show', $receipt), false)
-            ->assertSee(route('admin.users.show', $advertiser->id), false)
+            ->assertSee(route('admin.finance.user', $advertiser->id), false)
             ->assertSee(route('admin.orders.show', $order->id), false);
     }
 
@@ -293,5 +294,39 @@ class AdminInvoiceUiTest extends TestCase
             ->assertSee('Wallet top-up', false)
             ->assertSee(route('admin.deposits', ['search' => 'DEP-UI-1']), false)
             ->assertDontSee('Cancel invoice', false);
+    }
+
+    public function test_missing_tax_tile_counts_legacy_completed_payment_status(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        $order = $this->paidOrder($advertiser, 'completed');
+        $order->forceFill(['order_number' => '797026'])->save();
+
+        $this->assertSame(1, app(InvoiceRepairQueue::class)->missingTaxInvoiceCount());
+
+        $this->actingAs($admin)
+            ->get(route('admin.invoices.index', ['queue' => 'missing']))
+            ->assertOk()
+            ->assertSee('797026', false);
+    }
+
+    public function test_number_sort_is_available(): void
+    {
+        $admin = $this->admin();
+        $user = $this->advertiser();
+        $this->stubInvoice($user, ['invoice_number' => 'INV-2026-000002', 'invoice_date' => now()->subDay()]);
+        $this->stubInvoice($user, ['invoice_number' => 'INV-2026-000001', 'invoice_date' => now()]);
+
+        $html = $this->actingAs($admin)
+            ->get(route('admin.invoices.index', ['sort' => 'number']))
+            ->assertOk()
+            ->assertSee('INV-2026-000002', false)
+            ->getContent();
+
+        $this->assertTrue(
+            strpos($html, 'INV-2026-000002') < strpos($html, 'INV-2026-000001'),
+            'Number sort should list higher invoice numbers first.'
+        );
     }
 }

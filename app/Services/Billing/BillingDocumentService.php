@@ -15,6 +15,7 @@ use App\Models\Order;
 use App\Models\User;
 use App\Models\Withdrawal;
 use App\Services\InAppNotificationService;
+use App\Services\Partners\PartnerSandbox;
 use App\Support\BillingCustomerMailSuppressor;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -38,6 +39,9 @@ class BillingDocumentService
      */
     public function handlePaymentPaid(Order $order): ?Invoice
     {
+        if (PartnerSandbox::isSandboxOrder($order)) {
+            return null;
+        }
         $order->loadMissing(['user', 'items']);
 
         if (! $order->user) {
@@ -432,38 +436,43 @@ class BillingDocumentService
     /**
      * Ops: regenerate PDFs that are missing on disk.
      *
-     * @return array{regenerated: int, failed: int}
+     * @return array{regenerated: int, failed: int, remaining: int}
      */
     public function regenerateMissingPdfs(int $limit = 50): array
     {
         $limit = max(1, min(200, $limit));
-        $scan = max(400, $limit * 8);
-
-        $docs = Invoice::query()
-            ->orderByDesc('id')
-            ->limit($scan)
-            ->get()
-            ->filter(fn (Invoice $inv) => ! $inv->pdfExists())
-            ->take($limit)
-            ->values();
-
         $regenerated = 0;
         $failed = 0;
+        $remaining = 0;
 
-        foreach ($docs as $doc) {
-            try {
-                $this->regeneratePdf($doc);
-                $regenerated++;
-            } catch (\Throwable $e) {
-                $failed++;
-                Log::error('Regenerate invoice PDF failed', [
-                    'invoice_id' => $doc->id,
-                    'error' => $e->getMessage(),
-                ]);
+        Invoice::query()->orderBy('id')->chunkById(100, function ($docs) use (&$regenerated, &$failed, &$remaining, $limit) {
+            foreach ($docs as $doc) {
+                if ($doc->pdfExists()) {
+                    continue;
+                }
+                if ($regenerated + $failed >= $limit) {
+                    $remaining++;
+
+                    continue;
+                }
+                try {
+                    $this->regeneratePdf($doc);
+                    $regenerated++;
+                } catch (\Throwable $e) {
+                    $failed++;
+                    Log::error('Regenerate invoice PDF failed', [
+                        'invoice_id' => $doc->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
             }
-        }
+        });
 
-        return compact('regenerated', 'failed');
+        return [
+            'regenerated' => $regenerated,
+            'failed' => $failed,
+            'remaining' => $remaining + $failed,
+        ];
     }
 
     protected function createDocument(Order $order, string $type, string $status, array $extra = []): Invoice
@@ -494,11 +503,21 @@ class BillingDocumentService
             if (! empty($item->sensitive_type)) {
                 $service .= ' (+ '.$item->sensitive_type.')';
             }
+            if (($item->content_source ?? '') === 'publisher' && (float) ($item->writing_fee ?? 0) > 0) {
+                $service .= ' + publisher-written article';
+            }
+            $order = $item->relationLoaded('order') ? $item->order : $item->order()->first();
+            if ($order && $order->link_guarantee) {
+                $service .= ' + 12-month link guarantee';
+            }
+
+            $liveUrl = \App\Support\MailNotificationPresenter::safeLiveUrl($item->live_url ?? null);
 
             return [
                 'description' => $service,
-                'publisher_website' => $item->site_name ?: $item->site_url,
+                'site_name' => $item->site_name,
                 'site_url' => $item->site_url,
+                'live_url' => $liveUrl,
                 'quantity' => $qty,
                 'unit_price' => $unit,
                 'line_total' => $unit * $qty,
@@ -511,7 +530,10 @@ class BillingDocumentService
             ?: $order->order_number;
 
         $payload = array_merge([
-            'invoice_number' => $this->numbers->nextForType($type),
+            'invoice_number' => $this->numbers->nextForType(
+                $type,
+                $this->numbers->yearFromDate(data_get($extra, 'paid_at') ?: $order->paid_at)
+            ),
             'type' => $type,
             'status' => $status,
             'user_id' => $order->user_id,

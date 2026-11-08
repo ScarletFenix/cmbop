@@ -1,5 +1,7 @@
 @extends('publisher.layouts.app')
 
+@section('title', 'My Sites')
+
 @section('content')
 <style>
     body {
@@ -64,9 +66,14 @@
         color: #525f7f;
     }
 
-    #quillEditor {
+    #quillEditor,
+    #siteDescTextarea {
         border-radius: 8px;
         border: 1px solid #dfe3e8;
+    }
+
+    #siteDescTextarea {
+        min-height: 200px;
     }
 
     .text-danger {
@@ -143,27 +150,57 @@
         white-space: normal;
     }
 
-    .pagination {
+    #sitesTableWrapper .pagination {
         list-style: none;
         display: flex;
-        gap: 5px;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 0.3rem;
         padding: 0;
-        margin-top: 10px;
+        margin: 0.75rem 0 0;
     }
 
-    .pagination li {
-        cursor: pointer;
-        padding: 6px 12px;
-        border: 1px solid #dfe3e8;
-        border-radius: 4px;
-        color: #525f7f;
-        transition: all 0.2s ease;
+    #sitesTableWrapper .pagination li {
+        padding: 0;
+        border: 0;
+        background: transparent;
     }
 
-    .pagination li.active {
-        background-color: #0b6266;
-        color: white;
-        border-color: #0b6266;
+    #sitesTableWrapper .pagination .page-link {
+        min-width: 2.25rem;
+        height: 2.25rem;
+        padding: 0 0.65rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.875rem;
+        font-weight: 600;
+        line-height: 1;
+        border-radius: 0.5rem;
+        color: var(--brand-primary, #1a585e);
+        background: #fff;
+        border: 1px solid var(--brand-primary-border, #b8e4e4);
+    }
+
+    #sitesTableWrapper .pagination .page-link:hover,
+    #sitesTableWrapper .pagination .page-link:focus {
+        color: var(--brand-primary, #1a585e);
+        background: var(--brand-primary-bg, #e6f5f5);
+        border-color: var(--brand-primary-soft, #3faeb2);
+        box-shadow: 0 0 0 0.2rem var(--focus-ring, rgba(26, 88, 94, 0.18));
+    }
+
+    #sitesTableWrapper .pagination .page-item.active .page-link {
+        color: #fff;
+        background: var(--brand-primary, #1a585e);
+        border-color: var(--brand-primary, #1a585e);
+    }
+
+    #sitesTableWrapper .pagination .page-item.disabled .page-link {
+        color: var(--brand-ink-muted, #697078);
+        background: #f8fafb;
+        border-color: var(--border-subtle, #e2e8f0);
+        pointer-events: none;
     }
 
     #formCard {
@@ -616,26 +653,26 @@
         gap: 6px;
         line-height: 1.2;
         padding: 0.4rem 0.9rem !important;
-        background: #fff;
-        border: 1px solid #c5d4d6;
-        color: #334155;
+        background: var(--brand-primary-bg, #e6f5f5);
+        border: 0 !important;
+        color: var(--brand-primary, #1a585e);
         box-shadow: none;
     }
     .site-status-filter:hover {
-        background: #f1f7f7;
-        border-color: #9ec5c8;
-        color: #123f42;
+        background: #d5eeee;
+        border: 0 !important;
+        color: var(--brand-primary, #1a585e);
     }
     .site-status-filter.is-active {
-        background: #0f766e;
-        border-color: #0f766e;
+        background: var(--brand-primary, #1a585e);
+        border: 0 !important;
         color: #fff;
         font-weight: 600;
         box-shadow: none;
     }
     .site-status-filter.is-active:hover {
-        background: #0d9488;
-        border-color: #0d9488;
+        background: var(--brand-primary-deep, #123f42);
+        border: 0 !important;
         color: #fff;
     }
     .site-status-filter.is-active .badge {
@@ -655,6 +692,24 @@
 <div class="container-fluid">
     <h3 class="mb-4"><span id="formHeader">Add New Website</span></h3>
 
+    @if(session('prompt_payout_setup') || request()->boolean('prompt_payout'))
+        @php
+            $payoutReady = false;
+            try {
+                $payoutReady = app(\App\Services\Wallet\PayoutProfileService::class)->availableMethods(auth()->user()) !== [];
+            } catch (\Throwable) {
+                $payoutReady = false;
+            }
+        @endphp
+        @unless($payoutReady)
+            <div class="alert alert-info alert-dismissible fade show">
+                {{ __('messages.publisher_onboard_payout_banner') }}
+                <a href="{{ route('publisher.withdraw') }}" class="alert-link ms-1">{{ __('messages.publisher_onboard_payout_banner_cta') }}</a>
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        @endunless
+    @endif
+
     @if($errors->any())
         <div class="alert alert-danger alert-dismissible fade show">
             <ul class="mb-0">
@@ -666,41 +721,83 @@
         </div>
     @endif
 
-    <button id="showFormBtn" class="btn btn-primary mb-3 shadow-sm">
-        <i class="fa fa-plus"></i> Add New Website
-    </button>
-
-    <button id="showBulkRequestBtn" type="button" class="btn mb-3 shadow-sm btn-outline-secondary ms-1"
-            data-bs-toggle="modal" data-bs-target="#bulkRequestModal"
-            @if(!empty($openBulkRequest)) disabled title="You already have an open bulk request" @endif>
-        <i class="fa fa-layer-group"></i> I want to add many sites
-    </button>
-
-    <button id="showBulkBtn" type="button" class="btn mb-3 shadow-sm btn-outline-primary ms-1">
-        <i class="fa fa-file-csv"></i> Bulk Import (Agency)
-    </button>
-
-    <button id="showClaimBtn" type="button" class="btn mb-3 shadow-sm btn-outline-warning ms-1">
-        <i class="fa fa-user-check"></i> Claim a website
-    </button>
-    <a href="{{ route('site-claims.index') }}" class="btn mb-3 shadow-sm btn-outline-secondary ms-1" id="myClaimsLink">
-        <i class="fa fa-list"></i> My claims
-    </a>
-
-    @if(!empty($awaitingDetailsCount) && $awaitingDetailsCount > 0)
-        <a href="{{ route('publisher.bulk-sites.complete') }}" class="btn mb-3 shadow-sm btn-upload ms-1" id="bulkCompleteDetailsBtn">
-            <i class="fa fa-pen-to-square"></i> Complete details ({{ $awaitingDetailsCount }})
-        </a>
+    @if(!empty($gbpListingPrompts) && $gbpListingPrompts->isNotEmpty())
+        <div class="alert alert-light border mb-3" id="gbpListingPrompt">
+            <strong>Switch these UK sites to pounds?</strong>
+            <p class="small text-muted mb-2">
+                They are still priced in euros. Confirm a GBP price to earn and withdraw in pounds.
+                Until you confirm, the listing stays in euros.
+            </p>
+            @foreach($gbpListingPrompts as $promptSite)
+                <form method="POST" action="{{ route('publisher.sites.confirm-gbp-listing', $promptSite->id) }}" class="d-flex flex-wrap align-items-end gap-2 mb-2">
+                    @csrf
+                    <div>
+                        <div class="fw-semibold">{{ $promptSite->site_name }}</div>
+                        <div class="small text-muted">{{ $promptSite->site_url }} · current €{{ number_format((float) $promptSite->price, 2) }}</div>
+                    </div>
+                    <div>
+                        <label class="form-label mb-0 small" for="gbp_listing_price_{{ $promptSite->id }}">GBP price</label>
+                        <input type="number" step="0.01" min="0" max="99999999.99" class="form-control form-control-sm"
+                               id="gbp_listing_price_{{ $promptSite->id }}" name="listing_price"
+                               value="{{ number_format($promptSite->proposedGbpListingPrice(), 2, '.', '') }}" required>
+                    </div>
+                    <button type="submit" class="btn btn-sm btn-primary">List in GBP</button>
+                    <button type="submit" form="keep-eur-{{ $promptSite->id }}" class="btn btn-sm btn-outline-secondary">Keep euros</button>
+                </form>
+                <form id="keep-eur-{{ $promptSite->id }}" method="POST" action="{{ route('publisher.sites.keep-eur-listing', $promptSite->id) }}" class="d-none">
+                    @csrf
+                </form>
+            @endforeach
+        </div>
     @endif
-    @if(!empty($detailsCompleteCount) && $detailsCompleteCount > 0)
-        <a href="{{ route('publisher.bulk-sites.review') }}" class="btn mb-3 shadow-sm btn-outline-primary ms-1" id="bulkReviewSubmitBtn">
-            <i class="fa fa-clipboard-check"></i> Review &amp; submit ({{ $detailsCompleteCount }})
-        </a>
-    @endif
+
+    <div class="mysites-toolbar">
+        <button id="showFormBtn" class="btn btn-primary shadow-sm">
+            <i class="fa fa-plus"></i> Add New Website
+        </button>
+        <button id="showClaimBtn" type="button" class="btn shadow-sm btn-warning rounded-pill">
+            <i class="fa fa-user-check"></i> Claim a website
+        </button>
+        <div class="dropdown">
+            <button class="btn btn-outline-secondary shadow-sm dropdown-toggle" type="button" id="mysitesMoreActions" data-bs-toggle="dropdown" aria-expanded="false">
+                More
+            </button>
+            <ul class="dropdown-menu" aria-labelledby="mysitesMoreActions">
+                <li>
+                    <button id="showBulkRequestBtn" type="button" class="dropdown-item"
+                            data-bs-toggle="modal" data-bs-target="#bulkRequestModal"
+                            @if(!empty($openBulkRequest)) disabled title="You already have an open bulk request" @endif>
+                        <i class="fa fa-layer-group me-1"></i> I want to add many sites
+                    </button>
+                </li>
+                <li>
+                    <button id="showBulkBtn" type="button" class="dropdown-item">
+                        <i class="fa fa-file-csv me-1"></i> Bulk Import (Agency)
+                    </button>
+                </li>
+                <li><hr class="dropdown-divider"></li>
+                <li>
+                    <a href="{{ route('site-claims.index') }}" class="dropdown-item" id="myClaimsLink">
+                        <i class="fa fa-list me-1"></i> My claims
+                    </a>
+                </li>
+            </ul>
+        </div>
+        @if(!empty($awaitingDetailsCount) && $awaitingDetailsCount > 0)
+            <a href="{{ route('publisher.bulk-sites.complete') }}" class="btn shadow-sm btn-upload" id="bulkCompleteDetailsBtn">
+                <i class="fa fa-pen-to-square"></i> Complete details ({{ $awaitingDetailsCount }})
+            </a>
+        @endif
+        @if(!empty($detailsCompleteCount) && $detailsCompleteCount > 0)
+            <a href="{{ route('publisher.bulk-sites.review') }}" class="btn shadow-sm btn-outline-primary" id="bulkReviewSubmitBtn">
+                <i class="fa fa-clipboard-check"></i> Review &amp; submit ({{ $detailsCompleteCount }})
+            </a>
+        @endif
+    </div>
 
     @if(!empty($openBulkRequest))
         @php
-            $bulkNextStep = 'Next: our marketer adds DA/DR/traffic/language/country/niches → you add descriptions & listing details → we approve.';
+            $bulkNextStep = 'Next: our team fills in the sites they accept and publishes them. You’ll be notified when those sites are active.';
             if (($awaitingDetailsCount ?? 0) > 0) {
                 $bulkNextStep = 'Next: add descriptions and listing details with Complete details, then we approve.';
             } elseif (($detailsCompleteCount ?? 0) > 0) {
@@ -772,6 +869,7 @@
                             <span class="form-text mb-0">Formats: <code>url,price</code> · tab from Excel · <code>url price</code> · URLs only</span>
                         </div>
                         <div class="small text-success mt-1 d-none" id="bulkPasteUrlsSuccess" role="status"></div>
+                        <div class="small text-warning mt-1 d-none" id="bulkPasteUrlsWarning" role="status"></div>
                         <div class="small text-danger mt-1 d-none" id="bulkPasteUrlsError" role="alert"></div>
                     </div>
 
@@ -809,7 +907,7 @@
                                         ? 'is-empty'
                                         : ($filledCount === 2 ? 'is-ready' : 'is-partial');
                                     $summaryUrl = trim($oldUrl) !== '' ? $oldUrl : 'Website URL';
-                                    $summaryPrice = trim($oldPrice) !== '' ? '€'.$oldPrice : 'No price';
+                                    $summaryPrice = trim($oldPrice) !== '' ? listing_price_symbol().$oldPrice : 'No price';
                                 @endphp
                                 <details class="bulk-url-price-row" @if($rowOpen) open @endif>
                                     <summary class="bulk-url-price-row__summary">
@@ -834,7 +932,7 @@
                                                 @error('sites.'.$i.'.url')<div class="invalid-feedback">{{ $message }}</div>@enderror
                                             </div>
                                             <div class="bulk-url-price-field bulk-url-price-field--price">
-                                                <label class="form-label" for="bulk-price-{{ $i }}">Price (€) <span class="text-danger">*</span></label>
+                                                <label class="form-label" for="bulk-price-{{ $i }}">Price ({{ listing_price_symbol() }}) <span class="text-danger">*</span></label>
                                                 <input type="number"
                                                        id="bulk-price-{{ $i }}"
                                                        name="sites[{{ $i }}][price]"
@@ -878,6 +976,7 @@
                     <p class="small text-muted mb-0">
                         If another publisher listed your site, submit a claim. We’ll verify ownership using the
                         <strong>exact website name</strong> on the listing plus your proof message.
+                        Review usually takes <strong>1–2 business days</strong>.
                     </p>
                 </div>
                 <button type="button" class="btn-close" id="closeClaimCard" aria-label="Close"></button>
@@ -885,7 +984,8 @@
             <form id="claimWebsiteForm" class="row g-3">
                 <div class="col-md-6">
                     <label class="form-label">Website URL</label>
-                    <input type="text" name="website_url" class="form-control" placeholder="example.com or https://example.com" required>
+                    <input type="text" name="website_url" id="claimWebsiteUrl" class="form-control" placeholder="example.com or https://example.com" required>
+                    <div class="form-text" id="claimUrlStatus" role="status"></div>
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">Website name (must match listing)</label>
@@ -899,9 +999,10 @@
                     <label class="form-label">Proof of ownership</label>
                     <textarea name="proof_message" class="form-control" rows="4" minlength="20" required
                               placeholder="Explain how you own this site (e.g. domain registrar email, CMS access, who listed it incorrectly…)"></textarea>
+                    <div class="form-text">Minimum 20 characters. Review usually takes 1–2 business days.</div>
                 </div>
                 <div class="col-12">
-                    <button type="submit" class="btn btn-warning">Submit claim for review</button>
+                    <button type="submit" class="btn btn-warning rounded-pill">Submit claim for review</button>
                 </div>
             </form>
         </div>
@@ -996,7 +1097,8 @@
                 <div>
                     <h5 class="mb-1">Bulk Import for Agencies</h5>
                     <p class="text-muted mb-0 small">
-                        Own 150+ websites? Upload a CSV to submit many sites at once (max 200 per upload).
+                        Have a full CSV for many sites? Upload at least 2 rows (max 200 per file).
+                        Prices use listing currency <strong>EUR or GBP</strong> — not USD.
                         Each site still needs admin approval before it goes live.
                     </p>
                 </div>
@@ -1010,13 +1112,39 @@
                 <ul class="mb-0 mt-1">
                     <li><code>country</code> / <code>language</code> = one 2-letter code each (e.g. <code>at</code> + <code>de</code> for German in Austria)</li>
                     <li>Legacy columns <code>countries</code> / <code>languages</code> still accepted (first code only)</li>
+                    <li><code>price</code> is in <code>EUR</code> or <code>GBP</code> (optional <code>price_input_currency</code> column). Listings are not accepted in USD.</li>
                     <li><code>categories</code> = exact category names, separated by <code>|</code> (max 7)</li>
                     <li><code>turnaround_time</code> = <code>24h</code>, <code>48h</code>, <code>3days</code>, <code>5days</code>, or <code>7days</code></li>
-                    <li><code>publication_time</code> = <code>6months</code>, <code>1year</code>, or <code>permanent</code></li>
+                    <li><code>publication_time</code> = {!! \App\Support\PublicationDuration::csvHint() !!}</li>
                     <li><code>link_type</code> = <code>dofollow</code> or <code>nofollow</code></li>
                     <li><code>description</code> must be at least 50 characters</li>
                     <li>Flags (<code>sponsored</code>, <code>partner_material</code>, <code>as_you_prefer</code>) use <code>1</code> / <code>0</code> — set only one</li>
                 </ul>
+                <details class="mt-2">
+                    <summary class="fw-semibold" style="cursor:pointer;">Valid category names, country codes, and language codes</summary>
+                    <div class="row g-3 mt-1">
+                        <div class="col-md-4">
+                            <div class="text-muted small mb-1">Categories</div>
+                            <div class="small" style="max-height:9rem;overflow:auto;">{{ implode(', ', $categories ?? []) }}</div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="text-muted small mb-1">Country codes</div>
+                            <div class="small" style="max-height:9rem;overflow:auto;">
+                                @foreach(($countries ?? []) as $country)
+                                    <code>{{ strtolower($country->code) }}</code> {{ $country->name }}@if(! $loop->last), @endif
+                                @endforeach
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="text-muted small mb-1">Language codes</div>
+                            <div class="small" style="max-height:9rem;overflow:auto;">
+                                @foreach(($languages ?? []) as $language)
+                                    <code>{{ strtolower($language->code) }}</code> {{ $language->name }}@if(! $loop->last), @endif
+                                @endforeach
+                            </div>
+                        </div>
+                    </div>
+                </details>
             </div>
 
             <form method="POST" action="{{ route('publisher.sites.bulk-import', absolute: false) }}" enctype="multipart/form-data">
@@ -1093,6 +1221,7 @@
                                     (Domain Authority) <span class="req" aria-hidden="true">*</span>
                                 </label>
                                 <input type="number" name="da" id="da" class="form-control" placeholder="0-100" min="0" max="100" value="{{ old_text('da') }}" required>
+                                <div class="help-text">Moz Domain Authority (0–100). Use the live Moz score for this domain.</div>
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label">
@@ -1100,6 +1229,7 @@
                                     (Domain Rating) <span class="req" aria-hidden="true">*</span>
                                 </label>
                                 <input type="number" name="dr" id="dr" class="form-control" placeholder="0-100" min="0" max="100" value="{{ old_text('dr') }}" required>
+                                <div class="help-text">Ahrefs Domain Rating (0–100). Use the live Ahrefs score for this domain.</div>
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label">Traffic <span class="req" aria-hidden="true">*</span></label>
@@ -1124,9 +1254,15 @@
                         <span class="form-section-title">Description</span>
                         <div class="row">
                             <div class="col-12">
-                                <label class="form-label">Site Description (500 words max) <span class="req" aria-hidden="true">*</span></label>
-                                <div id="quillEditor" class="border rounded" style="height: 200px;">{!! old_text('siteDescription') !!}</div>
-                                <input type="hidden" name="siteDescription" id="siteDescription" required>
+                                <label class="form-label" for="quillEditor">Site Description (500 words max) <span class="req" aria-hidden="true">*</span></label>
+                                <div id="quillEditor" class="border rounded notranslate" translate="no" style="height: 200px;">{!! old_text('siteDescription') !!}</div>
+                                <input type="hidden" name="siteDescription" id="siteDescription" value="">
+                                <div class="site-desc-meta">
+                                    <div class="help-text mb-0" id="siteDescHelp">{{ \App\Support\SiteDescriptionRules::helpText() }}</div>
+                                    <div class="site-desc-counter" id="siteDescCounter" aria-live="polite"></div>
+                                </div>
+                                @php $siteDescError = $errors->first('siteDescription'); @endphp
+                                <div id="siteDescError" class="text-danger small {{ $siteDescError ? 'd-block' : 'd-none' }}" @if($siteDescError) data-server-error="1" @endif>{{ $siteDescError }}</div>
                             </div>
                         </div>
                     </div>
@@ -1151,7 +1287,7 @@
                                         </div>
                                         <div class="single-select-options" id="countryOptions">
                                             @foreach($countries as $country)
-                                                <div class="single-select-option" data-value="{{ strtolower($country->code) }}" data-label="{{ $country->name }}">{{ $country->name }}</div>
+                                                <div class="single-select-option" data-value="{{ marketplace_option_code($country) }}" data-label="{{ marketplace_option_name($country) }}">{{ marketplace_option_name($country) }}</div>
                                             @endforeach
                                         </div>
                                     </div>
@@ -1179,7 +1315,7 @@
                                         </div>
                                         <div class="single-select-options" id="languageOptions">
                                             @foreach($languages as $language)
-                                                <div class="single-select-option" data-value="{{ strtolower($language->code) }}" data-label="{{ $language->name }}">{{ $language->name }}</div>
+                                                <div class="single-select-option" data-value="{{ marketplace_option_code($language) }}" data-label="{{ marketplace_option_name($language, 'language') }}">{{ marketplace_option_name($language, 'language') }}</div>
                                             @endforeach
                                         </div>
                                     </div>
@@ -1232,28 +1368,46 @@
                         <span class="form-section-title">Pricing & link policy</span>
                         <div class="row bg-light p-3 rounded g-3 g-form">
                             <div class="col-md-4">
-                                <label class="form-label">Price (€) <span class="req" aria-hidden="true">*</span></label>
-                                <input type="number" name="price" id="price" class="form-control" placeholder="Enter price" min="0" step="0.01" value="{{ old_text('price') }}" required>
+                                <label class="form-label" data-listing-price-label>Price <span class="req" aria-hidden="true">*</span></label>
+                                <div class="d-flex gap-2">
+                                    <select name="price_input_currency" id="price_input_currency" class="form-select" style="max-width:7rem;">
+                                        @php $defaultListingCurrency = $defaultListingCurrency ?? 'EUR'; @endphp
+                                        <option value="EUR" @selected(old('price_input_currency', $defaultListingCurrency) === 'EUR')>EUR €</option>
+                                        <option value="GBP" @selected(old('price_input_currency', $defaultListingCurrency) === 'GBP')>GBP £</option>
+                                    </select>
+                                    <input type="number" name="price" id="price" class="form-control" placeholder="Enter price" min="0" step="0.01" value="{{ old_text('price') }}" required>
+                                </div>
+                                <p class="small text-muted mb-0 mt-1" id="listingPricePreview" data-listing-price-preview></p>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label" for="writing_fee">Publisher writing fee</label>
+                                <input type="number" name="writing_fee" id="writing_fee" class="form-control" min="0" step="0.01" value="{{ old_text('writing_fee') }}" placeholder="Leave blank for default">
+                                <div class="form-check mt-2">
+                                    <input class="form-check-input" type="checkbox" name="writing_disabled" value="1" id="writing_disabled" {{ old('writing_disabled') ? 'checked' : '' }}>
+                                    <label class="form-check-label" for="writing_disabled">I do not write articles for advertisers</label>
+                                </div>
+                                <p class="small text-muted mb-0 mt-1">Default €25 for English listings and €35 for other languages when unset. Advertisers choose this at checkout; you keep the writing fee.</p>
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label">Publication Duration <span class="req" aria-hidden="true">*</span></label>
+                                @php $publicationDefault = old('publicationTime', \App\Support\PublicationDuration::DEFAULT); @endphp
                                 <select name="publicationTime" id="publicationTime" class="form-select" required>
-                                    <option value="">Select Duration</option>
-                                    <option value="6months" {{ old('publicationTime') == '6months' ? 'selected' : '' }}>6 Months</option>
-                                    <option value="1year" {{ old('publicationTime') == '1year' ? 'selected' : '' }}>1 Year</option>
-                                    <option value="permanent" {{ old('publicationTime') == 'permanent' ? 'selected' : '' }}>Permanent</option>
+                                    @foreach(\App\Support\PublicationDuration::options() as $value => $label)
+                                        <option value="{{ $value }}" @selected($publicationDefault === $value)>{{ $label }}</option>
+                                    @endforeach
                                 </select>
+                                <div class="help-text">{{ \App\Support\PublicationDuration::helpText() }}</div>
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label">Link Type <span class="req" aria-hidden="true">*</span></label>
                                 <div class="d-flex gap-3 mt-2">
                                     <div class="form-check">
                                         <input type="radio" name="link_type" id="linkTypeDofollow" value="dofollow" class="form-check-input" {{ old('link_type', 'dofollow') == 'dofollow' ? 'checked' : '' }}>
-                                        <label class="form-check-label">DoFollow</label>
+                                        <label class="form-check-label" for="linkTypeDofollow">DoFollow</label>
                                     </div>
                                     <div class="form-check">
                                         <input type="radio" name="link_type" id="linkTypeNofollow" value="nofollow" class="form-check-input" {{ old('link_type') == 'nofollow' ? 'checked' : '' }}>
-                                        <label class="form-check-label">NoFollow</label>
+                                        <label class="form-check-label" for="linkTypeNofollow">NoFollow</label>
                                     </div>
                                 </div>
                             </div>
@@ -1275,6 +1429,7 @@
                         <div class="row bg-light p-3 rounded g-3 g-form align-items-center">
                             <div class="col-12">
                                 <label class="form-label mb-2">Optional — choose one</label>
+                                <div class="help-text mb-2">{{ \App\Support\SiteTag::helpText() }}</div>
                                 <div class="d-flex flex-wrap gap-3" role="radiogroup" aria-label="Site tag">
                                     @foreach(\App\Support\SiteTag::publisherFormOptions() as $value => $label)
                                         @php $tagId = $value === '' ? 'tagNone' : 'tag'.str_replace(' ', '', ucwords(str_replace('_', ' ', $value))); @endphp
@@ -1311,7 +1466,7 @@
                                                 <input type="checkbox" name="sensitive[{{ $topic }}]" value="1" class="form-check-input sensitive-checkbox" id="sensitive{{ $topic }}" {{ old("sensitive.$topic") ? 'checked' : '' }}>
                                                 <label class="form-check-label" for="sensitive{{ $topic }}">{{ ucfirst($topic) }}</label>
                                             </div>
-                                            <input type="number" name="price_sensitive[{{ $topic }}]" class="form-control mt-1 sensitive-price" placeholder="Extra price (€)" value="{{ old_text("price_sensitive.$topic") }}" min="0" step="0.01">
+                                            <input type="number" name="price_sensitive[{{ $topic }}]" class="form-control mt-1 sensitive-price" placeholder="Extra price ({{ listing_price_symbol(old_text('country', old_text('countries')) ?: null) }})" value="{{ old_text("price_sensitive.$topic") }}" min="0" step="0.01" data-listing-price-placeholder="Extra price">
                                         </div>
                                         @endforeach
                                     </div>
@@ -1340,7 +1495,7 @@
                             <div class="row bg-light p-3 rounded mt-2 g-3">
                                 <div class="col-12">
                                     <p class="fw-semibold small mb-2">Homepage placement</p>
-                                    <p class="small text-muted mb-2">Offer putting the guest article on your homepage for 1, 7, or 30 days. Price €0 = Free. Leave unchecked to not offer that duration.</p>
+                                    <p class="small text-muted mb-2" data-listing-homepage-hint>Offer putting the guest article on your homepage for 1, 7, or 30 days. Price {{ listing_price_symbol(old_text('country', old_text('countries')) ?: null) }}0 = Free. Leave unchecked to not offer that duration.</p>
                                     <div class="d-flex flex-wrap gap-3">
                                         @foreach($homepageDays as $days)
                                             <div class="me-3" style="min-width:140px;">
@@ -1356,7 +1511,8 @@
                                                 <input type="number"
                                                        name="price_homepage[{{ $days }}]"
                                                        class="form-control mt-1 homepage-price"
-                                                       placeholder="Fee (€) — 0 = Free"
+                                                       placeholder="Fee ({{ listing_price_symbol(old_text('country', old_text('countries')) ?: null) }}) — 0 = Free"
+                                                       data-listing-fee-placeholder
                                                        value="{{ old_text("price_homepage.$days") }}"
                                                        min="0"
                                                        step="0.01"
@@ -1423,7 +1579,7 @@
 
     <div class="mt-5">
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-            <h4 class="mb-0">Your Sites</h4>
+            <h4 class="mb-0">My Sites</h4>
             <div class="d-inline-flex flex-wrap align-items-center gap-2" role="group" aria-label="Filter sites by status">
                 <div class="site-status-filter-group">
                     <button type="button" class="btn btn-sm site-status-filter is-active" data-status="active" id="sitesFilterActive" aria-pressed="true">
@@ -1467,8 +1623,35 @@
             </div>
         </div>
         <p class="small text-muted mb-2" id="sitesFilterHint">Approved and live sites on your panel.</p>
-        <div class="mb-2" style="max-width: 22rem;">
-            <x-slb-search-field name="site_search" id="siteSearch" placeholder="Search sites..." input-class="form-control table-search" mode="" />
+        <div class="mysites-filters row g-2 align-items-end mb-2">
+            <div class="col-12 col-lg-4" style="max-width: 22rem;">
+                <x-slb-search-field name="site_search" id="siteSearch" placeholder="Search sites..." input-class="form-control table-search" mode="" />
+            </div>
+            <div class="col-6 col-md-3 col-lg-2">
+                <label class="form-label text-muted" for="sitesNicheFilter">Niche</label>
+                <select id="sitesNicheFilter" class="form-select form-select-sm">
+                    <option value="">All niches</option>
+                    @foreach(($categories ?? []) as $categoryName)
+                        <option value="{{ $categoryName }}">{{ $categoryName }}</option>
+                    @endforeach
+                </select>
+            </div>
+            <div class="col-3 col-md-2 col-lg-1">
+                <label class="form-label text-muted" for="sitesDaMin">DA min</label>
+                <input type="number" id="sitesDaMin" class="form-control form-control-sm" min="0" max="100" inputmode="numeric" placeholder="0">
+            </div>
+            <div class="col-3 col-md-2 col-lg-1">
+                <label class="form-label text-muted" for="sitesDaMax">DA max</label>
+                <input type="number" id="sitesDaMax" class="form-control form-control-sm" min="0" max="100" inputmode="numeric" placeholder="100">
+            </div>
+            <div class="col-3 col-md-2 col-lg-1">
+                <label class="form-label text-muted" for="sitesPriceMin">Price min</label>
+                <input type="number" id="sitesPriceMin" class="form-control form-control-sm" min="0" step="0.01" inputmode="decimal" placeholder="0">
+            </div>
+            <div class="col-3 col-md-2 col-lg-1">
+                <label class="form-label text-muted" for="sitesPriceMax">Price max</label>
+                <input type="number" id="sitesPriceMax" class="form-control form-control-sm" min="0" step="0.01" inputmode="decimal" placeholder="∞">
+            </div>
         </div>
         <div id="sitesTableWrapper" class="mt-3"></div>
     </div>
@@ -1478,8 +1661,8 @@
 <link href="{{ asset('assets/css/multi-select.css') }}?v={{ @filemtime(public_path('assets/css/multi-select.css')) ?: '1' }}" rel="stylesheet">
 <link href="{{ asset('assets/css/publisher-websites.css') }}?v={{ @filemtime(public_path('assets/css/publisher-websites.css')) ?: '1' }}" rel="stylesheet">
 <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="{{ asset('assets/js/jquery-3.6.0.min.js') }}?v={{ @filemtime(public_path('assets/js/jquery-3.6.0.min.js')) ?: '1' }}"></script>
+<script src="{{ asset('assets/vendor/sweetalert2/sweetalert2.min.js') }}?v={{ @filemtime(public_path('assets/vendor/sweetalert2/sweetalert2.min.js')) ?: '1' }}"></script>
 @php
     $pwOldLanguage = old_text('language', old_text('languages'));
     $pwOldCountry = old_text('country', old_text('countries'));
@@ -1541,6 +1724,7 @@ window.PublisherWebsitesConfig = {
         balance: @json(route('publisher.balance', absolute: false)),
         promotionsWallet: @json(route('publisher.promotions.wallet', absolute: false)),
         claim: @json(route('publisher.sites.claim', absolute: false)),
+        claimLookup: @json(route('publisher.sites.claim-lookup', absolute: false)),
     },
     bulkMinPercent: {{ (int) config('site_promotions.bulk.min_percent', 10) }},
     bulkMaxPercent: {{ (int) config('site_promotions.bulk.max_percent', 80) }},
@@ -1569,13 +1753,191 @@ const submitBtn = $('#submitBtn');
 const closeBtn = $('#closeBtn');
 const formHeaderSpan = $('#formHeader');
 
-// Quill editor (guarded so a CDN/CSP failure cannot break the sites table loader)
+// Quill is created only after the add-site card is visible. Building it while
+// #formCard is display:none leaves the editor unable to record typing, so the
+// counter stays at 0 and Next reports an empty description.
 var quill = null;
-if (typeof Quill !== 'undefined' && document.getElementById('quillEditor')) {
+var siteDescUsesTextarea = false;
+const SITE_DESC_MIN_CHARS = Number((window.PublisherWebsitesConfig && window.PublisherWebsitesConfig.descMinChars) || 50);
+const SITE_DESC_MAX_WORDS = Number((window.PublisherWebsitesConfig && window.PublisherWebsitesConfig.descMaxWords) || 500);
+
+function siteDescPlaceholder() {
+    return (window.PublisherWebsitesConfig && window.PublisherWebsitesConfig.descPlaceholder) || 'Enter site description...';
+}
+
+function markSiteDescUntranslated(el) {
+    if (!el) return;
+    el.setAttribute('translate', 'no');
+    el.classList.add('notranslate');
+}
+
+function siteDescPlainText(htmlOrText) {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = htmlOrText || '';
+    return String(tmp.textContent || '').replace(/\s+/g, ' ').trim();
+}
+
+function siteDescCharCount(plain) {
+    // Code points, same as PHP mb_strlen, so Arabic, Cyrillic, Greek, and
+    // Chinese match the server minimum. String.length counts UTF-16 units.
+    return Array.from(String(plain || '')).length;
+}
+
+function siteDescWordCount(plain) {
+    const text = String(plain || '').trim();
+    if (!text) return 0;
+    return text.split(/\s+/).filter(Boolean).length;
+}
+
+function currentSiteDescriptionHtml() {
+    if (quill) return quill.root.innerHTML || '';
+    const area = document.getElementById('siteDescTextarea');
+    if (area) return area.value || '';
+    return $('#siteDescription').val() || '';
+}
+
+function siteDescValidationMessage(plain) {
+    if (!plain) return 'Please enter a site description.';
+    if (siteDescCharCount(plain) < SITE_DESC_MIN_CHARS) {
+        return 'Description must be at least ' + SITE_DESC_MIN_CHARS + ' characters (visible text).';
+    }
+    if (siteDescWordCount(plain) > SITE_DESC_MAX_WORDS) {
+        return 'Description must be at most ' + SITE_DESC_MAX_WORDS + ' words.';
+    }
+    return '';
+}
+
+function showSiteDescError(message) {
+    const err = document.getElementById('siteDescError');
+    if (!err) return;
+    delete err.dataset.serverError;
+    if (message) {
+        err.textContent = message;
+        err.classList.remove('d-none');
+        err.classList.add('d-block');
+    } else {
+        err.textContent = '';
+        err.classList.add('d-none');
+        err.classList.remove('d-block');
+    }
+}
+
+function syncSiteDescriptionField() {
+    const html = currentSiteDescriptionHtml();
+    $('#siteDescription').val(html);
+    const plain = siteDescPlainText(html);
+    const words = siteDescWordCount(plain);
+    const msg = siteDescValidationMessage(plain);
+    const counter = document.getElementById('siteDescCounter');
+    if (counter) {
+        counter.textContent = siteDescCharCount(plain) + ' / ' + SITE_DESC_MIN_CHARS + ' chars · ' + words + ' / ' + SITE_DESC_MAX_WORDS + ' words';
+        counter.classList.toggle('is-invalid', !!msg && !!plain);
+        counter.classList.toggle('is-ok', !msg && !!plain);
+    }
+    const err = document.getElementById('siteDescError');
+    if (err && err.dataset.serverError === '1') {
+        return msg;
+    }
+    // Keep the empty-state message for Next/submit. While typing, clear it
+    // so deleting the brief does not leave a stale "at least 50" error.
+    showSiteDescError(plain ? msg : '');
+    return msg;
+}
+
+function onSiteDescEdited(delta, oldDelta, source) {
+    if (source === 'silent') return;
+    const err = document.getElementById('siteDescError');
+    if (err) delete err.dataset.serverError;
+    syncSiteDescriptionField();
+    if ($('#methodField').val() === 'POST') {
+        saveSiteDraft();
+    }
+}
+
+function siteDescHostIsVisible() {
+    const card = document.getElementById('formCard');
+    if (!card || card.classList.contains('d-none')) return false;
+    const pane = document.querySelector('.wizard-pane[data-wizard-pane="1"]');
+    if (pane && !pane.classList.contains('active')) return false;
+    return true;
+}
+
+function installSiteDescTextarea(initial) {
+    let area = document.getElementById('siteDescTextarea');
+    if (area) {
+        siteDescUsesTextarea = true;
+        return area;
+    }
+    area = document.createElement('textarea');
+    area.id = 'siteDescTextarea';
+    area.className = 'form-control notranslate';
+    area.rows = 8;
+    area.placeholder = siteDescPlaceholder();
+    area.value = siteDescPlainText(initial || '');
+    markSiteDescUntranslated(area);
+    area.setAttribute('dir', 'auto');
+    const label = document.querySelector('label[for="quillEditor"]');
+    if (label) label.setAttribute('for', 'siteDescTextarea');
+    const host = document.getElementById('quillEditor');
+    if (host && host.previousElementSibling && host.previousElementSibling.classList.contains('ql-toolbar')) {
+        host.previousElementSibling.remove();
+    }
+    if (host) {
+        host.replaceWith(area);
+    } else {
+        const hidden = document.getElementById('siteDescription');
+        if (hidden) hidden.insertAdjacentElement('beforebegin', area);
+    }
+    area.addEventListener('input', onSiteDescEdited);
+    siteDescUsesTextarea = true;
+    syncSiteDescriptionField();
+    return area;
+}
+
+function setSiteDescriptionHtml(html) {
+    const value = html == null ? '' : String(html);
+    if (quill) {
+        // innerHTML bypasses Quill's document, so the next keystrokes never
+        // update the counter and Next reports an empty description.
+        if (!siteDescPlainText(value)) {
+            quill.setText('', 'silent');
+        } else {
+            quill.setContents(quill.clipboard.convert(value), 'silent');
+        }
+    } else if (siteDescUsesTextarea || document.getElementById('siteDescTextarea')) {
+        const area = document.getElementById('siteDescTextarea');
+        if (area) area.value = siteDescPlainText(value);
+    } else {
+        const host = document.getElementById('quillEditor');
+        if (host) host.innerHTML = value;
+    }
+    const hidden = document.getElementById('siteDescription');
+    const area = document.getElementById('siteDescTextarea');
+    if (hidden) {
+        if (quill) hidden.value = quill.root.innerHTML || '';
+        else if (area) hidden.value = area.value || '';
+        else hidden.value = value;
+    }
+    syncSiteDescriptionField();
+}
+
+function ensureQuillEditor() {
+    if (quill || siteDescUsesTextarea) return quill;
+    if (!siteDescHostIsVisible()) return null;
+    const host = document.getElementById('quillEditor');
+    if (!host) return null;
+    markSiteDescUntranslated(host);
+    const hiddenVal = (document.getElementById('siteDescription') || {}).value || '';
+    const seed = siteDescPlainText(hiddenVal) ? hiddenVal : (host.innerHTML || '');
+    if (typeof Quill === 'undefined') {
+        installSiteDescTextarea(seed);
+        return null;
+    }
     try {
-        quill = new Quill('#quillEditor', {
+        if (siteDescPlainText(seed)) host.innerHTML = seed;
+        quill = new Quill(host, {
             theme: 'snow',
-            placeholder: 'Enter site description...',
+            placeholder: siteDescPlaceholder(),
             modules: {
                 toolbar: [
                     [{ 'header': [1, 2, 3, false] }],
@@ -1585,9 +1947,19 @@ if (typeof Quill !== 'undefined' && document.getElementById('quillEditor')) {
                 ]
             }
         });
+        quill.root.setAttribute('dir', 'auto');
+        markSiteDescUntranslated(quill.root);
+        markSiteDescUntranslated(quill.container);
+        const toolbarModule = quill.getModule('toolbar');
+        if (toolbarModule && toolbarModule.container) markSiteDescUntranslated(toolbarModule.container);
+        quill.on('text-change', onSiteDescEdited);
+        syncSiteDescriptionField();
     } catch (e) {
         console.warn('Quill init failed', e);
+        quill = null;
+        installSiteDescTextarea(seed);
     }
+    return quill;
 }
 
 // FR1 — progressive disclosure for sensitive topics
@@ -2006,6 +2378,75 @@ function initMultiSelect(wrapperId, inputId, dropdownId, optionsId, hiddenInputI
 }
 
 window.countryLanguageMap = @json($countryLanguageMap ?? new \stdClass());
+window.__slbListingPriceSymbol = @json(listing_price_symbol());
+window.__slbListingCountrySymbols = @json(app(\App\Support\MoneyDisplay::class)->countrySymbols());
+window.__slbGbpPerEur = @json(app(\App\Support\FxRate::class)->perEur('GBP'));
+
+function syncListingPricePreview() {
+    const currency = document.getElementById('price_input_currency');
+    const price = document.getElementById('price');
+    const preview = document.getElementById('listingPricePreview');
+    if (!currency || !price || !preview) return;
+    const amount = parseFloat(price.value);
+    if (!isFinite(amount) || amount <= 0) {
+        preview.textContent = '';
+        return;
+    }
+    if (currency.value === 'GBP') {
+        const rate = Number(window.__slbGbpPerEur) || 0;
+        const euros = rate > 0 ? Math.round((amount / rate) * 100) / 100 : amount;
+        preview.textContent = '£' + amount.toFixed(2) + ' → €' + euros.toFixed(2) + ' stored (payouts in EUR)';
+        return;
+    }
+    preview.textContent = '€' + amount.toFixed(2) + ' stored (payouts in EUR)';
+}
+document.addEventListener('input', function (event) {
+    if (event.target && (event.target.id === 'price' || event.target.id === 'price_input_currency')) {
+        syncListingPricePreview();
+    }
+});
+document.addEventListener('change', function (event) {
+    if (event.target && event.target.id === 'price_input_currency') {
+        syncListingPricePreview();
+        syncListingPriceLabels();
+    }
+});
+document.addEventListener('DOMContentLoaded', syncListingPricePreview);
+
+function listingSymbolForCountry(code) {
+    const key = String(code || '').trim().toUpperCase();
+    const map = window.__slbListingCountrySymbols || {};
+    if (key && map[key]) return map[key];
+    if (key === 'UK' && map.GB) return map.GB;
+    return '€';
+}
+
+function listingSymbolFromCurrencySelect() {
+    const sel = document.getElementById('price_input_currency');
+    const code = String(sel && sel.value ? sel.value : 'EUR').toUpperCase();
+    return code === 'GBP' ? '£' : '€';
+}
+
+function syncListingPriceLabels(code) {
+    const symbol = listingSymbolFromCurrencySelect() || listingSymbolForCountry(code);
+    const main = document.querySelector('[data-listing-price-label]');
+    if (main) {
+        const req = main.querySelector('.req');
+        main.textContent = 'Price (' + symbol + ') ';
+        if (req) main.appendChild(req);
+    }
+    document.querySelectorAll('[data-listing-price-placeholder]').forEach(function (input) {
+        const prefix = input.getAttribute('data-listing-price-placeholder') || 'Extra price';
+        input.setAttribute('placeholder', prefix + ' (' + symbol + ')');
+    });
+    document.querySelectorAll('[data-listing-fee-placeholder]').forEach(function (input) {
+        input.setAttribute('placeholder', 'Fee (' + symbol + ') — 0 = Free');
+    });
+    const hint = document.querySelector('[data-listing-homepage-hint]');
+    if (hint) {
+        hint.textContent = 'Offer putting the guest article on your homepage for 1, 7, or 30 days. Price ' + symbol + '0 = Free. Leave unchecked to not offer that duration.';
+    }
+}
 const countryLanguageMap = window.countryLanguageMap;
 
 // Country first → language list filtered by allowed pairs
@@ -2034,6 +2475,8 @@ function applyCountryLanguageFilter(countryCode, { clearLanguage = true, preferL
         languageSingleSelect.setPlaceholder('Select country first...');
         if (clearLanguage) languageSingleSelect.clearSelection();
         if (hint.length) hint.text('Select a country first.');
+        $('#languageWrapper').removeClass('is-readonly');
+        $('#languageInput').attr({'aria-disabled': 'false', tabindex: '0'});
         return;
     }
 
@@ -2049,7 +2492,11 @@ function applyCountryLanguageFilter(countryCode, { clearLanguage = true, preferL
             languageSingleSelect.setSelectedValue(only, opt.data('label'));
         }
         if (hint.length) hint.text('Language locked to ' + (opt.data('label') || only.toUpperCase()) + ' for this country.');
+        $('#languageWrapper').addClass('is-readonly');
+        $('#languageInput').attr({'aria-disabled': 'true', tabindex: '-1'});
     } else if (relatedCodes.length) {
+        $('#languageWrapper').removeClass('is-readonly');
+        $('#languageInput').attr({'aria-disabled': 'false', tabindex: '0'});
         if (preferLanguage && relatedCodes.indexOf(String(preferLanguage).toLowerCase()) !== -1) {
             const code = String(preferLanguage).toLowerCase();
             const opt = $(`#languageOptions .single-select-option[data-value="${code}"]`);
@@ -2060,15 +2507,19 @@ function applyCountryLanguageFilter(countryCode, { clearLanguage = true, preferL
             return opt.length ? opt.data('label') : code.toUpperCase();
         });
         if (hint.length) hint.text('Allowed: ' + labels.join(', '));
-    } else if (hint.length) {
-        hint.text('No paired languages for this country.');
+    } else {
+        $('#languageWrapper').removeClass('is-readonly');
+        $('#languageInput').attr({'aria-disabled': 'false', tabindex: '0'});
+        if (hint.length) hint.text('No paired languages for this country.');
     }
 }
 
 let syncingCountryLanguage = false;
 $('#selectedCountry').on('change', function() {
     if (syncingCountryLanguage) return;
-    applyCountryLanguageFilter($(this).val() || '', { clearLanguage: true });
+    const code = $(this).val() || '';
+    applyCountryLanguageFilter(code, { clearLanguage: true });
+    syncListingPriceLabels(code);
 });
 
 // Start with languages locked until country is chosen
@@ -2135,6 +2586,8 @@ function setWizardStep(step) {
     $('#wizardBackBtn').toggleClass('d-none', wizardStep === 1);
     $('#wizardNextBtn').toggleClass('d-none', wizardStep === wizardTotalSteps);
     $('#submitBtn').toggleClass('d-none', wizardStep !== wizardTotalSteps);
+
+    if (wizardStep === 1) ensureQuillEditor();
 }
 
 function saveSiteDraft() {
@@ -2154,7 +2607,7 @@ function saveSiteDraft() {
             country: $('#selectedCountry').val(),
             categories: $('#selectedCategories').val(),
             site_tag: $('input[name="site_tag"]:checked').val() || '',
-            siteDescription: quill ? quill.root.innerHTML : ($('#siteDescription').val() || ''),
+            siteDescription: currentSiteDescriptionHtml(),
             sensitive: {},
             price_sensitive: {},
             homepage: {},
@@ -2188,6 +2641,7 @@ function clearSiteDraft() {
 }
 window.clearSiteDraft = clearSiteDraft;
 window.getPublisherQuill = function () { return quill; };
+window.getPublisherSiteDescriptionHtml = function () { return currentSiteDescriptionHtml(); };
 
 function loadSiteDraft() {
     try {
@@ -2217,8 +2671,7 @@ function loadSiteDraft() {
         $(`input[name="site_tag"][value="${draftTag}"]`).prop('checked', true);
         if (!draftTag) $('#tagNone').prop('checked', true);
         if (draft.siteDescription) {
-            if (quill) quill.root.innerHTML = draft.siteDescription;
-            $('#siteDescription').val(draft.siteDescription);
+            setSiteDescriptionHtml(draft.siteDescription);
         }
         ['crypto','trading','CBD','forex'].forEach(topic => {
             $(`#sensitive${topic}`).prop('checked', !!(draft.sensitive && draft.sensitive[topic]));
@@ -2265,6 +2718,12 @@ function loadSiteDraft() {
             });
         }
 
+        const hasContent = ['siteName','siteUrl','exampleUrl','da','dr','traffic','price','siteDescription','country','language','categories']
+            .some(function (key) { return String(draft[key] || '').trim() !== ''; });
+        if (!hasContent) {
+            return false;
+        }
+
         setWizardStep(draft.step || 1);
         $('#wizardDraftHint').text('Draft restored');
         return true;
@@ -2273,15 +2732,47 @@ function loadSiteDraft() {
     }
 }
 
+function escapeHtml(str) {
+    return String(str == null ? '' : str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function wizardFieldLabel(el) {
+    if (!el) return '';
+    const id = el.id;
+    if (id) {
+        const lab = document.querySelector('label[for="' + id + '"]');
+        if (lab) return String(lab.textContent || '').replace(/\*/g, '').replace(/\s+/g, ' ').trim();
+    }
+    const wrap = el.closest('.col-md-4, .col-md-3, .col-12, .form-section');
+    const nearby = wrap && wrap.querySelector('.form-label');
+    return nearby
+        ? String(nearby.textContent || '').replace(/\*/g, '').replace(/\s+/g, ' ').trim()
+        : String(el.getAttribute('name') || 'This field');
+}
+
+function focusWizardField(el) {
+    if (!el) return;
+    try { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
+    try { el.focus({ preventScroll: true }); } catch (e) { try { el.focus(); } catch (e2) {} }
+}
+
 function validateWizardStep(step) {
     const pane = $(`.wizard-pane[data-wizard-pane="${step}"]`);
     let ok = true;
     let message = '';
+    let firstInvalid = null;
 
     pane.find('input[required], select[required]').each(function() {
+        if (this.type === 'hidden' || this.id === 'siteDescription') return;
         if (!this.checkValidity()) {
             ok = false;
             $(this).addClass('is-invalid');
+            if (!firstInvalid) firstInvalid = this;
             if (!message) message = this.validationMessage || 'Please fill in all required fields.';
         } else {
             $(this).removeClass('is-invalid');
@@ -2289,12 +2780,19 @@ function validateWizardStep(step) {
     });
 
     if (step === 1) {
-        const desc = quill ? (quill.root.innerText || '').trim() : ($('#siteDescription').val() || '').replace(/<[^>]+>/g,'').trim();
-        if (!desc) {
+        // textContent, not innerText: step 1 is display:none on later steps,
+        // and innerText is empty for hidden editors, so a filled description
+        // was rejected as blank after the publisher picked a language.
+        const plain = siteDescPlainText(currentSiteDescriptionHtml());
+        const descMsg = siteDescValidationMessage(plain);
+        $('#siteDescription').val(currentSiteDescriptionHtml());
+        if (descMsg) {
             ok = false;
-            message = message || 'Please enter a site description.';
+            message = message || descMsg;
+            showSiteDescError(descMsg);
+            if (!firstInvalid) firstInvalid = document.getElementById('quillEditor') || document.getElementById('siteDescription');
         } else {
-            if (quill) $('#siteDescription').val(quill.root.innerHTML);
+            showSiteDescError('');
         }
     }
 
@@ -2302,19 +2800,30 @@ function validateWizardStep(step) {
         if (!countrySingleSelect.getSelectedValue()) {
             ok = false;
             message = message || 'Please select a country / market.';
+            if (!firstInvalid) firstInvalid = document.getElementById('countryInput');
         }
         if (!languageSingleSelect.getSelectedValue()) {
             ok = false;
             message = message || 'Please select a language.';
+            if (!firstInvalid) firstInvalid = document.getElementById('languageInput');
         }
         if (categoryMultiSelect.getSelectedItems().length === 0) {
             ok = false;
             message = message || 'Please select at least one category.';
+            if (!firstInvalid) firstInvalid = document.getElementById('categoryInput');
         }
     }
 
     if (!ok) {
-        Swal.fire({ icon: 'error', title: 'Almost there', text: message || 'Please complete this step.' });
+        const field = firstInvalid ? wizardFieldLabel(firstInvalid) : '';
+        focusWizardField(firstInvalid);
+        Swal.fire({
+            icon: 'error',
+            title: 'Almost there',
+            html: field
+                ? '<p class="mb-2"><strong>' + escapeHtml(field) + '</strong></p><p class="mb-0">' + escapeHtml(message || 'Please complete this step.') + '</p>'
+                : escapeHtml(message || 'Please complete this step.')
+        });
     }
     return ok;
 }
@@ -2331,17 +2840,11 @@ $('#wizardBackBtn').on('click', function() {
 });
 
 $('#addSiteForm').on('change input', 'input, select, textarea', function() {
+    if (this.id === 'siteDescTextarea') return;
     if ($('#methodField').val() === 'POST') {
         saveSiteDraft();
     }
 });
-if (quill) {
-    quill.on('text-change', function() {
-        if ($('#methodField').val() === 'POST') {
-            saveSiteDraft();
-        }
-    });
-}
 
 // Toggle form for CREATE
 addBtn.on('click', function() {
@@ -2354,6 +2857,7 @@ addBtn.on('click', function() {
     bulkBtn.toggleClass('d-none', isOpen);
     bulkRequestBtn.toggleClass('d-none', isOpen);
     claimBtn.toggleClass('d-none', isOpen);
+    document.body.classList.toggle('publisher-wizard-open', isOpen);
     formHeaderSpan.text('Add New Website');
 
     if(isOpen){
@@ -2366,7 +2870,7 @@ addBtn.on('click', function() {
             $('#methodField').val('POST');
         }
         $('#addSiteForm').attr('action', (window.PublisherWebsitesConfig && window.PublisherWebsitesConfig.routes.store) || '/publisher/websites/store');
-        if (quill) quill.root.innerHTML = '';
+        setSiteDescriptionHtml('');
         submitBtn.prop('disabled', false).text('Review & submit');
         window.sitePreviewConfirmed = false;
         
@@ -2387,6 +2891,7 @@ addBtn.on('click', function() {
             setWizardStep(1);
             $('#wizardDraftHint').text('');
         }
+        syncSiteDescriptionField();
     }
 });
 
@@ -2410,7 +2915,7 @@ closeBulkBtn.on('click', function() {
 
 // Form validation + listing preview gate (modal handlers live in always-on JS)
 $('#addSiteForm').submit(function(e){
-    if (quill) $('#siteDescription').val(quill.root.innerHTML);
+    $('#siteDescription').val(currentSiteDescriptionHtml());
 
     for (let s = 1; s <= wizardTotalSteps; s++) {
         if (!validateWizardStep(s)) {
@@ -2620,7 +3125,7 @@ function syncSitesFilterUi(pendingCount, activeCount, status, activeIds, inviteC
                 ? '1 site is with our marketer; others below may need your details or admin review.'
                 : bulkWaiting + ' sites are with our marketer; others below may need your details or admin review.';
         } else if (openBulk) {
-            hint.textContent = 'Your bulk request is open — drafts appear here as the marketer adds them, then you finish details.';
+                hint.textContent = 'Your bulk request is open. Our team publishes the sites they accept, and you’ll be notified when those sites are active.';
         } else {
             hint.textContent = 'Drafts that need your details, plus sites waiting for admin approval.';
         }
@@ -2739,7 +3244,16 @@ function fetchSites(page = 1, query = '', opts = {}) {
         url: (window.PublisherWebsitesConfig && window.PublisherWebsitesConfig.routes.ajax) || '/publisher/websites/ajax',
         method: 'GET',
         dataType: 'html',
-        data: { page: page, query: query, status: sitesStatusFilter },
+        data: {
+            page: page,
+            query: query,
+            status: sitesStatusFilter,
+            niche: $('#sitesNicheFilter').val() || '',
+            da_min: $('#sitesDaMin').val() || '',
+            da_max: $('#sitesDaMax').val() || '',
+            price_min: $('#sitesPriceMin').val() || '',
+            price_max: $('#sitesPriceMax').val() || '',
+        },
         headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'text/html' },
         success: function(res) {
             const html = (res || '').trim();
@@ -2779,12 +3293,13 @@ function fetchSites(page = 1, query = '', opts = {}) {
                 if (meta) {
                     const pendingFromMeta = parseInt(meta.getAttribute('data-pending') || '0', 10);
                     const activeFromMeta = parseInt(meta.getAttribute('data-active') || '0', 10);
+                    const inviteFromMeta = parseInt(meta.getAttribute('data-invites') || '0', 10);
                     syncSitesFilterUi(
                         pendingFromMeta,
                         activeFromMeta,
                         meta.getAttribute('data-status') || sitesStatusFilter,
                         activeIds,
-                        parseInt(meta.getAttribute('data-invites') || '0', 10)
+                        inviteFromMeta
                     );
                     // Auto-open Pending when Active is empty and the URL did not set ?status=
                     if (!sitesAutoOpenPendingChecked) {
@@ -2793,14 +3308,15 @@ function fetchSites(page = 1, query = '', opts = {}) {
                             !sitesStatusExplicit
                             && sitesStatusFilter === 'active'
                             && activeFromMeta === 0
-                            && pendingFromMeta > 0
                             && !String(query || '').trim()
                         ) {
-                            if (typeof window.setSitesStatusFilter === 'function') {
-                                window.setSitesStatusFilter('pending');
+                            if (pendingFromMeta > 0) {
+                                if (typeof window.setSitesStatusFilter === 'function') {
+                                    window.setSitesStatusFilter('pending');
+                                }
+                                fetchSites(1, query, opts);
+                                return;
                             }
-                            fetchSites(1, query, opts);
-                            return;
                         }
                     }
                 }
@@ -2890,6 +3406,12 @@ $(document).ready(function(){
             fetchSites(1, $(this).val());
         }, 400);
     });
+    $('#sitesNicheFilter, #sitesDaMin, #sitesDaMax, #sitesPriceMin, #sitesPriceMax').on('change input', function(){
+        clearTimeout(delayTimer);
+        delayTimer = setTimeout(() => {
+            fetchSites(1, $('#siteSearch').val());
+        }, 300);
+    });
 
     $(document).on('click', '.pagination a', function(e){
         const href = $(this).attr('href');
@@ -2913,8 +3435,24 @@ $(document).ready(function(){
 });
 
 
+function prefixHttps(input) {
+    if (!input) return;
+    var v = String(input.value || '').trim();
+    if (!v) return;
+    if (/^[a-z][a-z0-9+.-]*:/i.test(v)) return;
+    if (/^\/\//.test(v)) {
+        input.value = 'https:' + v;
+        return;
+    }
+    input.value = 'https://' + v.replace(/^\/+/, '');
+}
+$('#siteUrl, #exampleUrl').on('blur', function () {
+    prefixHttps(this);
+});
+
 function prefillSiteForm(site) {
     $('#formCard').removeClass('d-none');
+    document.body.classList.add('publisher-wizard-open');
     $('#claimCard').addClass('d-none');
     $('#bulkCard').addClass('d-none');
     $('#showFormBtn').addClass('d-none');
@@ -2945,6 +3483,14 @@ function prefillSiteForm(site) {
     $('#dr').val(site.dr);
     $('#traffic').val(site.traffic);
     $('#price').val(site.price);
+    $('#writing_fee').val(site.writing_fee || '');
+    $('#writing_disabled').prop('checked', site.writing_enabled === false);
+    if (site.price_input_currency) {
+        $('#price_input_currency').val(site.price_input_currency);
+        if (typeof syncListingPricePreview === 'function') {
+            syncListingPricePreview();
+        }
+    }
     $('#turnaroundTime').val(site.turnaround_time || '3days');
     $('#publicationTime').val(site.publication_time);
 
@@ -2990,6 +3536,9 @@ function prefillSiteForm(site) {
         applyCountryLanguageFilter('', { clearLanguage: true });
     }
     syncingCountryLanguage = false;
+    if (typeof syncListingPriceLabels === 'function') {
+        syncListingPriceLabels(countryCode);
+    }
 
     categoryMultiSelect.clearSelections();
     (Array.isArray(site.categories) ? site.categories : []).forEach(categoryName => {
@@ -2999,9 +3548,8 @@ function prefillSiteForm(site) {
         }
     });
 
-    if (quill) {
-        quill.root.innerHTML = site.description || '';
-    }
+    setSiteDescriptionHtml(site.description || '');
+    syncSiteDescriptionField();
 
     if (site.is_live) {
         $('#wizardDraftHint').text('Changing country, language, or categories will send this site for re-review and take it offline.');
@@ -3027,6 +3575,7 @@ $(document).ready(function(){
             bulkRequestBtn.addClass('d-none');
             claimBtn.addClass('d-none');
             closeBtn.removeClass('d-none');
+            setWizardStep(1);
 
             const editingSiteId = @json(session('editing_site_id'));
             if (editingSiteId) {
@@ -3064,12 +3613,11 @@ $(document).ready(function(){
                 window.sitePreviewConfirmed = false;
             }
 
-            if (quill && !quill.root.innerHTML.trim()) {
+            if (!siteDescPlainText(currentSiteDescriptionHtml())) {
                 const oldDesc = @json(old_text('siteDescription'));
-                if (oldDesc) quill.root.innerHTML = oldDesc;
+                if (oldDesc) setSiteDescriptionHtml(oldDesc);
             }
-
-            setWizardStep(1);
+            syncSiteDescriptionField();
             $('html, body').animate({ scrollTop: formCard.offset().top - 100 }, 400);
         })();
     @endif
@@ -3126,6 +3674,11 @@ $(document).ready(function(){
         if (data.success) loadSites();
     });
 
+    $(document).on('click', '.btn-restore-blocked', function () {
+        const message = String($(this).data('message') || 'This site is verified and cannot be restored.');
+        Swal.fire({ icon: 'error', title: message });
+    });
+
     $(document).on('click', '.btn-unarchive-site', async function () {
         const id = $(this).data('id');
         const res = await fetch(`/publisher/sites/${id}/unarchive`, {
@@ -3144,13 +3697,14 @@ closeBtn.on('click', function(){
         saveSiteDraft();
     }
     formCard.addClass('d-none');
+    document.body.classList.remove('publisher-wizard-open');
     addBtn.removeClass('d-none');
     bulkBtn.removeClass('d-none');
     bulkRequestBtn.removeClass('d-none');
     claimBtn.removeClass('d-none');
     formHeaderSpan.text('Add New Website');
     $('#addSiteForm')[0].reset();
-    if (quill) quill.root.innerHTML = '';
+    setSiteDescriptionHtml('');
     $('.tag-checkbox').prop('checked', false);
     $('.sensitive-checkbox').prop('checked', false);
     $('.sensitive-price').val('');
@@ -3215,8 +3769,50 @@ $('#closeClaimCard').on('click', function () {
     claimCard.addClass('d-none');
     formHeaderSpan.text('Add New Website');
 });
+let claimListedOk = false;
+async function lookupClaimUrl() {
+    const input = document.getElementById('claimWebsiteUrl');
+    const status = document.getElementById('claimUrlStatus');
+    const url = String(input && input.value ? input.value : '').trim();
+    claimListedOk = false;
+    if (status) status.textContent = '';
+    if (!url) return false;
+    const lookup = (window.PublisherWebsitesConfig && window.PublisherWebsitesConfig.routes.claimLookup) || '/publisher/sites/claim-lookup';
+    try {
+        const res = await fetch(lookup + '?website_url=' + encodeURIComponent(url), {
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            credentials: 'same-origin',
+        });
+        const data = await res.json().catch(() => ({}));
+        if (status) {
+            status.textContent = data.message || '';
+            status.className = 'form-text ' + (data.listed && !data.owned ? 'text-success' : 'text-danger');
+        }
+        claimListedOk = !!(data.success && data.listed && !data.owned);
+        return claimListedOk;
+    } catch (e) {
+        if (status) {
+            status.textContent = 'Could not check that URL. Try again.';
+            status.className = 'form-text text-danger';
+        }
+        return false;
+    }
+}
+$('#claimWebsiteUrl').on('blur', function () {
+    lookupClaimUrl();
+});
 $('#claimWebsiteForm').on('submit', async function (e) {
     e.preventDefault();
+    const proof = String(this.proof_message && this.proof_message.value ? this.proof_message.value : '').trim();
+    if (proof.length < 20) {
+        Swal.fire({ icon: 'error', title: 'Almost there', text: 'Proof of ownership must be at least 20 characters.' });
+        return;
+    }
+    const listed = claimListedOk || await lookupClaimUrl();
+    if (!listed) {
+        Swal.fire({ icon: 'error', title: 'Website not listed', text: (document.getElementById('claimUrlStatus') && document.getElementById('claimUrlStatus').textContent) || 'Claims only work for sites already listed by another publisher.' });
+        return;
+    }
     const fd = new FormData(this);
     const payload = Object.fromEntries(fd.entries());
     const res = await fetch((window.PublisherWebsitesConfig && window.PublisherWebsitesConfig.routes.claim) || '/publisher/sites/claim', {

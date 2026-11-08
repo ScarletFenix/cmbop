@@ -246,10 +246,11 @@
 
       tip.hidden = false;
       tip.style.visibility = 'hidden';
-      tip.classList.remove('is-visible');
+      tip.classList.remove('is-visible', 'is-pinned');
       tip.style.top = '0px';
       tip.style.left = '0px';
-      // Hover-only / adopted titles must never steal clicks from Add to cart.
+      // Hover-only / adopted titles must never steal clicks from Add to cart /
+      // filter-chip × / Clear all. Inline style backs up .glass-tip CSS.
       tip.style.pointerEvents = isHoverOnlyTip(trigger) ? 'none' : '';
       measureAndPlace(trigger);
       tip.style.visibility = '';
@@ -257,6 +258,9 @@
       requestAnimationFrame(function () {
         measureAndPlace(trigger);
         tip.classList.add('is-visible');
+        if (trigger.getAttribute('data-glass-tip-pinned') === '1') {
+          tip.classList.add('is-pinned');
+        }
       });
 
       if (active && active !== trigger) {
@@ -278,10 +282,11 @@
     hideTimer = setTimeout(function () {
       var tip = tipEl;
       if (!tip) return;
-      tip.classList.remove('is-visible');
+      tip.classList.remove('is-visible', 'is-pinned');
 
       var finish = function () {
         tip.hidden = true;
+        tip.style.pointerEvents = '';
         if (current) {
           current.classList.remove('is-open');
           setExpanded(current, false);
@@ -311,6 +316,7 @@
   }
 
   function onTriggerFocus(e) {
+    if (isHoverOnlyTip(e.currentTarget)) return;
     show(e.currentTarget, true);
   }
 
@@ -341,6 +347,7 @@
 
     if (active === trigger && trigger.getAttribute('data-glass-tip-pinned') === '1') {
       trigger.removeAttribute('data-glass-tip-pinned');
+      if (tipEl) tipEl.classList.remove('is-pinned');
       hide(true);
       return;
     }
@@ -414,6 +421,18 @@
     if (el.hasAttribute('data-no-tip')) return false;
     // A declared glass tip already owns its copy.
     if (el.hasAttribute('data-glass-tip') && !isAutoAdopted(el)) return false;
+    // Catalog listing cells: names, metrics, chips, and empty space used to
+    // fire a glass tip on every hover and sit on top of Buy / Details.
+    // Column headers and status chips declare data-glass-tip; action buttons
+    // (heart, blacklist, claim, eye) still adopt their titles.
+    if (el.closest('#catalogResults, .catalog-results-card') && !NATIVELY_INTERACTIVE[el.tagName]) {
+      return false;
+    }
+    // Bulk-deal rail: keep the native title on the domain only. A glass tip
+    // here sat on top of the host and the discount badge.
+    if (el.closest('.bulk-deal-card, [data-bulk-rail], .catalog-bulk-section')) {
+      return false;
+    }
 
     return (el.getAttribute('title') || '').trim() !== '';
   }
@@ -495,6 +514,8 @@
   }
 
   function init() {
+    if (init.done) return;
+    init.done = true;
     ensureTipEl();
     enhanceTriggers(document);
     watchForNewTips();
@@ -505,6 +526,18 @@
     window.addEventListener('resize', onScrollOrResize);
   }
 
+  function armIdleInit() {
+    function start() {
+      document.removeEventListener('pointerover', start, true);
+      document.removeEventListener('focusin', start, true);
+      document.removeEventListener('keydown', start, true);
+      init();
+    }
+    document.addEventListener('pointerover', start, true);
+    document.addEventListener('focusin', start, true);
+    document.addEventListener('keydown', start, true);
+  }
+
   window.GlassTip = {
     init: init,
     enhance: enhanceTriggers,
@@ -512,8 +545,8 @@
   };
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
+    document.addEventListener('DOMContentLoaded', armIdleInit);
   } else {
-    init();
+    armIdleInit();
   }
 })(window, document);

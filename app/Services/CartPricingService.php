@@ -4,6 +4,10 @@ namespace App\Services;
 
 use App\Models\Site;
 use App\Models\User;
+use App\Services\Advertiser\AdvertiserCartPersistence;
+use App\Services\Marketplace\WritingFeeService;
+use App\Support\BulkDiscount;
+use App\Support\ListingMoney;
 
 class CartPricingService
 {
@@ -24,7 +28,7 @@ class CartPricingService
      * Never trust client-supplied price / additional_price / homepage_price values.
      *
      * Discounts are exclusive better-of (never additive): the stronger of an
-     * active custom sale and a bulk pack rate (qty 3–5) applies. The cut is
+     * active custom sale and a bulk pack rate (qty 3–4 / 5–9 / 10+) applies. The cut is
      * absorbed by the platform fee and floored at publisher payout.
      *
      * Homepage placement fees are NEVER discounted — they are added at full
@@ -52,7 +56,12 @@ class CartPricingService
      *   platform_fee_amount: float,
      *   homepage_days: ?int,
      *   homepage_price: float,
-     *   social_channels: list<string>
+     *   social_channels: list<string>,
+     *   publisher_amount: float,
+     *   publisher_currency: string,
+     *   advertiser_eur_amount: float,
+     *   fx_rate: ?float,
+     *   fx_buffer_percent: float
      * }
      */
     public function priceForAdvertiser(
@@ -61,12 +70,31 @@ class CartPricingService
         int $quantity = 1,
         int|string|null $homepageDays = null,
         bool $defaultHomepage = true,
+        ?string $buyerCurrency = null,
     ): array {
-        $publisherPrice = round((float) $site->price, 2);
-        $feePercent = $this->fees->feePercentForBase($publisherPrice);
-        $feeAmount = $this->fees->feeAmountForBase($publisherPrice);
-        $base = $this->fees->advertiserBase($publisherPrice);
-        $additional = $this->resolveSensitiveAdditional($site, $sensitiveType);
+        $listing = app(ListingMoney::class);
+        $listingCurrency = $site->listingCurrency();
+        $listingBase = $site->listingBaseAmount();
+        $buyerCurrency = $listing->normalizeWallet($buyerCurrency ?? $listing->buyerCurrency());
+        $withBuffer = $listing->appliesBuffer($listingCurrency, $buyerCurrency);
+        $publisherPrice = $listing->toEuros($listingBase, $listingCurrency, false);
+        $advertiserListingEuros = $listing->toEuros($listingBase, $listingCurrency, $withBuffer);
+        $listingAdditional = $this->resolveListingSensitiveAdditional($site, $sensitiveType);
+        $additional = $listing->toEuros($listingAdditional, $listingCurrency, $withBuffer);
+        if ($site->usesPartnerRetailPrice()) {
+            $publisherPrice = $site->publisherBasePrice();
+            $base = round((float) $site->slb_price_publish_eur, 2);
+            $advertiserListingEuros = $base;
+            if ($sensitiveType && $site->slb_price_sensitive_extra_eur !== null && (float) $site->slb_price_sensitive_extra_eur > 0) {
+                $additional = round((float) $site->slb_price_sensitive_extra_eur, 2);
+            }
+            $feeAmount = max(0, round($base - $publisherPrice, 2));
+            $feePercent = $base > 0 ? round(($feeAmount / $base) * 100, 2) : 0;
+        } else {
+            $feePercent = $this->fees->feePercentForBase($advertiserListingEuros);
+            $feeAmount = $this->fees->feeAmountForBase($advertiserListingEuros);
+            $base = $this->fees->advertiserBase($advertiserListingEuros);
+        }
 
         // Canonicalize type to the key stored on the site (e.g. CBD not cbd).
         $canonicalType = null;
@@ -106,10 +134,13 @@ class CartPricingService
         $discountAmount = round($listTotal * ($nominalPercent / 100), 2);
         $articleTotal = max(0, round($listTotal - $discountAmount, 2));
 
-        // Publisher payout is the entered base + sensitive add-on (never cut by
-        // advertiser-facing discounts). Discounts are absorbed by the platform fee
-        // only — never let the advertiser pay less than the publisher will receive.
-        $publisherArticlePayout = round($publisherPrice + $additional, 2);
+        // Publisher payout is the entered listing base + sensitive add-on (never
+        // cut by advertiser-facing discounts). Compare the EUR equivalent without
+        // the FX buffer so the floor is the publisher earning, not the cushion.
+        $publisherArticlePayout = round(
+            $publisherPrice + $listing->toEuros($listingAdditional, $listingCurrency, false),
+            2
+        );
         if ($articleTotal < $publisherArticlePayout) {
             $articleTotal = $publisherArticlePayout;
             $discountAmount = max(0, round($listTotal - $articleTotal, 2));
@@ -119,7 +150,8 @@ class CartPricingService
         $effectivePercent = self::effectiveDiscountPercent($listTotal, $discountAmount);
         $labels = [];
         if ($effectivePercent > 0 && $winner === 'bulk') {
-            $labels[] = 'Bulk deal −'.$this->formatDiscountPercent($effectivePercent).'% on '.$quantity.' articles';
+            $labels[] = 'Bulk deal −'.$this->formatDiscountPercent($effectivePercent).'% on '.$quantity
+                .' article'.($quantity === 1 ? '' : 's');
         } elseif ($effectivePercent > 0) {
             $labels[] = 'Site offer −'.$this->formatDiscountPercent($effectivePercent).'%';
         }
@@ -128,8 +160,12 @@ class CartPricingService
         $feeAmount = max(0, round($articleTotal - $publisherArticlePayout, 2));
 
         $homepage = $this->resolveHomepageSelection($site, $homepageDays, $defaultHomepage);
-        $homepageFee = $homepage['price'];
+        $listingHomepage = $this->resolveListingHomepageAmount($site, $homepage['days']);
+        $homepageFee = $listing->toEuros($listingHomepage, $listingCurrency, $withBuffer);
         $total = round($articleTotal + $homepageFee, 2);
+        $publisherAmount = round($listingBase + $listingAdditional + $listingHomepage, 2);
+        $fxRate = $listing->ratePerEur($listingCurrency);
+        $fxBuffer = $withBuffer ? $listing->bufferPercent() : 0.0;
 
         return [
             'base' => $base,
@@ -148,6 +184,11 @@ class CartPricingService
             'homepage_days' => $homepage['days'],
             'homepage_price' => $homepageFee,
             'social_channels' => $site->enabledSocialChannels(),
+            'publisher_amount' => $publisherAmount,
+            'publisher_currency' => $listingCurrency,
+            'advertiser_eur_amount' => $total,
+            'fx_rate' => $fxRate,
+            'fx_buffer_percent' => $fxBuffer,
         ];
     }
 
@@ -207,17 +248,7 @@ class CartPricingService
 
     public function bulkDiscountPercentForQuantity(Site $site, int $quantity): ?float
     {
-        if (! $site->joinsBulkDiscount()) {
-            return null;
-        }
-
-        $min = (int) config('site_promotions.bulk.min_qty', 3);
-        $max = (int) config('site_promotions.bulk.max_qty', 5);
-        if ($quantity < $min || $quantity > $max) {
-            return null;
-        }
-
-        return (float) $site->bulk_discount_percent;
+        return BulkDiscount::percentForQuantity($site, $quantity);
     }
 
     /**
@@ -250,6 +281,44 @@ class CartPricingService
         }
 
         return round((float) $prices[$resolvedKey], 2);
+    }
+
+    public function resolveListingSensitiveAdditional(Site $site, ?string $sensitiveType): float
+    {
+        if ($sensitiveType === null || $sensitiveType === '') {
+            return 0.0;
+        }
+
+        $prices = $site->listingSensitiveMap();
+        if ($prices === []) {
+            return 0.0;
+        }
+
+        $resolvedKey = $this->resolveSensitiveTypeKey($prices, $sensitiveType);
+        if ($resolvedKey === null) {
+            throw new \InvalidArgumentException(
+                'Invalid or unavailable sensitive content type for site: '.$site->site_name
+            );
+        }
+
+        return round((float) $prices[$resolvedKey], 2);
+    }
+
+    public function resolveListingHomepageAmount(Site $site, ?int $days): float
+    {
+        if ($days === null) {
+            return 0.0;
+        }
+
+        $map = $site->listingHomepageMap();
+        $key = (string) $days;
+        if (isset($map[$key]) && is_numeric($map[$key])) {
+            return round((float) $map[$key], 2);
+        }
+
+        $options = $site->homepagePlacementOptions();
+
+        return isset($options[$days]) ? round((float) $options[$days], 2) : 0.0;
     }
 
     /**
@@ -345,12 +414,69 @@ class CartPricingService
      */
     public function syncAdvertiserSessionCart(?User $buyer = null): array
     {
-        $pruned = $this->pruneAdvertiserCart(session('cart', []) ?: [], $buyer);
-        if ($pruned['changed']) {
-            session()->put('cart', array_values($pruned['cart']));
+        $memoKey = '_advertiser_cart_sync';
+        try {
+            if (app()->bound('request')) {
+                $memo = request()->attributes->get($memoKey);
+                if (is_array($memo) && isset($memo['cart'])) {
+                    return $memo;
+                }
+            }
+        } catch (\Throwable) {
         }
 
+        $sessionCart = session('cart', []);
+        if (! is_array($sessionCart)) {
+            session()->put('cart', []);
+
+            $empty = [
+                'cart' => [],
+                'removed_inactive' => [],
+                'removed_owned' => [],
+                'changed' => true,
+            ];
+            $this->rememberAdvertiserCartSync($memoKey, $empty);
+
+            return $empty;
+        }
+
+        $pruned = $this->pruneAdvertiserCart($sessionCart ?: [], $buyer);
+        if ($pruned['changed']) {
+            session()->put('cart', array_values($pruned['cart']));
+            $this->persistAdvertiserCart($buyer, array_values($pruned['cart']));
+        }
+
+        $this->rememberAdvertiserCartSync($memoKey, $pruned);
+
         return $pruned;
+    }
+
+    /**
+     * @param  array<int, mixed>  $cart
+     */
+    private function persistAdvertiserCart(?User $buyer, array $cart): void
+    {
+        if (! $buyer instanceof User) {
+            return;
+        }
+
+        try {
+            app(AdvertiserCartPersistence::class)->persistFromSession($buyer, $cart);
+        } catch (\Throwable) {
+        }
+    }
+
+    /**
+     * @param  array{cart: list<array<string, mixed>>, removed_inactive: list<string>, removed_owned: list<string>, changed: bool}  $pruned
+     */
+    private function rememberAdvertiserCartSync(string $key, array $pruned): void
+    {
+        try {
+            if (app()->bound('request')) {
+                request()->attributes->set($key, $pruned);
+            }
+        } catch (\Throwable) {
+        }
     }
 
     /**
@@ -370,6 +496,27 @@ class CartPricingService
                 $pruned['removed_inactive']
             ),
         ];
+    }
+
+    /**
+     * Buyer display currency for cart / checkout. Prefer the cart owner's
+     * saved users.display_currency so totals match catalog for that shopper.
+     */
+    private function resolveBuyerCurrency(?int $buyerId = null): string
+    {
+        $listing = app(ListingMoney::class);
+        if ($buyerId !== null && $buyerId > 0) {
+            $auth = auth()->user();
+            if ($auth instanceof User && (int) $auth->id === $buyerId) {
+                return $listing->buyerCurrency($auth);
+            }
+            $loaded = User::query()->find($buyerId);
+            if ($loaded instanceof User) {
+                return $listing->buyerCurrency($loaded);
+            }
+        }
+
+        return $listing->buyerCurrency();
     }
 
     /**
@@ -426,13 +573,16 @@ class CartPricingService
             }
 
             $quantity = max(1, (int) ($item['quantity'] ?? 1));
+            $bulkPack = ! empty($item['bulk_pack'])
+                || ($site->joinsBulkDiscount() && $quantity >= \App\Support\BulkDiscount::minQty());
             $hasHomepageKey = array_key_exists('homepage_days', $item);
             $pricing = $this->priceForAdvertiser(
                 $site,
                 $item['sensitive_type'] ?? null,
                 $quantity,
                 $item['homepage_days'] ?? null,
-                ! $hasHomepageKey
+                ! $hasHomepageKey,
+                $this->resolveBuyerCurrency($buyerId)
             );
 
             for ($i = 0; $i < $quantity; $i++) {
@@ -448,6 +598,7 @@ class CartPricingService
                     'homepage_price' => $pricing['homepage_price'],
                     'social_channels' => $pricing['social_channels'],
                     'copy_number' => $i + 1,
+                    'bulk_pack' => $bulkPack,
                     'list_total' => $pricing['list_total'],
                     'article_total' => $pricing['article_total'],
                     'discount_percent' => $pricing['discount_percent'],
@@ -456,6 +607,11 @@ class CartPricingService
                     'publisher_price' => $pricing['publisher_price'],
                     'platform_fee_percent' => $pricing['platform_fee_percent'],
                     'platform_fee_amount' => $pricing['platform_fee_amount'],
+                    'publisher_amount' => $pricing['publisher_amount'] ?? $pricing['publisher_price'],
+                    'publisher_currency' => $pricing['publisher_currency'] ?? 'EUR',
+                    'advertiser_eur_amount' => $pricing['advertiser_eur_amount'] ?? $pricing['total'],
+                    'fx_rate' => $pricing['fx_rate'] ?? null,
+                    'fx_buffer_percent' => $pricing['fx_buffer_percent'] ?? 0,
                 ];
             }
         }
@@ -505,7 +661,8 @@ class CartPricingService
                 $item['sensitive_type'] ?? null,
                 $quantity,
                 $item['homepage_days'] ?? null,
-                ! $hasHomepageKey
+                ! $hasHomepageKey,
+                $this->resolveBuyerCurrency($buyerId)
             );
             $unitListWithHomepage = round($pricing['list_total'] + $pricing['homepage_price'], 2);
             $lineTotal = round($pricing['total'] * $quantity, 2);
@@ -514,7 +671,7 @@ class CartPricingService
             $total += $lineTotal;
             $savings += $lineSave;
 
-            // Preserve per-placement article slots (bulk packs qty 3–5). Dropping
+            // Preserve per-placement article slots (bulk packs qty 3–10). Dropping
             // content_submission_ids left checkout with only a scalar id and lost
             // assignments for copies 2…N.
             $slotIds = $this->normalizeContentSubmissionIds($item, $quantity);
@@ -550,6 +707,9 @@ class CartPricingService
                 'content_submission_ids' => $slotIds,
                 'bulk_eligible' => $site->joinsBulkDiscount(),
                 'featured' => $site->isFeatured(),
+                'content_source' => $item['content_source'] ?? WritingFeeService::SOURCE_BUYER,
+                'writing_target_url' => trim((string) ($item['writing_target_url'] ?? '')),
+                'writing_anchor_text' => trim((string) ($item['writing_anchor_text'] ?? '')),
             ];
         }
 

@@ -50,6 +50,25 @@ class AdvertiserOrderStatus
                             });
                     });
                 }
+
+                if (Schema::hasColumn('order_items', 'live_url_check_ok')) {
+                    $windowDays = max(1, (int) config('orders.live_url_down_window_days', 90));
+                    $q->orWhere(function ($linkDown) use ($windowDays) {
+                        $linkDown->where('status', 'completed')
+                            ->where('payment_status', 'paid')
+                            ->whereHas('items', function ($iq) use ($windowDays) {
+                                $iq->whereNotNull('live_url')
+                                    ->where('live_url', '!=', '')
+                                    ->where('live_url_check_ok', false)
+                                    ->where(function ($recent) use ($windowDays) {
+                                        $recent->where('live_url_checked_at', '>=', now()->subDays($windowDays));
+                                        if (Schema::hasColumn('order_items', 'completed_at')) {
+                                            $recent->orWhere('completed_at', '>=', now()->subDays($windowDays));
+                                        }
+                                    });
+                            });
+                    });
+                }
             });
         static::constrainWithoutFailedPayment($query);
 
@@ -111,6 +130,12 @@ class AdvertiserOrderStatus
         $query->where('status', 'review')
             ->whereHas('items', function ($items) {
                 $items->whereNotNull('live_url')->where('live_url', '!=', '');
+                if (Schema::hasColumn('order_items', 'fulfilment_source')) {
+                    $items->where(function ($q) {
+                        $q->whereNull('fulfilment_source')
+                            ->orWhere('fulfilment_source', '!=', 'managed_by_slb');
+                    });
+                }
             });
         static::constrainWithoutFailedPayment($query);
 
@@ -201,6 +226,22 @@ class AdvertiserOrderStatus
         )";
     }
 
+    public static function isManagedBySlb(Order $order, ?OrderItem $item = null): bool
+    {
+        try {
+            if ($item && method_exists($item, 'isManagedBySlb') && $item->isManagedBySlb()) {
+                return true;
+            }
+            if (! Schema::hasColumn('order_items', 'fulfilment_source')) {
+                return false;
+            }
+
+            return $order->items->contains(fn ($line) => method_exists($line, 'isManagedBySlb') && $line->isManagedBySlb());
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
     /**
      * Order-level by default so chat/list still see a sibling content-revision.
      * Pass `$itemScoped = true` for per-line Project counts.
@@ -214,7 +255,26 @@ class AdvertiserOrderStatus
         } catch (\Throwable $e) {
             $item = null;
         }
-        $hasLiveUrl = $item && filled($item->live_url);
+        if ($itemScoped) {
+            $hasLiveUrl = $item && filled($item->live_url);
+        } else {
+            try {
+                $hasLiveUrl = $order->items->contains(fn ($line) => filled($line->live_url));
+                // Auto-approve / link-down copy must follow the published line, not
+                // leftover first-item identity when a sibling already has the URL.
+                if ($hasLiveUrl && ! ($item && filled($item->live_url))) {
+                    $withUrl = $order->items->first(fn ($line) => filled($line->live_url));
+                    if ($withUrl) {
+                        $item = $withUrl;
+                    }
+                }
+            } catch (\Throwable $e) {
+                $hasLiveUrl = $item && filled($item->live_url);
+            }
+            if (! $hasLiveUrl && $item) {
+                $hasLiveUrl = filled($item->live_url);
+            }
+        }
         $modRequested = false;
         if ($item) {
             $modRequested = method_exists($item, 'isModificationRequested')
@@ -323,6 +383,16 @@ class AdvertiserOrderStatus
                 ];
             }
 
+            if (static::isManagedBySlb($order, $item)) {
+                return [
+                    'label' => 'In progress · Managed by SLB',
+                    'next' => 'Our team is managing this placement. You’ll get the live URL here when it’s published.',
+                    'cls' => 'status-processing',
+                    'stage' => 'managed',
+                    'auto_approve_hint' => null,
+                ];
+            }
+
             return [
                 'label' => 'Paid · waiting for publisher',
                 'next' => 'Publisher will accept the order and start working.',
@@ -343,6 +413,16 @@ class AdvertiserOrderStatus
         }
 
         if ($status === 'processing' && $modRequested) {
+            if (static::isManagedBySlb($order, $item)) {
+                return [
+                    'label' => 'In progress · Managed by SLB',
+                    'next' => 'Our team is handling your correction request.',
+                    'cls' => 'status-processing',
+                    'stage' => 'managed_revision',
+                    'auto_approve_hint' => null,
+                ];
+            }
+
             return [
                 'label' => 'Revision requested',
                 'next' => 'Waiting on the publisher to update the post and resubmit the live URL.',
@@ -353,6 +433,16 @@ class AdvertiserOrderStatus
         }
 
         if ($status === 'processing') {
+            if (static::isManagedBySlb($order, $item)) {
+                return [
+                    'label' => 'In progress · Managed by SLB',
+                    'next' => 'Our team is managing this placement. You’ll get the live URL here when it’s published.',
+                    'cls' => 'status-processing',
+                    'stage' => 'managed',
+                    'auto_approve_hint' => null,
+                ];
+            }
+
             $accepted = $item && ! empty($item->accepted_at);
 
             return [
@@ -365,6 +455,18 @@ class AdvertiserOrderStatus
         }
 
         if ($status === 'review') {
+            if (static::isManagedBySlb($order, $item)) {
+                return [
+                    'label' => $hasLiveUrl ? 'In progress · Managed by SLB' : 'In progress · Managed by SLB',
+                    'next' => $hasLiveUrl
+                        ? 'Your article is live. Open it from My Orders. If you need a correction, reply in order chat — our team will handle it.'
+                        : 'Our team is managing this placement. You’ll get the live URL here when it’s published.',
+                    'cls' => 'status-review',
+                    'stage' => $hasLiveUrl ? 'managed_url' : 'managed',
+                    'auto_approve_hint' => null,
+                ];
+            }
+
             return [
                 'label' => $hasLiveUrl ? 'URL delivered · your review' : 'In review',
                 'next' => $hasLiveUrl
@@ -392,6 +494,40 @@ class AdvertiserOrderStatus
                     'label' => 'Completed',
                     'next' => 'Placement details are missing for this order.',
                     'cls' => 'status-completed',
+                    'stage' => 'completed',
+                    'auto_approve_hint' => null,
+                ];
+            }
+
+            if (static::isManagedBySlb($order, $item)) {
+                $linkDown = $hasLiveUrl && $item->live_url_check_ok === false;
+                if ($linkDown) {
+                    return [
+                        'label' => 'Completed · Managed by SLB',
+                        'next' => 'The live URL did not respond. Recheck it, or open the published page. Reply in order chat if you need help.',
+                        'cls' => 'status-review',
+                        'stage' => 'completed',
+                        'auto_approve_hint' => null,
+                    ];
+                }
+
+                return [
+                    'label' => 'Completed · Managed by SLB',
+                    'next' => $hasLiveUrl
+                        ? 'Your article is live. Open it from My Orders. If you need a correction, reply in order chat — our team will handle it.'
+                        : 'Placement finished · Managed by SLB.',
+                    'cls' => 'status-completed',
+                    'stage' => 'completed',
+                    'auto_approve_hint' => null,
+                ];
+            }
+
+            $linkDown = $hasLiveUrl && $item->live_url_check_ok === false;
+            if ($linkDown) {
+                return [
+                    'label' => 'Completed · link may be down',
+                    'next' => 'The live URL did not respond. Recheck it, or open the published page.',
+                    'cls' => 'status-review',
                     'stage' => 'completed',
                     'auto_approve_hint' => null,
                 ];
@@ -428,8 +564,13 @@ class AdvertiserOrderStatus
             $item = $item ?? null;
         }
         $status = (string) $order->status;
-        $hasItems = $order->items->isNotEmpty();
-        $hasLiveUrl = $order->items->contains(fn ($line) => filled($line->live_url));
+        try {
+            $hasItems = $order->items->isNotEmpty();
+            $hasLiveUrl = $order->items->contains(fn ($line) => filled($line->live_url));
+        } catch (\Throwable $e) {
+            $hasItems = false;
+            $hasLiveUrl = false;
+        }
         $paid = in_array($order->payment_status, ['paid', 'completed', 'refunded'], true)
             || in_array($status, ['processing', 'review', 'completed'], true);
         $acceptedOrLater = $hasItems && (
@@ -439,14 +580,42 @@ class AdvertiserOrderStatus
         $urlDelivered = $hasLiveUrl && in_array($status, ['review', 'completed'], true);
         $completed = $status === 'completed';
         $modRequested = $item && (($item->modification_requested ?? 'no') === 'yes');
+        $articleApproved = AdvertiserOrderDetails::hasArticleApproved($order);
+        $processingDone = $hasItems && (
+            $articleApproved
+            || $urlDelivered
+            || in_array($status, ['review', 'completed'], true)
+        );
 
         $steps = [
             ['label' => 'Paid', 'done' => $paid, 'current' => false],
             ['label' => 'Accepted', 'done' => $acceptedOrLater, 'current' => false],
-            ['label' => 'Processing', 'done' => $hasItems && in_array($status, ['review', 'completed'], true), 'current' => false],
-            ['label' => 'URL delivered', 'done' => $urlDelivered, 'current' => false],
-            ['label' => 'Completed', 'done' => $completed && $hasItems, 'current' => false],
+            ['label' => 'Processing', 'done' => $processingDone, 'current' => false],
         ];
+        if ($articleApproved) {
+            $steps[] = [
+                'label' => 'Article approved',
+                'done' => $urlDelivered || $completed,
+                'current' => false,
+            ];
+        }
+        $steps[] = ['label' => 'URL delivered', 'done' => $urlDelivered, 'current' => false];
+        $steps[] = ['label' => 'Completed', 'done' => $completed && $hasItems, 'current' => false];
+
+        $markCurrent = function (string $label) use (&$steps): void {
+            foreach ($steps as $i => $step) {
+                $steps[$i]['current'] = ($step['label'] === $label);
+            }
+        };
+        $findIndex = function (string $label) use ($steps): int {
+            foreach ($steps as $i => $step) {
+                if ($step['label'] === $label) {
+                    return $i;
+                }
+            }
+
+            return -1;
+        };
 
         if ($status === 'cancelled') {
             return $steps;
@@ -485,26 +654,141 @@ class AdvertiserOrderStatus
         } elseif ($status === 'pending' && $paid) {
             $steps[1]['current'] = true;
         } elseif ($status === 'processing' && $modRequested) {
-            $steps[2]['current'] = true;
-            $steps[2]['label'] = 'Revision';
-            $steps[2]['done'] = false;
-            $steps[3]['done'] = false;
+            $proc = $findIndex('Processing');
+            if ($proc >= 0) {
+                $steps[$proc]['label'] = 'Revision';
+                $steps[$proc]['done'] = false;
+                $steps[$proc]['current'] = true;
+            }
+            $urlIdx = $findIndex('URL delivered');
+            if ($urlIdx >= 0) {
+                $steps[$urlIdx]['done'] = false;
+            }
         } elseif ($status === 'processing') {
-            $steps[2]['current'] = true;
+            // Writing line awaiting advertiser article approval.
+            $awaitingArticle = $articleApproved === false
+                && $item
+                && in_array(strtolower((string) ($item->writing_status ?? '')), ['article_submitted'], true);
+            if ($awaitingArticle && $findIndex('Article approved') < 0) {
+                // No dedicated step until approval exists; stay on Processing.
+                $markCurrent('Processing');
+            } elseif ($articleApproved && ! $urlDelivered) {
+                $markCurrent('Article approved');
+                $art = $findIndex('Article approved');
+                if ($art >= 0) {
+                    $steps[$art]['done'] = false;
+                    $steps[$art]['current'] = true;
+                }
+                $proc = $findIndex('Processing');
+                if ($proc >= 0) {
+                    $steps[$proc]['done'] = true;
+                    $steps[$proc]['current'] = false;
+                }
+            } else {
+                $markCurrent('Processing');
+            }
         } elseif ($status === 'review' && $hasLiveUrl) {
-            $steps[3]['current'] = true;
-            $steps[3]['done'] = false;
+            $markCurrent('URL delivered');
+            $urlIdx = $findIndex('URL delivered');
+            if ($urlIdx >= 0) {
+                $steps[$urlIdx]['done'] = false;
+            }
         } elseif ($status === 'review') {
-            $steps[2]['current'] = true;
-            $steps[2]['done'] = false;
+            if ($articleApproved) {
+                $markCurrent('Article approved');
+                $art = $findIndex('Article approved');
+                if ($art >= 0) {
+                    $steps[$art]['done'] = false;
+                }
+            } else {
+                $markCurrent('Processing');
+                $proc = $findIndex('Processing');
+                if ($proc >= 0) {
+                    $steps[$proc]['done'] = false;
+                }
+            }
         } elseif ($status === 'completed') {
-            $steps[4]['current'] = true;
-            $steps[4]['done'] = $hasItems;
-            if ($payment === 'refunded') {
-                $steps[4]['label'] = 'Completed · refunded';
+            $markCurrent('Completed');
+            $doneIdx = $findIndex('Completed');
+            if ($doneIdx >= 0) {
+                $steps[$doneIdx]['done'] = $hasItems;
+                if ($payment === 'refunded') {
+                    $steps[$doneIdx]['label'] = 'Completed · refunded';
+                }
             }
         }
 
         return $steps;
+    }
+
+    /**
+     * Compact Placed → Accepted → Published → Approved stepper for
+     * the notifications dropdown and dashboard Recent orders.
+     *
+     * @return array{current: int, steps: list<array{key: string, label: string, state: string}>}
+     */
+    public static function lifecycleStepper(Order $order, ?OrderItem $item = null): array
+    {
+        try {
+            $item = $item ?? $order->items->first();
+        } catch (\Throwable) {
+            $item = $item ?? null;
+        }
+
+        $status = (string) $order->status;
+        try {
+            $hasLiveUrl = $order->items->contains(fn ($line) => filled($line->live_url));
+        } catch (\Throwable) {
+            $hasLiveUrl = $item && filled($item->live_url);
+        }
+
+        // Some legacy/demo rows use in_progress instead of processing.
+        $activeStatuses = ['processing', 'in_progress', 'review', 'completed'];
+        $paid = in_array((string) $order->payment_status, ['paid', 'completed', 'refunded'], true)
+            || in_array($status, $activeStatuses, true);
+        $accepted = $paid && (
+            in_array($status, $activeStatuses, true)
+            || ($item && ! empty($item->accepted_at))
+        );
+        $published = $hasLiveUrl && in_array($status, ['review', 'completed', 'in_progress'], true);
+        $approved = $status === 'completed';
+
+        $current = 1;
+        if ($approved) {
+            $current = 4;
+        } elseif ($published) {
+            $current = 3;
+        } elseif ($accepted) {
+            $current = 2;
+        } elseif ($paid) {
+            $current = 1;
+        }
+
+        $labels = [
+            1 => ['key' => 'placed', 'label' => 'Placed'],
+            2 => ['key' => 'accepted', 'label' => 'Accepted'],
+            3 => ['key' => 'published', 'label' => 'Published'],
+            4 => ['key' => 'approved', 'label' => 'Approved'],
+        ];
+
+        $steps = [];
+        foreach ($labels as $i => $meta) {
+            $state = 'todo';
+            if ($i < $current) {
+                $state = 'done';
+            } elseif ($i === $current) {
+                $state = 'current';
+            }
+            $steps[] = [
+                'key' => $meta['key'],
+                'label' => $meta['label'],
+                'state' => $state,
+            ];
+        }
+
+        return [
+            'current' => $current,
+            'steps' => $steps,
+        ];
     }
 }

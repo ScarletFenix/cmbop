@@ -120,6 +120,33 @@ class CatalogUiHardeningTest extends TestCase
         $this->assertStringNotContainsString("'<strong>' + selected.type", $js);
     }
 
+    public function test_add_to_cart_flies_to_the_header_cart_quietly(): void
+    {
+        $js = $this->catalogJs();
+
+        $this->assertStringContainsString('function catalogFlyToCart(', $js);
+        $this->assertStringContainsString('quiet: true', $js);
+        $this->assertStringContainsString('flyOrigin: button', $js);
+        $layout = (string) file_get_contents(resource_path('views/advertiser/layouts/app.blade.php'));
+        $this->assertStringContainsString('data-cart-fly-target', $layout);
+        $this->assertStringContainsString('opts.quiet', $layout);
+        $this->assertStringContainsString('catalog-addon-price', $this->catalogBlade());
+        $this->assertStringContainsString('lastPublicationLabel()', (string) file_get_contents(
+            resource_path('views/advertiser/partials/catalog-site-trust.blade.php')
+        ));
+        $this->assertStringContainsString('catalog-expand-trust', $this->catalogBlade());
+        $this->assertStringNotContainsString('catalog-site-trust--row', $this->catalogBlade());
+
+        $css = (string) file_get_contents(public_path('assets/css/catalog.css'));
+        $this->assertStringContainsString('.form-check-input.sensitive-price-checkbox', $css);
+        $this->assertStringContainsString('appearance: none', $css);
+        $this->assertStringContainsString('m6 10 3 3 6-6', $css);
+        $this->assertStringContainsString('cart-fly-arrow', $js);
+        $this->assertStringContainsString('cart-fly-window', $js);
+        $this->assertStringContainsString('.cart-fly-window', $css);
+        $this->assertStringContainsString('.cart-fly-arrow', $css);
+    }
+
     public function test_buy_button_price_updates_apply_the_active_discount(): void
     {
         $js = $this->catalogJs();
@@ -136,6 +163,8 @@ class CatalogUiHardeningTest extends TestCase
         // the JS has to find them there rather than inside the button.
         $this->assertStringContainsString('function catalogPriceDisplaysFor(', $js);
         $this->assertStringContainsString(".closest('.catalog-card-buy, .catalog-row-actions')", $js);
+        $this->assertStringContainsString('function catalogRowBuyButton(', $js);
+        $this->assertStringContainsString(':not([data-bulk-hint])', $js);
 
         $this->makeSite([
             'custom_discount_percent' => 20,
@@ -432,7 +461,7 @@ class CatalogUiHardeningTest extends TestCase
     {
         $site = $this->makeSite([
             'description' => 'A short description that only the table used to show.',
-            'publication_time' => '12 months',
+            'publication_time' => '1year',
         ]);
 
         $html = $this->actingAs($this->advertiser)
@@ -443,7 +472,7 @@ class CatalogUiHardeningTest extends TestCase
         $this->assertStringContainsString('id="card-details-'.$site->id.'"', $html);
         $this->assertStringContainsString('aria-controls="card-details-'.$site->id.'"', $html);
         $this->assertStringContainsString('A short description that only the table used to show.', $html);
-        $this->assertStringContainsString('12 months', $html);
+        $this->assertStringContainsString('1 year', $html);
 
         // Eye controls only exist in copy-strike hide mode — normals see full
         // identity with no toggle on the card.
@@ -489,10 +518,11 @@ class CatalogUiHardeningTest extends TestCase
         $drawer = substr($drawer, 0, $drawerEnd);
 
         // Old col-md-2/3 cells summed past 12 and wrapped mid-row. Keep the
-        // shared 6/4/3 grid: four per lg row (Tag…Quality = 10 cells).
+        // shared 6/4/3 grid (four per lg row), including link type / TAT /
+        // sensitive topics / optional Google News.
         $this->assertSame(0, substr_count($drawer, 'class="col-md-2"'));
         $this->assertSame(0, substr_count($drawer, 'class="col-md-3"'));
-        $this->assertSame(12, substr_count($drawer, 'class="col-6 col-md-4 col-lg-3"'));
+        $this->assertSame(18, substr_count($drawer, 'class="col-6 col-md-4 col-lg-3"'));
 
         // Preset chips make DA taller than Tag/Favorites/Blacklist. Bottom
         // alignment floated the DA label above that first row.
@@ -590,5 +620,31 @@ class CatalogUiHardeningTest extends TestCase
         $this->assertFileDoesNotExist(public_path('js/catalog.js'));
         $this->assertFileExists(public_path('assets/js/catalog.js'));
         $this->assertStringContainsString('assets/js/catalog.js', $this->catalogBlade());
+    }
+
+    public function test_catalog_listing_omits_export_csv_button(): void
+    {
+        $this->makeSite();
+
+        $html = $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringNotContainsString('Export CSV', $html);
+        $this->assertStringNotContainsString('fa-file-csv', $html);
+        $this->assertStringNotContainsString('/advertiser/catalog/export', $html);
+        $this->assertStringContainsString('Save search', $html);
+        $this->assertStringContainsString('Suggest a website', $html);
+        $this->assertStringContainsString('catalog-results-bar', $html);
+
+        $blade = $this->catalogBlade();
+        $this->assertStringNotContainsString('advertiser.catalog.export', $blade);
+        $this->assertStringNotContainsString('Export CSV', $blade);
+
+        $js = $this->catalogJs();
+        $this->assertStringNotContainsString('catalog.export', $js);
+        $this->assertStringNotContainsString('Export CSV', $js);
+        $this->assertStringNotContainsString('/catalog/export', $js);
     }
 }

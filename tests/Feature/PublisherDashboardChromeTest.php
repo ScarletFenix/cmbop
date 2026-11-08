@@ -15,7 +15,7 @@ class PublisherDashboardChromeTest extends TestCase
     {
         $layout = (string) file_get_contents(resource_path('views/publisher/layouts/app.blade.php'));
 
-        $this->assertStringContainsString("@yield('title', 'Publisher')", $layout);
+        $this->assertStringContainsString("\$__env->yieldContent('title', 'Publisher')", $layout);
         $this->assertStringContainsString('publisher-dashboard.css', $layout);
         $this->assertStringNotContainsString('<title>Publisher Dashboard</title>', $layout);
 
@@ -31,8 +31,9 @@ class PublisherDashboardChromeTest extends TestCase
 
         $this->assertStringNotContainsString('<style>', $blade);
         $this->assertStringContainsString("@section('title', 'Dashboard')", $blade);
-        $this->assertStringContainsString('chart.js@4.4.6', $blade);
-        $this->assertStringNotContainsString('cdn.jsdelivr.net/npm/chart.js"', $blade);
+        $this->assertStringContainsString("asset('js/chart.umd.min.js')", $blade);
+        $this->assertStringNotContainsString('cdn.jsdelivr.net', $blade);
+        $this->assertStringContainsString('publisherAttentionQueues', $blade);
         $this->assertStringContainsString('No orders yet', $blade);
         $this->assertStringContainsString('clawbacks appear on the reversal day', $blade);
         $this->assertStringContainsString('listed — add another niche or market.', $blade);
@@ -58,7 +59,7 @@ class PublisherDashboardChromeTest extends TestCase
         $this->actingAs($user)
             ->get(route('publisher.tasks'))
             ->assertOk()
-            ->assertSee('<title>My Tasks — SEOLinkBuildings</title>', false)
+            ->assertSee('<title>Tasks — SEOLinkBuildings</title>', false)
             ->assertDontSee('<title>Publisher Dashboard</title>', false);
     }
 }

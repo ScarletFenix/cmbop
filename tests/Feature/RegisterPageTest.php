@@ -33,10 +33,26 @@ class RegisterPageTest extends TestCase
             ->assertSee('Create Account', false)
             ->assertDontSee('Continue with Apple', false)
             ->assertSee('Continue with Google', false)
-            ->assertSee('€20 welcome credit', false)
-            ->assertSee('Start with €20 free credit', false)
-            ->assertSee('Welcome bonus for first orders', false)
-            ->assertSee('const welcomeBonusEnabled = true', false);
+            ->assertDontSee('€20 welcome credit', false)
+            ->assertDontSee('Start with €20 free credit', false)
+            ->assertSee('Free to start — no card required', false)
+            ->assertSee('const welcomeBonusEnabled = false', false)
+            ->assertSee('Country', false)
+            ->assertSee('Your account currency:', false)
+            ->assertSee('js-slb-search-select', false)
+            ->assertSee('searchable-select.js', false)
+            ->assertSee('name="country"', false)
+            ->assertSee('required', false);
+
+        $css = (string) file_get_contents(public_path('assets/css/auth-pages.css'));
+        $this->assertStringContainsString('.slb-search-select__list', $css);
+        $this->assertStringContainsString('max-height: 280px', $css);
+        $this->assertStringContainsString('--auth-teal', $css);
+
+        $js = (string) file_get_contents(public_path('assets/js/searchable-select.js'));
+        $this->assertStringContainsString('js-slb-search-select', $js);
+        $this->assertStringContainsString("select.dispatchEvent(new Event('change'", $js);
+        $this->assertStringContainsString("toggle.setAttribute('aria-required', 'true')", $js);
     }
 
     public function test_register_page_defines_role_benefits_helper_before_use(): void
@@ -64,7 +80,7 @@ class RegisterPageTest extends TestCase
             ->assertSee('Continue with Google', false);
     }
 
-    public function test_register_succeeds_for_advertiser_with_welcome_bonus(): void
+    public function test_register_succeeds_for_advertiser_without_welcome_bonus(): void
     {
         Notification::fake();
 
@@ -74,30 +90,34 @@ class RegisterPageTest extends TestCase
             'password' => 'password123',
             'password_confirmation' => 'password123',
             'role' => 'advertiser',
+            'country' => 'de',
             'terms' => '1',
         ]);
 
         $response->assertOk()
             ->assertJsonPath('status', 'success')
             ->assertJsonPath('verification_sent', true)
-            ->assertJsonPath('redirect', '/login');
+            ->assertJsonPath('redirect', '/email/verify');
 
         $user = User::where('email', 'alice-reg@example.com')->first();
         $this->assertNotNull($user);
+        $this->assertSame('de', $user->country);
+        $this->assertSame('EUR', $user->display_currency);
 
         Notification::assertSentTo($user, VerifyEmail::class);
 
-        $this->get(route('login'))
+        $this->get(route('verification.notice'))
             ->assertOk()
-            ->assertSee('Registration successful', false);
+            ->assertSee('Registration successful', false)
+            ->assertSee('alice-reg@example.com', false);
 
         $advertiserRoleId = Role::where('name', 'advertiser')->value('id');
         $wallet = $user->wallets()->where('role_id', $advertiserRoleId)->first();
         $this->assertNotNull($wallet);
-        $this->assertEquals(20.0, (float) $wallet->bonus_balance);
-        $this->assertEquals(20.0, (float) $wallet->balance);
+        $this->assertEquals(0.0, (float) $wallet->bonus_balance);
+        $this->assertEquals(0.0, (float) $wallet->balance);
         $this->assertSame(0.0, $wallet->withdrawableBalance());
-        $this->assertSame(20.0, $wallet->lockedBonusBalance());
+        $this->assertSame(0.0, $wallet->lockedBonusBalance());
     }
 
     public function test_register_validation_returns_json_errors(): void
@@ -112,7 +132,17 @@ class RegisterPageTest extends TestCase
 
         $response->assertStatus(422)
             ->assertJsonPath('status', 'validation')
-            ->assertJsonStructure(['errors' => ['email', 'terms']]);
+            ->assertJsonStructure(['errors' => ['email', 'terms', 'country']]);
+    }
+
+    public function test_register_password_errors_are_outside_the_input_group(): void
+    {
+        $html = $this->get(route('register'))->assertOk()->getContent();
+        $this->assertStringContainsString('id="passwordError"', $html);
+        $this->assertDoesNotMatchRegularExpression(
+            '/<div class="input-group">[^<]*(?:<(?!\/div)[^>]*>[^<]*)*id="passwordError"/',
+            $html
+        );
     }
 
     public function test_register_succeeds_when_wallet_bonus_columns_are_missing(): void
@@ -133,6 +163,7 @@ class RegisterPageTest extends TestCase
             'password' => 'password123',
             'password_confirmation' => 'password123',
             'role' => 'advertiser',
+            'country' => 'fr',
             'terms' => '1',
         ]);
 

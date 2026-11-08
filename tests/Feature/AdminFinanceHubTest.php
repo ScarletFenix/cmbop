@@ -1184,16 +1184,14 @@ class AdminFinanceHubTest extends TestCase
 
         $this->assertStringContainsString('finance-ledger-filters', $html);
         $this->assertStringContainsString('finance-ledger-filters__action', $html);
-        $this->assertStringContainsString('row g-3 align-items-end', $html);
-        $this->assertStringContainsString('for="adminFinanceLedgerFilter"', $html);
+        $this->assertStringContainsString('admin-orders-filters__grid', $html);
         $this->assertStringContainsString('id="adminFinanceLedgerFilter"', $html);
         $this->assertStringContainsString('for="adminFinanceLedgerSearch"', $html);
-        $this->assertStringContainsString('form-label small text-muted mb-1', $html);
 
         $blade = (string) file_get_contents(resource_path('views/admin/finance-ledger.blade.php'));
         $this->assertStringNotContainsString('col-md-1', $blade);
         $this->assertStringNotContainsString('col-md-3', $blade);
-        $this->assertStringContainsString('col-lg-auto finance-ledger-filters__action', $blade);
+        $this->assertStringContainsString('admin-orders-filters__actions finance-ledger-filters__action', $blade);
 
         $css = (string) file_get_contents(public_path('assets/css/admin-components.css'));
         $this->assertStringContainsString('.finance-ledger-filters .slb-search-status:empty', $css);
@@ -1338,6 +1336,8 @@ class AdminFinanceHubTest extends TestCase
             ->get(route('admin.finance'))
             ->assertOk()
             ->assertSee('Est. fee margin', false)
+            ->assertSee('Bonuses issued', false)
+            ->assertSee('Net', false)
             ->assertSee('Dated by paid date', false)
             ->assertSee('Dated by completed date', false)
             ->assertSee('Dated by refund date', false)
@@ -1567,5 +1567,47 @@ class AdminFinanceHubTest extends TestCase
                 '--force' => true,
             ]);
         }
+    }
+
+    public function test_open_withdrawals_omit_currency_column_when_missing(): void
+    {
+        $publisher = $this->makeUser('publisher');
+        $pubRole = Role::firstOrCreate(['name' => 'publisher']);
+        Wallet::create([
+            'user_id' => $publisher->id,
+            'role_id' => $pubRole->id,
+            'balance' => 25,
+            'bonus_balance' => 0,
+            'reserved_balance' => 0,
+            'bonus_reserved' => 0,
+            'currency' => 'EUR',
+        ]);
+
+        Schema::table('withdrawals', function ($table) {
+            if (Schema::hasColumn('withdrawals', 'currency')) {
+                $table->dropColumn('currency');
+            }
+        });
+        $this->assertFalse(Schema::hasColumn('withdrawals', 'currency'));
+
+        Withdrawal::create([
+            'user_id' => $publisher->id,
+            'amount' => 25,
+            'fee' => 0,
+            'net_amount' => 25,
+            'payment_method' => 'bank',
+            'status' => 'pending',
+        ]);
+
+        $overview = app(FinanceOverviewService::class)->overview(
+            app(FinanceOverviewService::class)->resolvePeriod('all')
+        );
+
+        $byCurrency = $overview['listing_fx']['open_withdrawals_by_currency'] ?? null;
+        $this->assertIsArray($byCurrency);
+        $this->assertEquals(25.0, $byCurrency['EUR']);
+        $this->assertEquals(0.0, $byCurrency['GBP']);
+        $this->assertEquals(0.0, $byCurrency['USD']);
+        $this->assertEquals(25.0, $overview['due_to_pay_now']);
     }
 }

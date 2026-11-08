@@ -24,7 +24,10 @@ class Withdrawal extends Model
         'wallet_id',
         'amount',
         'fee',
+        'conversion_fee',
+        'conversion_fee_percent',
         'net_amount',
+        'currency',
         'payment_method',
         'payment_details',
         'status',
@@ -32,6 +35,7 @@ class Withdrawal extends Model
         'cancelled_at',
         'admin_notes',
         'processed_at',
+        'partner_ledger_transaction_id',
     ];
 
     protected $casts = [
@@ -40,6 +44,8 @@ class Withdrawal extends Model
         'cancelled_at' => 'datetime',
         'amount' => 'decimal:2',
         'fee' => 'decimal:2',
+        'conversion_fee' => 'decimal:2',
+        'conversion_fee_percent' => 'decimal:2',
         'net_amount' => 'decimal:2',
     ];
 
@@ -107,7 +113,12 @@ class Withdrawal extends Model
             return [];
         }
 
-        return ['wallet_id' => (int) $wallet->id];
+        $attrs = ['wallet_id' => (int) $wallet->id];
+        if (static::hasTableColumn('currency')) {
+            $attrs['currency'] = strtoupper((string) ($wallet->currency ?: 'EUR')) ?: 'EUR';
+        }
+
+        return $attrs;
     }
 
     /**

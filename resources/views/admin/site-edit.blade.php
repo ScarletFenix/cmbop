@@ -7,7 +7,7 @@
     $isMarketingEditor = $isMarketingEditor ?? false;
     $marketingListingLocked = $marketingListingLocked ?? false;
     $categories = $categories ?? collect();
-    $rawMarketingNiches = old('categories', $site->categories_array ?? []);
+    $rawMarketingNiches = old('categories', old('category', $site->categories_array ?? []));
     if (! is_string($rawMarketingNiches) && ! is_iterable($rawMarketingNiches)) {
         $rawMarketingNiches = [];
     }
@@ -25,8 +25,16 @@
         ->map(fn ($v) => (string) $v)
         ->values()
         ->all();
-    // After save, url()->previous() is this edit page — Back would look broken.
-    $sitesBackUrl = staff_route('sites.index', array_filter([
+    if ($marketingNiches === [] && ! old('categories') && ! old('category') && filled($site->category)) {
+        $fromColumn = \App\Models\Category::resolveNicheNames($site->category)['resolved'] ?? [];
+        $marketingNiches = collect($fromColumn)
+            ->flatten()
+            ->filter(fn ($v) => is_scalar($v) && filled($v) && strtolower((string) $v) !== 'pending')
+            ->map(fn ($v) => (string) $v)
+            ->values()
+            ->all();
+    }
+    $sitesBackUrl = $sitesBackUrl ?? staff_route('sites.index', array_filter([
         'publisher' => $site->publisher_id,
         'site' => $site->id,
     ]));
@@ -45,7 +53,12 @@
         </div>
         <div class="d-flex gap-2 flex-wrap">
             <a href="{{ $sitesBackUrl }}" class="btn btn-sm btn-outline-secondary">← Back</a>
-            <a href="{{ staff_route('sites.index') }}" class="btn btn-sm btn-outline-primary">Sites list</a>
+            <a href="{{ $sitesBackUrl }}" class="btn btn-sm btn-outline-primary">Sites list</a>
+            @if((int) $site->publisher_id > 0)
+                <a href="{{ staff_route('sites.create', ['publisher' => $site->publisher_id], false) }}" class="btn btn-sm btn-primary">
+                    <i class="fa fa-plus me-1"></i> Add site for this publisher
+                </a>
+            @endif
         </div>
     </div>
 
@@ -119,6 +132,11 @@
                             <div class="text-muted small">Traffic</div>
                             <div class="fw-semibold">{{ number_format((int) $site->traffic) }}</div>
                         </div>
+                        @include('admin.sites.partials.placement-extras', [
+                            'layout' => 'inset',
+                            'site' => $site,
+                            'editable' => false,
+                        ])
                         <div class="col-12">
                             @if($site->marketingCanEditDescription())
                                 <form method="POST" action="{{ staff_route('sites.update', $site->id, false) }}">
@@ -147,7 +165,7 @@
                         </div>
                     </div>
                 @else
-                <form method="POST" action="{{ staff_route('sites.update', $site->id, false) }}" enctype="multipart/form-data">
+                <form method="POST" action="{{ staff_route('sites.update', $site->id, false) }}" enctype="multipart/form-data" class="admin-deposits-filters" data-admin-filter-live="1">
                     @csrf
                     @method('PUT')
 
@@ -183,9 +201,9 @@
                             <select id="country" name="country" class="form-select @error('country') is-invalid @enderror" required>
                                 <option value="">Select…</option>
                                 @foreach($countries as $country)
-                                    <option value="{{ strtolower($country->code) }}"
-                                        @selected(old_text('country', strtolower((string) $site->country)) === strtolower($country->code))>
-                                        {{ $country->name }}
+                                    <option value="{{ marketplace_option_code($country) }}"
+                                        @selected(old_text('country', strtolower((string) $site->country)) === marketplace_option_code($country))>
+                                        {{ marketplace_option_name($country) }}
                                     </option>
                                 @endforeach
                             </select>
@@ -197,9 +215,9 @@
                             <select id="language" name="language" class="form-select @error('language') is-invalid @enderror" required>
                                 <option value="">Select country first</option>
                                 @foreach($languages as $language)
-                                    <option value="{{ strtolower($language->code) }}"
-                                        @selected(old_text('language', strtolower((string) $site->language)) === strtolower($language->code))>
-                                        {{ $language->name }}
+                                    <option value="{{ marketplace_option_code($language) }}"
+                                        @selected(old_text('language', strtolower((string) $site->language)) === marketplace_option_code($language))>
+                                        {{ marketplace_option_name($language, 'language') }}
                                     </option>
                                 @endforeach
                             </select>
@@ -272,6 +290,7 @@
                             @error('categories')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
                         </div>
 
+                        @include('admin.sites.partials.site-tag-field')
                         <div class="col-12">
                             <label class="form-label fw-semibold" for="site_image">Site image</label>
                             <input type="file" id="site_image" name="site_image"
@@ -296,6 +315,10 @@
                             </div>
                         </div>
 
+                        @include('admin.sites.partials.placement-extras', [
+                            'layout' => 'inset',
+                            'site' => $site,
+                        ])
                     </div>
 
                     <div class="d-flex flex-wrap gap-2 mt-4">
@@ -366,7 +389,7 @@
                         Save the advertiser brief, then use Activate. Save does not change status.
                     </div>
                 @endif
-                <form method="POST" action="{{ staff_route('sites.update', $site->id, false) }}" enctype="multipart/form-data">
+                <form method="POST" action="{{ staff_route('sites.update', $site->id, false) }}" enctype="multipart/form-data" class="admin-deposits-filters" data-admin-filter-live="1">
                     @csrf
                     @method('PUT')
 
@@ -423,9 +446,9 @@
                             <select id="country" name="country" class="form-select">
                                 <option value="">Select…</option>
                                 @foreach($countries as $country)
-                                    <option value="{{ strtolower($country->code) }}"
-                                        @selected(old_text('country', strtolower((string) $site->country)) === strtolower($country->code))>
-                                        {{ $country->name }}
+                                    <option value="{{ marketplace_option_code($country) }}"
+                                        @selected(old_text('country', strtolower((string) $site->country)) === marketplace_option_code($country))>
+                                        {{ marketplace_option_name($country) }}
                                     </option>
                                 @endforeach
                             </select>
@@ -435,18 +458,42 @@
                             <select id="language" name="language" class="form-select">
                                 <option value="">Select country first</option>
                                 @foreach($languages as $language)
-                                    <option value="{{ strtolower($language->code) }}"
-                                        @selected(old_text('language', strtolower((string) $site->language)) === strtolower($language->code))>
-                                        {{ $language->name }}
+                                    <option value="{{ marketplace_option_code($language) }}"
+                                        @selected(old_text('language', strtolower((string) $site->language)) === marketplace_option_code($language))>
+                                        {{ marketplace_option_name($language, 'language') }}
                                     </option>
                                 @endforeach
                             </select>
                         </div>
 
-                        <div class="col-md-6">
-                            <label class="form-label fw-semibold" for="category">Category</label>
-                            <input type="text" id="category" name="category" class="form-control"
-                                   value="{{ old_text('category', $site->category) }}">
+                        <div class="col-12">
+                            <label class="form-label fw-semibold" for="categoryInput">Niches <span class="text-danger">*</span> (max 7)</label>
+                            <input type="hidden"
+                                   name="categories"
+                                   id="selectedCategories"
+                                   value="{{ implode('|', $marketingNiches) }}">
+                            <div class="multi-select-wrapper" id="categoryWrapper" data-multi-select="category">
+                                <div class="multi-select-input" id="categoryInput" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false" aria-label="Select niches">
+                                    <span class="multi-select-placeholder">Select niches (max 7)…</span>
+                                </div>
+                                <div class="multi-select-dropdown" id="categoryDropdown" role="listbox" aria-multiselectable="true">
+                                    <div class="multi-select-search">
+                                        <input type="text" placeholder="Type to search niches…" id="categorySearch" autocomplete="off" aria-label="Search niches">
+                                    </div>
+                                    <div class="multi-select-options" id="categoryOptions">
+                                        @foreach($categories as $categoryName)
+                                            <div class="multi-select-option{{ in_array((string) $categoryName, $marketingNiches, true) ? ' selected' : '' }}"
+                                                 role="option"
+                                                 data-value="{{ $categoryName }}"
+                                                 data-label="{{ $categoryName }}">{{ $categoryName }}</div>
+                                        @endforeach
+                                    </div>
+                                    <div class="multi-select-empty d-none" id="categoryEmpty" role="status">No categories found</div>
+                                </div>
+                            </div>
+                            <div class="form-text">Same niches as Catalog. Type and press Enter to add; Backspace removes the last chip. Max 7.</div>
+                            @error('categories')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
+                            @error('category')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
                         </div>
                         <div class="col-md-6">
                             <label class="form-label fw-semibold" for="example_url">Example URL</label>
@@ -456,8 +503,11 @@
 
                         <div class="col-md-6">
                             <label class="form-label fw-semibold" for="publication_time">Publication time</label>
-                            <input type="text" id="publication_time" name="publication_time" class="form-control"
-                                   value="{{ old_text('publication_time', $site->publication_time) }}" placeholder="permanent">
+                            <select id="publication_time" name="publication_time" class="form-select">
+                                @foreach(\App\Support\PublicationDuration::options() as $value => $label)
+                                    <option value="{{ $value }}" @selected(old_text('publication_time', $site->publication_time) === $value)>{{ $label }}</option>
+                                @endforeach
+                            </select>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label fw-semibold" for="link_type">Link type</label>
@@ -465,50 +515,12 @@
                                    value="{{ old_text('link_type', $site->link_type) }}" placeholder="dofollow">
                         </div>
 
-                        @php
-                            $homepageDays = config('site_placement.homepage_days', [1, 7, 30]);
-                            $existingHomepage = is_array($site->homepage_placement_prices) ? $site->homepage_placement_prices : [];
-                            $existingSocial = is_array($site->social_promotion) ? $site->social_promotion : [];
-                        @endphp
-                        <div class="col-12">
-                            <input type="hidden" name="placement_offers_form" value="1">
-                            <div class="border rounded p-3 bg-light">
-                                <p class="fw-semibold mb-1">Homepage &amp; social promotions (optional)</p>
-                                <p class="small text-muted mb-3">Advertisers see these in catalog Site Details. Leave unchecked to hide the offer.</p>
-                                <p class="fw-semibold small mb-2">Homepage placement</p>
-                                <div class="d-flex flex-wrap gap-3 mb-3">
-                                    @foreach($homepageDays as $days)
-                                        @php
-                                            $checked = old("homepage.$days", array_key_exists((string) $days, $existingHomepage) || array_key_exists($days, $existingHomepage));
-                                            $priceVal = old_text("price_homepage.$days", $existingHomepage[(string) $days] ?? $existingHomepage[$days] ?? '');
-                                        @endphp
-                                        <div style="min-width:140px;">
-                                            <div class="form-check">
-                                                <input type="checkbox" name="homepage[{{ $days }}]" value="1"
-                                                       class="form-check-input" id="adminHomepage{{ $days }}"
-                                                       {{ $checked ? 'checked' : '' }}>
-                                                <label class="form-check-label" for="adminHomepage{{ $days }}">{{ $days }} day{{ $days > 1 ? 's' : '' }}</label>
-                                            </div>
-                                            <input type="number" name="price_homepage[{{ $days }}]" class="form-control mt-1"
-                                                   placeholder="Fee (€) — 0 = Free" min="0" step="0.01" inputmode="decimal"
-                                                   value="{{ $priceVal }}">
-                                        </div>
-                                    @endforeach
-                                </div>
-                                <p class="fw-semibold small mb-2">Social media sharing (always free)</p>
-                                <div class="d-flex flex-wrap gap-3">
-                                    @foreach(['facebook' => 'Facebook', 'instagram' => 'Instagram', 'x' => 'X'] as $channel => $label)
-                                        <div class="form-check">
-                                            <input type="checkbox" name="social[{{ $channel }}]" value="1"
-                                                   class="form-check-input" id="adminSocial{{ ucfirst($channel) }}"
-                                                   {{ old("social.$channel", !empty($existingSocial[$channel])) ? 'checked' : '' }}>
-                                            <label class="form-check-label" for="adminSocial{{ ucfirst($channel) }}">{{ $label }}</label>
-                                        </div>
-                                    @endforeach
-                                </div>
-                            </div>
-                        </div>
+                        @include('admin.sites.partials.placement-extras', [
+                            'layout' => 'inset',
+                            'site' => $site,
+                        ])
 
+                        @include('admin.sites.partials.site-tag-field')
                         <div class="col-12">
                             <label class="form-label fw-semibold" for="site_image">Site image</label>
                             <input type="file" id="site_image" name="site_image"
@@ -548,6 +560,28 @@
                         <a href="{{ $sitesBackUrl }}" class="btn btn-outline-secondary">Cancel</a>
                     </div>
                 </form>
+                <link href="{{ same_origin_asset('assets/css/multi-select.css') }}?v={{ @filemtime(public_path('assets/css/multi-select.css')) ?: '1' }}" rel="stylesheet">
+                <script src="{{ same_origin_asset('assets/js/jquery-3.6.0.min.js') }}?v={{ @filemtime(public_path('assets/js/jquery-3.6.0.min.js')) ?: '1' }}"></script>
+                <script src="{{ same_origin_asset('js/multi-select.js') }}?v={{ @filemtime(public_path('js/multi-select.js')) ?: '1' }}"></script>
+                <script>
+                (function () {
+                    const prefills = @json($marketingNiches);
+                    const ms = window.initMultiSelect({
+                        wrapperId: 'categoryWrapper',
+                        inputId: 'categoryInput',
+                        dropdownId: 'categoryDropdown',
+                        optionsId: 'categoryOptions',
+                        hiddenInputId: 'selectedCategories',
+                        searchId: 'categorySearch',
+                        emptyId: 'categoryEmpty',
+                        maxSelections: 7,
+                        placeholderText: 'Select niches (max 7)…',
+                    });
+                    if (ms && prefills.length) {
+                        ms.setSelectedItems(prefills, prefills);
+                    }
+                })();
+                </script>
             @endif
         </div>
     </div>

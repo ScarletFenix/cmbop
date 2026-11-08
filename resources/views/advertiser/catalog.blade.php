@@ -1,6 +1,10 @@
 @extends('advertiser.layouts.app')
 
+@section('title', 'Catalog')
+@section('meta_description', 'Browse verified publisher sites for guest posts and backlinks. Filter by category, country, language, and price.')
+
 @push('page-styles')
+    <link href="{{ asset('assets/css/single-select.css') }}?v={{ @filemtime(public_path('assets/css/single-select.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('assets/css/catalog.css') }}?v={{ @filemtime(public_path('assets/css/catalog.css')) ?: '1' }}" rel="stylesheet">
     {{-- Critical catalog guards: if a stale CDN copy of catalog.css wins the
          race, Chrome still must not paint a stuck busy layer, teal NEW pills,
@@ -9,11 +13,18 @@
         .catalog-results-busy[hidden]{display:none!important}
         .catalog-page button.site-badge-new,
         .catalog-page .site-badge-new{background:#ef4444!important;background-image:none!important;color:#fff!important;border:0!important}
+        .catalog-page button.site-badge-new.catalog-new-ribbon{background:transparent!important;width:56px!important;height:56px!important;padding:0!important;min-width:0!important;border-radius:0!important;box-shadow:none!important}
         .catalog-page .metric-source{width:var(--metric-source-size,20px);height:var(--metric-source-size,20px);max-width:var(--metric-source-size,20px);max-height:var(--metric-source-size,20px);overflow:hidden}
         .catalog-page .metric-source img{width:var(--metric-source-size,20px);height:var(--metric-source-size,20px);max-width:var(--metric-source-size,20px);max-height:var(--metric-source-size,20px)}
         /* Category clamps — must survive a stale CDN catalog.css (chips otherwise
            paint over Traffic/DR/DA while table overflow stays visible for sticky). */
         .catalog-page .catalog-table td.catalog-category-cell{overflow:hidden;max-width:0;min-width:0}
+        /* Site tag/icon/chip line wraps inside the Site column (stale CSS otherwise
+           keeps a nowrap row that paints over Category “+N more”). */
+        .catalog-page .catalog-table td.catalog-site-cell{max-width:0;min-width:0}
+        .catalog-page .catalog-site-stack{overflow:hidden;max-width:100%;min-width:0}
+        .catalog-page .catalog-site-tag-slot{display:flex;flex-wrap:wrap;align-items:center;gap:6px;width:100%;max-width:100%;min-width:0;overflow:hidden}
+        .catalog-page .catalog-site-tag-slot .site-chip{max-width:100%;min-width:0;overflow:hidden;text-overflow:ellipsis}
         .catalog-page .categories-wrapper{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;max-width:100%;width:100%;margin:0 auto;overflow:hidden;min-width:0}
         .catalog-page .categories-column{display:flex;flex-direction:row;flex-wrap:wrap;justify-content:center;align-items:center;align-content:center;gap:4px;min-width:0;width:100%;max-width:100%;overflow:hidden}
         .catalog-page .category-badge{box-sizing:border-box;flex:0 1 auto;max-width:100%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -26,6 +37,26 @@
         .catalog-page .catalog-country__flag{font-size:22px;line-height:1}
         .catalog-page .catalog-table tbody td,
         .catalog-page .catalog-table tbody td.catalog-stat-cell{vertical-align:middle}
+        /* Deal cards: survive a stale CDN catalog.css / leftover compiled Blade. */
+        .catalog-page .bulk-deal-card__tld{display:none!important}
+        .catalog-page .catalog-bulk-section .bulk-deal-card:hover,
+        .catalog-page .catalog-bulk-section .bulk-deal-card:focus-within{
+            border-color:rgba(26,88,94,.28)!important;
+            box-shadow:0 2px 8px rgba(15,23,42,.07)!important;
+            transform:none!important
+        }
+        /* Price chips: do not shrink into two clipped lines inside the pill. */
+        .catalog-page .filter-presets[data-preset-group="price"]{display:flex;flex-wrap:nowrap;gap:6px;max-width:100%;overflow-x:auto}
+        .catalog-page .filter-preset{flex:0 0 auto;width:auto;white-space:nowrap;padding:0 10px;height:24px;font-size:11px;font-weight:600}
+        .catalog-page .site-chip--sensitive{background:var(--brand-primary-bg,#e6f5f5)!important;color:var(--brand-primary,#1a585e)!important;border-color:var(--brand-primary-border,#b8e4e4)!important}
+        .catalog-page .catalog-filter-actions #toggleMoreFiltersBtn,
+        .catalog-page .catalog-filter-actions #catalogResetFilters,
+        .catalog-page .catalog-live-apply-hint{font-family:inherit;font-size:11px;font-weight:600;height:24px;display:inline-flex;align-items:center;white-space:nowrap}
+    </style>
+    <style id="catalog-bulk-tip-guard">
+        /* Glass-tip sat on the host + discount when it adopted the URL title. */
+        body:has(.bulk-deal-card:hover) .glass-tip,
+        body:has(.bulk-deal-card:focus-within) .glass-tip{display:none!important}
     </style>
 @endpush
 
@@ -67,7 +98,9 @@
 
 {{-- catalog-page scopes this page's stylesheet. Without it, rules for .table,
      .badge and .form-control reached the cart drawer and the shell chrome. --}}
-<div class="container-fluid catalog-page">
+<div class="container-fluid catalog-page{{ config('catalog.live_search.enabled', true) ? ' is-live-search' : '' }}">
+    <h1 class="visually-hidden">Catalog</h1>
+    <div id="catalogCartLive" class="visually-hidden" aria-live="polite" aria-atomic="true"></div>
     @include('components.ad-banners', ['placement' => 'marketplace', 'audience' => 'advertiser'])
 
     @if(request()->boolean('wizard') && ! empty(\App\Http\Controllers\Advertiser\GuestPostWizardController::stateFromSession()['language']))
@@ -77,7 +110,7 @@
             'step' => 2,
             'title' => 'Place a guest post · Publishers',
             'subtitle' => 'Ordering “'.($orderingSubmission->title ?: $orderingSubmission->original_filename).'” ('
-                .strtoupper((string) $orderingSubmission->language).'). Browse any sites — language does not have to match — then assign in your cart.',
+                .strtoupper((string) $orderingSubmission->language).'). Browse any listings — language does not have to match — then assign in your cart.',
             'linkAll' => true,
             'contentRoute' => route('advertiser.content-library'),
             'actions' => '<button type="button" class="btn btn-sm btn-primary" onclick="openCart()">Review cart</button>'
@@ -88,19 +121,19 @@
         @include('advertiser.partials.ordering-path', [
             'step' => 2,
             'title' => 'Catalog · Publishers',
-            'subtitle' => 'One job here: pick publishers. Keep browsing with items in your cart — finish payment when ready. Prefer steps? Use Guided.',
+            'subtitle' => 'Browse publisher listings and add sites to your cart. Prefer steps? Use Guided.',
             'linkAll' => true,
             'contentRoute' => route('advertiser.content-library'),
-            'actions' => '<button type="button" class="btn btn-sm btn-outline-primary" onclick="openCart()">Open cart</button>'
-                .'<a href="'.e(route('advertiser.wizard.start')).'" class="btn btn-sm btn-outline-secondary">Guided</a>',
+            'actions' => '<button type="button" class="catalog-plain-action" onclick="openCart()"><i class="fa fa-shopping-cart" aria-hidden="true"></i> Open cart</button>'
+                .'<button type="button" class="catalog-plain-action" data-bs-toggle="modal" data-bs-target="#saveSearchModal"><i class="fa fa-bookmark" aria-hidden="true"></i> Save search</button>'
+                .'<a href="'.e(route('advertiser.wizard.start')).'" class="catalog-plain-action"><i class="fa fa-compass" aria-hidden="true"></i> Guided</a>',
         ])
     @endif
 
     @if(($approvedArticleCount ?? 0) === 0 && empty($orderingSubmission))
-        <div class="alert alert-info border-0 shadow-sm d-flex flex-wrap justify-content-between align-items-center gap-2">
-            <div class="small mb-0">
-                Each website needs its own <strong>approved</strong> article. You can still add publishers —
-                readiness chips show what’s missing, and the cart checklist walks you through assignment.
+        <div class="alert alert-info border-0 shadow-sm d-flex flex-wrap justify-content-between align-items-center gap-2 catalog-article-banner catalog-article-banner--one-line py-2">
+            <div class="small mb-0 text-nowrap text-truncate">
+                Each site needs its own approved article — upload or assign before you pay.
             </div>
             <a href="{{ route('advertiser.content-library', ['upload' => 1]) }}" class="btn btn-sm btn-upload">
                 <i class="fa fa-upload me-1" aria-hidden="true"></i> Upload article
@@ -109,8 +142,17 @@
     @endif
 
     @php
-        $catalogCart = is_array($cart ?? null) ? $cart : session('cart', []);
-        $catalogCartCount = collect(is_array($catalogCart) ? $catalogCart : [])
+        try {
+            $catalogCart = is_array($cart ?? null) ? $cart : session('cart', []);
+            if (! is_array($catalogCart)) {
+                $catalogCart = [];
+            }
+            $catalogCart = array_values(array_filter($catalogCart, 'is_array'));
+        } catch (\Throwable $e) {
+            report($e);
+            $catalogCart = [];
+        }
+        $catalogCartCount = collect($catalogCart)
             ->pluck('id')
             ->filter()
             ->unique()
@@ -133,13 +175,25 @@
         </div>
     @endif
     @if($catalogCartCount > 0)
-        <div class="alert alert-light border shadow-sm d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-            <div class="small mb-0">
-                You have <strong>{{ $catalogCartCount }}</strong> {{ Str::plural('site', $catalogCartCount) }} in your cart.
+        @php
+            $catalogPlacementCount = collect($catalogCart)
+                ->sum(fn ($row) => is_array($row) ? (int) ($row['quantity'] ?? 0) : 0);
+            $catalogCartCountLabel = $catalogCartCount.' '.($catalogCartCount === 1 ? 'site' : 'sites');
+            if ($catalogPlacementCount > $catalogCartCount) {
+                $catalogCartCountLabel .= ' · '.$catalogPlacementCount.' placements';
+            }
+        @endphp
+        <div id="catalogCartBanner" class="alert alert-light border shadow-sm d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+            <div class="small mb-0" data-cart-banner-text>
+                You have <strong>{{ $catalogCartCountLabel }}</strong> in your cart.
                 Keep browsing anytime — open the cart when you are ready to assign articles and pay.
             </div>
-            <button type="button" class="btn btn-sm btn-outline-primary" onclick="openCart()">
-                <i class="fa fa-shopping-cart me-1" aria-hidden="true"></i> Open cart
+        </div>
+    @else
+        <div id="catalogCartBanner" class="alert alert-light border shadow-sm d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3 d-none">
+            <div class="small mb-0" data-cart-banner-text></div>
+            <button type="button" class="catalog-plain-action" onclick="openCart()">
+                <i class="fa fa-shopping-cart" aria-hidden="true"></i> Open cart
             </button>
         </div>
     @endif
@@ -167,9 +221,9 @@
 
     @if(($catalogBonusBalance ?? 0) > 0)
         <p class="small text-muted mb-3">
-            Spendable <strong>€{{ number_format((float) ($catalogSpendableBalance ?? 0), 2) }}</strong>
-            (cash €{{ number_format((float) ($catalogCashBalance ?? 0), 2) }}
-            + bonus €{{ number_format((float) $catalogBonusBalance, 2) }}).
+            Spendable <strong>{{ format_money($catalogSpendableBalance ?? 0) }}</strong>
+            (cash {{ format_money($catalogCashBalance ?? 0) }}
+            + bonus {{ format_money($catalogBonusBalance) }}).
             Apply bonus at checkout.
         </p>
     @endif
@@ -179,23 +233,9 @@
     </div>
 
 
-    <!-- HEADER -->
-    <div class="row mb-3">
-        <div class="col-md-12">
-            <h2 class="mb-1 fw-semibold">Catalog</h2>
-            <p class="text-muted mb-0">
-                @if(!empty($orderingSubmission))
-                    Browse any verified publishers for “{{ $orderingSubmission->title ?: $orderingSubmission->original_filename }}”. Filters stay optional — language does not have to match.
-                @else
-                    Browse verified publishers and add sites to your cart.
-                @endif
-            </p>
-        </div>
-    </div>
-
     <!-- FILTERS SECTION -->
 @php
-    $moreFilterKeys = ['favorites_filter','blacklist_filter','bulk_deals','da_min','da_max','dr_min','dr_max','traffic_min','traffic_max','new_badge','on_sale','quality','rating_min','has_completions'];
+    $moreFilterKeys = ['favorites_filter','blacklist_filter','bulk_deals','da_min','da_max','dr_min','dr_max','traffic_min','traffic_max','new_badge','on_sale','featured','quality','rating_min','has_completions','publication_time','link_type','turnaround_max','sensitive_topics','google_news'];
     $moreTagActive = \App\Support\SiteTag::catalogFilterFromRequest(request()) !== null;
     $moreFilterCount = collect($moreFilterKeys)->filter(fn ($k) => filled(request($k)))->count()
         + ($moreTagActive ? 1 : 0);
@@ -222,8 +262,20 @@
         }
     }
     if ($catalogCountryText !== '') $activeFilterChips[] = ['label' => 'Country', 'key' => 'country', 'params' => ['country']];
-    if (request('price_min') || request('price_max')) $activeFilterChips[] = ['label' => 'Price', 'key' => 'price', 'params' => ['price_min', 'price_max']];
-    if ($catalogLanguageText !== '') $activeFilterChips[] = ['label' => 'Language', 'key' => 'language', 'params' => ['language']];
+    if (request('price_min') || request('price_max')) {
+        $activeFilterChips[] = [
+            'label' => \App\Services\Catalog\CatalogFilterChips::priceLabel(request('price_min'), request('price_max')) ?? 'Price',
+            'key' => 'price',
+            'params' => ['price_min', 'price_max'],
+        ];
+    }
+    if ($catalogLanguageText !== '') {
+        $activeFilterChips[] = [
+            'label' => \App\Services\Catalog\CatalogFilterChips::languageLabel($catalogLanguageText, $availableLanguages ?? []),
+            'key' => 'language',
+            'params' => ['language'],
+        ];
+    }
     $catalogTagFilter = \App\Support\SiteTag::catalogFilterFromRequest(request());
     if ($catalogTagFilter !== null) {
         $activeFilterChips[] = [
@@ -240,35 +292,48 @@
     if (request('traffic_min') || request('traffic_max')) $activeFilterChips[] = ['label' => 'Traffic', 'key' => 'traffic', 'params' => ['traffic_min', 'traffic_max']];
     if (request('new_badge') == '1') $activeFilterChips[] = ['label' => 'New sites', 'key' => 'new_badge', 'params' => ['new_badge']];
     if (request('on_sale') == '1') $activeFilterChips[] = ['label' => 'On sale', 'key' => 'on_sale', 'params' => ['on_sale']];
+    if (request('featured') == '1') $activeFilterChips[] = ['label' => 'Featured', 'key' => 'featured', 'params' => ['featured']];
     if (request('quality') == '1') $activeFilterChips[] = ['label' => 'Quality bar (DA/DR/traffic)', 'key' => 'quality', 'params' => ['quality']];
     $catalogRatingMin = filter_number(request('rating_min'));
     if ($catalogRatingMin !== null && $catalogRatingMin > 0) $activeFilterChips[] = ['label' => 'Min rating '.$catalogRatingMin.'+', 'key' => 'rating_min', 'params' => ['rating_min']];
     if (request('has_completions') == '1') $activeFilterChips[] = ['label' => 'Has completions', 'key' => 'has_completions', 'params' => ['has_completions']];
+    $catalogPublication = \App\Support\PublicationDuration::normalize(request('publication_time'));
+    if ($catalogPublication !== null) {
+        $activeFilterChips[] = [
+            'label' => 'Duration: '.\App\Support\PublicationDuration::label($catalogPublication),
+            'key' => 'publication_time',
+            'params' => ['publication_time'],
+        ];
+    }
+    $catalogLinkType = strtolower(search_text(request('link_type')));
+    if (in_array($catalogLinkType, ['dofollow', 'nofollow'], true)) {
+        $activeFilterChips[] = [
+            'label' => $catalogLinkType === 'nofollow' ? 'NoFollow' : 'DoFollow',
+            'key' => 'link_type',
+            'params' => ['link_type'],
+        ];
+    }
+    $catalogTurnaroundMax = \App\Support\CatalogTurnaroundFilter::normalize(request('turnaround_max'));
+    if ($catalogTurnaroundMax !== null) {
+        $activeFilterChips[] = [
+            'label' => 'Turnaround: '.(\App\Support\CatalogTurnaroundFilter::options()[$catalogTurnaroundMax] ?? ($catalogTurnaroundMax.' days')),
+            'key' => 'turnaround_max',
+            'params' => ['turnaround_max'],
+        ];
+    }
+    if (request('sensitive_topics') == '1') {
+        $activeFilterChips[] = ['label' => 'Accepts sensitive topics', 'key' => 'sensitive_topics', 'params' => ['sensitive_topics']];
+    }
+    if (request('google_news') == '1' && \App\Support\CatalogGoogleNews::isAvailable()) {
+        $activeFilterChips[] = ['label' => 'Google News', 'key' => 'google_news', 'params' => ['google_news']];
+    }
     $catalogPerPage = \App\Services\Catalog\CatalogUrlQuery::perPage(request());
     if ($catalogPerPage !== \App\Services\Catalog\CatalogUrlQuery::DEFAULT_PER_PAGE) {
         $activeFilterChips[] = ['label' => $catalogPerPage.' per page', 'key' => 'per_page', 'params' => ['per_page']];
     }
-    $inventoryTotal = $sites->total();
-    $inventoryFrom = $sites->getCollection()->min(fn ($s) => (float) $s->price);
+    $catalogLiveSearch = (bool) config('catalog.live_search.enabled', true);
+    $inventoryFrom = $inventoryFrom ?? null;
 @endphp
-
-{{-- Result-first teaser (CV2): inventory + price under the Catalog title.
-     Filters live just above the results table (no Hide/Show toggle). --}}
-<div class="catalog-inventory-teaser d-flex flex-wrap align-items-center gap-2 mb-3">
-    <div class="small">
-        @if($inventoryTotal > 0)
-            <strong class="text-dark">{{ number_format($inventoryTotal) }}</strong>
-            {{ Str::plural('placement', $inventoryTotal) }} available
-            @if($inventoryFrom !== null)
-                · from <strong class="catalog-inventory-teaser__price">€{{ number_format($inventoryFrom, 2) }}</strong>
-            @endif
-        @else
-            <span class="text-muted">No placements match yet — broaden filters below</span>
-        @endif
-    </div>
-</div>
-
-
 
 <!-- CONTENT AREA -->
     <div class="row">
@@ -306,17 +371,19 @@
                                        id="catalogSearchInput"
                                        class="form-control form-control-sm"
                                        placeholder="{{ $inCatalogHideMode
-                                           ? 'Name, domain, category… (rows stay masked)'
-                                           : 'Name, domain, category… or da>40 / price<100' }}"
+                                           ? 'Name, domain… (rows stay masked)'
+                                           : 'Name, domain…' }}"
                                        title="{{ $inCatalogHideMode
                                            ? 'Results update as you type. Matching rows stay masked until you use the eye.'
                                            : 'Results update as you type in the catalog table. Metric tokens (da>40, price<100) apply on search.' }}"
                                        value="{{ $catalogSearchText }}"
                                        autocomplete="off"
                                        enterkeyhint="search"
+                                       role="combobox"
                                        aria-autocomplete="list"
                                        aria-haspopup="listbox"
                                        aria-expanded="false"
+                                       aria-controls="catalogSuggestList"
                                        aria-describedby="catalogSearchStatus">
                                 <button type="button"
                                         id="catalogSearchClear"
@@ -335,9 +402,9 @@
 
                         <!-- Primary: Category (searchable dropdown) -->
                         <div class="col-6 col-sm-6 col-lg-2">
-                            <label class="form-label fw-semibold small text-muted mb-1">Category</label>
+                            <label class="form-label fw-semibold small text-muted mb-1" for="categoryMultiTrigger">Category</label>
                             <div class="multi-select-wrapper" data-multi-select="category">
-                                <div class="multi-select-input form-control form-control-sm" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false" onclick="toggleMultiDropdown('categoryMultiDropdown', this)">
+                                <div class="multi-select-input form-control form-control-sm" id="categoryMultiTrigger" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false" onclick="toggleMultiDropdown('categoryMultiDropdown', this)">
                                     <div class="selected-items" id="selectedCategoriesDisplay" data-placeholder="All categories" data-singular="category" data-plural="categories">
                                         <span class="placeholder-text">All categories</span>
                                     </div>
@@ -350,10 +417,10 @@
                                     </div>
                                     <div class="options-list" id="categoryMultiOptions">
                                         @foreach($siteCategories as $category)
-                                            <label class="option-item" role="option" aria-selected="false" tabindex="-1">
-                                                <input type="checkbox" value="{{ $category }}" data-type="category" data-name="{{ $category }}" onchange="updateMultiFilter(this)" tabindex="-1">
+                                            <div class="option-item" role="option" aria-selected="false" tabindex="-1">
+                                                <input type="checkbox" value="{{ $category }}" data-type="category" data-name="{{ $category }}" aria-label="{{ $category }}" onchange="updateMultiFilter(this)" tabindex="-1">
                                                 <span>{{ $category }}</span>
-                                            </label>
+                                            </div>
                                         @endforeach
                                     </div>
                                     <div class="multi-select-empty d-none">No categories found</div>
@@ -364,9 +431,9 @@
 
                         <!-- Primary: Country (searchable dropdown) -->
                         <div class="col-6 col-sm-6 col-lg-2">
-                            <label class="form-label fw-semibold small text-muted mb-1">Country</label>
+                            <label class="form-label fw-semibold small text-muted mb-1" for="countryMultiTrigger">Country</label>
                             <div class="multi-select-wrapper" data-multi-select="country">
-                                <div class="multi-select-input form-control form-control-sm" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false" onclick="toggleMultiDropdown('countryMultiDropdown', this)">
+                                <div class="multi-select-input form-control form-control-sm" id="countryMultiTrigger" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false" onclick="toggleMultiDropdown('countryMultiDropdown', this)">
                                     <div class="selected-items" id="selectedCountriesDisplay" data-placeholder="All countries" data-singular="country" data-plural="countries">
                                         <span class="placeholder-text">All countries</span>
                                     </div>
@@ -396,22 +463,38 @@
                                                  @if(($section['key'] ?? '') === 'recent') hidden @endif>
                                                 <div class="multi-select-section__label" role="presentation">{{ $section['label'] }}</div>
                                                 @foreach(($section['options'] ?? []) as $option)
-                                                    <label class="option-item">
+                                                    <div class="option-item" role="option" aria-selected="false" tabindex="-1">
                                                         <input type="checkbox"
                                                                value="{{ $option['code'] }}"
                                                                data-type="country"
                                                                data-name="{{ $option['name'] }}"
                                                                data-count="{{ (int) $option['count'] }}"
-                                                               onchange="updateMultiFilter(this)">
+                                                               aria-label="{{ $option['name'] }}"
+                                                               onchange="updateMultiFilter(this)"
+                                                               tabindex="-1">
                                                         <span>{{ $option['name'] }} ({{ number_format((int) $option['count']) }})</span>
-                                                    </label>
+                                                    </div>
                                                 @endforeach
                                             </div>
                                         @endforeach
                                         @if(empty($countryPickerSections) || collect($countryPickerSections)->every(fn ($s) => ($s['key'] ?? '') === 'recent' || empty($s['options'])))
-                                            <div class="multi-select-section" data-section="empty-inventory">
-                                                <div class="text-muted small px-2 py-1">No markets with listings yet</div>
-                                            </div>
+                                            @forelse(($availableCountries ?? []) as $code => $name)
+                                                <div class="option-item" role="option" aria-selected="false" tabindex="-1">
+                                                    <input type="checkbox"
+                                                           value="{{ $code }}"
+                                                           data-type="country"
+                                                           data-name="{{ $name }}"
+                                                           data-count="0"
+                                                           aria-label="{{ $name }}"
+                                                           onchange="updateMultiFilter(this)"
+                                                           tabindex="-1">
+                                                    <span>{{ $name }}</span>
+                                                </div>
+                                            @empty
+                                                <div class="multi-select-section" data-section="empty-inventory">
+                                                    <div class="text-muted small px-2 py-1">No markets with listings yet</div>
+                                                </div>
+                                            @endforelse
                                         @endif
                                     </div>
                                     <div class="multi-select-empty d-none">No countries found</div>
@@ -422,9 +505,9 @@
 
                         <!-- Primary: Language (searchable dropdown) -->
                         <div class="col-6 col-sm-6 col-lg-2">
-                            <label class="form-label fw-semibold small text-muted mb-1">Language</label>
+                            <label class="form-label fw-semibold small text-muted mb-1" for="languageMultiTrigger">Language</label>
                             <div class="multi-select-wrapper" data-multi-select="language">
-                                <div class="multi-select-input form-control form-control-sm" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false" onclick="toggleMultiDropdown('languageMultiDropdown', this)">
+                                <div class="multi-select-input form-control form-control-sm" id="languageMultiTrigger" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false" onclick="toggleMultiDropdown('languageMultiDropdown', this)">
                                     <div class="selected-items" id="selectedLanguagesDisplay" data-placeholder="All languages" data-singular="language" data-plural="languages">
                                         <span class="placeholder-text">All languages</span>
                                     </div>
@@ -437,10 +520,10 @@
                                     </div>
                                     <div class="options-list" id="languageMultiOptions">
                                         @foreach($availableLanguages as $code => $name)
-                                            <label class="option-item" role="option" aria-selected="false" tabindex="-1">
-                                                <input type="checkbox" value="{{ $code }}" data-type="language" data-name="{{ $name }}" onchange="updateMultiFilter(this)" tabindex="-1">
+                                            <div class="option-item" role="option" aria-selected="false" tabindex="-1">
+                                                <input type="checkbox" value="{{ $code }}" data-type="language" data-name="{{ $name }}" aria-label="{{ $name }}" onchange="updateMultiFilter(this)" tabindex="-1">
                                                 <span>{{ $name }}</span>
-                                            </label>
+                                            </div>
                                         @endforeach
                                     </div>
                                     <div class="multi-select-empty d-none">No languages found</div>
@@ -451,7 +534,8 @@
 
                         <!-- Primary: Price -->
                         <div class="col-6 col-sm-6 col-lg-2">
-                            <label class="form-label fw-semibold small text-muted mb-1">Price (€)</label>
+                            @php $priceFilter = \App\Support\Money::priceFilterCopy(); @endphp
+                            <label class="form-label fw-semibold small text-muted mb-1" id="catalogPriceFilter" for="priceMinInput">{{ $priceFilter['label'] }}</label>
                             <div class="d-flex gap-2">
                                 <input type="number"
                                        name="price_min"
@@ -469,20 +553,25 @@
                                        value="{{ trim(scalar_text(request('price_max'))) }}">
                             </div>
                             <div class="filter-presets" data-preset-group="price">
-                                <button type="button" class="filter-preset" data-min="" data-max="50" data-target-min="priceMinInput" data-target-max="priceMaxInput">Under €50</button>
-                                <button type="button" class="filter-preset" data-min="50" data-max="150" data-target-min="priceMinInput" data-target-max="priceMaxInput">€50–150</button>
-                                <button type="button" class="filter-preset" data-min="150" data-max="" data-target-min="priceMinInput" data-target-max="priceMaxInput">€150+</button>
+                                <button type="button" class="filter-preset" data-min="" data-max="50" data-target-min="priceMinInput" data-target-max="priceMaxInput">{{ $priceFilter['under'] }}</button>
+                                <button type="button" class="filter-preset" data-min="50" data-max="150" data-target-min="priceMinInput" data-target-max="priceMaxInput">{{ $priceFilter['mid'] }}</button>
+                                <button type="button" class="filter-preset" data-min="150" data-max="" data-target-min="priceMinInput" data-target-max="priceMaxInput">{{ $priceFilter['plus'] }}</button>
                             </div>
                         </div>
 
                         <!-- Actions -->
                         <div class="col-12 col-lg-2">
-                            <label class="form-label fw-semibold small text-muted mb-1 d-none d-md-block">&nbsp;</label>
-                            <div class="d-flex flex-wrap gap-2">
-                                <button type="submit" class="btn btn-sm btn-primary px-3" id="applyFiltersBtn">
-                                    <i class="fa-solid fa-filter me-1" aria-hidden="true"></i> Filter
+                            <span class="form-label fw-semibold small text-muted mb-1 d-none d-md-block" aria-hidden="true">&nbsp;</span>
+                            <div class="d-flex flex-wrap gap-2 align-items-center catalog-filter-actions">
+                                <button type="submit"
+                                        class="btn btn-sm {{ $catalogLiveSearch ? 'btn-cta-secondary catalog-js-fallback-submit' : 'btn-primary' }} px-3"
+                                        id="applyFiltersBtn">
+                                    <i class="fa-solid fa-filter me-1" aria-hidden="true"></i> {{ $catalogLiveSearch ? 'Apply' : 'Filter' }}
                                 </button>
-                                <button type="button" class="btn btn-sm btn-cta-secondary px-2" id="toggleMoreFiltersBtn" aria-controls="moreFiltersDrawer" aria-expanded="{{ $moreFiltersOpen ? 'true' : 'false' }}">
+                                @if($catalogLiveSearch)
+                                    <span class="small text-muted catalog-live-apply-hint">Applies as you type</span>
+                                @endif
+                                <button type="button" class="btn btn-sm btn-cta-secondary px-2" id="toggleMoreFiltersBtn" aria-label="More filters" aria-controls="moreFiltersDrawer" aria-expanded="{{ $moreFiltersOpen ? 'true' : 'false' }}">
                                     More
                                     @if($moreFiltersOpen)
                                         <span class="badge rounded-pill ms-1" data-more-filters-count
@@ -498,16 +587,18 @@
                         </div>
                     </div>
 
-                    <div class="catalog-tag-quick mt-2" role="group" aria-label="Listing tag">
-                        <span class="small text-muted me-1">Tag</span>
-                        @foreach(\App\Support\SiteTag::catalogFilterOptions() as $value => $label)
-                            <button type="button"
-                                    class="catalog-tag-quick__btn{{ ($catalogTagFilter === $value || ($value === '' && $catalogTagFilter === null)) ? ' is-active' : '' }}"
-                                    data-catalog-tag="{{ $value }}"
-                                    aria-pressed="{{ ($catalogTagFilter === $value || ($value === '' && $catalogTagFilter === null)) ? 'true' : 'false' }}">
-                                {{ $label }}
-                            </button>
-                        @endforeach
+                    <div class="catalog-quick-filters mt-2 d-flex flex-wrap align-items-center gap-2">
+                        <div class="catalog-tag-quick" role="group" aria-label="Listing tag">
+                            <span class="small text-muted me-1">Tag</span>
+                            @foreach(\App\Support\SiteTag::catalogFilterOptions() as $value => $label)
+                                <button type="button"
+                                        class="catalog-tag-quick__btn{{ ($catalogTagFilter === $value || ($value === '' && $catalogTagFilter === null)) ? ' is-active' : '' }}"
+                                        data-catalog-tag="{{ $value }}"
+                                        aria-pressed="{{ ($catalogTagFilter === $value || ($value === '' && $catalogTagFilter === null)) ? 'true' : 'false' }}">
+                                    {{ $label }}
+                                </button>
+                            @endforeach
+                        </div>
                     </div>
 
                     <!-- More filters drawer (teal mist theme) -->
@@ -516,34 +607,44 @@
                              this row pulled those cells up so the DA label sat above Tag/Favorites/Blacklist. --}}
                         <div class="row g-3 align-items-start">
                             <div class="col-6 col-md-4 col-lg-3">
-                                <label class="form-label fw-semibold small text-muted mb-1" for="catalogTagFilter">
+                                <label class="form-label fw-semibold small text-muted mb-1" for="catalogTagFilter-trigger">
                                     <abbr class="metric-abbr text-decoration-none" title="{{ \App\Support\SiteTag::FILTER_TOOLTIP }}">Tag</abbr>
                                 </label>
-                                <select name="tag" id="catalogTagFilter" class="form-select form-select-sm" aria-label="Listing tag">
-                                    @foreach(\App\Support\SiteTag::catalogFilterOptions() as $value => $label)
-                                        <option value="{{ $value }}" @selected($catalogTagFilter === $value || ($value === '' && $catalogTagFilter === null))>{{ $label }}</option>
-                                    @endforeach
-                                </select>
+                                @include('advertiser.partials.catalog-theme-select', [
+                                    'selectId' => 'catalogTagFilter',
+                                    'name' => 'tag',
+                                    'label' => 'Listing tag',
+                                    'current' => $catalogTagFilter === null ? '' : (string) $catalogTagFilter,
+                                    'options' => \App\Support\SiteTag::catalogFilterOptions(),
+                                ])
                             </div>
 
                             <div class="col-6 col-md-4 col-lg-3">
-                                <label class="form-label fw-semibold small text-muted mb-1">Favorites</label>
-                                <select name="favorites_filter" class="form-select form-select-sm">
-                                    <option value="">All Sites</option>
-                                    <option value="1" {{ request('favorites_filter') == '1' ? 'selected' : '' }}>Favorites Only</option>
-                                </select>
+                                <label class="form-label fw-semibold small text-muted mb-1" for="catalogFavoritesFilter-trigger">
+                                    <i class="fa-regular fa-heart me-1" aria-hidden="true"></i>Favorites
+                                </label>
+                                @include('advertiser.partials.catalog-theme-select', [
+                                    'selectId' => 'catalogFavoritesFilter',
+                                    'name' => 'favorites_filter',
+                                    'label' => 'Favorites',
+                                    'current' => search_text(request('favorites_filter')),
+                                    'options' => ['' => 'All Sites', '1' => 'Favorites Only'],
+                                ])
                             </div>
 
                             <div class="col-6 col-md-4 col-lg-3">
-                                <label class="form-label fw-semibold small text-muted mb-1">Blacklist</label>
-                                <select name="blacklist_filter" class="form-select form-select-sm">
-                                    <option value="">All Sites</option>
-                                    <option value="1" {{ request('blacklist_filter') == '1' ? 'selected' : '' }}>Blacklisted Only</option>
-                                </select>
+                                <label class="form-label fw-semibold small text-muted mb-1" for="catalogBlacklistFilter-trigger">Blacklist</label>
+                                @include('advertiser.partials.catalog-theme-select', [
+                                    'selectId' => 'catalogBlacklistFilter',
+                                    'name' => 'blacklist_filter',
+                                    'label' => 'Blacklist',
+                                    'current' => search_text(request('blacklist_filter')),
+                                    'options' => ['' => 'All Sites', '1' => 'Blacklisted Only'],
+                                ])
                             </div>
 
                             <div class="col-6 col-md-4 col-lg-3">
-                                <label class="form-label fw-semibold small text-muted mb-1">
+                                <label class="form-label fw-semibold small text-muted mb-1" id="catalogDaFilter" for="daMinInput">
                                     <abbr class="metric-abbr text-decoration-none" title="Moz Domain Authority — site strength score from 0–100">DA</abbr>
                                 </label>
                                 <div class="d-flex gap-2">
@@ -557,7 +658,7 @@
                             </div>
 
                             <div class="col-6 col-md-4 col-lg-3">
-                                <label class="form-label fw-semibold small text-muted mb-1">
+                                <label class="form-label fw-semibold small text-muted mb-1" id="catalogDrFilter" for="drMinInput">
                                     <abbr class="metric-abbr text-decoration-none" title="Ahrefs Domain Rating — backlink strength score from 0–100">DR</abbr>
                                 </label>
                                 <div class="d-flex gap-2">
@@ -571,7 +672,7 @@
                             </div>
 
                             <div class="col-6 col-md-4 col-lg-3">
-                                <label class="form-label fw-semibold small text-muted mb-1">Monthly Traffic</label>
+                                <label class="form-label fw-semibold small text-muted mb-1" id="catalogTrafficFilter" for="trafficMinInput">Monthly Traffic</label>
                                 <div class="d-flex gap-2">
                                     <input type="number" name="traffic_min" id="trafficMinInput" aria-label="Minimum monthly traffic" class="form-control form-control-sm no-spinner" placeholder="Min" min="0" max="4294967295" step="1" inputmode="numeric" value="{{ trim(scalar_text(request('traffic_min'))) }}">
                                     <input type="number" name="traffic_max" id="trafficMaxInput" aria-label="Maximum monthly traffic" class="form-control form-control-sm no-spinner" placeholder="Max" min="0" max="4294967295" step="1" inputmode="numeric" value="{{ trim(scalar_text(request('traffic_max'))) }}">
@@ -583,7 +684,7 @@
                             </div>
 
                             <div class="col-6 col-md-4 col-lg-3">
-                                <label class="form-label fw-semibold small text-muted mb-1">Bulk deals</label>
+                                <label class="form-label fw-semibold small text-muted mb-1" for="bulk_deals">Bulk deals</label>
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" name="bulk_deals" id="bulk_deals" value="1" {{ request('bulk_deals') == 1 ? 'checked' : '' }}>
                                     <label class="form-check-label" for="bulk_deals">Show Bulk Deals</label>
@@ -591,7 +692,17 @@
                             </div>
 
                             <div class="col-6 col-md-4 col-lg-3">
-                                <label class="form-label fw-semibold small text-muted mb-1">On sale</label>
+                                <label class="form-label fw-semibold small text-muted mb-1" for="featured">
+                                    <i class="fa-solid fa-bolt-fill me-1" aria-hidden="true"></i>Featured
+                                </label>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="featured" id="featured" value="1" {{ request('featured') == 1 ? 'checked' : '' }}>
+                                    <label class="form-check-label" for="featured">Show featured sites</label>
+                                </div>
+                            </div>
+
+                            <div class="col-6 col-md-4 col-lg-3">
+                                <label class="form-label fw-semibold small text-muted mb-1" for="on_sale">On sale</label>
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" name="on_sale" id="on_sale" value="1" {{ request('on_sale') == 1 ? 'checked' : '' }}>
                                     <label class="form-check-label" for="on_sale">Show On Sale</label>
@@ -599,7 +710,7 @@
                             </div>
 
                             <div class="col-6 col-md-4 col-lg-3">
-                                <label class="form-label fw-semibold small text-muted mb-1">New Sites</label>
+                                <label class="form-label fw-semibold small text-muted mb-1" for="new_badge">New Sites</label>
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" name="new_badge" id="new_badge" value="1" {{ request('new_badge') == 1 ? 'checked' : '' }}>
                                     <label class="form-check-label" for="new_badge">Show New Sites</label>
@@ -607,7 +718,7 @@
                             </div>
 
                             <div class="col-6 col-md-4 col-lg-3">
-                                <label class="form-label fw-semibold small text-muted mb-1">Quality</label>
+                                <label class="form-label fw-semibold small text-muted mb-1" for="catalogQualityGate">Quality</label>
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" name="quality" id="catalogQualityGate" value="1" {{ request('quality') == 1 ? 'checked' : '' }}
                                            title="DA ≥ {{ \App\Models\Site::GOOD_MIN_DA }}, DR ≥ {{ \App\Models\Site::GOOD_MIN_DR }}, traffic ≥ {{ number_format(\App\Models\Site::GOOD_MIN_TRAFFIC) }}">
@@ -619,22 +730,86 @@
                             </div>
 
                             <div class="col-6 col-md-4 col-lg-3">
-                                <label class="form-label fw-semibold small text-muted mb-1" for="catalogRatingMin">Min rating</label>
-                                <select name="rating_min" id="catalogRatingMin" class="form-select form-select-sm">
-                                    <option value="">Any</option>
-                                    <option value="3" @selected(request('rating_min') === '3')>3.0+</option>
-                                    <option value="4" @selected(request('rating_min') === '4')>4.0+</option>
-                                    <option value="4.5" @selected(request('rating_min') === '4.5')>4.5+</option>
-                                </select>
+                                <label class="form-label fw-semibold small text-muted mb-1" for="catalogRatingMin-trigger">Min rating</label>
+                                @include('advertiser.partials.catalog-theme-select', [
+                                    'selectId' => 'catalogRatingMin',
+                                    'name' => 'rating_min',
+                                    'label' => 'Min rating',
+                                    'current' => search_text(request('rating_min')),
+                                    'options' => ['' => 'Any', '3' => '3.0+', '4' => '4.0+', '4.5' => '4.5+'],
+                                ])
                             </div>
 
                             <div class="col-6 col-md-4 col-lg-3">
-                                <label class="form-label fw-semibold small text-muted mb-1">Completions</label>
+                                <label class="form-label fw-semibold small text-muted mb-1" for="catalogHasCompletions">Completions</label>
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" name="has_completions" id="catalogHasCompletions" value="1" {{ request('has_completions') == 1 ? 'checked' : '' }}>
                                     <label class="form-check-label" for="catalogHasCompletions">Has completed placements</label>
                                 </div>
                             </div>
+
+                            <div class="col-6 col-md-4 col-lg-3">
+                                <label class="form-label fw-semibold small text-muted mb-1" for="catalogPublicationTime-trigger">
+                                    Publication duration
+                                </label>
+                                @include('advertiser.partials.catalog-theme-select', [
+                                    'selectId' => 'catalogPublicationTime',
+                                    'name' => 'publication_time',
+                                    'label' => 'Publication duration',
+                                    'current' => \App\Support\PublicationDuration::normalize(request('publication_time')) ?? '',
+                                    'options' => \App\Support\PublicationDuration::filterOptions(),
+                                ])
+                            </div>
+
+                            <div class="col-6 col-md-4 col-lg-3">
+                                <label class="form-label fw-semibold small text-muted mb-1" for="catalogLinkType-trigger">
+                                    Link type
+                                </label>
+                                @include('advertiser.partials.catalog-theme-select', [
+                                    'selectId' => 'catalogLinkType',
+                                    'name' => 'link_type',
+                                    'label' => 'Link type',
+                                    'current' => in_array(strtolower(search_text(request('link_type'))), ['dofollow', 'nofollow'], true)
+                                        ? strtolower(search_text(request('link_type')))
+                                        : '',
+                                    'options' => ['' => 'Any', 'dofollow' => 'DoFollow', 'nofollow' => 'NoFollow'],
+                                ])
+                            </div>
+
+                            <div class="col-6 col-md-4 col-lg-3">
+                                <label class="form-label fw-semibold small text-muted mb-1" for="catalogTurnaroundMax-trigger">
+                                    Turnaround
+                                </label>
+                                @include('advertiser.partials.catalog-theme-select', [
+                                    'selectId' => 'catalogTurnaroundMax',
+                                    'name' => 'turnaround_max',
+                                    'label' => 'Maximum turnaround',
+                                    'current' => (string) (\App\Support\CatalogTurnaroundFilter::normalize(request('turnaround_max')) ?? ''),
+                                    'options' => collect(\App\Support\CatalogTurnaroundFilter::options())
+                                        ->mapWithKeys(fn ($label, $days) => [(string) $days => $label])
+                                        ->prepend('Any', '')
+                                        ->all(),
+                                ])
+                            </div>
+
+                            <div class="col-6 col-md-4 col-lg-3">
+                                <label class="form-label fw-semibold small text-muted mb-1" for="catalogSensitiveTopics">Sensitive topics</label>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="sensitive_topics" id="catalogSensitiveTopics" value="1" {{ request('sensitive_topics') == 1 ? 'checked' : '' }}>
+                                    <label class="form-check-label" for="catalogSensitiveTopics">Accepts sensitive topics</label>
+                                </div>
+                                <div class="form-text">Crypto, trading, CBD, or forex add-ons — not casino.</div>
+                            </div>
+
+                            @if(\App\Support\CatalogGoogleNews::isAvailable())
+                            <div class="col-6 col-md-4 col-lg-3">
+                                <label class="form-label fw-semibold small text-muted mb-1" for="catalogGoogleNews">Google News</label>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="google_news" id="catalogGoogleNews" value="1" {{ request('google_news') == 1 ? 'checked' : '' }}>
+                                    <label class="form-check-label" for="catalogGoogleNews">Indexed in Google News</label>
+                                </div>
+                            </div>
+                            @endif
                         </div>
                     </div>
                 </form>
@@ -673,6 +848,7 @@
                                 <a href="{{ $chipRemoveUrl }}"
                                    class="filter-chip__remove"
                                    aria-label="Remove filter: {{ $chip['label'] }}"
+                                   data-no-tip="1"
                                    title="Remove this filter">&times;</a>
                             </span>
                         @endforeach
@@ -688,45 +864,40 @@
             <div class="catalog-results-bar d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
                 <div class="text-muted small" id="catalogResultsCount" data-catalog-results-count>
                     {{ $catalogResultsCopy['text'] }}
+                    @if($resultTotal > 0 && $inventoryFrom !== null)
+                        <span class="catalog-inventory-from">· from <strong class="catalog-inventory-teaser__price">{{ format_money($inventoryFrom) }}</strong></span>
+                    @endif
                 </div>
                 <div id="catalogLiveStatus" class="visually-hidden" aria-live="polite" aria-atomic="true">{{ $catalogResultsCopy['announce'] }}</div>
                 <div class="d-flex flex-wrap align-items-center gap-2">
-                    <label for="catalogPerPage" class="small text-muted mb-0">Per page</label>
-                    <select id="catalogPerPage"
-                            name="per_page"
-                            form="filterForm"
-                            class="form-select form-select-sm catalog-sort-select"
-                            aria-label="Sites per page">
-                        @foreach(\App\Services\Catalog\CatalogUrlQuery::ALLOWED_PER_PAGE as $size)
-                            <option value="{{ $size }}" @selected($catalogPerPage === $size)>{{ $size }}</option>
-                        @endforeach
-                    </select>
-                    <label for="catalogSort" class="small text-muted mb-0">Sort</label>
-                    <select id="catalogSort"
-                            name="sort"
-                            form="filterForm"
-                            class="form-select form-select-sm catalog-sort-select">
-                        <option value="dr_desc" @selected($sortValue === 'dr_desc')>DR (high → low)</option>
-                        <option value="dr_asc" @selected($sortValue === 'dr_asc')>DR (low → high)</option>
-                        <option value="da_desc" @selected($sortValue === 'da_desc')>DA (high → low)</option>
-                        <option value="da_asc" @selected($sortValue === 'da_asc')>DA (low → high)</option>
-                        <option value="traffic_desc" @selected($sortValue === 'traffic_desc')>Traffic (high → low)</option>
-                        <option value="price_asc" @selected($sortValue === 'price_asc')>Price (low → high)</option>
-                        <option value="price_desc" @selected($sortValue === 'price_desc')>Price (high → low)</option>
-                        <option value="newest" @selected($sortValue === 'newest')>Newest first</option>
-                        <option value="rating_desc" @selected($sortValue === 'rating_desc')>Rating (high → low)</option>
-                    </select>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#saveSearchModal">
+                        <i class="fa fa-bookmark me-1" aria-hidden="true"></i> Save search
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-success btn-suggest-website"
+                            data-search="{{ $catalogSearchText }}">
+                        <i class="fa-solid fa-lightbulb me-1" aria-hidden="true"></i> Suggest a website
+                    </button>
+                    <label for="catalogSort-trigger" class="small text-muted mb-0">Sort</label>
+                    @include('advertiser.partials.catalog-theme-select', [
+                        'selectId' => 'catalogSort',
+                        'name' => 'sort',
+                        'form' => 'filterForm',
+                        'label' => 'Sort',
+                        'modifier' => 'catalog-theme-select--sort',
+                        'current' => (string) $sortValue,
+                        'options' => [
+                            'dr_desc' => 'DR (high → low)',
+                            'dr_asc' => 'DR (low → high)',
+                            'da_desc' => 'DA (high → low)',
+                            'da_asc' => 'DA (low → high)',
+                            'traffic_desc' => 'Traffic (high → low)',
+                            'price_asc' => 'Price (low → high)',
+                            'price_desc' => 'Price (high → low)',
+                            'newest' => 'Newest first',
+                            'rating_desc' => 'Rating (high → low)',
+                        ],
+                    ])
                 </div>
-            </div>
-
-            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-                <p class="small text-muted mb-0">
-                    Searching for a site that isn’t listed yet?
-                </p>
-                <button type="button" class="btn btn-sm btn-outline-success btn-suggest-website"
-                        data-search="{{ $catalogSearchText }}">
-                    <i class="fa-solid fa-lightbulb me-1" aria-hidden="true"></i> Suggest a website
-                </button>
             </div>
 
 
@@ -748,6 +919,8 @@ window.CatalogConfig = {
     categoryNames: @json(array_values($siteCategories ?? [])),
     countryParam: @json($catalogCountryText),
     languageParam: @json($catalogLanguageText),
+    languageNames: @json($availableLanguages ?? []),
+    googleNewsAvailable: @json(\App\Support\CatalogGoogleNews::isAvailable()),
     countryLanguageMap: @json(app(\App\Services\Marketplace\CountryLanguagePairs::class)->mapWithNames()),
     countryGroups: @json(collect($countryPickerGroups ?? [])->mapWithKeys(fn ($g) => [$g['key'] => $g['codes']])->all()),
     countryGroupLabels: @json(collect($countryPickerGroups ?? [])->mapWithKeys(fn ($g) => [$g['key'] => $g['label']])->all()),
@@ -760,7 +933,12 @@ window.CatalogConfig = {
     // URL is the source of truth for listing state (Phase 2).
     catalogPath: @json(parse_url(route('advertiser.catalog'), PHP_URL_PATH)),
     queryKeys: @json(\App\Services\Catalog\CatalogUrlQuery::KEYS),
+    publicationDurationLabels: @json(\App\Support\PublicationDuration::LABELS),
     defaultSort: @json(\App\Services\Catalog\CatalogUrlQuery::DEFAULT_SORT),
+    i18n: {
+        priceFrom: @json(__('messages.catalog_price_from')),
+        percentOff: @json(__('messages.catalog_percent_off'))
+    },
     // Phase 7 kill switch — false falls back to full page navigations.
     liveSearch: @json((bool) config('catalog.live_search.enabled', true)),
     routes: {
@@ -768,17 +946,24 @@ window.CatalogConfig = {
         bulkDeals: @json(route('advertiser.catalog.bulk-deals')),
         favoritesSave: @json(route('advertiser.favorites.save')),
         blacklistSave: @json(route('advertiser.blacklist.save')),
+        siteNote: @json(route('advertiser.catalog.site-note', ['site' => '__SITE__'])),
+        siteReport: @json(route('advertiser.catalog.site-report', ['site' => '__SITE__'])),
+        siteReportDelete: @json(route('advertiser.catalog.site-report.delete', ['site' => '__SITE__'])),
         websiteSuggestionsStore: @json(route('advertiser.website-suggestions.store')),
+        websiteSuggestionsCheck: @json(route('advertiser.website-suggestions.check')),
         siteClaim: @json(route('advertiser.sites.claim')),
-        siteClaimsIndex: @json(route('site-claims.index')),
+        siteClaimsIndex: @json(route('advertiser.site-claims')),
         revealUrl: @json(route('advertiser.catalog.reveal-url', ['site' => '__SITE__'])),
         hideUrl: @json(route('advertiser.catalog.hide-url', ['site' => '__SITE__'])),
         copyTrack: @json(route('advertiser.catalog.copy-track')),
         suggest: @json(route('advertiser.catalog.suggest')),
-        catalog: @json(route('advertiser.catalog'))
+        catalog: @json(route('advertiser.catalog')),
+        cartAdd: @json(route('advertiser.cart.add'))
     }
 };
 </script>
+<script src="{{ asset('assets/js/single-select.js') }}?v={{ @filemtime(public_path('assets/js/single-select.js')) ?: '1' }}" defer></script>
 <script src="{{ asset('assets/js/catalog.js') }}?v={{ @filemtime(public_path('assets/js/catalog.js')) ?: '1' }}" defer></script>
+@include('advertiser.partials.catalog-save-search-modal')
 
 @endsection

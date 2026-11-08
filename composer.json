@@ -10,6 +10,7 @@
         "barryvdh/laravel-dompdf": "^3.0",
         "endroid/qr-code": "^6.0",
         "laravel/framework": "^13.0",
+        "laravel/mcp": "^1.0",
         "laravel/socialite": "^5.27",
         "laravel/tinker": "^3.0",
         "smalot/pdfparser": "^2.12",
@@ -25,10 +26,13 @@
     },
     "autoload": {
         "files": [
+            "app/Support/leftover_public_i18n_boot.php",
+            "app/Support/leftover_public_i18n_slugs_boot.php",
             "app/Helpers/LanguageHelper.php",
             "app/Helpers/FormHelper.php",
             "app/Helpers/UrlHelper.php",
-            "app/Helpers/SiteDescriptionHelper.php"
+            "app/Helpers/SiteDescriptionHelper.php",
+            "app/Helpers/MoneyHelper.php"
         ],
         "psr-4": {
             "App\\": "app/",

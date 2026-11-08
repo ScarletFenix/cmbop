@@ -2,22 +2,167 @@
 
 namespace App\Support;
 
+use App\Models\User;
+
 /**
  * Helpers for advertiser Add Funds deposit payment rails (bank / Wise / crypto).
  */
 class DepositPaymentConfig
 {
+    public const TEQNO_REGISTRATION_NO = '17392540';
+
+    public const TOPURLZ_REGISTRATION_NO = '16607074';
+
+    public const EUR_IBAN_DEFAULT = 'BE40 9059 9538 0863';
+
+    public const EUR_BIC_DEFAULT = 'TRWIBEB1XXX';
+
+    public const EUR_BIC_NOTE = 'Swift/BIC: use when sending from outside SEPA';
+
+    public const EUR_SEPA_NOTE = 'SEPA payers need only the IBAN.';
+
+    public const BENEFICIARY_DISPLAY = 'Teqno Ltd trading as SEOLinkBuildings';
+
+    public static function isUsdCurrencyUser(?User $user = null, ?string $walletCurrency = null): bool
+    {
+        $user ??= auth()->user();
+        try {
+            if (app(MoneyDisplay::class)->currency() === 'USD') {
+                return true;
+            }
+        } catch (\Throwable) {
+        }
+
+        if (strtoupper(trim((string) $walletCurrency)) === 'USD') {
+            return true;
+        }
+
+        if ($user instanceof User) {
+            if (strtoupper(trim((string) ($user->display_currency ?? ''))) === 'USD') {
+                return true;
+            }
+            try {
+                if (app(UsdBankWireGuidance::class)->walletCurrencyFor($user) === 'USD') {
+                    return true;
+                }
+            } catch (\Throwable) {
+            }
+        }
+
+        return false;
+    }
+
+    public static function allowsBankTransfer(?User $user = null, ?string $walletCurrency = null): bool
+    {
+        return ! self::isUsdCurrencyUser($user, $walletCurrency);
+    }
+
+    public static function bankUnavailableMessage(): string
+    {
+        return 'Bank transfer is not available for USD accounts. Please pay with Wise, card, PayPal, or crypto.';
+    }
+
     /**
      * @return array<string, mixed>
      */
     public static function depositPayment(): array
     {
-        return (array) config('billing.deposit_payment', []);
+        $pay = (array) config('billing.deposit_payment', []);
+        $iban = trim((string) ($pay['iban'] ?? 'GB30 TRWI 2308 0132 9321 94'));
+        $bic = trim((string) ($pay['bic'] ?? 'TRWIGB2LXXX'));
+        $pay['iban'] = $iban;
+        $pay['bic'] = $bic;
+        $pay['eur_iban'] = trim((string) ($pay['eur_iban'] ?? '')) ?: self::EUR_IBAN_DEFAULT;
+        $pay['eur_bic'] = trim((string) ($pay['eur_bic'] ?? '')) ?: self::EUR_BIC_DEFAULT;
+        $pay['beneficiary'] = trim((string) ($pay['beneficiary'] ?? 'Teqno Ltd')) ?: 'Teqno Ltd';
+        $pay['beneficiary_display'] = self::beneficiaryDisplayName($pay);
+        $pay['registration_no'] = self::beneficiaryRegistrationNo($pay);
+
+        return $pay;
+    }
+
+    /**
+     * Teqno Ltd on bank panels, invoices, and deposit emails.
+     *
+     * @param  array<string, mixed>|null  $pay
+     */
+    public static function beneficiaryDisplayName(?array $pay = null): string
+    {
+        $pay ??= (array) config('billing.deposit_payment', []);
+        $name = trim((string) ($pay['beneficiary'] ?? 'Teqno Ltd'));
+        if ($name === '' || preg_match('/^teqno ltd$/i', $name) === 1) {
+            return self::BENEFICIARY_DISPLAY;
+        }
+
+        return $name;
+    }
+
+    /**
+     * MOD-97 IBAN checksum (ISO 13616). Spaces ignored.
+     */
+    public static function ibanChecksumValid(string $iban): bool
+    {
+        $compact = strtoupper(preg_replace('/\s+/', '', $iban) ?? '');
+        if (preg_match('/^[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}$/', $compact) !== 1) {
+            return false;
+        }
+
+        $rearranged = substr($compact, 4).substr($compact, 0, 4);
+        $numeric = '';
+        foreach (str_split($rearranged) as $ch) {
+            $numeric .= ctype_alpha($ch) ? (string) (ord($ch) - 55) : $ch;
+        }
+
+        $checksum = 0;
+        foreach (str_split($numeric, 7) as $chunk) {
+            $checksum = (int) (($checksum.$chunk) % 97);
+        }
+
+        return $checksum === 1;
+    }
+
+    /**
+     * Teqno Ltd is 17392540. 16607074 is a leftover Topurlz Ltd number —
+     * never show that leftover number as Teqno's registration.
+     *
+     * @param  array<string, mixed>|null  $pay
+     */
+    public static function beneficiaryRegistrationNo(?array $pay = null): string
+    {
+        $pay ??= (array) config('billing.deposit_payment', []);
+        $beneficiary = trim((string) ($pay['beneficiary'] ?? 'Teqno Ltd'));
+        $reg = trim((string) ($pay['registration_no'] ?? ''));
+
+        if ($reg === self::TOPURLZ_REGISTRATION_NO && preg_match('/^teqno ltd$/i', $beneficiary) === 1) {
+            return self::TEQNO_REGISTRATION_NO;
+        }
+
+        return $reg !== '' ? $reg : self::TEQNO_REGISTRATION_NO;
+    }
+
+    public static function currencyGuideUrl(): string
+    {
+        $url = trim((string) config('billing.currency_guide_url', '/help/currencies'));
+        if ($url === '') {
+            $url = '/help/currencies';
+        }
+        if (! str_starts_with($url, 'http') && ! str_starts_with($url, '/')) {
+            $url = '/'.$url;
+        }
+
+        return $url;
+    }
+
+    public static function currencyGuideLabel(): string
+    {
+        $label = trim((string) config('billing.currency_guide_label', ''));
+
+        return $label !== '' ? $label : 'Paying in another currency? Read our currency guide';
     }
 
     public static function wisePayUrl(): string
     {
-        return rtrim((string) (self::depositPayment()['wise_pay_url'] ?? 'https://wise.com/pay/business/topurlzltd'), '?&');
+        return rtrim((string) (self::depositPayment()['wise_pay_url'] ?? 'https://wise.com/pay/business/teqnoltd'), '?&');
     }
 
     public static function wisePayLink(float $amount): string
@@ -25,6 +170,29 @@ class DepositPaymentConfig
         $amount = max(0, round($amount, 2));
 
         return self::wisePayUrl().'?amount='.$amount.'&currency=EUR';
+    }
+
+    public static function depositMin(): float
+    {
+        $min = (float) config('billing.deposit_min', 10);
+
+        return $min > 0 ? $min : 10.0;
+    }
+
+    public static function depositMax(): float
+    {
+        $min = self::depositMin();
+        $max = (float) config('billing.deposit_max', 50000);
+        if ($max < $min) {
+            $max = 50000.0;
+        }
+
+        return $max;
+    }
+
+    public static function amountRule(): string
+    {
+        return 'required|numeric|min:'.self::depositMin().'|max:'.self::depositMax();
     }
 
     public static function cryptoEnabled(): bool

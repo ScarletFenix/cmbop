@@ -43,7 +43,7 @@ class AddFundsUiGuardTest extends TestCase
         $body = $inputHandler[1];
         $this->assertStringNotContainsString('Swal.fire', $body);
         $this->assertStringNotContainsString("this.value = ''", $body);
-        $this->assertStringContainsString('amount >= 10', $body);
+        $this->assertStringContainsString('amount >= depositMin', $body);
     }
 
     public function test_billing_modal_client_validation_requires_company_name(): void
@@ -89,12 +89,36 @@ class AddFundsUiGuardTest extends TestCase
         $this->assertStringNotContainsString('#9333ea', $view);
         $this->assertStringNotContainsString('balance.blade.php', $view);
         $this->assertStringNotContainsString('XXXXXXXX', $view);
+        $this->assertStringNotContainsString('alert-danger', $view);
+        $this->assertStringNotContainsString('Payments without this reference cannot be tracked', $view);
+        $this->assertStringContainsString('js-manual-ref-alert', $view);
+        $this->assertStringContainsString('Select an amount', $view);
         $this->assertStringContainsString('invoiceReadyBar', $view);
         $this->assertStringContainsString('data-invoice-ready="0"', $view);
         $this->assertStringContainsString('Your transfer reference is created with the invoice', $view);
         $this->assertStringContainsString('function applyInvoice', $js);
         $this->assertStringContainsString('function stampServerReference', $js);
-        $this->assertStringContainsString('if (!invoiceLocked)', $js);
+        $this->assertStringContainsString('function isRealReference', $js);
+        $this->assertStringContainsString('function amountReady', $js);
+        $this->assertStringContainsString('Select an amount', $js);
+        $this->assertStringContainsString('n >= depositMin && n <= depositMax', $js);
+        $this->assertDoesNotMatchRegularExpression("/formatted = '€' \\+ \\(amt \\|\\| 0\\)\\.toFixed/", $js);
+        $this->assertStringNotContainsString('id="summaryAmount" class="fw-semibold">€0.00', $view);
+        $this->assertStringNotContainsString('id="summaryTotal">€0.00', $view);
+        $this->assertStringContainsString('$zeroDisplay', $view);
+        $this->assertStringContainsString('formatPickedAmount', $js);
+        $this->assertStringContainsString('updateSummary(selectedLocal || 0)', $js);
+        $this->assertStringContainsString('Postal code may contain letters, numbers, spaces and hyphens', $js);
+        $this->assertStringContainsString('<select name="country"', $view);
+        $this->assertStringContainsString('applyPrefill();', $js);
+        $this->assertStringContainsString('stampServerReference(referenceCode)', $js);
+        $this->assertStringContainsString("'Accept': 'application/json'", $js);
+        $this->assertStringContainsString('reference_code: instantRailReference()', $js);
+        $this->assertStringContainsString('function sameOriginRoute', $js);
+        $this->assertStringContainsString("store: '/advertiser/add-funds'", $js);
+        $this->assertStringContainsString("route('advertiser.add-funds.store', absolute: false)", $view);
+        $this->assertStringContainsString('function readJson', $js);
+        $this->assertStringNotContainsString('Failed to submit request. Please try again.', $js);
         $this->assertStringNotContainsString('function updateReferenceCode', $js);
         $this->assertStringNotContainsString('function generateReferenceCode', $js);
         $this->assertDoesNotMatchRegularExpression(

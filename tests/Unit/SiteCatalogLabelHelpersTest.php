@@ -21,6 +21,8 @@ class SiteCatalogLabelHelpersTest extends TestCase
         return [
             ['1year', '1 year'],
             ['6months', '6 months'],
+            ['2years', '2 years'],
+            ['3years', '3 years'],
             ['permanent', 'Permanent'],
             ['7 days', '7 days'],
         ];
@@ -37,9 +39,11 @@ class SiteCatalogLabelHelpersTest extends TestCase
     public static function turnaroundProvider(): array
     {
         return [
-            ['24h', '24 hours'],
+            ['24h', '1 day'],
+            ['48h', '2 days'],
             ['3days', '3 days'],
             ['7days', '7 days'],
+            ['48 hours', '2 days'],
         ];
     }
 
@@ -49,5 +53,32 @@ class SiteCatalogLabelHelpersTest extends TestCase
         $this->assertSame('NoFollow', (new Site(['link_type' => 'nofollow']))->linkTypeLabel());
         $this->assertNull((new Site(['link_type' => null]))->linkTypeLabel());
         $this->assertSame('Not specified', (new Site(['link_type' => '']))->linkTypeLabel('Not specified'));
+        $this->assertNull((new Site(['link_type' => '???']))->linkTypeLabel());
+        $this->assertNull((new Site(['link_type' => 'guest']))->linkTypeLabel());
+        $this->assertNull((new Site(['turnaround_time' => '???']))->turnaroundLabel());
+        $this->assertNull((new Site(['publication_time' => 'not-json']))->publicationDurationLabel());
+        $this->assertNull((new Site(['country' => '??', 'countries' => 'not-json']))->primaryCountryCode());
+    }
+
+    public function test_language_codes_survive_leftover_json_junk(): void
+    {
+        $site = new Site([
+            'language' => 'de',
+            'languages' => 'not-json',
+            'country' => 'de',
+            'countries' => 'not-json',
+            'category' => 'Marketing',
+            'categories' => 'not-json',
+        ]);
+
+        $this->assertSame(['de'], $site->languageCodes());
+        $this->assertSame(['de'], $site->countryCodes());
+        $this->assertSame('de', $site->primaryCountryCode());
+        $this->assertSame([], $site->homepagePlacementOptions());
+        $this->assertSame([], $site->enabledSocialChannels());
+        $this->assertSame([], $site->safeJsonArray('categories'));
+        $this->assertSame([], $site->safeJsonArray('sensitive_prices'));
+        $this->assertFalse((new Site(['featured_until' => 'not-a-date']))->isFeatured());
+        $this->assertFalse((new Site(['created_at' => 'not-a-date']))->isRecentlyCreated());
     }
 }

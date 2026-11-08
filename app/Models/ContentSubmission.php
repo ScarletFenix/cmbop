@@ -73,6 +73,7 @@ class ContentSubmission extends Model
         'language',
         'disk',
         'path',
+        'file_on_disk',
         'mime',
         'extension',
         'size_bytes',
@@ -81,6 +82,7 @@ class ContentSubmission extends Model
         'word_count',
         'uniqueness_score',
         'quality_score',
+        'content_fingerprint',
         'evaluation_status',
         'evaluation_report',
         'evaluated_at',
@@ -120,6 +122,7 @@ class ContentSubmission extends Model
         'approval_notified_at' => 'datetime',
         'expires_at' => 'datetime',
         'archived_at' => 'datetime',
+        'file_on_disk' => 'boolean',
     ];
 
     public function user(): BelongsTo
@@ -2680,7 +2683,7 @@ class ContentSubmission extends Model
     {
         $owner = $this->relatedOwnerOrder();
 
-        return $owner instanceof Order && $owner->status !== 'cancelled';
+        return $owner instanceof Order && $this->orderLooksLikeActiveClaim($owner);
     }
 
     /**

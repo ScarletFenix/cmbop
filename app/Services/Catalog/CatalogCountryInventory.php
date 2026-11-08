@@ -44,12 +44,18 @@ class CatalogCountryInventory
      */
     public function counts(): array
     {
-        /** @var array<string, int> $counts */
-        $counts = Cache::remember(self::CACHE_KEY, self::CACHE_TTL_SECONDS, function () {
-            return $this->computeCounts();
-        });
+        try {
+            /** @var array<string, int> $counts */
+            $counts = Cache::remember(self::CACHE_KEY, self::CACHE_TTL_SECONDS, function () {
+                return $this->computeCounts();
+            });
 
-        return $counts;
+            return $counts;
+        } catch (\Throwable $e) {
+            Log::warning('Catalog country inventory counts failed', ['error' => $e->getMessage()]);
+
+            return [];
+        }
     }
 
     /**
@@ -307,9 +313,15 @@ class CatalogCountryInventory
             return $query;
         }
 
-        return $query->where(function ($q) use ($normalized) {
+        $normColumn = Site::hasSitesColumn('country_norm');
+
+        return $query->where(function ($q) use ($normalized, $normColumn) {
             foreach ($normalized as $code) {
-                $q->orWhereRaw('LOWER(TRIM(country)) = ?', [$code]);
+                if ($normColumn) {
+                    $q->orWhere('country_norm', $code);
+                } else {
+                    $q->orWhereRaw('LOWER(TRIM(country)) = ?', [$code]);
+                }
             }
         });
     }
@@ -324,14 +336,75 @@ class CatalogCountryInventory
             true
         );
 
-        $counts = [];
-        $columns = ['id', 'country'];
+        $withJson = ['id', 'country', 'countries'];
+        $scalarOnly = ['id', 'country'];
+
+        // Hostinger leftovers skip the countries JSON migration. Schema::hasColumn
+        // can still report true (cached listing) while MySQL 42S22's the SELECT.
         if (Site::hasSitesColumn('countries')) {
-            $columns[] = 'countries';
+            try {
+                return $this->tallyVisibleSites($withJson, $allow);
+            } catch (\Throwable $e) {
+                if (! $this->isUnknownColumn($e, 'countries')) {
+                    throw $e;
+                }
+                Log::warning('Catalog country inventory skipped missing sites.countries column', [
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
 
+        return $this->tallyVisibleSites($scalarOnly, $allow);
+    }
+
+    /**
+     * @param  list<string>  $columns
+     * @param  array<string, true>  $allow
+     * @return array<string, int>
+     */
+    private function tallyVisibleSites(array $columns, array $allow): array
+    {
+        $counts = [];
+
+        try {
+            $groupedQuery = Site::query()
+                ->catalogVisible()
+                ->whereNotNull('country')
+                ->where('country', '!=', '');
+            if (Site::hasSitesColumn('country_norm')) {
+                $grouped = $groupedQuery
+                    ->selectRaw('country_norm as country_code, COUNT(*) as site_count')
+                    ->groupBy('country_norm')
+                    ->pluck('site_count', 'country_code');
+            } else {
+                $grouped = $groupedQuery
+                    ->selectRaw('LOWER(TRIM(country)) as country_code, COUNT(*) as site_count')
+                    ->groupByRaw('LOWER(TRIM(country))')
+                    ->pluck('site_count', 'country_code');
+            }
+
+            foreach ($grouped as $code => $count) {
+                $code = strtolower(trim((string) $code));
+                if ($code === '' || ! isset($allow[$code])) {
+                    continue;
+                }
+                $counts[$code] = (int) $count;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Catalog country inventory group count failed', ['error' => $e->getMessage()]);
+        }
+
+        $includeJson = in_array('countries', $columns, true);
+        if (! $includeJson) {
+            return $counts;
+        }
+
+        // Scalar country is empty: fall back to first JSON country (rare leftovers).
         Site::query()
             ->catalogVisible()
+            ->where(function ($q) {
+                $q->whereNull('country')->orWhere('country', '');
+            })
             ->select($columns)
             ->orderBy('id')
             ->chunkById(500, function ($sites) use (&$counts, $allow) {
@@ -347,12 +420,49 @@ class CatalogCountryInventory
         return $counts;
     }
 
+    private function isUnknownColumn(\Throwable $e, string $column): bool
+    {
+        $message = $e->getMessage();
+        if ($message === '') {
+            return false;
+        }
+
+        $looksMissing = str_contains($message, 'Unknown column')
+            || str_contains($message, 'no such column')
+            || str_contains($message, '42S22');
+
+        if (! $looksMissing) {
+            return false;
+        }
+
+        return str_contains($message, $column);
+    }
+
     /**
      * Display names: helper map first, countries table overrides when present.
      *
      * @return array<string, string>
      */
     private function marketplaceCountryNames(): array
+    {
+        try {
+            /** @var array<string, string> $cached */
+            $cached = Cache::remember('catalog.marketplace_country_names', 300, function () {
+                return $this->computeMarketplaceCountryNames();
+            });
+
+            return $cached;
+        } catch (\Throwable $e) {
+            Log::warning('Catalog country names cache failed', ['error' => $e->getMessage()]);
+
+            return $this->computeMarketplaceCountryNames();
+        }
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function computeMarketplaceCountryNames(): array
     {
         $names = [];
         if (function_exists('marketplace_countries')) {

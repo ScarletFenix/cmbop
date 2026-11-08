@@ -13,10 +13,13 @@ return [
 
     'bulk' => [
         'min_qty' => 3,
-        'max_qty' => 5,
+        // Cart / pack UI cap. Pricing for the 10-article tier has no upper qty.
+        'max_qty' => 10,
         'min_percent' => 10,
         'max_percent' => 80,
         'default_percent' => 10,
+        // Deal rail: skip very low-DR listings so DR 1–5 cannot lead the carousel.
+        'min_rail_dr' => (int) env('SITE_BULK_MIN_RAIL_DR', 10),
     ],
 
     'custom_discount' => [

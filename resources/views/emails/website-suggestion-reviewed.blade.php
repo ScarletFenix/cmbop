@@ -2,15 +2,15 @@
 @if($accepted)
 # We will try to add {{ $siteName }}
 
-Thanks for suggesting **{{ $siteName }}**. We accepted the request and will work on adding it to the catalog when it fits the marketplace.
+Thanks for suggesting {{ $siteName }}. We accepted the request and will work on adding it to the catalog when it fits the marketplace.
 @else
 # Update on {{ $siteName }}
 
-Thanks for suggesting **{{ $siteName }}**. We reviewed it and marked it as **{{ $status }}**.
+Thanks for suggesting {{ $siteName }}. We reviewed it and marked it as {{ $status }}.
 @endif
 
 @if($notes !== '')
-**Note from our team:**  
+Note from our team:  
 {{ $notes }}
 @endif
 

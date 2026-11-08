@@ -3,11 +3,14 @@
 namespace App\Services;
 
 use App\Models\AdBanner;
+use App\Models\AnnouncementDismissal;
 use App\Models\Site;
 use App\Models\SiteAnnouncement;
 use App\Models\User;
 use App\Models\WelcomeBonusClaim;
+use App\Support\BulkDiscount;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -49,6 +52,8 @@ class PromotionService
 
             // Do not SQL-limit before isCurrentlyLive(): leftover unparseable
             // dates still match active() and would crowd out real notices.
+            $dismissed = $this->dismissedVersions();
+
             return SiteAnnouncement::query()
                 ->active()
                 ->forAudience($audience)
@@ -56,6 +61,16 @@ class PromotionService
                 ->orderByDesc('id')
                 ->get()
                 ->filter(fn (SiteAnnouncement $item) => $item->isCurrentlyLive())
+                ->filter(function (SiteAnnouncement $item) use ($dismissed) {
+                    if (! $item->is_dismissible) {
+                        return true;
+                    }
+
+                    $version = max(1, (int) ($item->version ?: 1));
+                    $seen = (int) ($dismissed[(int) $item->id] ?? 0);
+
+                    return $seen < $version;
+                })
                 ->take($limit)
                 ->values();
         } catch (\Throwable $e) {
@@ -63,6 +78,19 @@ class PromotionService
 
             return collect();
         }
+    }
+
+    /**
+     * @return array<int, int> announcement_id => dismissed version
+     */
+    private function dismissedVersions(): array
+    {
+        $user = auth()->user();
+        if (! $user instanceof User) {
+            return [];
+        }
+
+        return AnnouncementDismissal::versionsForUser((int) $user->id);
     }
 
     public function activeBanners(?string $placement = null, ?string $audience = null): Collection
@@ -73,32 +101,119 @@ class PromotionService
             }
 
             $audience = $audience ?: $this->resolveAudience();
+            $cacheKey = 'promotions.banners.v1.'.md5(($placement ?? 'any').'|'.$audience.'|'.now()->toDateString());
 
-            $query = AdBanner::query()
-                ->active()
-                ->forAudience($audience)
-                ->orderBy('priority')
-                ->orderByDesc('id');
+            /** @var Collection<int, AdBanner> $cached */
+            $cached = Cache::remember($cacheKey, 60, function () use ($placement, $audience) {
+                $query = AdBanner::query()
+                    ->active()
+                    ->forAudience($audience)
+                    ->orderBy('priority')
+                    ->orderByDesc('id');
 
-            if ($placement) {
-                $query->forPlacement($placement);
-            }
+                if ($placement) {
+                    $query->forPlacement($placement);
+                }
 
-            $all = $query->get()
-                ->filter(fn (AdBanner $banner) => $banner->isCurrentlyLive() && $banner->imageSrc())
-                ->values();
-            $limit = max(1, (int) config('promotions.banners_per_placement', 1));
-            $seed = crc32(($placement ?? 'any').'|'.now()->toDateString());
+                $all = $query->get()
+                    ->filter(fn (AdBanner $banner) => $banner->isCurrentlyLive() && $banner->imageSrc())
+                    ->values();
+                $limit = max(1, (int) config('promotions.banners_per_placement', 1));
+                $seed = crc32(($placement ?? 'any').'|'.now()->toDateString());
 
-            return $all->values()
-                ->sortBy(fn (AdBanner $banner) => crc32($seed.'|'.$banner->id))
-                ->take($limit)
-                ->values();
+                return $all->values()
+                    ->sortBy(fn (AdBanner $banner) => crc32($seed.'|'.$banner->id))
+                    ->take($limit)
+                    ->values();
+            });
+
+            return $cached;
         } catch (\Throwable $e) {
             Log::warning('Failed to load ad banners', ['error' => $e->getMessage()]);
 
             return collect();
         }
+    }
+
+    /**
+     * What each audience sees today — same take/rotation as the public site.
+     *
+     * @return array{
+     *     notices: array<string, Collection<int, SiteAnnouncement>>,
+     *     banners: array<string, array<string, AdBanner>>
+     * }
+     */
+    public function staffNowShowing(): array
+    {
+        $notices = [];
+        $banners = [];
+
+        foreach (['public', 'advertiser', 'publisher'] as $audience) {
+            $notices[$audience] = $this->activeAnnouncements($audience);
+            $banners[$audience] = [];
+            foreach (array_keys(config('promotions.banner_placements', [])) as $placement) {
+                $wired = config('promotions.wired_placements.'.$placement, []);
+                if (! is_array($wired) || ! in_array($audience, $wired, true)) {
+                    continue;
+                }
+                $winner = $this->activeBanners($placement, $audience)->first();
+                if ($winner) {
+                    $banners[$audience][$placement] = $winner;
+                }
+            }
+        }
+
+        return ['notices' => $notices, 'banners' => $banners];
+    }
+
+    /**
+     * @param  array{notices: array<string, Collection<int, SiteAnnouncement>>, banners: array<string, array<string, AdBanner>>}  $nowShowing
+     * @return list<int>
+     */
+    public static function showingNoticeIds(array $nowShowing): array
+    {
+        $ids = [];
+        foreach ($nowShowing['notices'] ?? [] as $list) {
+            foreach ($list as $item) {
+                $ids[] = (int) $item->id;
+            }
+        }
+
+        return array_values(array_unique($ids));
+    }
+
+    /**
+     * @param  array{notices: array<string, Collection<int, SiteAnnouncement>>, banners: array<string, array<string, AdBanner>>}  $nowShowing
+     * @return list<int>
+     */
+    public static function showingBannerIds(array $nowShowing): array
+    {
+        $ids = [];
+        foreach ($nowShowing['banners'] ?? [] as $byPlacement) {
+            foreach ($byPlacement as $banner) {
+                $ids[] = (int) $banner->id;
+            }
+        }
+
+        return array_values(array_unique($ids));
+    }
+
+    public function announcementShowingState(SiteAnnouncement $item, array $showingNoticeIds): ?string
+    {
+        if (! $item->isCurrentlyLive()) {
+            return null;
+        }
+
+        return in_array((int) $item->id, $showingNoticeIds, true) ? 'showing' : 'queued';
+    }
+
+    public function bannerShowingState(AdBanner $item, array $showingBannerIds): ?string
+    {
+        if (! $item->isCurrentlyLive() || ! $item->imageSrc()) {
+            return null;
+        }
+
+        return in_array((int) $item->id, $showingBannerIds, true) ? 'showing' : 'rotated_out';
     }
 
     public function dashboardStats(): array
@@ -242,11 +357,10 @@ class PromotionService
         }
 
         try {
-            return Site::query()
-                ->catalogVisible()
-                ->where('bulk_discount_enabled', true)
-                ->whereNotNull('bulk_discount_percent')
-                ->where('bulk_discount_percent', '>', 0)
+            $query = Site::query()->catalogVisible();
+            BulkDiscount::constrainJoined($query);
+
+            return $query
                 ->orderByDesc('id')
                 ->limit($limit)
                 ->get();
@@ -336,12 +450,10 @@ class PromotionService
         }
 
         try {
-            return (int) Site::query()
-                ->catalogVisible()
-                ->where('bulk_discount_enabled', true)
-                ->whereNotNull('bulk_discount_percent')
-                ->where('bulk_discount_percent', '>', 0)
-                ->count();
+            $query = Site::query()->catalogVisible();
+            BulkDiscount::constrainJoined($query);
+
+            return (int) $query->count();
         } catch (\Throwable) {
             return 0;
         }

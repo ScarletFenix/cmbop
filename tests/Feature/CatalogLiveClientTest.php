@@ -78,10 +78,12 @@ class CatalogLiveClientTest extends TestCase
         $this->assertStringContainsString("e.target.closest('.buy-now')", $js);
         $this->assertStringContainsString("e.target.closest('.favorite-btn')", $js);
         $this->assertStringContainsString("e.target.closest('.blacklist-btn')", $js);
-        $this->assertStringContainsString("e.target.closest('.expand-arrow')", $js);
-        $this->assertStringContainsString("closest('tr.site-row')", $js);
-        $this->assertStringContainsString("closest('.catalog-mobile-card')", $js);
+        $this->assertStringContainsString('.expand-arrow, .catalog-card-details-toggle', $js);
         $this->assertStringContainsString('function hydrateExpandScreenshots', $js);
+        $this->assertStringContainsString('.site-row[data-id]', $js);
+        $this->assertStringContainsString('.catalog-mobile-card[data-id]', $js);
+        $this->assertStringNotContainsString('function catalogActionClick', $js);
+        $this->assertStringNotContainsString("closest('tr.site-row')", $js);
         // Filter submit goes through live apply (full navigate is fallback only).
         $this->assertMatchesRegularExpression(
             '/function submitCatalogFilters\(options\) \{[\s\S]*?CatalogLive\.apply\(/s',
@@ -109,6 +111,8 @@ class CatalogLiveClientTest extends TestCase
         $this->assertStringContainsString("'tag', 'favorites_filter', 'blacklist_filter'", $js);
         $this->assertStringContainsString("getElementById('bulk_deals')", $js);
         $this->assertStringContainsString("getElementById('on_sale')", $js);
+        $this->assertStringContainsString("getElementById('catalogSensitiveTopics')", $js);
+        $this->assertStringContainsString("'link_type', 'turnaround_max'", $js);
         // Unchecked form checkboxes must not be revived from the URL in fromForm.
         $this->assertMatchesRegularExpression(
             '/el\.type === [\'"]checkbox[\'"][\s\S]{0,80}return;/s',
@@ -119,6 +123,50 @@ class CatalogLiveClientTest extends TestCase
             '/filter-preset[\s\S]*?submitCatalogFilters\(\)/s',
             $js
         );
+    }
+
+    public function test_active_filter_chips_clear_without_catalog_return_rewrite(): void
+    {
+        $js = $this->catalogJs();
+        $layout = (string) file_get_contents(resource_path('views/advertiser/layouts/app.blade.php'));
+
+        // Layout used to rewrite bare /advertiser/catalog hrefs (chip × / Reset /
+        // Clear all) back to sessionStorage's last filtered URL while already on
+        // the catalog — clicks looked dead. Skip that rewrite on-catalog, and
+        // still exclude the clear controls if the handler is reused elsewhere.
+        $this->assertMatchesRegularExpression(
+            '/if \(onCatalogPage\) return;/',
+            $layout
+        );
+        $this->assertStringContainsString("link.classList.contains('catalog-clear-all')", $layout);
+        $this->assertStringContainsString("link.classList.contains('catalog-reset-filters')", $layout);
+        $this->assertStringContainsString("link.classList.contains('filter-chip__remove')", $layout);
+
+        // Chip / Clear / Reset apply in capture so a later bubble restore cannot win.
+        $this->assertMatchesRegularExpression(
+            '/closest\(\'\.filter-chip__remove\'\)[\s\S]*?CatalogLive\.apply\(\{ params: params, history: \'push\', keepPage: true \}\);/',
+            $js
+        );
+        $this->assertMatchesRegularExpression(
+            '/closest\(\'a\.catalog-clear-all, a\.catalog-reset-filters\'\)[\s\S]*?CatalogUrl\.applyToForm\(empty\)/',
+            $js
+        );
+        $this->assertMatchesRegularExpression(
+            '/CatalogLive\.apply\(\{ params: empty, history: \'push\', keepPage: true \}\);\s*\}\s*\}, true\);/s',
+            $js
+        );
+        $this->assertStringContainsString('CatalogUrl.applyToForm(params)', $js);
+        // Chip × keeps a native title for no-JS, but opts out of GlassTip so a
+        // hover panel cannot cover × / Clear all and swallow the click.
+        $this->assertStringContainsString('data-no-tip="1"', $js);
+        $blade = (string) file_get_contents(resource_path('views/advertiser/catalog.blade.php'));
+        $this->assertStringContainsString('data-no-tip="1"', $blade);
+        $glassCss = (string) file_get_contents(public_path('assets/css/glass-tip.css'));
+        $this->assertMatchesRegularExpression(
+            '/\.glass-tip\.is-visible\s*\{[^}]*pointer-events:\s*none/s',
+            $glassCss
+        );
+        $this->assertStringContainsString('.glass-tip.is-visible.is-pinned', $glassCss);
     }
 
     public function test_live_ux_polish_guards_busy_state_and_announcements(): void
@@ -136,9 +184,10 @@ class CatalogLiveClientTest extends TestCase
         $this->assertStringContainsString('id="catalogLiveStatus"', $blade);
         $this->assertStringContainsString('aria-live="polite"', $blade);
         $this->assertStringContainsString('lastAppliedQuery', $js);
-        // Stale rows under the veil must not stay clickable.
-        $this->assertStringContainsString('.catalog-results-card.is-busy > .card-body', $css);
+        // Small non-blocking pill: rows stay clickable (PR #1293 busy guards remain).
+        $this->assertStringContainsString('.catalog-results-busy', $css);
         $this->assertStringContainsString('pointer-events: none', $css);
+        $this->assertStringNotContainsString('.catalog-results-card.is-busy > .card-body', $css);
         $this->assertStringContainsString('intent: \'search\'', $js);
         $this->assertStringContainsString('intent: \'page\'', $js);
 
@@ -174,6 +223,91 @@ class CatalogLiveClientTest extends TestCase
         $this->assertStringContainsString('catalogBulkHost', $blade);
         $this->assertStringContainsString('window.initBulkDealRail', $js);
         $this->assertStringContainsString('window.destroyBulkDealRail', $js);
+    }
+
+    public function test_page_one_live_pagination_does_not_leave_overlay_stuck(): void
+    {
+        $js = $this->catalogJs();
+
+        // page=1 is stripped so share URLs stay clean — the page-1 link is
+        // often ?page=1 or no page param, which canonicalize to the same key.
+        $this->assertMatchesRegularExpression(
+            '/if \(key === [\'"]page[\'"] && value === [\'"]1[\'"]\) return;/',
+            $js
+        );
+
+        // fromForm must restore page= from the URL when keepPage is true.
+        // An unconditional `if (key === 'page') return` made lastAppliedQuery
+        // look like page 1 after a page-2 fetch.
+        $this->assertDoesNotMatchRegularExpression(
+            '/KEYS\.forEach\(function \(key\) \{[\s\S]{0,220}?if \(key === [\'"]page[\'"]\) return;/',
+            $js
+        );
+        $this->assertMatchesRegularExpression(
+            '/if \(key === [\'"]page[\'"] && !options\.keepPage\) return;/',
+            $js
+        );
+        $this->assertMatchesRegularExpression(
+            '/if \(!options\.keepPage\) \{\s*raw\.delete\([\'"]page[\'"]\);/s',
+            $js
+        );
+
+        // Same-query no-op also requires the browser URL to match, then hides
+        // the overlay (a sibling click handler used to raise it first).
+        $this->assertMatchesRegularExpression(
+            '/queryKey === lastAppliedQuery[\s\S]{0,180}?queryKey === locationKey[\s\S]{0,400}?clearCatalogResultsBusy\(\)[\s\S]{0,80}?return Promise\.resolve\(\)/s',
+            $js
+        );
+
+        // Live pagination / chip / clear-all clicks must not pre-mark busy.
+        $this->assertMatchesRegularExpression(
+            '/#catalogResults \.pagination a\.page-link[\s\S]{0,220}?filter-chip__remove[\s\S]{0,160}?catalog-clear-all[\s\S]{0,80}?return;/s',
+            $js
+        );
+
+        // Overlay always has a timeout fallback; apply() still clears in finally.
+        $this->assertStringContainsString('CATALOG_BUSY_FALLBACK_MS', $js);
+        $this->assertStringContainsString('armCatalogBusyFallback', $js);
+        $this->assertMatchesRegularExpression(
+            '/function markCatalogResultsBusy\([\s\S]*?armCatalogBusyFallback\(\)/s',
+            $js
+        );
+        $this->assertMatchesRegularExpression(
+            '/function clearCatalogResultsBusy\(\) \{[\s\S]*?catalogBusyFallbackTimer/s',
+            $js
+        );
+        $this->assertMatchesRegularExpression(
+            '/\.finally\(function \(\) \{[\s\S]*?if \(fallbackNavigated\) return;[\s\S]*?clearCatalogResultsBusy\(\)/s',
+            $js
+        );
+
+        // Back/forward always fetches (force), per-page restarts at page 1.
+        $this->assertMatchesRegularExpression(
+            '/addEventListener\([\'"]popstate[\'"][\s\S]{0,180}?applyFromLocation\([\'"]none[\'"]\)/s',
+            $js
+        );
+        $this->assertStringContainsString('force: true', $js);
+        $this->assertMatchesRegularExpression(
+            '/getElementById\([\'"]catalogPerPage[\'"]\)[\s\S]{0,280}?submitCatalogFilters\(\{ replace: true/s',
+            $js
+        );
+        $this->assertStringContainsString("keepPage: true, intent: 'page'", $js);
+    }
+
+    public function test_page_one_live_pagination_node_contract(): void
+    {
+        $node = trim((string) shell_exec('command -v node'));
+        if ($node === '') {
+            $this->markTestSkipped('node is required for the catalog live page contract');
+        }
+
+        $script = base_path('tests/js/catalog-live-page.test.mjs');
+        $this->assertFileExists($script);
+
+        $command = escapeshellarg($node).' --test '.escapeshellarg($script).' 2>&1';
+        exec($command, $output, $code);
+
+        $this->assertSame(0, $code, implode("\n", $output));
     }
 
     public function test_results_fragment_exposes_count_meta_for_live_bar(): void

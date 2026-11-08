@@ -23,63 +23,68 @@
     $walletUnavailable = (bool) ($walletUnavailable ?? false);
     $pendingDeposits = (float) ($summary['pending_deposits'] ?? 0);
     $reservedHold = (float) ($summary['reserved_balance'] ?? 0);
+    $depositMin = \App\Support\DepositPaymentConfig::depositMin();
+    $depositMax = \App\Support\DepositPaymentConfig::depositMax();
+    $displaySymbol = \App\Support\Money::symbol();
+    $displayCurrency = \App\Support\Money::currency();
+    $zeroDisplay = $displaySymbol.'0.00';
 @endphp
 
 
-<div class="container-fluid">
+<div class="container-fluid add-funds-page">
 
-    <div class="row mb-3 align-items-end g-3">
-        <div class="col-lg-8">
-            <h2 class="mb-1 fw-semibold">Add funds</h2>
-            <p class="text-muted mb-0">Top up your wallet. Minimum €10.</p>
+    <div class="af-page-header">
+        <div>
+            <h1 class="af-page-title">Add funds</h1>
+            <p class="af-page-sub">Top up your wallet. Minimum {{ format_money($depositMin ?? 10) }}.</p>
         </div>
-        <div class="col-lg-4 text-lg-end">
-            <button type="button" class="btn btn-sm btn-cta-tertiary" id="withdrawOpenBtn"
+        <div class="af-page-links">
+            <button type="button" class="af-text-link" id="withdrawOpenBtn"
                     data-bs-toggle="modal" data-bs-target="#withdrawModal"
                     @disabled(! $canWithdraw)>
-                Withdraw
+                Withdraw wallet
             </button>
-            <a href="{{ route('advertiser.billing.index') }}" class="btn btn-sm btn-cta-tertiary">Billing &amp; invoices</a>
-            <a href="{{ route('advertiser.analytics') }}" class="btn btn-sm btn-cta-tertiary">Spending</a>
+            <a href="{{ route('advertiser.billing.index') }}" class="af-text-link">Billing &amp; invoices</a>
+            <a href="{{ route('advertiser.analytics') }}" class="af-text-link">Spending</a>
         </div>
     </div>
 
     <div class="af-spendable mb-3" role="status" aria-label="Spendable balance">
         <div class="af-spendable__main">
             <span class="af-spendable__label">Spendable</span>
-            <span class="af-spendable__value" id="kpiSpendable">{{ $walletUnavailable ? '—' : '€'.number_format($spendable, 2) }}</span>
+            <span class="af-spendable__value" id="kpiSpendable">{{ $walletUnavailable ? '—' : format_money($spendable) }}</span>
             <div class="af-spendable__equation small text-muted">{{ $walletUnavailable ? 'Unavailable' : 'Money + Bonus' }}</div>
         </div>
         <div class="af-spendable__breakdown">
             <div class="af-spendable__chip" title="Withdrawable funds from deposits">
                 <span class="af-spendable__chip-label">Money</span>
-                <span class="af-spendable__chip-value" id="kpiAvailable">{{ $walletUnavailable ? '—' : '€'.number_format($available, 2) }}</span>
+                <span class="af-spendable__chip-value" id="kpiAvailable">{{ $walletUnavailable ? '—' : format_money($available) }}</span>
             </div>
             <div class="af-spendable__chip af-spendable__chip--bonus" title="Promotional credit for marketplace purchases only">
                 <span class="af-spendable__chip-label">Bonus</span>
-                <span class="af-spendable__chip-value" id="kpiBonus">{{ $walletUnavailable ? '—' : '€'.number_format($bonus, 2) }}</span>
+                <span class="af-spendable__chip-value" id="kpiBonus">{{ $walletUnavailable ? '—' : format_money($bonus) }}</span>
             </div>
         </div>
         @if(! $walletUnavailable && $pendingDeposits > 0 && $reservedHold > 0)
             <div class="af-spendable__pending">
-                <span id="kpiPending">€{{ number_format($pending, 2) }}</span>
-                pending — €{{ number_format($pendingDeposits, 2) }} deposit confirmation
-                · €{{ number_format($reservedHold, 2) }} on hold for checkout
+                <span id="kpiPending">{{ format_money($pending) }}</span>
+                pending — {{ format_money($pendingDeposits) }} deposit confirmation
+                · {{ format_money($reservedHold) }} on hold for checkout
             </div>
         @elseif(! $walletUnavailable && $pendingDeposits > 0)
             <div class="af-spendable__pending">
-                <span id="kpiPending">€{{ number_format($pendingDeposits, 2) }}</span> pending deposit confirmation
+                <span id="kpiPending">{{ format_money($pendingDeposits) }}</span> pending deposit confirmation
             </div>
         @elseif(! $walletUnavailable && $reservedHold > 0)
             <div class="af-spendable__pending">
-                <span id="kpiPending">€{{ number_format($reservedHold, 2) }}</span> on hold for checkout
+                <span id="kpiPending">{{ format_money($reservedHold) }}</span> on hold for checkout
             </div>
         @else
-            <span id="kpiPending" class="d-none">€{{ number_format($pending, 2) }}</span>
+            <span id="kpiPending" class="d-none">{{ format_money($pending) }}</span>
         @endif
         @if(! $walletUnavailable && $bonus > 0)
             <p class="af-spendable__note mb-0">
-                <strong>Bonus €{{ number_format($bonus, 2) }}</strong>
+                <strong>Bonus {{ format_money($bonus) }}</strong>
                 (purchases only) — {{ $promotionalBonusMessage ?? \App\Models\Wallet::PROMOTIONAL_BONUS_MESSAGE }}
             </p>
         @endif
@@ -89,19 +94,19 @@
         <aside class="af-role-strip mb-3" id="publisherRoleStrip" aria-label="Publisher earnings">
             <div class="af-role-strip__main">
                 <span class="af-role-strip__label">Publisher earnings</span>
-                <span class="af-role-strip__value" id="publisherEarningsKpi">€{{ number_format((float) $publisher['withdrawable'], 2) }}</span>
+                <span class="af-role-strip__value" id="publisherEarningsKpi">{{ format_money($publisher['withdrawable']) }}</span>
                 <p class="af-role-strip__note mb-0">Withdrawable. Transfers into this wallet are off — open Balance or Withdraw.</p>
             </div>
             <div class="af-role-strip__actions">
-                <a href="{{ route('publisher.balance') }}" class="btn btn-sm btn-outline-secondary" id="publisherBalanceCta">Balance</a>
-                <a href="{{ route('publisher.withdraw') }}" class="btn btn-sm btn-outline-secondary" id="publisherWithdrawCta">Withdraw</a>
+                <a href="{{ route('publisher.balance') }}" class="af-text-link" id="publisherBalanceCta">Balance</a>
+                <a href="{{ route('publisher.withdraw') }}" class="af-text-link" id="publisherWithdrawCta">Withdraw earnings</a>
             </div>
         </aside>
     @endif
-    <span id="kpiDeposits" class="d-none">€{{ number_format($lifetimeDeposits, 2) }}</span>
-    <span id="bonusReceivedLabel" class="d-none">€{{ number_format($bonusReceived, 2) }}</span>
-    <span id="bonusUsedLabel" class="d-none">€{{ number_format($bonusUsed, 2) }}</span>
-    <span id="bonusRemainingLabel" class="d-none">€{{ number_format($bonus, 2) }}</span>
+    <span id="kpiDeposits" class="d-none">{{ format_money($lifetimeDeposits) }}</span>
+    <span id="bonusReceivedLabel" class="d-none">{{ format_money($bonusReceived) }}</span>
+    <span id="bonusUsedLabel" class="d-none">{{ format_money($bonusUsed) }}</span>
+    <span id="bonusRemainingLabel" class="d-none">{{ format_money($bonus) }}</span>
 
     @php
         $walletSavedCards = $savedCards ?? [];
@@ -110,7 +115,7 @@
         $openCardsTab = !empty($cardsTab);
         $pendingInvoiceCount = ($pendingRequests ?? collect())->count();
         $depositMethodLabels = ['card' => 'Card', 'paypal' => 'PayPal', 'bank' => 'Bank transfer', 'wise' => 'Wise', 'crypto' => 'Crypto'];
-        $depositPayment = $depositPayment ?? config('billing.deposit_payment', []);
+        $depositPayment = $depositPayment ?? \App\Support\DepositPaymentConfig::depositPayment();
     @endphp
 
     @if(($pendingRequests ?? collect())->isNotEmpty())
@@ -118,28 +123,28 @@
             <div class="fw-semibold mb-1">
                 <i class="fa fa-clock me-1"></i> Pending deposit invoices
             </div>
-            <p class="small text-muted mb-2">Transfer the amount, include the REF, then mark as paid — we credit your wallet after confirmation.</p>
+            <p class="small text-muted mb-2">Transfer the amount, put the reference in the payment reference, then mark as paid — we credit your wallet after confirmation.</p>
             <ul class="list-unstyled mb-0">
                 @foreach(($pendingRequests ?? collect())->take(3) as $deposit)
                     @php
-                        $pendingRef = 'REF' . $deposit->reference_code;
+                        $pendingRef = $deposit->paymentReferenceLabel();
                     @endphp
                     <li class="d-flex flex-wrap justify-content-between align-items-center gap-2 py-2 {{ $loop->last && $pendingInvoiceCount <= 3 ? '' : 'border-bottom' }}">
                         <div class="small">
-                            <strong>€{{ number_format((float) $deposit->amount, 2) }}</strong>
+                            <strong>{{ format_money($deposit->amount) }}</strong>
                             <span class="text-muted"> · {{ $depositMethodLabels[$deposit->payment_method] ?? ucfirst($deposit->payment_method) }}</span>
                             <code class="ms-1">{{ $pendingRef }}</code>
                         </div>
                         <div class="d-flex flex-wrap gap-2">
-                            <a href="{{ route('advertiser.invoice', $deposit->reference_code) }}" class="btn btn-sm btn-outline-secondary" target="_blank" rel="noopener">
-                                <i class="fa fa-file-invoice me-1"></i> Invoice
+                            <a href="{{ route('advertiser.invoice.pdf', $deposit->reference_code) }}" class="btn btn-sm btn-outline-secondary" download="invoice-REF{{ $deposit->reference_code }}.pdf">
+                                <i class="fa fa-file-invoice me-1"></i> Download invoice
                             </a>
                             @if($deposit->canUserMarkPaid())
                                 <button type="button" class="btn btn-sm btn-outline-primary mark-deposit-paid-btn"
                                         data-mark-url="{{ route('advertiser.add-funds.mark-paid', $deposit) }}"
                                         data-ref="{{ $pendingRef }}"
                                         data-amount="{{ number_format((float) $deposit->amount, 2, '.', '') }}">
-                                    <i class="fa fa-check me-1"></i> Mark paid
+                                    <i class="fa fa-check me-1"></i> I paid
                                 </button>
                             @elseif($deposit->userHasMarkedPaid())
                                 <span class="small text-success align-self-center"><i class="fa fa-check-circle me-1"></i> Payment reported</span>
@@ -171,7 +176,11 @@
                     <div class="alert alert-light border mb-3" id="depositWorkflowHint" style="background:var(--brand-primary-bg,#e6f5f5); border-color:var(--brand-primary-border,#b8e4e4) !important;">
                         <div class="fw-semibold mb-1" style="color:var(--brand-primary,var(--brand-primary, #1a585e));">How wallet top-ups work</div>
                         <p class="small text-muted mb-0">
-                            <strong>Card or PayPal:</strong> Pay instantly — credited immediately after the payment confirms.<br>
+                            @if($stripeReady)
+                                <strong>Card or PayPal:</strong> Pay instantly — credited immediately after the payment confirms.<br>
+                            @elseif($paypalReady)
+                                <strong>PayPal:</strong> Pay instantly — credited immediately after the payment confirms.<br>
+                            @endif
                             <strong>Bank, Wise, or Crypto:</strong> We create an invoice with a REF. Transfer the exact amount, include the REF, then mark as paid — wallet credits after confirmation.
                         </p>
                     </div>
@@ -198,34 +207,53 @@
                     
                     <!-- Amount Selection -->
                     <div class="mb-4">
-                        <label class="form-label fw-semibold">Select Amount</label>
+                        <label class="form-label fw-semibold" for="customAmount">Select amount</label>
                         <div class="row g-2 mb-3">
                             @foreach([50, 100, 250, 500, 1000] as $amount)
                                 <div class="col-4 col-md-3 col-lg-2">
-                                    <button type="button" class="amount-btn w-100 btn btn-outline-secondary py-2" data-amount="{{ $amount }}">
-                                        €{{ $amount }}
+                                    <button type="button" class="amount-btn w-100 btn btn-outline-secondary py-2" data-amount="{{ $amount }}" data-amount-currency="{{ \App\Support\Money::currency() }}">
+                                        {{ \App\Support\Money::symbol() }}{{ number_format($amount) }}
                                     </button>
                                 </div>
                             @endforeach
                         </div>
                         <div class="input-group" style="max-width: 250px;">
-                            <span class="input-group-text bg-white">€</span>
-                            <input type="number" id="customAmount" class="form-control" placeholder="Custom amount" min="10" step="1">
+                            <span class="input-group-text bg-white" id="customAmountPrefix">{{ \App\Support\Money::symbol() }}</span>
+                            <input type="text" inputmode="decimal" id="customAmount" name="deposit_amount" class="form-control"
+                                   placeholder="Custom amount" autocomplete="transaction-amount"
+                                   aria-describedby="customAmountHelp amountError" min="{{ app(\App\Support\MoneyDisplay::class)->fromEuros($depositMin) }}" step="0.01">
                         </div>
-                        <small class="form-text text-muted mt-1">Minimum amount: €10</small>
+                        <small id="customAmountHelp" class="form-text text-muted mt-1">Minimum {{ format_money($depositMin) }} · Maximum {{ format_money($depositMax) }}</small>
+                        <div id="amountError" class="invalid-feedback d-none" role="alert"></div>
+                    </div>
+                    <div class="af-mobile-summary d-lg-none mb-4" id="afMobileSummary">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="text-muted">Total</span>
+                            <strong id="afMobileTotal">{{ $zeroDisplay }}</strong>
+                        </div>
+                        <button type="button" id="afMobileProceed" class="btn btn-primary w-100 py-2" disabled>
+                            <i class="fa fa-arrow-right me-2"></i> Select an amount
+                        </button>
                     </div>
 
                     <!-- Selected Amount Display -->
                     <div id="selectedAmountDisplay" class="alert alert-info py-2 px-3 mb-4" style="display: none;">
                         <div class="d-flex justify-content-between align-items-center">
                             <span>Amount to add:</span>
-                            <strong id="selectedAmountValue" class="fs-5 text-primary">€0</strong>
+                            <strong id="selectedAmountValue" class="fs-5 text-primary">{{ $zeroDisplay }}</strong>
                         </div>
                     </div>
 
                     <!-- Payment Methods -->
                     @php
+                        $bankTransferAllowed = $bankTransferAllowed ?? true;
                         $depositMethodOrder = $depositMethodOrder ?? ['card', 'bank', 'paypal', 'wise', 'crypto'];
+                        if (! $bankTransferAllowed) {
+                            $depositMethodOrder = array_values(array_filter(
+                                $depositMethodOrder,
+                                static fn ($method) => $method !== 'bank'
+                            ));
+                        }
                         $lastUsedMethod = $lastUsedMethod ?? null;
                         $depositMethodMeta = [
                             'card' => [
@@ -274,6 +302,9 @@
                         <label class="form-label fw-semibold mb-3">Select Payment Method</label>
                         <div class="row g-3 payment-methods-row">
                             @foreach($depositMethodOrder as $methodKey)
+                                @if($methodKey === 'card' && ! $stripeReady)
+                                    @continue
+                                @endif
                                 @if($methodKey === 'crypto' && !($cryptoEnabled ?? false))
                                     @continue
                                 @endif
@@ -285,7 +316,7 @@
                                     $methodReady = (bool) $meta['ready'];
                                     $isLastUsed = $lastUsedMethod === $methodKey;
                                 @endphp
-                                <div class="col-12 col-sm-6 col-xl-4">
+                                <div class="col-12 col-sm-6">
                                     <div class="payment-option"
                                          data-method="{{ $methodKey }}"
                                          @if($methodReady) style="cursor: pointer;" role="button" tabindex="0" @else aria-disabled="true" style="cursor: not-allowed; opacity: 0.6;" @endif
@@ -298,13 +329,13 @@
                                                 @if($methodKey === 'card')
                                                     @include('partials.payment-card-brands')
                                                 @elseif($methodKey === 'bank')
-                                                    <i class="fas fa-university" style="font-size: 28px; color: var(--brand-primary, #1a585e);"></i>
+                                                    <i class="fas fa-university" aria-hidden="true"></i>
                                                 @elseif($methodKey === 'paypal')
-                                                    <img src="{{ asset('assets/img/payments/paypal.svg') }}" alt="" width="40" height="11" style="width:40px;height:auto;" decoding="async">
+                                                    <img src="{{ asset('assets/img/payments/paypal.png') }}" alt="PayPal" width="32" height="32" decoding="async">
                                                 @elseif($methodKey === 'wise')
-                                                    <img src="{{ asset('assets/img/wiseImg-logo.png') }}" alt="Wise Logo" style="width: 32px; height: 32px; object-fit: contain;">
+                                                    <img src="{{ asset('assets/img/wiseImg-logo.png') }}" alt="Wise" width="32" height="32">
                                                 @else
-                                                    <i class="fab fa-bitcoin" style="font-size: 28px; color: #eab308;"></i>
+                                                    <i class="fab fa-bitcoin" aria-hidden="true"></i>
                                                 @endif
                                             </div>
                                             <span class="payment-option-name">{{ $meta['label'] }}</span>
@@ -332,11 +363,11 @@
                     <!-- Payment Details Section -->
                     <div id="paymentDetailsSection" style="display: none;" data-invoice-ready="0">
                         <div id="invoiceReadyBar" class="alert alert-success border mb-3" style="display: none;" role="status">
-                            <div class="fw-semibold mb-1">Invoice ready — transfer this amount with the REF below.</div>
+                            <div class="fw-semibold mb-1">Invoice ready — transfer this amount with the payment reference below.</div>
                             <p class="small mb-2">Status stays <strong>Pending</strong> until we confirm and credit your wallet.</p>
-                            <div class="d-flex flex-wrap gap-2">
-                                <a id="invoiceReadyView" class="btn btn-sm btn-primary" href="#" target="_blank" rel="noopener">
-                                    <i class="fa fa-file-invoice me-1"></i> View / download invoice
+                            <div class="d-flex flex-wrap gap-2 af-actions-safe">
+                                <a id="invoiceReadyView" class="btn btn-sm btn-primary" href="#" download="invoice.pdf">
+                                    <i class="fa fa-file-invoice me-1"></i> Download invoice
                                 </a>
                                 <button type="button" class="btn btn-sm btn-outline-primary" id="invoiceReadyMarkPaid">
                                     <i class="fa fa-check me-1"></i> I paid
@@ -359,18 +390,17 @@
                                     </div>
                                 </div>
                                 
-                                <div class="alert alert-danger py-2 px-3 mb-3" style="background-color: #fee2e2; border-left: 4px solid #dc2626;">
-                                    <i class="fas fa-exclamation-triangle me-1"></i> 
-                                    <strong>Important:</strong> Please include <strong class="ref-code ref-code-display">—</strong> in your payment note. Payments without this reference cannot be tracked.
+                                <div class="alert alert-info py-2 px-3 mb-3 js-manual-ref-alert d-none" role="status">
+                                    Include <strong class="ref-code ref-code-display">—</strong> in the payment note so we can match your transfer.
                                 </div>
                                 
                                 <div style="background: #f9fafb; border-radius: 12px; padding: 20px; border: 1px solid #e5e7eb;">
-                                    <p style="font-size: 14px; color: #6b7280; margin-bottom: 12px;">Send <strong id="wiseAmount" style="color: #1f2937;">€<span class="amount-display">0</span></strong> using the link or QR code below:</p>
+                                    <p style="font-size: 14px; color: #6b7280; margin-bottom: 12px;">Send <strong id="wiseAmount" style="color: #1f2937;">{{ $zeroDisplay }}</strong> using the link or QR code below:</p>
                                     
                                     <div style="margin-bottom: 16px;">
                                         <p style="font-size: 12px; color: #6b7280; margin-bottom: 4px;">Wise Payment Link</p>
                                         <div id="wisePaymentLink" style="background: white; padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 12px; word-break: break-all; font-family: monospace;">
-                                            {{ rtrim($wisePayUrl ?? config('billing.deposit_payment.wise_pay_url', 'https://wise.com/pay/business/topurlzltd'), '?&') }}?amount=<span class="amount-link">0</span>&currency=EUR
+                                            {{ rtrim($wisePayUrl ?? config('billing.deposit_payment.wise_pay_url', 'https://wise.com/pay/business/teqnoltd'), '?&') }}?amount=<span class="amount-link">0</span>&currency=EUR
                                         </div>
                                         <button type="button" class="copy-btn mt-2" data-target="wisePaymentLink">
                                             <i class="fas fa-copy"></i> Copy Payment Link
@@ -386,7 +416,7 @@
                                              style="display: none; width: 150px; height: 150px; margin: 0 auto;"
                                              width="150"
                                              height="150">
-                                        <p id="wiseQrHint" class="small text-muted">Select an amount (≥ €10) to generate your Wise QR.</p>
+                                        <p id="wiseQrHint" class="small text-muted">Select an amount (≥ {{ format_money($depositMin) }}) to generate your Wise QR.</p>
                                         <p id="wiseQrFallback" class="small text-muted d-none">QR unavailable — use the payment link above.</p>
                                         <a id="wiseOpenLink" href="#" target="_blank" rel="noopener" class="small d-none">Open in Wise</a>
                                     </div>
@@ -414,9 +444,8 @@
                                     </div>
                                 </div>
                                 
-                                <div class="alert alert-danger py-2 px-3 mb-3" style="background-color: #fee2e2; border-left: 4px solid #dc2626;">
-                                    <i class="fas fa-exclamation-triangle me-1"></i> 
-                                    <strong>Important:</strong> Please include <strong class="ref-code ref-code-display">—</strong> in your payment note. Payments without this reference cannot be tracked.
+                                <div class="alert alert-info py-2 px-3 mb-3 js-manual-ref-alert d-none" role="status">
+                                    Include <strong class="ref-code ref-code-display">—</strong> in the payment note so we can match your transfer.
                                 </div>
                                 
                                 <div style="background: #f9fafb; border-radius: 12px; padding: 20px; border: 1px solid #e5e7eb;">
@@ -424,9 +453,9 @@
                                         @if(!empty($cryptoNote))
                                             <small>{{ $cryptoNote }}</small>
                                         @else
-                                            <small>Send the USDT TRC20 equivalent of the invoice amount in EUR.</small>
+                                            <small>Send the USDT TRC20 equivalent of the invoice amount in {{ $displayCurrency }}.</small>
                                         @endif
-                                        <div class="mt-1">Invoice amount: <strong id="cryptoAmount">€<span class="amount-display">0</span></strong></div>
+                                        <div class="mt-1">Invoice amount: <strong id="cryptoAmount">{{ $zeroDisplay }}</strong></div>
                                     </div>
                                     @foreach(($cryptoNetworks ?? []) as $network)
                                         <div style="margin-bottom: 12px;">
@@ -440,6 +469,7 @@
                         </div>
 
                         <!-- Bank Transfer Payment Details -->
+                        @if(!empty($bankTransferAllowed))
                         <div id="bankPaymentDetails" class="card border-0 shadow-sm mb-4" style="display: none;">
                             <div class="card-body">
                                 <div style="display: flex; align-items: center; margin-bottom: 16px;">
@@ -452,54 +482,29 @@
                                     </div>
                                 </div>
                                 
-                                <div class="alert alert-danger py-2 px-3 mb-3" style="background-color: #fee2e2; border-left: 4px solid #dc2626;">
-                                    <i class="fas fa-exclamation-triangle me-1"></i> 
-                                    <strong>Important:</strong> Please include <strong class="ref-code ref-code-display">—</strong> in your payment note. Payments without this reference cannot be tracked.
+                                <div class="alert alert-info py-2 px-3 mb-3 js-manual-ref-alert d-none" role="status">
+                                    Include <strong class="ref-code ref-code-display">—</strong> in the payment note so we can match your transfer.
                                 </div>
                                 
                                 <div style="background: #f9fafb; border-radius: 12px; padding: 20px; border: 1px solid #e5e7eb;">
                                     <div class="alert alert-warning mb-3">
-                                        <small>Please send the exact amount: <strong id="bankAmount">€<span class="amount-display">0</span></strong></small>
+                                        <small>Please send the exact amount: <strong id="bankAmount">{{ $zeroDisplay }}</strong></small>
                                     </div>
                                     <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 12px; color: var(--brand-primary, #1a585e);">Bank Account Information</h4>
                                     <div style="margin-bottom: 12px;">
-                                        <p style="font-size: 12px; color: #6b7280; margin-bottom: 2px;">Seller / Service Provider:</p>
-                                        <p style="font-weight: 600; margin: 0;">{{ $depositPayment['seller_name'] ?? 'SEOLinkBuildings Partner' }}</p>
-                                    </div>
-                                    <div style="margin-bottom: 12px;">
                                         <p style="font-size: 12px; color: #6b7280; margin-bottom: 2px;">Beneficiary:</p>
-                                        <p style="font-weight: 600; margin: 0;">{{ $depositPayment['beneficiary'] ?? 'Topurlz Ltd' }}</p>
+                                        <p style="font-weight: 600; margin: 0;">{{ $depositPayment['beneficiary_display'] ?? \App\Support\DepositPaymentConfig::beneficiaryDisplayName($depositPayment) }}</p>
                                     </div>
-                                    <div style="margin-bottom: 12px;">
-                                        <p style="font-size: 12px; color: #6b7280; margin-bottom: 2px;">IBAN:</p>
-                                        <div id="bankIban" style="background: white; padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 12px; font-family: monospace;">{{ $depositPayment['iban'] ?? 'BE04905543949331' }}</div>
-                                        <button type="button" class="copy-btn mt-1" data-target="bankIban">Copy IBAN</button>
-                                    </div>
-                                    <div style="margin-bottom: 12px;">
-                                        <p style="font-size: 12px; color: #6b7280; margin-bottom: 2px;">BIC/SWIFT:</p>
-                                        <div id="bankBic" style="background: white; padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 12px; font-family: monospace;">{{ $depositPayment['bic'] ?? 'TRWIBEB1XXX' }}</div>
-                                        <button type="button" class="copy-btn mt-1" data-target="bankBic">Copy BIC</button>
-                                    </div>
-                                    @if(!empty($depositPayment['phone']))
-                                        <div style="margin-bottom: 12px;">
-                                            <p style="font-size: 12px; color: #6b7280; margin-bottom: 2px;">Phone no:</p>
-                                            <p style="font-weight: 600; margin: 0;">{{ $depositPayment['phone'] }}</p>
-                                        </div>
-                                    @endif
-                                    @foreach(($depositPayment['address_lines'] ?? []) as $line)
-                                        <div style="margin-bottom: 12px;">
-                                            @if($loop->first)
-                                                <p style="font-size: 12px; color: #6b7280; margin-bottom: 2px;">Address:</p>
-                                            @endif
-                                            <p style="font-weight: 600; margin: 0;">{{ $line }}</p>
-                                        </div>
-                                    @endforeach
-                                    @if(!empty($depositPayment['registration_no']))
-                                        <div style="margin-bottom: 12px;">
-                                            <p style="font-size: 12px; color: #6b7280; margin-bottom: 2px;">Registration No:</p>
-                                            <p style="font-weight: 600; margin: 0;">{{ $depositPayment['registration_no'] }}</p>
-                                        </div>
-                                    @endif
+                                    @include('partials.deposit-bank-account', [
+                                        'depositPayment' => $depositPayment,
+                                        'showExtended' => true,
+                                        'showCopy' => true,
+                                        'showBeneficiary' => false,
+                                        'walletCurrency' => $wallet?->currency ?? null,
+                                        'eurAmount' => $prefillAmount ?? null,
+                                        'showMethodSwitch' => true,
+                                        'sendLabel' => app(\App\Support\DepositFx::class)->quote((float) ($prefillAmount ?? 0), ($payFrom ?? 'eur') === 'gbp' ? 'GBP' : 'EUR')['send_label'],
+                                    ])
                                     <div>
                                         <p style="font-size: 12px; color: #6b7280; margin-bottom: 2px;">VAT:</p>
                                         <p style="font-weight: 600; margin: 0;">{{ $depositPayment['vat_note'] ?? 'Not VAT registered – no VAT charged' }}</p>
@@ -507,12 +512,13 @@
                                 </div>
                             </div>
                         </div>
+                        @endif
 
                         <div id="paypalPaymentDetails" class="card border-0 shadow-sm mb-4" style="display: none;">
                             <div class="card-body">
                                 <div style="display: flex; align-items: center; margin-bottom: 16px;">
-                                    <div style="width: 40px; height: 40px; background: #f3f4f6; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-right: 12px;">
-                                        <img src="{{ asset('assets/img/payments/paypal.svg') }}" alt="" width="32" height="9" style="width:32px;height:auto;" decoding="async">
+                                    <div style="width: 64px; height: 64px; background: #f3f4f6; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-right: 12px;">
+                                        <img src="{{ asset('assets/img/payments/paypal.png') }}" alt="PayPal" width="56" height="55" style="width:56px;height:auto;" decoding="async">
                                     </div>
                                     <div>
                                         <h3 style="font-size: 18px; font-weight: 600; margin: 0;">PayPal</h3>
@@ -523,6 +529,7 @@
                             </div>
                         </div>
 
+                        @if($stripeReady)
                         <!-- Card Payment Details - Stripe Checkout / saved card -->
                         <div id="cardPaymentDetails" class="card border-0 shadow-sm mb-4" style="display: none;">
                             <div class="card-body">
@@ -556,13 +563,14 @@
 
                             </div>
                         </div>
+                        @endif
                     </div>
                 </div>
             </div>
         </div>
 
 
-        <div class="col-lg-4">
+        <div class="col-lg-4 d-none d-lg-block">
             <div class="card wallet-panel mb-3">
                 <div class="card-header fw-semibold py-3">
                     <i class="fa fa-calculator me-2 text-primary"></i> Payment Summary
@@ -570,33 +578,33 @@
                 <div class="card-body">
                     <div class="d-flex justify-content-between mb-2">
                         <span class="text-muted">Amount to Add:</span>
-                        <span id="summaryAmount" class="fw-semibold">€0.00</span>
+                        <span id="summaryAmount" class="fw-semibold">{{ $zeroDisplay }}</span>
                     </div>
                     <hr>
                     <div class="d-flex justify-content-between mb-3">
                         <strong>Total:</strong>
-                        <strong class="text-primary fs-5" id="summaryTotal">€0.00</strong>
+                        <strong class="text-primary fs-5" id="summaryTotal">{{ $zeroDisplay }}</strong>
                     </div>
-                    <div class="alert alert-secondary py-2 px-3 mb-3" style="background-color: #f8f9fa;">
+                    <div class="alert alert-secondary py-2 px-3 mb-3 d-none" id="referenceRow" style="background-color: #f8f9fa;">
                         <div class="d-flex justify-content-between align-items-center">
                             <span class="small">Reference Code:</span>
                             <div>
                                 <strong id="referenceCode" class="ref-code font-monospace" data-placeholder="true">—</strong>
                                 <button type="button" class="btn btn-sm btn-link p-0 ms-2 copy-ref-btn" data-target="referenceCode" id="copyRefBtn" disabled>
-                                    <i class="fas fa-copy"></i>
+                                    <i class="fas fa-copy" aria-hidden="true"></i>
+                                    <span class="visually-hidden">Copy reference</span>
                                 </button>
                             </div>
                         </div>
                     </div>
-                    <div class="alert alert-warning py-2 px-3 mb-3" id="refHintBox">
-                        <i class="fas fa-exclamation-triangle me-1"></i>
+                    <div class="alert alert-light border py-2 px-3 mb-3" id="refHintBox">
                         <small id="refHintPending">Your transfer reference is created with the invoice. Card and PayPal record it automatically.</small>
-                        <small id="refHintReady" class="d-none">Include <strong id="refCodeDisplay" class="ref-code">—</strong> in the payment note. Card and PayPal record the reference automatically.</small>
+                        <small id="refHintReady" class="d-none">Include <strong id="refCodeDisplay" class="ref-code">—</strong> in the payment note.</small>
                     </div>
-                    <button type="button" id="proceedBtn" class="btn btn-primary w-100 mt-2 py-2">
-                        <i class="fa fa-arrow-right me-2"></i> Get invoice &amp; pay
+                    <button type="button" id="proceedBtn" class="btn btn-primary w-100 mt-2 py-2" disabled>
+                        <i class="fa fa-arrow-right me-2"></i> Select an amount
                     </button>
-                    <div class="mt-3">
+                    <div class="mt-3 af-actions-safe">
                         @include('partials.payment-trust', ['compact' => true])
                     </div>
                 </div>
@@ -604,6 +612,7 @@
         </div>
     </div>
 
+    @if($stripeReady)
     <div class="card border-0 shadow-sm mb-4" id="savedCardsSection">
         <div class="card-header bg-white fw-semibold d-flex flex-wrap justify-content-between align-items-center gap-2">
             <button type="button" class="btn btn-link text-decoration-none text-dark p-0 fw-semibold"
@@ -650,6 +659,7 @@
         </div>
         </div>
     </div>
+    @endif
 
 
     <div class="d-flex flex-wrap gap-3 mb-3 small">
@@ -685,8 +695,8 @@
                     <x-slb-search-field name="search" id="addFundsSearchInput" placeholder="Reference, description…" mode="" />
                 </div>
                 <div class="col-md-2">
-                    <label class="form-label fw-semibold small text-muted mb-1">Type</label>
-                    <select class="form-select form-select-sm" name="type">
+                    <label class="form-label fw-semibold small text-muted mb-1" for="historyType">Type</label>
+                    <select class="form-select form-select-sm" name="type" id="historyType" autocomplete="off">
                         <option value="">All</option>
                         <option value="deposit">Deposit</option>
                         <option value="bonus_credit">Bonus Credit</option>
@@ -699,8 +709,8 @@
                     </select>
                 </div>
                 <div class="col-md-2">
-                    <label class="form-label fw-semibold small text-muted mb-1">Status</label>
-                    <select class="form-select form-select-sm" name="status">
+                    <label class="form-label fw-semibold small text-muted mb-1" for="historyStatus">Status</label>
+                    <select class="form-select form-select-sm" name="status" id="historyStatus" autocomplete="off">
                         <option value="">All</option>
                         <option value="completed">Completed</option>
                         <option value="pending">Pending</option>
@@ -710,12 +720,12 @@
                     </select>
                 </div>
                 <div class="col-md-2">
-                    <label class="form-label fw-semibold small text-muted mb-1">From</label>
-                    <input type="date" class="form-control form-control-sm" name="from">
+                    <label class="form-label fw-semibold small text-muted mb-1" for="historyFrom">From</label>
+                    <input type="date" class="form-control form-control-sm" name="from" id="historyFrom" autocomplete="off">
                 </div>
                 <div class="col-md-2">
-                    <label class="form-label fw-semibold small text-muted mb-1">To</label>
-                    <input type="date" class="form-control form-control-sm" name="to">
+                    <label class="form-label fw-semibold small text-muted mb-1" for="historyTo">To</label>
+                    <input type="date" class="form-control form-control-sm" name="to" id="historyTo" autocomplete="off">
                 </div>
                 <div class="col-md-1 d-flex gap-1">
                     <button type="submit" class="btn btn-sm btn-primary flex-fill">Go</button>
@@ -736,6 +746,13 @@
             <small class="text-muted" id="activityLiveHint">Updates every 30s · pending invoices appear here with download</small>
             <nav id="historyPagination" class="d-flex justify-content-center"></nav>
         </div>
+    </div>
+
+    <div class="af-sticky-pay d-lg-none" id="afStickyPay" hidden>
+        <div class="af-sticky-pay__amount" id="afStickyAmount">{{ $zeroDisplay }}</div>
+        <button type="button" class="btn btn-primary" id="afStickyProceed" disabled>
+            Select an amount
+        </button>
     </div>
 
 </div>
@@ -769,8 +786,8 @@
                 <div class="modal-body">
                     <div class="p-3 rounded mb-3" style="background:#e6f5f5;border:1px solid #b8e4e4;">
                         <div class="small text-muted">Available for Withdrawal</div>
-                        <div class="fs-3 fw-bold text-primary" id="withdrawAvailableLabel">€{{ number_format($available, 2) }}</div>
-                        <div class="small text-muted mt-1">Bonus Balance (€{{ number_format($bonus, 2) }}) cannot be withdrawn.</div>
+                        <div class="fs-3 fw-bold text-primary" id="withdrawAvailableLabel">{{ format_money($available) }}</div>
+                        <div class="small text-muted mt-1">Bonus Balance ({{ format_money($bonus) }}) cannot be withdrawn.</div>
                     </div>
 
                     @if(! $canWithdraw)
@@ -796,12 +813,12 @@
                         </div>
                         <div class="row g-3">
                             <div class="col-md-6">
-                                <label class="form-label fw-semibold">Amount (€)</label>
-                                <input type="number" name="amount" id="withdrawAmount" class="form-control" step="0.01" min="0.01" max="{{ $available }}" required>
+                                <label class="form-label fw-semibold" for="withdrawAmount">Amount ({{ $displaySymbol }})</label>
+                                <input type="number" name="amount" id="withdrawAmount" class="form-control" step="0.01" min="0.01" max="{{ $available }}" required autocomplete="transaction-amount" inputmode="decimal">
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label fw-semibold">Send payout via</label>
-                                <select name="payment_method" id="withdrawMethod" class="form-select" required>
+                                <label class="form-label fw-semibold" for="withdrawMethod">Send payout via</label>
+                                <select name="payment_method" id="withdrawMethod" class="form-select" required autocomplete="off">
                                     @if($payoutLocked)
                                         @forelse($availableMethods as $value)
                                             <option value="{{ $value }}" @selected($selectedWithdrawMethod === $value)>
@@ -818,9 +835,10 @@
                                 </select>
                             </div>
                             <div class="col-12">
-                                <label class="form-label fw-semibold">Business / Billing Name</label>
+                                <label class="form-label fw-semibold" for="withdrawBusinessName">Business / Billing Name</label>
                                 <input type="text" name="business_name" id="withdrawBusinessName" class="form-control"
                                        value="{{ $payout['business_name'] ?? '' }}"
+                                       autocomplete="organization"
                                        @if($payoutLocked || !empty($payout['business_name'])) readonly @endif required>
                                 @if($payoutLocked || !empty($payout['business_name']))
                                     <small class="text-muted">Locked — contact support to change.</small>
@@ -852,8 +870,8 @@
     </div>
 </div>
 
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="{{ asset('assets/js/jquery-3.6.0.min.js') }}?v={{ @filemtime(public_path('assets/js/jquery-3.6.0.min.js')) ?: '1' }}"></script>
+<script src="{{ asset('assets/vendor/sweetalert2/sweetalert2.min.js') }}?v={{ @filemtime(public_path('assets/vendor/sweetalert2/sweetalert2.min.js')) ?: '1' }}"></script>
 <script>
 (function () {
     const csrf = '{{ csrf_token() }}';
@@ -882,7 +900,7 @@
     let chartOrderIndex = {};
 
     function money(n) {
-        return '€' + (parseFloat(n || 0)).toFixed(2);
+        return (window.slbFormatMoney || function (x) { return '€' + Number(x).toFixed(2); })(n);
     }
 
     function escapeHtml(str) {
@@ -909,31 +927,31 @@
         if (method === 'bank') {
             const locked = fieldLocked(p.bank_account || p.bank_holder_name);
             wrap.html(`
-                <div class="col-md-6"><label class="form-label small fw-semibold">Bank Name</label>
-                    <input class="form-control" name="bank_name" value="${escapeHtml(p.bank_name || '')}" ${locked ? 'readonly' : ''} required>
+                <div class="col-md-6"><label class="form-label small fw-semibold" for="withdrawBankName">Bank Name</label>
+                    <input class="form-control" id="withdrawBankName" name="bank_name" autocomplete="organization" value="${escapeHtml(p.bank_name || '')}" ${locked ? 'readonly' : ''} required>
                     ${locked ? lockedHint() : ''}</div>
-                <div class="col-md-6"><label class="form-label small fw-semibold">Account Holder Name</label>
-                    <input class="form-control" name="account_holder" value="${escapeHtml(p.bank_holder_name || '')}" ${locked ? 'readonly' : ''} required>
+                <div class="col-md-6"><label class="form-label small fw-semibold" for="withdrawAccountHolder">Account Holder Name</label>
+                    <input class="form-control" id="withdrawAccountHolder" name="account_holder" autocomplete="name" value="${escapeHtml(p.bank_holder_name || '')}" ${locked ? 'readonly' : ''} required>
                     ${locked ? lockedHint() : ''}</div>
-                <div class="col-md-6"><label class="form-label small fw-semibold">Account Number / IBAN</label>
-                    <input class="form-control" name="account_number" value="${escapeHtml(p.bank_account || '')}" ${locked ? 'readonly' : ''} required>
+                <div class="col-md-6"><label class="form-label small fw-semibold" for="withdrawAccountNumber">Account Number / IBAN</label>
+                    <input class="form-control" id="withdrawAccountNumber" name="account_number" autocomplete="off" value="${escapeHtml(p.bank_account || '')}" ${locked ? 'readonly' : ''} required>
                     ${locked ? lockedHint() : ''}</div>
-                <div class="col-md-6"><label class="form-label small fw-semibold">SWIFT / BIC</label>
-                    <input class="form-control" name="swift_code" value="${escapeHtml(p.bank_swift || '')}" ${locked ? 'readonly' : ''}></div>
+                <div class="col-md-6"><label class="form-label small fw-semibold" for="withdrawSwift">SWIFT / BIC</label>
+                    <input class="form-control" id="withdrawSwift" name="swift_code" autocomplete="off" value="${escapeHtml(p.bank_swift || '')}" ${locked ? 'readonly' : ''}></div>
             `);
         } else if (method === 'paypal') {
             const locked = fieldLocked(p.paypal_email);
             wrap.html(`
-                <div class="col-12"><label class="form-label small fw-semibold">PayPal Email</label>
-                    <input type="email" class="form-control" name="paypal_email" value="${escapeHtml(p.paypal_email || '')}" ${locked ? 'readonly' : ''} required>
+                <div class="col-12"><label class="form-label small fw-semibold" for="withdrawPaypalEmail">PayPal Email</label>
+                    <input type="email" class="form-control" id="withdrawPaypalEmail" name="paypal_email" autocomplete="email" value="${escapeHtml(p.paypal_email || '')}" ${locked ? 'readonly' : ''} required>
                     ${locked ? lockedHint() : '<small class="text-muted">This email cannot be changed later without contacting support.</small>'}
                 </div>
             `);
         } else if (method === 'wise') {
             const locked = fieldLocked(p.wise_email);
             wrap.html(`
-                <div class="col-12"><label class="form-label small fw-semibold">Wise Email</label>
-                    <input type="email" class="form-control" name="wise_email" value="${escapeHtml(p.wise_email || '')}" ${locked ? 'readonly' : ''} required>
+                <div class="col-12"><label class="form-label small fw-semibold" for="withdrawWiseEmail">Wise Email</label>
+                    <input type="email" class="form-control" id="withdrawWiseEmail" name="wise_email" autocomplete="email" value="${escapeHtml(p.wise_email || '')}" ${locked ? 'readonly' : ''} required>
                     ${locked ? lockedHint() : '<small class="text-muted">This email cannot be changed later without contacting support.</small>'}
                 </div>
             `);
@@ -941,19 +959,19 @@
             const locked = fieldLocked(p.crypto_trx_wallet);
             const cryptoType = p.crypto_type || 'USDT_TRC20';
             wrap.html(`
-                <div class="col-md-4"><label class="form-label small fw-semibold">Network</label>
-                    <select class="form-select" name="crypto_type" ${locked ? 'disabled' : ''} required>
+                <div class="col-md-4"><label class="form-label small fw-semibold" for="withdrawCryptoType">Network</label>
+                    <select class="form-select" id="withdrawCryptoType" name="crypto_type" autocomplete="off" ${locked ? 'disabled' : ''} required>
                         <option value="USDT_TRC20" ${cryptoType === 'USDT_TRC20' ? 'selected' : ''}>USDT (TRC20)</option>
                         <option value="TRX" ${cryptoType === 'TRX' ? 'selected' : ''}>TRX</option>
                     </select>
                     ${locked ? `<input type="hidden" name="crypto_type" value="${escapeHtml(cryptoType)}">` : ''}
                 </div>
-                <div class="col-md-8"><label class="form-label small fw-semibold">TRX / TRC20 Wallet</label>
+                <div class="col-md-8"><label class="form-label small fw-semibold" for="withdrawWallet">TRX / TRC20 Wallet</label>
                     <input class="form-control" name="wallet_address" id="withdrawWallet" value="${escapeHtml(p.crypto_trx_wallet || '')}" ${locked ? 'readonly' : ''} required autocomplete="off">
                     ${locked ? lockedHint() : '<small class="text-muted">Enter twice below to verify.</small>'}
                 </div>
                 ${locked ? '' : `
-                <div class="col-12"><label class="form-label small fw-semibold">Confirm TRX Wallet</label>
+                <div class="col-12"><label class="form-label small fw-semibold" for="withdrawWalletConfirm">Confirm TRX Wallet</label>
                     <input class="form-control" name="wallet_address_confirm" id="withdrawWalletConfirm" required autocomplete="off">
                     <small class="text-muted">Must match exactly — wallets are verified twice.</small>
                 </div>`}
@@ -993,6 +1011,9 @@
                         $('#activityFeed').html('<div class="text-center text-danger py-4">Failed to load activity</div>');
                     }
                     return;
+                }
+                if (typeof window.slbApplyMoneyFx === 'function' && res.fx) {
+                    window.slbApplyMoneyFx(res.fx);
                 }
                 renderTransactions(res.transactions || []);
                 renderPagination(res.pagination || {});
@@ -1037,14 +1058,19 @@
             const amountClass = debit ? 'wallet-amount-debit' : 'wallet-amount-credit';
             const sign = debit ? '−' : '+';
             const pending = !!row.is_live_pending;
-            const bal = row.balance_after != null ? ('Balance after ' + money(row.balance_after)) : '';
+            const amountLabel = row.amount_display || (sign + money(row.amount));
+            const bal = row.balance_after_display
+                ? ('Balance after ' + row.balance_after_display)
+                : (row.balance_after != null ? ('Balance after ' + money(row.balance_after)) : '');
 
             // No stopPropagation here: the row handler already ignores clicks on
             // a/button, and swallowing the event stops it reaching the delegated
             // handlers bound on document — which is what killed "I paid".
             let actions = '';
             if (row.invoice_download_url) {
-                actions += `<a class="btn btn-sm btn-primary" href="${escapeHtml(row.invoice_download_url)}" download>
+                const pdfMatch = String(row.invoice_download_url).match(/\/invoice\/([^/?]+)\/invoice\.pdf/);
+                const pdfName = pdfMatch ? ` download="invoice-REF${pdfMatch[1]}.pdf"` : '';
+                actions += `<a class="btn btn-sm btn-primary" href="${escapeHtml(row.invoice_download_url)}"${pdfName}>
                     <i class="fa fa-download me-1"></i> Download invoice</a>`;
             } else if (row.invoice_view_url) {
                 actions += `<a class="btn btn-sm btn-outline-secondary" href="${escapeHtml(row.invoice_view_url)}" target="_blank" rel="noopener">
@@ -1079,7 +1105,7 @@
                     </div>
                 </div>
                 <div class="af-activity-actions">
-                    <div class="af-activity-amount ${amountClass}">${sign} ${money(row.amount)}</div>
+                    <div class="af-activity-amount ${amountClass}">${escapeHtml(amountLabel)}</div>
                     ${actions}
                 </div>
             </li>`;
@@ -1301,7 +1327,7 @@
                     y: {
                         beginAtZero: true,
                         grid: { color: 'rgba(148,163,184,.18)' },
-                        ticks: { callback: (v) => '€' + v, color: '#75787B', font: { size: 11 } },
+                        ticks: { callback: (v) => (window.slbFormatMoney || function (x) { return '€' + x; })(v), color: '#75787B', font: { size: 11 } },
                         border: { display: false },
                     },
                     x: {
@@ -1356,7 +1382,7 @@
                 const t = res.transaction;
                 let invoiceBtn = '';
                 if (t.invoice_download_url) {
-                    invoiceBtn = `<a class="btn btn-sm btn-primary w-100 mt-3" href="${escapeHtml(t.invoice_download_url)}"><i class="fa fa-download me-1"></i> Download Invoice</a>`;
+                    invoiceBtn = `<a class="btn btn-sm btn-primary w-100 mt-3" href="${escapeHtml(t.invoice_download_url)}"><i class="fa fa-download me-1"></i> Download invoice</a>`;
                 } else if (t.invoice_view_url) {
                     invoiceBtn = `<a class="btn btn-sm btn-outline-secondary w-100 mt-3" href="${escapeHtml(t.invoice_view_url)}">View Invoice</a>`;
                 }
@@ -1385,11 +1411,12 @@
         renderWithdrawFields($('#withdrawMethod').val() || 'bank');
 
         setInterval(function () {
+            if (document.hidden) return;
             loadTransactions(currentPage || 1, { silent: true });
             document.querySelectorAll('.af-activity-time[data-iso]').forEach(function (el) {
                 el.textContent = relativeTime(el.getAttribute('data-iso'));
             });
-        }, 30000);
+        }, 60000);
 
         $('#historyFilters').on('submit', function (e) {
             e.preventDefault();
@@ -1534,36 +1561,38 @@
                     @csrf
                     <div class="row g-3">
                         <div class="col-md-6">
-                            <label class="form-label">Billing Name <span class="text-danger">*</span></label>
-                            <input type="text" name="billing_name" id="billing_name" class="form-control" required>
+                            <label class="form-label" for="billing_name">Billing Name <span class="text-danger">*</span></label>
+                            <input type="text" name="billing_name" id="billing_name" class="form-control" required autocomplete="name">
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label">Company Name <span class="text-danger">*</span></label>
-                            <input type="text" name="company_name" id="company_name" class="form-control" required>
+                            <label class="form-label" for="company_name">Company Name <span class="text-danger">*</span></label>
+                            <input type="text" name="company_name" id="company_name" class="form-control" required autocomplete="organization">
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label">Country <span class="text-danger">*</span></label>
-                            <input type="text" name="country" id="country" class="form-control" required>
+                            <label class="form-label" for="country">Country <span class="text-danger">*</span></label>
+                            <select name="country" id="country" class="form-select" required autocomplete="country">
+                                @include('partials.signup-country-options', ['selectedCountry' => auth()->user()->country ?? ''])
+                            </select>
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label">State/Province <span class="text-danger">*</span></label>
-                            <input type="text" name="state" id="state" class="form-control" required>
+                            <label class="form-label" for="state">State/Province <span class="text-danger">*</span></label>
+                            <input type="text" name="state" id="state" class="form-control" required autocomplete="address-level1">
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label">City <span class="text-danger">*</span></label>
-                            <input type="text" name="city" id="city" class="form-control" required>
+                            <label class="form-label" for="city">City <span class="text-danger">*</span></label>
+                            <input type="text" name="city" id="city" class="form-control" required autocomplete="address-level2">
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label">Postal Code <span class="text-danger">*</span></label>
-                            <input type="text" name="postal_code" id="postal_code" class="form-control" required>
+                            <label class="form-label" for="postal_code">Postal Code <span class="text-danger">*</span></label>
+                            <input type="text" name="postal_code" id="postal_code" class="form-control" required autocomplete="postal-code" maxlength="10" pattern="[A-Za-z0-9][A-Za-z0-9 \-]{0,8}[A-Za-z0-9]" title="{{ \App\Support\PostalCode::MESSAGE }}">
                         </div>
                         <div class="col-12">
-                            <label class="form-label">Address <span class="text-danger">*</span></label>
-                            <textarea name="address" id="address" class="form-control" rows="2" required></textarea>
+                            <label class="form-label" for="address">Address <span class="text-danger">*</span></label>
+                            <textarea name="address" id="address" class="form-control" rows="2" required autocomplete="street-address"></textarea>
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label">VAT Number</label>
-                            <input type="text" name="vat_number" id="vat_number" class="form-control">
+                            <label class="form-label" for="vat_number">VAT Number</label>
+                            <input type="text" name="vat_number" id="vat_number" class="form-control" autocomplete="off">
                         </div>
                     </div>
                 </form>
@@ -1588,19 +1617,30 @@ window.AddFundsBoot = {
     prefillAmount: @json($prefillAmount ?? null),
     prefillMethod: @json($prefillMethod ?? null),
     lastUsedMethod: @json($lastUsedMethod ?? null),
+    depositMin: @json($depositMin ?? \App\Support\DepositPaymentConfig::depositMin()),
+    depositMax: @json($depositMax ?? \App\Support\DepositPaymentConfig::depositMax()),
+    paypalLogo: @json(asset('assets/img/payments/paypal.png')),
     openCardsTab: @json((bool) ($openCardsTab ?? false)),
+    usdBankWire: @json(app(\App\Support\UsdBankWireGuidance::class)->bootPayload($wallet?->currency ?? null, auth()->user())),
+    displayCurrency: @json(\App\Support\Money::currency()),
+    displayRate: @json(app(\App\Support\MoneyDisplay::class)->rate()),
+    displaySymbol: @json(\App\Support\Money::symbol()),
+    payFrom: @json($payFrom ?? 'eur'),
+    gbpPerEur: @json(app(\App\Support\FxRate::class)->perEur('GBP')),
+    depositLockDays: @json(app(\App\Support\DepositFx::class)->lockDays()),
     routes: {
-        store: @json(route('advertiser.add-funds.store')),
-        addFunds: @json(route('advertiser.add-funds')),
-        saveBilling: @json(route('advertiser.save-billing-info')),
-        paySavedCard: @json(route('advertiser.add-funds.pay-saved-card')),
-        createCheckout: @json(route('advertiser.create-checkout-session')),
-        createPaypal: @json(route('advertiser.add-funds.paypal.create')),
-        getBilling: @json(route('advertiser.get-billing-info')),
-        paymentMethodsSetup: @json(route('advertiser.payment-methods.setup')),
+        store: @json(route('advertiser.add-funds.store', absolute: false)),
+        addFunds: @json(route('advertiser.add-funds', absolute: false)),
+        saveBilling: @json(route('advertiser.save-billing-info', absolute: false)),
+        paySavedCard: @json(route('advertiser.add-funds.pay-saved-card', absolute: false)),
+        createCheckout: @json(route('advertiser.create-checkout-session', absolute: false)),
+        createPaypal: @json(route('advertiser.add-funds.paypal.create', absolute: false)),
+        getBilling: @json(route('advertiser.get-billing-info', absolute: false)),
+        paymentMethodsSetup: @json(route('advertiser.payment-methods.setup', absolute: false)),
         paymentMethodsBase: @json(url('/advertiser/payment-methods')),
         // Relative so APP_URL host mismatches do not break the QR <img> request.
         wiseQr: @json(route('advertiser.add-funds.wise-qr', absolute: false)),
+        rememberPayFrom: @json(route('advertiser.add-funds.pay-from', absolute: false)),
     },
 };
 </script>

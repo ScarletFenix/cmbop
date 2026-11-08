@@ -17,6 +17,12 @@ class LocalizedPublicPathTest extends TestCase
         $this->assertSame('blog', LocalizedPublicPath::for('blog', 'de'));
         $this->assertSame('about', LocalizedPublicPath::for('about', 'en'));
         $this->assertSame('about', LocalizedPublicPath::for('about', 'us'));
+        $this->assertSame('ueber-uns', LocalizedPublicPath::for('about', 'at'));
+        $this->assertSame('marktplatz', LocalizedPublicPath::for('marketplace', 'ch'));
+        $this->assertSame('despre-noi', LocalizedPublicPath::for('about', 'ro'));
+        $this->assertSame('agora', LocalizedPublicPath::for('marketplace', 'gr'));
+        $this->assertSame('o-nas', LocalizedPublicPath::for('about', 'pl'));
+        $this->assertSame('rynek', LocalizedPublicPath::for('marketplace', 'pl'));
     }
 
     public function test_canonicalize_round_trips_localized_segments(): void
@@ -43,5 +49,13 @@ class LocalizedPublicPathTest extends TestCase
         $this->assertSame(url('/de/marktplatz'), PublicI18n::urlForLocale('marketplace', 'de'));
         $this->assertSame(url('/fr/a-propos'), PublicI18n::urlForLocale('ueber-uns', 'fr'));
         $this->assertSame(url('/about'), PublicI18n::urlForLocale('about', 'en'));
+    }
+
+    public function test_historical_italian_publisher_slug_redirects_to_current(): void
+    {
+        $this->assertSame('become-a-publisher', LocalizedPublicPath::toEnglish('diventare-publisher'));
+        $this->assertSame('diventa-publisher', LocalizedPublicPath::legacyRedirects('it')['diventare-publisher'] ?? null);
+        $this->assertSame('diventa-publisher', LocalizedPublicPath::legacyRedirects('it')['become-a-publisher'] ?? null);
+        $this->assertSame('/it/diventa-publisher', LocalizedPublicPath::unprefixedLegacyRedirects()['diventare-publisher'] ?? null);
     }
 }

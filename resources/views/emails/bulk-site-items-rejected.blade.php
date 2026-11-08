@@ -3,23 +3,23 @@
 
 Hi {{ $firstName }},
 
-We did not add {{ $count === 1 ? 'this website' : 'these websites' }} from bulk request **#{{ $bulkRequest->id }}**:
+We did not add {{ $count === 1 ? 'this website' : 'these websites' }} from bulk request #{{ $bulkRequest->id }}:
 
 @foreach($domains as $domain)
 - {{ $domain }}
 @endforeach
 
 @if($note)
-**Note from our team:** {{ $note }}
+Note from our team: {{ $note }}
 @endif
 
-Nothing else on your account is affected. Websites we already added stay on Pending sites, and you can submit these URLs again at any time.
+Nothing else on your account is affected. Websites we already published stay on your account, and you can submit these URLs again at any time.
 
 @component('mail::button', ['url' => $websitesUrl])
 Open My Sites
 @endcomponent
 
-If this looks like a mistake, reply to this email and we will take another look.
+If this looks like a mistake, open My Sites or contact support and we will take another look.
 
 Thanks,<br>
 {{ config('app.name') }}

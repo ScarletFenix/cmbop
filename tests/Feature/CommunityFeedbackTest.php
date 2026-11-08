@@ -14,6 +14,7 @@ use App\Models\Suggestion;
 use App\Models\User;
 use App\Models\WebsiteSuggestion;
 use App\Services\CommunityInboxNotifier;
+use App\Support\CatalogProblemReport;
 use App\Support\CommunityInbox;
 use App\Support\EmailCatalog;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -56,6 +57,17 @@ class CommunityFeedbackTest extends TestCase
             'verified' => true,
             'active' => true,
         ]);
+    }
+
+    public function test_get_feedback_endpoints_are_200_with_noindex(): void
+    {
+        foreach (['/feedback/problem', '/feedback/suggestion', route('feedback.problem.redirect')] as $path) {
+            $this->get($path)
+                ->assertOk()
+                ->assertSee('name="robots" content="noindex, nofollow"', false)
+                ->assertHeader('X-Robots-Tag', 'noindex, nofollow')
+                ->assertDontSee('Guest Post Marketplace for SEO Backlinks', false);
+        }
     }
 
     public function test_guest_can_report_a_problem(): void
@@ -129,6 +141,49 @@ class CommunityFeedbackTest extends TestCase
         ]);
     }
 
+    public function test_website_suggestion_check_reports_a_listed_domain_and_a_new_one(): void
+    {
+        $publisher = $this->userWithRole('publisher');
+        $site = $this->siteFor($publisher);
+        $advertiser = $this->userWithRole('advertiser');
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.website-suggestions.check', ['url' => $site->site_url]))
+            ->assertOk()
+            ->assertJsonPath('state', 'listed')
+            ->assertJsonPath('domain', 'owned-news.example');
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.website-suggestions.check', ['url' => 'https://fresh-tech.example']))
+            ->assertOk()
+            ->assertJsonPath('state', 'available')
+            ->assertJsonPath('domain', 'fresh-tech.example');
+    }
+
+    public function test_website_suggestion_stores_country_language_and_lists_it_as_pending(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+
+        $this->actingAs($advertiser)->postJson(route('advertiser.website-suggestions.store'), [
+            'website_url' => 'https://fresh-tech.example',
+            'country' => 'us',
+            'language' => 'en',
+            'notes' => 'Need a homepage mention',
+            'search_query' => 'finance blogs',
+        ])->assertOk()
+            ->assertJsonPath('status', 'pending')
+            ->assertJsonPath('recent.0.domain', 'fresh-tech.example')
+            ->assertJsonPath('recent.0.status', 'pending');
+
+        $this->assertDatabaseHas('website_suggestions', [
+            'domain' => 'fresh-tech.example',
+            'website_name' => 'fresh-tech.example',
+            'country' => 'us',
+            'language' => 'en',
+            'status' => 'pending',
+        ]);
+    }
+
     public function test_website_suggestion_rejects_credential_and_non_http_urls(): void
     {
         $user = $this->userWithRole('advertiser');
@@ -186,7 +241,7 @@ class CommunityFeedbackTest extends TestCase
         $this->assertSame('Owned News Daily', $claim->website_name);
     }
 
-    public function test_catalog_and_publisher_sites_both_expose_claim_entry_points(): void
+    public function test_publisher_sites_expose_claim_and_advertiser_catalog_does_not(): void
     {
         $owner = $this->userWithRole('publisher');
         $advertiser = $this->userWithRole('advertiser');
@@ -196,9 +251,9 @@ class CommunityFeedbackTest extends TestCase
             ->get(route('advertiser.catalog'))
             ->assertOk()
             ->getContent();
-        $this->assertStringContainsString('btn-claim-site', $catalog);
-        $this->assertStringContainsString('siteClaim', $catalog);
-        $this->assertMatchesRegularExpression('#advertiser\\\\?/sites\\\\?/claim#', $catalog);
+        $this->assertStringNotContainsString('btn-claim-site', $catalog);
+        $this->assertStringNotContainsString('Claim website', $catalog);
+        $this->assertStringNotContainsString('Is this your site?', $catalog);
 
         // Publishers can also claim via My Sites (URL + exact listing name form).
         $publisherPage = $this->actingAs($owner)
@@ -263,7 +318,7 @@ class CommunityFeedbackTest extends TestCase
     {
         $publisher = $this->userWithRole('publisher');
         $site = $this->siteFor($publisher);
-        $site->update(['verified' => false]);
+        $site->update(['active' => false, 'archived_at' => now()]);
         $advertiser = $this->userWithRole('advertiser');
 
         $this->actingAs($advertiser)->postJson(route('advertiser.website-suggestions.store'), [
@@ -387,6 +442,13 @@ class CommunityFeedbackTest extends TestCase
     public function test_problems_filter_omits_approved_and_tab_switch_drops_it(): void
     {
         $admin = $this->userWithRole('admin');
+        ProblemReport::create([
+            'name' => 'Filter Probe',
+            'email' => 'filter-probe@example.com',
+            'subject' => 'Keep problem filters visible',
+            'message' => 'Empty tabs hide the status dropdown.',
+            'status' => 'pending',
+        ]);
 
         $html = $this->actingAs($admin)
             ->get(route('admin.community.index', ['tab' => 'problems']))
@@ -495,7 +557,7 @@ class CommunityFeedbackTest extends TestCase
             ->getContent();
 
         $this->assertStringContainsString('https://app.example/checkout', $html);
-        $this->assertStringContainsString('communityDrawer', $html);
+        $this->assertStringContainsString('community-swal-detail', $html);
         $this->assertStringContainsString('btn-community-drawer', $html);
         $this->assertStringContainsString('bg-warning text-dark', $html);
 
@@ -547,7 +609,7 @@ class CommunityFeedbackTest extends TestCase
         $this->assertStringNotContainsString('Other News', $percent);
     }
 
-    public function test_community_without_tab_lands_on_the_busiest_pending_inbox(): void
+    public function test_community_without_tab_stays_on_problem_reports(): void
     {
         $admin = $this->userWithRole('admin');
         $owner = $this->userWithRole('publisher');
@@ -571,9 +633,10 @@ class CommunityFeedbackTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        $this->assertStringContainsString('Landing-tab claim proof unique string.', $html);
-        $this->assertStringContainsString('nav-link active', $html);
-        $this->assertMatchesRegularExpression('/tab=claims/', $html);
+        $this->assertStringNotContainsString('Landing-tab claim proof unique string.', $html);
+        $this->assertStringContainsString('community-tab is-active', $html);
+        $this->assertStringContainsString('Problem reports', $html);
+        $this->assertDoesNotMatchRegularExpression('/community-tab is-active[^>]*>\\s*Site claims/', $html);
     }
 
     public function test_guest_problem_notifies_admins_and_writes_an_activity_log(): void
@@ -681,7 +744,10 @@ class CommunityFeedbackTest extends TestCase
         $this->assertStringContainsString('suggestion_id='.$fresh->id, $html);
         $this->assertStringContainsString('site_name=Fresh%20Tech%20Blog', $html);
         $this->assertStringContainsString('Already in catalog', $html);
-        $this->assertStringContainsString(route('admin.sites.edit', $site->id), $html);
+        $this->assertStringContainsString(
+            e(route('admin.sites.index', ['publisher' => $site->publisher_id, 'site' => $site->id])),
+            $html
+        );
         $this->assertStringNotContainsString('suggestion_id='.$occupied->id, $html);
 
         $form = $this->actingAs($admin)
@@ -956,7 +1022,10 @@ class CommunityFeedbackTest extends TestCase
             ->getContent();
 
         $this->assertStringContainsString('Already in catalog', $html);
-        $this->assertStringContainsString(route('admin.sites.edit', $site->id), $html);
+        $this->assertStringContainsString(
+            e(route('admin.sites.index', ['publisher' => $site->publisher_id, 'site' => $site->id])),
+            $html
+        );
         $this->assertStringNotContainsString('Create listing', $html);
     }
 
@@ -1207,5 +1276,121 @@ class CommunityFeedbackTest extends TestCase
             'user_id' => $advertiser->id,
             'title' => 'We reviewed your report — Checkout broken',
         ]);
+    }
+
+    public function test_admin_problems_inbox_shows_catalog_report_text_and_listing_link(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $publisher = $this->userWithRole('publisher');
+        $advertiser = $this->userWithRole('advertiser');
+        $site = $this->siteFor($publisher);
+        $phrase = 'admin-check-orange-ladder';
+        $envelope = CatalogProblemReport::envelope($site, $advertiser, $phrase);
+
+        ProblemReport::create([
+            'user_id' => $advertiser->id,
+            'name' => $advertiser->name,
+            'email' => $advertiser->email,
+            'subject' => $envelope['subject'],
+            'message' => $envelope['message'],
+            'page_url' => $envelope['page_url'],
+            'status' => 'pending',
+        ]);
+
+        ProblemReport::create([
+            'name' => 'Ada',
+            'email' => 'ada@example.com',
+            'subject' => 'Checkout broken',
+            'message' => 'The pay button does nothing on mobile.',
+            'status' => 'pending',
+        ]);
+
+        $html = $this->actingAs($admin)
+            ->get(route('admin.community.index', ['tab' => 'problems']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString($phrase, $html);
+        $this->assertStringContainsString('The pay button does nothing on mobile.', $html);
+        $this->assertStringContainsString($site->site_url, $html);
+        $this->assertStringContainsString('Open listing', $html);
+        $this->assertStringContainsString(
+            e(route('admin.sites.index', ['publisher' => $site->publisher_id, 'site' => $site->id])),
+            $html
+        );
+        $this->assertStringContainsString('Edit in admin', $html);
+        $this->assertStringContainsString(e(route('admin.sites.edit', $site->id)), $html);
+        $this->assertStringContainsString($site->domain, $html);
+        $this->assertDoesNotMatchRegularExpression(
+            '/max-width:280px;">\s*Catalog listing/',
+            $html
+        );
+    }
+
+    public function test_admin_problems_inbox_skips_open_listing_when_site_is_gone(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $envelope = "Catalog listing\nSite ID: 999999\nName: Ghost\n\nWhat they wrote\nstill readable";
+
+        ProblemReport::create([
+            'name' => 'Ada',
+            'email' => 'ada@example.com',
+            'subject' => 'Catalog site: Ghost',
+            'message' => $envelope,
+            'status' => 'pending',
+        ]);
+
+        $html = $this->actingAs($admin)
+            ->get(route('admin.community.index', ['tab' => 'problems']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('still readable', $html);
+        $this->assertStringContainsString('Listing no longer in the catalog.', $html);
+        $this->assertStringNotContainsString(route('admin.sites.edit', 999999), $html);
+    }
+
+    public function test_admin_problems_kind_filter_separates_catalog_from_other(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $publisher = $this->userWithRole('publisher');
+        $advertiser = $this->userWithRole('advertiser');
+        $site = $this->siteFor($publisher);
+        $envelope = CatalogProblemReport::envelope($site, $advertiser, 'kind-filter-catalog-only');
+
+        ProblemReport::create([
+            'user_id' => $advertiser->id,
+            'name' => $advertiser->name,
+            'email' => $advertiser->email,
+            'subject' => $envelope['subject'],
+            'message' => $envelope['message'],
+            'status' => 'pending',
+        ]);
+        ProblemReport::create([
+            'name' => 'Ada',
+            'email' => 'ada@example.com',
+            'subject' => 'Checkout broken',
+            'message' => 'The pay button does nothing on mobile.',
+            'status' => 'pending',
+        ]);
+
+        $catalogHtml = $this->actingAs($admin)
+            ->get(route('admin.community.index', ['tab' => 'problems', 'kind' => 'catalog']))
+            ->assertOk()
+            ->assertSee('Catalog', false)
+            ->getContent();
+        $this->assertStringContainsString('kind-filter-catalog-only', $catalogHtml);
+        $this->assertStringNotContainsString('The pay button does nothing on mobile.', $catalogHtml);
+
+        $otherHtml = $this->actingAs($admin)
+            ->get(route('admin.community.index', ['tab' => 'problems', 'kind' => 'other']))
+            ->assertOk()
+            ->getContent();
+        $this->assertStringContainsString('The pay button does nothing on mobile.', $otherHtml);
+        $this->assertStringNotContainsString('kind-filter-catalog-only', $otherHtml);
+
+        $this->actingAs($admin)
+            ->get(route('admin.community.index', ['tab' => 'problems', 'kind' => ['catalog'], 'stale' => ['1'], 'sort' => ['oldest']]))
+            ->assertOk();
     }
 }

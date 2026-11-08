@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\AbandonedCartController as AdminAbandonedCartController;
 use App\Http\Controllers\Admin\ActivityLogController as AdminActivityLogController;
 use App\Http\Controllers\Admin\AdBannerController as AdminAdBannerController;
 use App\Http\Controllers\Admin\AdminWithdrawalController;
@@ -16,49 +17,76 @@ use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
 use App\Http\Controllers\Admin\DepositApproveConfirmController as AdminDepositApproveConfirmController;
 use App\Http\Controllers\Admin\DepositController as AdminDepositController;
 use App\Http\Controllers\Admin\EmailCenterController as AdminEmailCenterController;
-// Publisher and Advertiser controllers
 use App\Http\Controllers\Admin\FinanceController as AdminFinanceController;
+// Publisher and Advertiser controllers
 use App\Http\Controllers\Admin\InvoiceController as AdminInvoiceController;
+use App\Http\Controllers\Admin\LinkGuaranteeController as AdminLinkGuaranteeController;
+use App\Http\Controllers\Admin\ManagedOrderController as AdminManagedOrderController;
+use App\Http\Controllers\Admin\OnDemandContactController;
 use App\Http\Controllers\Admin\OrderController as AdminOrderController;
 use App\Http\Controllers\Admin\OrderDisputeController as AdminOrderDisputeController;
+use App\Http\Controllers\Admin\PartnerAutoApproveRuleController as AdminPartnerAutoApproveRuleController;
+use App\Http\Controllers\Admin\PartnerCatalogController as AdminPartnerCatalogController;
+use App\Http\Controllers\Admin\PartnerController as AdminPartnerController;
+use App\Http\Controllers\Admin\PartnerImportController as AdminPartnerImportController;
+use App\Http\Controllers\Admin\PartnerPayoutController as AdminPartnerPayoutController;
+use App\Http\Controllers\Admin\PartnerPricingRuleController as AdminPartnerPricingRuleController;
+use App\Http\Controllers\Admin\PartnerRateChangeController as AdminPartnerRateChangeController;
+use App\Http\Controllers\Admin\PartnerRelayController as AdminPartnerRelayController;
 use App\Http\Controllers\Admin\PaymentController as AdminPaymentController;
 use App\Http\Controllers\Admin\PromotionController as AdminPromotionController;
+use App\Http\Controllers\Admin\PublisherOnboardingController as AdminPublisherOnboardingController;
 use App\Http\Controllers\Admin\SiteController as AdminSiteController;
 use App\Http\Controllers\Admin\SiteEnrichmentController;
 use App\Http\Controllers\Admin\SiteRatingController;
 use App\Http\Controllers\Admin\StalledOrderController as AdminStalledOrderController;
 use App\Http\Controllers\Admin\UserController;
+use App\Http\Controllers\Admin\WeeklyNewSitesDigestController as AdminWeeklyNewSitesDigestController;
 use App\Http\Controllers\Admin\WelcomeBonusSettingController as AdminWelcomeBonusSettingController;
 use App\Http\Controllers\Admin\WithdrawalMarkPaidConfirmController;
+use App\Http\Controllers\Admin\WritingQueueController as AdminWritingQueueController;
 use App\Http\Controllers\Advertiser\AddFundsController;
 use App\Http\Controllers\Advertiser\AnalyticsController;
+use App\Http\Controllers\Advertiser\ApiSettingsController;
+use App\Http\Controllers\Advertiser\ArticleApprovalController as AdvertiserArticleApprovalController;
 use App\Http\Controllers\Advertiser\BillingController as AdvertiserBillingController;
 use App\Http\Controllers\Advertiser\CatalogController;
 use App\Http\Controllers\Advertiser\CatalogCopyTrackController;
+use App\Http\Controllers\Advertiser\CatalogExportController;
+use App\Http\Controllers\Advertiser\CatalogFaviconController;
 use App\Http\Controllers\Advertiser\CatalogListingController;
 use App\Http\Controllers\Advertiser\ContentLibraryController;
 use App\Http\Controllers\Advertiser\ContentModerationController as AdvertiserContentModerationController;
 use App\Http\Controllers\Advertiser\ContentSubmissionController;
 use App\Http\Controllers\Advertiser\DashboardController as AdvertiserDashboardController;
 use App\Http\Controllers\Advertiser\GuestPostWizardController;
+use App\Http\Controllers\Advertiser\OrderPackController;
 use App\Http\Controllers\Advertiser\PaymentMethodController;
 use App\Http\Controllers\Advertiser\ProjectController;
 use App\Http\Controllers\Advertiser\ReportsController;
+use App\Http\Controllers\Advertiser\SavedSearchController;
 use App\Http\Controllers\Advertiser\SavedSitesController;
 use App\Http\Controllers\Advertiser\ScheduledOrdersController;
 use App\Http\Controllers\Advertiser\SiteUrlConcealController;
 use App\Http\Controllers\Advertiser\SiteUrlRevealController;
 use App\Http\Controllers\Advertiser\SiteVisitController;
 use App\Http\Controllers\Advertiser\WebsiteSuggestionController;
+use App\Http\Controllers\Advertiser\WeeklyNewSitesPreferenceController;
 use App\Http\Controllers\AnnouncementClickController;
+use App\Http\Controllers\AnnouncementDismissController;
+use App\Http\Controllers\ApiDocs\AdvertiserApiDocsController;
+use App\Http\Controllers\Auth\EmailVerificationController;
 use App\Http\Controllers\Auth\ForgotPasswordController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\Auth\ResetPasswordController;
 use App\Http\Controllers\Auth\SocialiteController;
+use App\Http\Controllers\Auth\StaffOnboardingPasswordController;
 use App\Http\Controllers\BannerClickController;
 use App\Http\Controllers\BlogController;
 use App\Http\Controllers\ChatController;
+use App\Http\Controllers\ContactController;
+use App\Http\Controllers\CurrencySwitchController;
 use App\Http\Controllers\EmailUnsubscribeController;
 use App\Http\Controllers\FeedbackController;
 use App\Http\Controllers\InvoiceController;
@@ -69,14 +97,15 @@ use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\NotificationPreferenceController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PromotionTrackController;
-// BlogController for public blog pages
 use App\Http\Controllers\PublicMediaController;
+// BlogController for public blog pages
 use App\Http\Controllers\Publisher\BalanceController;
 use App\Http\Controllers\Publisher\BillingController as PublisherBillingController;
 use App\Http\Controllers\Publisher\BulkSiteRequestController as PublisherBulkSiteRequestController;
 use App\Http\Controllers\Publisher\DashboardController;
 use App\Http\Controllers\Publisher\OrderController;
 use App\Http\Controllers\Publisher\PublisherReportsController;
+use App\Http\Controllers\Publisher\SettingsController as PublisherSettingsController;
 use App\Http\Controllers\Publisher\SiteClaimController;
 use App\Http\Controllers\Publisher\SiteController;
 use App\Http\Controllers\Publisher\SitePromotionController;
@@ -85,44 +114,117 @@ use App\Http\Controllers\Publisher\WithdrawalController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SitemapController;
 use App\Http\Controllers\VisitorSupportChatController;
+use App\Http\Controllers\WeeklyNewSitesMailController;
 use App\Http\Middleware\RedirectMarketingFromAdmin;
 use App\Http\Middleware\RoleMiddleware;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\Marketing\CatalogTeaserService;
+use App\Services\Orders\OrderPackService;
+use App\Support\AustrianMoneyLanders;
+use App\Support\BrandPerson;
 use App\Support\CountryLander;
+use App\Support\DutchMoneyLanders;
+use App\Support\EnglishOnlyMarketingSlugs;
+use App\Support\FrenchMoneyLanders;
+use App\Support\GermanMoneyLanders;
+use App\Support\HttpCron;
+use App\Support\ItalianMoneyLanders;
 use App\Support\LocalizedPublicPath;
+use App\Support\MoneyLanderCatalog;
+use App\Support\MoneyLanderRoutes;
+use App\Support\PortugueseMoneyLanders;
 use App\Support\PublicI18n;
 use App\Support\RobotsTxt;
-use App\Support\UserMessages;
+use App\Support\RomanianMoneyLanders;
+use App\Support\SpanishMoneyLanders;
+use App\Support\SwissMoneyLanders;
 use App\Support\WelcomeBonusCopy;
-use Illuminate\Auth\Events\Verified;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
-use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Redirect;
 use Illuminate\Support\Facades\Route;
 
 /*
 |--------------------------------------------------------------------------
 | Public marketing routes (multilingual: en unprefixed UK English,
-| de|fr|nl|es|it|us prefixed). Authenticated SaaS + login/register stay English-only.
+| de|fr|nl|es|it|us|at|ch|ro|gr|dk|se|no|bg|hu|ee|pl prefixed). Authenticated SaaS + login/register stay English-only.
 |--------------------------------------------------------------------------
 */
 
-$prefixedLocales = class_exists(PublicI18n::class)
-    ? PublicI18n::prefixed()
-    : (array) config('i18n.prefixed', ['de', 'fr', 'nl', 'es', 'it', 'us']);
-$supportedLocales = class_exists(PublicI18n::class)
-    ? PublicI18n::supported()
-    : (array) config('i18n.supported', ['en', 'de', 'fr', 'nl', 'es', 'it', 'us']);
+$prefixedLocales = (array) config('i18n.prefixed', [
+    'de', 'fr', 'nl', 'es', 'it', 'us',
+    'at', 'ch', 'ro', 'gr', 'dk', 'se', 'no', 'bg', 'hu', 'ee', 'pl',
+]);
+if (class_exists(PublicI18n::class) && method_exists(PublicI18n::class, 'prefixed')) {
+    try {
+        $fromPrefixed = PublicI18n::prefixed();
+        if (is_array($fromPrefixed) && $fromPrefixed !== []) {
+            $prefixedLocales = array_values(array_unique(array_filter(
+                array_merge($prefixedLocales, $fromPrefixed),
+                'strlen'
+            )));
+        }
+    } catch (Throwable) {
+    }
+}
+$supportedLocales = (array) config('i18n.supported', [
+    'en', 'de', 'fr', 'nl', 'es', 'it', 'us',
+    'at', 'ch', 'ro', 'gr', 'dk', 'se', 'no', 'bg', 'hu', 'ee', 'pl',
+]);
+if (class_exists(PublicI18n::class) && method_exists(PublicI18n::class, 'supported')) {
+    try {
+        $fromSupported = PublicI18n::supported();
+        if (is_array($fromSupported) && $fromSupported !== []) {
+            $supportedLocales = array_values(array_unique(array_filter(
+                array_merge($supportedLocales, $fromSupported),
+                'strlen'
+            )));
+        }
+    } catch (Throwable) {
+    }
+}
 $prefixedLocalePattern = implode('|', array_values(array_filter($prefixedLocales, 'strlen')));
 $supportedLocalePattern = implode('|', array_values(array_filter($supportedLocales, 'strlen')));
 if ($prefixedLocalePattern === '') {
-    $prefixedLocalePattern = 'de|fr|nl|es|it|us';
+    $prefixedLocalePattern = 'de|fr|nl|es|it|us|at|ch|ro|gr|dk|se|no|bg|hu|ee|pl';
 }
 if ($supportedLocalePattern === '') {
-    $supportedLocalePattern = 'en|de|fr|nl|es|it|us';
+    $supportedLocalePattern = 'en|de|fr|nl|es|it|us|at|ch|ro|gr|dk|se|no|bg|hu|ee|pl';
+}
+
+$nordicCeeOwnsSegment = static function (string $locale, string $segment): bool {
+    // Any registered money-lander locale keeps its own copy. This covers
+    // French, Dutch, and future classes without another skip block per country.
+    if (class_exists(MoneyLanderCatalog::class)
+        && method_exists(MoneyLanderCatalog::class, 'localeOwnsSegment')
+        && MoneyLanderCatalog::localeOwnsSegment($locale, $segment)) {
+        return true;
+    }
+
+    // Leftover CH/ES landers own prefixed copies; do not 301 them to DE/IT/PT/RO.
+    if ($locale === 'ch' && class_exists(SwissMoneyLanders::class)) {
+        return (method_exists(SwissMoneyLanders::class, 'capturesLocaleCopy')
+                && SwissMoneyLanders::capturesLocaleCopy($locale, $segment))
+            || (method_exists(SwissMoneyLanders::class, 'isPublicSegment')
+                && SwissMoneyLanders::isPublicSegment($segment));
+    }
+    if ($locale === 'es' && class_exists(SpanishMoneyLanders::class)) {
+        return (method_exists(SpanishMoneyLanders::class, 'capturesLocaleCopy')
+                && SpanishMoneyLanders::capturesLocaleCopy($locale, $segment))
+            || (method_exists(SpanishMoneyLanders::class, 'isPublicSegment')
+                && SpanishMoneyLanders::isPublicSegment($segment));
+    }
+
+    return false;
+};
+
+// Partner dashboard domain (+ local/testing path fallback) must register first
+// so partners.seolinkbuildings.com/login is not captured by the marketing login.
+$partnerRoutes = __DIR__.'/partner.php';
+if (is_file($partnerRoutes)) {
+    require $partnerRoutes;
 }
 
 // Stacked locale cleanup: /nl/fr → /nl
@@ -145,6 +247,9 @@ Route::get('/{locale}/register', fn () => Redirect::to('/register', 301))
     ->where('locale', $prefixedLocalePattern)
     ->name('locale.register.redirect');
 
+// Placeholder currency guide — owner will replace the destination later.
+Route::redirect('/help/currencies', '/faq#currency')->name('help.currencies');
+
 $registerPublicMarketingRoutes = function (string $locale = 'en') {
     $p = function (string $english) use ($locale): string {
         $localized = class_exists(LocalizedPublicPath::class)
@@ -158,7 +263,11 @@ $registerPublicMarketingRoutes = function (string $locale = 'en') {
         $catalogPreview = collect();
         if (class_exists(CatalogTeaserService::class)) {
             try {
-                $catalogPreview = app(CatalogTeaserService::class)->teasers(8);
+                $teaserCountries = (class_exists(PublicI18n::class)
+                    && method_exists(PublicI18n::class, 'catalogTeaserCountries'))
+                    ? PublicI18n::catalogTeaserCountries((string) app()->getLocale())
+                    : ['de'];
+                $catalogPreview = app(CatalogTeaserService::class)->teasersForCountries($teaserCountries, 8);
             } catch (Throwable) {
                 $catalogPreview = collect();
             }
@@ -169,6 +278,9 @@ $registerPublicMarketingRoutes = function (string $locale = 'en') {
         ]);
     })->name('home');
     Route::get($p('contact'), fn () => view('pages.contact'))->name('contact');
+    Route::post($p('contact'), [ContactController::class, 'store'])
+        ->middleware('throttle:contact-form')
+        ->name('contact.store');
     Route::get($p('about'), [MarketingPageController::class, 'about'])->name('about');
     Route::get($p('faq'), [MarketingPageController::class, 'faq'])->name('faq');
     Route::get($p('pricing'), [MarketingPageController::class, 'pricing'])->name('pricing');
@@ -181,11 +293,47 @@ $registerPublicMarketingRoutes = function (string $locale = 'en') {
     Route::get($p('cookie-policy'), [MarketingPageController::class, 'cookiePolicy'])->name('cookie-policy');
     Route::get($p('refund-policy'), [MarketingPageController::class, 'refundPolicy'])->name('refund-policy');
     Route::get($p('blog'), [BlogController::class, 'index'])->name('blog.index');
+    Route::get($p('blog').'/tag/{tag}', function () use ($locale) {
+        $target = class_exists(LocalizedPublicPath::class)
+            ? LocalizedPublicPath::publicPath('blog', $locale)
+            : '/blog';
+        $query = request()->getQueryString();
+
+        return Redirect::to($query ? $target.'?'.$query : $target, 301);
+    })->where('tag', '[^/]+')->name('blog.tag.redirect');
+    Route::get($p('blog').'/tag', function () use ($locale) {
+        $target = class_exists(LocalizedPublicPath::class)
+            ? LocalizedPublicPath::publicPath('blog', $locale)
+            : '/blog';
+
+        return Redirect::to($target, 301);
+    });
     Route::get($p('blog').'/{slug}', [BlogController::class, 'show'])->name('blog.show');
     Route::post($p('newsletter').'/subscribe', [NewsletterController::class, 'subscribe'])
         ->middleware('throttle:10,1')
         ->name('newsletter.subscribe');
+};
 
+$englishOnlyMarketingSlugs = ['guest-post-prices-europe', 'is-seolinkbuildings-safe'];
+if (class_exists(PublicI18n::class) && method_exists(PublicI18n::class, 'englishOnlyMarketingSlugs')) {
+    try {
+        $fromPublic = PublicI18n::englishOnlyMarketingSlugs();
+        if (is_array($fromPublic) && $fromPublic !== []) {
+            $englishOnlyMarketingSlugs = $fromPublic;
+        }
+    } catch (Throwable) {
+    }
+} elseif (class_exists(EnglishOnlyMarketingSlugs::class) && method_exists(EnglishOnlyMarketingSlugs::class, 'all')) {
+    try {
+        $fromHelper = EnglishOnlyMarketingSlugs::all();
+        if (is_array($fromHelper) && $fromHelper !== []) {
+            $englishOnlyMarketingSlugs = $fromHelper;
+        }
+    } catch (Throwable) {
+    }
+}
+
+$registerEnglishOnlyMarketingRoutes = function () {
     $landers = class_exists(CountryLander::class) ? CountryLander::all() : [];
     foreach ($landers as $landerKey => $lander) {
         $landerSlug = trim((string) ($lander['slug'] ?? ''));
@@ -197,16 +345,62 @@ $registerPublicMarketingRoutes = function (string $locale = 'en') {
             ->name('guest-posts.'.$landerKey);
     }
 
+    Route::get('/is-seolinkbuildings-safe', [MarketingPageController::class, 'isItSafe'])->name('is-it-safe');
     Route::get('/guest-post-prices-europe', [MarketingPageController::class, 'europePriceIndex'])
         ->name('guest-post-prices-europe');
 };
 
+Route::get('/api/docs/advertiser', [AdvertiserApiDocsController::class, 'show'])
+    ->name('api.docs.advertiser');
+
 // English (canonical, no prefix)
-Route::group([], fn () => $registerPublicMarketingRoutes('en'));
+Route::group([], function () use ($registerPublicMarketingRoutes, $registerEnglishOnlyMarketingRoutes) {
+    $registerPublicMarketingRoutes('en');
+    $registerEnglishOnlyMarketingRoutes();
+});
 
 // Short legal aliases used in citations / the SEO workbook Pages tab.
 Route::get('/privacy', fn () => Redirect::to('/privacy-policy', 301));
 Route::get('/terms', fn () => Redirect::to('/terms-of-services', 301));
+Route::get('/terms-of-service', fn () => Redirect::to('/terms-of-services', 301));
+Route::get('/contact-us', function () {
+    $query = request()->getQueryString();
+    $to = '/contact';
+
+    return Redirect::to($query ? $to.'?'.$query : $to, 301);
+});
+Route::get('/founder', function () {
+    $target = class_exists(BrandPerson::class)
+        ? BrandPerson::url()
+        : url('/author/m-arslan');
+    $path = parse_url($target, PHP_URL_PATH) ?: '/author/m-arslan';
+    $query = request()->getQueryString();
+
+    return Redirect::to($query ? $path.'?'.$query : $path, 301);
+});
+Route::get('/author', function () {
+    $target = class_exists(BrandPerson::class)
+        ? BrandPerson::url()
+        : url('/author/m-arslan');
+    $path = parse_url($target, PHP_URL_PATH) ?: '/author/m-arslan';
+    $query = request()->getQueryString();
+
+    return Redirect::to($query ? $path.'?'.$query : $path, 301);
+});
+Route::get('/author/{slug}', [MarketingPageController::class, 'author'])
+    ->where('slug', 'm-arslan|arslan-jason')
+    ->name('author.show');
+
+$unprefixedLegacy = class_exists(LocalizedPublicPath::class)
+    ? LocalizedPublicPath::unprefixedLegacyRedirects()
+    : [];
+foreach ($unprefixedLegacy as $from => $to) {
+    Route::get('/'.$from, function () use ($to) {
+        $query = request()->getQueryString();
+
+        return Redirect::to($query ? $to.'?'.$query : $to, 301);
+    });
+}
 
 // Prefixed locales use translated slugs; English leftovers 301 below.
 foreach ($prefixedLocales as $locale) {
@@ -226,6 +420,692 @@ foreach ($prefixedLocales as $locale) {
             return Redirect::to($query ? $target.'?'.$query : $target, 301);
         });
     }
+
+    $authorCanonical = class_exists(BrandPerson::class)
+        ? (parse_url(BrandPerson::url(), PHP_URL_PATH) ?: '/author/m-arslan')
+        : '/author/m-arslan';
+
+    Route::get('/'.$locale.'/author', function () use ($authorCanonical) {
+        $query = request()->getQueryString();
+
+        return Redirect::to($query ? $authorCanonical.'?'.$query : $authorCanonical, 301);
+    });
+
+    Route::get('/'.$locale.'/author/{slug}', function (string $slug) {
+        $query = request()->getQueryString();
+        $target = '/author/'.$slug;
+
+        return Redirect::to($query ? $target.'?'.$query : $target, 301);
+    })->where('slug', 'm-arslan|arslan-jason');
+
+    Route::get('/'.$locale.'/founder', function () use ($authorCanonical) {
+        $query = request()->getQueryString();
+
+        return Redirect::to($query ? $authorCanonical.'?'.$query : $authorCanonical, 301);
+    });
+
+    foreach ($englishOnlyMarketingSlugs as $slug) {
+        if ($slug === 'author' || $slug === 'founder') {
+            continue;
+        }
+        Route::get('/'.$locale.'/'.$slug, function () use ($slug) {
+            $query = request()->getQueryString();
+            $target = '/'.$slug;
+
+            return Redirect::to($query ? $target.'?'.$query : $target, 301);
+        });
+    }
+
+    Route::get('/'.$locale.'/contact-us', function () use ($locale) {
+        $query = request()->getQueryString();
+        $target = class_exists(LocalizedPublicPath::class)
+            ? LocalizedPublicPath::publicPath('contact', $locale)
+            : '/'.$locale.'/contact';
+
+        return Redirect::to($query ? $target.'?'.$query : $target, 301);
+    });
+}
+
+$italianMoneySlugs = [];
+$italianMoneyAliases = [];
+if (class_exists(ItalianMoneyLanders::class)) {
+    try {
+        $italianMoneySlugs = ItalianMoneyLanders::slugs();
+        $italianMoneyAliases = ItalianMoneyLanders::aliases();
+    } catch (Throwable) {
+        $italianMoneySlugs = [];
+        $italianMoneyAliases = [];
+    }
+}
+
+if ($italianMoneySlugs !== [] && method_exists(MarketingPageController::class, 'italianMoneyLander')) {
+    Route::group([
+        'prefix' => 'it',
+        'as' => 'locale.it.money.',
+    ], function () use ($italianMoneySlugs) {
+        foreach ($italianMoneySlugs as $slug) {
+            Route::get('/'.$slug, [MarketingPageController::class, 'italianMoneyLander'])
+                ->defaults('slug', $slug)
+                ->name($slug);
+        }
+    });
+
+    foreach ($italianMoneySlugs as $slug) {
+        Route::get('/'.$slug, function () use ($slug) {
+            $query = request()->getQueryString();
+            $target = '/it/'.$slug;
+
+            return Redirect::to($query ? $target.'?'.$query : $target, 301);
+        });
+
+        foreach ($prefixedLocales as $locale) {
+            if ($locale === 'it') {
+                continue;
+            }
+            if (class_exists(GermanMoneyLanders::class)
+                && (
+                    (method_exists(GermanMoneyLanders::class, 'capturesLocaleCopy')
+                        && GermanMoneyLanders::capturesLocaleCopy($locale, $slug))
+                    || ($locale === 'de'
+                        && method_exists(GermanMoneyLanders::class, 'isPublicSegment')
+                        && GermanMoneyLanders::isPublicSegment($slug))
+                )) {
+                continue;
+            }
+            if (class_exists(AustrianMoneyLanders::class)
+                && (
+                    (method_exists(AustrianMoneyLanders::class, 'capturesLocaleCopy')
+                        && AustrianMoneyLanders::capturesLocaleCopy($locale, $slug))
+                    || ($locale === 'at'
+                        && method_exists(AustrianMoneyLanders::class, 'isPublicSegment')
+                        && AustrianMoneyLanders::isPublicSegment($slug))
+                )) {
+                continue;
+            }
+            if (class_exists(PortugueseMoneyLanders::class)
+                && (
+                    (method_exists(PortugueseMoneyLanders::class, 'capturesLocaleCopy')
+                        && PortugueseMoneyLanders::capturesLocaleCopy($locale, $slug))
+                    || ($locale === 'pt'
+                        && method_exists(PortugueseMoneyLanders::class, 'isPublicSegment')
+                        && PortugueseMoneyLanders::isPublicSegment($slug))
+                )) {
+                continue;
+            }
+            if (class_exists(RomanianMoneyLanders::class)
+                && (
+                    (method_exists(RomanianMoneyLanders::class, 'capturesLocaleCopy')
+                        && RomanianMoneyLanders::capturesLocaleCopy($locale, $slug))
+                    || ($locale === 'ro'
+                        && method_exists(RomanianMoneyLanders::class, 'isPublicSegment')
+                        && RomanianMoneyLanders::isPublicSegment($slug))
+                )) {
+                continue;
+            }
+            if ($nordicCeeOwnsSegment($locale, $slug)) {
+                continue;
+            }
+            Route::get('/'.$locale.'/'.$slug, function () use ($slug) {
+                $query = request()->getQueryString();
+                $target = '/it/'.$slug;
+
+                return Redirect::to($query ? $target.'?'.$query : $target, 301);
+            });
+        }
+    }
+}
+
+if ($italianMoneyAliases !== []) {
+    foreach ($italianMoneyAliases as $from => $to) {
+        Route::get('/it/'.$from, function () use ($to) {
+            $query = request()->getQueryString();
+
+            return Redirect::to($query ? $to.'?'.$query : $to, 301);
+        });
+        Route::get('/'.$from, function () use ($to) {
+            $query = request()->getQueryString();
+
+            return Redirect::to($query ? $to.'?'.$query : $to, 301);
+        });
+        foreach ($prefixedLocales as $locale) {
+            if ($locale === 'it') {
+                continue;
+            }
+            if (class_exists(GermanMoneyLanders::class)
+                && (
+                    (method_exists(GermanMoneyLanders::class, 'capturesLocaleCopy')
+                        && GermanMoneyLanders::capturesLocaleCopy($locale, $from))
+                    || ($locale === 'de'
+                        && method_exists(GermanMoneyLanders::class, 'isPublicSegment')
+                        && GermanMoneyLanders::isPublicSegment($from))
+                )) {
+                continue;
+            }
+            if (class_exists(AustrianMoneyLanders::class)
+                && (
+                    (method_exists(AustrianMoneyLanders::class, 'capturesLocaleCopy')
+                        && AustrianMoneyLanders::capturesLocaleCopy($locale, $from))
+                    || ($locale === 'at'
+                        && method_exists(AustrianMoneyLanders::class, 'isPublicSegment')
+                        && AustrianMoneyLanders::isPublicSegment($from))
+                )) {
+                continue;
+            }
+            if (class_exists(PortugueseMoneyLanders::class)
+                && (
+                    (method_exists(PortugueseMoneyLanders::class, 'capturesLocaleCopy')
+                        && PortugueseMoneyLanders::capturesLocaleCopy($locale, $from))
+                    || ($locale === 'pt'
+                        && method_exists(PortugueseMoneyLanders::class, 'isPublicSegment')
+                        && PortugueseMoneyLanders::isPublicSegment($from))
+                )) {
+                continue;
+            }
+            if (class_exists(RomanianMoneyLanders::class)
+                && (
+                    (method_exists(RomanianMoneyLanders::class, 'capturesLocaleCopy')
+                        && RomanianMoneyLanders::capturesLocaleCopy($locale, $from))
+                    || ($locale === 'ro'
+                        && method_exists(RomanianMoneyLanders::class, 'isPublicSegment')
+                        && RomanianMoneyLanders::isPublicSegment($from))
+                )) {
+                continue;
+            }
+            if ($nordicCeeOwnsSegment($locale, $from)) {
+                continue;
+            }
+            Route::get('/'.$locale.'/'.$from, function () use ($to) {
+                $query = request()->getQueryString();
+
+                return Redirect::to($query ? $to.'?'.$query : $to, 301);
+            });
+        }
+    }
+}
+
+$germanMoneySlugs = [];
+$germanMoneyAliases = [];
+if (class_exists(GermanMoneyLanders::class)) {
+    try {
+        $germanMoneySlugs = GermanMoneyLanders::slugs();
+        $germanMoneyAliases = GermanMoneyLanders::aliases();
+    } catch (Throwable) {
+        $germanMoneySlugs = [];
+        $germanMoneyAliases = [];
+    }
+}
+
+if ($germanMoneySlugs !== [] && method_exists(MarketingPageController::class, 'germanMoneyLander')) {
+    Route::group([
+        'prefix' => 'de',
+        'as' => 'locale.de.money.',
+    ], function () use ($germanMoneySlugs) {
+        foreach ($germanMoneySlugs as $slug) {
+            Route::get('/'.$slug, [MarketingPageController::class, 'germanMoneyLander'])
+                ->defaults('slug', $slug)
+                ->name($slug);
+        }
+    });
+
+    foreach ($germanMoneySlugs as $slug) {
+        $italianOwnsSlug = class_exists(ItalianMoneyLanders::class)
+            && ItalianMoneyLanders::isSlug($slug);
+        if (! $italianOwnsSlug) {
+            Route::get('/'.$slug, function () use ($slug) {
+                $query = request()->getQueryString();
+                $target = '/de/'.$slug;
+
+                return Redirect::to($query ? $target.'?'.$query : $target, 301);
+            });
+        }
+
+        foreach ($prefixedLocales as $locale) {
+            if ($locale === 'de') {
+                continue;
+            }
+            $italianOwnsSlug = class_exists(ItalianMoneyLanders::class)
+                && ItalianMoneyLanders::isPublicSegment($slug);
+            $germanCopy = class_exists(GermanMoneyLanders::class)
+                && method_exists(GermanMoneyLanders::class, 'capturesLocaleCopy')
+                && GermanMoneyLanders::capturesLocaleCopy($locale, $slug);
+            if ($italianOwnsSlug && ! $germanCopy) {
+                continue;
+            }
+            if (class_exists(AustrianMoneyLanders::class)
+                && (
+                    (method_exists(AustrianMoneyLanders::class, 'capturesLocaleCopy')
+                        && AustrianMoneyLanders::capturesLocaleCopy($locale, $slug))
+                    || ($locale === 'at'
+                        && method_exists(AustrianMoneyLanders::class, 'isPublicSegment')
+                        && AustrianMoneyLanders::isPublicSegment($slug))
+                )) {
+                continue;
+            }
+            if (class_exists(PortugueseMoneyLanders::class)
+                && (
+                    (method_exists(PortugueseMoneyLanders::class, 'capturesLocaleCopy')
+                        && PortugueseMoneyLanders::capturesLocaleCopy($locale, $slug))
+                    || ($locale === 'pt'
+                        && method_exists(PortugueseMoneyLanders::class, 'isPublicSegment')
+                        && PortugueseMoneyLanders::isPublicSegment($slug))
+                )) {
+                continue;
+            }
+            if (class_exists(RomanianMoneyLanders::class)
+                && (
+                    (method_exists(RomanianMoneyLanders::class, 'capturesLocaleCopy')
+                        && RomanianMoneyLanders::capturesLocaleCopy($locale, $slug))
+                    || ($locale === 'ro'
+                        && method_exists(RomanianMoneyLanders::class, 'isPublicSegment')
+                        && RomanianMoneyLanders::isPublicSegment($slug))
+                )) {
+                continue;
+            }
+            if ($nordicCeeOwnsSegment($locale, $slug)) {
+                continue;
+            }
+            Route::get('/'.$locale.'/'.$slug, function () use ($slug) {
+                $query = request()->getQueryString();
+                $target = '/de/'.$slug;
+
+                return Redirect::to($query ? $target.'?'.$query : $target, 301);
+            });
+        }
+    }
+}
+
+if ($germanMoneyAliases !== []) {
+    foreach ($germanMoneyAliases as $from => $to) {
+        Route::get('/de/'.$from, function () use ($to) {
+            $query = request()->getQueryString();
+
+            return Redirect::to($query ? $to.'?'.$query : $to, 301);
+        });
+        $italianOwnsFrom = class_exists(ItalianMoneyLanders::class)
+            && ItalianMoneyLanders::isPublicSegment($from);
+        if (! $italianOwnsFrom) {
+            Route::get('/'.$from, function () use ($to) {
+                $query = request()->getQueryString();
+
+                return Redirect::to($query ? $to.'?'.$query : $to, 301);
+            });
+        }
+        foreach ($prefixedLocales as $locale) {
+            if ($locale === 'de') {
+                continue;
+            }
+            $italianOwnsFrom = class_exists(ItalianMoneyLanders::class)
+                && ItalianMoneyLanders::isPublicSegment($from);
+            $germanCopy = class_exists(GermanMoneyLanders::class)
+                && method_exists(GermanMoneyLanders::class, 'capturesLocaleCopy')
+                && GermanMoneyLanders::capturesLocaleCopy($locale, $from);
+            if ($italianOwnsFrom && ! $germanCopy) {
+                continue;
+            }
+            if (class_exists(AustrianMoneyLanders::class)
+                && (
+                    (method_exists(AustrianMoneyLanders::class, 'capturesLocaleCopy')
+                        && AustrianMoneyLanders::capturesLocaleCopy($locale, $from))
+                    || ($locale === 'at'
+                        && method_exists(AustrianMoneyLanders::class, 'isPublicSegment')
+                        && AustrianMoneyLanders::isPublicSegment($from))
+                )) {
+                continue;
+            }
+            if (class_exists(PortugueseMoneyLanders::class)
+                && (
+                    (method_exists(PortugueseMoneyLanders::class, 'capturesLocaleCopy')
+                        && PortugueseMoneyLanders::capturesLocaleCopy($locale, $from))
+                    || ($locale === 'pt'
+                        && method_exists(PortugueseMoneyLanders::class, 'isPublicSegment')
+                        && PortugueseMoneyLanders::isPublicSegment($from))
+                )) {
+                continue;
+            }
+            if (class_exists(RomanianMoneyLanders::class)
+                && (
+                    (method_exists(RomanianMoneyLanders::class, 'capturesLocaleCopy')
+                        && RomanianMoneyLanders::capturesLocaleCopy($locale, $from))
+                    || ($locale === 'ro'
+                        && method_exists(RomanianMoneyLanders::class, 'isPublicSegment')
+                        && RomanianMoneyLanders::isPublicSegment($from))
+                )) {
+                continue;
+            }
+            if ($nordicCeeOwnsSegment($locale, $from)) {
+                continue;
+            }
+            Route::get('/'.$locale.'/'.$from, function () use ($to) {
+                $query = request()->getQueryString();
+
+                return Redirect::to($query ? $to.'?'.$query : $to, 301);
+            });
+        }
+    }
+}
+
+$austrianMoneySlugs = [];
+$austrianMoneyAliases = [];
+if (class_exists(AustrianMoneyLanders::class)) {
+    try {
+        $austrianMoneySlugs = AustrianMoneyLanders::slugs();
+        $austrianMoneyAliases = AustrianMoneyLanders::aliases();
+    } catch (Throwable) {
+        $austrianMoneySlugs = [];
+        $austrianMoneyAliases = [];
+    }
+}
+
+if ($austrianMoneySlugs !== [] && method_exists(MarketingPageController::class, 'austrianMoneyLander')) {
+    Route::group([
+        'prefix' => 'at',
+        'as' => 'locale.at.money.',
+    ], function () use ($austrianMoneySlugs) {
+        foreach ($austrianMoneySlugs as $slug) {
+            Route::get('/'.$slug, [MarketingPageController::class, 'austrianMoneyLander'])
+                ->defaults('slug', $slug)
+                ->name($slug);
+        }
+    });
+}
+
+if ($austrianMoneyAliases !== []) {
+    foreach ($austrianMoneyAliases as $from => $to) {
+        Route::get('/at/'.$from, function () use ($to) {
+            $query = request()->getQueryString();
+
+            return Redirect::to($query ? $to.'?'.$query : $to, 301);
+        });
+    }
+}
+
+$portugueseMoneySlugs = [];
+$portugueseMoneyAliases = [];
+if (class_exists(PortugueseMoneyLanders::class)) {
+    try {
+        $portugueseMoneySlugs = PortugueseMoneyLanders::slugs();
+        $portugueseMoneyAliases = PortugueseMoneyLanders::aliases();
+    } catch (Throwable) {
+        $portugueseMoneySlugs = [];
+        $portugueseMoneyAliases = [];
+    }
+}
+
+if ($portugueseMoneySlugs !== [] && method_exists(MarketingPageController::class, 'portugueseMoneyLander')) {
+    Route::group([
+        'prefix' => 'pt',
+        'as' => 'locale.pt.money.',
+    ], function () use ($portugueseMoneySlugs) {
+        foreach ($portugueseMoneySlugs as $slug) {
+            Route::get('/'.$slug, [MarketingPageController::class, 'portugueseMoneyLander'])
+                ->defaults('slug', $slug)
+                ->name($slug);
+        }
+    });
+
+    foreach ($portugueseMoneySlugs as $slug) {
+        $italianOwnsSlug = class_exists(ItalianMoneyLanders::class)
+            && ItalianMoneyLanders::isSlug($slug);
+        $germanOwnsSlug = class_exists(GermanMoneyLanders::class)
+            && GermanMoneyLanders::isSlug($slug);
+        $austrianOwnsSlug = class_exists(AustrianMoneyLanders::class)
+            && AustrianMoneyLanders::isSlug($slug);
+        $swissOwnsSlug = class_exists(SwissMoneyLanders::class)
+            && SwissMoneyLanders::isSlug($slug);
+        $spanishOwnsSlug = class_exists(SpanishMoneyLanders::class)
+            && SpanishMoneyLanders::isSlug($slug);
+        if ($italianOwnsSlug || $germanOwnsSlug || $austrianOwnsSlug || $swissOwnsSlug || $spanishOwnsSlug) {
+            continue;
+        }
+
+        Route::get('/'.$slug, function () use ($slug) {
+            $query = request()->getQueryString();
+            $target = '/pt/'.$slug;
+
+            return Redirect::to($query ? $target.'?'.$query : $target, 301);
+        });
+
+        foreach ($prefixedLocales as $locale) {
+            if ($locale === 'pt') {
+                continue;
+            }
+            if (class_exists(RomanianMoneyLanders::class)
+                && (
+                    (method_exists(RomanianMoneyLanders::class, 'capturesLocaleCopy')
+                        && RomanianMoneyLanders::capturesLocaleCopy($locale, $slug))
+                    || ($locale === 'ro'
+                        && method_exists(RomanianMoneyLanders::class, 'isPublicSegment')
+                        && RomanianMoneyLanders::isPublicSegment($slug))
+                )) {
+                continue;
+            }
+            if ($nordicCeeOwnsSegment($locale, $slug)) {
+                continue;
+            }
+            Route::get('/'.$locale.'/'.$slug, function () use ($slug) {
+                $query = request()->getQueryString();
+                $target = '/pt/'.$slug;
+
+                return Redirect::to($query ? $target.'?'.$query : $target, 301);
+            });
+        }
+    }
+}
+
+if ($portugueseMoneyAliases !== []) {
+    foreach ($portugueseMoneyAliases as $from => $to) {
+        Route::get('/pt/'.$from, function () use ($to) {
+            $query = request()->getQueryString();
+
+            return Redirect::to($query ? $to.'?'.$query : $to, 301);
+        });
+    }
+}
+
+$romanianMoneySlugs = [];
+$romanianMoneyAliases = [];
+if (class_exists(RomanianMoneyLanders::class)) {
+    try {
+        $romanianMoneySlugs = RomanianMoneyLanders::slugs();
+        $romanianMoneyAliases = RomanianMoneyLanders::aliases();
+    } catch (Throwable) {
+        $romanianMoneySlugs = [];
+        $romanianMoneyAliases = [];
+    }
+}
+
+if ($romanianMoneySlugs !== [] && method_exists(MarketingPageController::class, 'romanianMoneyLander')) {
+    Route::group([
+        'prefix' => 'ro',
+        'as' => 'locale.ro.money.',
+    ], function () use ($romanianMoneySlugs) {
+        foreach ($romanianMoneySlugs as $slug) {
+            Route::get('/'.$slug, [MarketingPageController::class, 'romanianMoneyLander'])
+                ->defaults('slug', $slug)
+                ->name($slug);
+        }
+    });
+
+    foreach ($romanianMoneySlugs as $slug) {
+        $ownedElsewhere = (class_exists(ItalianMoneyLanders::class) && ItalianMoneyLanders::isSlug($slug))
+            || (class_exists(GermanMoneyLanders::class) && GermanMoneyLanders::isSlug($slug))
+            || (class_exists(AustrianMoneyLanders::class) && AustrianMoneyLanders::isSlug($slug))
+            || (class_exists(SwissMoneyLanders::class) && SwissMoneyLanders::isSlug($slug))
+            || (class_exists(SpanishMoneyLanders::class) && SpanishMoneyLanders::isSlug($slug))
+            || (class_exists(DutchMoneyLanders::class) && DutchMoneyLanders::isSlug($slug))
+            || (class_exists(FrenchMoneyLanders::class) && FrenchMoneyLanders::isSlug($slug));
+        if ($ownedElsewhere) {
+            continue;
+        }
+
+        Route::get('/'.$slug, function () use ($slug) {
+            $query = request()->getQueryString();
+            $target = '/ro/'.$slug;
+
+            return Redirect::to($query ? $target.'?'.$query : $target, 301);
+        });
+
+        foreach ($prefixedLocales as $locale) {
+            if ($locale === 'ro') {
+                continue;
+            }
+            if ($nordicCeeOwnsSegment($locale, $slug)) {
+                continue;
+            }
+            Route::get('/'.$locale.'/'.$slug, function () use ($slug) {
+                $query = request()->getQueryString();
+                $target = '/ro/'.$slug;
+
+                return Redirect::to($query ? $target.'?'.$query : $target, 301);
+            });
+        }
+    }
+}
+
+if ($romanianMoneyAliases !== []) {
+    foreach ($romanianMoneyAliases as $from => $to) {
+        Route::get('/ro/'.$from, function () use ($to) {
+            $query = request()->getQueryString();
+
+            return Redirect::to($query ? $to.'?'.$query : $to, 301);
+        });
+    }
+}
+
+// Leftover Hostinger File Manager: register /ch and /es landers when the
+// controller methods exist (prefixed copies only — DE/IT/PT keep unique 301s).
+if (method_exists(MarketingPageController::class, 'swissMoneyLander')
+    && class_exists(SwissMoneyLanders::class)
+    && method_exists(SwissMoneyLanders::class, 'slugs')) {
+    $swissMoneySlugs = [];
+    $swissMoneyAliases = [];
+    try {
+        $swissMoneySlugs = SwissMoneyLanders::slugs();
+        $swissMoneyAliases = method_exists(SwissMoneyLanders::class, 'aliases')
+            ? SwissMoneyLanders::aliases()
+            : [];
+    } catch (Throwable) {
+        $swissMoneySlugs = [];
+        $swissMoneyAliases = [];
+    }
+    if ($swissMoneySlugs !== []) {
+        Route::group([
+            'prefix' => 'ch',
+            'as' => 'locale.ch.money.',
+        ], function () use ($swissMoneySlugs) {
+            foreach ($swissMoneySlugs as $slug) {
+                Route::get('/'.$slug, [MarketingPageController::class, 'swissMoneyLander'])
+                    ->defaults('slug', $slug)
+                    ->name($slug);
+            }
+        });
+    }
+    foreach ($swissMoneyAliases as $from => $to) {
+        Route::get('/ch/'.$from, function () use ($to) {
+            $query = request()->getQueryString();
+
+            return Redirect::to($query ? $to.'?'.$query : $to, 301);
+        });
+    }
+}
+if (method_exists(MarketingPageController::class, 'spanishMoneyLander')
+    && class_exists(SpanishMoneyLanders::class)
+    && method_exists(SpanishMoneyLanders::class, 'slugs')) {
+    $spanishMoneySlugs = [];
+    $spanishMoneyAliases = [];
+    try {
+        $spanishMoneySlugs = SpanishMoneyLanders::slugs();
+        $spanishMoneyAliases = method_exists(SpanishMoneyLanders::class, 'aliases')
+            ? SpanishMoneyLanders::aliases()
+            : [];
+    } catch (Throwable) {
+        $spanishMoneySlugs = [];
+        $spanishMoneyAliases = [];
+    }
+    if ($spanishMoneySlugs !== []) {
+        Route::group([
+            'prefix' => 'es',
+            'as' => 'locale.es.money.',
+        ], function () use ($spanishMoneySlugs) {
+            foreach ($spanishMoneySlugs as $slug) {
+                Route::get('/'.$slug, [MarketingPageController::class, 'spanishMoneyLander'])
+                    ->defaults('slug', $slug)
+                    ->name($slug);
+            }
+        });
+    }
+    foreach ($spanishMoneyAliases as $from => $to) {
+        Route::get('/es/'.$from, function () use ($to) {
+            $query = request()->getQueryString();
+
+            return Redirect::to($query ? $to.'?'.$query : $to, 301);
+        });
+    }
+}
+
+if (class_exists(MoneyLanderCatalog::class)
+    && class_exists(MoneyLanderRoutes::class)
+    && method_exists(MoneyLanderCatalog::class, 'nordicCeeLocales')
+    && method_exists(MarketingPageController::class, 'nordicCeeMoneyLander')) {
+    foreach (MoneyLanderCatalog::nordicCeeLocales() as $nordicLocale) {
+        $nordicClass = MoneyLanderCatalog::classFor($nordicLocale);
+        if (! is_string($nordicClass)) {
+            continue;
+        }
+        MoneyLanderRoutes::register(
+            $nordicLocale,
+            $nordicClass,
+            'nordicCeeMoneyLander',
+            $prefixedLocales
+        );
+    }
+}
+
+// Locales that already have a named money route stay on their existing
+// controller. Every other catalog class (French, Dutch, and future files)
+// is registered here so a new lander does not need a hand-written route block.
+if (class_exists(MoneyLanderCatalog::class)
+    && class_exists(MoneyLanderRoutes::class)
+    && method_exists(MoneyLanderCatalog::class, 'classes')
+    && method_exists(MarketingPageController::class, 'catalogMoneyLander')) {
+    foreach (MoneyLanderCatalog::classes() as $moneyLocale => $moneyClass) {
+        if (! is_string($moneyLocale) || ! is_string($moneyClass) || ! class_exists($moneyClass)) {
+            continue;
+        }
+        if (! method_exists($moneyClass, 'slugs')) {
+            continue;
+        }
+
+        try {
+            $moneySlugs = $moneyClass::slugs();
+        } catch (Throwable) {
+            continue;
+        }
+
+        $probe = $moneySlugs[0] ?? null;
+        if (! is_string($probe) || $probe === '') {
+            continue;
+        }
+        // Route names are stored before ->name() runs, so Route::has() misses
+        // these. Match the URI that the existing country block already added.
+        $alreadyRegistered = false;
+        foreach (app('router')->getRoutes() as $existingMoneyRoute) {
+            if ($existingMoneyRoute->uri() === $moneyLocale.'/'.$probe) {
+                $alreadyRegistered = true;
+                break;
+            }
+        }
+        if ($alreadyRegistered) {
+            continue;
+        }
+
+        MoneyLanderRoutes::register(
+            $moneyLocale,
+            $moneyClass,
+            'catalogMoneyLander',
+            $prefixedLocales
+        );
+    }
 }
 
 // SEO: sitemap index + per-locale sitemaps + robots + llms.txt
@@ -234,7 +1114,7 @@ Route::get('/sitemap-{locale}.xml', [SitemapController::class, 'locale'])
     ->where('locale', $supportedLocalePattern)
     ->name('sitemap.locale');
 Route::get('/robots.txt', function () {
-    $body = class_exists(RobotsTxt::class)
+    $body = (class_exists(RobotsTxt::class) && method_exists(RobotsTxt::class, 'render'))
         ? RobotsTxt::render()
         : (is_file(public_path('robots.txt'))
             ? (string) file_get_contents(public_path('robots.txt'))
@@ -252,7 +1132,7 @@ Route::get('/llms.txt', function () {
     abort_unless(is_file($path), 404);
 
     $body = (string) file_get_contents($path);
-    if (class_exists(WelcomeBonusCopy::class)) {
+    if (class_exists(WelcomeBonusCopy::class) && method_exists(WelcomeBonusCopy::class, 'applyToLlmsTxt')) {
         $body = WelcomeBonusCopy::applyToLlmsTxt($body);
     }
 
@@ -315,6 +1195,9 @@ Route::get('/banners/{banner}/click', BannerClickController::class)
 Route::get('/announcements/{announcement}/click', AnnouncementClickController::class)
     ->middleware('throttle:30,1')
     ->name('announcements.click');
+Route::post('/announcements/{announcement}/dismiss', AnnouncementDismissController::class)
+    ->middleware(['auth', 'throttle:30,1'])
+    ->name('announcements.dismiss');
 Route::post('/promotions/track', PromotionTrackController::class)
     ->middleware('throttle:30,1')
     ->name('promotions.track');
@@ -322,35 +1205,19 @@ Route::post('/support/chat', [VisitorSupportChatController::class, 'store'])
     ->middleware('throttle:20,1')
     ->name('support.chat');
 
-// External cron fallback for hosts without a real scheduler. This completes orders
-// and releases publisher payouts, so it stays closed unless a strong secret is set
-// (the app scheduler already runs orders:auto-approve on its own).
-Route::get('/cron/orders-auto-approve/{key}', function ($key) {
-    $secret = (string) config('app.cron_secret', '');
-
-    if (strlen($secret) < 32) {
-        abort(404, UserMessages::get('cron.disabled'));
-    }
-
-    if (! hash_equals($secret, (string) $key)) {
-        abort(403, UserMessages::get('cron.forbidden'));
-    }
-
-    Artisan::call('orders:auto-approve');
-
-    return response()->json([
-        'status' => 'success',
-        'message' => 'Orders auto-approved',
-    ]);
-})->middleware('throttle:6,1')->name('cron.orders-auto-approve');
-
+// GET /cron/orders-auto-approve/{key} was removed (ac6f8d49): the secret sat
+// in access logs / Referer. Replacement is `php artisan orders:auto-approve`
+// (already every 15 minutes via schedule:run). Do not add a second hourly
+// HTTP cron for auto-approve. Hosts without CLI cron should POST /cron/run
+// with X-Cron-Key instead — that runs the whole scheduler, including
+// orders:auto-approve.
+//
 // Whole scheduler for hosts that cannot run `php artisan schedule:run` every
-// minute. Point an external pinger here and everything scheduled runs — mail
-// drain, auto-approve, scheduled publishing, reminders and digests. Same secret
-// gate as above, since these tasks move money and send mail.
-// Prefer POST /cron/run with X-Cron-Key so the secret is not in access logs.
-$runHttpScheduler = function (Request $request, string $key = '') {
-    HttpCron::authorize($request, $key);
+// minute. POST /cron/run with header X-Cron-Key. The secret must not be in the
+// path: access logs and Referer would keep a copy, and this run completes
+// orders and releases publisher payouts.
+Route::post('/cron/run', function (Request $request) {
+    HttpCron::authorize($request);
 
     Artisan::call('schedule:run');
 
@@ -358,14 +1225,6 @@ $runHttpScheduler = function (Request $request, string $key = '') {
         'status' => 'success',
         'message' => 'Scheduler run',
     ]);
-};
-
-Route::match(['GET', 'POST'], '/cron/run', function (Request $request) use ($runHttpScheduler) {
-    return $runHttpScheduler($request);
-})->middleware('throttle:6,1')->name('cron.run.header');
-
-Route::get('/cron/run/{key}', function (Request $request, $key) use ($runHttpScheduler) {
-    return $runHttpScheduler($request, (string) $key);
 })->middleware('throttle:6,1')->name('cron.run');
 
 // ✅ UPDATED: Guest middleware for login/register pages
@@ -378,6 +1237,10 @@ Route::middleware('guest')->group(function () {
 // Local/testing may retry without OAuth "state"; production refuses that fallback.
 Route::get('auth/google', [SocialiteController::class, 'redirectToGoogle'])->name('auth.google');
 Route::get('auth/google/callback', [SocialiteController::class, 'handleGoogleCallback'])->name('auth.google.callback');
+Route::get('auth/google/complete', [SocialiteController::class, 'showGoogleComplete'])->name('auth.google.complete');
+Route::post('auth/google/complete', [SocialiteController::class, 'completeGoogle'])
+    ->middleware('throttle:register')
+    ->name('auth.google.complete.store');
 
 // Registration routes
 Route::post('/register', [RegisterController::class, 'register'])
@@ -401,47 +1264,23 @@ Route::post('/reset-password', [ResetPasswordController::class, 'update'])
     ->middleware('throttle:password-update')
     ->name('password.update');
 
-// Email Verification Notice (user can see this page if they are logged in)
-Route::get('/email/verify', function () {
-    return view('auth.verify-email');
-})->middleware('auth')->name('verification.notice');
+// Staff-created publisher: signed set-password (also verifies the email).
+Route::get('/onboard/password/{user}', [StaffOnboardingPasswordController::class, 'show'])
+    ->middleware(['signed', 'throttle:20,1'])
+    ->name('publisher.onboard.password');
+Route::post('/onboard/password/{user}', [StaffOnboardingPasswordController::class, 'store'])
+    ->middleware(['signed', 'throttle:password-update'])
+    ->name('publisher.onboard.password.store');
+
+// Email verification notice — public so expired-link users can resend without signing in.
+Route::get('/email/verify', [EmailVerificationController::class, 'notice'])
+    ->name('verification.notice');
 
 // Email verification link (no auth required — user clicks from email)
 // Must stay public: signup does not log the user in before they verify.
-Route::get('/email/verify/{id}/{hash}', function (Request $request, $id, $hash) {
-    // Relative signature — host/scheme must not be part of the HMAC (email
-    // links are prefixed with a public origin that may differ from APP_URL).
-    // Ignore tracker params email clients often append (utm_*, fbclid, …).
-    if (! $request->hasValidRelativeSignatureWhileIgnoring(signed_url_ignored_query_params())) {
-        return redirect('/login')->with(
-            'error',
-            'This verification link is invalid or has expired. Please sign in and resend a new verification email, or use “Resend verification” on the login page.'
-        );
-    }
-
-    $user = User::findOrFail($id);
-
-    if (! hash_equals((string) $hash, sha1($user->getEmailForVerification()))) {
-        abort(403, 'Invalid verification link.');
-    }
-
-    if (! $user->hasVerifiedEmail()) {
-        $user->markEmailAsVerified();
-        event(new Verified($user));
-    }
-
-    // Do not auto-login — send the user to sign in manually after verify.
-    if (Auth::check()) {
-        Auth::logout();
-        $request->session()->invalidate();
-        $request->session()->regenerateToken();
-    }
-
-    return redirect('/login')->with(
-        'message',
-        'Email verified successfully. Please sign in to continue.'
-    );
-})->middleware('throttle:6,1')->name('verification.verify');
+Route::get('/email/verify/{id}/{hash}', [EmailVerificationController::class, 'verify'])
+    ->middleware('throttle:email-verify-click')
+    ->name('verification.verify');
 
 // Marketing unsubscribe (signed GET confirm + POST one-click). Same route name
 // so one signature works for both methods. CSRF is excepted for Gmail POSTs.
@@ -450,32 +1289,20 @@ Route::match(['get', 'post'], '/email/unsubscribe/{user}', EmailUnsubscribeContr
     ->middleware('throttle:30,1')
     ->name('email.unsubscribe');
 
-// Resend verification email (requires login)
-Route::post('/email/verification-notification', function (Request $request) {
-    $request->user()->sendEmailVerificationNotification();
+Route::match(['get', 'post'], '/email/weekly-new-sites/{token}', WeeklyNewSitesMailController::class)
+    ->where('token', '[A-Za-z0-9]+')
+    ->middleware('throttle:60,1')
+    ->name('weekly-new-sites.action');
 
-    return back()->with('message', 'Verification link sent!');
-})->middleware(['auth', 'throttle:6,1'])->name('verification.send');
+// Resend verification email (requires login — leftover sessions only)
+Route::post('/email/verification-notification', [EmailVerificationController::class, 'send'])
+    ->middleware(['auth', 'throttle:email-verify-send'])
+    ->name('verification.send');
 
-// ✅ NEW: Resend verification WITHOUT login (AJAX)
-Route::post('/email/resend', function (Request $request) {
-
-    $request->validate([
-        'email' => 'required|email',
-    ]);
-
-    $user = User::where('email', $request->email)->first();
-
-    if ($user && ! $user->hasVerifiedEmail()) {
-        $user->sendEmailVerificationNotification();
-    }
-
-    return response()->json([
-        'status' => 'success',
-        'message' => 'Verification email resent successfully.',
-    ]);
-
-})->middleware('throttle:3,1')->name('verification.resend');
+// Guest resend (login AJAX + verify-notice form). Enumeration-safe.
+Route::post('/email/resend', [EmailVerificationController::class, 'resend'])
+    ->middleware('throttle:email-verify-resend')
+    ->name('verification.resend');
 
 // ✅ NEW: Role Switch (Dropdown) Route
 Route::post('/switch-role', [RoleController::class, 'switchRole'])
@@ -490,10 +1317,44 @@ $registerStaffOpsRoutes = function () {
         ->name('sites.create');
     Route::post('/sites', [AdminSiteController::class, 'storeForPublisher'])
         ->name('sites.store');
+    Route::get('/sites/domain-check', [AdminSiteController::class, 'domainCheck'])
+        ->name('sites.domain-check');
+    Route::get('/sites/publisher-domains', [AdminSiteController::class, 'publisherDomains'])
+        ->name('sites.publisher-domains');
+    Route::get('/sites/publishers-search', [AdminSiteController::class, 'searchPublishers'])
+        ->middleware('throttle:30,1')
+        ->name('sites.publishers-search');
+    Route::get('/sites/publishers/export', [AdminSiteController::class, 'exportPublishers'])
+        ->name('sites.publishers-export');
+    Route::post('/sites/publishers/archive-inactive', [AdminSiteController::class, 'archiveInactivePublishers'])
+        ->name('sites.publishers-archive-inactive');
+    Route::post('/sites/lookup-metrics', [AdminSiteController::class, 'lookupMetrics'])
+        ->middleware('throttle:20,1')
+        ->name('sites.lookup-metrics');
+    Route::get('/sites/bulk-create', [AdminSiteController::class, 'createBulkForPublisher'])
+        ->name('sites.bulk-create');
+    Route::post('/sites/bulk', [AdminSiteController::class, 'storeBulkForPublisher'])
+        ->name('sites.bulk-store');
+    Route::post('/sites/{id}/resend-invite', [AdminSiteController::class, 'resendInvite'])
+        ->whereNumber('id')
+        ->name('sites.resend-invite');
+    Route::post('/sites/{id}/publish-now', [AdminSiteController::class, 'publishNow'])
+        ->whereNumber('id')
+        ->name('sites.publish-now');
     Route::get('/staff-handbook', fn () => view('admin.staff-handbook'))
         ->name('staff-handbook');
     Route::get('/users/{id}/sites', [AdminSiteController::class, 'userSites'])
         ->name('users.sites');
+    Route::post('/sites/bulk-action', [AdminSiteController::class, 'bulkAction'])
+        ->name('sites.bulk-action');
+    Route::post('/sites/bulk-discount', [AdminSiteController::class, 'bulkUpdateBulkDiscount'])
+        ->name('sites.bulk-discount.bulk');
+    Route::post('/sites/{id}/bulk-discount', [AdminSiteController::class, 'updateBulkDiscount'])
+        ->whereNumber('id')
+        ->name('sites.bulk-discount');
+    // Static path: must stay before /sites/{id} wildcards.
+    Route::get('/sites/export', [AdminSiteController::class, 'export'])
+        ->name('sites.export');
     // Disk-stream preview when public/storage symlink is broken (Hostinger MEDIA_PATH).
     // Must be registered before /sites/{id}… wildcards.
     Route::get('/sites/media/{path}', [PublicMediaController::class, 'show'])
@@ -508,21 +1369,48 @@ $registerStaffOpsRoutes = function () {
     // Admin: any site. Marketing: pending / not-live (!verified && !active) only.
     Route::delete('/sites/{id}', [AdminSiteController::class, 'destroy'])
         ->name('sites.destroy');
+    Route::post('/sites/{id}/archive', [AdminSiteController::class, 'archive'])
+        ->name('sites.archive');
+    Route::post('/sites/{id}/unarchive', [AdminSiteController::class, 'unarchive'])
+        ->name('sites.unarchive');
 
+    // Bulk site request queue: GET for all staff; POSTs registered for both
+    // panels so Blade staff_route() resolves, but the controller rejects
+    // non-admin mutations with 403 (marketing stays read-only).
     Route::get('/bulk-site-requests', [AdminBulkSiteRequestController::class, 'index'])
         ->name('bulk-site-requests.index');
     Route::get('/bulk-site-requests/{id}', [AdminBulkSiteRequestController::class, 'show'])
         ->name('bulk-site-requests.show');
+    Route::post('/bulk-site-requests/bulk-claim', [AdminBulkSiteRequestController::class, 'bulkClaim'])
+        ->name('bulk-site-requests.bulk-claim');
+    Route::post('/bulk-site-requests/bulk-assign', [AdminBulkSiteRequestController::class, 'bulkAssign'])
+        ->name('bulk-site-requests.bulk-assign');
+    Route::post('/bulk-site-requests/bulk-remind', [AdminBulkSiteRequestController::class, 'bulkRemind'])
+        ->name('bulk-site-requests.bulk-remind');
+    Route::post('/bulk-site-requests/bulk-cancel', [AdminBulkSiteRequestController::class, 'bulkCancel'])
+        ->name('bulk-site-requests.bulk-cancel');
     Route::post('/bulk-site-requests/{id}/sheet-sent', [AdminBulkSiteRequestController::class, 'markSheetSent'])
         ->name('bulk-site-requests.sheet-sent');
     Route::post('/bulk-site-requests/{id}/notes', [AdminBulkSiteRequestController::class, 'updateNotes'])
         ->name('bulk-site-requests.notes');
+    Route::post('/bulk-site-requests/{id}/claim', [AdminBulkSiteRequestController::class, 'claim'])
+        ->name('bulk-site-requests.claim');
+    Route::post('/bulk-site-requests/{id}/assign', [AdminBulkSiteRequestController::class, 'assign'])
+        ->name('bulk-site-requests.assign');
+    Route::post('/bulk-site-requests/{id}/remind', [AdminBulkSiteRequestController::class, 'remind'])
+        ->name('bulk-site-requests.remind');
     Route::post('/bulk-site-requests/{id}/seed', [AdminBulkSiteRequestController::class, 'seed'])
         ->name('bulk-site-requests.seed');
     Route::post('/bulk-site-requests/{id}/done', [AdminBulkSiteRequestController::class, 'done'])
         ->name('bulk-site-requests.done');
+    Route::post('/bulk-site-requests/{id}/draft', [AdminBulkSiteRequestController::class, 'saveDraft'])
+        ->name('bulk-site-requests.draft');
     Route::post('/bulk-site-requests/{id}/cancel', [AdminBulkSiteRequestController::class, 'cancel'])
         ->name('bulk-site-requests.cancel');
+    Route::post('/bulk-site-requests/{id}/undo-review', [AdminBulkSiteRequestController::class, 'undoReview'])
+        ->name('bulk-site-requests.undo-review');
+    Route::post('/bulk-site-requests/{id}/publish-now', [AdminBulkSiteRequestController::class, 'publishNow'])
+        ->name('bulk-site-requests.publish-now');
 
     Route::get('/site-enrichment', [SiteEnrichmentController::class, 'index'])
         ->name('site-enrichment.index');
@@ -584,6 +1472,7 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':marketing'])
 Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMiddleware::class.':admin'])
     ->prefix('admin')->name('admin.')
     ->group(function () use ($registerStaffOpsRoutes) {
+        Route::redirect('/', '/admin/dashboard', 302);
         Route::get('/dashboard', [AdminDashboardController::class, 'index'])
             ->name('dashboard');
         $registerStaffOpsRoutes();
@@ -593,6 +1482,14 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
             ->name('sites.records');
         Route::get('/sites/records/export', [AdminSiteController::class, 'exportRecords'])
             ->name('sites.records.export');
+        Route::get('/sites/on-demand', [OnDemandContactController::class, 'index'])
+            ->name('sites.on-demand.index');
+        Route::post('/sites/on-demand', [OnDemandContactController::class, 'store'])
+            ->name('sites.on-demand.store');
+        Route::put('/sites/on-demand/{onDemandContact}', [OnDemandContactController::class, 'update'])
+            ->name('sites.on-demand.update');
+        Route::delete('/sites/on-demand/{onDemandContact}', [OnDemandContactController::class, 'destroy'])
+            ->name('sites.on-demand.destroy');
 
         Route::post('/sites/{id}/verify', [AdminSiteController::class, 'verify'])
             ->name('sites.verify');
@@ -600,6 +1497,9 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
 
         Route::get('/site-ratings', [SiteRatingController::class, 'index'])
             ->name('site-ratings.index');
+        Route::get('/site-ratings/sites-search', [SiteRatingController::class, 'searchSites'])
+            ->middleware('throttle:30,1')
+            ->name('site-ratings.sites-search');
         Route::post('/site-ratings', [SiteRatingController::class, 'store'])
             ->name('site-ratings.store');
         Route::put('/site-ratings/{id}', [SiteRatingController::class, 'update'])
@@ -625,6 +1525,54 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
         Route::get('/activity-logs/export', [AdminActivityLogController::class, 'export'])
             ->name('activity-logs.export');
 
+        Route::get('/link-guarantees', [AdminLinkGuaranteeController::class, 'index'])
+            ->name('link-guarantees.index');
+        Route::get('/writing-queue', [AdminWritingQueueController::class, 'index'])
+            ->name('writing-queue.index');
+        Route::post('/writing-queue/turnaround', [AdminWritingQueueController::class, 'updateTurnaround'])
+            ->name('writing-queue.turnaround');
+        Route::get('/writing-queue/{orderItem}', [AdminWritingQueueController::class, 'show'])
+            ->name('writing-queue.show');
+        Route::post('/writing-queue/{orderItem}/assign', [AdminWritingQueueController::class, 'assign'])
+            ->name('writing-queue.assign');
+        Route::post('/writing-queue/{orderItem}/upload', [AdminWritingQueueController::class, 'upload'])
+            ->name('writing-queue.upload');
+        Route::get('/writing-queue/{orderItem}/download', [AdminWritingQueueController::class, 'download'])
+            ->name('writing-queue.download');
+        Route::get('/managed-orders', [AdminManagedOrderController::class, 'index'])
+            ->name('managed-orders.index');
+        Route::get('/managed-orders/create', [AdminManagedOrderController::class, 'create'])
+            ->name('managed-orders.create');
+        Route::get('/managed-orders/advertisers-search', [AdminManagedOrderController::class, 'searchAdvertisers'])
+            ->middleware('throttle:60,1')
+            ->name('managed-orders.advertisers-search');
+        Route::get('/managed-orders/sites-search', [AdminManagedOrderController::class, 'searchSites'])
+            ->middleware('throttle:60,1')
+            ->name('managed-orders.sites-search');
+        Route::get('/managed-orders/library-search', [AdminManagedOrderController::class, 'searchLibrary'])
+            ->middleware('throttle:60,1')
+            ->name('managed-orders.library-search');
+        Route::post('/managed-orders/quote', [AdminManagedOrderController::class, 'quote'])
+            ->middleware('throttle:60,1')
+            ->name('managed-orders.quote');
+        Route::post('/managed-orders/confirm', [AdminManagedOrderController::class, 'confirm'])
+            ->middleware('throttle:30,1')
+            ->name('managed-orders.confirm');
+        Route::post('/managed-orders', [AdminManagedOrderController::class, 'store'])
+            ->middleware('throttle:20,1')
+            ->name('managed-orders.store');
+        Route::get('/managed-orders/{orderItem}', [AdminManagedOrderController::class, 'show'])
+            ->name('managed-orders.show');
+        Route::post('/orders/{order}/managed', [AdminManagedOrderController::class, 'mark'])
+            ->middleware('throttle:30,1')
+            ->name('managed-orders.mark');
+        Route::post('/managed-orders/{orderItem}', [AdminManagedOrderController::class, 'update'])
+            ->name('managed-orders.update');
+        Route::post('/managed-orders/{orderItem}/live-url', [AdminManagedOrderController::class, 'attachLiveUrl'])
+            ->name('managed-orders.live-url');
+        Route::post('/managed-orders/{orderItem}/complete', [AdminManagedOrderController::class, 'complete'])
+            ->middleware('throttle:30,1')
+            ->name('managed-orders.complete');
         Route::get('/catalog-activity', [AdminCatalogActivityController::class, 'index'])
             ->name('catalog-activity');
         Route::get('/catalog-activity/{user}', [AdminCatalogActivityController::class, 'show'])
@@ -648,6 +1596,8 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
             ->name('dashboard.action-queue');
         Route::get('/dashboard/finance', [AdminDashboardController::class, 'getFinanceStrip'])
             ->name('dashboard.finance');
+        Route::get('/dashboard/health', [AdminDashboardController::class, 'getMarketplaceHealth'])
+            ->name('dashboard.health');
         Route::get('/dashboard/queue-counts', [AdminDashboardController::class, 'getQueueCounts'])
             ->name('dashboard.queue-counts');
 
@@ -656,22 +1606,83 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
         Route::post('/orders/items/{orderItem}/remind-publisher', [AdminStalledOrderController::class, 'remindPublisher'])
             ->name('orders.remind-publisher');
 
+        Route::get('/publishers/onboard', [AdminPublisherOnboardingController::class, 'create'])
+            ->name('publishers.onboard');
+        Route::post('/publishers/onboard', [AdminPublisherOnboardingController::class, 'store'])
+            ->name('publishers.onboard.store');
+        Route::get('/publishers/onboard/bulk', [AdminPublisherOnboardingController::class, 'createBulk'])
+            ->name('publishers.onboard.bulk');
+        Route::post('/publishers/onboard/bulk/preview', [AdminPublisherOnboardingController::class, 'previewBulk'])
+            ->name('publishers.onboard.bulk.preview');
+        Route::post('/publishers/onboard/bulk', [AdminPublisherOnboardingController::class, 'storeBulk'])
+            ->name('publishers.onboard.bulk.store');
+        Route::get('/publishers/onboardings', [AdminPublisherOnboardingController::class, 'index'])
+            ->name('publishers.onboardings');
+        Route::post('/users/{user}/resend-onboard', [AdminPublisherOnboardingController::class, 'resend'])
+            ->name('publishers.resend');
+
+        Route::get('/partners', [AdminPartnerController::class, 'index'])->name('partners.index');
+        Route::post('/partners', [AdminPartnerController::class, 'store'])->name('partners.store');
+        Route::get('/partners/catalog', [AdminPartnerCatalogController::class, 'index'])->name('partners.catalog');
+        Route::post('/partners/catalog/bulk', [AdminPartnerCatalogController::class, 'bulk'])->name('partners.catalog.bulk');
+        Route::get('/partners/catalog/export', [AdminPartnerCatalogController::class, 'export'])->name('partners.catalog.export');
+        Route::get('/partners/imports', [AdminPartnerImportController::class, 'index'])->name('partners.imports');
+        Route::post('/partners/imports', [AdminPartnerImportController::class, 'store'])->name('partners.imports.store');
+        Route::get('/partners/imports/template', [AdminPartnerImportController::class, 'template'])->name('partners.imports.template');
+        Route::get('/partners/imports/{import}', [AdminPartnerImportController::class, 'show'])->name('partners.imports.show');
+        Route::post('/partners/imports/{import}/confirm-drop', [AdminPartnerImportController::class, 'confirmDrop'])->name('partners.imports.confirm-drop');
+        Route::get('/partners/pricing-rules', [AdminPartnerPricingRuleController::class, 'index'])->name('partners.pricing-rules.index');
+        Route::post('/partners/pricing-rules', [AdminPartnerPricingRuleController::class, 'store'])->name('partners.pricing-rules.store');
+        Route::post('/partners/pricing-rules/{pricing_rule}', [AdminPartnerPricingRuleController::class, 'update'])->name('partners.pricing-rules.update');
+        Route::get('/partners/pricing-rules/preview', [AdminPartnerPricingRuleController::class, 'preview'])->name('partners.pricing-rules.preview');
+        Route::get('/partners/auto-approve-rules', [AdminPartnerAutoApproveRuleController::class, 'index'])->name('partners.auto-approve-rules.index');
+        Route::post('/partners/auto-approve-rules', [AdminPartnerAutoApproveRuleController::class, 'store'])->name('partners.auto-approve-rules.store');
+        Route::post('/partners/auto-approve-rules/{auto_approve_rule}', [AdminPartnerAutoApproveRuleController::class, 'update'])->name('partners.auto-approve-rules.update');
+        Route::post('/partners/auto-approve-rules/{auto_approve_rule}/dry-run', [AdminPartnerAutoApproveRuleController::class, 'dryRun'])->name('partners.auto-approve-rules.dry-run');
+        Route::get('/partners/rate-changes', [AdminPartnerRateChangeController::class, 'index'])->name('partners.rate-changes.index');
+        Route::post('/partners/rate-changes/{rate_change}/approve', [AdminPartnerRateChangeController::class, 'approve'])->name('partners.rate-changes.approve');
+        Route::post('/partners/rate-changes/{rate_change}/decline', [AdminPartnerRateChangeController::class, 'decline'])->name('partners.rate-changes.decline');
+        Route::get('/partners/relay', [AdminPartnerRelayController::class, 'index'])->name('partners.relay');
+        Route::get('/partners/relay/{item}', [AdminPartnerRelayController::class, 'show'])->name('partners.relay.show');
+        Route::post('/partners/relay/{item}/note', [AdminPartnerRelayController::class, 'postNote'])->name('partners.relay.note');
+        Route::get('/partners/relay/{item}/attachments/{attachment}', [AdminPartnerRelayController::class, 'download'])->name('partners.relay.attachment');
+        Route::post('/partners/corrections/{correction}/relay', [AdminPartnerRelayController::class, 'relayCorrection'])->name('partners.relay.correction');
+        Route::post('/partners/messages/{message}/release', [AdminPartnerRelayController::class, 'releaseMessage'])->name('partners.messages.release');
+        Route::post('/partners/messages/{message}/hide', [AdminPartnerRelayController::class, 'hideMessage'])->name('partners.messages.hide');
+        Route::post('/partners/disputes/{dispute}/resolve', [AdminPartnerRelayController::class, 'resolveDispute'])->name('partners.disputes.resolve');
+        Route::get('/partners/payouts', [AdminPartnerPayoutController::class, 'index'])->name('partners.payouts');
+        Route::post('/partners/{partner}/payout-mode', [AdminPartnerPayoutController::class, 'switchMode'])->name('partners.payout-mode');
+        Route::post('/partners/{partner}/api-keys', [AdminPartnerPayoutController::class, 'issueKey'])->name('partners.api-keys');
+        Route::post('/partners/{partner}/api-keys/{key}/revoke', [AdminPartnerPayoutController::class, 'revokeKey'])->name('partners.api-keys.revoke');
+        Route::post('/partners/{partner}/pull', [AdminPartnerPayoutController::class, 'savePullConnection'])->name('partners.pull');
+        Route::get('/partners/{partner}', [AdminPartnerController::class, 'show'])->name('partners.show');
+        Route::post('/partners/{partner}', [AdminPartnerController::class, 'update'])->name('partners.update');
+        Route::post('/partners/{partner}/sync-feed', [AdminPartnerImportController::class, 'syncFeed'])->name('partners.sync-feed');
+
         Route::get('/users', [UserController::class, 'index'])
             ->name('users.index');
+        Route::get('/users/export', [UserController::class, 'export'])
+            ->name('users.export');
         Route::get('/users/{user}', [UserController::class, 'show'])
             ->name('users.show');
         Route::post('/users/{user}/suspend', [UserController::class, 'suspend'])
             ->name('users.suspend');
         Route::post('/users/{user}/unsuspend', [UserController::class, 'unsuspend'])
             ->name('users.unsuspend');
+        Route::post('/users/{user}/test-flag', [UserController::class, 'updateTestFlag'])
+            ->name('users.test-flag');
         Route::post('/users/{user}/notes', [UserController::class, 'storeNote'])
             ->name('users.notes.store');
         Route::post('/users/{user}/verify-email', [UserController::class, 'verifyEmail'])
             ->name('users.verify-email');
         Route::post('/users/{user}/resend-verification', [UserController::class, 'resendVerification'])
             ->name('users.resend-verification');
+        Route::post('/users/{user}/send-password-reset', [UserController::class, 'sendPasswordReset'])
+            ->name('users.send-password-reset');
         Route::post('/users/{id}/update-company', [UserController::class, 'updateCompany'])
             ->name('users.updateCompany');
+        Route::post('/users/{id}/display-currency', [UserController::class, 'updateDisplayCurrency'])
+            ->name('users.updateDisplayCurrency');
         Route::post('/users/{id}/payout-profile', [UserController::class, 'updatePayoutProfile'])
             ->name('users.updatePayoutProfile');
         Route::post('/users/{id}/roles', [UserController::class, 'updateRoles'])
@@ -680,10 +1691,12 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
         Route::get('/payments', [AdminPaymentController::class, 'index'])->name('payments');
         Route::get('/payments/data', [AdminPaymentController::class, 'getPaymentsData'])->name('payments.data');
         Route::get('/payments/export', [AdminPaymentController::class, 'export'])->name('payments.export');
+        Route::post('/payments/batch-paid', [AdminPaymentController::class, 'batchMarkPaid'])->name('payments.batch-paid');
         Route::get('/payments/{id}', [AdminPaymentController::class, 'show'])->name('payments.show');
         Route::post('/payments/{id}/update-status', [AdminPaymentController::class, 'updatePaymentStatus'])->name('payments.updateStatus');
 
         Route::get('/invoices', [AdminInvoiceController::class, 'index'])->name('invoices.index');
+        Route::get('/invoices/export', [AdminInvoiceController::class, 'export'])->name('invoices.export');
         Route::post('/invoices/generate', [AdminInvoiceController::class, 'generate'])->name('invoices.generate');
         Route::post('/invoices/backfill-missing', [AdminInvoiceController::class, 'backfillMissing'])->name('invoices.backfill-missing');
         Route::post('/invoices/regenerate-missing-pdfs', [AdminInvoiceController::class, 'regenerateMissingPdfs'])->name('invoices.regenerate-missing-pdfs');
@@ -702,7 +1715,9 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
         Route::post('/finance/wallets/{wallet}/clear-debt', [AdminFinanceController::class, 'clearDebt'])->name('finance.wallets.clear-debt');
 
         Route::get('/deposits', [AdminDepositController::class, 'index'])->name('deposits');
+        Route::get('/deposits/export', [AdminDepositController::class, 'export'])->name('deposits.export');
         Route::get('/deposits/{id}', [AdminDepositController::class, 'show'])->name('deposits.show');
+        Route::post('/deposits/bulk-approve', [AdminDepositController::class, 'bulkApprove'])->name('deposits.bulk-approve');
         Route::post('/deposits/{id}/approve', [AdminDepositController::class, 'approve'])->name('deposits.approve');
         Route::post('/deposits/{id}/reject', [AdminDepositController::class, 'reject'])->name('deposits.reject');
         Route::post('/deposits/{id}/paypal-refund', [AdminDepositController::class, 'refundPaypal'])->name('deposits.paypal-refund');
@@ -716,6 +1731,9 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
             ->whereNumber('deposit');
 
         Route::get('/withdrawals', [AdminWithdrawalController::class, 'index'])->name('withdrawals');
+        Route::get('/withdrawals/history', function () {
+            return redirect()->route('admin.withdrawals', ['queue' => 'history']);
+        })->name('withdrawals.history');
         Route::get('/withdrawals/data', [AdminWithdrawalController::class, 'getWithdrawalsData'])->name('withdrawals.data');
         Route::get('/withdrawals/statistics', [AdminWithdrawalController::class, 'getStatistics'])->name('withdrawals.statistics');
         Route::get('/withdrawals/export', [AdminWithdrawalController::class, 'exportCsv'])->name('withdrawals.export');
@@ -740,6 +1758,7 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
         Route::delete('blogs/content-image', [AdminBlogController::class, 'deleteContentImage'])->name('blogs.delete-content-image');
         Route::resource('blogs', AdminBlogController::class);
         Route::post('blogs/{id}/toggle-status', [AdminBlogController::class, 'toggleStatus'])->name('blogs.toggle-status');
+        Route::get('blogs/{id}/preview', [AdminBlogController::class, 'preview'])->name('blogs.preview');
 
         Route::get('/emails', [AdminEmailCenterController::class, 'index'])->name('emails.index');
         Route::get('/emails/preview/{key}', [AdminEmailCenterController::class, 'preview'])->name('emails.preview');
@@ -748,17 +1767,39 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
             ->middleware('throttle:5,1')
             ->name('emails.test');
         Route::post('/emails/retry', [AdminEmailCenterController::class, 'retryFailed'])->name('emails.retry');
+        Route::post('/emails/dismiss', [AdminEmailCenterController::class, 'dismissFailed'])->name('emails.dismiss');
         Route::post('/emails/settings', [AdminEmailCenterController::class, 'updateSettings'])->name('emails.settings');
+
+        Route::get('/weekly-new-sites', [AdminWeeklyNewSitesDigestController::class, 'index'])->name('weekly-new-sites.index');
+        Route::post('/weekly-new-sites/toggle', [AdminWeeklyNewSitesDigestController::class, 'toggle'])
+            ->name('weekly-new-sites.toggle');
+        Route::post('/weekly-new-sites/dry-run', [AdminWeeklyNewSitesDigestController::class, 'dryRun'])
+            ->name('weekly-new-sites.dry-run');
+        Route::get('/weekly-new-sites/preview', [AdminWeeklyNewSitesDigestController::class, 'preview'])
+            ->name('weekly-new-sites.preview');
 
         Route::post('/promotions/welcome-bonus', [AdminWelcomeBonusSettingController::class, 'toggle'])
             ->name('promotions.welcome-bonus.toggle');
         Route::post('/promotions/welcome-bonus/amount', [AdminWelcomeBonusSettingController::class, 'updateAmount'])
             ->name('promotions.welcome-bonus.amount');
+        Route::post('/promotions/feature-offers', [AdminPromotionController::class, 'updateFeatureOffers'])
+            ->name('promotions.feature-offers.update');
+        Route::get('/promotions/feature-credit-users', [AdminPromotionController::class, 'searchFeatureCreditUsers'])
+            ->middleware('throttle:30,1')
+            ->name('promotions.feature-credits.users');
+        Route::get('/promotions/feature-credit-sites', [AdminPromotionController::class, 'featureCreditSites'])
+            ->name('promotions.feature-credits.sites');
+        Route::post('/promotions/feature-credits', [AdminPromotionController::class, 'grantFeatureCredit'])
+            ->name('promotions.feature-credits.store');
 
         Route::get('/audiences', [AdminAudienceController::class, 'index'])->name('audiences.index');
         Route::get('/audiences/export', [AdminAudienceController::class, 'export'])
             ->middleware('throttle:12,1')
             ->name('audiences.export');
+        Route::get('/abandoned-carts', [AdminAbandonedCartController::class, 'index'])->name('abandoned-carts.index');
+        Route::post('/abandoned-carts/toggle', [AdminAbandonedCartController::class, 'toggle'])
+            ->name('abandoned-carts.toggle');
+
         Route::get('/campaigns', [AdminCampaignController::class, 'index'])->name('campaigns.index');
         Route::match(['get', 'post'], '/campaigns/recipient-count', [AdminCampaignController::class, 'recipientCount'])
             ->middleware('throttle:30,1')
@@ -766,18 +1807,45 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
         Route::post('/campaigns/preview', [AdminCampaignController::class, 'preview'])
             ->middleware('throttle:20,1')
             ->name('campaigns.preview');
+        Route::post('/campaigns/from-template', [AdminCampaignController::class, 'fromTemplate'])
+            ->middleware('throttle:20,1')
+            ->name('campaigns.from-template');
         Route::post('/campaigns/send', [AdminCampaignController::class, 'send'])
             ->middleware('throttle:6,1')
             ->name('campaigns.send');
+        Route::post('/campaigns/draft', [AdminCampaignController::class, 'storeDraft'])
+            ->middleware('throttle:12,1')
+            ->name('campaigns.draft');
+        Route::post('/campaigns/test', [AdminCampaignController::class, 'sendTest'])
+            ->middleware('throttle:6,1')
+            ->name('campaigns.test');
+        Route::get('/campaigns/{campaign}/letter', [AdminCampaignController::class, 'letter'])
+            ->whereNumber('campaign')
+            ->name('campaigns.letter');
+        Route::post('/campaigns/{campaign}/clone', [AdminCampaignController::class, 'clone'])
+            ->whereNumber('campaign')
+            ->middleware('throttle:12,1')
+            ->name('campaigns.clone');
         Route::get('/campaigns/{campaign}', [AdminCampaignController::class, 'show'])
             ->whereNumber('campaign')
             ->name('campaigns.show');
 
         Route::get('/moderation', [AdminContentModerationController::class, 'index'])->name('moderation.index');
         Route::post('/moderation/settings', [AdminContentModerationController::class, 'updateSettings'])->name('moderation.settings');
+        Route::post('/moderation/upload-settings', [AdminContentModerationController::class, 'updateUploadSettings'])
+            ->name('moderation.upload-settings');
+        Route::post('/moderation/test-scan', [AdminContentModerationController::class, 'testScan'])
+            ->middleware('throttle:20,1')
+            ->name('moderation.test-scan');
+        Route::post('/moderation/scan-all', [AdminContentModerationController::class, 'scanAll'])
+            ->middleware('throttle:5,1')
+            ->name('moderation.scan-all');
         Route::get('/moderation/logs/{log}', [AdminContentModerationController::class, 'show'])->name('moderation.show');
         Route::post('/moderation/logs/{log}/override', [AdminContentModerationController::class, 'override'])->name('moderation.override');
         Route::post('/moderation/logs/{log}/revert', [AdminContentModerationController::class, 'revert'])->name('moderation.revert');
+        Route::post('/moderation/logs/{log}/rescan', [AdminContentModerationController::class, 'rescan'])
+            ->middleware('throttle:20,1')
+            ->name('moderation.rescan');
 
         Route::get('/content-library', [AdminContentLibraryController::class, 'index'])->name('content-library.index');
         Route::get('/content-library/results', [AdminContentLibraryController::class, 'results'])->name('content-library.results');
@@ -785,9 +1853,15 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
         Route::post('/content-library/bulk-retry', [AdminContentLibraryController::class, 'bulkRetry'])
             ->middleware('throttle:10,1')
             ->name('content-library.bulk-retry');
+        Route::post('/content-library/rescore-needs-fix', [AdminContentLibraryController::class, 'rescoreNeedsFix'])
+            ->middleware('throttle:10,1')
+            ->name('content-library.rescore-needs-fix');
         Route::post('/content-library/bulk-archive', [AdminContentLibraryController::class, 'bulkArchive'])
             ->middleware('throttle:10,1')
             ->name('content-library.bulk-archive');
+        Route::post('/content-library/bulk-restore', [AdminContentLibraryController::class, 'bulkRestore'])
+            ->middleware('throttle:10,1')
+            ->name('content-library.bulk-restore');
         Route::get('/content-library/{submission}', [AdminContentLibraryController::class, 'show'])->name('content-library.show');
         Route::get('/content-library/{submission}/download', [AdminContentLibraryController::class, 'download'])->name('content-library.download');
         Route::post('/content-library/{submission}/retry', [AdminContentLibraryController::class, 'retry'])
@@ -805,22 +1879,42 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
 
         Route::get('/orders', [AdminOrderController::class, 'index'])->name('orders.index');
         Route::get('/orders/data', [AdminOrderController::class, 'data'])->name('orders.data');
+        Route::get('/orders/export', [AdminOrderController::class, 'export'])->name('orders.export');
         Route::get('/orders/items/{orderItem}/content', [AdminOrderController::class, 'downloadContent'])
             ->name('orders.content.download');
+        Route::post('/packs/{pack}/cancel-rest', [AdminOrderController::class, 'cancelPackRest'])
+            ->middleware('throttle:20,1')
+            ->name('packs.cancel-rest');
         Route::get('/orders/{id}', [AdminOrderController::class, 'show'])->name('orders.show');
         Route::post('/orders/{id}/status', [AdminOrderController::class, 'updateStatus'])->name('orders.status');
         Route::post('/orders/{id}/disputes', [AdminOrderDisputeController::class, 'open'])->name('orders.disputes.open');
         Route::post('/order-disputes/{id}/uphold', [AdminOrderDisputeController::class, 'uphold'])->name('orders.disputes.uphold');
         Route::post('/order-disputes/{id}/dismiss', [AdminOrderDisputeController::class, 'dismiss'])->name('orders.disputes.dismiss');
+
+        // Unmatched /admin/* must run auth so signed-in admins see the admin 404,
+        // not the public page that only offers Log in.
+        Route::any('{adminFallback}', function () {
+            abort(404);
+        })->where('adminFallback', '.*')->name('fallback');
     });
 
-// Public + authenticated feedback (report a problem / suggestion box)
+// Public + authenticated feedback (report a problem / suggestion box).
+// GET is listed in the page source (fetch URL); crawlers and refreshes must
+// not 405 or bounce to home (that was a 2-hop soft-404). The widget still POSTs JSON.
+Route::get('/feedback/problem', [FeedbackController::class, 'showEndpoint'])
+    ->name('feedback.problem.redirect');
+Route::get('/feedback/suggestion', [FeedbackController::class, 'showEndpoint'])
+    ->name('feedback.suggestion.redirect');
 Route::middleware('throttle:10,1')->group(function () {
     Route::post('/feedback/problem', [FeedbackController::class, 'storeProblem'])
         ->name('feedback.problem');
     Route::post('/feedback/suggestion', [FeedbackController::class, 'storeSuggestion'])
         ->name('feedback.suggestion');
 });
+
+Route::post('/display-currency', [CurrencySwitchController::class, 'store'])
+    ->middleware('throttle:30,1')
+    ->name('display-currency');
 
 // ✅ Common routes for all authenticated users
 Route::middleware(['auth', 'verified'])->group(function () {
@@ -885,6 +1979,26 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
 
         Route::get('/dashboard', [AdvertiserDashboardController::class, 'index'])->name('dashboard');
 
+        Route::get('/new-site-digest', [WeeklyNewSitesPreferenceController::class, 'edit'])->name('weekly-new-sites.edit');
+        Route::post('/new-site-digest', [WeeklyNewSitesPreferenceController::class, 'update'])->name('weekly-new-sites.update');
+
+        Route::get('/api', [ApiSettingsController::class, 'index'])->name('api.index');
+        Route::post('/api/tokens', [ApiSettingsController::class, 'store'])
+            ->middleware('throttle:10,1')
+            ->name('api.store');
+        Route::delete('/api/tokens/{token}', [ApiSettingsController::class, 'destroy'])
+            ->middleware('throttle:20,1')
+            ->name('api.destroy');
+        Route::post('/api/webhooks', [ApiSettingsController::class, 'storeWebhook'])
+            ->middleware('throttle:10,1')
+            ->name('api.webhooks.store');
+        Route::delete('/api/webhooks/{webhook}', [ApiSettingsController::class, 'destroyWebhook'])
+            ->middleware('throttle:20,1')
+            ->name('api.webhooks.destroy');
+        Route::post('/api/webhooks/{webhook}/test', [ApiSettingsController::class, 'testWebhook'])
+            ->middleware('throttle:10,1')
+            ->name('api.webhooks.test');
+
         // Spending history chart
         Route::get('/analytics', [AnalyticsController::class, 'index'])->name('analytics');
         Route::get('/analytics/export.csv', [AnalyticsController::class, 'exportCsv'])->name('analytics.export-csv');
@@ -934,43 +2048,55 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
 
         // Typeahead for the main search box — JSON only, never a full page.
         Route::get('/catalog/suggest', [CatalogListingController::class, 'suggest'])
-            ->middleware('throttle:60,1')
+            ->middleware('throttle:60,1,catalog-suggest')
             ->name('catalog.suggest');
 
         // Live search / filter results fragment (HTML partial, same query as index).
         Route::get('/catalog/results', [CatalogListingController::class, 'results'])
-            ->middleware('throttle:60,1')
+            ->middleware('throttle:60,1,catalog-results')
             ->name('catalog.results');
 
         // Bulk deals rail fragment — follows country= like the listing (Option 1).
         Route::get('/catalog/bulk-deals', [CatalogListingController::class, 'bulkDeals'])
-            ->middleware('throttle:60,1')
+            ->middleware('throttle:60,1,catalog-bulk-deals')
             ->name('catalog.bulk-deals');
+
+        Route::get('/catalog/export', [CatalogExportController::class, 'export'])
+            ->middleware('throttle:10,1,catalog-export')
+            ->name('catalog.export');
 
         // One publisher domain per request. Throttled on top of the daily
         // allowance so a script cannot burn a funded account's unlimited quota
         // faster than a person could click.
+        Route::get('/catalog/sites/{site}/favicon', CatalogFaviconController::class)
+            ->middleware('throttle:180,1,catalog-favicon')
+            ->whereNumber('site')
+            ->name('catalog.favicon');
+
         Route::post('/catalog/sites/{site}/reveal-url', SiteUrlRevealController::class)
-            ->middleware('throttle:120,1')
+            ->middleware('throttle:120,1,catalog-reveal-url')
             ->name('catalog.reveal-url');
 
         // Hide sticks across reloads; the disclosure row is kept for audit/pace.
         Route::post('/catalog/sites/{site}/hide-url', SiteUrlConcealController::class)
-            ->middleware('throttle:120,1')
+            ->middleware('throttle:120,1,catalog-hide-url')
             ->name('catalog.hide-url');
 
         // Clipboard copies of URL/domain identity → strike ladder (warn → 24h hide).
         Route::post('/catalog/copy-track', CatalogCopyTrackController::class)
-            ->middleware('throttle:180,1')
+            ->middleware('throttle:180,1,catalog-copy-track')
             ->name('catalog.copy-track');
 
         // Opening a site goes through us so the listing can offer "Open site"
         // without the domain ever appearing in the page.
         Route::get('/go/{site}', SiteVisitController::class)
-            ->middleware('throttle:120,1')
+            ->middleware('throttle:120,1,catalog-visit')
             ->name('catalog.visit');
 
         // Suggest a website missing from the catalog
+        Route::get('/website-suggestions/check', [WebsiteSuggestionController::class, 'check'])
+            ->middleware('throttle:30,1')
+            ->name('website-suggestions.check');
         Route::post('/website-suggestions', [WebsiteSuggestionController::class, 'store'])
             ->middleware('throttle:10,1')
             ->name('website-suggestions.store');
@@ -980,13 +2106,32 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
             ->middleware('throttle:10,1')
             ->name('sites.claim');
 
+        Route::get('/site-claims', [SiteClaimController::class, 'index'])
+            ->name('site-claims');
+
         // Favorites
         Route::post('/favorites/save', [CatalogController::class, 'saveFavorites'])->name('favorites.save');
 
         // Blacklist
         Route::post('/blacklist/save', [CatalogController::class, 'saveBlacklist'])->name('blacklist.save');
 
+        Route::post('/catalog/sites/{site}/note', [CatalogController::class, 'saveSiteNote'])
+            ->name('catalog.site-note');
+        Route::post('/catalog/sites/{site}/report', [CatalogController::class, 'reportSite'])
+            ->middleware('throttle:catalog-site-report')
+            ->name('catalog.site-report');
+        Route::delete('/catalog/sites/{site}/report', [CatalogController::class, 'deleteSiteReport'])
+            ->middleware('throttle:catalog-site-report')
+            ->name('catalog.site-report.delete');
+
         // Dedicated Saved Sites manager (favorites + blacklist)
+        Route::get('/saved-searches', [SavedSearchController::class, 'index'])->name('saved-searches');
+        Route::post('/saved-searches', [SavedSearchController::class, 'store'])
+            ->middleware('throttle:20,1')
+            ->name('saved-searches.store');
+        Route::delete('/saved-searches/{savedSearch}', [SavedSearchController::class, 'destroy'])
+            ->name('saved-searches.destroy');
+
         Route::get('/saved-sites', [SavedSitesController::class, 'index'])->name('saved-sites');
         Route::post('/saved-sites/favorites/remove', [SavedSitesController::class, 'removeFavorite'])
             ->name('saved-sites.favorites.remove');
@@ -1012,8 +2157,13 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
         Route::post('/cart/add', [CatalogController::class, 'addToCart'])->name('cart.add');
         Route::post('/cart/assign-article', [CatalogController::class, 'assignCartArticle'])
             ->name('cart.assign-article');
+        Route::post('/cart/upload-article', [CatalogController::class, 'uploadCartArticle'])
+            ->middleware('throttle:30,1')
+            ->name('cart.upload-article');
         Route::post('/cart/remove', [CatalogController::class, 'removeFromCart'])->name('cart.remove');
         Route::post('/cart/update', [CatalogController::class, 'updateCartQuantity'])->name('cart.update');
+        Route::post('/cart/configure', [CatalogController::class, 'configureCartLine'])->name('cart.configure');
+        Route::post('/cart/write-all', [CatalogController::class, 'writeAllUnreadyCartLines'])->name('cart.write-all');
         Route::post('/cart/clear', [CatalogController::class, 'clearCart'])->name('cart.clear');
 
         // Checkout routes
@@ -1111,8 +2261,63 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
         Route::get('/orders/statistics', [CatalogController::class, 'getOrderStatistics'])->name('orders.statistics');
         Route::get('/orders/{id}', [CatalogController::class, 'getOrder'])->name('orders.get');
 
+        // Article packs (Buy 3–10 on one site)
+        Route::get('/packs/{pack}', [OrderPackController::class, 'show'])->name('packs.show');
+        Route::post('/packs/{pack}/cancel-rest', [OrderPackController::class, 'cancelRest'])
+            ->middleware('throttle:20,1')
+            ->name('packs.cancel-rest');
+        Route::get('/packs/{pack}/receipt', [OrderPackController::class, 'receipt'])->name('packs.receipt');
+
+        // Local/demo helper: seed a bulk pack cart line with a stale quoted price
+        // so checkout shows the pack price-change notice (screenshots / manual QA).
+        if (app()->environment(['local', 'testing'])) {
+            Route::get('/dev/seed-pack-price-change', function () {
+                $site = Site::query()
+                    ->where('domain', 'pack-demo.example')
+                    ->orWhere('bulk_discount_enabled', 1)
+                    ->orderByDesc('id')
+                    ->first();
+                if (! $site) {
+                    return redirect()->route('advertiser.catalog')
+                        ->with('error', 'No bulk-discount site available to seed.');
+                }
+                $svc = app(OrderPackService::class);
+                $line = [
+                    'id' => $site->id,
+                    'name' => $site->site_name,
+                    'url' => $site->site_url,
+                    'quantity' => 5,
+                    'bulk_pack' => true,
+                    'price' => 80.0,
+                    'list_total' => 100.0,
+                    'discount_percent' => 20,
+                    'quoted_unit_price' => 90.0,
+                    'quoted_list_total' => 100.0,
+                    'quoted_discount_percent' => 10,
+                    'quoted_pack_total' => 450.0,
+                    'quoted_at' => now()->subHour()->toIso8601String(),
+                    'sensitive_type' => null,
+                    'content_source' => 'buyer',
+                    'language' => $site->language,
+                    'languages' => $site->languageCodes(),
+                    'country' => $site->country,
+                    'countries' => $site->countryCodes(),
+                ];
+                $line = $svc->stampQuotedPrice($line);
+                session(['cart' => [$line]]);
+
+                return redirect()->route('advertiser.checkout');
+            })->name('dev.seed-pack-price-change');
+        }
+
         // Order actions
         Route::post('/orders/{id}/approve', [CatalogController::class, 'approveOrder'])->name('orders.approve');
+        Route::post('/order-items/{orderItem}/approve-article', [AdvertiserArticleApprovalController::class, 'approve'])
+            ->name('articles.approve');
+        Route::post('/order-items/{orderItem}/revise-article', [AdvertiserArticleApprovalController::class, 'revise'])
+            ->name('articles.revise');
+        Route::get('/order-items/{orderItem}/article', [AdvertiserArticleApprovalController::class, 'download'])
+            ->name('articles.download');
         Route::post('/orders/{id}/request-modification', [CatalogController::class, 'requestModification'])->name('order.modification');
         Route::post('/orders/{id}/fulfill-content-revision', [CatalogController::class, 'fulfillContentRevision'])
             ->middleware('throttle:20,1')
@@ -1129,6 +2334,9 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
         Route::post('/add-funds', [AddFundsController::class, 'store'])
             ->middleware('throttle:10,1')
             ->name('add-funds.store');
+        Route::post('/add-funds/pay-from', [AddFundsController::class, 'rememberPayFrom'])
+            ->middleware('throttle:60,1')
+            ->name('add-funds.pay-from');
         Route::get('/add-funds/wise-qr', [AddFundsController::class, 'wiseQr'])
             ->middleware('throttle:60,1')
             ->name('add-funds.wise-qr');
@@ -1170,11 +2378,16 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
         Route::get('/reports/statistics', [ReportsController::class, 'getStatistics'])->name('reports.statistics');
         Route::get('/reports/funds', [ReportsController::class, 'getFundsActivity'])->name('reports.funds');
         Route::get('/reports/orders', [ReportsController::class, 'getOrderReport'])->name('reports.orders');
+        Route::get('/reports/export', [ReportsController::class, 'export'])->name('reports.export');
 
         // Route::get('/reports/funds-data', [ReportsController::class, 'getFundsActivity'])->name('reports.funds');
         // Route::get('/reports/orders-data', [ReportsController::class, 'getOrderReport'])->name('reports.orders');
 
-        // Invoice route
+        // Invoice route. The .pdf URL is what Add Funds downloads, so the
+        // browser saves a PDF instead of the HTML pay page.
+        Route::get('/invoice/{referenceCode}/invoice.pdf', [InvoiceController::class, 'downloadPdf'])
+            ->where('referenceCode', '[A-Za-z0-9_-]+')
+            ->name('invoice.pdf');
         Route::get('/invoice/{referenceCode}', [InvoiceController::class, 'showInvoice'])->name('invoice');
 
         // Billing & Invoices (automated PDF invoices / receipts)
@@ -1208,6 +2421,9 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':publisher'])
             ->middleware('throttle:10,1')
             ->name('balance.transfer');
         Route::get('/balance/history', [BalanceController::class, 'getTransferHistory'])->name('balance.history');
+        Route::get('/balance/transactions', [BalanceController::class, 'transactions'])->name('balance.transactions');
+
+        Route::get('/settings', [PublisherSettingsController::class, 'index'])->name('settings');
 
         // Dashboard
         Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
@@ -1234,6 +2450,12 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':publisher'])
         Route::get('/sites', [SiteController::class, 'index'])->name('sites.index');
         Route::get('/sites/{id}/edit-data', [SiteController::class, 'editData'])->name('sites.edit-data');
         Route::put('/sites/{id}', [SiteController::class, 'update'])->name('sites.update');
+        Route::post('/sites/{id}/confirm-gbp-listing', [SiteController::class, 'confirmGbpListing'])
+            ->middleware('throttle:30,1')
+            ->name('sites.confirm-gbp-listing');
+        Route::post('/sites/{id}/keep-eur-listing', [SiteController::class, 'keepEurListing'])
+            ->middleware('throttle:30,1')
+            ->name('sites.keep-eur-listing');
         Route::delete('/sites/{id}', [SiteController::class, 'destroy'])->name('sites.destroy');
         Route::post('/sites/{id}/archive', [SiteController::class, 'archive'])->name('sites.archive');
         Route::post('/sites/{id}/unarchive', [SiteController::class, 'unarchive'])->name('sites.unarchive');
@@ -1250,6 +2472,9 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':publisher'])
             ->name('promotions.wallet');
         Route::post('/sites/{id}/feature', [SitePromotionController::class, 'feature'])
             ->name('sites.feature');
+        Route::post('/sites/{id}/feature/credit', [SitePromotionController::class, 'featureCredit'])
+            ->middleware('throttle:20,1')
+            ->name('sites.feature.credit');
         Route::post('/sites/{id}/feature/checkout', [SitePromotionController::class, 'featureCheckout'])
             ->middleware('throttle:10,1')
             ->name('sites.feature.checkout');
@@ -1266,6 +2491,9 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':publisher'])
         Route::post('/sites/claim', [SiteClaimController::class, 'store'])
             ->middleware('throttle:10,1')
             ->name('sites.claim');
+        Route::get('/sites/claim-lookup', [SiteClaimController::class, 'lookup'])
+            ->middleware('throttle:30,1')
+            ->name('sites.claim-lookup');
         Route::post('/sites/{id}/verification/start', [SiteVerificationController::class, 'start'])
             ->middleware('throttle:20,1')
             ->name('sites.verification.start');
@@ -1280,6 +2508,9 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':publisher'])
         Route::get('/orders/statistics', [OrderController::class, 'getStatistics'])->name('orders.statistics');
         Route::get('/orders/{id}/details', [OrderController::class, 'getOrderDetails'])->name('orders.details');
         Route::post('/orders/{id}/accept', [OrderController::class, 'acceptOrder'])->name('orders.accept');
+        Route::post('/orders/packs/{pack}/accept-all', [OrderController::class, 'acceptPack'])
+            ->middleware('throttle:20,1')
+            ->name('orders.packs.accept-all');
         Route::post('/orders/{id}/reject', [OrderController::class, 'rejectOrder'])->name('orders.reject');
         Route::post('/orders/{id}/request-content-revision', [OrderController::class, 'requestContentRevision'])
             ->middleware('throttle:20,1')

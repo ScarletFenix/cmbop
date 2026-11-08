@@ -230,7 +230,7 @@
             <h1>INVOICE #{{ $referenceCode }}</h1>
             <!-- Date -->
             <div style="margin-top: 10px; color: #4b5563;">
-                <span><strong>Date:</strong> {{ \Carbon\Carbon::now()->format('F j, Y') }}</span>
+                <span><strong>Date:</strong> {{ \App\Support\MailNotificationPresenter::formatDateTime(now()) }}</span>
                 @if(!empty($paymentMethod))
                     <span style="margin-left: 16px;"><strong>Payment method:</strong> {{ \App\Models\Invoice::paymentMethodLabel($paymentMethod) }}</span>
                 @endif
@@ -245,33 +245,82 @@
                             $company = function_exists('billing_company_for_documents')
                                 ? billing_company_for_documents()
                                 : config('billing.company', []);
-                            $depositPayment = config('billing.deposit_payment', []);
+                            $depositPayment = \App\Support\DepositPaymentConfig::depositPayment();
                             $invoiceLogo = billing_company_logo_data_uri() ?: asset(ltrim((string) ($company['logo_path'] ?? 'assets/img/email-logo.png'), '/'));
                             $isDepositInvoice = ($invoiceType ?? '') === 'deposit';
                         @endphp
                         <img src="{{ $invoiceLogo }}" alt="{{ $company['name'] ?? 'SEOLinkBuildings' }}" class="company-logo">
                         <div class="company-details">
                             @if($isDepositInvoice)
-                                <p><strong>Seller / Service Provider:</strong> {{ $depositPayment['seller_name'] ?? 'SEOLinkBuildings Partner' }}</p>
-                                <p><strong>Beneficiary:</strong> {{ $depositPayment['beneficiary'] ?? 'Topurlz Ltd' }}</p>
-                                @if(!empty($depositPayment['bic']))
-                                    <p><strong>BIC (SWIFT):</strong> {{ $depositPayment['bic'] }}</p>
-                                @endif
-                                @if(!empty($depositPayment['iban']))
-                                    <p><strong>IBAN:</strong> {{ $depositPayment['iban'] }}</p>
-                                @endif
-                                @if(!empty($depositPayment['phone']))
-                                    <p><strong>Phone no:</strong> {{ $depositPayment['phone'] }}</p>
-                                @endif
-                                @foreach(($depositPayment['address_lines'] ?? []) as $line)
+                                <p><strong>Seller / Service Provider:</strong> {{ $company['issuer_name'] ?? ($company['legal_name'] ?? 'Teqno Ltd trading as SEOLinkBuildings') }}</p>
+                                @foreach(($company['address_lines'] ?? []) as $line)
                                     <p><strong>{{ $loop->first ? 'Address:' : '' }}</strong> {{ $line }}</p>
                                 @endforeach
-                                @if(!empty($depositPayment['registration_no']))
-                                    <p><strong>Registration No:</strong> {{ $depositPayment['registration_no'] }}</p>
+                                @php
+                                    $depositRegistration = $depositPayment['registration_no'] ?? null;
+                                @endphp
+                                @if(!empty($depositRegistration))
+                                    <p><strong>Registration No:</strong> {{ $depositRegistration }}</p>
                                 @endif
-                                <p><strong>VAT:</strong> {{ $depositPayment['vat_note'] ?? 'Not VAT registered – no VAT charged' }}</p>
+                                @if(!empty($company['support_email']))
+                                    <p><strong>Email:</strong> {{ $company['support_email'] }}</p>
+                                @endif
+                                @if(!empty($company['website_url']))
+                                    <p><strong>Website:</strong> {{ $company['website_url'] }}</p>
+                                @endif
+                                <p><strong>VAT:</strong> {{ $company['vat_note'] ?? 'Not VAT registered – no VAT charged' }}</p>
+                                <p><strong>Beneficiary:</strong> {{ $depositPayment['beneficiary_display'] ?? \App\Support\DepositPaymentConfig::beneficiaryDisplayName($depositPayment) }}</p>
+                                @php
+                                    $invoicePaymentReference = $paymentReference
+                                        ?? (isset($deposit) && $deposit ? $deposit->paymentReferenceLabel() : ('REF'.$referenceCode));
+                                @endphp
+                                @if(!empty($invoicePaymentReference))
+                                    <p><strong>Payment reference:</strong> <code>{{ $invoicePaymentReference }}</code></p>
+                                    <p class="text-muted">Put this reference in the payment reference so we can match your transfer.</p>
+                                @endif
+                                @php
+                                    $invoiceBankRail = $bankRail ?? app(\App\Support\DisplayCurrencyPreference::class)->payFrom();
+                                    $invoiceBankRail = $invoiceBankRail === 'gbp' ? 'gbp' : 'eur';
+                                    $invoiceIban = $depositPayment['eur_iban'] ?? \App\Support\DepositPaymentConfig::EUR_IBAN_DEFAULT;
+                                    $invoiceBic = $depositPayment['eur_bic'] ?? \App\Support\DepositPaymentConfig::EUR_BIC_DEFAULT;
+                                @endphp
+                                @if($invoiceBankRail === 'gbp')
+                                    @if(!empty($depositPayment['uk_sort_code']))
+                                        <p><strong>GBP sort code:</strong> {{ $depositPayment['uk_sort_code'] }}</p>
+                                    @endif
+                                    @if(!empty($depositPayment['uk_account_number']))
+                                        <p><strong>GBP account number:</strong> {{ $depositPayment['uk_account_number'] }}
+                                            @if(!empty($depositPayment['uk_transfer_note']))
+                                                <span class="text-muted">({{ $depositPayment['uk_transfer_note'] }})</span>
+                                            @endif
+                                        </p>
+                                    @endif
+                                @else
+                                    @if(!empty($invoiceIban))
+                                        <p><strong>IBAN:</strong> {{ $invoiceIban }}</p>
+                                        <p class="text-muted">{{ $depositPayment['intl_transfer_note'] ?? \App\Support\DepositPaymentConfig::EUR_SEPA_NOTE }}</p>
+                                    @endif
+                                    @if(!empty($invoiceBic))
+                                        <p><strong>{{ \App\Support\DepositPaymentConfig::EUR_BIC_NOTE }}</strong> {{ $invoiceBic }}</p>
+                                    @endif
+                                @endif
+                                @if(!empty($sendLabel))
+                                    <p data-deposit-send-label="1"><strong>{{ $sendLabel }}</strong></p>
+                                @endif
+                                @if(!empty($rateLockNote))
+                                    <p data-deposit-rate-lock="1">{{ $rateLockNote }}</p>
+                                @endif
+                                <p data-currency-guide="1">
+                                    <a href="{{ $currencyGuideUrl ?? \App\Support\DepositPaymentConfig::currencyGuideUrl() }}">{{ $currencyGuideLabel ?? \App\Support\DepositPaymentConfig::currencyGuideLabel() }}</a>
+                                </p>
+                                @include('partials.usd-bank-wire-note', [
+                                    'walletCurrency' => $walletCurrency ?? null,
+                                    'eurAmount' => $amount ?? null,
+                                    'showMethodSwitch' => true,
+                                    'methodSwitchAsLinks' => true,
+                                ])
                             @else
-                                <p><strong>Seller / Service Provider:</strong> {{ $company['legal_name'] ?? $company['name'] ?? 'SEOLinkBuildings' }}</p>
+                                <p><strong>Seller / Service Provider:</strong> {{ $company['issuer_name'] ?? ($company['legal_name'] ?? 'Teqno Ltd trading as SEOLinkBuildings') }}</p>
                                 @foreach(($company['address_lines'] ?? []) as $line)
                                     <p><strong>{{ $loop->first ? 'Address:' : '' }}</strong> {{ $line }}</p>
                                 @endforeach
@@ -331,6 +380,10 @@
                             @if(isset($item['site_url']))
                                 <br><small style="color: #6b7280;">{{ $item['site_url'] }}</small>
                             @endif
+                            @php $itemLiveUrl = \App\Support\MailNotificationPresenter::safeLiveUrl($item['live_url'] ?? null); @endphp
+                            @if($itemLiveUrl)
+                                <br><small style="word-break:break-all;">Live URL: <a href="{{ $itemLiveUrl }}">{{ $itemLiveUrl }}</a></small>
+                            @endif
                             @if(isset($item['sensitive_type']) && $item['sensitive_type'])
                                 <br><small style="color: #16a34a;"><i class="fa fa-plus-circle"></i> {{ ucfirst($item['sensitive_type']) }} price included</small>
                             @endif
@@ -338,7 +391,7 @@
                                 <br><small style="color: #0f766e;">
                                     Homepage {{ (int) $item['homepage_days'] }} day{{ (int) $item['homepage_days'] === 1 ? '' : 's' }}
                                     @if(($item['homepage_price'] ?? 0) > 0)
-                                        (+€{{ number_format($item['homepage_price'], 2) }})
+                                        (+{{ format_money($item['homepage_price']) }})
                                     @else
                                         (Free)
                                     @endif
@@ -350,7 +403,7 @@
                                 </small>
                             @endif
                         </td>
-                        <td class="amount">€{{ number_format($item['price'], 2) }}</td>
+                        <td class="amount">{{ format_money($item['price']) }}</td>
                     </tr>
                     @endforeach
                 </tbody>
@@ -359,10 +412,10 @@
             @if(isset($totalBaseAmount) && $totalBaseAmount > 0)
             <div style="font-size: 12px; color: #6b7280; margin-top: -10px; margin-bottom: 10px;">
                 <p>
-                    Base Amount: €{{ number_format($totalBaseAmount, 2) }}
-                    | Sensitive Add-ons: €{{ number_format($totalSensitiveAmount, 2) }}
+                    Base Amount: {{ format_money($totalBaseAmount) }}
+                    | Sensitive Add-ons: {{ format_money($totalSensitiveAmount) }}
                     @if(!empty($totalHomepageAmount) && $totalHomepageAmount > 0)
-                        | Homepage: €{{ number_format($totalHomepageAmount, 2) }}
+                        | Homepage: {{ format_money($totalHomepageAmount) }}
                     @endif
                 </p>
             </div>
@@ -379,9 +432,9 @@
                 </thead>
                 <tbody>
                     <tr>
-                        <td>Wallet Deposit - Reference: REF{{ $referenceCode }}<br>
+                        <td>Wallet Deposit - Reference: {{ $paymentReference ?? ('REF'.$referenceCode) }}<br>
                         </td>
-                        <td class="amount">€{{ number_format($amount, 2) }}</td>
+                        <td class="amount">{{ format_money($amount) }}</td>
                     </tr>
                 </tbody>
             </table>
@@ -390,7 +443,7 @@
             <div class="totals">
                 <div class="total-row">
                     <div class="total-label">Subtotal:</div>
-                    <div class="total-value">€{{ number_format($amount, 2) }}</div>
+                    <div class="total-value">{{ format_money($amount) }}</div>
                 </div>
                 <div class="total-row">
                     <div class="total-label">VAT (0%):</div>
@@ -398,7 +451,7 @@
                 </div>
                 <div class="total-row grand-total">
                     <div class="total-label">Total:</div>
-                    <div class="total-value" style="font-size: 18px; color: #2563eb;">€{{ number_format($amount, 2) }}</div>
+                    <div class="total-value" style="font-size: 18px; color: #2563eb;">{{ format_money($amount) }}</div>
                 </div>
             </div>
             
@@ -406,6 +459,7 @@
             <div class="footer">
                 <p>Thank you for your business!</p>
                 <p>For any questions regarding this invoice, please contact support@seolinkbuildings.com</p>
+                <p>{{ $company['legal_footer'] ?? \App\Support\LegalIdentity::footer() }}</p>
             </div>
 
             @if(($invoiceType ?? '') === 'deposit' && in_array(($paymentMethod ?? ''), ['wise', 'bank', 'crypto'], true))
@@ -437,12 +491,12 @@
         </div>
     </div>
     @if(($invoiceType ?? '') === 'deposit' && !empty($canMarkPaid) && !empty($markPaidUrl))
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="{{ asset('assets/vendor/sweetalert2/sweetalert2.min.js') }}?v={{ @filemtime(public_path('assets/vendor/sweetalert2/sweetalert2.min.js')) ?: '1' }}"></script>
     <script>
     document.getElementById('invoiceMarkPaidBtn')?.addEventListener('click', function () {
         Swal.fire({
             title: 'Confirm payment sent?',
-            html: 'Have you already transferred <strong>€{{ number_format((float) $amount, 2) }}</strong> with <strong>REF{{ $referenceCode }}</strong> in the payment note?<br><br><span style="color: var(--brand-ink-muted, #75787B);font-size:13px;">Status stays Pending until we confirm and credit your wallet.</span>',
+            html: 'Have you already transferred <strong>€{{ number_format((float) $amount, 2) }}</strong> with <strong>{{ $paymentReference ?? ('REF'.$referenceCode) }}</strong> in the payment reference?<br><br><span style="color: var(--brand-ink-muted, #75787B);font-size:13px;">Status stays Pending until we confirm and credit your wallet.</span>',
             icon: 'question',
             input: 'text',
             inputPlaceholder: 'Optional: Wise/bank transfer reference',

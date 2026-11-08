@@ -11,7 +11,9 @@ class VisitorSupportChatController extends Controller
 {
     public function store(Request $request, VisitorSupportChatService $chat): JsonResponse
     {
-        if (! VisitorSupportChat::enabled()) {
+        if (! class_exists(VisitorSupportChat::class)
+            || ! method_exists(VisitorSupportChat::class, 'enabled')
+            || ! VisitorSupportChat::enabled()) {
             return response()->json([
                 'ok' => false,
                 'message' => 'Support chat is not available right now.',
@@ -20,7 +22,7 @@ class VisitorSupportChatController extends Controller
 
         $data = $request->validate([
             'message' => ['required', 'string', 'min:1', 'max:4000'],
-            'session_id' => ['nullable', 'uuid'],
+            'session_id' => ['nullable', 'string', 'max:64'],
             'history' => ['nullable', 'array', 'max:20'],
             'history.*.role' => ['required_with:history', 'in:user,assistant'],
             'history.*.content' => ['required_with:history', 'string', 'max:2000'],
@@ -42,7 +44,16 @@ class VisitorSupportChatController extends Controller
             ];
         }
 
-        $result = $chat->reply($message, $history);
+        try {
+            $result = $chat->reply($message, $history);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'ok' => false,
+                'message' => 'Support chat is not available right now.',
+            ], 503);
+        }
         $status = ($result['ok'] ?? false) ? 200 : 502;
 
         return response()->json($result, $status);

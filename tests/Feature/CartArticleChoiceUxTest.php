@@ -1,0 +1,388 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Http\Controllers\Advertiser\GuestPostWizardController;
+use App\Models\Role;
+use App\Models\Site;
+use App\Models\User;
+use App\Models\WritingSetting;
+use App\Services\Marketplace\CheckoutAddOnService;
+use App\Services\Marketplace\WritingFeeService;
+use Database\Seeders\RolesTableSeeder;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
+
+class CartArticleChoiceUxTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private User $advertiser;
+
+    private User $publisher;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seed(RolesTableSeeder::class);
+
+        $advertiserRole = Role::where('name', 'advertiser')->firstOrFail();
+        $publisherRole = Role::where('name', 'publisher')->firstOrFail();
+
+        $this->advertiser = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $advertiserRole->id,
+        ]);
+        $this->advertiser->roles()->attach($advertiserRole->id);
+
+        $this->publisher = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $publisherRole->id,
+        ]);
+        $this->publisher->roles()->attach($publisherRole->id);
+    }
+
+    private function makeSite(string $slug, array $overrides = []): Site
+    {
+        return Site::create(array_merge([
+            'publisher_id' => $this->publisher->id,
+            'site_name' => 'Choice '.$slug,
+            'site_url' => 'https://'.$slug.'.example',
+            'domain' => $slug.'.example',
+            'da' => 40,
+            'dr' => 45,
+            'traffic' => 8000,
+            'country' => 'us',
+            'language' => 'en',
+            'countries' => ['us'],
+            'languages' => ['en'],
+            'category' => 'marketing',
+            'price' => 100,
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => 'Cart article choice listing.',
+            'verified' => true,
+            'active' => true,
+            'writing_enabled' => false,
+        ], $overrides));
+    }
+
+    public function test_cart_copy_is_neutral_and_hides_partner_rates(): void
+    {
+        $copy = app(CheckoutAddOnService::class)->cartArticleCopy();
+
+        $this->assertSame("Choose how you'll get the article", $copy['heading']);
+        $this->assertSame('Have the article written', $copy['write_label']);
+        $this->assertSame('Upload article', $copy['upload_label']);
+        $this->assertSame('Or use a saved article', $copy['saved_article_label']);
+        $this->assertSame('Drop a .docx or click to choose', $copy['dropzone_idle']);
+        $this->assertSame('Microsoft Word (.docx) only, max 10 MB', $copy['dropzone_hint']);
+        $this->assertSame('Uploading…', $copy['upload_progress']);
+        $this->assertSame('Uploaded', $copy['upload_done']);
+        $this->assertSame('Replace file', $copy['upload_replace']);
+        $this->assertSame('Choose article', $copy['choose_article']);
+        $this->assertSame('Have all articles written', $copy['write_all']);
+        $this->assertSame('Optional: add a 12-month link guarantee at checkout', $copy['guarantee_note']);
+        $this->assertSame('Optional add-on', $copy['guarantee_optional_label']);
+        $this->assertSame('Optional add-on', $copy['breakdown_guarantee']);
+        $this->assertSame(
+            'Optional: add a 12-month link guarantee at checkout (+€12.00)',
+            app(CheckoutAddOnService::class)->guaranteeOptionalText('€12.00')
+        );
+        $this->assertSame('Choose an article option above to continue', $copy['proceed_hint']);
+        $this->assertSame('We write → you approve → publisher publishes', $copy['write_steps']);
+        $this->assertSame('You upload → we approve → publisher publishes', $copy['upload_steps']);
+        $this->assertSame('2–3 working days', $copy['turnaround']);
+        $this->assertSame('Choose for', $copy['choose_for']);
+        $this->assertSame('Writing, turnaround, and next steps', $copy['explainer_title']);
+        $this->assertStringContainsString('SEOLinkBuildings team', $copy['write_help']);
+        $this->assertStringContainsString('sent to you for approval', $copy['write_help']);
+        $this->assertStringNotContainsString('word', strtolower($copy['write_help']));
+        $this->assertStringContainsString('.docx', $copy['upload_help']);
+        $this->assertStringContainsString('10 MB', $copy['upload_help']);
+        $this->assertStringContainsString('One article per site', $copy['upload_help']);
+        $this->assertStringContainsString('hyperlink', $copy['upload_help']);
+        $this->assertStringContainsString('12-month and permanent', $copy['guarantee_tooltip']);
+        $this->assertStringContainsString('monthly', $copy['guarantee_tooltip']);
+        $this->assertStringContainsString('7 days', $copy['guarantee_tooltip']);
+        $this->assertStringContainsString('10%', $copy['guarantee_tooltip']);
+        $this->assertSame('10%', $copy['guarantee_percent_label']);
+        $this->assertStringNotContainsString('partner', strtolower(implode(' ', $copy)));
+        $this->assertStringNotContainsString('markup', strtolower(implode(' ', $copy)));
+        $this->assertStringNotContainsString('listing_writing_fee', implode(' ', $copy));
+    }
+
+    public function test_cart_payload_includes_with_writing_total_and_guarantee_flag(): void
+    {
+        $site = $this->makeSite('preview-total');
+
+        $payload = $this->actingAs($this->advertiser)
+            ->postJson(route('advertiser.cart.add'), [
+                'id' => $site->id,
+                'homepage_days' => 'none',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('article_copy.heading', "Choose how you'll get the article")
+            ->assertJsonPath('article_copy.proceed_hint', 'Choose an article option above to continue')
+            ->json();
+
+        $line = $payload['cart'][0];
+        $this->assertEquals(WritingFeeService::SLB_FLAT_EUR, (float) $line['writing_fee']);
+        $this->assertEquals(
+            round((float) $line['price'] + (float) $line['writing_fee'], 2),
+            (float) $line['writing_total']
+        );
+        $this->assertNotSame('', (string) $line['writing_total_label']);
+        $this->assertTrue((bool) $line['guarantee_offered']);
+        $this->assertEquals(10.0, (float) $line['guarantee_percent']);
+        $this->assertEquals(
+            round((float) $line['price'] * 0.10, 2),
+            (float) $line['guarantee_fee']
+        );
+        $this->assertGreaterThan(0, (float) $line['guarantee_fee']);
+        $this->assertNotSame('', (string) $line['guarantee_fee_label']);
+        $this->assertSame(
+            'Optional: add a 12-month link guarantee at checkout (+'.$line['guarantee_fee_label'].')',
+            $line['writing_guarantee_note']
+        );
+        $this->assertSame('', (string) ($line['article_choice'] ?? ''));
+        $this->assertArrayNotHasKey('listing_writing_fee', $line);
+        $this->assertArrayNotHasKey('publisher_price', $line);
+        $this->assertArrayNotHasKey('partner_rate', $line);
+        $this->assertArrayNotHasKey('platform_fee_amount', $line);
+    }
+
+    public function test_short_publication_hides_guarantee_flag(): void
+    {
+        $site = $this->makeSite('six-months', ['publication_time' => '6months']);
+
+        $line = $this->actingAs($this->advertiser)
+            ->postJson(route('advertiser.cart.add'), [
+                'id' => $site->id,
+                'homepage_days' => 'none',
+            ])
+            ->assertOk()
+            ->json('cart.0');
+
+        $this->assertFalse((bool) $line['guarantee_offered']);
+        $this->assertEquals(0.0, (float) $line['guarantee_fee']);
+        $this->assertSame('', (string) ($line['guarantee_fee_label'] ?? ''));
+        $this->assertSame('', (string) ($line['writing_guarantee_note'] ?? ''));
+    }
+
+    public function test_bulk_write_orders_writing_on_unready_lines_only(): void
+    {
+        $first = $this->makeSite('bulk-a');
+        $second = $this->makeSite('bulk-b', [
+            'domain' => 'bulk-b.example',
+            'site_url' => 'https://bulk-b.example',
+        ]);
+
+        $this->actingAs($this->advertiser)
+            ->postJson(route('advertiser.cart.add'), ['id' => $first->id, 'homepage_days' => 'none'])
+            ->assertOk();
+        $this->actingAs($this->advertiser)
+            ->postJson(route('advertiser.cart.add'), ['id' => $second->id, 'homepage_days' => 'none'])
+            ->assertOk();
+
+        $payload = $this->actingAs($this->advertiser)
+            ->postJson(route('advertiser.cart.write-unready'))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('written_count', 2)
+            ->json();
+
+        $this->assertCount(2, $payload['cart']);
+        foreach ($payload['cart'] as $line) {
+            $this->assertTrue(CheckoutAddOnService::isWrittenSource($line));
+            $this->assertSame('written', $line['article_choice']);
+            $this->assertArrayNotHasKey('listing_writing_fee', $line);
+            $this->assertArrayNotHasKey('partner_rate', $line);
+        }
+    }
+
+    public function test_admin_can_override_writing_turnaround_text(): void
+    {
+        $adminRole = Role::where('name', 'admin')->firstOrFail();
+        $admin = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $adminRole->id,
+        ]);
+        $admin->roles()->attach($adminRole->id);
+
+        $this->actingAs($admin)
+            ->get(route('admin.writing-queue.index'))
+            ->assertOk()
+            ->assertSee('Cart writing turnaround', false)
+            ->assertSee('2–3 working days', false);
+
+        $this->actingAs($admin)
+            ->post(route('admin.writing-queue.turnaround'), [
+                'turnaround_text' => '4 working days',
+            ])
+            ->assertRedirect();
+
+        $this->assertSame('4 working days', WritingSetting::turnaroundText());
+        $this->assertSame('4 working days', app(CheckoutAddOnService::class)->cartArticleCopy()['turnaround']);
+
+        $html = $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->getContent();
+        $this->assertStringContainsString('4 working days', $html);
+        $this->assertStringNotContainsString('partner_rate', $html);
+        $this->assertStringNotContainsString('listing_writing_fee', $html);
+    }
+
+    public function test_wizard_content_page_uses_equal_weight_article_options(): void
+    {
+        $site = $this->makeSite('wizard-choice');
+
+        $html = $this->actingAs($this->advertiser)
+            ->withSession([
+                GuestPostWizardController::SESSION_KEY => [
+                    'language' => 'en',
+                    'categories' => [],
+                ],
+                'cart' => [[
+                    'id' => $site->id,
+                    'name' => $site->site_name,
+                    'price' => 100,
+                    'quantity' => 1,
+                    'language' => 'en',
+                    'country' => 'us',
+                ]],
+            ])
+            ->get(route('advertiser.wizard.content'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString("Choose how you'll get the article", $html);
+        $this->assertStringContainsString('Have the article written', $html);
+        $this->assertStringContainsString('Upload article', $html);
+        $this->assertStringContainsString('Writing, turnaround, and next steps', $html);
+        $this->assertStringContainsString('We write → you approve → publisher publishes', $html);
+        $this->assertStringContainsString('Optional: add a 12-month link guarantee at checkout', $html);
+        $this->assertStringContainsString('Optional add-on', $html);
+        $this->assertStringContainsString('Optional: add a 12-month link guarantee at checkout (+€10.00)', $html);
+        $this->assertStringContainsString('€100.00', $html);
+        $this->assertStringNotContainsString('€110.00', $html);
+        $this->assertStringNotContainsString('12-month link guarantee available at checkout ·', $html);
+        $this->assertDoesNotMatchRegularExpression('/Guarantee\s+€[\d.]+ at checkout/', $html);
+        $this->assertStringContainsString('Choose an article option above to continue', $html);
+        $this->assertStringContainsString('Typical turnaround: 2–3 working days', $html);
+        $this->assertStringContainsString('Microsoft Word (.docx) only', $html);
+        $this->assertStringContainsString('Projected total', $html);
+        $this->assertStringContainsString('0 of 1 site ready', $html);
+        $this->assertStringContainsString('Choose for 1 site', $html);
+        $this->assertStringContainsString('cart-item-breakdown', $html);
+        $this->assertStringContainsString('fa-pen', $html);
+        $this->assertStringContainsString('fa-upload', $html);
+        $this->assertStringContainsString('id="wizardProceedHint"', $html);
+        $this->assertSame(1, substr_count($html, 'Typical turnaround: 2–3 working days'));
+        $this->assertStringNotContainsString('1 article still needed', $html);
+        $this->assertStringNotContainsString('partner_rate', $html);
+        $this->assertStringNotContainsString('listing_writing_fee', $html);
+
+        $writePos = strpos($html, 'Have the article written');
+        $uploadPos = strpos($html, 'cart-choice-option wizard-upload-cta');
+        $this->assertNotFalse($writePos);
+        $this->assertNotFalse($uploadPos);
+        $this->assertLessThan($uploadPos, $writePos);
+    }
+
+    public function test_wizard_hides_guarantee_copy_for_short_listings(): void
+    {
+        $site = $this->makeSite('wizard-short', ['publication_time' => '6months']);
+
+        $html = $this->actingAs($this->advertiser)
+            ->withSession([
+                GuestPostWizardController::SESSION_KEY => [
+                    'language' => 'en',
+                    'categories' => [],
+                ],
+                'cart' => [[
+                    'id' => $site->id,
+                    'name' => $site->site_name,
+                    'price' => 100,
+                    'quantity' => 1,
+                    'language' => 'en',
+                    'country' => 'us',
+                ]],
+            ])
+            ->get(route('advertiser.wizard.content'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringNotContainsString('at checkout (+', $html);
+        $this->assertDoesNotMatchRegularExpression('/Guarantee\s+€[\d.]+ at checkout/', $html);
+        $this->assertStringContainsString('€100.00', $html);
+        $this->assertStringNotContainsString('€110.00', $html);
+    }
+
+    public function test_cart_drawer_script_keeps_guarantee_out_of_totals(): void
+    {
+        $layout = (string) file_get_contents(resource_path('views/advertiser/layouts/app.blade.php'));
+
+        $this->assertStringContainsString('function lineGuaranteeOptionalText', $layout);
+        $this->assertStringContainsString('Optional: add a 12-month link guarantee at checkout', $layout);
+        $this->assertStringContainsString('return (price + writing) * qty;', $layout);
+        $this->assertStringNotContainsString("guaranteeFeeLabel ? ' · ' + escapeHtml(guaranteeFeeLabel)", $layout);
+        $this->assertStringNotContainsString(" + ' at checkout'", $layout);
+    }
+
+    public function test_wizard_bulk_write_button_shows_fee_times_unready_lines(): void
+    {
+        $first = $this->makeSite('wizard-bulk-a');
+        $second = $this->makeSite('wizard-bulk-b', [
+            'domain' => 'wizard-bulk-b.example',
+            'site_url' => 'https://wizard-bulk-b.example',
+        ]);
+
+        $html = $this->actingAs($this->advertiser)
+            ->withSession([
+                GuestPostWizardController::SESSION_KEY => [
+                    'language' => 'en',
+                    'categories' => [],
+                ],
+                'cart' => [
+                    [
+                        'id' => $first->id,
+                        'name' => $first->site_name,
+                        'price' => 100,
+                        'quantity' => 1,
+                        'language' => 'en',
+                        'country' => 'us',
+                    ],
+                    [
+                        'id' => $second->id,
+                        'name' => $second->site_name,
+                        'price' => 100,
+                        'quantity' => 1,
+                        'language' => 'en',
+                        'country' => 'us',
+                    ],
+                ],
+            ])
+            ->get(route('advertiser.wizard.content'))
+            ->assertOk()
+            ->getContent();
+
+        $fee = WritingFeeService::SLB_FLAT_EUR * 2;
+        $this->assertStringContainsString('Have all articles written (+'.format_money_pay($fee).')', $html);
+        $this->assertStringContainsString('0 of 2 sites ready', $html);
+        $this->assertStringContainsString('Choose for 2 sites', $html);
+        $this->assertStringNotContainsString('partner_rate', $html);
+    }
+
+    public function test_hostinger_sql_creates_writing_settings(): void
+    {
+        $sql = file_get_contents(base_path('database/sql/add_writing_settings.sql'));
+
+        $this->assertIsString($sql);
+        $this->assertStringStartsWith('USE u841082722_cmbop_db;', trim($sql));
+        $this->assertStringContainsString('writing_settings', $sql);
+        $this->assertStringContainsString('information_schema.TABLES', $sql);
+    }
+}

@@ -1,10 +1,14 @@
 @extends('advertiser.layouts.app')
 
+@section('title', 'Checkout')
+
 @section('content')
 <div class="container-fluid">
     @php
         $checkoutInWizard = request()->boolean('wizard')
             || ! empty(\App\Http\Controllers\Advertiser\GuestPostWizardController::stateFromSession()['language']);
+        $fundWalletFirstMessage = (! empty($bankTransferAllowed) ? 'Bank, Wise, and crypto' : 'Wise and crypto')
+            .' payments use an invoice on Add Funds. After we credit your wallet, pay this order from your balance.';
     @endphp
     @include('advertiser.partials.ordering-path', [
         'step' => 4,
@@ -24,32 +28,32 @@
     <!-- HEADER -->
     <div class="row mb-4">
         <div class="col-md-12">
-            <h2 class="mb-1 fw-semibold">Checkout</h2>
+            <h1 class="mb-1 fw-semibold">Checkout</h1>
             <p class="text-muted mb-0">
-                Pay only for websites that are ready (approved article assigned). Others stay in your cart.
+                Pay only for websites that are ready (approved article assigned or writing chosen). Others stay in your cart.
             </p>
         </div>
     </div>
 
-    @if(($deferredCount ?? 0) > 0)
+    @if(!($payableReady ?? true))
+        <div class="alert alert-warning border mb-4" role="status">
+            <div class="fw-semibold mb-1">Nothing ready to pay yet</div>
+            <div class="small mb-0">
+                Assign an approved Content Library article or choose “have the article written” on at least one website, then place the order.
+            </div>
+        </div>
+    @elseif(($deferredCount ?? 0) > 0)
         <div class="alert alert-light border mb-4" role="status">
             <div class="fw-semibold mb-1">
                 <i class="fa fa-info-circle me-1"></i>
                 Paying {{ (int) ($payableCount ?? 0) }} ready site{{ (int) ($payableCount ?? 0) === 1 ? '' : 's' }}
                 @if((float) $total > 0)
-                    · €{{ number_format($total, 2) }}
+                    · {{ format_money_pay($total) }}
                 @endif
             </div>
             <div class="small text-muted mb-0">
                 {{ (int) $deferredCount }} website{{ (int) $deferredCount === 1 ? '' : 's' }} without a ready article
                 will stay in your cart and will not be charged yet.
-            </div>
-        </div>
-    @elseif(!($payableReady ?? true))
-        <div class="alert alert-warning border mb-4" role="status">
-            <div class="fw-semibold mb-1">Nothing ready to pay yet</div>
-            <div class="small mb-0">
-                Assign an approved Content Library article to at least one website in your cart, then return to place the order.
             </div>
         </div>
     @endif
@@ -132,9 +136,9 @@
                                             <div class="site-summary-price text-end">
                                                 <div class="site-summary-price-label">{{ !empty($item['paying_now']) ? 'Charged now' : 'Not charged yet' }}</div>
                                                 @if(!empty($item['discount_amount']) && $item['discount_amount'] > 0)
-                                                    <div class="small text-muted text-decoration-line-through">€{{ number_format(($item['list_total'] ?? $item['price']) + (float) ($item['homepage_price'] ?? 0), 2) }}</div>
+                                                    <div class="small text-muted text-decoration-line-through">{{ format_money_pay(($item['list_total'] ?? $item['price']) + (float) ($item['homepage_price'] ?? 0)) }}</div>
                                                 @endif
-                                                <div class="site-summary-price-value {{ empty($item['paying_now']) ? 'text-muted' : '' }}">€{{ number_format($item['price'], 2) }}</div>
+                                                <div class="site-summary-price-value {{ empty($item['paying_now']) ? 'text-muted' : '' }}">{{ format_money_pay($item['price']) }}</div>
                                                 @if(!empty($item['discount_labels']))
                                                     <div class="small text-success">{{ implode(' · ', $item['discount_labels']) }}</div>
                                                 @endif
@@ -144,12 +148,12 @@
                                         <div class="site-summary-details">
                                             <div class="site-summary-row">
                                                 <span>Base price</span>
-                                                <span class="site-summary-amount">€{{ number_format($item['base_price'], 2) }}</span>
+                                                <span class="site-summary-amount">{{ format_money_pay($item['base_price']) }}</span>
                                             </div>
                                             @if(!empty($item['discount_amount']) && $item['discount_amount'] > 0)
                                             <div class="site-summary-row">
                                                 <span>Discount savings</span>
-                                                <span class="site-summary-amount text-success">−€{{ number_format($item['discount_amount'], 2) }}</span>
+                                                <span class="site-summary-amount text-success">−{{ format_money_pay($item['discount_amount']) }}</span>
                                             </div>
                                             @endif
                                             @if($hasSensitive)
@@ -158,7 +162,7 @@
                                                         Sensitive topic
                                                         <strong>{{ ucfirst($item['sensitive_type']) }}</strong>
                                                     </span>
-                                                    <span class="site-summary-amount site-summary-amount-accent">+€{{ number_format($item['additional_price'], 2) }}</span>
+                                                    <span class="site-summary-amount site-summary-amount-accent">{{ format_money_pay($item['additional_price'], ['signed' => true]) }}</span>
                                                 </div>
                                             @endif
                                             @if(!empty($item['homepage_days']))
@@ -169,7 +173,7 @@
                                                     </span>
                                                     <span class="site-summary-amount">
                                                         @if(($item['homepage_price'] ?? 0) > 0)
-                                                            +€{{ number_format($item['homepage_price'], 2) }}
+                                                            {{ format_money_pay($item['homepage_price'], ['signed' => true]) }}
                                                         @else
                                                             Free
                                                         @endif
@@ -235,6 +239,58 @@
                                     @endfor
                                 @endforeach
                             </div>
+                        </div>
+                    </div>
+
+                    @include('advertiser.partials.checkout-addons', ['cartItems' => $cartItems])
+
+                    @php
+                        $checkoutProjects = $checkoutProjects ?? collect();
+                        $checkoutSelectedProjectId = $checkoutSelectedProjectId ?? null;
+                        $checkoutSuggestedProjectId = $checkoutSuggestedProjectId ?? null;
+                        $checkoutDuplicateHosts = $checkoutDuplicateHosts ?? [];
+                    @endphp
+                    <div class="card border-0 shadow-sm mb-4" id="checkoutProjectCard">
+                        <div class="card-header bg-white fw-semibold">
+                            <i class="fa fa-folder-open me-2"></i> Assign to a project
+                        </div>
+                        <div class="card-body">
+                            <p class="small text-muted mb-3">
+                                Optional. Attach these orders to a client project so Projects counts stay accurate even if the article destination host differs.
+                            </p>
+                            <label class="form-label fw-semibold" for="checkoutProjectId">Project</label>
+                            <select name="project_id" id="checkoutProjectId" class="form-select">
+                                <option value="">No project</option>
+                                @foreach($checkoutProjects as $checkoutProject)
+                                    <option value="{{ $checkoutProject->id }}"
+                                        @selected((int) $checkoutSelectedProjectId === (int) $checkoutProject->id)>
+                                        {{ $checkoutProject->project_name }}
+                                    </option>
+                                @endforeach
+                            </select>
+                            @if($checkoutProjects->isEmpty())
+                                <p class="small text-muted mt-2 mb-0">
+                                    No projects yet.
+                                    <a href="{{ route('advertiser.projects.index') }}">Create one</a>
+                                    to group placements by client site.
+                                </p>
+                            @elseif($checkoutSuggestedProjectId && (int) $checkoutSelectedProjectId === (int) $checkoutSuggestedProjectId)
+                                <p class="small text-muted mt-2 mb-0">Preselected from the article destination host.</p>
+                            @endif
+                            @if($checkoutDuplicateHosts !== [])
+                                <div class="alert alert-warning mt-3 mb-0" id="checkoutDuplicateHostWarning" role="status">
+                                    <div class="fw-semibold mb-1">You already have a placement on this destination</div>
+                                    <ul class="small mb-0 ps-3">
+                                        @foreach($checkoutDuplicateHosts as $dup)
+                                            <li>
+                                                {{ $dup['host'] }} · order {{ $dup['order_number'] }}
+                                                ({{ $dup['status'] }}@if(!empty($dup['project_name'])) · {{ $dup['project_name'] }}@endif)
+                                            </li>
+                                        @endforeach
+                                    </ul>
+                                    <p class="small mb-0 mt-2">You can still place this order if you want another link on the same site.</p>
+                                </div>
+                            @endif
                         </div>
                     </div>
 
@@ -306,7 +362,7 @@
                             <i class="fa fa-credit-card me-2"></i> {{ !empty($schedulingEnabled) ? '3' : '2' }}. Payment
                         </div>
                         <div class="card-body">
-                            <p class="text-muted small mb-3">Pay from your wallet, by card, or PayPal. Bank, Wise, and crypto fund your wallet via invoice first.</p>
+                            <p class="text-muted small mb-3">Pay from your wallet, by card, or PayPal. {{ !empty($bankTransferAllowed) ? 'Bank, Wise, and crypto' : 'Wise and crypto' }} fund your wallet via invoice first.</p>
                             @if(($checkoutDebtBalance ?? 0) > 0.009)
                                 <div class="alert alert-warning py-2 px-3 mb-3 small" role="alert">
                                     {{ $checkoutDebtReason }}
@@ -372,8 +428,8 @@
                                  @if(empty($paypalConfigured)) aria-disabled="true" data-paypal-disabled="1" @endif
                                  @if(! $paypalNeedsAmount) aria-disabled="true" data-zero-amount="1" @endif>
                                 <div class="payment-option-card">
-                                    <div style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: #f3f4f6; border-radius: 8px; flex-shrink:0;">
-                                        <img src="{{ asset('assets/img/payments/paypal.svg') }}" alt="" width="40" height="11" style="width:40px;height:auto;" decoding="async">
+                                    <div style="width: 80px; height: 80px; display: flex; align-items: center; justify-content: center; background: #f3f4f6; border-radius: 8px; flex-shrink:0;">
+                                        <img src="{{ asset('assets/img/payments/paypal.png') }}" alt="PayPal" width="72" height="71" style="width:72px;height:auto;" decoding="async">
                                     </div>
                                     <div class="flex-grow-1">
                                         <span style="display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;">
@@ -411,7 +467,7 @@
                             <div class="border rounded-3 p-3 mb-1" style="background:#f8fafc; border-color:#e2e8f0 !important;" id="fundWalletCheckoutHint">
                                 <div class="d-flex flex-wrap align-items-start justify-content-between gap-3">
                                     <div>
-                                        <div class="fw-semibold" style="color:var(--brand-primary, #1a585e);">Paying by Bank, Wise, or crypto?</div>
+                                        <div class="fw-semibold" style="color:var(--brand-primary, #1a585e);">{{ !empty($bankTransferAllowed) ? 'Paying by Bank, Wise, or crypto?' : 'Paying by Wise or crypto?' }}</div>
                                         <p class="small text-muted mb-0 mt-1">
                                             Get an invoice on Add Funds, transfer with your REF, then we credit your wallet after funds arrive. Come back and pay this order from your wallet.
                                         </p>
@@ -455,20 +511,20 @@
                                         <p style="font-size: 14px; color: #6b7280; margin-bottom: 8px;">Your wallet</p>
                                         <div class="d-flex justify-content-between mb-1">
                                             <span class="small text-muted">Spendable (header total)</span>
-                                            <strong style="color:var(--brand-primary, #1a585e);">€{{ number_format($checkoutSpendable, 2) }}</strong>
+                                            <strong style="color:var(--brand-primary, #1a585e);">{{ format_money($checkoutSpendable) }}</strong>
                                         </div>
                                         <div class="d-flex justify-content-between mb-1">
                                             <span class="small text-muted">Cash (withdrawable)</span>
-                                            <strong style="color:var(--brand-primary, #1a585e);">€{{ number_format($checkoutCash, 2) }}</strong>
+                                            <strong style="color:var(--brand-primary, #1a585e);">{{ format_money($checkoutCash) }}</strong>
                                         </div>
                                         <div class="d-flex justify-content-between">
                                             <span class="small text-muted">Bonus (purchases only)</span>
-                                            <strong style="color:#d97706;">€{{ number_format($checkoutBonus, 2) }}</strong>
+                                            <strong style="color:#d97706;">{{ format_money($checkoutBonus) }}</strong>
                                         </div>
                                         <p style="font-size: 12px; color: #6b7280; margin: 8px 0 0;">
-                                            Spendable €{{ number_format($checkoutSpendable, 2) }}
-                                            = cash €{{ number_format($checkoutCash, 2) }}
-                                            + bonus €{{ number_format($checkoutBonus, 2) }}.
+                                            Spendable {{ format_money($checkoutSpendable) }}
+                                            = cash {{ format_money($checkoutCash) }}
+                                            + bonus {{ format_money($checkoutBonus) }}.
                                             Wallet pay uses cash unless you enable <strong>Use bonus balance</strong> in Order Total.
                                             Bonus credit cannot be withdrawn.
                                         </p>
@@ -477,7 +533,7 @@
                                     <div style="margin-bottom: 16px;">
                                         <p style="font-size: 14px; color: #6b7280; margin-bottom: 8px;">Amount to Pay:</p>
                                         <p style="font-size: 20px; font-weight: 600; color: #1f2937; margin: 0;" id="walletAmountDue">
-                                            €{{ number_format($total, 2) }}
+                                            {{ format_money_pay($total) }}
                                         </p>
                                     </div>
                                     
@@ -526,7 +582,7 @@
                                     <div style="margin-bottom: 16px;">
                                         <p style="font-size: 12px; color: #6b7280; margin-bottom: 4px;">Wise Payment Link</p>
                                         <div id="wisePaymentLink" style="background: white; padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 12px; word-break: break-all; font-family: monospace;">
-                                            https://wise.com/pay/business/topurlzltd?amount={{ $total }}&currency=EUR
+                                            {{ rtrim((string) config('billing.deposit_payment.wise_pay_url', 'https://wise.com/pay/business/teqnoltd'), '?&') }}?amount={{ $total }}&currency=EUR
                                         </div>
                                         <button type="button" class="copy-btn mt-2" data-target="wisePaymentLink">
                                             <i class="fas fa-copy"></i> Copy Payment Link
@@ -535,7 +591,7 @@
                                     
                                     <div style="text-align: center; margin-bottom: 16px;">
                                         <p style="font-size: 12px; color: #6b7280; margin-bottom: 8px;">QR Code for Payment</p>
-                                        <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://wise.com/pay/business/topurlzltd?amount={{ $total }}&currency=EUR" 
+                                        <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={{ urlencode(rtrim((string) config('billing.deposit_payment.wise_pay_url', 'https://wise.com/pay/business/teqnoltd'), '?&').'?amount='.$total.'&currency=EUR') }}" 
                                              alt="Wise Payment QR Code" style="width: 150px; height: 150px;">
                                     </div>
                                     
@@ -595,6 +651,7 @@
                         </div>
 
                         <!-- Bank Transfer Payment Details -->
+                        @if(!empty($bankTransferAllowed))
                         <div id="bankPaymentDetails" class="card border-0 shadow-sm mb-4" style="display: none;">
                             <div class="card-body">
                                 <div style="display: flex; align-items: center; margin-bottom: 16px;">
@@ -603,30 +660,29 @@
                                     </div>
                                     <div>
                                         <h3 style="font-size: 18px; font-weight: 600; margin: 0;">Bank Transfer Payment</h3>
-                                        <p style="font-size: 12px; color: #6b7280; margin: 4px 0 0;">Local Bank Transfer</p>
+                                        <p style="font-size: 12px; color: #6b7280; margin: 4px 0 0;">Bank transfer in your account currency</p>
                                     </div>
                                 </div>
                                 
                                 <div style="background: #f9fafb; border-radius: 12px; padding: 20px; border: 1px solid #e5e7eb;">
-                                    @php $depositPayment = config('billing.deposit_payment', []); @endphp
+                                    @php $depositPayment = \App\Support\DepositPaymentConfig::depositPayment(); @endphp
                                     <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 12px; color: #9333ea;">Bank Account Information</h4>
-                                    <div style="margin-bottom: 12px;">
-                                        <p style="font-size: 12px; color: #6b7280; margin-bottom: 2px;">Beneficiary:</p>
-                                        <p style="font-weight: 600; margin: 0;">{{ $depositPayment['beneficiary'] ?? 'Topurlz Ltd' }}</p>
-                                    </div>
-                                    <div style="margin-bottom: 12px;">
-                                        <p style="font-size: 12px; color: #6b7280; margin-bottom: 2px;">IBAN:</p>
-                                        <div id="bankIban" style="background: white; padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 12px; font-family: monospace;">{{ $depositPayment['iban'] ?? 'BE04905543949331' }}</div>
-                                        <button type="button" class="copy-btn mt-1" data-target="bankIban">Copy IBAN</button>
-                                    </div>
-                                    <div>
-                                        <p style="font-size: 12px; color: #6b7280; margin-bottom: 2px;">BIC/SWIFT:</p>
-                                        <div id="bankBic" style="background: white; padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 12px; font-family: monospace;">{{ $depositPayment['bic'] ?? 'TRWIBEB1XXX' }}</div>
-                                        <button type="button" class="copy-btn mt-1" data-target="bankBic">Copy BIC</button>
-                                    </div>
+                                    @php
+                                        $checkoutPayFrom = app(\App\Support\DisplayCurrencyPreference::class)->payFrom();
+                                    @endphp
+                                    @include('partials.deposit-bank-account', [
+                                        'depositPayment' => $depositPayment,
+                                        'showExtended' => false,
+                                        'showCopy' => true,
+                                        'walletCurrency' => $checkoutWallet?->currency ?? null,
+                                        'eurAmount' => $total ?? null,
+                                        'showMethodSwitch' => true,
+                                        'sendLabel' => app(\App\Support\DepositFx::class)->quote((float) ($total ?? 0), $checkoutPayFrom === 'gbp' ? 'GBP' : 'EUR')['send_label'],
+                                    ])
                                 </div>
                             </div>
                         </div>
+                        @endif
 
                         <!-- Card Payment Details -->
                         <div id="cardPaymentDetails" class="card border-0 shadow-sm mb-4" style="display: none;">
@@ -685,8 +741,8 @@
                         <div id="paypalPaymentDetails" class="card border-0 shadow-sm mb-4" style="display: none;">
                             <div class="card-body">
                                 <div style="display: flex; align-items: center; margin-bottom: 16px;">
-                                    <div style="width: 40px; height: 40px; background: #f3f4f6; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-right: 12px;">
-                                        <img src="{{ asset('assets/img/payments/paypal.svg') }}" alt="" width="32" height="9" style="width:32px;height:auto;" decoding="async">
+                                    <div style="width: 64px; height: 64px; background: #f3f4f6; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-right: 12px;">
+                                        <img src="{{ asset('assets/img/payments/paypal.png') }}" alt="PayPal" width="56" height="55" style="width:56px;height:auto;" decoding="async">
                                     </div>
                                     <div>
                                         <h3 style="font-size: 18px; font-weight: 600; margin: 0;">PayPal</h3>
@@ -713,7 +769,15 @@
                         <div class="card-body">
                             <div class="d-flex justify-content-between mb-2">
                                 <span class="text-muted">Subtotal:</span>
-                                <span id="subtotal">€{{ number_format($total, 2) }}</span>
+                                <span id="subtotal">{{ format_money_pay($total) }}</span>
+                            </div>
+                            <div class="d-flex justify-content-between mb-2 d-none" id="writingFeeRow">
+                                <span class="text-muted">Writing fee:</span>
+                                <span id="writingFeeAmount">€0.00</span>
+                            </div>
+                            <div class="d-flex justify-content-between mb-2 d-none" id="guaranteeFeeRow">
+                                <span class="text-muted">12-month link guarantee:</span>
+                                <span id="guaranteeFeeAmount">€0.00</span>
                             </div>
                             <div class="d-flex justify-content-between mb-2">
                                 <span class="text-muted">Tax (0%):</span>
@@ -729,7 +793,7 @@
                                     <label class="form-check-label small" for="useBonusBalance" style="cursor:pointer;">
                                         <strong>Use bonus balance</strong>
                                         <span class="d-block text-muted">
-                                            Apply up to €{{ number_format($bonusForCheckout, 2) }} promotional credit (not withdrawable)
+                                            Apply up to {{ format_money($bonusForCheckout) }} promotional credit (not withdrawable)
                                         </span>
                                     </label>
                                 </div>
@@ -741,10 +805,10 @@
                             <hr>
                             <div class="d-flex justify-content-between mb-1">
                                 <strong>Amount due:</strong>
-                                <strong class="checkout-theme-price fs-5" id="grandTotal">€{{ number_format($total, 2) }}</strong>
+                                <strong class="checkout-theme-price fs-5" id="grandTotal">{{ format_money_pay($total) }}</strong>
                             </div>
                             @if(!empty($savings) && $savings > 0)
-                                <div class="small text-success mb-3">You save €{{ number_format($savings, 2) }} with active discounts</div>
+                                <div class="small text-success mb-3">You save {{ format_money_pay($savings) }} with active discounts</div>
                             @else
                                 <div class="mb-3"></div>
                             @endif
@@ -762,10 +826,33 @@
                                 </div>
                             </div>
 
-                            <div class="alert alert-warning py-2 px-3 mb-3">
-                                <i class="fas fa-exclamation-triangle me-1"></i>
-                                <small>Please include <strong id="refCodeDisplay">REF{{ $checkoutReferenceCode }}</strong> in your payment note for manual payments. For card payments, reference is auto-recorded.</small>
-                            </div>
+                            <p class="small text-muted mb-3" id="refHintBox">
+                                Wallet, card, and PayPal record <strong id="refCodeDisplay" class="font-monospace">REF{{ $checkoutReferenceCode }}</strong> automatically.
+                                Bank, Wise, and crypto use Add Funds first.
+                            </p>
+
+                            @if(!empty($packPriceChanges) && is_array($packPriceChanges))
+                                <div class="alert alert-info py-2 px-3 mb-3" role="alert" id="packPriceChangeNotice">
+                                    <div class="fw-semibold mb-1">
+                                        <i class="fa fa-info-circle me-1" aria-hidden="true"></i>
+                                        Pack pricing updated
+                                    </div>
+                                    <p class="small mb-2 mb-md-2">
+                                        Listing prices changed since these packs were added to your cart. You will be charged the new totals below.
+                                    </p>
+                                    <ul class="small mb-0 ps-3">
+                                        @foreach($packPriceChanges as $change)
+                                            <li class="mb-1">
+                                                <strong>{{ $change['site_name'] ?? 'Site' }}</strong>
+                                                · pack of {{ (int) ($change['quantity'] ?? 0) }}:
+                                                <span class="text-decoration-line-through text-muted">{{ format_money_pay($change['old_pack_total'] ?? 0) }}</span>
+                                                →
+                                                <strong>{{ format_money_pay($change['new_pack_total'] ?? 0) }}</strong>
+                                            </li>
+                                        @endforeach
+                                    </ul>
+                                </div>
+                            @endif
 
                             <button type="button" id="placeOrderBtn" class="btn btn-primary w-100 mt-3">
                                 <i class="fa fa-check-circle"></i> Place Order
@@ -775,9 +862,22 @@
                                 @include('partials.payment-trust', ['compact' => true, 'showMethods' => false])
                             </div>
 
-                            <a href="{{ route('advertiser.catalog') }}" class="btn btn-outline-secondary w-100 mt-2">
+                            <a href="{{ route('advertiser.catalog') }}" id="continueShopping" class="btn btn-outline-secondary w-100 mt-2">
                                 <i class="fa fa-arrow-left"></i> Continue Shopping
                             </a>
+                            <script>
+                            (function () {
+                                try {
+                                    var stored = sessionStorage.getItem('slb_catalog_return') || '';
+                                    var catalogPath = @json(parse_url(route('advertiser.catalog'), PHP_URL_PATH) ?: '/advertiser/catalog');
+                                    var path = stored.split('?')[0];
+                                    if (stored.charAt(0) !== '/' || stored.indexOf('//') !== -1 || stored.indexOf('\\') !== -1) return;
+                                    if (path !== catalogPath && path !== catalogPath + '/') return;
+                                    var link = document.getElementById('continueShopping');
+                                    if (link) link.setAttribute('href', stored);
+                                } catch (_) {}
+                            })();
+                            </script>
                         </div>
                     </div>
                 </div>
@@ -1249,10 +1349,15 @@ document.addEventListener('DOMContentLoaded', function() {
     const refCodeTexts = document.querySelectorAll('.ref-code-display');
     
     function updateReferenceCode() {
-        if (refCodeDisplay) refCodeDisplay.innerText = referenceCode;
-        if (refCodeDisplaySpan) refCodeDisplaySpan.innerText = `REF${referenceCode}`;
+        const raw = String(referenceCode || '').trim();
+        const digits = raw.replace(/^REF/i, '');
+        if (!digits || /^x+$/i.test(digits) || digits === '—' || digits === '-') {
+            return;
+        }
+        if (refCodeDisplay) refCodeDisplay.innerText = digits;
+        if (refCodeDisplaySpan) refCodeDisplaySpan.innerText = `REF${digits}`;
         refCodeTexts.forEach(el => {
-            el.innerText = `REF${referenceCode}`;
+            el.innerText = `REF${digits}`;
         });
     }
     
@@ -1263,7 +1368,11 @@ document.addEventListener('DOMContentLoaded', function() {
             const targetId = this.dataset.target;
             const textEl = document.getElementById(targetId);
             if (textEl) {
-                const textToCopy = `REF${textEl.innerText}`;
+                const digits = String(textEl.innerText || '').replace(/^REF/i, '').trim();
+                if (!digits || /^x+$/i.test(digits) || digits === '—') {
+                    return;
+                }
+                const textToCopy = `REF${digits}`;
                 navigator.clipboard.writeText(textToCopy).then(() => {
                     const originalHtml = this.innerHTML;
                     this.innerHTML = '<i class="fas fa-check"></i> Copied!';
@@ -1288,7 +1397,9 @@ document.addEventListener('DOMContentLoaded', function() {
     if (bankDetails) bankDetails.style.display = 'none';
     
     let selectedMethod = null;
-    const totalAmount = {{ (float) $total }};
+    const baseTotalAmount = {{ (float) $total }};
+    let totalAmount = baseTotalAmount;
+    const guaranteePercent = {{ (float) app(\App\Services\Marketplace\CheckoutAddOnService::class)->guaranteePercent() }};
     const walletCash = {{ (float) ($checkoutCashBalance ?? 0) }};
     const walletBonus = {{ (float) ($checkoutBonusBalance ?? 0) }};
     const walletSpendable = {{ (float) ($checkoutSpendableBalance ?? 0) }};
@@ -1297,6 +1408,83 @@ document.addEventListener('DOMContentLoaded', function() {
     const bonusAppliedAmount = document.getElementById('bonusAppliedAmount');
     const grandTotalEl = document.getElementById('grandTotal');
     const walletAmountDueEl = document.getElementById('walletAmountDue');
+
+    function isWrittenSelected(line) {
+        const written = line.querySelector('input.checkout-content-source[value="written"], input.checkout-content-source[value="publisher"], input.checkout-content-source[value="slb"]');
+        return !!(written && written.checked);
+    }
+    function isLineChargedNow(line) {
+        return line.getAttribute('data-paying-now') === '1' || isWrittenSelected(line);
+    }
+    function writingFeeTotal() {
+        let extra = 0;
+        document.querySelectorAll('.checkout-writing-line').forEach(function (line) {
+            if (isWrittenSelected(line)) {
+                extra += parseFloat(line.getAttribute('data-writing-fee') || '0') || 0;
+            }
+        });
+        return Math.round(extra * 100) / 100;
+    }
+    function deferredBaseTotal() {
+        let extra = 0;
+        document.querySelectorAll('.checkout-writing-line').forEach(function (line) {
+            if (line.getAttribute('data-paying-now') !== '1' && isWrittenSelected(line)) {
+                extra += parseFloat(line.getAttribute('data-base-total') || '0') || 0;
+            }
+        });
+        return Math.round(extra * 100) / 100;
+    }
+    function placementTotal() {
+        return Math.round((baseTotalAmount + deferredBaseTotal() + writingFeeTotal()) * 100) / 100;
+    }
+    function eligibleGuaranteeBase() {
+        let total = 0;
+        document.querySelectorAll('.checkout-writing-line').forEach(function (line) {
+            if (line.getAttribute('data-guarantee-offered') !== '1' || !isLineChargedNow(line)) {
+                return;
+            }
+            total += parseFloat(line.getAttribute('data-base-total') || '0') || 0;
+            if (isWrittenSelected(line)) {
+                total += parseFloat(line.getAttribute('data-writing-fee') || '0') || 0;
+            }
+        });
+        return Math.round(total * 100) / 100;
+    }
+    function guaranteeFee() {
+        const box = document.getElementById('linkGuarantee');
+        if (!box || !box.checked) return 0;
+        return Math.round(eligibleGuaranteeBase() * (guaranteePercent / 100) * 100) / 100;
+    }
+    function refreshAddOnTotals() {
+        totalAmount = Math.round((placementTotal() + guaranteeFee()) * 100) / 100;
+        const writingRow = document.getElementById('writingFeeRow');
+        const writingAmt = document.getElementById('writingFeeAmount');
+        const gRow = document.getElementById('guaranteeFeeRow');
+        const gAmt = document.getElementById('guaranteeFeeAmount');
+        const writing = writingFeeTotal();
+        const guarantee = guaranteeFee();
+        if (writingRow && writingAmt) {
+            writingRow.classList.toggle('d-none', writing <= 0);
+            writingAmt.textContent = moneyFmt(writing);
+        }
+        if (gRow && gAmt) {
+            gRow.classList.toggle('d-none', guarantee <= 0);
+            gAmt.textContent = moneyFmt(guarantee);
+        }
+        const sub = document.getElementById('subtotal');
+        if (sub) sub.textContent = moneyFmt(placementTotal());
+        document.querySelectorAll('.checkout-writing-line').forEach(function (line) {
+            const brief = line.querySelector('.checkout-writing-brief');
+            const written = isWrittenSelected(line);
+            if (brief) brief.classList.toggle('d-none', !written);
+            const target = line.querySelector('.checkout-writing-target');
+            if (target) target.required = written;
+        });
+        refreshBonusUi();
+        if (typeof syncPlaceOrderForModeration === 'function') {
+            syncPlaceOrderForModeration();
+        }
+    }
 
     function bonusToApply() {
         if (!useBonusEl || !useBonusEl.checked || walletBonus <= 0) return 0;
@@ -1308,7 +1496,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function moneyFmt(n) {
-        return '€' + Number(n || 0).toFixed(2);
+        return (window.slbFormatPay || function (v) { return '€' + Number(v || 0).toFixed(2); })(n);
     }
 
     function refreshBonusUi() {
@@ -1378,7 +1566,12 @@ document.addEventListener('DOMContentLoaded', function() {
     if (useBonusEl) {
         useBonusEl.addEventListener('change', refreshBonusUi);
     }
-    refreshBonusUi();
+    document.querySelectorAll('.checkout-content-source').forEach(function (el) {
+        el.addEventListener('change', refreshAddOnTotals);
+    });
+    const guaranteeBox = document.getElementById('linkGuarantee');
+    if (guaranteeBox) guaranteeBox.addEventListener('change', refreshAddOnTotals);
+    refreshAddOnTotals();
 
     paymentOptions.forEach(option => {
         option.addEventListener('keydown', function(e) {
@@ -1444,6 +1637,22 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
+    document.addEventListener('click', function (e) {
+        const btn = e.target.closest('.js-switch-deposit-method');
+        if (!btn) {
+            return;
+        }
+        e.preventDefault();
+        const method = btn.getAttribute('data-method');
+        if (!method) {
+            return;
+        }
+        const opt = document.querySelector('.payment-option[data-method="' + method + '"]');
+        if (opt) {
+            opt.click();
+        }
+    });
+
     document.querySelectorAll('.copy-btn').forEach(button => {
         button.addEventListener('click', function() {
             const targetId = this.dataset.target;
@@ -1468,7 +1677,16 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function contentReady() {
-        return @json((bool) ($payableReady ?? false));
+        if (@json((bool) ($payableReady ?? false))) {
+            return true;
+        }
+        let ready = false;
+        document.querySelectorAll('.checkout-writing-line').forEach(function (line) {
+            if (isLineChargedNow(line)) {
+                ready = true;
+            }
+        });
+        return ready;
     }
 
     function syncPlaceOrderForModeration() {
@@ -1585,10 +1803,39 @@ document.addEventListener('DOMContentLoaded', function() {
                 payment_method: selectedMethod,
                 reference_code: referenceCode,
                 use_bonus: !!(useBonusEl && useBonusEl.checked),
+                link_guarantee: !!(document.getElementById('linkGuarantee') && document.getElementById('linkGuarantee').checked),
+                content_source: (function () {
+                    const out = {};
+                    document.querySelectorAll('.checkout-writing-line').forEach(function (line) {
+                        const picked = line.querySelector('input.checkout-content-source:checked');
+                        const siteId = line.getAttribute('data-site-id');
+                        if (siteId && picked) out[siteId] = picked.value;
+                    });
+                    return out;
+                })(),
+                writing_brief: (function () {
+                    const out = {};
+                    document.querySelectorAll('.checkout-writing-line').forEach(function (line) {
+                        const siteId = line.getAttribute('data-site-id');
+                        const target = line.querySelector('.checkout-writing-target');
+                        const anchor = line.querySelector('input[name*="[anchor_text]"]');
+                        if (siteId) {
+                            out[siteId] = {
+                                target_url: target ? target.value : '',
+                                anchor_text: anchor ? anchor.value : ''
+                            };
+                        }
+                    });
+                    return out;
+                })(),
                 publication_mode: schedule.publication_mode,
                 scheduled_date: schedule.scheduled_date || null,
                 scheduled_time: schedule.scheduled_time || null,
                 timezone: schedule.timezone || null,
+                project_id: (function () {
+                    const el = document.getElementById('checkoutProjectId');
+                    return el && el.value ? el.value : null;
+                })(),
                 payment_method_id: (function () {
                     const picked = document.querySelector('input[name="saved_card_choice"]:checked');
                     if (selectedMethod !== 'card') return null;
@@ -1721,7 +1968,7 @@ document.addEventListener('DOMContentLoaded', function() {
             Swal.fire({
                 icon: 'info',
                 title: 'Fund your wallet first',
-                text: 'Bank, Wise, and crypto payments use an invoice on Add Funds. After we credit your wallet, pay this order from your balance.',
+                text: @json($fundWalletFirstMessage),
                 confirmButtonText: 'Add funds & get invoice'
             }).then((result) => {
                 if (result.isConfirmed) {
@@ -1742,8 +1989,9 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 
 <!-- SweetAlert2 for better alerts -->  
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="{{ asset('assets/vendor/sweetalert2/sweetalert2.min.js') }}?v={{ @filemtime(public_path('assets/vendor/sweetalert2/sweetalert2.min.js')) ?: '1' }}"></script>
 <!-- Font Awesome -->
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+<link href="{{ asset('assets/css/slb-icons.css') }}?v={{ @filemtime(public_path('assets/css/slb-icons.css')) ?: '1' }}" rel="stylesheet">
+@include('partials.slb-icon-draw')
 
 @endsection

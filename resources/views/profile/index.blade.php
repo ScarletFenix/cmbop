@@ -1,8 +1,13 @@
-@extends('layouts.app')
+@php
+    $user = auth()->user();
+    $portalLayout = \App\Support\PortalShell::layout($user);
+    $usePortalShell = \App\Support\PortalShell::isPortal($user);
+@endphp
+@extends($portalLayout)
 
-@section('title', 'Profile - SEOLinkBuildings')
+@section('title', 'Profile')
 
-@push('styles')
+@push(\App\Support\PortalShell::styleStack($user))
 <style>
     :root {
         --card-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04);
@@ -15,7 +20,8 @@
 @endpush
 
 @section('content')
-<div class="container py-5">
+<div class="{{ \App\Support\PortalShell::contentClass($user) }}">
+    <h1 class="h3 mb-4">Profile</h1>
 
     {{-- ─── FLASH MESSAGES (pill style) ─── --}}
 
@@ -242,9 +248,10 @@
                             </div>
 
                             <div class="col-md-4 form-group">
-                                <label>Country</label>
-                                <input type="text" name="country" class="form-control form-control-sm"
-                                       value="{{ old_text('country', auth()->user()->country) }}" autocomplete="country">
+                                <label for="billing_country">Country</label>
+                                <select name="country" id="billing_country" class="form-select form-select-sm" autocomplete="country">
+                                    @include('partials.signup-country-options', ['selectedCountry' => old('country', auth()->user()->country)])
+                                </select>
                                 @error('country')
                                     <div class="text-danger fs-xs mt-1">{{ $message }}</div>
                                 @enderror
@@ -266,9 +273,11 @@
                                 @enderror
                             </div>
                             <div class="col-md-4 form-group">
-                                <label>Postal Code</label>
-                                <input type="text" name="postal_code" class="form-control form-control-sm"
-                                       value="{{ old_text('postal_code', auth()->user()->postal_code) }}" autocomplete="postal-code">
+                                <label for="billing_postal_code">Postal Code</label>
+                                <input type="text" name="postal_code" id="billing_postal_code" class="form-control form-control-sm"
+                                       value="{{ old_text('postal_code', auth()->user()->postal_code) }}" autocomplete="postal-code"
+                                       maxlength="10" pattern="[A-Za-z0-9][A-Za-z0-9 \-]{0,8}[A-Za-z0-9]"
+                                       title="{{ \App\Support\PostalCode::MESSAGE }}">
                                 @error('postal_code')
                                     <div class="text-danger fs-xs mt-1">{{ $message }}</div>
                                 @enderror
@@ -395,6 +404,28 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     setupFormStatus('formProfile', 'saveProfileStatus');
     setupFormStatus('formBilling', 'saveBillingStatus');
+
+    const billingForm = document.getElementById('formBilling');
+    const postalInput = document.getElementById('billing_postal_code');
+    function validPostalCode(raw) {
+        const s = String(raw || '').trim();
+        if (s === '') return true;
+        return /^(?=.*[A-Za-z0-9])[A-Za-z0-9 \-]{2,10}$/.test(s);
+    }
+    postalInput?.addEventListener('blur', function () {
+        this.value = String(this.value || '').trim().toUpperCase();
+        this.setCustomValidity(validPostalCode(this.value) ? '' : 'Postal code may contain letters, numbers, spaces and hyphens (2–10 characters).');
+    });
+    billingForm?.addEventListener('submit', function (e) {
+        if (postalInput) {
+            postalInput.value = String(postalInput.value || '').trim().toUpperCase();
+            postalInput.setCustomValidity(validPostalCode(postalInput.value) ? '' : 'Postal code may contain letters, numbers, spaces and hyphens (2–10 characters).');
+            if (!postalInput.checkValidity()) {
+                e.preventDefault();
+                postalInput.reportValidity();
+            }
+        }
+    });
 
     // ── Auto-dismiss flash messages ──
     const flashMsgs = document.querySelectorAll('.alert');

@@ -103,7 +103,13 @@ class CatalogUrlRevealTest extends TestCase
         $this->assertStringNotContainsString('Masked for publishers', $html);
         $this->assertStringNotContainsString('catalog-hide-mode-banner', $html);
         $this->assertStringContainsString('Mass-copying addresses can temporarily hide', $html);
-        $this->assertStringContainsString('Name, domain, category', $html);
+        $this->assertStringContainsString('Name, domain', $html);
+        $this->assertStringContainsString('site-open-link', $html);
+        $this->assertStringContainsString('rel="noopener nofollow"', $html);
+        $this->assertStringContainsString('/advertiser/go/', $html);
+        $this->assertStringNotContainsString('catalog-site-url--hidden', $html);
+        $this->assertStringNotContainsString('catalog-site-url__reveal', $html);
+        $this->assertStringNotContainsString('fa-solid fa-lock', $html);
     }
 
     public function test_hide_mode_catalog_masks_url_and_shows_eye(): void
@@ -124,6 +130,13 @@ class CatalogUrlRevealTest extends TestCase
         $this->assertStringContainsString('Name and URL hidden', $html);
         $this->assertStringContainsString('Use the eye to show or hide a row', $html);
         $this->assertStringContainsString('rows stay masked', $html);
+        $this->assertStringContainsString('catalog-site-url--hidden', $html);
+        $this->assertStringContainsString('fa-lock', $html);
+        $this->assertStringContainsString('>Reveal</button>', $html);
+        $this->assertDoesNotMatchRegularExpression(
+            '/<a[^>]+class="[^"]*site-open-link[^"]*"[^>]*>\s*secr\*\*\*\.example/',
+            $html
+        );
     }
 
     public function test_reveal_outside_hide_mode_returns_hide_mode_only(): void
@@ -171,8 +184,8 @@ class CatalogUrlRevealTest extends TestCase
         $this->assertStringContainsString('a-sample-guest-post', $html);
         $this->assertStringNotContainsString('href="https://open-sample.example/a-sample-guest-post"', $html);
         $this->assertStringNotContainsString('Use the eye to show this listing', $html);
-        $this->assertStringContainsString('data-site-url="https://open-sample.example"', $html);
-        $this->assertStringContainsString('btn-claim-site', $html);
+        $this->assertStringContainsString('open-sample.example', $html);
+        $this->assertStringNotContainsString('btn-claim-site', $html);
     }
 
     public function test_normal_catalog_always_shows_the_real_domain(): void
@@ -337,6 +350,10 @@ class CatalogUrlRevealTest extends TestCase
         $this->assertStringContainsString('hideUrl:', $html);
         $this->assertStringContainsString('function requestConceal(', $js);
         $this->assertStringContainsString('hideUrlEndpoint', $js);
+        $this->assertStringContainsString("createElement(bareHost ? 'a' : 'span')", $js);
+        $this->assertStringContainsString("setAttribute('rel', 'noopener nofollow')", $js);
+        $this->assertStringContainsString('catalog-site-url--hidden', $js);
+        $this->assertStringContainsString('fa-solid fa-lock', $js);
     }
 
     // —— Revealing ——————————————————————————————————————————————

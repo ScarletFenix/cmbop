@@ -5,13 +5,18 @@
 use App\Http\Middleware\AlignGeneratedUrlsWithRequest;
 use App\Http\Middleware\BlockSuspendedUsers;
 use App\Http\Middleware\CanonicalHost;
+use App\Http\Middleware\CompressTextResponse;
+use App\Http\Middleware\ConfigurePartnerDashboardSession;
 use App\Http\Middleware\DrainQueuedMail;
+use App\Http\Middleware\EnsureVisitorChat;
 use App\Http\Middleware\HealHostingerProduction;
+use App\Http\Middleware\PartnerDashboardHost;
 use App\Http\Middleware\RecordUserLastSeen;
 use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\SetLocale;
 use App\Models\Invoice;
 use App\Services\ContentUpload\ContentUploadService;
+use App\Support\LeftoverPublicI18nSlugs;
 use App\Support\TrustedProxies;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -20,7 +25,18 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Exceptions\PostTooLargeException;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
+
+// Leftover PublicI18n.php + leftover web.php: define englishOnlyMarketingSlugs()
+// before route boot so local/Hostinger cannot 500 on the missing method.
+$leftoverPublicI18nSlugs = __DIR__.'/../app/Support/LeftoverPublicI18nSlugs.php';
+if (is_file($leftoverPublicI18nSlugs)) {
+    require_once $leftoverPublicI18nSlugs;
+    if (class_exists(LeftoverPublicI18nSlugs::class)) {
+        LeftoverPublicI18nSlugs::ensureEnglishOnlyMarketingSlugsMethod();
+    }
+}
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -52,13 +68,27 @@ return Application::configure(basePath: dirname(__DIR__))
         // Gmail List-Unsubscribe=One-Click POSTs have no CSRF token.
         $middleware->validateCsrfTokens(except: [
             'email/unsubscribe/*',
+            'email/weekly-new-sites/*',
+            'oauth/token',
+            'oauth/register',
+            'oauth/revoke',
+            'api/mcp/*',
         ]);
 
         // Public-site locale detection (SaaS dashboards stay English via SetLocale rules)
         // Security headers (CSP, HSTS, nosniff, frame, referrer) on every web response
         // Partial Hostinger uploads often ship bootstrap/app.php without these files.
+        $loadAppClass('app/Support/CountryHost.php');
         if ($loadAppClass('app/Http/Middleware/CanonicalHost.php')) {
             $middleware->prependToGroup('web', CanonicalHost::class);
+        }
+        if ($loadAppClass('app/Http/Middleware/ConfigurePartnerDashboardSession.php')) {
+            $middleware->prependToGroup('web', ConfigurePartnerDashboardSession::class);
+        }
+        if ($loadAppClass('app/Http/Middleware/PartnerDashboardHost.php')) {
+            // Global so it runs before route `auth` (priority-sorted ahead of
+            // appended web middleware) and can send /advertiser/* to `/`.
+            $middleware->prepend(PartnerDashboardHost::class);
         }
         $webAppend = [];
         if ($loadAppClass('app/Http/Middleware/AlignGeneratedUrlsWithRequest.php')) {
@@ -89,11 +119,36 @@ return Application::configure(basePath: dirname(__DIR__))
         if ($loadAppClass('app/Http/Middleware/HealHostingerProduction.php')) {
             $middleware->append(HealHostingerProduction::class);
         }
+        if ($loadAppClass('app/Http/Middleware/EnsureVisitorChat.php')) {
+            $middleware->appendToGroup('web', EnsureVisitorChat::class);
+        }
+        // First inbound / last outbound so the body is final before gzip.
+        if ($loadAppClass('app/Http/Middleware/CompressTextResponse.php')) {
+            $middleware->prepend(CompressTextResponse::class);
+        }
     })
     ->withExceptions(function (Exceptions $exceptions) {
         // Production uses branded resources/views/errors/* pages (APP_DEBUG=false).
         $exceptions->shouldRenderJsonWhen(function ($request, Throwable $e) {
             return $request->expectsJson();
+        });
+
+        // Login / signup / forgot / reset post as fetch JSON. Laravel maps
+        // TokenMismatchException to HttpException 419 before renderers run,
+        // and the branded 419 HTML page is unparseable as JSON.
+        $exceptions->render(function (HttpException $e, $request) {
+            if ($e->getStatusCode() !== 419 || ! $request->expectsJson()) {
+                return null;
+            }
+
+            $message = function_exists('user_message')
+                ? user_message('session.expired', 'Your session expired. Refresh the page and try again.')
+                : 'Your session expired. Refresh the page and try again.';
+
+            return response()->json([
+                'status' => 'error',
+                'message' => $message,
+            ], 419);
         });
 
         // ValidatePostSize runs before routing. A 5 MB .docx with PHP still at
@@ -152,19 +207,30 @@ return Application::configure(basePath: dirname(__DIR__))
             $billingDoc = str_contains($request->path(), 'billing/invoices')
                 || str_contains($request->path(), 'billing/documents');
 
-            if (! $fromInvoice && ! ($billingDoc && $leaksModel)) {
+            if ($fromInvoice || ($billingDoc && $leaksModel)) {
+                if (class_exists(Invoice::class) && method_exists(Invoice::class, 'missingDocumentResponse')) {
+                    return Invoice::missingDocumentResponse($request);
+                }
+
+                if ($request->expectsJson()) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Invoice not found.',
+                    ], 404);
+                }
+
                 return null;
             }
 
-            if (class_exists(Invoice::class) && method_exists(Invoice::class, 'missingDocumentResponse')) {
-                return Invoice::missingDocumentResponse($request);
-            }
+            if ($request->is('admin') || $request->is('admin/*')) {
+                if ($request->expectsJson()) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Not found.',
+                    ], 404);
+                }
 
-            if ($request->expectsJson()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Invoice not found.',
-                ], 404);
+                return response()->view('errors.admin-404', [], 404);
             }
 
             return null;
@@ -193,11 +259,21 @@ return Application::configure(basePath: dirname(__DIR__))
         });
     })
     ->withSchedule(function (Schedule $schedule) {
+        // Hostinger shared hosting caps PHP processes (120). Mutex every event
+        // so a slow feed sync / webhook burst / mail drain cannot stack a new
+        // php artisan process every minute. onOneServer() also covers the
+        // case where both CLI schedule:run and POST /cron/run fire.
+        $mutex = static function ($event, int $expiresMinutes = 1440) {
+            return $event->withoutOverlapping($expiresMinutes)->onOneServer();
+        };
+
         // Auto-approve window (default 72h / 3 days) — every 15 minutes
-        $event = $schedule->command('orders:auto-approve')
-            ->everyFifteenMinutes()
-            ->withoutOverlapping()
-            ->sendOutputTo(storage_path('logs/auto-approve.log'));
+        $event = $mutex(
+            $schedule->command('orders:auto-approve')
+                ->everyFifteenMinutes()
+                ->sendOutputTo(storage_path('logs/auto-approve.log')),
+            20
+        );
 
         $adminEmail = config('mail.admin_email');
         if (filled($adminEmail)) {
@@ -205,47 +281,55 @@ return Application::configure(basePath: dirname(__DIR__))
         }
 
         // Email digests (respect user preferences + admin toggles inside mailables)
-        $schedule->command('emails:send-digests --type=weekly')->weeklyOn(1, '8:00');
-        $schedule->command('emails:send-digests --type=monthly')->monthlyOn(1, '8:15');
+        $mutex($schedule->command('emails:send-digests --type=weekly')->weeklyOn(1, '8:00'), 180);
+        $mutex($schedule->command('emails:send-digests --type=monthly')->monthlyOn(1, '8:15'), 180);
 
         // Publishers who registered but never listed a site: day 3 + day 7 nudges
-        $schedule->command('emails:send-publisher-add-site-reminders')
-            ->dailyAt('09:15')
-            ->withoutOverlapping();
+        $mutex($schedule->command('emails:send-publisher-add-site-reminders')->dailyAt('09:15'));
 
         // Advertisers who registered but never funded a wallet: day 7 + day 14 nudges
-        $schedule->command('emails:send-deposit-reminders')
-            ->dailyAt('09:30')
-            ->withoutOverlapping();
+        $mutex($schedule->command('emails:send-deposit-reminders')->dailyAt('09:30'));
+
+        // Advertisers with a saved cart and no paid order since last activity.
+        // No-op until Admin → Abandoned carts (or ABANDONED_CART_REMINDERS_ENABLED) is on.
+        $mutex($schedule->command('emails:send-abandoned-cart-reminders')->hourly(), 90);
 
         // Order reminder cadences. Hourly rather than daily so a stage that comes
         // due at 12h or 36h fires near its mark instead of drifting to the next
         // morning; each command advances an item by at most one stage per run.
-        $schedule->command('orders:nudge-publishers')
-            ->hourly()
-            ->withoutOverlapping();
-
-        $schedule->command('orders:nudge-advertisers')
-            ->hourly()
-            ->withoutOverlapping();
+        $mutex($schedule->command('orders:nudge-publishers')->hourly(), 90);
+        $mutex($schedule->command('orders:nudge-advertisers')->hourly(), 90);
+        // Bulk publisher reminders. The command no-ops unless
+        // BULK_PUBLISHER_REMINDER_AUTO=true.
+        $mutex($schedule->command('bulk:remind-publishers')->dailyAt('10:45'));
 
         // New and discounted listings for advertisers who have bought before.
         // Daily run, per-recipient 15-day clock inside the command.
-        $schedule->command('sites:send-new-sites-digest')
-            ->dailyAt('10:15')
-            ->withoutOverlapping();
+        $mutex($schedule->command('sites:send-new-sites-digest')->dailyAt('10:15'));
+
+        // Personalised weekly new-site digest (niche+country pairs).
+        // Monday 10:00 Asia/Karachi (PKT UTC+5, no DST) = Monday 05:00 UTC.
+        $mutex(
+            $schedule->command('emails:send-weekly-new-sites-digest')
+                ->weeklyOn(
+                    (int) config('weekly_new_sites_digest.weekday', 1),
+                    (string) config('weekly_new_sites_digest.time', '10:00')
+                )
+                ->timezone((string) config('weekly_new_sites_digest.timezone', 'Asia/Karachi')),
+            180
+        );
 
         // Content upload: release scheduled orders + 24h reminders; purge expired files
-        $schedule->command('orders:release-scheduled')
-            ->everyFiveMinutes()
-            ->withoutOverlapping();
-        $schedule->command('content:purge-expired')->dailyAt('03:30');
+        $mutex($schedule->command('orders:release-scheduled')->everyFiveMinutes(), 10);
+        $mutex($schedule->command('content:purge-expired')->dailyAt('03:30'));
 
         // Publisher catalog enrichment (metrics + screenshots) — non-blocking scheduled refresh
         $enrichFreq = config('site_enrichment.refresh_frequency', 'weekly');
-        $enrichCommand = $schedule->command('sites:enrich --stale')
-            ->withoutOverlapping()
-            ->sendOutputTo(storage_path('logs/site-enrichment.log'));
+        $enrichCommand = $mutex(
+            $schedule->command('sites:enrich --stale')
+                ->sendOutputTo(storage_path('logs/site-enrichment.log')),
+            180
+        );
 
         if ($enrichFreq === 'daily') {
             $enrichCommand->dailyAt('04:15');
@@ -253,21 +337,52 @@ return Application::configure(basePath: dirname(__DIR__))
             $enrichCommand->weeklyOn(2, '4:15'); // Tuesday
         }
 
+        // Partner catalog: ECB CZK/PLN rates, then nightly feed re-fetch
+        $mutex($schedule->command('partners:refresh-fx')->dailyAt('03:40'));
+        $mutex($schedule->command('partners:sync-feeds')->dailyAt('04:00'), 180);
+        $mutex($schedule->command('partners:sync-api-pull')->dailyAt('04:05'), 180);
+        $mutex($schedule->command('partners:deliver-webhooks --limit=50 --max-seconds=40')->everyMinute(), 10);
+        $mutex($schedule->command('advertisers:deliver-webhooks --limit=50 --max-seconds=40')->everyMinute(), 10);
+        $mutex($schedule->command('partners:release-holds')->hourly(), 90);
+        $mutex($schedule->command('partners:monitor-links')->everySixHours(), 180);
+        $mutex($schedule->command('partners:generate-statements')->monthlyOn(1, '05:10'), 180);
+
+        // Refresh catalog EUR prices from listing amounts + live FX buffer
+        $mutex($schedule->command('sites:refresh-eur-prices')->dailyAt('04:50'));
+
         // Notify publishers when timed site discounts expire
-        $schedule->command('sites:notify-expired-discounts')
-            ->hourly()
-            ->withoutOverlapping();
+        $mutex($schedule->command('sites:notify-expired-discounts')->hourly(), 90);
 
         // Auto-complete file verification when publishers uploaded the txt but forgot to click Check
-        $schedule->command('sites:recheck-file-verification --limit=100')
-            ->dailyAt('05:10')
-            ->withoutOverlapping();
+        $mutex($schedule->command('sites:recheck-file-verification --limit=100')->dailyAt('05:10'));
+
+        $mutex($schedule->command('orders:recheck-completed-live-urls --limit='.(int) config('orders.live_url_recheck_limit', 40))->dailyAt('05:40'));
+
+        $mutex($schedule->command('orders:check-link-guarantees --limit='.(int) config('orders.link_guarantee.check_limit', 40))->dailyAt('06:10'));
+
+        $mutex($schedule->command('publishers:refresh-reliability-stats')->dailyAt('03:45'));
+
+        $mutex($schedule->command('emails:send-saved-search-alerts')->dailyAt('10:30'));
 
         // Queued mail sits on the "emails" queue until a worker consumes it. Hosts
         // that only offer cron have no resident worker, so drain the backlog here.
-        $schedule->command('mail:drain-queue')
-            ->everyMinute()
-            ->withoutOverlapping(5)
-            ->runInBackground();
+        // Foreground (no runInBackground): a forked queue:work is another PHP
+        // process on the 120-process Hostinger cap, and a 5-minute mutex let a
+        // hung SMTP job start a second drain.
+        $mutex($schedule->command('mail:drain-queue --max-time=40')->everyMinute(), 10);
+
+        $mutex($schedule->command('emails:send-admin-signup-digest')->everyFifteenMinutes(), 20);
+
+        // Off-site Google Drive backup. 03:00 Asia/Karachi regardless of APP timezone (UTC).
+        $backup = $mutex(
+            $schedule->command('backup:drive')
+                ->dailyAt('03:00')
+                ->timezone('Asia/Karachi')
+                ->sendOutputTo(storage_path('logs/backup-drive.log')),
+            180
+        );
+        if (filled($adminEmail)) {
+            $backup->emailOutputOnFailure($adminEmail);
+        }
     })
     ->create();

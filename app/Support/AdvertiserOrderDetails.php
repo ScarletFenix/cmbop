@@ -2,10 +2,12 @@
 
 namespace App\Support;
 
+use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\OrderItem;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Advertiser Order Details modal: payload flags, honest empty copy, and
@@ -40,6 +42,53 @@ final class AdvertiserOrderDetails
         return 'No placements on this order.';
     }
 
+    public static function adminMissingPlacementsNote(Order $order): string
+    {
+        $number = filled($order->order_number) ? (string) $order->order_number : '#'.$order->id;
+
+        return 'Paid/completed orders normally have placements that name the publisher and stamp completion. '
+            .'Order '.$number.' has none — typically a legacy import, a status change made without checkout, or placements that were deleted. '
+            .'Publisher and live URL cannot be reconstructed from the order row alone.';
+    }
+
+    /**
+     * @return array{at: ?CarbonInterface, inferred: bool, note: ?string}
+     */
+    public static function completedAtDisplay(Order $order): array
+    {
+        if ($order->completed_at) {
+            return ['at' => $order->completed_at, 'inferred' => false, 'note' => null];
+        }
+
+        $order->loadMissing('items');
+        $itemAt = $order->items
+            ->map(fn ($line) => $line instanceof OrderItem ? $line->completed_at : null)
+            ->filter()
+            ->sort()
+            ->last();
+        if ($itemAt) {
+            return [
+                'at' => self::asDate($itemAt),
+                'inferred' => true,
+                'note' => 'From a placement stamp. orders.completed_at is empty — run database/sql/backfill_orders_completed_at.sql to persist it.',
+            ];
+        }
+
+        if ((string) $order->status === 'completed') {
+            $fallback = $order->paid_at ?: $order->updated_at;
+
+            return [
+                'at' => $fallback,
+                'inferred' => $fallback !== null,
+                'note' => $fallback
+                    ? 'Estimated from '.($order->paid_at ? 'paid_at' : 'last update').'. The order was marked completed without a completion stamp.'
+                    : 'This order is marked completed but has no completion timestamp.',
+            ];
+        }
+
+        return ['at' => null, 'inferred' => false, 'note' => null];
+    }
+
     public static function policyNote(Order $order): string
     {
         $status = (string) $order->status;
@@ -50,14 +99,24 @@ final class AdvertiserOrderDetails
                 return '';
             }
 
-            return 'If a published link is later removed, use Report link removed.';
+            $note = 'If a published link is later removed, use Report link removed.';
+            if ($order->link_guarantee) {
+                $note .= ' '.$order->linkGuaranteeTermsNote();
+            }
+
+            return $note;
         }
 
         if ($status === 'cancelled' || $payment === 'refunded' || $payment === 'failed') {
             return '';
         }
 
-        return 'Declines refund automatically · request changes before auto-approve';
+        $note = 'Declines refund automatically · request changes before auto-approve';
+        if ($order->link_guarantee) {
+            $note .= ' · '.$order->linkGuaranteeTermsNote();
+        }
+
+        return $note;
     }
 
     public static function hasLiveUrl(Order $order): bool
@@ -68,10 +127,104 @@ final class AdvertiserOrderDetails
     }
 
     /**
+     * True when this order already carries an advertiser article-approval
+     * stamp from the writing workflow (or a released writing line).
+     * Does not invent approval from library moderation alone.
+     */
+    public static function hasArticleApproved(Order $order): bool
+    {
+        $order->loadMissing('items');
+
+        return $order->items->contains(
+            fn ($line) => $line instanceof OrderItem && self::itemHasArticleApproved($line)
+        );
+    }
+
+    public static function itemHasArticleApproved(OrderItem $line): bool
+    {
+        if (filled($line->article_approved_at ?? null)) {
+            return true;
+        }
+
+        $status = strtolower(trim((string) ($line->writing_status ?? '')));
+
+        return in_array($status, ['article_approved', 'released_to_publisher'], true);
+    }
+
+    public static function articleApprovedAt(Order $order): ?CarbonInterface
+    {
+        $order->loadMissing('items');
+        $when = null;
+        foreach ($order->items as $line) {
+            if (! $line instanceof OrderItem || ! self::itemHasArticleApproved($line)) {
+                continue;
+            }
+            $at = self::asDate($line->article_approved_at ?? null);
+            if ($at && ($when === null || $at->lt($when))) {
+                $when = $at;
+            }
+        }
+
+        return $when;
+    }
+
+    /**
+     * Compact link-term chips for the Order Details tracking card.
+     * Only includes values already present on the order / related sites.
+     *
+     * @return list<array{key: string, label: string}>
+     */
+    public static function linkTerms(Order $order): array
+    {
+        $order->loadMissing('items.site');
+        $chips = [];
+
+        $linkType = null;
+        $publication = null;
+        foreach ($order->items as $line) {
+            if (! $line instanceof OrderItem) {
+                continue;
+            }
+            $site = $line->relationLoaded('site') ? $line->site : null;
+            if (! $linkType && $site && filled($site->link_type)) {
+                $linkType = strtolower(trim((string) $site->link_type));
+            }
+            if (! $publication && $site && filled($site->publication_time)) {
+                $publication = trim((string) $site->publication_time);
+            }
+        }
+
+        if (in_array($linkType, ['dofollow', 'nofollow'], true)) {
+            $chips[] = ['key' => 'link_type', 'label' => $linkType];
+        } elseif (filled($linkType)) {
+            $chips[] = ['key' => 'link_type', 'label' => $linkType];
+        }
+
+        if (filled($publication)) {
+            $chips[] = ['key' => 'publication_time', 'label' => $publication];
+        }
+
+        if ($order->link_guarantee !== null) {
+            $chips[] = [
+                'key' => 'link_guarantee',
+                'label' => $order->link_guarantee ? '12-month guarantee' : 'No 12-month guarantee',
+            ];
+        }
+
+        return $chips;
+    }
+
+    /**
      * @return list<array<string, mixed>>
      */
     public static function presentItems(Order $order): array
     {
+        try {
+            $order->loadMissing('items.contentSubmission');
+        } catch (\Throwable) {
+            // Leftover hosts may not have content_submissions.
+        }
+
         return $order->items
             ->filter(fn ($line) => $line instanceof OrderItem)
             ->map(fn (OrderItem $line) => self::presentItem($line))
@@ -80,20 +233,67 @@ final class AdvertiserOrderDetails
     }
 
     /**
-     * @return array<string, mixed>
+     * Billing & Invoices download URL for this order, or null when none exists.
      */
+    public static function invoiceDownloadUrl(Order $order): ?string
+    {
+        try {
+            if (! Schema::hasTable('invoices')) {
+                return null;
+            }
+
+            $invoice = Invoice::query()
+                ->where('user_id', $order->user_id)
+                ->where('type', Invoice::TYPE_TAX_INVOICE)
+                ->where('status', '!=', Invoice::STATUS_CANCELLED)
+                ->where(function ($q) use ($order) {
+                    $q->where('order_id', $order->id);
+                    if (filled($order->reference_code)) {
+                        $q->orWhere('reference_code', $order->reference_code);
+                    }
+                    if (filled($order->order_number)) {
+                        $q->orWhere('order_number', $order->order_number);
+                    }
+                })
+                ->latest('id')
+                ->first();
+
+            if (! $invoice || ! $invoice->advertiserCanDownloadPdf()) {
+                return null;
+            }
+
+            return route('advertiser.billing.download', $invoice, false);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
     public static function presentItem(OrderItem $line): array
     {
         $site = $line->relationLoaded('site') ? $line->site : null;
+        if (! $site && $line->site_id) {
+            try {
+                $site = $line->site;
+            } catch (\Throwable) {
+                $site = null;
+            }
+        }
+        $submission = $line->relationLoaded('contentSubmission') ? $line->contentSubmission : null;
         $line->unsetRelation('site');
         $line->unsetRelation('latestDispute');
+        $line->unsetRelation('contentSubmission');
         $row = $line->toArray();
-        unset($row['site'], $row['latest_dispute'], $row['latestDispute']);
+        unset($row['site'], $row['latest_dispute'], $row['latestDispute'], $row['content_submission'], $row['contentSubmission']);
 
         $row['id'] = $line->id;
         $row['site_id'] = $line->site_id;
         $row['site_name'] = $line->site_name ?: $site?->site_name;
         $row['site_url'] = $line->site_url ?: $site?->site_url;
+        $row['link_type'] = $site?->link_type ? (string) $site->link_type : null;
+        $row['publication_time'] = $site?->publication_time ? (string) $site->publication_time : null;
+        $row['catalog_url'] = $line->site_id
+            ? route('advertiser.catalog', ['site' => $line->site_id], false)
+            : null;
         $row['visit_url'] = $line->getAttribute('visit_url');
         $row['live_url'] = $line->live_url;
         $row['live_url_submitted_at'] = self::iso($line->live_url_submitted_at);
@@ -101,14 +301,21 @@ final class AdvertiserOrderDetails
         $row['live_url_http_status'] = $line->live_url_http_status;
         $row['live_url_check_ok'] = $line->live_url_check_ok;
         $row['content_link'] = $line->content_link;
-        $row['content_original_name'] = $line->content_original_name;
+        $row['content_original_name'] = $line->content_original_name ?: $submission?->original_filename;
         $row['content_submission_id'] = $line->content_submission_id;
+        $row['word_count'] = $submission && $submission->word_count
+            ? (int) $submission->word_count
+            : null;
         $row['content_revision_requested'] = $line->content_revision_requested;
         $row['content_revision_reason'] = $line->content_revision_reason;
         $row['anchor_text'] = $line->anchor_text;
         $row['target_url'] = $line->target_url;
         $row['feature_image_url'] = $line->feature_image_url;
         $row['price'] = $line->price;
+        $row['content_source'] = $line->content_source ?? 'buyer';
+        $row['writing_fee'] = $line->writing_fee;
+        $row['writing_status'] = $line->writing_status ? (string) $line->writing_status : null;
+        $row['article_approved_at'] = self::iso($line->article_approved_at ?? null);
         $row['additional_price'] = $line->additional_price;
         $row['homepage_price'] = $line->homepage_price;
         $row['homepage_days'] = $line->homepage_days;
@@ -123,6 +330,7 @@ final class AdvertiserOrderDetails
         $row['completion_notes'] = $line->completion_notes;
         $row['accepted_at'] = self::iso($line->accepted_at);
         $row['completed_at'] = self::iso($line->completed_at);
+        $row['article_approved'] = self::itemHasArticleApproved($line);
         if (isset($line->auto_approve_hours_remaining)) {
             $row['auto_approve_hours_remaining'] = (int) $line->auto_approve_hours_remaining;
         }

@@ -2,12 +2,44 @@
 
 @section('content')
 @php
-    $preselect = \App\Services\AudienceInventoryService::canonicalAudienceKey((string) request('audience', 'advertisers'))
+    $resumeDraft = $resumeDraft ?? null;
+    $preselect = \App\Services\AudienceInventoryService::canonicalAudienceKey((string) request(
+        'audience',
+        $resumeDraft?->audience ?: 'advertisers'
+    ))
         ?? 'advertisers';
     if (!in_array($preselect, \App\Services\AudienceInventoryService::audienceKeys(), true)) {
         $preselect = 'advertisers';
     }
+    $audienceOptions = [
+        'advertisers' => 'All Advertisers ('.$stats['advertisers'].')',
+        'publishers' => 'All Publishers ('.$stats['publishers'].')',
+        'both' => 'Advertisers + Publishers ('.$stats['both_unique'].' unique)',
+        'advertisers_no_orders' => 'Advertisers: never checked out ('.($stats['advertisers_never_checked_out'] ?? $stats['advertisers_no_orders'] ?? 0).')',
+        'advertisers_no_paid_orders' => 'Advertisers: no paid orders ('.($stats['advertisers_no_paid_orders'] ?? 0).')',
+        'publishers_no_sites' => 'Publishers: no sites ('.($stats['publishers_no_sites'] ?? 0).')',
+        'advertisers_never_deposited' => 'Advertisers: never deposited ('.($stats['advertisers_never_deposited'] ?? 0).')',
+        'advertisers_paid_orders' => 'Advertisers: paid customers ('.($stats['advertisers_paid_orders'] ?? 0).')',
+        'advertisers_deposited_no_orders' => 'Advertisers: deposited, no paid orders ('.($stats['advertisers_deposited_no_orders'] ?? 0).')',
+        'publishers_no_active_sites' => 'Publishers: no active sites ('.($stats['publishers_no_active_sites'] ?? 0).')',
+        'selected' => 'Select specific users…',
+    ];
+    $draftUserIds = collect(old('user_ids', $resumeDraft?->selected_user_ids ?? []));
+    $audienceCurrent = old('audience', $preselect);
+    if (! isset($audienceOptions[$audienceCurrent])) {
+        $audienceCurrent = $preselect;
+    }
+    $resumeTemplateKey = old('template_key', $resumeDraft->template_key ?? '');
+    $resumeFeaturePayload = is_array($resumeDraft?->template_payload) ? $resumeDraft->template_payload : [];
+    $resumeFeatureTitle = old_text('feature_title', $resumeFeaturePayload['title'] ?? '');
+    $resumeFeatureIntro = old_text('feature_intro', $resumeFeaturePayload['intro'] ?? '');
+    $resumeFeatures = old('features', $resumeFeaturePayload['features'] ?? []);
+    if (! is_array($resumeFeatures)) {
+        $resumeFeatures = [];
+    }
+    $isFeatureUpdate = $resumeTemplateKey === \App\Support\FeatureUpdateHtml::TEMPLATE_KEY;
 @endphp
+<link href="{{ asset('assets/css/single-select.css') }}?v={{ @filemtime(public_path('assets/css/single-select.css')) ?: '1' }}" rel="stylesheet">
 <div class="container-fluid">
     <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
         <div>
@@ -32,136 +64,166 @@
 
     <div class="row g-3 mb-4">
         <div class="col-md-4 col-xl">
+            <a href="{{ route('admin.campaigns.index', ['audience' => 'advertisers']) }}#campaign-compose" class="text-decoration-none text-reset">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
                     <div class="text-muted small">Advertisers available (verified)</div>
                     <h3 class="mb-0">{{ number_format($stats['advertisers']) }}</h3>
                 </div>
             </div>
+            </a>
         </div>
         <div class="col-md-4 col-xl">
+            <a href="{{ route('admin.campaigns.index', ['audience' => 'publishers']) }}#campaign-compose" class="text-decoration-none text-reset">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
                     <div class="text-muted small">Publishers available (verified)</div>
                     <h3 class="mb-0">{{ number_format($stats['publishers']) }}</h3>
                 </div>
             </div>
+            </a>
         </div>
         <div class="col-md-4 col-xl">
+            <a href="{{ route('admin.campaigns.index', ['audience' => 'both']) }}#campaign-compose" class="text-decoration-none text-reset">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
                     <div class="text-muted small">Unique combined (verified)</div>
                     <h3 class="mb-0">{{ number_format($stats['both_unique']) }}</h3>
                 </div>
             </div>
+            </a>
         </div>
         <div class="col-md-6 col-xl">
+            <a href="{{ route('admin.campaigns.index', ['audience' => 'advertisers_never_checked_out']) }}#campaign-compose" class="text-decoration-none text-reset">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
                     <div class="text-muted small">Advertisers: never checked out</div>
                     <h3 class="mb-0">{{ number_format($stats['advertisers_never_checked_out'] ?? $stats['advertisers_no_orders'] ?? 0) }}</h3>
                 </div>
             </div>
+            </a>
         </div>
         <div class="col-md-6 col-xl">
+            <a href="{{ route('admin.campaigns.index', ['audience' => 'advertisers_no_paid_orders']) }}#campaign-compose" class="text-decoration-none text-reset">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
                     <div class="text-muted small">Advertisers: no paid orders</div>
                     <h3 class="mb-0">{{ number_format($stats['advertisers_no_paid_orders'] ?? 0) }}</h3>
                 </div>
             </div>
+            </a>
         </div>
         <div class="col-md-6 col-xl">
+            <a href="{{ route('admin.campaigns.index', ['audience' => 'publishers_no_sites']) }}#campaign-compose" class="text-decoration-none text-reset">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
                     <div class="text-muted small">Publishers: no sites</div>
                     <h3 class="mb-0">{{ number_format($stats['publishers_no_sites'] ?? 0) }}</h3>
                 </div>
             </div>
+            </a>
         </div>
         <div class="col-md-6 col-xl">
+            <a href="{{ route('admin.campaigns.index', ['audience' => 'advertisers_never_deposited']) }}#campaign-compose" class="text-decoration-none text-reset">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
                     <div class="text-muted small">Advertisers: never deposited</div>
                     <h3 class="mb-0">{{ number_format($stats['advertisers_never_deposited'] ?? 0) }}</h3>
                 </div>
             </div>
+            </a>
         </div>
         <div class="col-md-6 col-xl">
+            <a href="{{ route('admin.campaigns.index', ['audience' => 'advertisers_paid_orders']) }}#campaign-compose" class="text-decoration-none text-reset">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
                     <div class="text-muted small">Advertisers: paid customers</div>
                     <h3 class="mb-0">{{ number_format($stats['advertisers_paid_orders'] ?? 0) }}</h3>
                 </div>
             </div>
+            </a>
         </div>
         <div class="col-md-6 col-xl">
+            <a href="{{ route('admin.campaigns.index', ['audience' => 'advertisers_deposited_no_orders']) }}#campaign-compose" class="text-decoration-none text-reset">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
                     <div class="text-muted small">Advertisers: deposited, no paid orders</div>
                     <h3 class="mb-0">{{ number_format($stats['advertisers_deposited_no_orders'] ?? 0) }}</h3>
                 </div>
             </div>
+            </a>
         </div>
         <div class="col-md-6 col-xl">
+            <a href="{{ route('admin.campaigns.index', ['audience' => 'publishers_no_active_sites']) }}#campaign-compose" class="text-decoration-none text-reset">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
                     <div class="text-muted small">Publishers: no active sites</div>
                     <h3 class="mb-0">{{ number_format($stats['publishers_no_active_sites'] ?? 0) }}</h3>
                 </div>
             </div>
+            </a>
         </div>
     </div>
 
     <div class="row g-4">
-        <div class="col-xl-7">
+        <div class="col-xl-7" id="campaign-compose">
             <div class="card border-0 shadow-sm">
                 <div class="card-header bg-white border-0">
-                    <strong><i class="fa fa-paper-plane me-2 text-primary"></i>Compose campaign</strong>
+                    <strong><i class="fa fa-paper-plane me-2 text-primary"></i>{{ $resumeDraft ? 'Resume draft' : 'Compose campaign' }}</strong>
+                    @if($resumeDraft)
+                        <span class="text-muted small ms-2">Draft #{{ $resumeDraft->id }}</span>
+                    @endif
                 </div>
                 <div class="card-body">
                     <form method="POST" action="{{ route('admin.campaigns.send') }}" id="campaignForm">
                         @csrf
+                        @php
+                            $handoff = \App\Support\AdminAudiences::handoffFields($inventorySnapshot ?? []);
+                        @endphp
+                        @foreach(['q', 'verified', 'registered_from', 'registered_to', 'country', 'marketing', 'exclude_dual_role'] as $handoffKey)
+                            @php $handoffValue = old($handoffKey, $handoff[$handoffKey] ?? ''); @endphp
+                            @if($handoffValue !== '' && $handoffValue !== null)
+                                <input type="hidden" name="{{ $handoffKey }}" value="{{ $handoffValue }}">
+                            @endif
+                        @endforeach
+                        @if($resumeDraft)
+                            <input type="hidden" name="draft_id" value="{{ $resumeDraft->id }}">
+                        @endif
+                        <input type="hidden" name="template_key" id="campaignTemplateKey" value="{{ $isFeatureUpdate ? 'feature_update' : '' }}">
+                        @if($handoff !== [])
+                            <div class="alert alert-info py-2 small">
+                                Inventory filters will apply to this send:
+                                {{ \App\Support\AdminAudiences::summary(['search' => old('q', $inventorySnapshot['search'] ?? ''), 'filters' => $inventorySnapshot['filters'] ?? []]) }}.
+                            </div>
+                        @endif
                         <div class="row g-3">
                             <div class="col-md-6">
                                 <label class="form-label">Internal name (optional)</label>
-                                <input type="text" name="name" class="form-control" value="{{ old_text('name') }}" maxlength="120" placeholder="BF25 advertiser blast">
+                                <input type="text" name="name" class="form-control" value="{{ old_text('name', $resumeDraft->name ?? '') }}" maxlength="120" placeholder="BF25 advertiser blast">
                             </div>
-                            <div class="col-md-6">
-                                <label class="form-label">Audience</label>
-                                <select name="audience" id="campaignAudience" class="form-select" required>
-                                    <option value="advertisers" @selected(old('audience', $preselect) === 'advertisers')>All Advertisers ({{ $stats['advertisers'] }})</option>
-                                    <option value="publishers" @selected(old('audience', $preselect) === 'publishers')>All Publishers ({{ $stats['publishers'] }})</option>
-                                    <option value="both" @selected(old('audience', $preselect) === 'both')>Advertisers + Publishers ({{ $stats['both_unique'] }} unique)</option>
-                                    <option value="advertisers_no_orders" @selected(old('audience', $preselect) === 'advertisers_no_orders')>
-                                        Advertisers: never checked out ({{ $stats['advertisers_never_checked_out'] ?? $stats['advertisers_no_orders'] ?? 0 }})
-                                    </option>
-                                    <option value="advertisers_no_paid_orders" @selected(old('audience', $preselect) === 'advertisers_no_paid_orders')>
-                                        Advertisers: no paid orders ({{ $stats['advertisers_no_paid_orders'] ?? 0 }})
-                                    </option>
-                                    <option value="publishers_no_sites" @selected(old('audience', $preselect) === 'publishers_no_sites')>
-                                        Publishers: no sites ({{ $stats['publishers_no_sites'] ?? 0 }})
-                                    </option>
-                                    <option value="advertisers_never_deposited" @selected(old('audience', $preselect) === 'advertisers_never_deposited')>
-                                        Advertisers: never deposited ({{ $stats['advertisers_never_deposited'] ?? 0 }})
-                                    </option>
-                                    <option value="advertisers_paid_orders" @selected(old('audience', $preselect) === 'advertisers_paid_orders')>
-                                        Advertisers: paid customers ({{ $stats['advertisers_paid_orders'] ?? 0 }})
-                                    </option>
-                                    <option value="advertisers_deposited_no_orders" @selected(old('audience', $preselect) === 'advertisers_deposited_no_orders')>
-                                        Advertisers: deposited, no paid orders ({{ $stats['advertisers_deposited_no_orders'] ?? 0 }})
-                                    </option>
-                                    <option value="publishers_no_active_sites" @selected(old('audience', $preselect) === 'publishers_no_active_sites')>
-                                        Publishers: no active sites ({{ $stats['publishers_no_active_sites'] ?? 0 }})
-                                    </option>
-                                    <option value="selected" @selected(old('audience', $preselect) === 'selected')>Select specific users…</option>
-                                </select>
+                            <div class="col-md-6 admin-deposits-filters" data-admin-filter-live="1">
+                                <label class="form-label" for="campaignAudienceTrigger">Audience</label>
+                                <input type="hidden" name="audience" id="campaignAudience" value="{{ $audienceCurrent }}" required>
+                                <div class="single-select-wrapper" id="campaignAudienceWrap">
+                                    <div class="single-select-input" id="campaignAudienceTrigger" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false" aria-label="Audience">
+                                        <span class="single-select-value" id="campaignAudienceValue">{{ $audienceOptions[$audienceCurrent] }}</span>
+                                        <i class="fa fa-chevron-down single-select-arrow" aria-hidden="true"></i>
+                                    </div>
+                                    <div class="single-select-dropdown" id="campaignAudienceDropdown">
+                                        <div class="single-select-options" role="listbox">
+                                            @foreach($audienceOptions as $value => $label)
+                                                <div class="single-select-option{{ $audienceCurrent === $value ? ' selected' : '' }}" role="option" data-value="{{ $value }}" data-label="{{ $label }}">{{ $label }}</div>
+                                            @endforeach
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
 
                             <div class="col-12" id="selectedUsersWrap" style="display:none;">
                                 <label class="form-label">Select recipients</label>
                                 <div class="border rounded-3 p-3" style="max-height:260px; overflow:auto;">
                                     <div class="mb-2">
+                                        <input type="search" id="pickerSearch" class="form-control form-control-sm mb-2" placeholder="Search loaded recipients…" aria-label="Search selected-user picker">
                                         <button type="button" class="btn btn-sm btn-outline-secondary" id="selectAllAdv">All advertisers</button>
                                         <button type="button" class="btn btn-sm btn-outline-secondary" id="selectAllPub">All publishers</button>
                                         <button type="button" class="btn btn-sm btn-outline-dark" id="clearSelected">Clear</button>
@@ -170,9 +232,9 @@
                                         <div class="col-md-6">
                                             <div class="fw-semibold small mb-1">Advertisers</div>
                                             @foreach($advertisers as $user)
-                                                <div class="form-check">
+                                                <div class="form-check picker-row">
                                                     <input class="form-check-input user-check adv-check" type="checkbox" name="user_ids[]" value="{{ $user->id }}" id="u{{ $user->id }}"
-                                                        @checked(collect(old('user_ids', []))->contains($user->id))>
+                                                        @checked($draftUserIds->contains($user->id))>
                                                     <label class="form-check-label small" for="u{{ $user->id }}">{{ $user->name }} <span class="text-muted">&lt;{{ $user->email }}&gt;</span></label>
                                                 </div>
                                             @endforeach
@@ -182,13 +244,13 @@
                                             @foreach($publishers as $user)
                                                 @php $dup = $advertisers->contains('id', $user->id); @endphp
                                                 @if(!$dup)
-                                                    <div class="form-check">
+                                                    <div class="form-check picker-row">
                                                         <input class="form-check-input user-check pub-check" type="checkbox" name="user_ids[]" value="{{ $user->id }}" id="p{{ $user->id }}"
-                                                            @checked(collect(old('user_ids', []))->contains($user->id))>
+                                                            @checked($draftUserIds->contains($user->id))>
                                                         <label class="form-check-label small" for="p{{ $user->id }}">{{ $user->name }} <span class="text-muted">&lt;{{ $user->email }}&gt;</span></label>
                                                     </div>
                                                 @else
-                                                    <div class="form-check">
+                                                    <div class="form-check picker-row">
                                                         <input class="form-check-input user-check pub-check" type="checkbox" value="{{ $user->id }}" id="p{{ $user->id }}" disabled>
                                                         <label class="form-check-label small text-muted" for="p{{ $user->id }}">{{ $user->name }} (also advertiser)</label>
                                                     </div>
@@ -202,9 +264,45 @@
                                     @if(!empty($pickerCapped))
                                         <span class="d-block">Showing the first {{ \App\Services\AudienceInventoryService::PICKER_LIMIT }} per role. Use Audience Inventory to email a full segment.</span>
                                     @endif
+                                    <a href="{{ route('admin.audiences.index', array_merge($handoff, ['tab' => \App\Services\AudienceInventoryService::tabForAudienceKey($audienceCurrent)])) }}" class="d-block">Open this segment in Audiences</a>
                                 </div>
                             </div>
 
+                            <div class="col-12">
+                                <label class="form-label" for="emailTemplateTrigger">Email Center templates</label>
+                                <div class="d-flex flex-wrap gap-2 align-items-end">
+                                    <div class="single-select-wrapper flex-grow-1" id="emailTemplateWrap" style="min-width:min(100%,18rem); max-width:28rem;">
+                                        <input type="hidden" id="emailTemplatePicker" value="">
+                                        <div class="single-select-input" id="emailTemplateTrigger" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false" aria-label="Email Center templates">
+                                            <span class="single-select-value" id="emailTemplateValue"><span class="single-select-placeholder">Use an Email Center template…</span></span>
+                                            <i class="fa fa-chevron-down single-select-arrow" aria-hidden="true"></i>
+                                        </div>
+                                        <div class="single-select-dropdown" id="emailTemplateDropdown">
+                                            <div class="single-select-search">
+                                                <input type="search" id="emailTemplateSearch" placeholder="Search templates…" autocomplete="off" aria-label="Search templates">
+                                            </div>
+                                            <div class="single-select-options" role="listbox">
+                                                @foreach(($emailTemplates ?? collect()) as $category => $templates)
+                                                    <div class="single-select-option-group">{{ $category }}</div>
+                                                    @foreach($templates as $tpl)
+                                                        <div class="single-select-option" role="option" data-value="{{ $tpl['key'] }}" data-label="{{ $tpl['name'] }}">{{ $tpl['name'] }}</div>
+                                                    @endforeach
+                                                @endforeach
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" id="applyEmailTemplateBtn">
+                                        Load template
+                                    </button>
+                                </div>
+                                <div class="mt-2 d-none" id="ecTemplateAudienceWrap" style="max-width:20rem">
+                                    <label class="form-label" for="ecTemplateAudience">Template variant</label>
+                                    <select id="ecTemplateAudience" class="form-select form-select-sm">
+                                        <option value="">Default sample</option>
+                                    </select>
+                                </div>
+                                <div class="form-text">Select a template, then click Load template to fill subject, message, and CTA. Preview shows the exact Email Center sample.</div>
+                            </div>
                             <div class="col-12">
                                 <label class="form-label">Quick templates</label>
                                 <div class="d-flex flex-wrap gap-2">
@@ -223,24 +321,59 @@
                                         data-body="<p>We will perform scheduled maintenance this weekend. Some services may be briefly unavailable. Thanks for your patience.</p>"
                                         data-cta=""
                                         data-url="">Maintenance Notice</button>
+                                    <button type="button" class="btn btn-sm btn-outline-info" id="featureUpdateTemplateBtn">
+                                        Feature update / What’s new
+                                    </button>
+                                </div>
+                                <div class="form-text">Feature update / What’s new uses the <strong>System Updates</strong> preference (product news). Promotional campaigns still use Marketing Emails.</div>
+                            </div>
+                            <div class="col-12 {{ $isFeatureUpdate ? '' : 'd-none' }}" id="featureUpdateFields">
+                                <div class="border rounded-3 p-3 bg-light">
+                                    <div class="fw-semibold mb-1">Feature update / What’s new</div>
+                                    <p class="small text-muted mb-3">
+                                        Recipients who opted out of system updates are skipped. Add a title, intro, and up to five feature bullets. Each bullet can include an optional link or image URL.
+                                    </p>
+                                    <div class="mb-3">
+                                        <label class="form-label" for="featureTitle">Title</label>
+                                        <input type="text" name="feature_title" id="featureTitle" class="form-control" value="{{ $resumeFeatureTitle }}" maxlength="180" placeholder="What’s new this month">
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label" for="featureIntro">Intro</label>
+                                        <textarea name="feature_intro" id="featureIntro" class="form-control" rows="3" maxlength="2000" placeholder="A short recap of what shipped.">{{ $resumeFeatureIntro }}</textarea>
+                                    </div>
+                                    @for($i = 0; $i < 5; $i++)
+                                        @php $featureRow = is_array($resumeFeatures[$i] ?? null) ? $resumeFeatures[$i] : []; @endphp
+                                        <div class="border rounded-3 p-3 mb-2 bg-white">
+                                            <label class="form-label">Feature {{ $i + 1 }}</label>
+                                            <input type="text" name="features[{{ $i }}][text]" class="form-control mb-2 feature-text" value="{{ old_text('features.'.$i.'.text', $featureRow['text'] ?? '') }}" maxlength="240" placeholder="What shipped">
+                                            <div class="row g-2">
+                                                <div class="col-md-6">
+                                                    <input type="url" name="features[{{ $i }}][url]" class="form-control form-control-sm" value="{{ old_text('features.'.$i.'.url', $featureRow['url'] ?? '') }}" maxlength="500" placeholder="https:// optional link">
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <input type="url" name="features[{{ $i }}][image]" class="form-control form-control-sm" value="{{ old_text('features.'.$i.'.image', $featureRow['image'] ?? '') }}" maxlength="500" placeholder="https:// optional image">
+                                                </div>
+                                            </div>
+                                        </div>
+                                    @endfor
                                 </div>
                             </div>
                             <div class="col-12">
                                 <label class="form-label">Subject</label>
-                                <input type="text" name="subject" id="campaignSubject" class="form-control" value="{{ old_text('subject', request('subject')) }}" required maxlength="180" placeholder="Black Friday update for our partners">
+                                <input type="text" name="subject" id="campaignSubject" class="form-control" value="{{ old_text('subject', request('subject', $resumeDraft->subject ?? '')) }}" required maxlength="180" placeholder="Black Friday update for our partners">
                             </div>
-                            <div class="col-12">
+                            <div class="col-12" id="campaignBodyWrap">
                                 <label class="form-label">Message (HTML allowed: p, strong, em, lists, links)</label>
-                                <textarea name="body_html" id="campaignBody" class="form-control" rows="8" required maxlength="20000" placeholder="<p>Share your update, discount, or promotion here.</p>">{{ old_text('body_html', request('body_html')) }}</textarea>
+                                <textarea name="body_html" id="campaignBody" class="form-control" rows="8" @required(!$isFeatureUpdate) maxlength="20000" placeholder="<p>Share your update, discount, or promotion here.</p>">{{ old_text('body_html', request('body_html', $resumeDraft->body_html ?? '')) }}</textarea>
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">CTA label (optional)</label>
-                                <input type="text" name="cta_label" class="form-control" value="{{ old_text('cta_label', request('cta_label')) }}" maxlength="80" placeholder="View offer">
+                                <input type="text" name="cta_label" class="form-control" value="{{ old_text('cta_label', request('cta_label', $resumeDraft->cta_label ?? '')) }}" maxlength="80" placeholder="View offer">
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">CTA URL (optional)</label>
                                 @php
-                                    $prefillCta = old_text('cta_url', request('cta_url'));
+                                    $prefillCta = old_text('cta_url', request('cta_url', $resumeDraft->cta_url ?? ''));
                                     if ($prefillCta !== '' && str_starts_with($prefillCta, '/') && ! str_starts_with($prefillCta, '//')) {
                                         $prefillCta = rtrim((string) config('app.url'), '/').$prefillCta;
                                     }
@@ -251,15 +384,17 @@
                                 <div class="form-check">
                                     <input type="hidden" name="respect_preferences" value="0">
                                     <input class="form-check-input" type="checkbox" name="respect_preferences" value="1" id="respect_preferences"
-                                        @checked(filter_var(old('respect_preferences', true), FILTER_VALIDATE_BOOLEAN))>
-                                    <label class="form-check-label" for="respect_preferences">
-                                        Respect user “Marketing Emails” preference (recommended)
+                                        @checked(filter_var(old('respect_preferences', $resumeDraft->respect_preferences ?? true), FILTER_VALIDATE_BOOLEAN))>
+                                    <label class="form-check-label" for="respect_preferences" id="respectPreferencesLabel">
+                                        {{ $isFeatureUpdate
+                                            ? 'Respect user “System Updates” preference (recommended). Feature updates are product news, not promotions.'
+                                            : 'Respect user “Marketing Emails” preference (recommended)' }}
                                     </label>
                                 </div>
                                 <div class="form-check mt-2">
                                     <input type="hidden" name="include_unverified" value="0">
                                     <input class="form-check-input" type="checkbox" name="include_unverified" value="1" id="include_unverified"
-                                        @checked(filter_var(old('include_unverified', false), FILTER_VALIDATE_BOOLEAN))>
+                                        @checked(filter_var(old('include_unverified', $resumeDraft->include_unverified ?? false), FILTER_VALIDATE_BOOLEAN))>
                                     <label class="form-check-label" for="include_unverified">
                                         Include unverified email addresses
                                     </label>
@@ -275,6 +410,13 @@
                             <button type="submit" class="btn btn-primary" id="campaignSendBtn">
                                 <i class="fa fa-paper-plane me-1"></i> Send campaign
                             </button>
+                            <button type="submit" class="btn btn-outline-primary" formaction="{{ route('admin.campaigns.draft') }}" formnovalidate id="campaignDraftBtn">
+                                Save draft
+                            </button>
+                            <button type="submit" class="btn btn-outline-secondary" formaction="{{ route('admin.campaigns.test') }}" id="campaignTestBtn">
+                                Send test to me
+                            </button>
+                            <input type="hidden" name="email" value="{{ auth()->user()->email }}">
                             <button type="button" class="btn btn-outline-secondary" id="previewBtn">
                                 <i class="fa fa-eye me-1"></i> Preview email
                             </button>
@@ -290,21 +432,56 @@
                     <strong><i class="fa fa-eye me-2 text-primary"></i>Preview</strong>
                 </div>
                 <div class="card-body">
-                    <iframe id="previewFrame" title="Campaign preview" sandbox referrerpolicy="no-referrer" style="width:100%; min-height:360px; border:1px solid #e2e8f0; border-radius:12px; background:#fff;"></iframe>
+                    <iframe id="previewFrame" title="Campaign preview" sandbox referrerpolicy="no-referrer" src="about:blank" style="width:100%; min-height:360px; border:1px solid #e2e8f0; border-radius:12px; background:#fff;"></iframe>
                     <div class="small text-muted mt-2" id="previewStatus">Click “Preview email” to render the branded message.</div>
                 </div>
             </div>
 
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-body small">
+                    <div class="fw-semibold mb-1">Mail queue</div>
+                    <p class="text-muted mb-2">
+                        {{ $queue['mail_connection'] ?? '—' }} / {{ $queue['mail_queue'] ?? 'emails' }}
+                        · auto-drain {{ ($queue['auto_drain'] ?? false) ? 'on' : 'off' }}
+                        · {{ (int) ($queue['mail_pending_jobs'] ?? 0) }} pending jobs
+                    </p>
+                    <p class="mb-2">
+                        <a href="{{ route('admin.emails.index', ['status' => 'failed']) }}#ec-recent">{{ number_format((int) ($queue['open_failed_logs'] ?? 0)) }} open failed logs</a>
+                        <span class="text-muted">(Email Center KPI)</span>
+                        · {{ (int) ($queue['mail_failed_jobs'] ?? 0) }} failed queue jobs
+                    </p>
+                    <p class="text-muted mb-2">Open failed logs are SMTP history. Failed queue jobs are leftover <code>failed_jobs</code> rows. Retry or dismiss from Email Center.</p>
+                    <a href="{{ route('admin.emails.index') }}#ec-tools">Email Center tools</a>
+                    <span class="text-muted"> · Ops notes: <code>docs/admin-campaigns.md</code></span>
+                </div>
+            </div>
+
             <div class="card border-0 shadow-sm">
-                <div class="card-header bg-white border-0">
-                    <strong><i class="fa fa-history me-2 text-primary"></i>Recent campaigns</strong>
+                <div class="card-header bg-white border-0 d-flex flex-wrap justify-content-between align-items-center gap-2">
+                    @php
+                        $campaignListTitle = match ($campaignStatus ?? '') {
+                            'attention' => 'Queued, sending, or failed',
+                            'queued', 'sending', 'failed', 'draft', 'sent' => ucfirst($campaignStatus),
+                            default => 'Recent campaigns',
+                        };
+                    @endphp
+                    <strong><i class="fa fa-history me-2 text-primary"></i>{{ $campaignListTitle }}</strong>
+                    <div class="d-flex flex-wrap gap-2">
+                        @if(($campaignStatus ?? '') !== '')
+                            <a href="{{ route('admin.campaigns.index') }}" class="small">Show all</a>
+                        @else
+                            <a href="{{ route('admin.campaigns.index', ['status' => 'attention']) }}" class="small">Queued, sending, or failed</a>
+                            <a href="{{ route('admin.campaigns.index', ['status' => 'failed']) }}" class="small">Failed</a>
+                            <a href="{{ route('admin.campaigns.index', ['status' => 'draft']) }}" class="small">Drafts</a>
+                        @endif
+                    </div>
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
                         <table class="table table-sm align-middle mb-0">
                             <thead class="table-light">
-                                <tr>
-                                    <th>Subject</th>
+                                    <tr>
+                                    <th>Campaign</th>
                                     <th>Audience</th>
                                     <th>Sent</th>
                                 </tr>
@@ -314,17 +491,27 @@
                                     <tr>
                                         <td>
                                             <div class="fw-semibold small">
-                                                <a href="{{ route('admin.campaigns.show', $campaign) }}" class="link-dark">{{ \Illuminate\Support\Str::limit($campaign->subject, 36) }}</a>
+                                                @if($campaign->status === \App\Models\EmailCampaign::STATUS_DRAFT && (int) ($campaign->recipient_rows_count ?? 0) === 0)
+                                                    <a href="{{ route('admin.campaigns.index', ['draft' => $campaign->id]) }}#campaign-compose" class="link-dark">{{ \Illuminate\Support\Str::limit($campaign->name ?: $campaign->subject, 40) }}</a>
+                                                @else
+                                                    <a href="{{ route('admin.campaigns.show', $campaign) }}" class="link-dark">{{ \Illuminate\Support\Str::limit($campaign->name ?: $campaign->subject, 40) }}</a>
+                                                @endif
                                             </div>
                                             <div class="text-muted" style="font-size:.75rem;">
-                                                {{ ucfirst($campaign->status) }}
-                                                ·
-                                                {{ optional($campaign->sent_at)->format('M j, g:ia') ?: '—' }}
+                                                {{ \Illuminate\Support\Str::limit($campaign->subject, 36) }}
+                                                · {{ ucfirst($campaign->status) }}
+                                                · {{ optional($campaign->sent_at)->format('M j, g:ia') ?: '—' }}
+                                                @if($campaign->creator)
+                                                    · {{ $campaign->creator->name }}
+                                                @endif
                                             </div>
                                         </td>
                                         <td class="small">{{ $campaign->audienceLabel() }}</td>
                                         <td class="small">
                                             {{ $campaign->sent_count }}/{{ $campaign->recipients_count }}
+                                            @if((int) ($campaign->failed_recipients_count ?? 0) > 0)
+                                                <span class="text-danger">({{ (int) $campaign->failed_recipients_count }} failed)</span>
+                                            @endif
                                             @if($campaign->skipped_count)
                                                 <span class="text-muted">({{ $campaign->skipped_count }} skip)</span>
                                             @endif
@@ -332,7 +519,7 @@
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="3" class="text-center text-muted py-4">No campaigns sent yet.</td>
+                                        <td colspan="3" class="text-center text-muted py-4">{{ ($campaignStatus ?? '') !== '' ? 'None in this list.' : 'No campaigns sent yet.' }}</td>
                                     </tr>
                                 @endforelse
                             </tbody>
@@ -362,6 +549,67 @@
         countEl.textContent = document.querySelectorAll('.user-check:checked:not(:disabled)').length;
     }
 
+    function bindThemedSelect(wrapId, hiddenId, valueId) {
+        const wrap = document.getElementById(wrapId);
+        const hidden = document.getElementById(hiddenId);
+        const valueEl = document.getElementById(valueId);
+        if (!wrap || !hidden || !valueEl) {
+            return;
+        }
+        const trigger = wrap.querySelector('.single-select-input');
+        const dropdown = wrap.querySelector('.single-select-dropdown');
+        if (!trigger || !dropdown) {
+            return;
+        }
+        trigger.addEventListener('click', function () {
+            const open = !dropdown.classList.contains('show');
+            document.querySelectorAll('.single-select-dropdown.show').forEach(function (dd) {
+                if (dd !== dropdown) {
+                    dd.classList.remove('show');
+                    const other = dd.previousElementSibling;
+                    if (other) {
+                        other.setAttribute('aria-expanded', 'false');
+                    }
+                }
+            });
+            dropdown.classList.toggle('show', open);
+            trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+            if (open) {
+                const search = dropdown.querySelector('.single-select-search input');
+                if (search) {
+                    setTimeout(function () { search.focus(); }, 10);
+                }
+            }
+        });
+        wrap.querySelectorAll('.single-select-option').forEach(function (opt) {
+            opt.addEventListener('click', function () {
+                hidden.value = opt.getAttribute('data-value') || '';
+                valueEl.textContent = opt.getAttribute('data-label') || '';
+                wrap.querySelectorAll('.single-select-option').forEach(function (o) {
+                    o.classList.remove('selected');
+                });
+                opt.classList.add('selected');
+                dropdown.classList.remove('show');
+                trigger.setAttribute('aria-expanded', 'false');
+                hidden.dispatchEvent(new Event('change', { bubbles: true }));
+            });
+        });
+    }
+
+    bindThemedSelect('campaignAudienceWrap', 'campaignAudience', 'campaignAudienceValue');
+    bindThemedSelect('emailTemplateWrap', 'emailTemplatePicker', 'emailTemplateValue');
+
+    const templateSearch = document.getElementById('emailTemplateSearch');
+    if (templateSearch) {
+        templateSearch.addEventListener('input', function () {
+            const q = this.value.trim().toLowerCase();
+            document.querySelectorAll('#emailTemplateDropdown .single-select-option').forEach(function (opt) {
+                const label = (opt.getAttribute('data-label') || '').toLowerCase();
+                opt.classList.toggle('hidden', q !== '' && label.indexOf(q) === -1);
+            });
+        });
+    }
+
     audience.addEventListener('change', syncAudience);
     document.querySelectorAll('.user-check').forEach(function (el) {
         el.addEventListener('change', updateCount);
@@ -379,14 +627,178 @@
         updateCount();
     });
 
+    const templatePicker = document.getElementById('emailTemplatePicker');
+    const applyTemplateBtn = document.getElementById('applyEmailTemplateBtn');
+    const fromTemplateUrl = @json(route('admin.campaigns.from-template'));
+    const templateAudienceWrap = document.getElementById('ecTemplateAudienceWrap');
+    const templateAudience = document.getElementById('ecTemplateAudience');
+    const variantOptions = {
+        welcome: [['', 'Advertiser (default)'], ['publisher', 'Publisher']],
+        order_status_changed: [['', 'Advertiser processing'], ['publisher', 'Publisher'], ['admin', 'Admin'], ['completed', 'Advertiser completed']]
+    };
+    function syncTemplateAudience() {
+        if (!templatePicker || !templateAudienceWrap || !templateAudience) return;
+        const opts = variantOptions[templatePicker.value] || [];
+        templateAudience.innerHTML = '';
+        if (!opts.length) {
+            templateAudienceWrap.classList.add('d-none');
+            return;
+        }
+        opts.forEach(function (pair) {
+            const option = document.createElement('option');
+            option.value = pair[0];
+            option.textContent = pair[1];
+            templateAudience.appendChild(option);
+        });
+        templateAudienceWrap.classList.remove('d-none');
+    }
+    if (templatePicker) {
+        templatePicker.addEventListener('change', syncTemplateAudience);
+        syncTemplateAudience();
+    }
+    const campaignSubject = document.getElementById('campaignSubject');
+    const campaignBody = document.getElementById('campaignBody');
+    let emailTemplateDirty = true;
+
+    function markEmailTemplateDirty() {
+        emailTemplateDirty = true;
+    }
+
+    [campaignSubject, campaignBody, form.querySelector('[name=cta_label]'), form.querySelector('[name=cta_url]')].forEach(function (el) {
+        if (el) {
+            el.addEventListener('input', markEmailTemplateDirty);
+        }
+    });
+
+    async function applyEmailTemplate() {
+        const key = templatePicker ? templatePicker.value : '';
+        if (!key) {
+            setPreviewStatus('Choose an Email Center template first.', true);
+            return;
+        }
+
+        setPreviewStatus('Loading template…', false);
+        try {
+            const params = new URLSearchParams();
+            params.set('_token', form.querySelector('[name=_token]').value);
+            params.set('template', key);
+            params.set('audience', (templateAudience && templateAudience.value) ? templateAudience.value : audience.value);
+            const res = await fetch(fromTemplateUrl, {
+                method: 'POST',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+                    'X-CSRF-TOKEN': form.querySelector('[name=_token]').value,
+                },
+                body: params.toString(),
+                credentials: 'same-origin',
+            });
+            const data = await res.json().catch(function () { return {}; });
+            if (!res.ok) {
+                setPreviewStatus(data.message || 'Could not load that template.', true);
+                return;
+            }
+            campaignSubject.value = data.subject || '';
+            campaignBody.value = data.body_html || '';
+            form.querySelector('[name=cta_label]').value = data.cta_label || '';
+            form.querySelector('[name=cta_url]').value = data.cta_url || '';
+            emailTemplateDirty = false;
+            setFeatureUpdateMode(false);
+            const frame = document.getElementById('previewFrame');
+            if (frame && data.html) {
+                frame.srcdoc = data.html;
+            }
+            setPreviewStatus('Exact Email Center sample loaded.', false);
+        } catch (err) {
+            setPreviewStatus('Could not load that template.', true);
+        }
+    }
+
+    if (applyTemplateBtn) {
+        applyTemplateBtn.addEventListener('click', applyEmailTemplate);
+    }
+
+    const preloadTemplate = @json(search_text(request('template')));
+    if (preloadTemplate && templatePicker) {
+        const opt = document.querySelector('#emailTemplateDropdown .single-select-option[data-value="' + preloadTemplate.replace(/"/g, '') + '"]');
+        if (opt) {
+            opt.click();
+            applyEmailTemplate();
+        }
+    }
+
+    const templateKeyField = document.getElementById('campaignTemplateKey');
+    const featureUpdateFields = document.getElementById('featureUpdateFields');
+    const respectPreferencesLabel = document.getElementById('respectPreferencesLabel');
+
+    function setFeatureUpdateMode(on) {
+        if (templateKeyField) {
+            templateKeyField.value = on ? 'feature_update' : '';
+        }
+        if (featureUpdateFields) {
+            featureUpdateFields.classList.toggle('d-none', !on);
+        }
+        if (campaignBody) {
+            campaignBody.required = !on;
+        }
+        if (respectPreferencesLabel) {
+            respectPreferencesLabel.textContent = on
+                ? 'Respect user “System Updates” preference (recommended). Feature updates are product news, not promotions.'
+                : 'Respect user “Marketing Emails” preference (recommended)';
+        }
+    }
+
+    function clearEmailCenterPicker() {
+        if (templatePicker) {
+            templatePicker.value = '';
+        }
+        const templateValue = document.getElementById('emailTemplateValue');
+        if (templateValue) {
+            templateValue.innerHTML = '<span class="single-select-placeholder">Use an Email Center template…</span>';
+        }
+        document.querySelectorAll('#emailTemplateDropdown .single-select-option').forEach(function (o) {
+            o.classList.remove('selected');
+        });
+    }
+
     document.querySelectorAll('.campaign-template').forEach(function (btn) {
         btn.addEventListener('click', function () {
-            document.getElementById('campaignSubject').value = btn.dataset.subject || '';
-            document.getElementById('campaignBody').value = btn.dataset.body || '';
+            setFeatureUpdateMode(false);
+            campaignSubject.value = btn.dataset.subject || '';
+            campaignBody.value = btn.dataset.body || '';
             form.querySelector('[name=cta_label]').value = btn.dataset.cta || '';
             form.querySelector('[name=cta_url]').value = btn.dataset.url || '';
+            clearEmailCenterPicker();
+            emailTemplateDirty = true;
         });
     });
+
+    const featureUpdateBtn = document.getElementById('featureUpdateTemplateBtn');
+    if (featureUpdateBtn) {
+        featureUpdateBtn.addEventListener('click', function () {
+            setFeatureUpdateMode(true);
+            campaignSubject.value = 'What’s new on SEOLinkBuildings';
+            const title = document.getElementById('featureTitle');
+            const intro = document.getElementById('featureIntro');
+            if (title && !title.value) {
+                title.value = 'What’s new';
+            }
+            if (intro && !intro.value) {
+                intro.value = 'A few product updates we shipped for advertisers and publishers.';
+            }
+            const firstText = form.querySelector('[name="features[0][text]"]');
+            if (firstText && !firstText.value) {
+                firstText.value = 'New tools and fixes are live in your dashboard.';
+            }
+            form.querySelector('[name=cta_label]').value = 'Open the dashboard';
+            form.querySelector('[name=cta_url]').value = @json(url('/advertiser/dashboard'));
+            clearEmailCenterPicker();
+            emailTemplateDirty = true;
+        });
+    }
+
+    setFeatureUpdateMode(templateKeyField && templateKeyField.value === 'feature_update');
 
     const previewStatus = document.getElementById('previewStatus');
     const previewFrame = document.getElementById('previewFrame');
@@ -414,6 +826,12 @@
         const params = new URLSearchParams();
         params.set('audience', audience.value);
         params.set('include_unverified', includeUnverified() ? '1' : '0');
+        ['q', 'verified', 'registered_from', 'registered_to', 'country', 'marketing', 'exclude_dual_role'].forEach(function (name) {
+            const el = form.querySelector('[name="' + name + '"]');
+            if (el && el.value !== '') {
+                params.set(name, el.value);
+            }
+        });
         if (audience.value === 'selected') {
             selectedUserIds().forEach(function (id) {
                 params.append('user_ids[]', id);
@@ -451,7 +869,24 @@
         return slbAlert({ icon: 'error', title: title, toast: false });
     }
 
+    const pickerSearch = document.getElementById('pickerSearch');
+    if (pickerSearch) {
+        pickerSearch.addEventListener('input', function () {
+            const q = this.value.trim().toLowerCase();
+            document.querySelectorAll('.picker-row').forEach(function (row) {
+                const hay = (row.textContent || '').toLowerCase();
+                row.classList.toggle('d-none', q !== '' && hay.indexOf(q) === -1);
+            });
+        });
+    }
+
     form.addEventListener('submit', function (e) {
+        const submitter = e.submitter;
+        const formaction = submitter && submitter.getAttribute('formaction');
+        if (submitter && (submitter.id === 'campaignDraftBtn' || submitter.id === 'campaignTestBtn'
+            || (formaction && (formaction.indexOf('/campaigns/draft') !== -1 || formaction.indexOf('/campaigns/test') !== -1)))) {
+            return;
+        }
         if (form.dataset.slbAllowSubmit === '1') {
             delete form.dataset.slbAllowSubmit;
             e.stopImmediatePropagation();
@@ -474,12 +909,19 @@
                 const count = Number(data.count || 0);
                 const label = data.label || 'the selected audience';
                 if (count < 1) {
-                    return alertSend('No recipients found for that audience.').then(function () {
+                    let empty = 'No recipients found for that audience.';
+                    if (data.filter_summary && !includeUnverified() && form.querySelector('[name="verified"]') && form.querySelector('[name="verified"]').value === 'no') {
+                        empty = 'No recipients: unverified filter is on and “include unverified” is off.';
+                    }
+                    return alertSend(empty).then(function () {
                         return false;
                     });
                 }
 
                 let text = 'Send to ' + count.toLocaleString() + ' recipient' + (count === 1 ? '' : 's') + ' (' + label + ')?';
+                if (data.filter_summary) {
+                    text += ' Filtered: ' + data.filter_summary + '.';
+                }
                 const excluded = Number(data.unverified_excluded || 0);
                 if (excluded > 0) {
                     text += ' ' + excluded.toLocaleString() + ' unverified excluded.';
@@ -519,12 +961,33 @@
     document.getElementById('previewBtn').addEventListener('click', async function () {
         const fd = new FormData();
         fd.append('_token', form.querySelector('[name=_token]').value);
-        fd.append('subject', document.getElementById('campaignSubject').value);
-        fd.append('body_html', document.getElementById('campaignBody').value);
-        const ctaLabel = form.querySelector('[name=cta_label]').value;
-        const ctaUrl = form.querySelector('[name=cta_url]').value;
-        if (ctaLabel) fd.append('cta_label', ctaLabel);
-        if (ctaUrl) fd.append('cta_url', ctaUrl);
+        const templateKey = templatePicker ? templatePicker.value : '';
+        if (templateKey && !emailTemplateDirty && !(templateKeyField && templateKeyField.value === 'feature_update')) {
+            fd.append('template', templateKey);
+            fd.append('audience', (templateAudience && templateAudience.value) ? templateAudience.value : audience.value);
+        } else {
+            fd.append('subject', campaignSubject.value);
+            fd.append('body_html', campaignBody.value);
+            const ctaLabel = form.querySelector('[name=cta_label]').value;
+            const ctaUrl = form.querySelector('[name=cta_url]').value;
+            if (ctaLabel) fd.append('cta_label', ctaLabel);
+            if (ctaUrl) fd.append('cta_url', ctaUrl);
+            if (templateKeyField && templateKeyField.value === 'feature_update') {
+                fd.append('template_key', 'feature_update');
+                const title = document.getElementById('featureTitle');
+                const intro = document.getElementById('featureIntro');
+                if (title && title.value) fd.append('feature_title', title.value);
+                if (intro && intro.value) fd.append('feature_intro', intro.value);
+                for (let i = 0; i < 5; i++) {
+                    const text = form.querySelector('[name="features[' + i + '][text]"]');
+                    const url = form.querySelector('[name="features[' + i + '][url]"]');
+                    const image = form.querySelector('[name="features[' + i + '][image]"]');
+                    if (text && text.value) fd.append('features[' + i + '][text]', text.value);
+                    if (url && url.value) fd.append('features[' + i + '][url]', url.value);
+                    if (image && image.value) fd.append('features[' + i + '][image]', image.value);
+                }
+            }
+        }
 
         setPreviewStatus('Rendering preview…', false);
 
@@ -533,9 +996,11 @@
                 method: 'POST',
                 headers: {
                     'X-Requested-With': 'XMLHttpRequest',
-                    'Accept': 'application/json, text/html',
+                    'Accept': 'text/html, application/json',
+                    'X-CSRF-TOKEN': form.querySelector('[name=_token]').value,
                 },
                 body: fd,
+                credentials: 'same-origin',
                 redirect: 'manual',
             });
 
@@ -564,3 +1029,7 @@
 })();
 </script>
 @endsection
+
+@push('scripts')
+<script src="{{ asset('assets/js/single-select.js') }}?v={{ @filemtime(public_path('assets/js/single-select.js')) ?: '1' }}"></script>
+@endpush

@@ -6,6 +6,12 @@ use App\Models\DepositRequest;
 use App\Models\Invoice;
 use App\Models\Order;
 use App\Services\Billing\DepositReceiptService;
+use App\Services\Billing\InvoicePdfGenerator;
+use App\Support\AccountCurrency;
+use App\Support\DepositFx;
+use App\Support\DepositPaymentConfig;
+use App\Support\DisplayCurrencyPreference;
+use App\Support\UsdBankWireGuidance;
 use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -15,7 +21,59 @@ class InvoiceController extends Controller
     /**
      * Show invoice page for both deposits and orders
      */
-    public function showInvoice(Request $request, $referenceCode, DepositReceiptService $receipts)
+    public function downloadPdf($referenceCode, DepositReceiptService $receipts, InvoicePdfGenerator $pdfs)
+    {
+        $userId = auth()->id();
+        $user = auth()->user();
+
+        $deposit = DepositRequest::where('reference_code', $referenceCode)
+            ->where('user_id', $userId)
+            ->first();
+
+        if ($deposit) {
+            if ($receipts->isSettled($deposit) && ($receipt = $receipts->issue($deposit))) {
+                return $pdfs->download($receipt);
+            }
+
+            return $pdfs->attachment(
+                $this->pendingDepositDocument($deposit, $user),
+                $this->pdfFilename((string) $deposit->reference_code)
+            );
+        }
+
+        $order = Order::where('reference_code', $referenceCode)
+            ->where('user_id', $userId)
+            ->with('items')
+            ->first();
+
+        if ($order) {
+            $taxInvoice = Invoice::query()
+                ->where('user_id', $userId)
+                ->where('type', Invoice::TYPE_TAX_INVOICE)
+                ->where('status', '!=', Invoice::STATUS_CANCELLED)
+                ->where(function ($q) use ($order) {
+                    $q->where('order_id', $order->id)
+                        ->orWhere('reference_code', $order->reference_code)
+                        ->orWhere('order_number', $order->order_number);
+                })
+                ->latest('id')
+                ->first();
+
+            if ($taxInvoice) {
+                return $pdfs->download($taxInvoice);
+            }
+
+            return $pdfs->attachment(
+                $this->pendingOrderDocument($order, $user),
+                $this->pdfFilename((string) $order->reference_code)
+            );
+        }
+
+        return redirect()->route('advertiser.add-funds')
+            ->with('error', 'Invoice not found');
+    }
+
+    public function showInvoice(Request $request, $referenceCode, DepositReceiptService $receipts, InvoicePdfGenerator $pdfs)
     {
         try {
             $userId = auth()->id();
@@ -36,15 +94,11 @@ class InvoiceController extends Controller
                     );
                 }
 
-                $response = response()->view('advertiser.invoice', $this->depositInvoiceData($deposit, $user));
                 if ($request->boolean('download')) {
-                    $response->header(
-                        'Content-Disposition',
-                        'attachment; filename="invoice-REF'.$deposit->reference_code.'.html"'
-                    );
+                    return $this->downloadPdf($referenceCode, $receipts, $pdfs);
                 }
 
-                return $response;
+                return response()->view('advertiser.invoice', $this->depositInvoiceData($deposit, $user));
             }
 
             // Check if it's an order
@@ -74,15 +128,11 @@ class InvoiceController extends Controller
                     );
                 }
 
-                $response = response()->view('advertiser.invoice', $this->orderInvoiceData($order, $user));
                 if ($request->boolean('download')) {
-                    $response->header(
-                        'Content-Disposition',
-                        'attachment; filename="invoice-REF'.$order->reference_code.'.html"'
-                    );
+                    return $this->downloadPdf($referenceCode, $receipts, $pdfs);
                 }
 
-                return $response;
+                return response()->view('advertiser.invoice', $this->orderInvoiceData($order, $user));
             }
 
             return redirect()->route('advertiser.add-funds')
@@ -96,12 +146,220 @@ class InvoiceController extends Controller
         }
     }
 
+    private function pdfFilename(string $reference): string
+    {
+        $safe = preg_replace('/[^A-Za-z0-9_-]/', '', $reference) ?: 'invoice';
+
+        return 'invoice-REF'.$safe.'.pdf';
+    }
+
+    private function pendingDepositDocument($deposit, $user): Invoice
+    {
+        $amount = round((float) $deposit->amount, 2);
+
+        return new Invoice([
+            'invoice_number' => 'REF'.$deposit->reference_code,
+            'type' => Invoice::TYPE_DEPOSIT_RECEIPT,
+            'status' => Invoice::STATUS_PENDING,
+            'user_id' => $user->id,
+            'reference_code' => $deposit->reference_code,
+            'currency' => 'EUR',
+            'subtotal' => $amount,
+            'tax_amount' => 0,
+            'discount_amount' => 0,
+            'total_amount' => $amount,
+            'payment_method' => $deposit->payment_method,
+            'payment_status' => 'pending',
+            'invoice_date' => $deposit->created_at ?? now(),
+            'customer_name' => $user->billing_name ?? $user->name,
+            'customer_email' => $user->email,
+            'billing_snapshot' => [
+                'company' => $user->company_name ?? null,
+                'address' => $user->address ?? null,
+                'city' => $user->city ?? null,
+                'state' => $user->state ?? null,
+                'postal_code' => $user->postal_code ?? null,
+                'country' => $user->country ?? null,
+                'vat_number' => $user->vat_number ?? null,
+            ],
+            'line_items' => [[
+                'description' => 'Wallet top-up',
+                'reference' => $deposit->reference_code,
+                'quantity' => 1,
+                'unit_price' => $amount,
+                'line_total' => $amount,
+            ]],
+            'notes' => $this->pendingDepositNote($deposit, $user),
+        ]);
+    }
+
+    private function pendingDepositNote($deposit, $user = null): string
+    {
+        $pay = DepositPaymentConfig::depositPayment();
+        $fx = app(DepositFx::class);
+        $deposit = $fx->refreshIfExpired($deposit);
+        $rail = $this->bankRailForDeposit($deposit);
+        $paymentRef = method_exists($deposit, 'paymentReferenceLabel')
+            ? $deposit->paymentReferenceLabel()
+            : ('REF'.$deposit->reference_code);
+        $lines = [
+            'Waiting for payment. The wallet is credited after this transfer is confirmed. Put '.$paymentRef.' in the payment reference.',
+        ];
+        $method = (string) $deposit->payment_method;
+
+        if (in_array($method, ['wise', 'bank'], true)) {
+            $lines[] = 'Beneficiary: '.DepositPaymentConfig::beneficiaryDisplayName($pay).'.';
+            if ($rail === 'gbp') {
+                if (! empty($pay['uk_sort_code'])) {
+                    $lines[] = 'Sort code (from the UK): '.$pay['uk_sort_code'].'.';
+                }
+                if (! empty($pay['uk_account_number'])) {
+                    $lines[] = 'GBP account (from the UK): '.$pay['uk_account_number'].'.';
+                }
+            } else {
+                $iban = $pay['eur_iban'] ?? DepositPaymentConfig::EUR_IBAN_DEFAULT;
+                $bic = $pay['eur_bic'] ?? DepositPaymentConfig::EUR_BIC_DEFAULT;
+                if (! empty($iban)) {
+                    $lines[] = 'IBAN: '.$iban.'.';
+                    $lines[] = DepositPaymentConfig::EUR_SEPA_NOTE;
+                }
+                if (! empty($bic)) {
+                    $lines[] = DepositPaymentConfig::EUR_BIC_NOTE.': '.$bic.'.';
+                }
+            }
+
+            $chargeCurrency = strtoupper((string) ($deposit->charge_currency ?: ($rail === 'gbp' ? 'GBP' : 'EUR')));
+            $chargeAmount = $fx->expectedCharge($deposit);
+            $lines[] = $fx->sendLabel($chargeCurrency, $chargeAmount, (float) $deposit->amount);
+            foreach ($fx->customerFxNotes($deposit, $chargeCurrency) as $note) {
+                $lines[] = $note;
+            }
+            $lines[] = DepositPaymentConfig::currencyGuideLabel().' '.url(DepositPaymentConfig::currencyGuideUrl());
+
+            $user ??= $deposit->user;
+            $guidance = app(UsdBankWireGuidance::class);
+            $lines = array_merge(
+                $lines,
+                $guidance->instructionLines(
+                    (float) $deposit->amount,
+                    $guidance->walletCurrencyFor($user),
+                    $user
+                )
+            );
+        }
+
+        if ($method === 'crypto') {
+            if (! empty($pay['crypto']['note'])) {
+                $lines[] = $pay['crypto']['note'];
+            }
+            foreach ($pay['crypto']['networks'] ?? [] as $network) {
+                if (! empty($network['address'])) {
+                    $lines[] = ($network['label'] ?? 'Address').': '.$network['address'].'.';
+                }
+            }
+        }
+
+        return implode(' ', $lines);
+    }
+
+    /**
+     * @return 'gbp'|'eur'
+     */
+    private function bankRailForDeposit($deposit): string
+    {
+        $bank = AccountCurrency::normalizeBank((string) ($deposit->bank_account ?? ''));
+        if ($bank === AccountCurrency::GBP_WISE) {
+            return 'gbp';
+        }
+        if ($bank === AccountCurrency::EUR_WISE) {
+            return 'eur';
+        }
+
+        $stored = strtoupper((string) ($deposit->charge_currency ?? ''));
+        if ($stored === 'GBP') {
+            return 'gbp';
+        }
+        if ($stored === 'EUR') {
+            return 'eur';
+        }
+
+        return app(DisplayCurrencyPreference::class)->payFrom() === 'gbp' ? 'gbp' : 'eur';
+    }
+
+    private function pendingOrderDocument($order, $user): Invoice
+    {
+        $data = $this->orderInvoiceData($order, $user);
+        $amount = round((float) $data['amount'], 2);
+        $lines = [];
+        foreach ($data['orderItems'] as $item) {
+            $price = round((float) ($item['price'] ?? 0), 2);
+            $lines[] = [
+                'description' => 'Guest post / sponsored placement',
+                'site_name' => $item['site_name'] ?? null,
+                'site_url' => $item['site_url'] ?? '',
+                'live_url' => \App\Support\MailNotificationPresenter::safeLiveUrl($item['live_url'] ?? null),
+                'quantity' => 1,
+                'unit_price' => $price,
+                'line_total' => $price,
+            ];
+        }
+
+        return new Invoice([
+            'invoice_number' => 'REF'.$order->reference_code,
+            'type' => Invoice::TYPE_TAX_INVOICE,
+            'status' => ($order->payment_status ?? '') === 'paid' ? Invoice::STATUS_PAID : Invoice::STATUS_PENDING,
+            'user_id' => $user->id,
+            'order_id' => $order->id,
+            'reference_code' => $order->reference_code,
+            'order_number' => $order->order_number,
+            'currency' => 'EUR',
+            'subtotal' => $amount,
+            'tax_amount' => 0,
+            'discount_amount' => 0,
+            'total_amount' => $amount,
+            'payment_method' => $order->payment_method,
+            'payment_status' => $order->payment_status ?: 'pending',
+            'invoice_date' => $order->created_at ?? now(),
+            'paid_at' => ($order->payment_status ?? '') === 'paid' ? ($order->paid_at ?? $order->created_at) : null,
+            'customer_name' => $data['billingName'],
+            'customer_email' => $data['userEmail'],
+            'billing_snapshot' => [
+                'company' => $data['companyName'] ?: null,
+                'address' => $data['address'] ?: null,
+                'city' => $data['city'] ?: null,
+                'state' => $data['state'] ?: null,
+                'postal_code' => $data['postalCode'] ?: null,
+                'country' => $data['country'] ?: null,
+                'vat_number' => $data['vatNumber'] ?: null,
+            ],
+            'line_items' => $lines,
+        ]);
+    }
+
     private function depositInvoiceData($deposit, $user): array
     {
+        $fx = app(DepositFx::class);
+        $chargeCurrency = strtoupper((string) ($deposit->charge_currency ?: 'EUR'));
+        $fxNotes = $fx->customerFxNotes($deposit, $chargeCurrency);
+
         return [
             'invoiceType' => 'deposit',
             'referenceCode' => $deposit->reference_code,
+            'paymentReference' => method_exists($deposit, 'paymentReferenceLabel')
+                ? $deposit->paymentReferenceLabel()
+                : ('REF'.$deposit->reference_code),
             'amount' => $deposit->amount,
+            'walletCurrency' => app(UsdBankWireGuidance::class)->walletCurrencyFor($user),
+            'bankRail' => $this->bankRailForDeposit($deposit),
+            'sendLabel' => $fx->sendLabel(
+                $chargeCurrency,
+                $fx->expectedCharge($deposit),
+                (float) $deposit->amount
+            ),
+            'rateLockNote' => $fxNotes[0] ?? null,
+            'currencyGuideUrl' => DepositPaymentConfig::currencyGuideUrl(),
+            'currencyGuideLabel' => DepositPaymentConfig::currencyGuideLabel(),
+            'toleranceNote' => $fx->toleranceNote(),
             'billingName' => $user->billing_name ?? $user->name,
             'companyName' => $user->company_name ?? '',
             'country' => $user->country ?? '',

@@ -11,6 +11,7 @@ use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\Wallet;
 use App\Services\ActivityLogger;
+use App\Services\Admin\FinanceOverviewService;
 use App\Services\Advertiser\SpendBudgetService;
 use App\Services\Billing\AdminInvoiceLinks;
 use App\Services\Billing\BillingDocumentService;
@@ -22,6 +23,7 @@ use App\Services\Orders\OrderRefundService;
 use App\Support\BillingCustomerMailSuppressor;
 use App\Support\OrderLifecycleMailSuppressor;
 use App\Support\UserFacingError;
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\QueryException;
@@ -36,6 +38,16 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 class PaymentController extends Controller
 {
     public const EXPORT_LIMIT = 5000;
+
+    /** @var list<\Closure> */
+    private array $deferredPaymentSideEffects = [];
+
+    /**
+     * batchMarkPaid wraps each row in one outer transaction. Bells and mail
+     * wait until that commit. A lone status update must not wait: PHPUnit
+     * (and any other outer transaction) never reaches the batch flush.
+     */
+    private bool $batchDefersSideEffects = false;
 
     /**
      * Display payments list page
@@ -60,14 +72,14 @@ class PaymentController extends Controller
 
         try {
             $this->ensurePaymentColumns();
-            $query = $this->paymentsQuery($request);
-
+            $unpaid = Order::query()->unpaidOps();
+            $dateError = null;
+            $filtered = $this->paymentsQuery($request, $dateError);
+            $totals = $this->paymentFilterTotals($filtered);
             $perPage = (int) $request->input('per_page', 20);
             $perPage = max(1, min(100, $perPage));
-            $orders = $query->paginate($perPage);
+            $orders = $this->applyPaymentSort($filtered, $request)->paginate($perPage);
             $this->attachInvoiceDocuments($orders->getCollection());
-
-            $unpaid = Order::query()->unpaidOps();
 
             return response()->json([
                 'success' => true,
@@ -80,10 +92,10 @@ class PaymentController extends Controller
                     'from' => $orders->firstItem(),
                     'to' => $orders->lastItem(),
                 ],
-                'summary' => [
-                    'unpaid_count' => (clone $unpaid)->count(),
-                    'unpaid_amount' => round((float) (clone $unpaid)->sum('total_amount'), 2),
-                ],
+                'summary' => $this->unpaidSummary($unpaid),
+                'totals' => $totals,
+                'date_error' => $dateError,
+                'export_limited' => ($totals['count'] ?? 0) > self::EXPORT_LIMIT,
             ]);
 
         } catch (\Throwable $e) {
@@ -102,8 +114,11 @@ class PaymentController extends Controller
     public function export(Request $request): StreamedResponse
     {
         $this->ensurePaymentColumns();
+        $dateError = null;
         try {
-            $rows = $this->paymentsQuery($request)->limit(self::EXPORT_LIMIT)->get();
+            $rows = $this->applyPaymentSort($this->paymentsQuery($request, $dateError), $request)
+                ->limit(self::EXPORT_LIMIT)
+                ->get();
         } catch (\Throwable $e) {
             Log::warning('Admin payments export query failed', [
                 'error' => $e->getMessage(),
@@ -143,7 +158,13 @@ class PaymentController extends Controller
                 'payment_reference',
                 'admin_notes',
                 'paid_at',
+                'completed_at',
                 'created_at',
+                'charge_currency',
+                'charge_amount',
+                'stripe_session_id',
+                'paypal_order_id',
+                'paypal_capture_id',
             ]);
 
             foreach ($rows as $order) {
@@ -159,7 +180,13 @@ class PaymentController extends Controller
                     $this->csvCell($order->payment_reference),
                     $this->csvCell($order->admin_notes),
                     optional($order->paid_at)->toDateTimeString(),
+                    optional($order->completed_at)->toDateTimeString(),
                     optional($order->created_at)->toDateTimeString(),
+                    $this->csvCell($order->charge_currency),
+                    $order->charge_amount !== null ? number_format((float) $order->charge_amount, 2, '.', '') : '',
+                    $this->csvCell($order->stripe_session_id),
+                    $this->csvCell($order->paypal_order_id),
+                    $this->csvCell($order->paypal_capture_id),
                 ]);
             }
 
@@ -269,7 +296,16 @@ class PaymentController extends Controller
             ) {
                 // Scan before the payment TX. abortPaymentUpdate() rolls back, so a
                 // reject written inside that TX would leave the library row approved.
-                $libraryState = app(OrderPaymentService::class)->libraryContentStateForSettlement($preview);
+                try {
+                    $libraryState = app(OrderPaymentService::class)->libraryContentStateForSettlement($preview);
+                } catch (\Throwable $e) {
+                    report($e);
+
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Could not check the Content Library article for this order.',
+                    ], 422);
+                }
                 if ($libraryState !== 'ok') {
                     return response()->json([
                         'success' => false,
@@ -469,22 +505,37 @@ class PaymentController extends Controller
 
             DB::commit();
 
-            try {
-                $this->runPostCommitPaymentSideEffects(
-                    $order,
-                    (string) $oldStatus,
-                    $newStatus,
-                    $sendNotification,
-                    $notes,
-                    $paymentReference,
-                    $refundAmount
-                );
-            } catch (\Throwable $e) {
-                Log::error('Post-commit payment side effects failed: '.$e->getMessage(), [
-                    'order_id' => $order->id,
-                    'from' => $oldStatus,
-                    'to' => $newStatus,
-                ]);
+            $effect = function () use ($order, $oldStatus, $newStatus, $sendNotification, $notes, $paymentReference, $refundAmount) {
+                $billingSuppressor = app(BillingCustomerMailSuppressor::class);
+                if (! $sendNotification) {
+                    $billingSuppressor->enable();
+                }
+                try {
+                    $this->runPostCommitPaymentSideEffects(
+                        $order,
+                        (string) $oldStatus,
+                        $newStatus,
+                        $sendNotification,
+                        $notes,
+                        $paymentReference,
+                        $refundAmount
+                    );
+                } catch (\Throwable $e) {
+                    Log::error('Post-commit payment side effects failed: '.$e->getMessage(), [
+                        'order_id' => $order->id,
+                        'from' => $oldStatus,
+                        'to' => $newStatus,
+                    ]);
+                } finally {
+                    if (! $sendNotification) {
+                        $billingSuppressor->disable();
+                    }
+                }
+            };
+            if ($this->batchDefersSideEffects) {
+                $this->deferredPaymentSideEffects[] = $effect;
+            } else {
+                $effect();
             }
 
             return response()->json([
@@ -847,21 +898,65 @@ class PaymentController extends Controller
     /**
      * @return Builder<Order>
      */
-    private function paymentsQuery(Request $request): Builder
+    private function paymentsQuery(Request $request, ?string &$dateError = null): Builder
     {
-        $query = Order::query()->with('user:id,name,email')->orderBy('created_at', 'desc');
+        $query = Order::query()->with([
+            'user:id,name,email',
+            'items:id,order_id,site_name',
+        ]);
+
+        if ($request->boolean('finance')) {
+            $fromRaw = is_string($request->input('date_from')) ? trim($request->input('date_from')) : '';
+            $toRaw = is_string($request->input('date_to')) ? trim($request->input('date_to')) : '';
+            $fromOk = $fromRaw === '' || $this->isPaymentDay($fromRaw);
+            $toOk = $toRaw === '' || $this->isPaymentDay($toRaw);
+            if (! $fromOk || ! $toOk) {
+                $dateError = 'Enter real dates.';
+                $query->whereRaw('0 = 1');
+
+                return $query;
+            }
+            if ($fromRaw !== '' && $toRaw !== '' && $toRaw < $fromRaw) {
+                $dateError = 'The to date must be on or after the from date.';
+                $query->whereRaw('0 = 1');
+
+                return $query;
+            }
+            app(FinanceOverviewService::class)->applyGmvWindow(
+                $query,
+                $fromRaw !== '' ? $fromRaw : null,
+                $toRaw !== '' ? $toRaw : null
+            );
+
+            return $query;
+        }
 
         $search = is_string($request->input('search')) ? trim($request->input('search')) : '';
-        if ($search !== '') {
-            $query->where(function ($q) use ($search) {
-                $q->where('order_number', 'like', "%{$search}%")
-                    ->orWhere('reference_code', 'like', "%{$search}%")
-                    ->orWhereHas('user', function ($sub) use ($search) {
-                        $sub->where('name', 'like', "%{$search}%")
-                            ->orWhere('email', 'like', "%{$search}%");
-                    });
-                if (Schema::hasColumn('orders', 'payment_reference')) {
-                    $q->orWhere('payment_reference', 'like', "%{$search}%");
+        $needle = str_replace(['\\', '%', '_'], '', $search);
+        if ($search !== '' && $needle === '') {
+            $query->whereRaw('0 = 1');
+        } elseif ($search !== '') {
+            $like = like_contains($search);
+            $query->where(function ($q) use ($like, $search) {
+                $q->whereRaw('order_number LIKE ? ESCAPE ?', [$like, '\\'])
+                    ->orWhereRaw('reference_code LIKE ? ESCAPE ?', [$like, '\\']);
+                if (ctype_digit($search) && (string) (int) $search === $search) {
+                    $q->orWhere('id', (int) $search);
+                }
+                $q->orWhereHas('user', function ($sub) use ($like) {
+                    $sub->whereRaw('name LIKE ? ESCAPE ?', [$like, '\\'])
+                        ->orWhereRaw('email LIKE ? ESCAPE ?', [$like, '\\']);
+                    if (Schema::hasColumn('users', 'company_name')) {
+                        $sub->orWhereRaw('company_name LIKE ? ESCAPE ?', [$like, '\\']);
+                    }
+                });
+                $q->orWhereHas('items', function ($sub) use ($like) {
+                    $sub->whereRaw('site_name LIKE ? ESCAPE ?', [$like, '\\']);
+                });
+                foreach (['payment_reference', 'stripe_session_id', 'paypal_order_id', 'paypal_capture_id'] as $column) {
+                    if (Schema::hasColumn('orders', $column)) {
+                        $q->orWhereRaw($column.' LIKE ? ESCAPE ?', [$like, '\\']);
+                    }
                 }
             });
         }
@@ -874,41 +969,43 @@ class PaymentController extends Controller
         }
 
         $paymentMethod = is_string($request->input('payment_method')) ? $request->input('payment_method') : '';
-        if ($paymentMethod !== '') {
+        if ($paymentMethod === 'card') {
+            $query->whereIn('payment_method', ['card', 'stripe']);
+        } elseif ($paymentMethod === 'bank') {
+            $query->whereIn('payment_method', ['bank', 'bank_transfer']);
+        } elseif ($paymentMethod !== '') {
             $query->where('payment_method', $paymentMethod);
         }
 
         $orderStatus = is_string($request->input('status')) ? $request->input('status') : '';
         if ($orderStatus === 'scheduled') {
-            // Live scheduled rows keep status=pending and store the slot on
-            // publication_mode — the same trap the orders console already fixed.
             $query->awaitingScheduledRelease();
         } elseif ($orderStatus !== '') {
             $query->where('status', $orderStatus);
         }
 
-        $dates = validator(
-            [
-                'date_from' => is_string($request->input('date_from')) ? $request->input('date_from') : null,
-                'date_to' => is_string($request->input('date_to')) ? $request->input('date_to') : null,
-                'date_field' => is_string($request->input('date_field')) ? $request->input('date_field') : 'created_at',
-            ],
-            [
-                'date_from' => 'nullable|date',
-                'date_to' => 'nullable|date|after_or_equal:date_from',
-                'date_field' => 'nullable|in:created_at,paid_at',
-            ]
-        )->valid();
-
-        $dateField = ($dates['date_field'] ?? 'created_at') === 'paid_at' ? 'paid_at' : 'created_at';
-        if ($dateField === 'paid_at' && ! $this->ordersHaveColumn('paid_at')) {
-            $dateField = 'created_at';
-        }
-        if (! empty($dates['date_from'])) {
-            $query->whereDate($dateField, '>=', $dates['date_from']);
-        }
-        if (! empty($dates['date_to'])) {
-            $query->whereDate($dateField, '<=', $dates['date_to']);
+        $fromRaw = is_string($request->input('date_from')) ? trim($request->input('date_from')) : '';
+        $toRaw = is_string($request->input('date_to')) ? trim($request->input('date_to')) : '';
+        $fromOk = $fromRaw === '' || $this->isPaymentDay($fromRaw);
+        $toOk = $toRaw === '' || $this->isPaymentDay($toRaw);
+        if (! $fromOk || ! $toOk) {
+            $dateError = 'Enter real dates.';
+        } elseif ($fromRaw !== '' && $toRaw !== '' && $toRaw < $fromRaw) {
+            $dateError = 'The to date must be on or after the from date.';
+        } else {
+            $dateField = is_string($request->input('date_field')) ? $request->input('date_field') : 'created_at';
+            if (! in_array($dateField, ['paid_at', 'completed_at'], true)) {
+                $dateField = 'created_at';
+            }
+            if (in_array($dateField, ['paid_at', 'completed_at'], true) && ! $this->ordersHaveColumn($dateField)) {
+                $dateField = 'created_at';
+            }
+            if ($fromRaw !== '') {
+                $query->whereDate($dateField, '>=', $fromRaw);
+            }
+            if ($toRaw !== '') {
+                $query->whereDate($dateField, '<=', $toRaw);
+            }
         }
 
         return $query;
@@ -917,16 +1014,328 @@ class PaymentController extends Controller
     /**
      * @return array<string, mixed>
      */
+    private function applyPaymentSort(Builder $query, Request $request): Builder
+    {
+        $sort = is_string($request->input('sort')) ? $request->input('sort') : '';
+
+        if ($sort === 'paid' && ! $this->ordersHaveColumn('paid_at')) {
+            $sort = '';
+        }
+
+        return match ($sort) {
+            'oldest' => $query->orderBy('created_at')->orderBy('id'),
+            'amount' => $query->orderByDesc('total_amount')->orderByDesc('id'),
+            'paid' => $query->orderByDesc('paid_at')->orderByDesc('id'),
+            default => $query->orderByDesc('created_at')->orderByDesc('id'),
+        };
+    }
+
+    /**
+     * @param  Builder<Order>  $unpaid
+     * @return array<string, mixed>
+     */
+    private function unpaidSummary(Builder $unpaid): array
+    {
+        $methods = ['wise' => 0, 'bank' => 0, 'crypto' => 0];
+        $amounts = ['wise' => 0.0, 'bank' => 0.0, 'crypto' => 0.0];
+        $rows = (clone $unpaid)
+            ->setEagerLoads([])
+            ->selectRaw('payment_method, COUNT(*) as method_count, SUM(total_amount) as method_total')
+            ->groupBy('payment_method')
+            ->get();
+        foreach ($rows as $row) {
+            $method = $this->normalizedPaymentMethod((string) $row->payment_method);
+            if (! array_key_exists($method, $methods)) {
+                continue;
+            }
+            $methods[$method] += (int) $row->method_count;
+            $amounts[$method] = round($amounts[$method] + (float) $row->method_total, 2);
+        }
+
+        return [
+            'unpaid_count' => (clone $unpaid)->count(),
+            'unpaid_amount' => round((float) (clone $unpaid)->sum('total_amount'), 2),
+            'methods' => $methods,
+            'method_amounts' => $amounts,
+        ];
+    }
+
+    /**
+     * @param  Builder<Order>  $query
+     * @return array{count: int, euros: float, charges: array<string, float>, not_recorded: int}
+     */
+    private function paymentFilterTotals(Builder $query): array
+    {
+        $count = (clone $query)->count();
+        $euros = round((float) (clone $query)->sum('total_amount'), 2);
+        $charges = [];
+        $notRecorded = 0;
+        if ($this->ordersHaveColumn('charge_currency') && $this->ordersHaveColumn('charge_amount')) {
+            $external = (clone $query)->whereIn('payment_method', ['card', 'stripe', 'paypal']);
+            $notRecorded = (clone $external)->where(function ($q) {
+                $q->whereNull('charge_currency')
+                    ->orWhere('charge_currency', '')
+                    ->orWhereNull('charge_amount');
+            })->count();
+            $inner = (clone $external)
+                ->setEagerLoads([])
+                ->reorder()
+                ->whereNotNull('charge_currency')
+                ->where('charge_currency', '!=', '')
+                ->whereNotNull('charge_amount');
+            $inner->getQuery()->columns = null;
+            $inner->selectRaw('UPPER(charge_currency) as code, charge_amount');
+            $rows = DB::query()
+                ->fromSub($inner, 'payment_charge_rows')
+                ->selectRaw('code, SUM(charge_amount) as total')
+                ->groupBy('code')
+                ->get();
+            foreach ($rows as $row) {
+                $code = strtoupper(trim((string) $row->code));
+                if ($code !== '') {
+                    $charges[$code] = round((float) $row->total, 2);
+                }
+            }
+            ksort($charges);
+        }
+
+        return [
+            'count' => $count,
+            'euros' => $euros,
+            'charges' => $charges,
+            'not_recorded' => $notRecorded,
+        ];
+    }
+
+    private function normalizedPaymentMethod(string $method): string
+    {
+        $method = strtolower(trim($method));
+
+        return match ($method) {
+            'stripe' => 'card',
+            'bank_transfer' => 'bank',
+            default => $method,
+        };
+    }
+
+    private function isPaymentDay(string $value): bool
+    {
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) !== 1) {
+            return false;
+        }
+
+        try {
+            return Carbon::parse($value)->toDateString() === $value;
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    public function batchMarkPaid(Request $request)
+    {
+        $ids = $request->input('ids');
+        if (! is_array($ids) || $ids === []) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Select at least one unpaid Wise, bank, or crypto payment.',
+            ], 422);
+        }
+
+        $ids = array_values(array_unique(array_filter(array_map(
+            fn ($id) => is_numeric($id) ? (int) $id : 0,
+            $ids
+        ))));
+        if ($ids === []) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Select at least one unpaid Wise, bank, or crypto payment.',
+            ], 422);
+        }
+        $orders = Order::query()->whereIn('id', $ids)->get();
+        if ($orders->count() !== count($ids)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Select one payment method at a time. None of these rows were marked paid.',
+            ], 422);
+        }
+
+        $methods = $orders->map(fn (Order $order) => $this->normalizedPaymentMethod((string) $order->payment_method))->unique()->values();
+        $allowed = ['wise', 'bank', 'crypto'];
+        $unpaid = $orders->every(fn (Order $order) => $order->isUnpaidOps() && in_array('paid', $this->allowedPaymentStatuses($order), true));
+        if ($methods->count() !== 1 || ! in_array($methods->first(), $allowed, true) || ! $unpaid) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Select one payment method at a time — Wise, bank, or crypto, still unpaid. None of these rows were marked paid.',
+            ], 422);
+        }
+
+        $payments = app(OrderPaymentService::class);
+        $blocked = $this->precheckBatchMarkPaid($orders, $payments);
+        if ($blocked !== null) {
+            return response()->json([
+                'success' => false,
+                'message' => $blocked,
+            ], 422);
+        }
+
+        $marked = 0;
+        $this->batchDefersSideEffects = true;
+        DB::beginTransaction();
+        try {
+            foreach ($ids as $id) {
+                $sub = Request::create('/', 'POST', [
+                    'payment_status' => 'paid',
+                    'send_notification' => $request->boolean('send_notification', true) ? 1 : 0,
+                    'notes' => is_string($request->input('notes')) ? $request->input('notes') : '',
+                ]);
+                $sub->headers->set('Accept', 'application/json');
+                $sub->setUserResolver(fn () => $request->user());
+                $response = $this->updatePaymentStatus($sub, $id);
+                $payload = $response->getData(true);
+                if (! ($payload['success'] ?? false)) {
+                    $this->discardDeferredPaymentSideEffects();
+                    $this->rollBackOpenTransaction();
+
+                    return response()->json([
+                        'success' => false,
+                        'message' => $this->batchNoneMarkedMessage($payload['message'] ?? null),
+                    ], 422);
+                }
+                $marked++;
+            }
+            // Invoice and lifecycle mail are registered as afterCommit hooks.
+            // They run inside this outer commit, after each row's own
+            // transaction has already released the "don't email" flag.
+            $suppressCustomerMail = ! $request->boolean('send_notification', true);
+            if ($suppressCustomerMail) {
+                app(BillingCustomerMailSuppressor::class)->enable();
+            }
+            try {
+                DB::commit();
+            } finally {
+                if ($suppressCustomerMail) {
+                    app(BillingCustomerMailSuppressor::class)->disable();
+                }
+            }
+        } catch (\Throwable $e) {
+            report($e);
+            if (DB::transactionLevel() > 0) {
+                $this->discardDeferredPaymentSideEffects();
+                $this->rollBackOpenTransaction();
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Could not mark a payment paid. None of these rows were marked paid.',
+                ], 422);
+            }
+
+            $this->flushDeferredPaymentSideEffects();
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Payments were marked paid, but a follow-up invoice or email step failed.',
+            ], 500);
+        } finally {
+            $this->batchDefersSideEffects = false;
+        }
+
+        $this->flushDeferredPaymentSideEffects();
+
+        return response()->json([
+            'success' => true,
+            'message' => $marked.' payment(s) marked paid.',
+        ]);
+    }
+
+    /**
+     * Catalog and library checks share one transaction that is always rolled back.
+     * A lock error must not be reported as a missing article.
+     *
+     * @param  Collection<int, Order>  $orders
+     */
+    private function precheckBatchMarkPaid(Collection $orders, OrderPaymentService $payments): ?string
+    {
+        $blocked = null;
+        try {
+            DB::beginTransaction();
+            foreach ($orders as $order) {
+                $locked = Order::query()->whereKey($order->id)->lockForUpdate()->first();
+                if (! $locked instanceof Order || ! $locked->hasCatalogVisibleFulfillment()) {
+                    $blocked = 'This order cannot be marked paid. The listing left the catalog and is no longer fulfillable. None of these rows were marked paid.';
+                    break;
+                }
+                $libraryState = $payments->libraryContentStateForSettlement($locked);
+                if ($libraryState !== 'ok') {
+                    $blocked = $this->libraryUnreadyForMarkPaidMessage($libraryState).' None of these rows were marked paid.';
+                    break;
+                }
+            }
+        } catch (\Throwable $e) {
+            report($e);
+            $blocked = 'Could not check these payments. None of these rows were marked paid.';
+        } finally {
+            $this->rollBackOpenTransaction();
+        }
+
+        return $blocked;
+    }
+
+    private function batchNoneMarkedMessage(?string $message): string
+    {
+        $message = trim((string) $message);
+        if ($message === '') {
+            $message = 'Could not mark a payment paid.';
+        }
+        if (! str_contains($message, 'None of these rows were marked paid.')) {
+            $message = rtrim($message, '.').'. None of these rows were marked paid.';
+        }
+
+        return $message;
+    }
+
+    private function flushDeferredPaymentSideEffects(): void
+    {
+        $effects = $this->deferredPaymentSideEffects;
+        $this->deferredPaymentSideEffects = [];
+        foreach ($effects as $effect) {
+            $effect();
+        }
+    }
+
+    private function discardDeferredPaymentSideEffects(): void
+    {
+        $this->deferredPaymentSideEffects = [];
+    }
+
+    private function rollBackOpenTransaction(): void
+    {
+        try {
+            while (DB::transactionLevel() > 0) {
+                DB::rollBack();
+            }
+        } catch (\Throwable $e) {
+            report($e);
+        }
+    }
+
     private function serializePaymentRow(Order $order): array
     {
+        $method = $this->normalizedPaymentMethod((string) $order->payment_method);
+        $chargeCode = strtoupper(trim((string) ($order->charge_currency ?? '')));
+
         return [
             'id' => $order->id,
             'order_number' => $order->order_number,
             'reference_code' => $order->reference_code,
             'total_amount' => (float) $order->total_amount,
+            'charge_currency' => $chargeCode !== '' ? $chargeCode : null,
+            'charge_amount' => $order->charge_amount !== null ? (float) $order->charge_amount : null,
             'payment_method' => $order->payment_method,
+            'payment_method_label' => $method,
             'payment_status' => $order->payment_status,
-            'status' => $order->status,
+            'status' => $order->isAwaitingScheduledRelease() ? 'scheduled' : $order->status,
+            'site_name' => $order->items->pluck('site_name')->filter()->unique()->implode(', ') ?: null,
+            'can_batch_pay' => $order->isUnpaidOps() && in_array($method, ['wise', 'bank', 'crypto'], true),
             'paid_at' => $order->paid_at?->toIso8601String(),
             'created_at' => $order->created_at?->toIso8601String(),
             'admin_notes' => $order->admin_notes,
@@ -935,6 +1344,7 @@ class PaymentController extends Controller
                 'id' => $order->user->id,
                 'name' => $order->user->name,
                 'email' => $order->user->email,
+                'dossier_url' => route('admin.finance.user', $order->user->id),
             ] : null,
             'allowed_statuses' => $this->allowedPaymentStatuses($order),
             'invoice_url' => $order->invoice_url ?? null,
@@ -1019,7 +1429,12 @@ class PaymentController extends Controller
             'summary' => [
                 'unpaid_count' => 0,
                 'unpaid_amount' => 0.0,
+                'methods' => ['wise' => 0, 'bank' => 0, 'crypto' => 0],
+                'method_amounts' => ['wise' => 0, 'bank' => 0, 'crypto' => 0],
             ],
+            'totals' => ['count' => 0, 'euros' => 0, 'charges' => [], 'not_recorded' => 0],
+            'date_error' => null,
+            'export_limited' => false,
         ]);
     }
 

@@ -9,8 +9,12 @@ use App\Services\Catalog\CatalogLanguageFilter;
 use App\Services\Catalog\SiteUrlVisibility;
 use App\Services\Marketing\GuestPostPriceIndex;
 use App\Services\SiteDescriptionSanitizer;
+use App\Support\BulkDiscount;
+use App\Support\ListingMoney;
+use App\Support\PublicationDuration;
 use App\Support\SiteDescriptionRules;
 use App\Support\SiteTag;
+use App\Support\StaffArchiveReason;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
@@ -18,13 +22,26 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 
 class Site extends Model
 {
+    use Concerns\NormalizesCountry;
     use ToleratesUnparseableDates;
 
     protected static function booted(): void
     {
+        static::saving(static function (Site $site): void {
+            if (! static::hasSitesColumn('first_catalogued_at')) {
+                return;
+            }
+            if ($site->first_catalogued_at) {
+                return;
+            }
+            if ($site->isCatalogVisible()) {
+                $site->first_catalogued_at = now();
+            }
+        });
         static::saved(static fn () => static::forgetMarketingCaches());
         static::deleted(static fn () => static::forgetMarketingCaches());
     }
@@ -59,6 +76,11 @@ class Site extends Model
         'category',
         'categories', // NEW - for multiple categories
         'price',
+        'listing_currency',
+        'listing_price',
+        'listing_sensitive_prices',
+        'listing_homepage_prices',
+        'listing_gbp_prompt_dismissed_at',
         'publication_time',
         'link_type',
         'sponsored',
@@ -74,6 +96,7 @@ class Site extends Model
         'verify_token_created_at',
         'verify_method',
         'active',
+        'first_catalogued_at',
         'archived_at',
         'owner_id',
         'rating_avg',
@@ -83,15 +106,28 @@ class Site extends Model
         'featured_purchased_at',
         'bulk_discount_enabled',
         'bulk_discount_percent',
+        'bulk_discount_percent_5',
+        'bulk_discount_percent_10',
         'custom_discount_percent',
         'custom_discount_starts_at',
         'custom_discount_ends_at',
         'custom_discount_notified_at',
         'bulk_site_request_id',
+        'added_from_bulk_request',
         'onboarding_status',
         'status_reason',
         'status_reason_at',
         'status_reason_by',
+        'archive_reason',
+        'writing_enabled',
+        'writing_fee',
+        'listing_writing_fee',
+        'partner_id',
+        'partner_catalog_item_id',
+        'slb_price_publish_eur',
+        'slb_price_writing_eur',
+        'slb_price_sensitive_extra_eur',
+        'partner_rate_version',
     ];
 
     public const ONBOARDING_AWAITING_DETAILS = 'awaiting_details';
@@ -101,12 +137,16 @@ class Site extends Model
 
     public const ONBOARDING_READY_FOR_REVIEW = 'ready_for_review';
 
+    /** Staff withdrew Send for review; waiting for Publish now (not with the publisher). */
+    public const ONBOARDING_STAFF_HOLD = 'staff_hold';
+
     protected $casts = [
         'verified' => 'boolean',
         'verified_at' => 'datetime',
         'verify_token_created_at' => 'datetime',
         'publisher_accepted_at' => 'datetime',
         'active' => 'boolean',
+        'first_catalogued_at' => 'datetime',
         'sponsored' => 'boolean',
         'partner_material' => 'boolean',
         'as_you_prefer' => 'boolean',
@@ -114,15 +154,20 @@ class Site extends Model
         'dr' => 'integer',
         'traffic' => 'integer',
         'price' => 'decimal:2',
+        'listing_price' => 'decimal:2',
+        'listing_gbp_prompt_dismissed_at' => 'datetime',
         'publication_time' => 'string',
         'sensitive_prices' => 'array',
+        'listing_sensitive_prices' => 'array',
         'homepage_placement_prices' => 'array',
+        'listing_homepage_prices' => 'array',
         'social_promotion' => 'array',
         'categories' => 'array',
         'countries' => 'array',
         'languages' => 'array',
         'site_image' => 'string',
         'metrics_manual' => 'boolean',
+        'added_from_bulk_request' => 'boolean',
         'archived_at' => 'datetime',
         'publisher_accepted_at' => 'datetime',
         'metrics_fetched_at' => 'datetime',
@@ -134,11 +179,31 @@ class Site extends Model
         'featured_purchased_at' => 'datetime',
         'bulk_discount_enabled' => 'boolean',
         'bulk_discount_percent' => 'float',
+        'bulk_discount_percent_5' => 'float',
+        'bulk_discount_percent_10' => 'float',
         'custom_discount_percent' => 'float',
         'custom_discount_starts_at' => 'datetime',
         'custom_discount_ends_at' => 'datetime',
         'custom_discount_notified_at' => 'datetime',
         'status_reason_at' => 'datetime',
+        'writing_enabled' => 'boolean',
+        'writing_fee' => 'decimal:2',
+        'listing_writing_fee' => 'decimal:2',
+        'slb_price_publish_eur' => 'decimal:2',
+        'slb_price_writing_eur' => 'decimal:2',
+        'slb_price_sensitive_extra_eur' => 'decimal:2',
+        'partner_rate_version' => 'integer',
+    ];
+
+    /**
+     * Partner retail (advertiser) prices. Never serialised to publisher JSON.
+     *
+     * @var list<string>
+     */
+    protected $hidden = [
+        'slb_price_publish_eur',
+        'slb_price_writing_eur',
+        'slb_price_sensitive_extra_eur',
     ];
 
     /**
@@ -608,9 +673,14 @@ class Site extends Model
 
     public function isRecentlyCreated(int $days = 30): bool
     {
-        $at = $this->created_at;
+        try {
+            $at = $this->created_at;
+        } catch (\Throwable) {
+            return false;
+        }
 
-        return $at instanceof \DateTimeInterface && $at->gt(now()->subDays($days));
+        // Match the new_badge SQL window: created_at >= now − 30 days.
+        return $at instanceof \DateTimeInterface && $at->gte(now()->subDays($days));
     }
 
     public function safeFeaturedUntil(): ?\DateTimeInterface
@@ -688,13 +758,20 @@ class Site extends Model
 
     public function joinsBulkDiscount(): bool
     {
-        if (! static::hasSitesColumn('bulk_discount_enabled')) {
-            return false;
-        }
+        return BulkDiscount::siteJoins($this);
+    }
 
-        return (bool) $this->bulk_discount_enabled
-            && $this->bulk_discount_percent !== null
-            && (float) $this->bulk_discount_percent > 0;
+    /**
+     * @return array{3: ?float, 5: ?float, 10: ?float}
+     */
+    public function bulkDiscountTiers(): array
+    {
+        return BulkDiscount::tiersFromSite($this);
+    }
+
+    public function bulkDiscountLabel(): ?string
+    {
+        return BulkDiscount::labelForSite($this);
     }
 
     public function featurePurchases()
@@ -734,14 +811,14 @@ class Site extends Model
             return $fallback;
         }
 
-        return match (strtolower($raw)) {
-            '6months', '6 months' => '6 months',
-            '1year', '1 year' => '1 year',
-            'permanent' => 'Permanent',
-            default => preg_match('/^(\d+)\s*days?$/i', $raw, $m)
-                ? ((int) $m[1] === 1 ? '1 day' : ((int) $m[1]).' days')
-                : $raw,
-        };
+        $catalog = PublicationDuration::catalogLabel($raw);
+        if ($catalog !== null) {
+            return $catalog;
+        }
+
+        return preg_match('/^(\d+)\s*days?$/i', $raw, $m)
+            ? ((int) $m[1] === 1 ? '1 day' : ((int) $m[1]).' days')
+            : $fallback;
     }
 
     /**
@@ -749,19 +826,16 @@ class Site extends Model
      */
     public function turnaroundLabel(?string $fallback = null): ?string
     {
-        $raw = trim((string) ($this->turnaround_time ?? ''));
-        if ($raw === '') {
+        $hours = $this->turnaroundHours();
+        if ($hours === null) {
             return $fallback;
         }
 
-        return match (strtolower($raw)) {
-            '24h' => '24 hours',
-            '48h' => '48 hours',
-            '3days', '3 days' => '3 days',
-            '5days', '5 days' => '5 days',
-            '7days', '7 days' => '7 days',
-            default => $raw,
-        };
+        $days = max(1, (int) round($hours / 24));
+
+        return $days === 1
+            ? __('messages.catalog_turnaround_one')
+            : __('messages.catalog_turnaround_many', ['count' => $days]);
     }
 
     /**
@@ -807,7 +881,8 @@ class Site extends Model
         return match ($raw) {
             'dofollow' => 'DoFollow',
             'nofollow' => 'NoFollow',
-            default => ucfirst($raw),
+            // Leftover Hostinger junk ("???", "guest") is not a link attribute.
+            default => $fallback,
         };
     }
 
@@ -833,11 +908,121 @@ class Site extends Model
     }
 
     /**
+     * Staff Done created this listing from a bulk request.
+     * Kept on the site so the chip remains after the request leaves the queue.
+     */
+    public function wasAddedFromBulkRequest(): bool
+    {
+        if (! static::hasSitesColumn('added_from_bulk_request')) {
+            return false;
+        }
+
+        return (bool) $this->added_from_bulk_request;
+    }
+
+    /**
+     * Publisher submitted this listing themselves (not staff assign / bulk seed).
+     */
+    public function wasAddedByPublisher(): bool
+    {
+        if (static::hasSitesColumn('assigned_by_user_id') && filled($this->assigned_by_user_id)) {
+            return false;
+        }
+
+        if ($this->wasAddedFromBulkRequest()) {
+            return false;
+        }
+
+        return ! (static::hasSitesColumn('bulk_site_request_id') && filled($this->bulk_site_request_id));
+    }
+
+    /**
+     * Inactive row still sitting on a bulk request (Draft sites table).
+     */
+    public function isBulkRequestDraft(): bool
+    {
+        if ($this->isArchived() || (bool) $this->verified || (bool) $this->active) {
+            return false;
+        }
+
+        if ($this->wasAddedFromBulkRequest()) {
+            return true;
+        }
+
+        return static::hasSitesColumn('bulk_site_request_id') && filled($this->bulk_site_request_id);
+    }
+
+    /**
+     * Admin archive with no publisher mail/bell: self-submitted or bulk draft.
+     */
+    public function canQuietStaffArchive(): bool
+    {
+        return $this->wasAddedByPublisher() || $this->isBulkRequestDraft();
+    }
+
+    /**
+     * Send-for-review listing the publisher has not Accepted or Edited yet.
+     */
+    public function isBulkReviewUndoable(): bool
+    {
+        if ($this->isArchived() || $this->isFromCancelledBulk()) {
+            return false;
+        }
+        if ((bool) $this->active || (bool) $this->verified) {
+            return false;
+        }
+        if (! static::hasSitesColumn('onboarding_status')
+            || $this->onboarding_status !== self::ONBOARDING_DETAILS_COMPLETE) {
+            return false;
+        }
+        if (static::hasSitesColumn('assigned_by_user_id') && filled($this->assigned_by_user_id)) {
+            return false;
+        }
+        if (static::hasSitesColumn('publisher_accepted_at')
+            && $this->safeDateAttribute('publisher_accepted_at') instanceof \DateTimeInterface) {
+            return false;
+        }
+
+        return $this->bulk_site_request_id || $this->wasAddedFromBulkRequest();
+    }
+
+    /**
+     * Staff withdrew review; listing is off the catalog until Publish now.
+     */
+    public function isBulkReadyToPublishNow(): bool
+    {
+        if ($this->isArchived() || $this->isFromCancelledBulk()) {
+            return false;
+        }
+        if ((bool) $this->active || (bool) $this->verified) {
+            return false;
+        }
+        if (! static::hasSitesColumn('onboarding_status')
+            || $this->onboarding_status !== self::ONBOARDING_STAFF_HOLD) {
+            return false;
+        }
+        if (static::hasSitesColumn('assigned_by_user_id') && filled($this->assigned_by_user_id)) {
+            return false;
+        }
+        if (static::hasSitesColumn('publisher_accepted_at')
+            && $this->safeDateAttribute('publisher_accepted_at') instanceof \DateTimeInterface) {
+            return false;
+        }
+
+        return $this->bulk_site_request_id || $this->wasAddedFromBulkRequest();
+    }
+
+    /**
      * Set exactly one listing tag (empty / none clears all three flags).
      */
     public function applyExclusiveTag(mixed $tag): void
     {
         SiteTag::applyExclusive($this, $tag);
+    }
+
+    public function statusReasonAuthor()
+    {
+        return $this->belongsTo(User::class, 'status_reason_by');
     }
 
     /**
@@ -1027,11 +1212,48 @@ class Site extends Model
         return true;
     }
 
+    public const RESTORE_BLOCKED_VERIFIED = 'This site is verified and cannot be restored.';
+
     public function occupyingDomainMessage(): string
     {
         return $this->isArchived()
             ? 'This domain is already registered (including archived). Ask an admin to restore or hard-delete.'
             : 'This website domain is already registered.';
+    }
+
+    /**
+     * Another publisher already verified this domain, so this copy is not the owner listing.
+     */
+    public function verifiedOwnerListing(): ?self
+    {
+        if (! static::hasSitesColumn('domain') || ! static::hasSitesColumn('verified') || ! static::hasSitesColumn('publisher_id')) {
+            return null;
+        }
+
+        $domain = (string) $this->domain;
+        $candidates = static::domainLookupCandidates($domain);
+        if ($candidates === [] || (int) $this->publisher_id <= 0) {
+            return null;
+        }
+
+        $normalized = static::normalizeMarketplaceDomain($domain);
+        $query = static::query()
+            ->where('id', '!=', (int) $this->id)
+            ->where('publisher_id', '!=', (int) $this->publisher_id)
+            ->where('verified', true)
+            ->where(function ($q) use ($candidates, $normalized) {
+                $q->whereIn('domain', $candidates);
+                if ($normalized !== '') {
+                    $escaped = addcslashes($normalized, '%_\\');
+                    $q->orWhere('domain', 'like', $escaped.':%')
+                        ->orWhere('domain', 'like', 'www.'.$escaped.':%');
+                }
+            });
+        if (static::hasSitesColumn('bulk_site_request_id')) {
+            $query->notFromCancelledBulk();
+        }
+
+        return $query->orderBy('id')->first();
     }
 
     /**
@@ -1043,6 +1265,19 @@ class Site extends Model
     public function scopeNotFromCancelledBulk(Builder $query): Builder
     {
         if (! static::hasSitesColumn('bulk_site_request_id')) {
+            return $query;
+        }
+
+        try {
+            if (! Schema::hasTable('bulk_site_requests')) {
+                return $query;
+            }
+            if (! Schema::hasColumn('bulk_site_requests', 'status')) {
+                return $query;
+            }
+        } catch (\Throwable $e) {
+            report($e);
+
             return $query;
         }
 
@@ -1177,6 +1412,19 @@ class Site extends Model
     }
 
     /**
+     * Bulk request show list: not live yet (review, staff hold, needs details).
+     *
+     * @param  Builder<Site>  $query
+     * @return Builder<Site>
+     */
+    public function scopeInactiveDrafts(Builder $query): Builder
+    {
+        return $query->where(function ($active) {
+            $active->where('active', 0)->orWhereNull('active');
+        });
+    }
+
+    /**
      * Hard delete is safe only for pending listings that were never ordered.
      */
     public function canBeHardDeleted(): bool
@@ -1203,7 +1451,7 @@ class Site extends Model
     /**
      * Staff hide of a live listing: keep the row (and order history), drop it from the catalog.
      */
-    public function archiveByStaff(?string $reason = null): bool
+    public function archiveByStaff(?string $reason = null, ?string $archiveReason = null): bool
     {
         if (! static::hasSitesColumn('archived_at')) {
             return false;
@@ -1219,9 +1467,38 @@ class Site extends Model
             $this->status_reason_by = auth()->id();
         }
 
+        $this->applyStaffArchiveReason($archiveReason);
+
         $this->save();
 
         return true;
+    }
+
+    /**
+     * Staff restore: keep the row inactive until someone activates it again.
+     */
+    public function unarchiveByStaff(): bool
+    {
+        if (! static::hasSitesColumn('archived_at')) {
+            return false;
+        }
+
+        $this->archived_at = null;
+        if (static::hasSitesColumn('archive_reason')) {
+            $this->archive_reason = null;
+        }
+        $this->save();
+
+        return true;
+    }
+
+    public function applyStaffArchiveReason(?string $archiveReason): void
+    {
+        if (! static::hasSitesColumn('archive_reason')) {
+            return;
+        }
+
+        $this->archive_reason = StaffArchiveReason::normalize($archiveReason);
     }
 
     /**
@@ -1342,7 +1619,8 @@ class Site extends Model
 
         // details_complete = publisher preview stage; not admin-queueable yet.
         return $this->onboarding_status === null
-            || $this->onboarding_status === self::ONBOARDING_READY_FOR_REVIEW;
+            || $this->onboarding_status === self::ONBOARDING_READY_FOR_REVIEW
+            || $this->onboarding_status === self::ONBOARDING_STAFF_HOLD;
     }
 
     /**
@@ -1539,11 +1817,22 @@ class Site extends Model
             return false;
         }
 
-        $bulk = $this->relationLoaded('bulkSiteRequest')
-            ? $this->bulkSiteRequest
-            : $this->bulkSiteRequest()->first();
+        try {
+            if (! Schema::hasTable('bulk_site_requests')
+                || ! Schema::hasColumn('bulk_site_requests', 'status')) {
+                return false;
+            }
 
-        return (bool) $bulk?->isCancelled();
+            $bulk = $this->relationLoaded('bulkSiteRequest')
+                ? $this->bulkSiteRequest
+                : $this->bulkSiteRequest()->first();
+
+            return (bool) $bulk?->isCancelled();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return false;
+        }
     }
 
     public function canBeActivated(): bool
@@ -1737,6 +2026,35 @@ class Site extends Model
     }
 
     /**
+     * Inactive, verified, in-bar listings staff can put on sale without a block.
+     * Marketing still applies the quality bar at activate time; this queue already cleared it.
+     */
+    public function scopeReadyToActivate(Builder $query): Builder
+    {
+        $query->notArchived()
+            ->where('verified', 1)
+            ->where(function (Builder $inactive) {
+                $inactive->where('active', 0)->orWhereNull('active');
+            })
+            ->withGoodMetrics()
+            ->hasMarketplaceCountry()
+            ->acceptedByPublisher()
+            ->notFromCancelledBulk();
+
+        if (static::hasSitesColumn('onboarding_status')) {
+            $query->where(function (Builder $onboarding) {
+                $onboarding->whereNull('onboarding_status')
+                    ->orWhereNotIn('onboarding_status', [
+                        self::ONBOARDING_AWAITING_DETAILS,
+                        self::ONBOARDING_DETAILS_COMPLETE,
+                    ]);
+            });
+        }
+
+        return $query;
+    }
+
+    /**
      * Accessor for formatted price.
      */
     public function getFormattedPriceAttribute(): string
@@ -1801,6 +2119,34 @@ class Site extends Model
     }
 
     /**
+     * True when the public disk still has this relative path.
+     * Leftover Hostinger site_image / favicon rows often point at deleted files.
+     */
+    public function publicDiskHasFile(?string $path): bool
+    {
+        $trimmed = is_string($path) ? trim($path) : '';
+        if ($trimmed === '' || preg_match('#^(https?:)?//#i', $trimmed) === 1) {
+            return false;
+        }
+
+        $normalized = ltrim(str_replace('\\', '/', $trimmed), '/');
+        foreach (['storage/', 'media/'] as $prefix) {
+            if (str_starts_with($normalized, $prefix)) {
+                $normalized = ltrim(substr($normalized, strlen($prefix)), '/');
+            }
+        }
+        if ($normalized === '') {
+            return false;
+        }
+
+        try {
+            return Storage::disk('public')->exists($normalized);
+        } catch (\Throwable $e) {
+            return is_file(storage_path('app/public/'.$normalized));
+        }
+    }
+
+    /**
      * Failed screenshot captures store gray *-placeholder.webp files that still
      * HTTP 200 — prefer real uploads/captures over those when building chains.
      */
@@ -1828,6 +2174,12 @@ class Site extends Model
             if (! is_string($candidate) || trim($candidate) === '') {
                 continue;
             }
+            $candidate = trim($candidate);
+            // Leftover Hostinger junk ("not-a-path", "???") is not a screenshot.
+            if (! preg_match('#^(https?:)?//#i', $candidate)
+                && ! preg_match('/\.(webp|jpe?g|png|gif|avif)$/i', $candidate)) {
+                continue;
+            }
             if (static::isPlaceholderPreviewPath($candidate)) {
                 $placeholders[] = $candidate;
             } else {
@@ -1849,6 +2201,27 @@ class Site extends Model
     }
 
     /**
+     * Read a string column without 500ing when leftover Hostinger schema
+     * dropped it or the accessor throws. One missing screenshot column must
+     * not hide a still-present cover upload.
+     */
+    public function leftoverStringAttribute(string $attribute): ?string
+    {
+        try {
+            if (! static::hasSitesColumn($attribute)) {
+                return null;
+            }
+            $value = $this->getAttribute($attribute);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return null;
+        }
+
+        return is_string($value) && trim($value) !== '' ? trim($value) : null;
+    }
+
+    /**
      * Catalog Site Details homepage preview: full → thumb → cover.
      *
      * @return list<string>
@@ -1856,9 +2229,9 @@ class Site extends Model
     public function homepagePreviewUrlChain(): array
     {
         return $this->previewUrlChainFrom([
-            $this->screenshot_path,
-            $this->screenshot_thumb_path,
-            $this->site_image,
+            $this->leftoverStringAttribute('screenshot_path'),
+            $this->leftoverStringAttribute('screenshot_thumb_path'),
+            $this->leftoverStringAttribute('site_image'),
         ]);
     }
 
@@ -1872,9 +2245,9 @@ class Site extends Model
     public function listingPreviewUrlChain(): array
     {
         return $this->previewUrlChainFrom([
-            $this->site_image,
-            $this->screenshot_thumb_path,
-            $this->screenshot_path,
+            $this->leftoverStringAttribute('site_image'),
+            $this->leftoverStringAttribute('screenshot_thumb_path'),
+            $this->leftoverStringAttribute('screenshot_path'),
         ]);
     }
 
@@ -1886,9 +2259,9 @@ class Site extends Model
     public function zoomPreviewUrlChain(): array
     {
         return $this->previewUrlChainFrom([
-            $this->screenshot_path,
-            $this->site_image,
-            $this->screenshot_thumb_path,
+            $this->leftoverStringAttribute('screenshot_path'),
+            $this->leftoverStringAttribute('site_image'),
+            $this->leftoverStringAttribute('screenshot_thumb_path'),
         ]);
     }
 
@@ -1929,6 +2302,101 @@ class Site extends Model
         }
 
         return $this->image_url;
+    }
+
+    /**
+    /**
+     * Same-origin tile URL. The resolver fetches a real icon when the host
+     * is reachable and otherwise returns catalog-site-fallback.svg.
+     */
+    public function catalogTileFaviconUrl(): ?string
+    {
+        $id = (int) $this->getKey();
+        if ($id < 1) {
+            return null;
+        }
+
+        try {
+            return route('advertiser.catalog.favicon', ['site' => $id], false);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * Closed-row catalog favicon candidates for this listing.
+     * Same-origin resolver only — never the publisher host in the page.
+     *
+     * @return list<string>
+     */
+    public function catalogFaviconUrlChain(?string $visibleHost = null): array
+    {
+        $urls = [];
+        $tile = $this->catalogTileFaviconUrl();
+        if (is_string($tile) && $tile !== '') {
+            $urls[] = $tile;
+        }
+
+        $unique = [];
+        foreach ($urls as $url) {
+            if (! is_string($url) || $url === '' || isset($unique[$url])) {
+                continue;
+            }
+            $unique[$url] = true;
+        }
+
+        return array_keys($unique);
+    }
+
+    /**
+     * Hostname used to look up the publisher site’s own favicon.
+     */
+    public function catalogFaviconHost(?string $visibleHost = null): string
+    {
+        return $this->catalogFaviconHosts($visibleHost)[0] ?? '';
+    }
+
+    /**
+     * Hosts from the listing row: domain, site_url, then the visible host.
+     *
+     * @return list<string>
+     */
+    public function catalogFaviconHosts(?string $visibleHost = null): array
+    {
+        $candidates = [
+            $this->leftoverStringAttribute('domain'),
+            parse_url((string) $this->leftoverStringAttribute('site_url'), PHP_URL_HOST),
+            $visibleHost,
+        ];
+
+        $hosts = [];
+        foreach ($candidates as $raw) {
+            $host = $this->normalizeCatalogFaviconHost($raw);
+            if ($host === '' || isset($hosts[$host])) {
+                continue;
+            }
+            $hosts[$host] = true;
+        }
+
+        return array_keys($hosts);
+    }
+
+    private function normalizeCatalogFaviconHost(mixed $raw): string
+    {
+        $host = strtolower(trim((string) $raw));
+        $host = preg_replace('/:\d+$/', '', $host) ?? $host;
+        $host = trim($host, '.');
+        if ($host === '' || str_contains($host, '/') || str_contains($host, '\\') || str_contains($host, ' ')) {
+            return '';
+        }
+        if (filter_var($host, FILTER_VALIDATE_IP)) {
+            return '';
+        }
+        if (preg_match('/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/i', $host) !== 1) {
+            return '';
+        }
+
+        return $host;
     }
 
     /**
@@ -2015,15 +2483,27 @@ class Site extends Model
     public function primaryCountryCode(): ?string
     {
         // Scalar sites.country wins (same as catalog inventory / country filter).
-        return app(CatalogCountryInventory::class)
-            ->primaryCountryCode($this->country, $this->countries);
+        $code = app(CatalogCountryInventory::class)
+            ->primaryCountryCode($this->country, $this->safeJsonArray('countries'));
+        $code = strtolower(trim((string) ($code ?? '')));
+        if ($code === '' || $code === 'xx') {
+            return null;
+        }
+
+        // Leftover Hostinger junk ("??", "not-json") must not paint a flag.
+        return isset(marketplace_countries()[$code]) ? $code : null;
     }
 
     public function primaryLanguageCode(): ?string
     {
-        $codes = $this->languageCodes();
+        $known = marketplace_languages();
+        foreach ($this->languageCodes() as $code) {
+            if (isset($known[$code])) {
+                return $code;
+            }
+        }
 
-        return $codes[0] ?? null;
+        return null;
     }
 
     /**
@@ -2031,9 +2511,81 @@ class Site extends Model
      */
     public function hasGoodMetrics(): bool
     {
-        return (int) $this->da >= self::GOOD_MIN_DA
-            && (int) $this->dr >= self::GOOD_MIN_DR
-            && (int) $this->traffic >= self::GOOD_MIN_TRAFFIC;
+        try {
+            $da = $this->qualityMetricInt('da');
+            $dr = $this->qualityMetricInt('dr');
+            $traffic = $this->qualityMetricInt('traffic');
+
+            return $da >= self::GOOD_MIN_DA
+                && $dr >= self::GOOD_MIN_DR
+                && $traffic >= self::GOOD_MIN_TRAFFIC;
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * Metrics that miss the marketplace bar, named for the staff row.
+     *
+     * @return list<string>
+     */
+    public function qualityBarFailures(): array
+    {
+        $failures = [];
+        $da = $this->qualityMetricInt('da');
+        if ($da < self::GOOD_MIN_DA) {
+            $failures[] = 'DA '.$da.' (need '.self::GOOD_MIN_DA.')';
+        }
+        $dr = $this->qualityMetricInt('dr');
+        if ($dr < self::GOOD_MIN_DR) {
+            $failures[] = 'DR '.$dr.' (need '.self::GOOD_MIN_DR.')';
+        }
+        $traffic = $this->qualityMetricInt('traffic');
+        if ($traffic < self::GOOD_MIN_TRAFFIC) {
+            $failures[] = 'traffic '.number_format($traffic).' (need '.number_format(self::GOOD_MIN_TRAFFIC).')';
+        }
+
+        return $failures;
+    }
+
+    public function qualityBarBadgeText(): string
+    {
+        $summary = implode(', ', $this->qualityBarFailures());
+
+        return $summary === '' ? 'Below quality bar' : 'Below quality bar — '.$summary;
+    }
+
+    /**
+     * Verified, inactive, in-bar, and not blocked from going live.
+     * Quality is required here even for admins — the warning-only activate path stays in Manage.
+     */
+    public function isReadyToActivate(): bool
+    {
+        if ((bool) $this->active || ! (bool) $this->verified || $this->isArchived()) {
+            return false;
+        }
+        if (! $this->hasGoodMetrics() || ! $this->hasMarketplaceCountry()) {
+            return false;
+        }
+
+        return $this->staffGoLiveBlockReason(false) === null;
+    }
+
+    /**
+     * Prefer attributes already on the model so in-memory Site objects
+     * still evaluate the quality bar when Schema::hasColumn is unavailable.
+     */
+    private function qualityMetricInt(string $column): int
+    {
+        $attributes = $this->getAttributes();
+        if (array_key_exists($column, $attributes)) {
+            return (int) $attributes[$column];
+        }
+        if (! static::hasSitesColumn($column)) {
+            return 0;
+        }
+
+        return (int) $this->getAttribute($column);
     }
 
     /**
@@ -2116,6 +2668,42 @@ class Site extends Model
     }
 
     /**
+     * Waiting-on-publisher rows can skip Accept / review and go live now.
+     */
+    public function isWaitingOnPublisherForStaff(): bool
+    {
+        return $this->isPendingPublisherAcceptance()
+            || $this->hasDetailsComplete()
+            || $this->awaitsPublisherDetails();
+    }
+
+    public function staffPublishNowBlockReason(): ?string
+    {
+        if ((bool) $this->active) {
+            return 'This listing is already live.';
+        }
+
+        if ($this->isArchived()) {
+            return 'This site is archived and cannot be published.';
+        }
+
+        if ($this->isFromCancelledBulk()) {
+            return 'This listing is from a cancelled bulk request and cannot be published.';
+        }
+
+        if (! $this->hasMarketplaceCountry()) {
+            return 'Set a marketplace country before publishing this site.';
+        }
+
+        return null;
+    }
+
+    public function staffCanPublishNow(): bool
+    {
+        return $this->staffPublishNowBlockReason() === null;
+    }
+
+    /**
      * Marketing may change the advertiser-facing brief unless the site is archived.
      */
     public function marketingCanEditDescription(): bool
@@ -2177,51 +2765,80 @@ class Site extends Model
      */
     public function catalogDescriptionHtml(): string
     {
-        $html = $this->safeDescriptionHtml();
-        if ($html === '' || ! str_contains($html, '<a ')) {
-            return $html;
+        try {
+            $html = $this->safeDescriptionHtml();
+            if ($html === '' || ! str_contains($html, '<a ')) {
+                return $html;
+            }
+
+            $visibility = app(SiteUrlVisibility::class);
+            $allowed = array_values(array_unique(array_filter([
+                strtolower($visibility->host($this->site_url)),
+                strtolower($visibility->host((string) $this->example_url)),
+            ])));
+            if ($allowed === []) {
+                return $html;
+            }
+
+            $visit = route('advertiser.catalog.visit', $this->id);
+
+            return preg_replace_callback(
+                '/<a\s+href="([^"]*)"/i',
+                function (array $m) use ($visibility, $allowed, $visit) {
+                    $href = html_entity_decode($m[1], ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                    $host = strtolower($visibility->host($href));
+                    if ($host === '' || ! in_array($host, $allowed, true)) {
+                        return $m[0];
+                    }
+
+                    $path = (string) (parse_url($href, PHP_URL_PATH) ?: '/');
+                    if (! str_starts_with($path, '/') || str_starts_with($path, '//')) {
+                        return '<a href="'.e($visit).'"';
+                    }
+
+                    $query = parse_url($href, PHP_URL_QUERY);
+                    $rel = $path.($query ? '?'.$query : '');
+                    if (strlen($rel) > 500 || str_contains($rel, '\\') || str_contains($rel, '://')) {
+                        return '<a href="'.e($visit).'"';
+                    }
+
+                    return '<a href="'.e($visit.'?path='.rawurlencode($rel)).'"';
+                },
+                $html
+            ) ?? $html;
+        } catch (\Throwable $e) {
+            report($e);
+
+            return '';
         }
-
-        $visibility = app(SiteUrlVisibility::class);
-        $allowed = array_values(array_unique(array_filter([
-            strtolower($visibility->host($this->site_url)),
-            strtolower($visibility->host((string) $this->example_url)),
-        ])));
-        if ($allowed === []) {
-            return $html;
-        }
-
-        $visit = route('advertiser.catalog.visit', $this->id);
-
-        return preg_replace_callback(
-            '/<a\s+href="([^"]*)"/i',
-            function (array $m) use ($visibility, $allowed, $visit) {
-                $href = html_entity_decode($m[1], ENT_QUOTES | ENT_HTML5, 'UTF-8');
-                $host = strtolower($visibility->host($href));
-                if ($host === '' || ! in_array($host, $allowed, true)) {
-                    return $m[0];
-                }
-
-                $path = (string) (parse_url($href, PHP_URL_PATH) ?: '/');
-                if (! str_starts_with($path, '/') || str_starts_with($path, '//')) {
-                    return '<a href="'.e($visit).'"';
-                }
-
-                $query = parse_url($href, PHP_URL_QUERY);
-                $rel = $path.($query ? '?'.$query : '');
-                if (strlen($rel) > 500 || str_contains($rel, '\\') || str_contains($rel, '://')) {
-                    return '<a href="'.e($visit).'"';
-                }
-
-                return '<a href="'.e($visit.'?path='.rawurlencode($rel)).'"';
-            },
-            $html
-        ) ?? $html;
     }
 
     /**
-     * Publisher-entered article price (EUR), ignoring any in-memory advertiser markup.
+     * Publisher-entered article price (EUR catalog), ignoring any in-memory advertiser markup.
      */
+    /**
+     * Partner catalog listings sell at a stored SLB advertiser price, not the
+     * normal hidden-fee markup of sites.price (the partner rate).
+     */
+    public function usesPartnerRetailPrice(): bool
+    {
+        if (! static::hasSitesColumn('slb_price_publish_eur')) {
+            return false;
+        }
+        $stored = $this->getAttribute('slb_price_publish_eur');
+
+        return $stored !== null && $stored !== '' && (float) $stored > 0;
+    }
+
+    public function partnerCatalogItem()
+    {
+        if (! static::hasSitesColumn('partner_catalog_item_id')) {
+            return $this->belongsTo(PartnerCatalogItem::class, 'partner_catalog_item_id');
+        }
+
+        return $this->belongsTo(PartnerCatalogItem::class, 'partner_catalog_item_id');
+    }
+
     public function publisherBasePrice(): float
     {
         $raw = $this->getRawOriginal('price');
@@ -2236,6 +2853,98 @@ class Site extends Model
         return round((float) $this->price, 2);
     }
 
+    public function listingCurrency(): string
+    {
+        if (! static::hasSitesColumn('listing_currency')) {
+            return 'EUR';
+        }
+
+        return app(ListingMoney::class)->normalizeListing($this->listing_currency);
+    }
+
+    public function listingBaseAmount(): float
+    {
+        if (static::hasSitesColumn('listing_price') && $this->listing_price !== null && $this->listing_price !== '') {
+            return round((float) $this->listing_price, 2);
+        }
+
+        return $this->publisherBasePrice();
+    }
+
+    /**
+     * @return array<string, float>
+     */
+    public function listingSensitiveMap(): array
+    {
+        $listing = app(ListingMoney::class);
+        if (static::hasSitesColumn('listing_sensitive_prices')) {
+            $map = $listing->normalizeMap($this->listing_sensitive_prices);
+            if ($map !== []) {
+                return $map;
+            }
+        }
+
+        return $listing->normalizeMap($this->sensitive_prices);
+    }
+
+    /**
+     * @return array<string, float>
+     */
+    public function listingHomepageMap(): array
+    {
+        $listing = app(ListingMoney::class);
+        if (static::hasSitesColumn('listing_homepage_prices')) {
+            $map = $listing->normalizeMap($this->listing_homepage_prices);
+            if ($map !== []) {
+                return $map;
+            }
+        }
+
+        return $listing->normalizeMap($this->homepage_placement_prices);
+    }
+
+    public function needsGbpListingPrompt(): bool
+    {
+        if (! static::hasSitesColumn('listing_currency')) {
+            return false;
+        }
+        $listing = app(ListingMoney::class);
+        if (! $listing->countrySuggestsGbp($this->country)) {
+            return false;
+        }
+        if ($this->listingCurrency() === 'GBP') {
+            return false;
+        }
+
+        return $this->listing_gbp_prompt_dismissed_at === null;
+    }
+
+    public function proposedGbpListingPrice(): float
+    {
+        return app(ListingMoney::class)->fromEuros($this->publisherBasePrice(), 'GBP');
+    }
+
+    public function refreshCatalogEuros(?ListingMoney $listing = null): void
+    {
+        $listing ??= app(ListingMoney::class);
+        if (! static::hasSitesColumn('listing_price')) {
+            return;
+        }
+
+        $currency = $this->listingCurrency();
+        $this->price = $listing->toEuros($this->listingBaseAmount(), $currency, false);
+
+        $sensitive = $this->listingSensitiveMap();
+        if ($sensitive !== [] && static::hasSitesColumn('sensitive_prices')) {
+            $this->sensitive_prices = $listing->mapToEuros($sensitive, $currency, false);
+        }
+
+        $homepage = $this->listingHomepageMap();
+        if ($homepage !== [] && static::hasSitesColumn('homepage_placement_prices')) {
+            $this->homepage_placement_prices = $listing->mapToEuros($homepage, $currency, false);
+        }
+    }
+
     /**
      * Advertiser catalog/cart unit prices for this listing (hidden fee + sale floor).
      *
@@ -2244,13 +2953,48 @@ class Site extends Model
      *
      * @return array<string, mixed>
      */
-    public function advertiserCatalogPricing(?string $sensitiveType = null, int $quantity = 1): array
+    public function advertiserCatalogPricing(?string $sensitiveType = null, int $quantity = 1, ?string $buyerCurrency = null): array
     {
         $forCart = clone $this;
         $forCart->setAttribute('price', $this->publisherBasePrice());
 
         return app(CartPricingService::class)
-            ->priceForAdvertiser($forCart, $sensitiveType, $quantity);
+            ->priceForAdvertiser($forCart, $sensitiveType, $quantity, null, true, $buyerCurrency);
+    }
+
+    /**
+     * Stored EUR extras (unbuffered) with the buyer FX buffer applied.
+     *
+     * @return array<string, float>
+     */
+    public function advertiserFacingSensitivePrices(?string $buyerCurrency = null): array
+    {
+        $listing = app(ListingMoney::class);
+        $apply = $listing->appliesBuffer($this->listingCurrency(), $buyerCurrency ?? $listing->buyerCurrency());
+        $raw = collect($this->safeJsonArray('sensitive_prices'))
+            ->filter(fn ($amount, $type) => is_string($type) && $type !== ''
+                && is_numeric($amount) && (float) $amount > 0)
+            ->map(fn ($amount) => $listing->applyBufferToEuros(round((float) $amount, 2), $apply))
+            ->all();
+
+        return $raw;
+    }
+
+    /**
+     * Homepage durations with buyer-facing EUR fees (buffer when currencies differ).
+     *
+     * @return array<int, float>
+     */
+    public function advertiserFacingHomepageOptions(?string $buyerCurrency = null): array
+    {
+        $listing = app(ListingMoney::class);
+        $apply = $listing->appliesBuffer($this->listingCurrency(), $buyerCurrency ?? $listing->buyerCurrency());
+        $out = [];
+        foreach ($this->homepagePlacementOptions() as $days => $price) {
+            $out[(int) $days] = $listing->applyBufferToEuros((float) $price, $apply);
+        }
+
+        return $out;
     }
 
     /**
@@ -2318,6 +3062,9 @@ class Site extends Model
         return 'This is your listing — you can’t order it.';
     }
 
+    /** @var array<string, array{owned: bool, list: float, publisher: float, sale: float|null, sale_percent: float|null, sale_percent_nominal: float|null}> */
+    private array $catalogPricesForViewerCache = [];
+
     /**
      * Prices painted on the advertiser catalog for this viewer.
      *
@@ -2328,40 +3075,74 @@ class Site extends Model
      */
     public function catalogPricesForViewer(?User $user): array
     {
-        $owned = $this->isOwnedBy($user);
-        $nominal = $this->activeCustomDiscountPercent();
+        $cacheKey = (string) ($user?->getKey() ?? 'guest');
+        if (isset($this->catalogPricesForViewerCache[$cacheKey])) {
+            return $this->catalogPricesForViewerCache[$cacheKey];
+        }
 
-        if ($owned) {
-            $base = $this->publisherBasePrice();
+        return $this->catalogPricesForViewerCache[$cacheKey] = $this->computeCatalogPricesForViewer($user);
+    }
+
+    /**
+     * @return array{owned: bool, list: float, publisher: float, sale: float|null, sale_percent: float|null, sale_percent_nominal: float|null}
+     */
+    private function computeCatalogPricesForViewer(?User $user): array
+    {
+        try {
+            $owned = $this->isOwnedBy($user);
+            $nominal = $this->activeCustomDiscountPercent();
+
+            if ($owned) {
+                $base = $this->publisherBasePrice();
+
+                return [
+                    'owned' => true,
+                    'list' => $base,
+                    'publisher' => $base,
+                    'sale' => null,
+                    'sale_percent' => null,
+                    'sale_percent_nominal' => $nominal,
+                ];
+            }
+
+            $buyerCurrency = $user instanceof User
+                ? app(ListingMoney::class)->buyerCurrency($user)
+                : null;
+            $pricing = $this->advertiserCatalogPricing(null, 1, $buyerCurrency);
+            $list = (float) $pricing['base'];
+            $sale = null;
+            $salePercent = null;
+            if (($pricing['discount_amount'] ?? 0) > 0
+                && (float) $pricing['article_total'] < $list) {
+                $sale = (float) $pricing['article_total'];
+                $salePercent = (float) $pricing['discount_percent'];
+            }
 
             return [
-                'owned' => true,
+                'owned' => false,
+                'list' => $list,
+                'publisher' => (float) $pricing['publisher_price'],
+                'sale' => $sale,
+                'sale_percent' => $salePercent,
+                'sale_percent_nominal' => $nominal,
+            ];
+        } catch (\Throwable $e) {
+            report($e);
+            $base = 0.0;
+            try {
+                $base = $this->publisherBasePrice();
+            } catch (\Throwable) {
+            }
+
+            return [
+                'owned' => false,
                 'list' => $base,
                 'publisher' => $base,
                 'sale' => null,
                 'sale_percent' => null,
-                'sale_percent_nominal' => $nominal,
+                'sale_percent_nominal' => null,
             ];
         }
-
-        $pricing = $this->advertiserCatalogPricing();
-        $list = (float) $pricing['base'];
-        $sale = null;
-        $salePercent = null;
-        if (($pricing['discount_amount'] ?? 0) > 0
-            && (float) $pricing['article_total'] < $list) {
-            $sale = (float) $pricing['article_total'];
-            $salePercent = (float) $pricing['discount_percent'];
-        }
-
-        return [
-            'owned' => false,
-            'list' => $list,
-            'publisher' => (float) $pricing['publisher_price'],
-            'sale' => $sale,
-            'sale_percent' => $salePercent,
-            'sale_percent_nominal' => $nominal,
-        ];
     }
 
     /**
@@ -2374,12 +3155,8 @@ class Site extends Model
         // Read the cast attribute directly. Do not gate on Schema::hasColumn —
         // Hostinger SQL patches can add columns before Schema cache refreshes,
         // and a false-negative would hide offers in catalog Site Details.
-        $raw = $this->homepage_placement_prices;
-        if (is_string($raw) && $raw !== '') {
-            $decoded = json_decode($raw, true);
-            $raw = is_array($decoded) ? $decoded : null;
-        }
-        if (! is_array($raw) || $raw === []) {
+        $raw = $this->safeJsonArray('homepage_placement_prices');
+        if ($raw === []) {
             return [];
         }
 
@@ -2428,12 +3205,8 @@ class Site extends Model
     public function enabledSocialChannels(): array
     {
         // Same as homepagePlacementOptions(): trust attributes over Schema::hasColumn.
-        $raw = $this->social_promotion;
-        if (is_string($raw) && $raw !== '') {
-            $decoded = json_decode($raw, true);
-            $raw = is_array($decoded) ? $decoded : null;
-        }
-        if (! is_array($raw) || $raw === []) {
+        $raw = $this->safeJsonArray('social_promotion');
+        if ($raw === []) {
             return [];
         }
 
@@ -2503,16 +3276,38 @@ class Site extends Model
         }
     }
 
+    /** @var array<string, bool> */
+    private static array $columnPresenceCache = [];
+
+    /**
+     * Drop the per-process column map after a test or runtime ALTER.
+     */
+    public static function forgetColumnCache(): void
+    {
+        self::$columnPresenceCache = [];
+    }
+
     public static function hasSitesColumn(string $column): bool
     {
+        $testing = false;
+        try {
+            $testing = function_exists('app') && app()->runningUnitTests();
+        } catch (\Throwable) {
+            $testing = false;
+        }
+
+        if (! $testing && array_key_exists($column, self::$columnPresenceCache)) {
+            return self::$columnPresenceCache[$column];
+        }
+
         try {
             if (! function_exists('app') || ! app()->bound('db')) {
-                return false;
+                return self::$columnPresenceCache[$column] = false;
             }
 
-            return Schema::hasColumn((new static)->getTable(), $column);
+            return self::$columnPresenceCache[$column] = Schema::hasColumn((new static)->getTable(), $column);
         } catch (\Throwable) {
-            return false;
+            return self::$columnPresenceCache[$column] = false;
         }
     }
 
@@ -2528,6 +3323,49 @@ class Site extends Model
             return $value instanceof \DateTimeInterface ? $value : null;
         } catch (\Throwable) {
             return null;
+        }
+    }
+
+    /**
+     * Leftover Hostinger stores junk in decimal columns (price = "not-json").
+     * Laravel's decimal cast MathExceptions and 500s staff records hydration.
+     *
+     * @param  mixed  $value
+     * @param  int  $decimals
+     */
+    protected function asDecimal($value, $decimals)
+    {
+        try {
+            if (is_array($value) || (is_object($value) && ! $value instanceof \Stringable)) {
+                $value = 0;
+            }
+
+            return parent::asDecimal($value, $decimals);
+        } catch (\Throwable) {
+            try {
+                return parent::asDecimal(0, $decimals);
+            } catch (\Throwable) {
+                return number_format(0, (int) $decimals, '.', '');
+            }
+        }
+    }
+
+    /**
+     * Leftover Hostinger may store JSON arrays in float columns (rating_avg).
+     * Laravel's fromFloat() TypeErrors on (string) array and 500s records hydration.
+     *
+     * @param  mixed  $value
+     */
+    public function fromFloat($value)
+    {
+        try {
+            if (is_array($value) || (is_object($value) && ! $value instanceof \Stringable)) {
+                return 0.0;
+            }
+
+            return parent::fromFloat($value);
+        } catch (\Throwable) {
+            return 0.0;
         }
     }
 
@@ -2591,9 +3429,13 @@ class Site extends Model
      */
     public function getCategoriesStringAttribute(): string
     {
-        $categories = $this->categories ?? [$this->category];
+        try {
+            return implode(', ', scalar_list($this->categories ?? [$this->category]));
+        } catch (\Throwable $e) {
+            report($e);
 
-        return implode(', ', $categories);
+            return trim(scalar_text($this->category ?? ''));
+        }
     }
 
     /**
@@ -2601,41 +3443,56 @@ class Site extends Model
      */
     public function getCategoriesArrayAttribute()
     {
-        if (empty($this->categories)) {
-            // Keep a single legacy niche (even with commas) as one entry — never
-            // explode("Marketing, PR & Advertising") into halves.
-            if (! empty($this->category)) {
-                return Category::parseCatalogCategoryParam((string) $this->category);
+        try {
+            if (empty($this->categories)) {
+                // Keep a single legacy niche (even with commas) as one entry — never
+                // explode("Marketing, PR & Advertising") into halves.
+                $legacy = trim(scalar_text($this->category ?? ''));
+                if ($legacy !== '') {
+                    return Category::parseCatalogCategoryParam($legacy);
+                }
+
+                return [];
             }
 
-            return [];
-        }
-
-        // If it's already an array — each entry is one niche (do not split on commas).
-        if (is_array($this->categories)) {
-            return array_values(array_filter(array_map(
-                static fn ($c) => is_scalar($c) ? trim((string) $c) : '',
-                $this->categories
-            ), static fn ($c) => $c !== ''));
-        }
-
-        // If it's a JSON string
-        if (is_string($this->categories) && (str_starts_with($this->categories, '[') || str_starts_with($this->categories, '{'))) {
-            $decoded = json_decode($this->categories, true);
-            if (is_array($decoded)) {
+            // If it's already an array — each entry is one niche (do not split on commas).
+            if (is_array($this->categories)) {
                 return array_values(array_filter(array_map(
-                    static fn ($c) => is_scalar($c) ? trim((string) $c) : '',
-                    $decoded
+                    static fn ($c) => trim(scalar_text($c)),
+                    $this->categories
                 ), static fn ($c) => $c !== ''));
             }
-        }
 
-        // Legacy string storage — pipe or comma list via shared catalog parser.
-        if (is_string($this->categories)) {
-            return Category::parseCatalogCategoryParam($this->categories);
-        }
+            // If it's a JSON string
+            if (is_string($this->categories) && (str_starts_with($this->categories, '[') || str_starts_with($this->categories, '{'))) {
+                $decoded = json_decode($this->categories, true);
+                if (is_array($decoded)) {
+                    return array_values(array_filter(array_map(
+                        static fn ($c) => trim(scalar_text($c)),
+                        $decoded
+                    ), static fn ($c) => $c !== ''));
+                }
+            }
 
-        return ! empty($this->category) ? Category::parseCatalogCategoryParam((string) $this->category) : [];
+            // Legacy string storage — pipe or comma list via shared catalog parser.
+            if (is_string($this->categories)) {
+                return Category::parseCatalogCategoryParam($this->categories);
+            }
+
+            $legacy = trim(scalar_text($this->category ?? ''));
+
+            return $legacy !== '' ? Category::parseCatalogCategoryParam($legacy) : [];
+        } catch (\Throwable $e) {
+            report($e);
+
+            try {
+                $legacy = trim(scalar_text($this->category ?? ''));
+
+                return $legacy !== '' ? Category::parseCatalogCategoryParam($legacy) : [];
+            } catch (\Throwable) {
+                return [];
+            }
+        }
     }
 
     /**
@@ -2645,10 +3502,10 @@ class Site extends Model
      */
     public function nicheBadgeLabels(): array
     {
-        $categories = is_array($this->categories) ? $this->categories : null;
+        $categories = $this->safeJsonArray('categories');
 
         return Category::displayNicheLabels(
-            $categories,
+            $categories !== [] ? $categories : null,
             is_string($this->category) ? $this->category : null
         );
     }
@@ -2668,13 +3525,18 @@ class Site extends Model
      */
     public function countryCodes(): array
     {
-        $codes = collect($this->countries ?? [])
-            ->filter()
-            ->map(fn ($c) => strtolower(trim((string) $c)))
-            ->all();
+        $codes = array_map(
+            static fn (string $c) => strtolower(trim($c)),
+            scalar_list($this->safeJsonArray('countries'))
+        );
 
-        if ($this->country) {
-            $codes[] = strtolower(trim((string) $this->country));
+        try {
+            $primary = strtolower(trim(scalar_text($this->country ?? '')));
+            if ($primary !== '') {
+                $codes[] = $primary;
+            }
+        } catch (\Throwable $e) {
+            report($e);
         }
 
         $codes = array_values(array_unique(array_filter($codes)));
@@ -2692,18 +3554,18 @@ class Site extends Model
      */
     public function countryCodesForDisplay(): array
     {
-        $codes = collect($this->countries ?? [])
-            ->filter()
-            ->map(fn ($c) => strtolower(trim((string) $c)))
-            ->unique()
-            ->values()
-            ->all();
+        $codes = array_values(array_unique(array_map(
+            static fn (string $c) => strtolower(trim($c)),
+            scalar_list($this->safeJsonArray('countries'))
+        )));
 
-        if ($this->country) {
-            $primary = strtolower(trim((string) $this->country));
+        try {
+            $primary = strtolower(trim(scalar_text($this->country ?? '')));
             if ($primary !== '' && ! in_array($primary, $codes, true)) {
                 array_unshift($codes, $primary);
             }
+        } catch (\Throwable $e) {
+            report($e);
         }
 
         return array_values(array_filter($codes));
@@ -2722,11 +3584,19 @@ class Site extends Model
      */
     public function scopeMissingMarketplaceCountry($query)
     {
-        $query->where(function ($q) {
-            $q->whereNull('country')->orWhere('country', '');
-        });
+        $hasCountry = static::hasSitesColumn('country');
+        $hasCountries = static::hasSitesColumn('countries');
+        if (! $hasCountry && ! $hasCountries) {
+            return $query->whereRaw('1 = 0');
+        }
 
-        if (static::hasSitesColumn('countries')) {
+        if ($hasCountry) {
+            $query->where(function ($q) {
+                $q->whereNull('country')->orWhere('country', '');
+            });
+        }
+
+        if ($hasCountries) {
             $query->where(function ($q) {
                 $q->whereNull('countries')
                     ->orWhere('countries', '')
@@ -2739,6 +3609,37 @@ class Site extends Model
     }
 
     /**
+     * Inverse of scopeMissingMarketplaceCountry: a country code or a countries list.
+     *
+     * @param  Builder<Site>  $query
+     * @return Builder<Site>
+     */
+    public function scopeHasMarketplaceCountry($query)
+    {
+        $hasCountry = static::hasSitesColumn('country');
+        $hasCountries = static::hasSitesColumn('countries');
+        if (! $hasCountry && ! $hasCountries) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        return $query->where(function ($q) use ($hasCountry, $hasCountries) {
+            if ($hasCountry) {
+                $q->where(function ($inner) {
+                    $inner->whereNotNull('country')->where('country', '!=', '');
+                });
+            }
+            if ($hasCountries) {
+                $q->{$hasCountry ? 'orWhere' : 'where'}(function ($inner) {
+                    $inner->whereNotNull('countries')
+                        ->where('countries', '!=', '')
+                        ->where('countries', '!=', '[]')
+                        ->where('countries', '!=', 'null');
+                });
+            }
+        });
+    }
+
+    /**
      * Active listings missing a marketplace country (ops hygiene queue).
      *
      * @param  Builder<Site>  $query
@@ -2746,7 +3647,40 @@ class Site extends Model
      */
     public function scopeActiveMissingMarketplaceCountry($query)
     {
-        return $query->where('active', 1)->missingMarketplaceCountry();
+        if (static::hasSitesColumn('active')) {
+            $query->where('active', 1);
+        }
+
+        return $query->missingMarketplaceCountry();
+    }
+
+    /**
+     * Array-cast JSON that leftover Hostinger rows may store as junk text.
+     *
+     * @return array<int|string, mixed>
+     */
+    public function safeJsonArray(string $attribute): array
+    {
+        try {
+            $raw = $this->getAttribute($attribute);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return [];
+        }
+
+        if (is_array($raw)) {
+            return $raw;
+        }
+
+        if (is_string($raw) && $raw !== '') {
+            $decoded = json_decode($raw, true);
+            if (is_array($decoded)) {
+                return $decoded;
+            }
+        }
+
+        return [];
     }
 
     /**
@@ -2754,13 +3688,17 @@ class Site extends Model
      */
     public function languageCodes(): array
     {
-        $codes = collect($this->languages ?? [])
+        $codes = collect($this->safeJsonArray('languages'))
             ->filter()
-            ->map(fn ($c) => strtolower(trim((string) $c)))
+            ->map(fn ($c) => strtolower(trim(scalar_text($c))))
             ->all();
 
-        if ($this->language) {
-            $codes[] = strtolower(trim((string) $this->language));
+        try {
+            if ($this->language) {
+                $codes[] = strtolower(trim((string) $this->language));
+            }
+        } catch (\Throwable $e) {
+            report($e);
         }
 
         $codes = array_values(array_unique(array_filter($codes)));

@@ -3,13 +3,12 @@
 
 Dear Customer,
 
-We regret to inform you that your order **#{{ $order->order_number }}** has been **rejected** by the publisher.
+We regret to inform you that your order #{{ $order->order_number }} has been rejected by the publisher.
 
 ## Order Details:
 
-- **Site:** {{ $site->site_name }}
-- **Order Number:** {{ $order->order_number }}
-- **Reference Code:** {{ $order->reference_code }}
+- Website: {{ $site->site_name }}@if(!empty($site->domain)) ({{ $site->domain }})@endif
+- Order number: #{{ $order->order_number }}
 
 ## Reason for Rejection:
 {{ $reason }}
@@ -18,7 +17,7 @@ We regret to inform you that your order **#{{ $order->order_number }}** has been
 
 You can browse other publishers and place a new order.
 
-@component('mail::button', ['url' => route('advertiser.catalog')])
+@component('mail::button', ['url' => rtrim(app_public_url(), '/').route('advertiser.catalog', [], false)])
 Browse Publishers
 @endcomponent
 

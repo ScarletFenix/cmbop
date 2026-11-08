@@ -42,15 +42,20 @@ class ModernUiSystemTest extends TestCase
         $this->assertStringNotContainsString('.btn-upload:focus {', $brand);
         $this->assertStringContainsString('.upload-zone', $brand);
         $this->assertStringContainsString('#eff6ff', $brand);
-        $this->assertStringContainsString('#2563eb', $brand);
+        $this->assertStringContainsString('--bs-btn-bg: var(--brand-primary, #1a585e)', $brand);
     }
 
     public function test_homepage_loads_with_interaction_css(): void
     {
-        $this->get('/')
+        $html = $this->get('/')
             ->assertOk()
-            ->assertSee('css/interaction.css', false)
-            ->assertSee('css/brand-colors.css', false);
+            ->getContent();
+
+        $this->assertTrue(
+            str_contains($html, 'css/marketing-bundle.css')
+            || (str_contains($html, 'css/interaction.css') && str_contains($html, 'css/brand-colors.css')),
+            'Homepage must load interaction + brand colors, either bundled or as separate sheets.'
+        );
     }
 
     public function test_chat_partial_exists(): void

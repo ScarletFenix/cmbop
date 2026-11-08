@@ -24,6 +24,7 @@ class UpsertCuratedBlogs extends Command
         'blog:upsert-trust-conversion',
         'blog:upsert-language-market',
         'blog:upsert-publisher-supply',
+        'blog:upsert-link-building-guides',
     ];
 
     public function handle(): int

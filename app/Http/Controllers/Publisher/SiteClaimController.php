@@ -46,8 +46,12 @@ class SiteClaimController extends Controller
                 ], 500);
             }
 
+            $fallback = $request->routeIs('advertiser.site-claims')
+                ? 'advertiser.dashboard'
+                : 'publisher.websites';
+
             return redirect()
-                ->route('publisher.websites')
+                ->route($fallback)
                 ->with('error', $message);
         }
 
@@ -67,7 +71,11 @@ class SiteClaimController extends Controller
             ]);
         }
 
-        return view('publisher.site-claims', compact('claims'));
+        $view = $request->routeIs('advertiser.site-claims')
+            ? 'advertiser.site-claims'
+            : 'publisher.site-claims';
+
+        return view($view, compact('claims'));
     }
 
     public function store(Request $request)
@@ -217,6 +225,47 @@ class SiteClaimController extends Controller
                 ? 'Claim submitted. The website name matches our listing — our team will verify ownership and get back to you.'
                 : 'Claim submitted. The website name you entered does not exactly match our listing, so we will verify carefully before transferring ownership.',
             'name_matches' => $nameMatches,
+        ]);
+    }
+
+    /**
+     * Pre-submit check: is this URL already a listed site?
+     */
+    public function lookup(Request $request)
+    {
+        $url = $this->normalizeHttpUrl($request->query('website_url', $request->input('website_url', '')));
+        $domain = $this->extractDomain((string) $url);
+        if (! $domain) {
+            return response()->json([
+                'success' => false,
+                'listed' => false,
+                'message' => 'Enter a full website URL, like https://example.com.',
+            ], 422);
+        }
+
+        $site = Site::findOccupyingDomain($domain);
+        if (! $site) {
+            return response()->json([
+                'success' => true,
+                'listed' => false,
+                'message' => 'We could not find that website in our catalog. Claims only work for sites already listed by another publisher.',
+            ]);
+        }
+
+        if ((int) $site->publisher_id === (int) auth()->id()) {
+            return response()->json([
+                'success' => true,
+                'listed' => true,
+                'owned' => true,
+                'message' => 'You already own this listing.',
+            ]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'listed' => true,
+            'owned' => false,
+            'message' => 'This URL matches a listed site. Submit proof of at least 20 characters — review usually takes 1–2 business days.',
         ]);
     }
 

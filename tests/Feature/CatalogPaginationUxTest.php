@@ -88,8 +88,9 @@ class CatalogPaginationUxTest extends TestCase
             ->get(route('advertiser.catalog', ['per_page' => 50]))
             ->assertOk()
             ->getContent();
-        // 30 sites fit on one page at 50 — pager must hide.
+        // 30 sites fit on one page at 50 — numbered pager hides; per-page stays bottom-left.
         $this->assertStringNotContainsString('catalog-pagination__links', $fifty);
+        $this->assertStringContainsString('catalog-pagination__perpage', $fifty);
         $this->assertStringContainsString('50 per page', $fifty);
 
         $invalid = $this->actingAs($this->advertiser)
@@ -113,12 +114,25 @@ class CatalogPaginationUxTest extends TestCase
 
         $this->assertStringContainsString('11–20', $html);
         $this->assertStringContainsString('Page 2 of 3', $html);
+        $this->assertStringContainsString('catalog-pagination__perpage', $html);
+        $this->assertStringContainsString('id="catalogPerPage"', $html);
         $this->assertStringContainsString('catalog-pagination__pill', $html);
         $this->assertStringContainsString('data-current-page="2"', $html);
         $this->assertStringContainsString('tabindex="-1"', $html);
 
         $catalogPath = parse_url(route('advertiser.catalog'), PHP_URL_PATH);
         $this->assertStringContainsString($catalogPath, $html);
+
+        // Page 1 links still carry page=1 (Laravel paginator). Live JS
+        // canonicalize drops that param — must not treat it as a no-op on page 2.
+        $this->assertMatchesRegularExpression(
+            '/class="page-link"[^>]+href="[^"]*(?:\?|&amp;)page=1(?:&|"|#)/',
+            $html
+        );
+        $this->assertMatchesRegularExpression(
+            '/data-effective-query="[^"]*page[^"]*2/',
+            $html
+        );
     }
 
     public function test_live_client_wires_focus_keyboard_and_per_page(): void

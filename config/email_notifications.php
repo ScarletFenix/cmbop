@@ -1,16 +1,25 @@
 <?php
 
+use App\Mail\AbandonedCartReminderMail;
 use App\Mail\AdminAssignedSiteNotification;
+use App\Mail\AdminBulkDiscountNotification;
 use App\Mail\AdminManualPaymentNotification;
 use App\Mail\AdminNewUserRegistered;
+use App\Mail\AdminNewUsersDigest;
+use App\Mail\AdminPublishedSiteNotification;
 use App\Mail\AdminStalledOrderAlert;
 use App\Mail\AdvertiserOrderStalledNotice;
 use App\Mail\AdvertiserReviewNudge;
+use App\Mail\ArticleApprovedForPublishMail;
+use App\Mail\ArticleReadyForApprovalMail;
+use App\Mail\ArticleRevisionRequestedMail;
 use App\Mail\AudienceCampaignMail;
 use App\Mail\AutoApproveReminderMail;
 use App\Mail\BulkSiteItemsRejected;
 use App\Mail\BulkSiteRequestCancelled;
+use App\Mail\BulkSiteRequestPublisherReminder;
 use App\Mail\BulkSiteRequestSubmitted;
+use App\Mail\BulkSitesReadyForPublisherReview;
 use App\Mail\BulkSitesSeededNotification;
 use App\Mail\CommunityFeedbackReviewed;
 use App\Mail\ContentEvaluationResult;
@@ -25,6 +34,7 @@ use App\Mail\DepositRequestSubmitted;
 use App\Mail\DisputeClawbackPublisher;
 use App\Mail\DisputeRefundAdvertiser;
 use App\Mail\GoogleTempPasswordMail;
+use App\Mail\LinkGuaranteeRestoreMail;
 use App\Mail\LiveUrlSubmitted;
 use App\Mail\ModificationRequested;
 use App\Mail\MonthlySpendingSummary;
@@ -36,6 +46,14 @@ use App\Mail\OrderApprovedByAdvertiser;
 use App\Mail\OrderPaymentConfirmed;
 use App\Mail\OrderRejected;
 use App\Mail\OrderStatusChanged;
+use App\Mail\PackProgressMail;
+use App\Mail\PartnerCorrectionMail;
+use App\Mail\PartnerEmailChangeCancelMail;
+use App\Mail\PartnerEmailChangeConfirmMail;
+use App\Mail\PartnerNewOrderMail;
+use App\Mail\PartnerPasswordResetMail;
+use App\Mail\PartnerPayoutReleasedMail;
+use App\Mail\PartnerThreadMessageMail;
 use App\Mail\PasswordChangedMail;
 use App\Mail\PaymentFailedMail;
 use App\Mail\PaymentPendingMail;
@@ -45,7 +63,9 @@ use App\Mail\PaypalPaymentNotCompleted;
 use App\Mail\PublisherAcceptNudge;
 use App\Mail\PublisherAddSiteReminderMail;
 use App\Mail\PublisherPublishNudge;
+use App\Mail\PublisherStaffOnboardingMail;
 use App\Mail\RefundReceiptMail;
+use App\Mail\SavedSearchAlertMail;
 use App\Mail\SiteClaimOwnershipTransferred;
 use App\Mail\SiteClaimReviewed;
 use App\Mail\SiteClaimSubmitted;
@@ -56,10 +76,12 @@ use App\Mail\SpendBudgetAlertMail;
 use App\Mail\TrustpilotReviewRequest;
 use App\Mail\WebsiteSuggestionReviewed;
 use App\Mail\WeeklyActivitySummary;
+use App\Mail\WeeklyNewSitesDigestMail;
 use App\Mail\WelcomeEmail;
 use App\Mail\WithdrawalRequestedConfirmation;
 use App\Mail\WithdrawalRequestNotification;
 use App\Mail\WithdrawalStatusUpdated;
+use App\Mail\WritingDeadlineReminderMail;
 
 /**
  * Central registry for platform email notifications.
@@ -120,6 +142,16 @@ return [
     'campaign_max_age_hours' => (int) env('MAIL_CAMPAIGN_MAX_AGE_HOURS', 72),
 
     /*
+    | Batch admin "New User Registered" notices instead of one SMTP send per
+    | signup × admin (Hostinger 451 / spam 554). Set ADMIN_SIGNUP_DIGEST=false
+    | to restore per-signup mail.
+    */
+    'admin_signup_digest' => [
+        'enabled' => (bool) env('ADMIN_SIGNUP_DIGEST', true),
+        'window_minutes' => (int) env('ADMIN_SIGNUP_DIGEST_MINUTES', 15),
+    ],
+
+    /*
     | Signed marketing unsubscribe links (GET confirm + POST one-click).
     */
     'unsubscribe_expire_days' => (int) env('MAIL_UNSUBSCRIBE_EXPIRE_DAYS', 30),
@@ -133,6 +165,7 @@ return [
         'chat_emails' => ['label' => 'Chat Emails', 'default' => true],
         'marketing_emails' => ['label' => 'Marketing Emails', 'default' => true],
         'weekly_summary' => ['label' => 'Weekly Activity Summary', 'default' => true],
+        'weekly_new_sites' => ['label' => 'Weekly new-site digest', 'default' => true],
         'monthly_summary' => ['label' => 'Monthly Spending Summary', 'default' => true],
         'review_requests' => ['label' => 'Review Requests', 'default' => true],
         'system_updates' => ['label' => 'System Updates', 'default' => true],
@@ -259,6 +292,55 @@ return [
             'mailable' => LiveUrlSubmitted::class,
             'default_enabled' => true,
         ],
+        'pack_progress' => [
+            'name' => 'Pack Progress',
+            'audience' => 'advertiser',
+            'preference' => 'order_emails',
+            'mailable' => PackProgressMail::class,
+            'default_enabled' => true,
+        ],
+        'link_guarantee_restore' => [
+            'name' => 'Link Guarantee Restore',
+            'audience' => 'publisher',
+            'preference' => 'order_emails',
+            'mailable' => LinkGuaranteeRestoreMail::class,
+            'default_enabled' => true,
+        ],
+        'article_ready_for_approval' => [
+            'name' => 'Article Ready For Approval',
+            'audience' => 'advertiser',
+            'preference' => 'order_emails',
+            'mailable' => ArticleReadyForApprovalMail::class,
+            'default_enabled' => true,
+        ],
+        'article_approved_for_publish' => [
+            'name' => 'Article Approved For Publish',
+            'audience' => 'publisher',
+            'preference' => 'order_emails',
+            'mailable' => ArticleApprovedForPublishMail::class,
+            'default_enabled' => true,
+        ],
+        'article_revision_requested' => [
+            'name' => 'Article Revision Requested',
+            'audience' => 'publisher',
+            'preference' => 'order_emails',
+            'mailable' => ArticleRevisionRequestedMail::class,
+            'default_enabled' => true,
+        ],
+        'writing_deadline_reminder' => [
+            'name' => 'Writing Deadline Reminder',
+            'audience' => 'admin',
+            'preference' => null,
+            'mailable' => WritingDeadlineReminderMail::class,
+            'default_enabled' => true,
+        ],
+        'saved_search_alert' => [
+            'name' => 'Saved Search Alert',
+            'audience' => 'advertiser',
+            'preference' => null,
+            'mailable' => SavedSearchAlertMail::class,
+            'default_enabled' => true,
+        ],
         'modification_requested' => [
             'name' => 'Revision Requested',
             'audience' => 'publisher',
@@ -317,6 +399,55 @@ return [
             'mailable' => SiteOwnerOrderNotification::class,
             'default_enabled' => true,
         ],
+        'partner_new_order' => [
+            'name' => 'Partner: new order',
+            'audience' => 'publisher',
+            'preference' => null,
+            'mailable' => PartnerNewOrderMail::class,
+            'default_enabled' => true,
+        ],
+        'partner_correction' => [
+            'name' => 'Partner: correction requested',
+            'audience' => 'publisher',
+            'preference' => null,
+            'mailable' => PartnerCorrectionMail::class,
+            'default_enabled' => true,
+        ],
+        'partner_thread_message' => [
+            'name' => 'Partner: order message',
+            'audience' => 'publisher',
+            'preference' => null,
+            'mailable' => PartnerThreadMessageMail::class,
+            'default_enabled' => true,
+        ],
+        'partner_payout_released' => [
+            'name' => 'Partner: payout released',
+            'audience' => 'publisher',
+            'preference' => null,
+            'mailable' => PartnerPayoutReleasedMail::class,
+            'default_enabled' => true,
+        ],
+        'partner_email_change_confirm' => [
+            'name' => 'Partner: confirm email change',
+            'audience' => 'publisher',
+            'preference' => null,
+            'mailable' => PartnerEmailChangeConfirmMail::class,
+            'default_enabled' => true,
+        ],
+        'partner_email_change_cancel' => [
+            'name' => 'Partner: cancel email change',
+            'audience' => 'publisher',
+            'preference' => null,
+            'mailable' => PartnerEmailChangeCancelMail::class,
+            'default_enabled' => true,
+        ],
+        'partner_password_reset' => [
+            'name' => 'Partner: password reset',
+            'audience' => 'publisher',
+            'preference' => null,
+            'mailable' => PartnerPasswordResetMail::class,
+            'default_enabled' => true,
+        ],
         'site_status' => [
             'name' => 'Site Status Notification',
             'audience' => 'publisher',
@@ -329,6 +460,13 @@ return [
             'audience' => 'publisher',
             'preference' => 'system_updates',
             'mailable' => SiteDiscountEnded::class,
+            'default_enabled' => true,
+        ],
+        'admin_bulk_discount' => [
+            'name' => 'Admin Set Pack Discount',
+            'audience' => 'publisher',
+            'preference' => 'system_updates',
+            'mailable' => AdminBulkDiscountNotification::class,
             'default_enabled' => true,
         ],
         'withdrawal_status' => [
@@ -403,6 +541,20 @@ return [
             'mailable' => BulkSitesSeededNotification::class,
             'default_enabled' => true,
         ],
+        'bulk_sites_publisher_review' => [
+            'name' => 'Bulk Sites Ready for Publisher Review',
+            'audience' => 'publisher',
+            'preference' => null,
+            'mailable' => BulkSitesReadyForPublisherReview::class,
+            'default_enabled' => true,
+        ],
+        'bulk_request_publisher_reminder' => [
+            'name' => 'Bulk Request Publisher Reminder',
+            'audience' => 'publisher',
+            'preference' => 'system_updates',
+            'mailable' => BulkSiteRequestPublisherReminder::class,
+            'default_enabled' => true,
+        ],
         'admin_assigned_site' => [
             'name' => 'Admin Assigned Site — Accept Listing',
             'audience' => 'publisher',
@@ -410,11 +562,32 @@ return [
             'mailable' => AdminAssignedSiteNotification::class,
             'default_enabled' => true,
         ],
+        'admin_published_site' => [
+            'name' => 'Admin Published Site — Live',
+            'audience' => 'publisher',
+            'preference' => null,
+            'mailable' => AdminPublishedSiteNotification::class,
+            'default_enabled' => true,
+        ],
+        'publisher_staff_onboarding' => [
+            'name' => 'Publisher Staff Onboarding',
+            'audience' => 'publisher',
+            'preference' => null,
+            'mailable' => PublisherStaffOnboardingMail::class,
+            'default_enabled' => true,
+        ],
         'admin_new_user' => [
             'name' => 'New User Registered',
             'audience' => 'admin',
             'preference' => null,
             'mailable' => AdminNewUserRegistered::class,
+            'default_enabled' => true,
+        ],
+        'admin_new_users_digest' => [
+            'name' => 'New Users Digest',
+            'audience' => 'admin',
+            'preference' => null,
+            'mailable' => AdminNewUsersDigest::class,
             'default_enabled' => true,
         ],
         'site_claim_submitted' => [
@@ -532,6 +705,13 @@ return [
             'mailable' => DepositReminderMail::class,
             'default_enabled' => true,
         ],
+        'abandoned_cart_reminder' => [
+            'name' => 'Abandoned Cart Reminder (24h / 72h)',
+            'audience' => 'advertiser',
+            'preference' => 'marketing_emails',
+            'mailable' => AbandonedCartReminderMail::class,
+            'default_enabled' => true,
+        ],
 
         // —— Order reminder cadences (scheduled) ——
         // Filed under order_emails, not marketing: these are about work the
@@ -589,6 +769,13 @@ return [
             'audience' => 'advertiser',
             'preference' => 'marketing_emails',
             'mailable' => NewSitesDigest::class,
+            'default_enabled' => true,
+        ],
+        'weekly_new_sites' => [
+            'name' => 'Weekly new-site digest',
+            'audience' => 'advertiser',
+            'preference' => 'weekly_new_sites',
+            'mailable' => WeeklyNewSitesDigestMail::class,
             'default_enabled' => true,
         ],
         'weekly_activity_summary' => [

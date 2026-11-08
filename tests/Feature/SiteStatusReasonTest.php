@@ -90,6 +90,7 @@ class SiteStatusReasonTest extends TestCase
         $site = $this->makeSite($publisher, [
             'verified' => false,
             'active' => false,
+            'assigned_by_user_id' => $admin->id,
         ]);
 
         $this->actingAs($admin)
@@ -100,22 +101,40 @@ class SiteStatusReasonTest extends TestCase
         $this->assertDatabaseHas('sites', ['id' => $site->id]);
     }
 
-    public function test_archive_requires_reason_and_persists_it(): void
+    public function test_publisher_added_archive_is_quiet_without_reason(): void
     {
         $admin = $this->makeUser('admin');
         $publisher = $this->makeUser('publisher');
         $site = $this->makeSite($publisher);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.sites.archive', $site->id))
+            ->assertOk()
+            ->assertJsonPath('archived', true)
+            ->assertJsonPath('quiet', true);
+
+        $site->refresh();
+        $this->assertNotNull($site->archived_at);
+        $this->assertNull($site->status_reason);
+        Mail::assertNotQueued(SiteStatusNotification::class);
+    }
+
+    public function test_archive_requires_reason_and_persists_it(): void
+    {
+        $admin = $this->makeUser('admin');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher, ['assigned_by_user_id' => $admin->id]);
         $reason = 'Publisher asked to take this listing off the catalog.';
 
         $this->actingAs($admin)
-            ->deleteJson(route('admin.sites.destroy', $site->id))
+            ->postJson(route('admin.sites.archive', $site->id))
             ->assertStatus(422)
             ->assertJsonValidationErrors(['reason']);
 
         $this->assertNull($site->fresh()->archived_at);
 
         $this->actingAs($admin)
-            ->deleteJson(route('admin.sites.destroy', $site->id), [
+            ->postJson(route('admin.sites.archive', $site->id), [
                 'reason' => $reason,
             ])
             ->assertOk()
@@ -160,6 +179,15 @@ class SiteStatusReasonTest extends TestCase
                 && $mail->reason === $reason;
         });
 
+        $html = (new SiteStatusNotification($site->fresh('publisher'), 'unverified', null, $reason))->render();
+        $this->assertMatchesRegularExpression('/<strong[^>]*>'.preg_quote($site->site_name, '/').'<\/strong>/', $html);
+        $this->assertMatchesRegularExpression('/<strong[^>]*>unverified<\/strong>/', $html);
+        $this->assertMatchesRegularExpression('/<strong[^>]*>Reason:<\/strong>/', $html);
+        $this->assertStringContainsString($reason, $html);
+        $this->assertStringNotContainsString('**'.$site->site_name.'**', $html);
+        $this->assertStringNotContainsString('**unverified**', $html);
+        $this->assertStringNotContainsString('**Reason:**', $html);
+
         $bell = InAppNotification::where('user_id', $publisher->id)
             ->where('audience', InAppNotification::AUDIENCE_PUBLISHER)
             ->latest('id')
@@ -192,8 +220,11 @@ class SiteStatusReasonTest extends TestCase
         });
 
         $html = (new SiteStatusNotification($site, 'deactivated', null, $reason))->render();
-        $this->assertStringContainsString('Reason:', $html);
+        $this->assertMatchesRegularExpression('/<strong[^>]*>Reason:<\/strong>/', $html);
+        $this->assertMatchesRegularExpression('/<strong[^>]*>deactivated<\/strong>/', $html);
         $this->assertStringContainsString($reason, $html);
+        $this->assertStringNotContainsString('**Reason:**', $html);
+        $this->assertStringNotContainsString('**deactivated**', $html);
         $this->assertStringContainsString(
             parse_url(route('publisher.websites'), PHP_URL_PATH),
             $html
@@ -261,5 +292,6 @@ class SiteStatusReasonTest extends TestCase
         $this->assertStringContainsString("input: needsReason ? 'textarea' : undefined", $html);
         $this->assertStringContainsString('payload.reason', $html);
         $this->assertStringContainsString('Reason for the publisher', $html);
+        $this->assertStringContainsString('The publisher is not notified.', $html);
     }
 }

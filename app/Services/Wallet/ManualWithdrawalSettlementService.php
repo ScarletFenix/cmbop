@@ -8,6 +8,8 @@ use App\Models\Withdrawal;
 use App\Services\ActivityLogger;
 use App\Services\Billing\WithdrawalPayoutStatementService;
 use App\Services\InAppNotificationService;
+use App\Services\Partners\PartnerAlertService;
+use App\Services\Partners\PartnerWithdrawalService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -122,6 +124,7 @@ class ManualWithdrawalSettlementService
             }
 
             $locked->update(Withdrawal::attributesThatExist($payload));
+            app(WalletLedgerService::class)->syncWithdrawalStatus($locked);
 
             return [
                 'withdrawal' => $locked->fresh(['user:id,name,email']),
@@ -189,6 +192,12 @@ class ManualWithdrawalSettlementService
 
     protected function refundWallet(Withdrawal $withdrawal): void
     {
+        if (PartnerWithdrawalService::isPartnerLedger($withdrawal)) {
+            app(PartnerWithdrawalService::class)->refundToLedger($withdrawal);
+
+            return;
+        }
+
         $wallet = $withdrawal->resolveDebitedWallet(lockForUpdate: true);
         if (! $wallet) {
             throw ManualWithdrawalUnknownWalletException::forWithdrawal((int) $withdrawal->id);
@@ -236,7 +245,7 @@ class ManualWithdrawalSettlementService
     ): void {
         try {
             $user = $withdrawal->user;
-            if ($user?->email && $newStatus !== 'pending') {
+            if ($user?->email && $newStatus !== 'pending' && ! $user->isSupplyPartner()) {
                 Mail::to($user->email)->send(
                     new WithdrawalStatusUpdated($withdrawal, $oldStatus, $newStatus, $notes)
                 );
@@ -249,6 +258,9 @@ class ManualWithdrawalSettlementService
             $notifications = app(InAppNotificationService::class);
             if ($newStatus === 'completed') {
                 $notifications->notifyWithdrawalPaid($withdrawal);
+                if (class_exists(PartnerAlertService::class)) {
+                    app(PartnerAlertService::class)->notifyPayoutReleased($withdrawal);
+                }
             } elseif ($newStatus === 'cancelled') {
                 $notifications->notifyWithdrawalRejected($withdrawal);
             } elseif ($newStatus === 'processing') {

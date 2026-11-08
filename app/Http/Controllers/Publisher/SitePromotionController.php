@@ -8,11 +8,14 @@ use App\Models\Wallet;
 use App\Services\ActivityLogger;
 use App\Services\SitePromotionService;
 use App\Services\StripePaymentService;
+use App\Support\BulkDiscount;
+use App\Support\PlatformCharge;
 use App\Support\UserFacingError;
 use App\Support\UserMessages;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use Stripe\Checkout\Session;
 use Stripe\Stripe;
 
@@ -61,15 +64,22 @@ class SitePromotionController extends Controller
             return $site;
         }
 
-        $result = $this->promotions->featureWithWallet($site, auth()->user());
+        $plan = $request->input('plan');
+        $plan = is_string($plan) && $plan !== '' ? $plan : null;
+        $result = $this->promotions->featureWithWallet($site, auth()->user(), $plan);
 
         if ($result['success'] ?? false) {
+            $priced = $this->promotions->priceAndDays($plan);
             try {
                 ActivityLogger::log(
                     'site.featured',
                     auth()->user()->name.' featured "'.$site->site_name.'"',
                     $site,
-                    ['days' => $this->promotions->featureDays(), 'price' => $this->promotions->featurePrice()],
+                    [
+                        'days' => $priced[1] ?? $this->promotions->featureDays(),
+                        'price' => $priced[0] ?? $this->promotions->featurePrice(),
+                        'plan' => $plan,
+                    ],
                     $site->site_name
                 );
             } catch (\Throwable $e) {
@@ -84,10 +94,43 @@ class SitePromotionController extends Controller
         return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
     }
 
+    public function featureCredit(Request $request, int $id)
+    {
+        $site = $this->ownedPromotableSite($id);
+        if ($site instanceof JsonResponse) {
+            return $site;
+        }
+
+        $data = $request->validate([
+            'credit_id' => ['required', 'integer', 'min:1'],
+        ]);
+
+        $result = $this->promotions->featureWithCredit($site, auth()->user(), (int) $data['credit_id']);
+
+        if ($result['success'] ?? false) {
+            try {
+                ActivityLogger::log(
+                    'site.featured_credit',
+                    auth()->user()->name.' featured "'.$site->site_name.'" with an admin credit',
+                    $site,
+                    [
+                        'credit_id' => (int) $data['credit_id'],
+                        'payment_method' => 'admin_grant',
+                    ],
+                    $site->site_name
+                );
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+
+        return response()->json($result, ($result['success'] ?? false) ? 200 : 422);
+    }
+
     /**
      * Create a Stripe Checkout session to pay for featuring a site by card.
      */
-    public function featureCheckout(int $id)
+    public function featureCheckout(Request $request, int $id)
     {
         $site = $this->ownedPromotableSite($id);
         if ($site instanceof JsonResponse) {
@@ -95,8 +138,17 @@ class SitePromotionController extends Controller
         }
 
         $user = auth()->user();
-        $price = $this->promotions->featurePrice();
-        $days = $this->promotions->featureDays();
+        $plan = $request->input('plan');
+        $plan = is_string($plan) && $plan !== '' ? $plan : null;
+        $priced = $this->promotions->priceAndDays($plan);
+        if ($priced === null) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Choose a monthly or yearly feature package.',
+            ], 422);
+        }
+        [$price, $days] = $priced;
+        $charge = app(PlatformCharge::class)->quote($price);
 
         if (! config('services.stripe.secret')) {
             return response()->json([
@@ -111,12 +163,12 @@ class SitePromotionController extends Controller
                 'payment_method_types' => ['card'],
                 'line_items' => [[
                     'price_data' => [
-                        'currency' => 'eur',
+                        'currency' => strtolower($charge['code']),
                         'product_data' => [
                             'name' => 'Feature website — '.$site->site_name,
-                            'description' => 'Featured catalog placement for '.$days.' days',
+                            'description' => 'Featured catalog placement for '.$days.' days (ledger EUR '.$price.')',
                         ],
-                        'unit_amount' => StripePaymentService::toCents($price),
+                        'unit_amount' => StripePaymentService::toCents($charge['amount']),
                     ],
                     'quantity' => 1,
                 ]],
@@ -130,6 +182,10 @@ class SitePromotionController extends Controller
                     'user_id' => (string) $user->id,
                     'price' => (string) $price,
                     'days' => (string) $days,
+                    'plan' => (string) ($plan ?? ''),
+                    'eur_amount' => (string) $price,
+                    'charge_currency' => $charge['code'],
+                    'charge_amount' => (string) $charge['amount'],
                 ],
             ]);
 
@@ -173,12 +229,16 @@ class SitePromotionController extends Controller
             }
 
             $this->promotions->assertStripeChargeMatchesFeaturePrice($session);
+            $paidPrice = is_numeric($session->metadata->price ?? null) ? (float) $session->metadata->price : null;
+            $paidDays = is_numeric($session->metadata->days ?? null) ? (int) $session->metadata->days : null;
 
             if ((int) $site->publisher_id !== (int) auth()->id()) {
                 $credit = $this->promotions->creditPayerWhenFeatureCannotApply(
                     $site,
                     auth()->user(),
-                    $sessionId
+                    $sessionId,
+                    null,
+                    $paidPrice
                 );
 
                 return redirect()->route('publisher.websites')
@@ -187,7 +247,15 @@ class SitePromotionController extends Controller
 
             // Apply after payment is confirmed — even if the site was archived meantime —
             // so the publisher is not charged without receiving the feature.
-            $result = $this->promotions->featureFromStripePayment($site, auth()->user(), $sessionId);
+            $result = $this->promotions->featureFromStripePayment(
+                $site,
+                auth()->user(),
+                $sessionId,
+                $paidPrice,
+                $paidDays,
+                isset($session->metadata->charge_currency) ? (string) $session->metadata->charge_currency : null,
+                isset($session->metadata->charge_amount) && is_numeric($session->metadata->charge_amount) ? (float) $session->metadata->charge_amount : null
+            );
 
             if ($result['credited'] ?? false) {
                 return redirect()->route('publisher.websites')
@@ -230,6 +298,8 @@ class SitePromotionController extends Controller
                 'withdrawable' => $withdrawable,
                 'feature_price' => $this->promotions->featurePrice(),
                 'feature_days' => $this->promotions->featureDays(),
+                'offers' => $this->promotions->featureOffers(),
+                'credits' => $this->promotions->unusedFeatureCredits(auth()->user()),
                 'top_up_url' => route('publisher.balance'),
                 'balance_url' => route('publisher.balance'),
                 'stripe_available' => (bool) config('services.stripe.secret'),
@@ -252,29 +322,50 @@ class SitePromotionController extends Controller
             return $site;
         }
 
+        $min = config('site_promotions.bulk.min_percent', 10);
+        $max = config('site_promotions.bulk.max_percent', 80);
         $data = $request->validate([
-            'percent' => 'required|numeric|min:'.config('site_promotions.bulk.min_percent', 10)
-                .'|max:'.config('site_promotions.bulk.max_percent', 80),
+            'percent' => 'nullable|numeric|min:'.$min.'|max:'.$max,
+            'percent_5' => 'nullable|numeric|min:'.$min.'|max:'.$max,
+            'percent_10' => 'nullable|numeric|min:'.$min.'|max:'.$max,
         ]);
+
+        $replaceAll = $request->exists('percent_5') || $request->exists('percent_10');
+        $percent = isset($data['percent']) ? (float) $data['percent'] : null;
+        $percent5 = $replaceAll ? (isset($data['percent_5']) ? (float) $data['percent_5'] : null) : null;
+        $percent10 = $replaceAll ? (isset($data['percent_10']) ? (float) $data['percent_10'] : null) : null;
+        if ($percent === null && $percent5 === null && $percent10 === null) {
+            throw ValidationException::withMessages([
+                'percent' => 'Enter at least one pack discount percent (3, 5, or 10 articles).',
+            ]);
+        }
 
         try {
             $alreadyJoined = $site->joinsBulkDiscount();
-            $previousPercent = $alreadyJoined ? (float) $site->bulk_discount_percent : null;
-            $site = $this->promotions->joinBulkDiscount($site, (float) $data['percent']);
-            $newPercent = (float) $site->bulk_discount_percent;
-            $pct = rtrim(rtrim(number_format($newPercent, 2), '0'), '.');
+            $previousTiers = $site->bulkDiscountTiers();
+            $previousPercent = $previousTiers[BulkDiscount::TIER_3] ?? null;
+            $site = $this->promotions->joinBulkDiscount($site, $percent, $percent5, $percent10, $replaceAll);
+            $newTiers = $site->bulkDiscountTiers();
+            $newPercent = $newTiers[BulkDiscount::TIER_3] ?? null;
+            $label = BulkDiscount::label($newTiers) ?? 'off';
             $lead = $alreadyJoined
-                ? 'Updated bulk discount to '.$pct.'% on 3–5 articles.'
-                : 'Joined bulk discount programme ('.$pct.'% on 3–5 articles).';
+                ? 'Updated bulk discount to '.$label.'.'
+                : 'Joined bulk discount programme ('.$label.').';
 
-            if (! $alreadyJoined || abs(($previousPercent ?? 0) - $newPercent) >= 0.001) {
+            $changed = ! $alreadyJoined
+                || json_encode($previousTiers) !== json_encode($newTiers);
+            if ($changed) {
                 ActivityLogger::tryLog(
                     $alreadyJoined ? 'site.bulk_discount_updated' : 'site.bulk_discount_joined',
                     auth()->user()->name.' '.$lead,
                     $site,
                     [
                         'percent' => $newPercent,
+                        'percent_5' => $newTiers[BulkDiscount::TIER_5] ?? null,
+                        'percent_10' => $newTiers[BulkDiscount::TIER_10] ?? null,
                         'from' => $previousPercent,
+                        'from_percent_5' => $previousTiers[BulkDiscount::TIER_5] ?? null,
+                        'from_percent_10' => $previousTiers[BulkDiscount::TIER_10] ?? null,
                     ],
                     $site->site_name
                 );
@@ -285,6 +376,8 @@ class SitePromotionController extends Controller
                 'message' => $lead.' Exclusive better-of with any timed sale — not stacked. Off your list; advertisers pay list plus the platform fee, then this same percent.',
                 'site' => $site,
             ]);
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Throwable $e) {
             report($e);
 
@@ -300,7 +393,8 @@ class SitePromotionController extends Controller
         try {
             $site = Site::where('publisher_id', auth()->id())->findOrFail($id);
             $wasJoined = $site->joinsBulkDiscount();
-            $previousPercent = $wasJoined ? (float) $site->bulk_discount_percent : null;
+            $previousTiers = $site->bulkDiscountTiers();
+            $previousPercent = $previousTiers[BulkDiscount::TIER_3] ?? null;
             $site = $this->promotions->leaveBulkDiscount($site);
 
             if ($wasJoined) {
@@ -308,7 +402,11 @@ class SitePromotionController extends Controller
                     'site.bulk_discount_left',
                     auth()->user()->name.' left the bulk discount programme on "'.$site->site_name.'"',
                     $site,
-                    ['from' => $previousPercent],
+                    [
+                        'from' => $previousPercent,
+                        'from_percent_5' => $previousTiers[BulkDiscount::TIER_5] ?? null,
+                        'from_percent_10' => $previousTiers[BulkDiscount::TIER_10] ?? null,
+                    ],
                     $site->site_name
                 );
             }

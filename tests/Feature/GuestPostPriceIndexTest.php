@@ -68,6 +68,9 @@ class GuestPostPriceIndexTest extends TestCase
         $this->assertStringContainsString('How this index is calculated', $html);
         $this->assertStringContainsString('FAQPage', $html);
         $this->assertStringContainsString('Dataset', $html);
+        $this->assertStringContainsString('"@type":"Place"', $html);
+        $this->assertStringContainsString('"@type":"PropertyValue"', $html);
+        $this->assertStringContainsString('"unitCode":"EUR"', $html);
         $this->assertStringContainsString('rel="canonical" href="'.url('/guest-post-prices-europe').'"', $html);
         $this->assertStringContainsString('hreflang="en-GB"', $html);
         $this->assertStringContainsString(url('/register'), $html);
@@ -79,13 +82,12 @@ class GuestPostPriceIndexTest extends TestCase
         $this->assertStringNotContainsString('advertiser/catalog', $html);
     }
 
-    public function test_locale_prefix_keeps_english_canonical(): void
+    public function test_locale_prefix_redirects_to_english_canonical(): void
     {
         $this->get('/de/guest-post-prices-europe')
-            ->assertOk()
-            ->assertSee('rel="canonical" href="'.url('/guest-post-prices-europe').'"', false)
-            ->assertSee('EU guest-post price index', false)
-            ->assertDontSee('advertiser/catalog', false);
+            ->assertRedirect('/guest-post-prices-europe');
+        $this->assertSame(301, $this->get('/de/guest-post-prices-europe')->status());
+        $this->assertSame(301, $this->get('/us/guest-post-prices-europe')->status());
     }
 
     public function test_germany_median_uses_advertiser_checkout_and_excludes_us(): void

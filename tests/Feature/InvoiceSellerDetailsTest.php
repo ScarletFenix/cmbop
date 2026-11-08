@@ -21,7 +21,7 @@ class InvoiceSellerDetailsTest extends TestCase
         $this->seed(RolesTableSeeder::class);
     }
 
-    public function test_final_order_invoice_shows_partners_with_topurlz_seller_block(): void
+    public function test_final_order_invoice_shows_teqno_seller_block(): void
     {
         $html = view('advertiser.invoice', [
             'invoiceType' => 'order',
@@ -53,12 +53,14 @@ class InvoiceSellerDetailsTest extends TestCase
             'totalSensitiveAmount' => 0,
         ])->render();
 
-        $this->assertStringContainsString('SEOLinkBuildings Partners with (Topurlz LTD)', $html);
+        $this->assertStringContainsString('Teqno Ltd trading as SEOLinkBuildings', $html);
+        $this->assertStringContainsString('SEOLinkBuildings is a trading name of Teqno Ltd. Registered in England and Wales. Company number: 17392540.', $html);
         $this->assertStringContainsString('20 Wenlock Road, London, England, N1 7GU', $html);
         $this->assertStringContainsString('Registration No:', $html);
-        $this->assertStringContainsString('16607074', $html);
+        $this->assertStringContainsString('17392540', $html);
         $this->assertStringContainsString('support@seolinkbuildings.com', $html);
         $this->assertStringContainsString('Not VAT registered', $html);
+        $this->assertStringNotContainsString('Partners with', $html);
         $this->assertStringNotContainsString('Beneficiary:', $html);
         $this->assertStringNotContainsString('BE04905543949331', $html);
     }
@@ -92,15 +94,30 @@ class InvoiceSellerDetailsTest extends TestCase
             'markPaidUrl' => null,
         ])->render();
 
-        $this->assertStringContainsString('SEOLinkBuildings Partner', $html);
+        $this->assertStringContainsString('Teqno Ltd trading as SEOLinkBuildings', $html);
+        $this->assertStringContainsString('20 Wenlock Road, London, England, N1 7GU', $html);
+        $this->assertStringContainsString('Registration No:', $html);
         $this->assertStringContainsString('Beneficiary:', $html);
-        $this->assertStringContainsString('Topurlz Ltd', $html);
+        $this->assertStringContainsString('Teqno Ltd trading as SEOLinkBuildings', $html);
         $this->assertStringContainsString('TRWIBEB1XXX', $html);
-        $this->assertStringContainsString('BE04905543949331', $html);
-        $this->assertStringContainsString('+447445152374', $html);
-        $this->assertStringContainsString('16607074', $html);
+        $this->assertStringContainsString('BE40 9059 9538 0863', $html);
+        $this->assertStringContainsString('Swift/BIC: use when sending from outside SEPA', $html);
+        $this->assertStringContainsString('SEPA payers need only the IBAN.', $html);
+        $this->assertStringNotContainsString('TRWIGB2LXXX', $html);
+        $this->assertStringNotContainsString('GB30 TRWI 2308 0132 9321 94', $html);
+        $this->assertStringNotContainsString('32932194', $html);
+        $this->assertStringNotContainsString('23-08-01', $html);
+        $this->assertStringNotContainsString('±2%', $html);
+        $this->assertStringNotContainsString('Amount received may differ slightly', $html);
+        $this->assertStringNotContainsString('we credit', $html);
+        $this->assertStringContainsString('Paying in another currency? Read our currency guide', $html);
+        $this->assertStringContainsString('/help/currencies', $html);
+        $this->assertStringNotContainsString('+447445152374', $html);
+        $this->assertStringNotContainsString('Phone no:', $html);
+        $this->assertStringContainsString('17392540', $html);
+        $this->assertStringNotContainsString('16607074', $html);
+        $this->assertStringContainsString('support@seolinkbuildings.com', $html);
         $this->assertStringContainsString('Not VAT registered', $html);
-        $this->assertStringNotContainsString('SEOLinkBuildings Partners with (Topurlz LTD)', $html);
     }
 
     public function test_pdf_tax_invoice_shows_registration_and_vat_note(): void
@@ -141,11 +158,13 @@ class InvoiceSellerDetailsTest extends TestCase
             'currencySymbol' => '€',
         ])->render();
 
-        $this->assertStringContainsString('SEOLinkBuildings Partners with (Topurlz LTD)', $html);
-        $this->assertStringContainsString('Registration No: 16607074', $html);
+        $this->assertStringContainsString('Teqno Ltd trading as SEOLinkBuildings', $html);
+        $this->assertStringContainsString('SEOLinkBuildings is a trading name of Teqno Ltd. Registered in England and Wales. Company number: 17392540.', $html);
+        $this->assertStringContainsString('Registration No: 17392540', $html);
         $this->assertStringContainsString('Not VAT registered', $html);
         $this->assertStringContainsString('20 Wenlock Road', $html);
         $this->assertStringContainsString('https://seolinkbuildings.com', $html);
+        $this->assertStringNotContainsString('Partners with', $html);
         $this->assertStringNotContainsString('localhost', $html);
     }
 
@@ -210,7 +229,7 @@ class InvoiceSellerDetailsTest extends TestCase
         $this->assertStringNotContainsString('http://localhost:8000', $html);
         $this->assertStringNotContainsString('localhost', $html);
         $this->assertStringContainsString('337156', $html);
-        $this->assertStringContainsString('>Ref</', $html);
+        $this->assertStringContainsString('Checkout reference', $html);
         $this->assertStringNotContainsString('Txn', $html);
         $this->assertStringContainsString('<tfoot>', $html);
         $this->assertStringContainsString('table-layout: fixed', $html);
@@ -327,5 +346,148 @@ class InvoiceSellerDetailsTest extends TestCase
         $this->assertStringContainsString('https://seolinkbuildings.com', $html);
         $this->assertStringContainsString('SEOLinkBuildings', $html);
         $this->assertStringNotContainsString('localhost', $html);
+    }
+
+    public function test_ensure_customer_pdf_rebuilds_core_font_documents(): void
+    {
+        Storage::fake('local');
+        config(['billing.storage.disk' => 'local']);
+
+        $role = Role::where('name', 'advertiser')->firstOrFail();
+        $user = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $role->id,
+        ]);
+        $user->roles()->attach($role->id);
+
+        $relative = 'invoices/garbled-core-font.pdf';
+        Storage::disk('local')->put($relative, "%PDF-1.4\n% Helvetica core font leftover\n");
+
+        $invoice = Invoice::create([
+            'user_id' => $user->id,
+            'invoice_number' => 'RCT-2026-000198',
+            'type' => Invoice::TYPE_DEPOSIT_RECEIPT,
+            'status' => Invoice::STATUS_PAID,
+            'invoice_date' => now(),
+            'customer_name' => $user->name,
+            'customer_email' => $user->email,
+            'currency' => 'EUR',
+            'subtotal' => 25,
+            'tax_amount' => 0,
+            'discount_amount' => 0,
+            'total_amount' => 25,
+            'payment_method' => 'wise',
+            'payment_status' => 'paid',
+            'reference_code' => '337198',
+            'transaction_id' => '337198',
+            'pdf_disk' => 'local',
+            'pdf_path' => $relative,
+            'line_items' => [
+                [
+                    'description' => 'Wallet top-up',
+                    'quantity' => 1,
+                    'unit_price' => 25,
+                    'line_total' => 25,
+                ],
+            ],
+            'billing_snapshot' => [],
+        ]);
+
+        $healed = app(InvoicePdfGenerator::class)->ensureCustomerPdf($invoice->fresh());
+        $binary = (string) Storage::disk('local')->get($healed->pdf_path);
+
+        $this->assertStringStartsWith('%PDF', $binary);
+        $this->assertStringContainsString('DejaVu', $binary);
+        $this->assertStringContainsString('/FontFile2', $binary);
+        $this->assertStringNotContainsString('Helvetica core font leftover', $binary);
+        $this->assertPdfFlateStreamsDecode($binary);
+    }
+
+    public function test_ensure_customer_pdf_rebuilds_dejavu_file_with_a_broken_character_map(): void
+    {
+        Storage::fake('local');
+        config(['billing.storage.disk' => 'local']);
+
+        $role = Role::where('name', 'advertiser')->firstOrFail();
+        $user = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $role->id,
+        ]);
+        $user->roles()->attach($role->id);
+
+        $relative = 'invoices/garbled-dejavu-map.pdf';
+        Storage::disk('local')->put($relative, "%PDF-1.4\n/BaseFont /DejaVuSans\n/FontFile2 21 0 R\n"
+            ."<<\n/Filter /FlateDecode\n/Length 8>>\nstream\n"
+            ."\xc7\xc2\x1f}\xf7\xdf}\xf7"
+            ."\nendstream\n");
+
+        $invoice = Invoice::create([
+            'user_id' => $user->id,
+            'invoice_number' => 'RCT-2026-000199',
+            'type' => Invoice::TYPE_DEPOSIT_RECEIPT,
+            'status' => Invoice::STATUS_PAID,
+            'invoice_date' => now(),
+            'customer_name' => $user->name,
+            'customer_email' => $user->email,
+            'currency' => 'EUR',
+            'subtotal' => 25,
+            'tax_amount' => 0,
+            'discount_amount' => 0,
+            'total_amount' => 25,
+            'payment_method' => 'wise',
+            'payment_status' => 'paid',
+            'reference_code' => '337199',
+            'transaction_id' => '337199',
+            'pdf_disk' => 'local',
+            'pdf_path' => $relative,
+            'line_items' => [
+                [
+                    'description' => 'Wallet top-up',
+                    'quantity' => 1,
+                    'unit_price' => 25,
+                    'line_total' => 25,
+                ],
+            ],
+            'billing_snapshot' => [],
+        ]);
+
+        $healed = app(InvoicePdfGenerator::class)->ensureCustomerPdf($invoice->fresh());
+        $binary = (string) Storage::disk('local')->get($healed->pdf_path);
+
+        $this->assertStringStartsWith('%PDF', $binary);
+        $this->assertStringContainsString('DejaVu', $binary);
+        $this->assertStringContainsString('/FontFile2', $binary);
+        $this->assertStringNotContainsString("\xc7\xc2\x1f}\xf7\xdf}\xf7", $binary);
+        $this->assertPdfFlateStreamsDecode($binary);
+    }
+
+    private function assertPdfFlateStreamsDecode(string $binary): void
+    {
+        $offset = 0;
+        $seen = 0;
+
+        while (($filter = strpos($binary, '/Filter /FlateDecode', $offset)) !== false) {
+            $streamAt = strpos($binary, 'stream', $filter);
+            $end = $streamAt === false ? false : strpos($binary, "\nendstream", $streamAt);
+            $this->assertNotFalse($streamAt);
+            $this->assertNotFalse($end);
+
+            $start = $streamAt + strlen('stream');
+            if (($binary[$start] ?? '') === "\r") {
+                $start++;
+            }
+            if (($binary[$start] ?? '') === "\n") {
+                $start++;
+            }
+
+            $data = substr($binary, $start, $end - $start);
+            $this->assertNotSame('', $data);
+            $this->assertSame(0x78, ord($data[0]));
+            $this->assertNotFalse(@gzuncompress($data));
+            $seen++;
+            $offset = $end + strlen("\nendstream");
+        }
+
+        $this->assertGreaterThan(0, $seen);
     }
 }

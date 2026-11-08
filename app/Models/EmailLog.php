@@ -17,6 +17,8 @@ class EmailLog extends Model
 
     public const STATUS_FAILED = 'failed';
 
+    public const STATUS_DISMISSED = 'dismissed';
+
     protected $fillable = [
         'uuid',
         'mailable',
@@ -59,6 +61,38 @@ class EmailLog extends Model
     public function scopeFailed($query)
     {
         return $query->where('status', self::STATUS_FAILED);
+    }
+
+    public function scopeDismissed($query)
+    {
+        return $query->where('status', self::STATUS_DISMISSED);
+    }
+
+    public static function openFailedCount(): int
+    {
+        try {
+            return (int) static::query()->where('status', self::STATUS_FAILED)->count();
+        } catch (\Throwable) {
+            return 0;
+        }
+    }
+
+    public function dismiss(?string $reason = null): bool
+    {
+        if ($this->status !== self::STATUS_FAILED) {
+            return false;
+        }
+
+        $meta = is_array($this->meta) ? $this->meta : [];
+        $meta['dismissed_at'] = now()->toIso8601String();
+        if (filled($reason)) {
+            $meta['dismissed_reason'] = $reason;
+        }
+
+        $this->status = self::STATUS_DISMISSED;
+        $this->meta = $meta;
+
+        return $this->save();
     }
 
     /**
@@ -337,7 +371,7 @@ class EmailLog extends Model
     }
 
     /**
-     * @return array{sent_today: int, pending: int, failed: int, delivered: int}
+     * @return array{sent_today: int, pending: int, failed: int, delivered: int, pending_today: int, failed_today: int}
      */
     public static function dashboardKpis(): array
     {
@@ -346,6 +380,8 @@ class EmailLog extends Model
             'pending' => 0,
             'failed' => 0,
             'delivered' => 0,
+            'pending_today' => 0,
+            'failed_today' => 0,
         ];
 
         $today = now()->toDateString();
@@ -356,8 +392,17 @@ class EmailLog extends Model
                     'SUM(CASE WHEN date(coalesce(sent_at, created_at)) = ? THEN 1 ELSE 0 END) as sent_today,
                      SUM(CASE WHEN status = ? AND date(coalesce(sent_at, created_at)) = ? THEN 1 ELSE 0 END) as delivered_today,
                      SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as pending_count,
-                     SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as failed_count',
-                    [$today, self::STATUS_DELIVERED, $today, self::STATUS_PENDING, self::STATUS_FAILED]
+                     SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as failed_count,
+                     SUM(CASE WHEN status = ? AND date(coalesce(sent_at, created_at)) = ? THEN 1 ELSE 0 END) as pending_today,
+                     SUM(CASE WHEN status = ? AND date(coalesce(sent_at, created_at)) = ? THEN 1 ELSE 0 END) as failed_today',
+                    [
+                        $today,
+                        self::STATUS_DELIVERED, $today,
+                        self::STATUS_PENDING,
+                        self::STATUS_FAILED,
+                        self::STATUS_PENDING, $today,
+                        self::STATUS_FAILED, $today,
+                    ]
                 )
                 ->first();
         } catch (\Throwable) {
@@ -369,6 +414,8 @@ class EmailLog extends Model
             'pending' => (int) ($row->pending_count ?? 0),
             'failed' => (int) ($row->failed_count ?? 0),
             'delivered' => (int) ($row->delivered_today ?? 0),
+            'pending_today' => (int) ($row->pending_today ?? 0),
+            'failed_today' => (int) ($row->failed_today ?? 0),
         ];
     }
 }

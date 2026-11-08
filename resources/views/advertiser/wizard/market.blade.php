@@ -1,5 +1,7 @@
 @extends('advertiser.layouts.app')
 
+@section('title', 'Place a guest post')
+
 @section('content')
 <div class="container-fluid">
     <div class="wizard-chrome">
@@ -37,9 +39,9 @@
                         <select name="country" id="wizardCountry" class="form-select" required>
                             <option value="">Select country</option>
                             @foreach(($countries ?? []) as $country)
-                                <option value="{{ strtolower($country->code) }}"
-                                    @selected(old('country', $state['country'] ?? '') === strtolower($country->code))>
-                                    {{ $country->name }}
+                                <option value="{{ marketplace_option_code($country) }}"
+                                    @selected(old('country', $state['country'] ?? '') === marketplace_option_code($country))>
+                                    {{ marketplace_option_name($country) }}
                                 </option>
                             @endforeach
                         </select>

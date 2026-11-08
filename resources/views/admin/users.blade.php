@@ -1,13 +1,17 @@
 @extends('admin.layouts.app')
 
+@section('title', 'Users')
+
 @section('content')
 @php
-    $filters = $filters ?? ['q' => '', 'role' => '', 'status' => '', 'sort' => 'newest', 'user' => 0];
+    $filters = $filters ?? ['q' => '', 'role' => '', 'status' => '', 'flag' => '', 'sort' => 'newest', 'user' => 0];
     $hasActiveFilters = ($filters['q'] ?? '') !== ''
         || ($filters['role'] ?? '') !== ''
         || ($filters['status'] ?? '') !== ''
+        || ($filters['flag'] ?? '') !== ''
         || (($filters['sort'] ?? 'newest') !== 'newest')
         || ((int) ($filters['user'] ?? 0) > 0);
+    $pinnedUserId = (int) ($filters['user'] ?? 0);
 @endphp
 <div class="container-fluid">
 
@@ -18,6 +22,12 @@
         Admin is limited to {{ $adminCount ?? 0 }}/{{ \App\Http\Controllers\Admin\UserController::MAX_ADMINS }} accounts and is not assignable here.
         Search and filters run on the server across every page.
     </p>
+    @if($pinnedUserId > 0)
+        <div class="alert alert-info py-2 mb-3">
+            Showing only user #{{ $pinnedUserId }}.
+            <a href="{{ route('admin.users.index') }}" class="alert-link">Clear to see everyone</a>
+        </div>
+    @endif
     <div class="d-flex flex-wrap gap-2 mb-3">
         <span class="badge text-bg-light border px-3 py-2" id="marketingSeatsBadge">
             Marketing seats: <strong id="marketingSeatsCount">{{ (int) ($marketingCount ?? 0) }}</strong>/{{ (int) ($maxMarketing ?? 5) }}
@@ -32,21 +42,23 @@
 
 
 <!-- SEARCH -->
-<div class="card border-0 shadow-sm mb-3">
+<div class="card border-0 shadow-sm mb-3 admin-deposits-filter-card">
     <div class="card-body">
-        <form method="GET" action="{{ route('admin.users.index') }}" class="row g-3 align-items-end">
-            <div class="col-md-4">
+        <form method="GET" action="{{ route('admin.users.index') }}" class="admin-deposits-filters admin-orders-filters">
+            <div class="admin-orders-filters__grid">
+            <div class="admin-orders-filters__search">
                 <x-slb-search-field
                     name="q"
                     id="userSearch"
                     :value="$filters['q'] ?? ''"
                     placeholder="Search name, email, company, phone, ID…"
                     input-class="form-control"
+                    label-class="form-label"
                     mode="form"
                 />
             </div>
-            <div class="col-md-2">
-                <label class="form-label fw-semibold small text-muted mb-1" for="userRoleFilter">Role</label>
+            <div>
+                <label class="form-label" for="userRoleFilter">Role</label>
                 <select name="role" id="userRoleFilter" class="form-select">
                     <option value="">All roles</option>
                     <option value="advertiser" @selected(($filters['role'] ?? '') === 'advertiser')>Advertiser</option>
@@ -55,8 +67,8 @@
                     <option value="admin" @selected(($filters['role'] ?? '') === 'admin')>Admin</option>
                 </select>
             </div>
-            <div class="col-md-2">
-                <label class="form-label fw-semibold small text-muted mb-1" for="userStatusFilter">Status</label>
+            <div>
+                <label class="form-label" for="userStatusFilter">Status</label>
                 <select name="status" id="userStatusFilter" class="form-select">
                     <option value="">All statuses</option>
                     <option value="active" @selected(($filters['status'] ?? '') === 'active')>Active</option>
@@ -65,8 +77,18 @@
                     <option value="unverified" @selected(($filters['status'] ?? '') === 'unverified')>Unverified</option>
                 </select>
             </div>
-            <div class="col-md-2">
-                <label class="form-label fw-semibold small text-muted mb-1" for="userSortFilter">Sort</label>
+            <div>
+                <label class="form-label" for="userFlagFilter">Flag</label>
+                <select name="flag" id="userFlagFilter" class="form-select">
+                    <option value="">All flags</option>
+                    <option value="catalog_hide" @selected(($filters['flag'] ?? '') === 'catalog_hide')>Catalog hidden</option>
+                    <option value="copy_strike" @selected(($filters['flag'] ?? '') === 'copy_strike')>Copy strike</option>
+                    <option value="payout_locked" @selected(($filters['flag'] ?? '') === 'payout_locked')>Payout locked</option>
+                    <option value="test" @selected(($filters['flag'] ?? '') === 'test')>Test accounts</option>
+                </select>
+            </div>
+            <div>
+                <label class="form-label" for="userSortFilter">Sort</label>
                 <select name="sort" id="userSortFilter" class="form-select">
                     <option value="newest" @selected(($filters['sort'] ?? 'newest') === 'newest')>Newest</option>
                     <option value="oldest" @selected(($filters['sort'] ?? '') === 'oldest')>Oldest</option>
@@ -74,13 +96,17 @@
                     <option value="last_seen" @selected(($filters['sort'] ?? '') === 'last_seen')>Last activity</option>
                 </select>
             </div>
-            <div class="col-md-auto d-flex gap-2">
+            <div class="admin-deposits-filters__actions admin-orders-filters__actions">
+                <div class="d-flex flex-wrap gap-2">
                 <button type="submit" class="btn btn-primary">
                     <i class="fa fa-search me-1"></i> Filter
                 </button>
+                <a href="{{ route('admin.users.export', request()->query()) }}" class="btn btn-outline-primary">Export CSV</a>
                 @if($hasActiveFilters)
                     <a href="{{ route('admin.users.index') }}" class="btn btn-outline-secondary">Clear filters</a>
                 @endif
+                </div>
+            </div>
             </div>
         </form>
     </div>
@@ -96,6 +122,8 @@
             <th class="admin-col-email">Email</th>
             <th class="admin-narrow-col">Phone</th>
             <th class="admin-narrow-col">Country</th>
+            <th class="admin-narrow-col">Wallet</th>
+            <th class="admin-narrow-col">Orders</th>
             <th class="admin-col-start">Role</th>
             <th class="admin-narrow-col">Joined</th>
             <th class="admin-narrow-col">Last activity</th>
@@ -137,6 +165,12 @@
                 @elseif(! $user->hasVerifiedEmail())
                     <span class="badge text-bg-warning text-dark">Unverified</span>
                 @endif
+                @if($user->catalogCopyStatusLabel())
+                    <span class="badge {{ $user->inCatalogHideMode() ? 'text-bg-danger' : 'text-bg-warning text-dark' }}">{{ $user->catalogCopyStatusLabel() }}</span>
+                @endif
+                @if($user->isTestAccount())
+                    <span class="badge text-bg-warning text-dark">Test</span>
+                @endif
                 @if($isRepeatBuyer || $isHighSpender)
                     <div class="d-flex flex-wrap gap-1">
                         @if($isRepeatBuyer)
@@ -153,7 +187,9 @@
         </td>
         <td class="admin-col-email">{{ $user->email }}</td>
         <td class="admin-narrow-col">{{ $user->phone ?? '-' }}</td>
-        <td class="admin-narrow-col">{{ $user->country ?? '-' }}</td>
+        <td class="admin-narrow-col" title="{{ $user->country ?? '' }}">{{ \App\Support\CountryCode::displayName($user->country) }}</td>
+        <td class="admin-narrow-col">€{{ number_format((float) ($user->wallet_balance ?? 0), 2) }}</td>
+        <td class="admin-narrow-col">{{ (int) ($user->paid_orders_count ?? 0) }}</td>
         <td class="admin-col-start">
             <div class="role-badges admin-role-badges" data-id="{{ $user->id }}">
                 @forelse($userRoleNames as $roleName)
@@ -212,7 +248,7 @@
     </tr>
 
 <tr class="expand-row" id="expand-{{ $user->id }}">
-    <td colspan="9">
+    <td colspan="11">
         <div class="expand-box">
 
             <div class="row text-start">
@@ -280,7 +316,7 @@
                     </div>
 
                     <div class="detail-line">
-                        <strong>Country:</strong> {{ $user->country ?? '-' }}
+                        <strong>Country:</strong> {{ \App\Support\CountryCode::displayName($user->country) }}
                     </div>
 
                     <div class="detail-line">
@@ -364,7 +400,7 @@
 
     @empty
     <tr>
-        <td colspan="9" class="text-center text-muted">
+        <td colspan="11" class="text-center text-muted">
             No users found.
         </td>
     </tr>
@@ -380,7 +416,7 @@
 
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="{{ asset('assets/vendor/sweetalert2/sweetalert2.min.js') }}?v={{ @filemtime(public_path('assets/vendor/sweetalert2/sweetalert2.min.js')) ?: '1' }}"></script>
 
 <script>
 const ROLE_UPDATE_URL = @json(route('admin.users.updateRoles', ['id' => '__ID__']));

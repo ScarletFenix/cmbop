@@ -1,6 +1,8 @@
 @extends('layouts.app')
 
 @section('title', 'Confirm deposit approval - SEOLinkBuildings')
+@section('robots', 'noindex, nofollow')
+@section('skip_hreflang', '1')
 
 @section('content')
 <div class="container py-5">
@@ -18,14 +20,23 @@
                         </div>
 
                         <dl class="row mb-3">
+                            <dt class="col-sm-4 text-muted">Expected</dt>
+                            <dd class="col-sm-8 fw-semibold" data-fx-expected-line>{{ $expectedLine ?? ('€'.number_format((float) $incomingAmount, 2)) }}</dd>
+
                             <dt class="col-sm-4 text-muted">Credit now</dt>
                             <dd class="col-sm-8 fw-semibold fs-5">€{{ number_format((float) $incomingAmount, 2) }}</dd>
 
                             <dt class="col-sm-4 text-muted">Method</dt>
                             <dd class="col-sm-8">{{ $deposit->paymentMethodLabel() }}</dd>
 
-                            <dt class="col-sm-4 text-muted">Reference</dt>
-                            <dd class="col-sm-8"><code>REF{{ $deposit->reference_code }}</code></dd>
+                            <dt class="col-sm-4 text-muted">Payment reference</dt>
+                            <dd class="col-sm-8"><code>{{ $paymentReference ?? $deposit->paymentReferenceLabel() }}</code></dd>
+
+                            <dt class="col-sm-4 text-muted">Currency</dt>
+                            <dd class="col-sm-8">{{ $chargeCurrency ?? strtoupper((string) ($deposit->charge_currency ?: 'EUR')) }}</dd>
+
+                            <dt class="col-sm-4 text-muted">Target bank</dt>
+                            <dd class="col-sm-8">{{ $targetBankLabel ?? $deposit->targetBankLabel() }}</dd>
 
                             <dt class="col-sm-4 text-muted">Advertiser</dt>
                             <dd class="col-sm-8">
@@ -119,8 +130,44 @@
                         <form method="POST" action="{{ $confirmAction }}">
                             @csrf
                             <div class="mb-3">
+                                <label for="received_amount" class="form-label">Amount received ({{ $chargeCurrency ?? 'EUR' }})</label>
+                                <input type="number" name="received_amount" id="received_amount" class="form-control" min="0" step="0.01" value="{{ old('received_amount', number_format((float) ($expectedCharge ?? $incomingAmount), 2, '.', '')) }}" data-expected-charge="{{ number_format((float) ($expectedCharge ?? $incomingAmount), 2, '.', '') }}" data-fx-rate="{{ number_format((float) ($fxRate ?? 1), 8, '.', '') }}" data-tolerance="{{ number_format((float) ($tolerancePercent ?? 2), 2, '.', '') }}">
+                                <p class="small mb-0 mt-1" id="receivedToleranceFlag" data-tolerance-ok="{{ !empty($withinTolerance) ? '1' : '0' }}">
+                                    @if(!empty($withinTolerance))
+                                        <span class="text-success">Within ±{{ number_format((float) ($tolerancePercent ?? 2), 0) }}% — OK</span>
+                                    @else
+                                        <span class="text-danger">Outside ±{{ number_format((float) ($tolerancePercent ?? 2), 0) }}% — flagged</span>
+                                    @endif
+                                </p>
+                            </div>
+                            <div class="mb-3">
+                                <label for="received_bank" class="form-label">Account the money arrived in</label>
+                                @php
+                                    $selectedReceivedBank = old('received_bank', $targetBank ?? $deposit->targetBank());
+                                @endphp
+                                <select name="received_bank" id="received_bank" class="form-select" data-target-bank="{{ $targetBank ?? $deposit->targetBank() }}">
+                                    <option value="">Choose account</option>
+                                    <option value="gbp_wise" @selected($selectedReceivedBank === 'gbp_wise')>GBP Wise</option>
+                                    <option value="eur_wise" @selected($selectedReceivedBank === 'eur_wise')>EUR Wise</option>
+                                </select>
+                                <p class="small mb-0 mt-1" id="receivedBankMismatch" hidden>
+                                    <span class="text-danger">This does not match the bank shown to the advertiser.</span>
+                                </p>
+                            </div>
+                            <div class="mb-3">
                                 <label for="admin_notes" class="form-label">Admin notes (optional)</label>
                                 <textarea name="admin_notes" id="admin_notes" rows="2" class="form-control" maxlength="1000" placeholder="e.g. Wire matched on statement">{{ old('admin_notes') }}</textarea>
+                                <script>
+                                    document.addEventListener('DOMContentLoaded', function () {
+                                        var field = document.getElementById('admin_notes');
+                                        if (!field || field.value) return;
+                                        var key = 'slb-deposit-approve-notes-{{ (int) $deposit->id }}';
+                                        var notes = sessionStorage.getItem(key);
+                                        if (!notes) return;
+                                        field.value = notes.slice(0, 1000);
+                                        sessionStorage.removeItem(key);
+                                    });
+                                </script>
                                 @error('admin_notes')
                                     <div class="text-danger small mt-1">{{ $message }}</div>
                                 @enderror
@@ -131,6 +178,38 @@
                                 Confirm and credit €{{ number_format((float) $incomingAmount, 2) }}
                             </button>
                         </form>
+                        <script>
+                            document.addEventListener('DOMContentLoaded', function () {
+                                var bankSelect = document.getElementById('received_bank');
+                                var bankFlag = document.getElementById('receivedBankMismatch');
+                                if (bankSelect && bankFlag) {
+                                    function refreshBank() {
+                                        var target = bankSelect.getAttribute('data-target-bank') || '';
+                                        var chosen = bankSelect.value;
+                                        var mismatch = chosen && target && chosen !== target;
+                                        bankFlag.hidden = !mismatch;
+                                    }
+                                    bankSelect.addEventListener('change', refreshBank);
+                                    refreshBank();
+                                }
+                                var input = document.getElementById('received_amount');
+                                var flag = document.getElementById('receivedToleranceFlag');
+                                if (!input || !flag) return;
+                                function refresh() {
+                                    var received = parseFloat(input.value);
+                                    var expected = parseFloat(input.getAttribute('data-expected-charge') || '0');
+                                    var pct = parseFloat(input.getAttribute('data-tolerance') || '2');
+                                    if (!isFinite(received) || expected <= 0) return;
+                                    var ok = Math.abs(received - expected) <= (expected * (pct / 100) + 0.00001);
+                                    flag.setAttribute('data-tolerance-ok', ok ? '1' : '0');
+                                    flag.innerHTML = ok
+                                        ? '<span class="text-success">Within ±' + pct + '% — OK</span>'
+                                        : '<span class="text-danger">Outside ±' + pct + '% — flagged</span>';
+                                }
+                                input.addEventListener('input', refresh);
+                                refresh();
+                            });
+                        </script>
 
                         <a href="{{ route('admin.deposits') }}" class="btn btn-link w-100 text-muted">
                             Cancel — back to deposits

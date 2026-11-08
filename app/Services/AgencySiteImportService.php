@@ -11,6 +11,8 @@ use App\Models\Language;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\Marketplace\CountryLanguagePairs;
+use App\Services\Marketplace\WritingFeeService;
+use App\Support\PublicationDuration;
 use App\Support\SiteTag;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -251,6 +253,9 @@ class AgencySiteImportService
                             'as_you_prefer' => $parsed['as_you_prefer'],
                             'description' => $parsed['description'],
                             'sensitive_prices' => $parsed['sensitive_prices'],
+                            'writing_enabled' => $parsed['writing_enabled'] ?? true,
+                            'writing_fee' => $parsed['writing_fee'] ?? null,
+                            'listing_writing_fee' => $parsed['listing_writing_fee'] ?? null,
                             'verified' => false,
                             'active' => false,
                             'enrichment_status' => 'pending',
@@ -429,7 +434,8 @@ class AgencySiteImportService
             'categories' => $categories,
             'price' => $data['price'] ?? null,
             'turnaround_time' => $data['turnaround_time'] ?? '',
-            'publication_time' => $data['publication_time'] ?? '',
+            'publication_time' => PublicationDuration::normalize($data['publication_time'] ?? '')
+                ?? ($data['publication_time'] ?? ''),
             'link_type' => strtolower($data['link_type'] ?? ''),
             'description' => $description,
         ];
@@ -451,7 +457,7 @@ class AgencySiteImportService
             'categories' => 'required|array|min:1|max:7',
             'price' => 'required|numeric|min:0|max:99999999.99',
             'turnaround_time' => 'required|in:24h,48h,3days,5days,7days',
-            'publication_time' => 'required|in:6months,1year,permanent',
+            'publication_time' => 'required|'.PublicationDuration::rule(),
             'link_type' => 'required|in:dofollow,nofollow',
             'description' => 'required|string|min:50',
         ]);
@@ -511,6 +517,10 @@ class AgencySiteImportService
             'as_you_prefer' => $tagFlags['as_you_prefer'],
             'description' => $description,
             'sensitive_prices' => ! empty($sensitivePrices) ? $sensitivePrices : null,
+            ...app(WritingFeeService::class)->persistenceFromImportRow(
+                $data,
+                (string) ($languageCodes[0] ?? 'en')
+            ),
         ];
     }
 

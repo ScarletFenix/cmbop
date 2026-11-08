@@ -11,7 +11,7 @@
     }
 
     $faqEntities = [];
-    foreach (range(1, 4) as $i) {
+    foreach (range(1, 5) as $i) {
         $faqEntities[] = [
             '@type' => 'Question',
             'name' => $i === 4
@@ -33,18 +33,18 @@
     'name' => __('messages.meta_refund_title'),
     'url' => localized_url('refund-policy'),
     'description' => welcome_bonus_message('meta_refund_description', 'meta_refund_description_off'),
-    'inLanguage' => class_exists(\App\Support\PublicI18n::class)
+    'inLanguage' => (class_exists(\App\Support\PublicI18n::class) && method_exists(\App\Support\PublicI18n::class, 'htmlLang'))
         ? \App\Support\PublicI18n::htmlLang()
         : 'en-GB',
     'dateModified' => __('messages.refund_last_updated_iso'),
-], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) !!}
+], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_HEX_TAG|JSON_HEX_AMP|JSON_INVALID_UTF8_SUBSTITUTE) ?: '{}' !!}
 </script>
 <script type="application/ld+json">
 {!! json_encode([
     '@@context' => 'https://schema.org',
     '@type' => 'FAQPage',
     'mainEntity' => $faqEntities,
-], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) !!}
+], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_HEX_TAG|JSON_HEX_AMP|JSON_INVALID_UTF8_SUBSTITUTE) ?: '{}' !!}
 </script>
 @endpush
 
@@ -65,7 +65,7 @@
 
     <p class="text-muted small mb-4">{{ __('messages.refund_last_updated_label') }}: {{ __('messages.refund_last_updated_display') }}</p>
 
-    @foreach(range(1, 9) as $i)
+    @foreach(range(1, 11) as $i)
         <section class="mb-4" aria-labelledby="refund-section-{{ $i }}">
             <h2 id="refund-section-{{ $i }}" class="h5 mt-4" style="color:#1a585e;">{{ $i === 2
                 ? welcome_bonus_message('refund_section_2_title', 'refund_section_2_title_off')
@@ -79,7 +79,7 @@
     <section class="mb-5 mt-5" aria-labelledby="refund-faq-heading">
         <h2 id="refund-faq-heading" class="h5 mb-3" style="color:#1a585e;">{{ __('messages.refund_faq_title') }}</h2>
         <div class="accordion" id="refundFaqAccordion">
-            @foreach(range(1, 4) as $i)
+            @foreach(range(1, 5) as $i)
                 <div class="accordion-item border-0 mb-3 shadow-sm rounded-3 overflow-hidden">
                     <h3 class="accordion-header" id="refundFaqHeading{{ $i }}">
                         <button class="accordion-button {{ $i > 1 ? 'collapsed' : '' }}" type="button"

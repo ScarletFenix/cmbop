@@ -1,74 +1,171 @@
 @extends('admin.layouts.app')
 
+@section('title', 'Community')
+
 @php
     use App\Support\CommunityInbox;
+    $kind = $kind ?? '';
+    $sort = $sort ?? 'newest';
+    $stale = ! empty($stale);
+    $category = $category ?? '';
+    $occupying = $occupying ?? '';
+    $claimView = $claimView ?? '';
+    $matchedUsers = $matchedUsers ?? [];
+    $suggestionCategories = $suggestionCategories ?? collect();
 @endphp
 
 @section('content')
-<div class="container-fluid py-3">
-    <div class="mb-4">
-        <h4 class="mb-1 fw-bold">Community feedback</h4>
-        <p class="text-muted mb-0">Problem reports, suggestions, missing-website requests, and ownership claims.</p>
-    </div>
+<link href="{{ asset('assets/css/single-select.css') }}?v={{ @filemtime(public_path('assets/css/single-select.css')) ?: '1' }}" rel="stylesheet">
+<div class="container-fluid community-inbox py-3">
+    @include('admin.partials.page-header', [
+        'title' => 'Community feedback',
+        'subtitle' => 'Problem reports, suggestions, missing-website requests, and ownership claims.',
+    ])
 
-    <ul class="nav nav-pills gap-2 mb-3 flex-wrap">
+    <nav class="community-tabs mb-3" aria-label="Community inbox">
         @foreach($tabs as $key => $label)
-            <li class="nav-item">
-                <a class="nav-link {{ $tab === $key ? 'active' : '' }}"
-                   href="{{ route('admin.community.index', $tabQueries[$key] ?? ['tab' => $key]) }}">
-                    {{ $label }}
-                    @if(($counts[$key] ?? 0) > 0)
-                        <span class="badge bg-warning text-dark ms-1">{{ $counts[$key] }}</span>
-                    @endif
-                </a>
-            </li>
+            <a class="community-tab {{ $tab === $key ? 'is-active' : '' }}"
+               href="{{ route('admin.community.index', $tabQueries[$key] ?? ['tab' => $key]) }}">
+                {{ $label }}
+                @if(($counts[$key] ?? 0) > 0)
+                    <span class="community-tab__count">{{ $counts[$key] }}</span>
+                @endif
+            </a>
         @endforeach
-    </ul>
+    </nav>
 
-    <form method="get" class="card border-0 shadow-sm mb-3">
-        <div class="card-body row g-2 align-items-end">
+    @if(! empty($showFilters) || ! empty($filtered) || ! empty($tabHasRows))
+    <form method="get" class="card border-0 shadow-sm mb-3 community-inbox-filters admin-deposits-filter-card admin-deposits-filters admin-orders-filters">
+        <div class="card-body">
+            <div class="admin-orders-filters__grid">
             <input type="hidden" name="tab" value="{{ $tab }}">
-            <div class="col-md-5">
-                <x-slb-search-field name="q" id="adminCommunitySearch" :value="$q" placeholder="Search…" />
+            <div class="admin-orders-filters__search">
+                <x-slb-search-field
+                    name="q"
+                    id="adminCommunitySearch"
+                    :value="$q"
+                    :placeholder="$tab === 'problems' ? 'Email, subject, domain…' : ($tab === 'websites' || $tab === 'claims' ? 'Domain, name, email…' : 'Email, message…')"
+                    input-class="form-control"
+                    label-class="form-label"
+                />
             </div>
-            <div class="col-md-3">
-                <label class="form-label small text-muted mb-1">Status</label>
-                <select name="status" class="form-select form-select-sm">
+            <div>
+                <label class="form-label" for="communityStatusFilter">Status</label>
+                <select name="status" id="communityStatusFilter" class="form-select" aria-label="Status">
                     <option value="">All</option>
                     @foreach($statuses as $st)
                         <option value="{{ $st }}" @selected($status === $st)>{{ ucfirst($st) }}</option>
                     @endforeach
                 </select>
             </div>
-            <div class="col-md-4 d-flex gap-2">
-                <button class="btn btn-sm btn-outline-primary">Filter</button>
-                <a href="{{ route('admin.community.index', ['tab' => $tab]) }}" class="btn btn-sm btn-outline-secondary">Reset</a>
+            @if($tab === 'problems')
+                <div>
+                    <label class="form-label" for="communityKindFilter">Kind</label>
+                    <select name="kind" id="communityKindFilter" class="form-select" aria-label="Kind">
+                        <option value="">All kinds</option>
+                        <option value="catalog" @selected($kind === 'catalog')>Catalog listing</option>
+                        <option value="other" @selected($kind === 'other')>Other</option>
+                    </select>
+                </div>
+            @endif
+            @if($tab === 'suggestions' && $suggestionCategories->isNotEmpty())
+                <div>
+                    <label class="form-label" for="communityCategoryFilter">Category</label>
+                    <select name="category" id="communityCategoryFilter" class="form-select">
+                        <option value="">All categories</option>
+                        @foreach($suggestionCategories as $cat)
+                            <option value="{{ $cat }}" @selected($category === $cat)>{{ $cat }}</option>
+                        @endforeach
+                    </select>
+                </div>
+            @endif
+            @if($tab === 'websites')
+                <div>
+                    <label class="form-label" for="communityOccupyingFilter">Listing</label>
+                    <select name="occupying" id="communityOccupyingFilter" class="form-select">
+                        <option value="">All requests</option>
+                        <option value="yes" @selected($occupying === 'yes')>Already in catalog</option>
+                        <option value="no" @selected($occupying === 'no')>New URL</option>
+                    </select>
+                </div>
+            @endif
+            @if($tab === 'claims')
+                <div>
+                    <label class="form-label" for="communityClaimFilter">Queue</label>
+                    <select name="claim" id="communityClaimFilter" class="form-select">
+                        <option value="">All claims</option>
+                        <option value="mismatch" @selected($claimView === 'mismatch')>Name mismatch</option>
+                        <option value="blocked" @selected($claimView === 'blocked')>Blocked (orders/disputes)</option>
+                        <option value="unverified" @selected($claimView === 'unverified')>Unverified listing</option>
+                    </select>
+                </div>
+            @endif
+            <div>
+                <label class="form-label" for="communitySortFilter">Sort</label>
+                <select name="sort" id="communitySortFilter" class="form-select">
+                    <option value="newest" @selected($sort === 'newest')>Newest</option>
+                    <option value="oldest" @selected($sort === 'oldest')>Oldest</option>
+                </select>
+            </div>
+            <div class="form-check mt-4">
+                <input type="checkbox" class="form-check-input" name="stale" value="1" id="communityStaleFilter" @checked($stale)>
+                <label class="form-check-label" for="communityStaleFilter">Stale pending (48h+)</label>
+            </div>
+            @if(! empty($canHideTest))
+                <div class="form-check mt-4">
+                    <input type="checkbox" class="form-check-input" name="include_test" value="1" id="communityIncludeTestFilter" @checked(! empty($includeTest))>
+                    <label class="form-check-label" for="communityIncludeTestFilter">Show test accounts</label>
+                </div>
+            @endif
+            <div class="admin-deposits-filters__actions admin-orders-filters__actions">
+                <div class="d-flex flex-wrap gap-2">
+                <button class="btn btn-primary">Filter</button>
+                <a href="{{ route('admin.community.index', ['tab' => $tab]) }}" class="btn btn-outline-secondary">Reset</a>
+                </div>
+            </div>
             </div>
         </div>
     </form>
+    @endif
 
-    <div class="card border-0 shadow-sm">
+    <div class="card border-0 shadow-sm admin-table-fit community-inbox">
         <div class="table-responsive">
             @if($tab === 'problems')
-                <table class="table align-middle mb-0">
-                    <thead class="table-light">
+                <table class="table align-middle mb-0 modern-table">
+                    <thead>
                         <tr>
                             <th>From</th>
                             <th>Subject</th>
                             <th>Message</th>
                             <th>Status</th>
+                            <th>Reviewer</th>
                             <th>When</th>
                             <th class="admin-actions-wide-col"><span class="visually-hidden">Actions</span></th>
                         </tr>
                     </thead>
                     <tbody>
                         @forelse($problems as $item)
-                            @php $pageUrl = CommunityInbox::safeHttpUrl($item->page_url); @endphp
+                            @php
+                                $catalog = ($catalogProblems ?? [])[$item->id] ?? null;
+                                $catalog = is_array($catalog) ? $catalog : [];
+                                $pageUrl = $catalog['live_url'] ?? null;
+                                if ($pageUrl === null && $catalog === []) {
+                                    $pageUrl = CommunityInbox::safeHttpUrl($item->page_url);
+                                }
+                                $preview = trim((string) ($catalog['user_message'] ?? ''));
+                                if ($preview === '') {
+                                    $preview = (string) $item->message;
+                                }
+                            @endphp
                             <tr>
                                 <td>
                                     <div>
                                         @if($item->user_id)
                                             <a href="{{ route('admin.users.show', $item->user_id) }}">{{ $item->name ?: ($item->user?->name ?? 'User #'.$item->user_id) }}</a>
+                                        @elseif($item->email && isset($matchedUsers[strtolower((string) $item->email)]))
+                                            @php $match = $matchedUsers[strtolower((string) $item->email)]; @endphp
+                                            <a href="{{ route('admin.users.show', $match->id) }}">{{ $item->name ?: $match->name }}</a>
+                                            <div class="small text-muted">Matches user</div>
                                         @else
                                             {{ $item->name ?: '—' }}
                                         @endif
@@ -77,13 +174,27 @@
                                     @if($item->role_context)<div class="small text-muted">Role: {{ $item->role_context }}</div>@endif
                                 </td>
                                 <td>
-                                    <div class="fw-semibold">{{ $item->subject }}</div>
+                                    <div class="fw-semibold">
+                                        {{ $item->subject }}
+                                        @if($catalog !== [])
+                                            <span class="badge text-bg-success">Catalog</span>
+                                        @endif
+                                    </div>
+                                    @if(! empty($catalog['site_id']))
+                                        <div class="small text-muted">Site #{{ $catalog['site_id'] }}</div>
+                                    @endif
+                                    @if(! empty($catalog['site']) && $catalog['site']->domain)
+                                        <div class="small text-muted">{{ $catalog['site']->domain }}</div>
+                                    @endif
                                     @if($pageUrl)
-                                        <a href="{{ $pageUrl }}" target="_blank" rel="noopener noreferrer" class="small">{{ \Illuminate\Support\Str::limit($pageUrl, 42) }}</a>
+                                        <a href="{{ $pageUrl }}" target="_blank" rel="noopener noreferrer" class="small" title="{{ $pageUrl }}">{{ \Illuminate\Support\Str::limit($pageUrl, 42) }}</a>
                                     @endif
                                 </td>
-                                <td class="small" style="max-width:280px;">{{ \Illuminate\Support\Str::limit($item->message, 160) }}</td>
-                                <td><span class="badge {{ CommunityInbox::statusBadgeClass($item->status) }}">{{ $item->status }}</span></td>
+                                <td class="small" style="max-width:280px;">{{ \Illuminate\Support\Str::limit($preview, 160) }}</td>
+                                <td>
+                                    <span class="badge {{ CommunityInbox::statusBadgeClass($item->status) }}">{{ $item->status }}</span>
+                                </td>
+                                <td class="small">{{ $item->reviewer?->name ?: '—' }}</td>
                                 <td class="small text-muted">
                                     {{ optional($item->created_at)->diffForHumans() }}
                                     @if($item->status === 'pending' && $item->created_at?->lte(now()->subHours(48)))
@@ -91,6 +202,9 @@
                                     @endif
                                 </td>
                                 <td class="text-end">
+                                    @if(! empty($catalog['listing_url']))
+                                        <a href="{{ $catalog['listing_url'] }}" class="btn btn-sm btn-outline-success">Open listing</a>
+                                    @endif
                                     <button type="button" class="btn btn-sm btn-outline-secondary btn-community-drawer"
                                             data-title="Problem #{{ $item->id }}"
                                             data-template="community-detail-problems-{{ $item->id }}">Details</button>
@@ -102,17 +216,29 @@
                                 </td>
                             </tr>
                         @empty
-                            @include('admin.community.empty-row', ['empty' => 'No problem reports yet.'])
+                            @include('admin.community.empty-row', ['empty' => 'No problem reports yet.', 'colspan' => 7])
                         @endforelse
                     </tbody>
                 </table>
                 <div class="p-3">{{ $problems->links() }}</div>
                 @foreach($problems as $item)
-                    @include('admin.community.detail', ['tab' => 'problems', 'item' => $item, 'pageUrl' => CommunityInbox::safeHttpUrl($item->page_url)])
+                    @php
+                        $detailCatalog = ($catalogProblems ?? [])[$item->id] ?? null;
+                        $detailCatalog = is_array($detailCatalog) ? $detailCatalog : null;
+                        $detailPage = is_array($detailCatalog)
+                            ? ($detailCatalog['live_url'] ?? null)
+                            : CommunityInbox::safeHttpUrl($item->page_url);
+                    @endphp
+                    @include('admin.community.detail', [
+                        'tab' => 'problems',
+                        'item' => $item,
+                        'pageUrl' => $detailPage,
+                        'catalog' => $detailCatalog,
+                    ])
                 @endforeach
             @elseif($tab === 'suggestions')
-                <table class="table align-middle mb-0">
-                    <thead class="table-light">
+                <table class="table align-middle mb-0 modern-table">
+                    <thead>
                         <tr>
                             <th>From</th>
                             <th>Category</th>
@@ -130,6 +256,10 @@
                                     <div>
                                         @if($item->user_id)
                                             <a href="{{ route('admin.users.show', $item->user_id) }}">{{ $item->name ?: ($item->user?->name ?? 'User #'.$item->user_id) }}</a>
+                                        @elseif($item->email && isset($matchedUsers[strtolower((string) $item->email)]))
+                                            @php $match = $matchedUsers[strtolower((string) $item->email)]; @endphp
+                                            <a href="{{ route('admin.users.show', $match->id) }}">{{ $item->name ?: $match->name }}</a>
+                                            <div class="small text-muted">Matches user</div>
                                         @else
                                             {{ $item->name ?: '—' }}
                                         @endif
@@ -140,7 +270,7 @@
                                 <td class="small" style="max-width:320px;">
                                     {{ \Illuminate\Support\Str::limit($item->message, 180) }}
                                     @if($pageUrl)
-                                        <div><a href="{{ $pageUrl }}" target="_blank" rel="noopener noreferrer">{{ \Illuminate\Support\Str::limit($pageUrl, 42) }}</a></div>
+                                        <div><a href="{{ $pageUrl }}" target="_blank" rel="noopener noreferrer" title="{{ $pageUrl }}">{{ \Illuminate\Support\Str::limit($pageUrl, 42) }}</a></div>
                                     @endif
                                 </td>
                                 <td><span class="badge {{ CommunityInbox::statusBadgeClass($item->status) }}">{{ $item->status }}</span></td>
@@ -171,8 +301,8 @@
                     @include('admin.community.detail', ['tab' => 'suggestions', 'item' => $item, 'pageUrl' => CommunityInbox::safeHttpUrl($item->page_url)])
                 @endforeach
             @elseif($tab === 'websites')
-                <table class="table align-middle mb-0">
-                    <thead class="table-light">
+                <table class="table align-middle mb-0 modern-table">
+                    <thead>
                         <tr>
                             <th>Suggested website</th>
                             <th>Requested by</th>
@@ -187,7 +317,14 @@
                             @php $siteUrl = CommunityInbox::safeHttpUrl($item->website_url); @endphp
                             <tr>
                                 <td>
-                                    <div class="fw-semibold">{{ $item->website_name }}</div>
+                                    <div class="fw-semibold">
+                                        {{ $item->website_name }}
+                                        @if(! empty(($occupyingSites ?? [])[$item->id]))
+                                            <span class="badge text-bg-success">In catalog</span>
+                                        @else
+                                            <span class="badge text-bg-light border">New</span>
+                                        @endif
+                                    </div>
                                     @if($siteUrl)
                                         <a href="{{ $siteUrl }}" target="_blank" rel="noopener noreferrer" class="small">{{ $item->domain ?: $item->website_url }}</a>
                                     @else
@@ -240,8 +377,8 @@
                     @include('admin.community.detail', ['tab' => 'websites', 'item' => $item, 'pageUrl' => CommunityInbox::safeHttpUrl($item->website_url)])
                 @endforeach
             @else
-                <table class="table align-middle mb-0">
-                    <thead class="table-light">
+                <table class="table align-middle mb-0 modern-table">
+                    <thead>
                         <tr>
                             <th>Claimed site</th>
                             <th>Claimer</th>
@@ -261,8 +398,10 @@
                             <tr>
                                 <td>
                                     <div class="fw-semibold">
-                                        @if($item->site_id)
-                                            <a href="{{ route('admin.sites.edit', $item->site_id) }}">{{ $item->site?->site_name ?? $item->website_name }}</a>
+                                        @if($item->site)
+                                            <a href="{{ \App\Support\CatalogProblemReport::staffListingUrl($item->site) }}">{{ $item->site->site_name ?? $item->website_name }}</a>
+                                        @elseif($item->site_id)
+                                            {{ $item->website_name }}
                                         @else
                                             {{ $item->website_name }}
                                         @endif
@@ -318,6 +457,9 @@
                                     @endif
                                 </td>
                                 <td class="text-end">
+                                    @if($item->site && \App\Support\CatalogProblemReport::staffListingUrl($item->site))
+                                        <a href="{{ \App\Support\CatalogProblemReport::staffListingUrl($item->site) }}" class="btn btn-sm btn-outline-success">Open listing</a>
+                                    @endif
                                     <button type="button" class="btn btn-sm btn-outline-secondary btn-community-drawer"
                                             data-title="Claim #{{ $item->id }}"
                                             data-template="community-detail-claims-{{ $item->id }}">Details</button>
@@ -357,16 +499,111 @@
     </div>
 </div>
 
-<div class="offcanvas offcanvas-end" tabindex="-1" id="communityDrawer" aria-labelledby="communityDrawerTitle">
-    <div class="offcanvas-header">
-        <h5 class="offcanvas-title" id="communityDrawerTitle">Details</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
-    </div>
-    <div class="offcanvas-body" id="communityDrawerBody"></div>
-</div>
-
+<script src="{{ asset('assets/js/single-select.js') }}?v={{ @filemtime(public_path('assets/js/single-select.js')) ?: '1' }}"></script>
 <script>
 const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '{{ csrf_token() }}';
+
+function mountCommunityThemeSelect(select) {
+    if (!select || select.closest('.community-theme-select')) {
+        return;
+    }
+    const parent = select.parentNode;
+    if (!parent) {
+        return;
+    }
+
+    const wrap = document.createElement('div');
+    wrap.className = 'single-select-wrapper community-theme-select';
+    parent.insertBefore(wrap, select);
+    wrap.appendChild(select);
+    select.classList.add('visually-hidden');
+    select.tabIndex = -1;
+
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.className = 'single-select-input' + (select.classList.contains('form-select-sm') ? ' single-select-input--sm' : '');
+    trigger.setAttribute('aria-haspopup', 'listbox');
+    trigger.setAttribute('aria-expanded', 'false');
+    const labelled = select.id ? document.querySelector('label[for="' + select.id + '"]') : null;
+    const aria = (labelled ? labelled.textContent : select.getAttribute('aria-label') || 'Choose').replace(/\s+/g, ' ').trim();
+    trigger.setAttribute('aria-label', aria);
+
+    const valueEl = document.createElement('span');
+    valueEl.className = 'single-select-value';
+    const arrow = document.createElement('i');
+    arrow.className = 'fa fa-chevron-down single-select-arrow';
+    arrow.setAttribute('aria-hidden', 'true');
+    trigger.append(valueEl, arrow);
+
+    const dropdown = document.createElement('div');
+    dropdown.className = 'single-select-dropdown';
+    const options = document.createElement('div');
+    options.className = 'single-select-options';
+    options.setAttribute('role', 'listbox');
+    dropdown.appendChild(options);
+    wrap.append(trigger, dropdown);
+
+    function sync() {
+        const current = String(select.value || '');
+        options.replaceChildren();
+        Array.from(select.options).forEach((opt) => {
+            const el = document.createElement('div');
+            const on = opt.value === current;
+            el.className = 'single-select-option' + (on ? ' selected' : '');
+            el.setAttribute('role', 'option');
+            el.setAttribute('data-value', opt.value);
+            el.setAttribute('aria-selected', on ? 'true' : 'false');
+            el.textContent = opt.textContent || '';
+            options.appendChild(el);
+        });
+        const selected = select.options[select.selectedIndex];
+        const label = selected ? String(selected.textContent || '').trim() : 'Select…';
+        valueEl.textContent = label || 'Select…';
+        valueEl.classList.toggle('single-select-placeholder', current === '');
+        trigger.disabled = !!select.disabled;
+    }
+
+    trigger.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (select.disabled) {
+            return;
+        }
+        const willOpen = !dropdown.classList.contains('show');
+        document.querySelectorAll('.single-select-dropdown.show').forEach((dd) => {
+            if (dd === dropdown) {
+                return;
+            }
+            dd.classList.remove('show');
+            const other = dd.parentElement && dd.parentElement.querySelector('.single-select-input');
+            if (other) {
+                other.setAttribute('aria-expanded', 'false');
+            }
+        });
+        dropdown.classList.toggle('show', willOpen);
+        trigger.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+    });
+
+    dropdown.addEventListener('click', (e) => {
+        const opt = e.target.closest('.single-select-option');
+        if (!opt) {
+            return;
+        }
+        e.stopPropagation();
+        const next = opt.getAttribute('data-value') || '';
+        if (select.value !== next) {
+            select.value = next;
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        dropdown.classList.remove('show');
+        trigger.setAttribute('aria-expanded', 'false');
+        sync();
+    });
+
+    select.addEventListener('change', sync);
+    sync();
+}
+
 
 function communityFetchMessage(res, data, fallback) {
     if (data.message) {
@@ -383,14 +620,22 @@ function communityFetchMessage(res, data, fallback) {
 
 document.querySelectorAll('.btn-community-drawer').forEach(btn => {
     btn.addEventListener('click', () => {
-        const drawer = document.getElementById('communityDrawer');
-        const title = document.getElementById('communityDrawerTitle');
-        const body = document.getElementById('communityDrawerBody');
         const tpl = document.getElementById(btn.dataset.template || '');
-        if (!drawer || !body || !tpl) return;
-        if (title) title.textContent = btn.dataset.title || 'Details';
-        body.replaceChildren(tpl.content.cloneNode(true));
-        bootstrap.Offcanvas.getOrCreateInstance(drawer).show();
+        if (!tpl || !window.Swal || typeof Swal.fire !== 'function') return;
+        const wrap = document.createElement('div');
+        wrap.className = 'community-swal-detail';
+        wrap.appendChild(tpl.content.cloneNode(true));
+        Swal.fire({
+            title: btn.dataset.title || 'Details',
+            html: wrap.outerHTML,
+            showConfirmButton: false,
+            showCloseButton: true,
+            width: '32rem',
+            customClass: {
+                popup: 'community-swal community-swal-detail-popup',
+                htmlContainer: 'community-swal-html community-swal-detail-html',
+            },
+        });
     });
 });
 
@@ -403,17 +648,26 @@ document.querySelectorAll('.btn-status').forEach(btn => {
         const current = /^[a-z]+$/.test(btn.dataset.status || '') ? btn.dataset.status : '';
         const { value: form } = await Swal.fire({
             title: 'Update status',
-            html: `<select id="swal-status" class="swal2-select">
-                     ${statuses.map(s => `<option value="${s}" ${s === current ? 'selected' : ''}>${s}</option>`).join('')}
-                   </select>
-                   <textarea id="swal-notes" class="swal2-textarea" placeholder="Admin notes"></textarea>`,
+            html: `<div class="community-swal-fields">
+                     <label class="community-swal-label" for="swal-status">Status</label>
+                     <select id="swal-status" class="form-select" aria-label="Status">
+                       ${statuses.map(s => `<option value="${s}" ${s === current ? 'selected' : ''}>${s.charAt(0).toUpperCase()}${s.slice(1)}</option>`).join('')}
+                     </select>
+                     <label class="community-swal-label" for="swal-notes">Admin notes</label>
+                     <textarea id="swal-notes" class="form-control" rows="4" placeholder="Admin notes"></textarea>
+                   </div>`,
             showCancelButton: true,
             confirmButtonText: 'Save',
+            customClass: {
+                popup: 'community-swal',
+                htmlContainer: 'community-swal-html',
+            },
             didOpen: () => {
                 const notes = document.getElementById('swal-notes');
                 if (notes) {
                     notes.value = btn.dataset.notes || '';
                 }
+                mountCommunityThemeSelect(document.getElementById('swal-status'));
             },
             preConfirm: () => ({
                 status: document.getElementById('swal-status').value,

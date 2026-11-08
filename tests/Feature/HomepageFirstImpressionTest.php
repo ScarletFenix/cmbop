@@ -35,9 +35,22 @@ class HomepageFirstImpressionTest extends TestCase
         $response->assertSee('slb-bottom-cta', false);
         $response->assertSee('btn btn-primary', false);
 
-        // Hero uses the static German-flag catalog screenshot.
-        $this->assertStringContainsString('dashboard.png', $html);
-        $this->assertStringNotContainsString('Live publisher catalog', $html);
+        // Hero uses the advertiser catalog chrome (German-only country, masked demo domains).
+        $this->assertStringContainsString('Publisher catalog preview', $html);
+        $this->assertStringContainsString('Add to cart', $html);
+        $this->assertStringContainsString('Germany', $html);
+        $this->assertStringContainsString('berlin**.de', $html);
+        $this->assertStringContainsString('slb-hero-search', $html);
+        $this->assertStringContainsString('name="search"', $html);
+        $this->assertStringNotContainsString('advertiser/catalog', $html);
+        $this->assertStringContainsString('The guest post marketplace for verified publisher sites.', $html);
+        $this->assertStringNotContainsString('Demo Site', $html);
+        $this->assertStringNotContainsString('dashboard.png', $html);
+        $this->assertStringContainsString('logo1-hero.webp', $html);
+        $this->assertStringContainsString('rel="preload"', $html);
+        $this->assertSame(1, preg_match('/<img\b[^>]*\bclass="slb-hero-mark"[^>]*>/s', $html, $heroMark));
+        $this->assertStringContainsString('decoding="sync"', $heroMark[0]);
+        $this->assertStringNotContainsString('decoding="async"', $heroMark[0]);
     }
 
     public function test_managed_package_ctas_point_to_contact(): void

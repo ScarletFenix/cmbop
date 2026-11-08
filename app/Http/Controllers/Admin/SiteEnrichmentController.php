@@ -9,6 +9,7 @@ use App\Jobs\RefreshSiteMetricsJob;
 use App\Models\Site;
 use App\Models\SiteEnrichmentRun;
 use App\Services\ActivityLogger;
+use App\Services\SiteEnrichment\ScreenshotCaptureService;
 use App\Services\SiteEnrichment\SiteEnrichmentService;
 use App\Services\SiteEnrichment\SiteMetricsAggregator;
 use App\Support\UserFacingError;
@@ -25,7 +26,7 @@ class SiteEnrichmentController extends Controller
     {
         $status = $this->attentionStatusFilter($request->query('status'));
         $type = $this->attentionTypeFilter($request->query('type'));
-        $attention = new LengthAwarePaginator([], 0, 40);
+        $attention = new LengthAwarePaginator([], 0, 50);
         $attention->withPath($request->url())->appends($request->only(['status', 'type']));
 
         try {
@@ -35,18 +36,27 @@ class SiteEnrichmentController extends Controller
                     ->with(['site:'.implode(',', $siteSelect)])
                     ->needsAttention($status, $type)
                     ->latest('id')
-                    ->paginate(40)
+                    ->paginate(50)
                     ->withQueryString();
             }
         } catch (\Throwable $e) {
             Log::warning('Admin enrichment attention list failed', [
                 'error' => $e->getMessage(),
             ]);
-            $attention = new LengthAwarePaginator([], 0, 40);
+            $attention = new LengthAwarePaginator([], 0, 50);
             $attention->withPath($request->url())->appends($request->only(['status', 'type']));
         }
 
         $aggregator = app(SiteMetricsAggregator::class);
+        $screenshotStatus = app(ScreenshotCaptureService::class)->providerStatus();
+        $failedAttentionCount = 0;
+        try {
+            if (Schema::hasTable('site_enrichment_runs')) {
+                $failedAttentionCount = SiteEnrichmentRun::query()->needsAttention()->count();
+            }
+        } catch (\Throwable) {
+            $failedAttentionCount = 0;
+        }
         $config = [
             'enabled' => (bool) config('site_enrichment.enabled'),
             'default_provider' => (string) config('site_enrichment.default_provider'),
@@ -54,10 +64,13 @@ class SiteEnrichmentController extends Controller
             'has_api_keys' => $aggregator->anyApiProviderConfigured(),
             'refresh_frequency' => (string) config('site_enrichment.refresh_frequency'),
             'max_age_days' => (int) config('site_enrichment.max_age_days'),
-            'screenshot_provider' => $this->screenshotProviderLabel(),
+            'screenshot_provider' => $screenshotStatus['label'],
+            'screenshot_ready' => $screenshotStatus['ready'],
+            'screenshot_warning' => $screenshotStatus['warning'],
+            'failed_attention_count' => $failedAttentionCount,
         ];
 
-        $staleSites = new LengthAwarePaginator([], 0, 40);
+        $staleSites = new LengthAwarePaginator([], 0, 50);
         $staleSites->withPath($request->url())->appends($request->query());
         $staleCount = 0;
         $placeholderSiteIds = [];
@@ -80,14 +93,14 @@ class SiteEnrichmentController extends Controller
             }
 
             $staleSites = $staleQuery
-                ->paginate(40, ['*'], 'stale_page')
+                ->paginate(50, ['*'], 'stale_page')
                 ->withQueryString();
             $staleCount = $staleSites->total();
         } catch (\Throwable $e) {
             Log::warning('Admin enrichment stale list failed', [
                 'error' => $e->getMessage(),
             ]);
-            $staleSites = new LengthAwarePaginator([], 0, 40);
+            $staleSites = new LengthAwarePaginator([], 0, 50);
             $staleSites->withPath($request->url())->appends($request->query());
         }
 
@@ -549,25 +562,7 @@ class SiteEnrichmentController extends Controller
 
     private function screenshotProviderLabel(): string
     {
-        $provider = (string) config('site_enrichment.screenshots.provider', 'thum_io');
-
-        if ($provider === 'thum_io') {
-            return 'thum_io (unauthenticated)';
-        }
-
-        if ($provider === 'screenshotone') {
-            return filled(config('site_enrichment.screenshots.screenshotone_access_key'))
-                ? 'screenshotone'
-                : 'screenshotone (no key)';
-        }
-
-        if ($provider === 'url_api') {
-            return filled(config('site_enrichment.screenshots.api_url'))
-                ? 'url_api'
-                : 'url_api (no url)';
-        }
-
-        return $provider;
+        return app(ScreenshotCaptureService::class)->providerStatus()['label'];
     }
 
     private function isMarketingEditor(Request $request): bool

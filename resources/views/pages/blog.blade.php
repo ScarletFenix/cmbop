@@ -1,14 +1,25 @@
 @extends('layouts.app')
 
-@section('title', __('messages.meta_blog_title'))
-@section('description', __('messages.meta_blog_description'))
 @php
+    $blogPage = isset($blog) ? (int) $blog->currentPage() : 1;
+    $blogTitle = __('messages.meta_blog_title');
+    $blogDescription = __('messages.meta_blog_description');
+    if ($blogPage > 1) {
+        $blogTitle .= ' — Page '.$blogPage;
+        $blogDescription = 'Older link-building and digital PR articles from SEOLinkBuildings. Page '.$blogPage.' of the public blog.';
+    }
     $blogCanonical = localized_url('blog');
-    if (isset($blog) && $blog->currentPage() > 1) {
-        $blogCanonical .= '?page='.$blog->currentPage();
+    if ($blogPage > 1) {
+        $blogCanonical .= '?page='.$blogPage;
     }
 @endphp
+@section('title', $blogTitle)
+@section('description', $blogDescription)
 @section('canonical', $blogCanonical)
+@if($blogPage > 1)
+@section('robots', 'noindex, follow')
+@section('skip_hreflang', '1')
+@endif
 
 @push('head')
     @if(isset($blog) && $blog->previousPageUrl())
@@ -29,6 +40,12 @@
 
 <!-- ==================== BLOG CONTENT ==================== -->
 <div class="container py-5" style="max-width:1200px;">
+    @include('components.breadcrumbs', [
+        'items' => [
+            ['name' => __('messages.home'), 'url' => localized_url('/')],
+            ['name' => __('messages.blog'), 'url' => localized_url('blog')],
+        ],
+    ])
 
     <!-- Search and Filter Bar -->
     <div class="row mb-5">
@@ -37,13 +54,13 @@
                 <div class="row g-3 align-items-center">
                     <!-- Search Box -->
                     <div class="col-md-6">
-                        <label class="form-label fw-semibold small text-muted mb-1" for="liveSearch">Search</label>
+                        <label class="form-label fw-semibold small text-muted mb-1" for="liveSearch">{{ __('messages.blog_search_label') }}</label>
                         <div class="position-relative slb-search-wrap">
                             <i class="fa fa-search" style="position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: #999; z-index: 1;" aria-hidden="true"></i>
                             <input type="search"
                                    id="liveSearch"
                                    class="form-control"
-                                   placeholder="Search articles by title, content, or author..."
+                                   placeholder="{{ __('messages.blog_search_placeholder') }}"
                                    style="padding-left: 45px; height: 50px; border-radius: 12px; border:1px solid #eef0f3;"
                                    title="Type at least 2 characters, or press Enter. Clear restores the full list."
                                    autocomplete="off"
@@ -51,7 +68,7 @@
                                    aria-describedby="liveSearchStatus"
                                    data-slb-live-clear="liveSearchClear"
                                    data-slb-live-status="liveSearchStatus">
-                            <button type="button" id="liveSearchClear" class="btn btn-sm btn-link slb-search-clear d-none" aria-label="Clear search">
+                            <button type="button" id="liveSearchClear" class="btn btn-sm btn-link slb-search-clear d-none" aria-label="{{ __('messages.blog_clear_search') }}">
                                 <i class="fa-solid fa-xmark" aria-hidden="true"></i>
                             </button>
                         </div>
@@ -61,7 +78,7 @@
                     <!-- Tags Filter -->
                     <div class="col-md-6">
                         <div class="d-flex flex-wrap gap-2" id="tagCloud">
-                            <span class="tag-filter active" data-tag="" style="background:#5bc4c7; color:white; padding:6px 16px; border-radius:25px; font-size:0.85rem; cursor:pointer; transition:all 0.2s;">All Posts</span>
+                            <span class="tag-filter active" data-tag="" style="background:#5bc4c7; color:white; padding:6px 16px; border-radius:25px; font-size:0.85rem; cursor:pointer; transition:all 0.2s;">{{ __('messages.blog_all_posts') }}</span>
                             @php
                                 $allTags = [];
                                 if(isset($blog) && $blog->count() > 0) {
@@ -94,10 +111,10 @@
         <!-- Main Blog Posts -->
         <div class="col-lg-8">
             <div class="d-flex justify-content-between align-items-center mb-4">
-                <h2 class="fw-bold mb-0" style="color:#1a1a2e; font-size:1.5rem;">Recent Articles</h2>
+                <h2 class="fw-bold mb-0" style="color:#1a1a2e; font-size:1.5rem;">{{ __('messages.blog_recent_articles') }}</h2>
                 <div id="resultCount" class="text-muted" style="font-size:0.9rem;">
                     @if(isset($blog) && $blog->count() > 0)
-                        Showing {{ $blog->firstItem() ?? 0 }} - {{ $blog->lastItem() ?? 0 }} of {{ $blog->total() ?? 0 }} posts
+                        {{ __('messages.blog_showing', ['from' => $blog->firstItem() ?? 0, 'to' => $blog->lastItem() ?? 0, 'total' => $blog->total() ?? 0]) }}
                     @endif
                 </div>
             </div>
@@ -109,12 +126,14 @@
                             <div class="blog-item mb-4" data-title="{{ strtolower($post->title) }}" data-content="{{ strtolower(strip_tags($post->content)) }}" data-author="{{ strtolower($post->author) }}" data-tags="{{ $post->tags ? implode(',', is_array($post->tags) ? $post->tags : json_decode($post->tags, true) ?? []) : '' }}">
                                 <div class="card border-0 shadow-sm rounded-4 overflow-hidden" style="transition: all 0.3s ease;">
                                     <div class="row g-0">
-                                        @if($post->featured_image)
+                                        @if($post->publicFeaturedImageUrl())
                                             <div class="col-md-4">
                                                 <div style="height: 100%; overflow: hidden;">
-                                                    <img src="{{ $post->featuredImageUrl() }}" 
+                                                    <img src="{{ $post->publicFeaturedImageUrl() }}" 
                                                          class="img-fluid w-100 h-100" 
                                                          alt="{{ $post->title }}"
+                                                         loading="lazy"
+                                                         decoding="async"
                                                          style="object-fit: cover; transition: transform 0.3s;">
                                                 </div>
                                             </div>
@@ -129,15 +148,15 @@
                                                         </small>
                                                     </div>
                                                     <h3 class="card-title h4 mb-3">
-                                                        <a href="{{ localized_url('blog/'.$post->slug) }}" class="text-decoration-none" style="color:#1a1a2e; font-weight:700;">
+                                                        <a href="{{ $post->listingUrl() }}" class="text-decoration-none" style="color:#1a1a2e; font-weight:700;">
                                                             {{ $post->title }}
                                                         </a>
                                                     </h3>
                                                     <p class="card-text text-muted" style="line-height:1.7;">
                                                         {{ Str::limit(strip_tags($post->content), 120) }}
                                                     </p>
-                                                    <a href="{{ localized_url('blog/'.$post->slug) }}" class="btn btn-link text-decoration-none p-0" style="color:#5bc4c7; font-weight:600;">
-                                                        Read More <i class="fa fa-arrow-right ms-1"></i>
+                                                    <a href="{{ $post->listingUrl() }}" class="btn btn-link text-decoration-none p-0" style="color:#5bc4c7; font-weight:600;">
+                                                        {{ __('messages.blog_read_more') }} <i class="fa fa-arrow-right ms-1"></i>
                                                     </a>
                                                 </div>
                                             </div>
@@ -153,15 +172,15 @@
                                                         </small>
                                                     </div>
                                                     <h3 class="card-title h4 mb-3">
-                                                        <a href="{{ localized_url('blog/'.$post->slug) }}" class="text-decoration-none" style="color:#1a1a2e; font-weight:700;">
+                                                        <a href="{{ $post->listingUrl() }}" class="text-decoration-none" style="color:#1a1a2e; font-weight:700;">
                                                             {{ $post->title }}
                                                         </a>
                                                     </h3>
                                                     <p class="card-text text-muted" style="line-height:1.7;">
                                                         {{ Str::limit(strip_tags($post->content), 150) }}
                                                     </p>
-                                                    <a href="{{ localized_url('blog/'.$post->slug) }}" class="btn btn-link text-decoration-none p-0" style="color:#5bc4c7; font-weight:600;">
-                                                        Read More <i class="fa fa-arrow-right ms-1"></i>
+                                                    <a href="{{ $post->listingUrl() }}" class="btn btn-link text-decoration-none p-0" style="color:#5bc4c7; font-weight:600;">
+                                                        {{ __('messages.blog_read_more') }} <i class="fa fa-arrow-right ms-1"></i>
                                                     </a>
                                                 </div>
                                             </div>
@@ -179,8 +198,7 @@
                 @else
                     <div class="text-center py-5 px-4 rounded-4" style="background:#f8f9fa;">
                         <i class="fa fa-newspaper-o fa-4x mb-3" style="color:#cbd5e1;"></i>
-                        <h4 style="color:#1a1a2e;">No Blog Posts Yet</h4>
-                        <p class="text-muted">Check back soon for interesting articles and insights.</p>
+                        <h4 style="color:#1a1a2e;">{{ __('messages.blog_empty') }}</h4>
                     </div>
                 @endif
             </div>
@@ -197,14 +215,18 @@
                 <div class="card border-0 shadow-sm rounded-4 mb-4">
                     <div class="card-body p-4">
                         <h3 class="h5 fw-bold mb-3" style="color:#1a1a2e;">
-                            <i class="fa fa-clock-o me-2" style="color:#5bc4c7;"></i> Recent Posts
+                            <i class="fa fa-clock-o me-2" style="color:#5bc4c7;"></i> {{ __('messages.blog_recent_posts') }}
                         </h3>
                         @foreach($recentPosts as $recent)
-                            <a href="{{ localized_url('blog/'.$recent->slug) }}" class="text-decoration-none d-block mb-3">
+                            <a href="{{ $recent->listingUrl() }}" class="text-decoration-none d-block mb-3">
                                 <div class="d-flex gap-3 align-items-start">
-                                    @if($recent->featured_image)
-                                        <img src="{{ $recent->featuredImageUrl() }}" 
-                                             alt="{{ $recent->title }}" 
+                                    @if($recent->publicFeaturedImageUrl())
+                                        <img src="{{ $recent->publicFeaturedImageUrl() }}" 
+                                             alt="{{ $recent->title }}"
+                                             width="60"
+                                             height="60"
+                                             loading="lazy"
+                                             decoding="async"
                                              style="width: 60px; height: 60px; object-fit: cover; border-radius: 12px;">
                                     @else
                                         <div style="width: 60px; height: 60px; background:linear-gradient(135deg, #1a585e 0%, #3faeb2 100%); border-radius: 12px;" class="d-flex align-items-center justify-content-center">
@@ -397,5 +419,5 @@ document.getElementById('newsletterForm')?.addEventListener('submit', function(e
 });
 </script>
 
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="{{ asset('assets/vendor/sweetalert2/sweetalert2.min.js') }}?v={{ @filemtime(public_path('assets/vendor/sweetalert2/sweetalert2.min.js')) ?: '1' }}"></script>
 @endsection

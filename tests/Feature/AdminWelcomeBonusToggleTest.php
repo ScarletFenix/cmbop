@@ -36,7 +36,7 @@ class AdminWelcomeBonusToggleTest extends TestCase
         $this->post(route('admin.promotions.welcome-bonus.toggle'))
             ->assertRedirect();
 
-        $this->assertTrue(app(WelcomeBonusService::class)->isEnabled());
+        $this->assertFalse(app(WelcomeBonusService::class)->isEnabled());
     }
 
     public function test_non_admin_cannot_toggle_welcome_bonus(): void
@@ -52,12 +52,13 @@ class AdminWelcomeBonusToggleTest extends TestCase
             ->post(route('admin.promotions.welcome-bonus.toggle'))
             ->assertForbidden();
 
-        $this->assertTrue(app(WelcomeBonusService::class)->isEnabled());
+        $this->assertFalse(app(WelcomeBonusService::class)->isEnabled());
     }
 
     public function test_admin_can_disable_and_enable_welcome_bonus(): void
     {
         $service = app(WelcomeBonusService::class);
+        $service->setEnabled(true);
         $this->assertTrue($service->isEnabled());
 
         $this->actingAs($this->admin)
@@ -100,11 +101,13 @@ class AdminWelcomeBonusToggleTest extends TestCase
             ->assertRedirect(route('admin.promotions.index'))
             ->assertSessionHasErrors('enabled');
 
-        $this->assertTrue(app(WelcomeBonusService::class)->isEnabled());
+        $this->assertFalse(app(WelcomeBonusService::class)->isEnabled());
     }
 
     public function test_promotions_hub_shows_welcome_bonus_card(): void
     {
+        app(WelcomeBonusService::class)->setEnabled(true);
+
         $this->actingAs($this->admin)
             ->get(route('admin.promotions.index'))
             ->assertOk()
@@ -192,7 +195,7 @@ class AdminWelcomeBonusToggleTest extends TestCase
             ->assertSessionHas('success');
 
         $this->assertSame(35.5, app(WelcomeBonusService::class)->amount());
-        $this->assertTrue(app(WelcomeBonusService::class)->isEnabled());
+        $this->assertFalse(app(WelcomeBonusService::class)->isEnabled());
     }
 
     public function test_set_amount_does_not_reenable_a_disabled_bonus(): void
@@ -244,6 +247,7 @@ class AdminWelcomeBonusToggleTest extends TestCase
 
     public function test_promotions_hub_does_not_promise_grants_when_amount_is_zero(): void
     {
+        app(WelcomeBonusService::class)->setEnabled(true);
         app(WelcomeBonusService::class)->setAmount(0);
 
         $this->actingAs($this->admin)
@@ -330,14 +334,18 @@ class AdminWelcomeBonusToggleTest extends TestCase
             ->assertDontSee('New advertisers get €20 free credit', false);
     }
 
-    public function test_pricing_shows_live_grant_amount(): void
+    public function test_pricing_shows_grant_note_without_a_closed_amount(): void
     {
+        app(WelcomeBonusService::class)->setEnabled(true);
         app(WelcomeBonusService::class)->setAmount(35);
 
         $this->get('/pricing')
             ->assertOk()
-            ->assertSee('New advertisers get €35 free credit', false)
-            ->assertDontSee('New advertisers get €20 free credit', false);
+            ->assertSee('New advertisers get welcome credit for first orders', false)
+            ->assertDontSee('€20 free credit', false)
+            ->assertDontSee('€35 free credit', false)
+            ->assertDontSee('€20 welcome credit', false)
+            ->assertDontSee('€35 welcome credit', false);
     }
 
     public function test_marketing_pages_hide_new_grant_copy_when_bonus_cannot_grant(): void
@@ -373,34 +381,42 @@ class AdminWelcomeBonusToggleTest extends TestCase
             ->assertDontSee('New advertisers receive promotional bonus credit for first orders', false);
     }
 
-    public function test_marketing_pages_use_live_grant_amount(): void
+    public function test_marketing_pages_do_not_advertise_a_welcome_credit_amount(): void
     {
+        app(WelcomeBonusService::class)->setEnabled(true);
         app(WelcomeBonusService::class)->setAmount(35);
 
         $this->get('/about')
             ->assertOk()
-            ->assertSee('€35 welcome credit for new advertisers', false)
-            ->assertDontSee('€20 welcome credit for new advertisers', false);
+            ->assertSee('Promotional welcome credit for new advertisers', false)
+            ->assertDontSee('€20 welcome credit', false)
+            ->assertDontSee('€35 welcome credit', false);
 
         $this->get('/how-it-works')
             ->assertOk()
-            ->assertSee('New advertisers get €35 welcome credit', false)
-            ->assertSee('What is the €35 welcome credit?', false);
+            ->assertSee('What is welcome credit?', false)
+            ->assertDontSee('€20 welcome credit', false)
+            ->assertDontSee('€35 welcome credit', false);
     }
 
-    public function test_register_meta_uses_live_grant_or_off_copy(): void
+    public function test_register_meta_never_advertises_a_welcome_credit_amount(): void
     {
+        app(WelcomeBonusService::class)->setEnabled(true);
+
         $this->get(route('register'))
             ->assertOk()
-            ->assertSee('€20 Welcome Credit', false)
-            ->assertSee('New advertisers get €20 welcome credit', false);
+            ->assertSee('Create Account | SEOLinkBuildings', false)
+            ->assertSee('Free to start — no card required', false)
+            ->assertDontSee('€20 Welcome Credit', false)
+            ->assertDontSee('New advertisers get €20 welcome credit', false);
 
         app(WelcomeBonusService::class)->setAmount(35);
         $this->get(route('register'))
             ->assertOk()
-            ->assertSee('€35 Welcome Credit', false)
-            ->assertSee('New advertisers get €35 welcome credit', false)
-            ->assertDontSee('€20 Welcome Credit', false);
+            ->assertSee('Create Account | SEOLinkBuildings', false)
+            ->assertSee('€35 welcome credit', false)
+            ->assertDontSee('€20 Welcome Credit', false)
+            ->assertDontSee('€20 welcome credit', false);
 
         app(WelcomeBonusService::class)->setEnabled(false);
         $this->get(route('register'))
@@ -408,20 +424,25 @@ class AdminWelcomeBonusToggleTest extends TestCase
             ->assertSee('Create Account | SEOLinkBuildings', false)
             ->assertSee('Free to start — no card required', false)
             ->assertDontSee('€20 Welcome Credit', false)
-            ->assertDontSee('€35 Welcome Credit', false);
+            ->assertDontSee('€35 Welcome Credit', false)
+            ->assertDontSee('€35 welcome credit', false);
     }
 
-    public function test_llms_txt_matches_live_grant(): void
+    public function test_llms_txt_never_advertises_a_welcome_credit_amount(): void
     {
+        app(WelcomeBonusService::class)->setEnabled(true);
+
         $this->get('/llms.txt')
             ->assertOk()
-            ->assertSee('€20 welcome credit for first orders', false);
+            ->assertSee('not always offered', false)
+            ->assertDontSee('€20 welcome credit', false);
 
         app(WelcomeBonusService::class)->setAmount(35);
         $this->get('/llms.txt')
             ->assertOk()
-            ->assertSee('€35 welcome credit for first orders', false)
-            ->assertDontSee('€20 welcome credit for first orders', false);
+            ->assertSee('not always offered', false)
+            ->assertDontSee('€20 welcome credit', false)
+            ->assertDontSee('€35 welcome credit', false);
 
         app(WelcomeBonusService::class)->setEnabled(false);
         $this->get('/llms.txt')

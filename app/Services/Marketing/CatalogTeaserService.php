@@ -53,7 +53,12 @@ class CatalogTeaserService
                     'languages',
                     'da',
                     'dr',
+                    'traffic',
                     'price',
+                    'category',
+                    'link_type',
+                    'publication_time',
+                    'verified',
                     'site_image',
                     'screenshot_path',
                     'screenshot_thumb_path',
@@ -145,7 +150,12 @@ class CatalogTeaserService
                     'languages',
                     'da',
                     'dr',
+                    'traffic',
                     'price',
+                    'category',
+                    'link_type',
+                    'publication_time',
+                    'verified',
                     'site_image',
                     'screenshot_path',
                     'screenshot_thumb_path',
@@ -226,21 +236,44 @@ class CatalogTeaserService
 
     public function maskDomain(string $host): string
     {
-        $host = trim($host);
+        $host = strtolower(trim($host));
+        $host = preg_replace('/^www\./i', '', $host) ?: $host;
         if ($host === '') {
-            return '••••••.com';
+            return 'site**.com';
         }
 
         $parts = explode('.', $host);
         if (count($parts) < 2) {
-            return substr($host, 0, 1).str_repeat('*', max(3, strlen($host) - 1));
+            $stem = $this->maskStem($host);
+
+            return $stem.'**';
         }
 
         $tld = array_pop($parts);
-        $name = implode('.', $parts);
-        $visible = substr($name, 0, 1);
+        if (
+            $parts !== []
+            && in_array($tld, ['uk', 'au'], true)
+            && strlen((string) end($parts)) <= 3
+        ) {
+            $tld = array_pop($parts).'.'.$tld;
+        }
 
-        return $visible.str_repeat('*', max(3, min(8, strlen($name) - 1))).'.'.$tld;
+        $name = implode('.', $parts);
+
+        return $this->maskStem($name).'**.'.$tld;
+    }
+
+    private function maskStem(string $name): string
+    {
+        $chunks = preg_split('/[^a-z0-9]+/i', $name, 2);
+        $first = strtolower((string) (is_array($chunks) ? ($chunks[0] ?? '') : ''));
+        if ($first === '') {
+            $first = 'site';
+        }
+
+        $keep = min(8, max(3, strlen($first)));
+
+        return substr($first, 0, $keep);
     }
 
     /**
@@ -253,6 +286,10 @@ class CatalogTeaserService
         $country = $site->primaryCountryCode() ?: $site->country;
         $language = $site->primaryLanguageCode() ?: $site->language;
         $thumb = $site->screenshot_thumb_url ?: $site->logo_url;
+        $categories = array_values(array_filter(array_map(
+            static fn ($item) => trim((string) $item),
+            preg_split('/[,;|]+/', (string) ($site->category ?? '')) ?: []
+        )));
 
         return [
             'name' => $site->site_name ?: $host,
@@ -261,7 +298,13 @@ class CatalogTeaserService
             'language' => $language ? strtolower((string) $language) : null,
             'da' => $site->da,
             'dr' => $site->dr,
+            'traffic' => $site->traffic,
             'price' => $this->fees->advertiserBase((float) $site->price),
+            'categories' => array_slice($categories, 0, 2),
+            'more_cats' => max(0, count($categories) - 2),
+            'link_type' => $site->link_type ?: 'DoFollow',
+            'turnaround' => $site->publication_time ?: '7 days',
+            'verified' => (bool) $site->verified,
             'thumb_url' => $thumb,
         ];
     }

@@ -40,7 +40,7 @@ class DofollowNofollowAnchorsEnBlogPost
             'primary_locale' => 'en',
             'excerpt' => 'What dofollow and nofollow mean in practice, how to mix anchor text naturally, and what to check before you buy marketplace links.',
             'content' => self::contentHtml(),
-            'author' => 'Arslan Jason',
+            'author' => 'M. Arslan',
             'tags' => [
                 'DoFollow',
                 'NoFollow',
@@ -51,7 +51,18 @@ class DofollowNofollowAnchorsEnBlogPost
             'status' => 'published',
             'featured_image' => self::FEATURED_STORAGE,
             'faq' => self::faqItems(),
+            'translations' => self::translations(),
         ];
+    }
+
+    /**
+     * @return array<string, array<string, string>>
+     */
+    public static function translations(): array
+    {
+        return class_exists(DofollowNofollowAnchorsI18n::class)
+            ? DofollowNofollowAnchorsI18n::all()
+            : [];
     }
 
     /**

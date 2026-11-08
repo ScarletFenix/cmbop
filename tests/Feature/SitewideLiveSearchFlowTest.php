@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Support\MarketingCssBundle;
 use Tests\TestCase;
 
 /**
@@ -27,6 +28,9 @@ class SitewideLiveSearchFlowTest extends TestCase
         $this->assertStringContainsString('Type at least 2 characters to search', $js);
         $this->assertStringContainsString('slb:livesearch', $js);
         $this->assertStringContainsString("reason === 'enter' || reason === 'clear'", $js);
+        $this->assertStringContainsString('isAdminPanel', $js);
+        $this->assertStringContainsString('form-live', $js);
+        $this->assertStringContainsString('role-shell-admin', $js);
     }
 
     public function test_every_layout_loads_the_shared_live_search_assets(): void
@@ -42,7 +46,26 @@ class SitewideLiveSearchFlowTest extends TestCase
         foreach ($layouts as $layout) {
             $markup = (string) file_get_contents(resource_path('views/'.$layout));
             $this->assertStringContainsString('js/slb-live-search.js', $markup, $layout);
+
+            if ($layout === 'layouts/app.blade.php') {
+                $this->assertStringContainsString('MarketingCssBundle', $markup, $layout);
+                $this->assertStringContainsString('assets/css/slb-icons.css', $markup, $layout);
+                $this->assertStringContainsString('partials.slb-icon-draw', $markup, $layout);
+                $this->assertStringNotContainsString('font-awesome', $markup, $layout);
+                $this->assertContains('slb-live-search.css', MarketingCssBundle::FILES);
+                $files = MarketingCssBundle::FILES;
+                $this->assertSame('hover-system.css', $files[array_key_last($files)]);
+                $this->assertStringContainsString('assets/css/slb-icons.css', $markup, $layout);
+                $this->assertStringContainsString('partials.slb-icon-draw', $markup, $layout);
+                $this->assertStringNotContainsString('font-awesome', $markup, $layout);
+
+                continue;
+            }
+
             $this->assertStringContainsString('assets/css/slb-live-search.css', $markup, $layout);
+            $this->assertStringContainsString('assets/css/slb-icons.css', $markup, $layout);
+            $this->assertStringContainsString('partials.slb-icon-draw', $markup, $layout);
+            $this->assertStringNotContainsString('font-awesome', $markup, $layout);
 
             preg_match_all('/<link[^>]+assets\/css\/([a-z-]+)\.css/', $markup, $matches);
             // hover-system must stay last in the assets/css cascade.
@@ -85,7 +108,6 @@ class SitewideLiveSearchFlowTest extends TestCase
             resource_path('views/admin/orders/index.blade.php'),
             resource_path('views/admin/withdrawals.blade.php'),
             resource_path('views/admin/sites.blade.php'),
-            resource_path('views/admin/users.blade.php'),
         ];
         foreach ($mustWaitForHelper as $path) {
             $body = (string) file_get_contents($path);
@@ -106,6 +128,7 @@ class SitewideLiveSearchFlowTest extends TestCase
             resource_path('views/admin/finance-ledger.blade.php'),
             resource_path('views/marketing/history.blade.php'),
             resource_path('views/admin/content-library/index.blade.php'),
+            resource_path('views/admin/users.blade.php'),
         ];
 
         foreach ($forms as $path) {
@@ -137,6 +160,13 @@ class SitewideLiveSearchFlowTest extends TestCase
         $this->assertStringNotContainsString('this.form.submit()', $library);
     }
 
+    public function test_admin_sites_does_not_persist_add_message_from_query_string(): void
+    {
+        $blade = (string) file_get_contents(resource_path('views/admin/sites.blade.php'));
+        $this->assertStringNotContainsString("request()->query('site') > 0 && (int) request()->query('publisher') > 0", $blade);
+        $this->assertStringNotContainsString('Site added. The publisher must open My Sites → Invites and Accept before it appears under Pending.', $blade);
+    }
+
     public function test_shared_search_field_component_has_catalog_chrome(): void
     {
         $component = (string) file_get_contents(resource_path('views/components/slb-search-field.blade.php'));
@@ -157,6 +187,13 @@ class SitewideLiveSearchFlowTest extends TestCase
         ];
         foreach ($ajax as $path) {
             $body = (string) file_get_contents($path);
+            // Admin Orders uses the shared search field; chrome lives in that component.
+            if (str_contains($body, '<x-slb-search-field')) {
+                $this->assertStringContainsString('<x-slb-search-field', $body, basename($path));
+                $this->assertStringNotContainsString('visually-hidden" role="status"', $body, basename($path));
+
+                continue;
+            }
             $this->assertStringContainsString('slb-search-wrap', $body, basename($path));
             $this->assertStringContainsString('slb-search-clear', $body, basename($path));
             $this->assertStringContainsString('form-text slb-search-status', $body, basename($path));
@@ -176,7 +213,6 @@ class SitewideLiveSearchFlowTest extends TestCase
 
         $offContractInline = [
             resource_path('views/pages/blog.blade.php'),
-            resource_path('views/advertiser/partials/catalog-bulk-deals.blade.php'),
         ];
         foreach ($offContractInline as $path) {
             $body = (string) file_get_contents($path);
@@ -184,5 +220,33 @@ class SitewideLiveSearchFlowTest extends TestCase
             $this->assertStringContainsString('slb-search-clear', $body, basename($path));
             $this->assertStringContainsString('slb-search-status', $body, basename($path));
         }
+
+        $bulkDeals = (string) file_get_contents(resource_path('views/advertiser/partials/catalog-bulk-deals.blade.php'));
+        $this->assertStringNotContainsString('id="bulkDealSearch"', $bulkDeals);
+        $this->assertStringContainsString('Save up to', $bulkDeals);
+    }
+
+    public function test_icons_are_local_lucide_not_font_awesome_cdn(): void
+    {
+        $this->assertFileExists(public_path('assets/css/slb-icons.css'));
+        $this->assertFileExists(public_path('js/slb-icon-draw.js'));
+        $iconDraw = (string) file_get_contents(public_path('js/slb-icon-draw.js'));
+        $this->assertStringContainsString('requestIdleCallback', $iconDraw);
+        $this->assertStringContainsString('urlByClass', $iconDraw);
+        $this->assertStringContainsString('BUDGET_MS', $iconDraw);
+        $this->assertStringContainsString('hydrateMapFromSheets', $iconDraw);
+        $this->assertStringContainsString('slb-icons.css', $iconDraw);
+        $this->assertFileExists(public_path('assets/icons/lucide/plus.svg'));
+        $this->assertFileExists(public_path('assets/icons/brands/facebook.svg'));
+        $css = (string) file_get_contents(public_path('assets/css/slb-icons.css'));
+        $this->assertStringContainsString('../icons/lucide/plus.svg', $css);
+        $this->assertStringNotContainsString('font-awesome', $css);
+        $this->assertStringNotContainsString('cdnjs.cloudflare.com', $css);
+
+        $public = (string) file_get_contents(resource_path('views/layouts/app.blade.php'));
+        $this->assertStringContainsString('assets/css/slb-icons.css', $public);
+        $this->assertStringContainsString('partials.slb-icon-draw', $public);
+        $this->assertStringNotContainsString('font-awesome', $public);
+        $this->assertStringNotContainsString('cdnjs.cloudflare.com/ajax/libs/font-awesome', $public);
     }
 }

@@ -1,0 +1,299 @@
+<?php
+
+namespace App\Support;
+
+use App\Models\DepositRequest;
+use App\Models\Order;
+use App\Models\OrderItem;
+use App\Models\User;
+use App\Models\WalletTransaction;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Schema;
+
+/**
+ * Viewer-selected display currency (EUR / GBP / USD).
+ * Guests: session + cookie (and geo). Logged-in users: locked
+ * users.display_currency — header switch, legacy session/cookie, billing
+ * country, and IP are ignored. Empty accounts persist EUR when they have
+ * euro ledger history (deposits, wallet transactions, orders) or none.
+ */
+class DisplayCurrencyPreference
+{
+    public const SESSION_KEY = 'display_currency';
+
+    public const COOKIE_KEY = 'slb_display_currency';
+
+    public const PAY_FROM_KEY = 'deposit_pay_from';
+
+    /**
+     * @return 'EUR'|'GBP'|'USD'|null
+     */
+    public function preferred(?Request $request = null): ?string
+    {
+        $request ??= request();
+        $user = Auth::user();
+
+        if ($user instanceof User && $this->usersHaveDisplayCurrencyColumn()) {
+            return $this->resolveEmptyAccount($user, $request);
+        }
+
+        return $this->explicitGuestChoice($request);
+    }
+
+    /**
+     * Authenticated account currency. Saved users.display_currency wins.
+     * Otherwise euro history (deposits, wallet transactions, orders /
+     * order items) persists EUR, then accounts with no history default
+     * to EUR. Session, cookie, billing country, and IP are never used.
+     *
+     * @return 'EUR'|'GBP'|'USD'
+     */
+    public function resolveEmptyAccount(User $user, ?Request $request = null): string
+    {
+        $fromUser = $this->normalize((string) ($user->display_currency ?? ''));
+        if ($fromUser !== null) {
+            return $fromUser;
+        }
+
+        if ($this->hasEuroLedgerHistory($user)) {
+            return $this->persistResolved($user, 'EUR', $request);
+        }
+
+        return $this->persistResolved($user, 'EUR', $request);
+    }
+
+    /**
+     * Persist a first-choice default (inferred history or EUR) without
+     * overwriting a currency that is already saved.
+     */
+    public function persistResolved(User $user, string $currency, ?Request $request = null): string
+    {
+        $code = $this->normalize($currency) ?? 'EUR';
+        if (! $this->usersHaveDisplayCurrencyColumn()) {
+            return $code;
+        }
+        $existing = $this->normalize((string) ($user->display_currency ?? ''));
+        if ($existing !== null) {
+            return $existing;
+        }
+
+        $user->display_currency = $code;
+        $user->saveQuietly();
+
+        $request ??= request();
+        if ($request instanceof Request && $request->hasSession()) {
+            $request->session()->put(self::SESSION_KEY, $code);
+        }
+
+        return $code;
+    }
+
+    /**
+     * Save the first inferred (or already stored) currency as soon as they sign in.
+     * Existing accounts never take currency from IP or the legacy header cookie.
+     */
+    public function persistAuthenticatedChoice(?User $user = null, ?Request $request = null): ?string
+    {
+        $user ??= Auth::user();
+        if (! $user instanceof User) {
+            return null;
+        }
+
+        // SessionGuard fires Login before setUser(), and after logout
+        // $guard->loggedOut is still true — Auth::user() would be null.
+        if (Auth::id() !== $user->id) {
+            Auth::setUser($user);
+        }
+
+        $code = app(ViewerCountry::class)->displayCurrency($request);
+        $request ??= request();
+        if ($request instanceof Request && $request->hasSession()) {
+            $request->session()->put(self::SESSION_KEY, $code);
+        }
+
+        return $code;
+    }
+
+    /**
+     * Drop session rails + the year-long cookie so the next account on this
+     * browser cannot inherit GBP/USD from the previous user.
+     */
+    public function forgetBrowserChoice(?Request $request = null): void
+    {
+        $request ??= request();
+        if ($request instanceof Request && $request->hasSession()) {
+            $request->session()->forget([
+                self::SESSION_KEY,
+                self::PAY_FROM_KEY,
+                CartDisplayFx::SESSION_KEY,
+            ]);
+        }
+        cookie()->queue(cookie()->forget(self::COOKIE_KEY));
+    }
+
+    public function remember(string $currency, ?Request $request = null): string
+    {
+        $request ??= request();
+        $user = Auth::user();
+        if ($user instanceof User) {
+            return app(ViewerCountry::class)->displayCurrency($request);
+        }
+
+        $code = $this->normalize($currency) ?? 'EUR';
+
+        if ($request instanceof Request) {
+            if ($request->hasSession()) {
+                $request->session()->put(self::SESSION_KEY, $code);
+            }
+            cookie()->queue(cookie(self::COOKIE_KEY, $code, 60 * 24 * 365));
+        }
+
+        return $code;
+    }
+
+    /**
+     * @return 'gbp'|'eur'
+     */
+    public function payFrom(?Request $request = null): string
+    {
+        $request ??= request();
+        $user = Auth::user();
+        if ($user instanceof User) {
+            return AccountCurrency::bankRailForUser($user);
+        }
+
+        return app(ViewerCountry::class)->displayCurrency($request) === 'GBP' ? 'gbp' : 'eur';
+    }
+
+    public function rememberPayFrom(string $payFrom, ?Request $request = null): string
+    {
+        return $this->payFrom($request);
+    }
+
+    /**
+     * @return 'EUR'|'GBP'|'USD'|null
+     */
+    public function normalize(string $raw): ?string
+    {
+        return match (strtoupper(trim($raw))) {
+            'EUR', 'EURO', 'EUROS' => 'EUR',
+            'GBP', 'POUND', 'POUNDS' => 'GBP',
+            'USD', 'DOLLAR', 'DOLLARS' => 'USD',
+            default => null,
+        };
+    }
+
+    /**
+     * @return 'gbp'|'eur'|null
+     */
+    public function normalizePayFrom(string $raw): ?string
+    {
+        return match (strtolower(trim($raw))) {
+            'gbp', 'uk', 'uk_bank', 'pounds' => 'gbp',
+            'eur', 'other', 'sepa', 'iban' => 'eur',
+            default => null,
+        };
+    }
+
+    /**
+     * @return 'EUR'|'GBP'|'USD'|null
+     */
+    public function accountCountryCurrency(?User $user): ?string
+    {
+        if (! $user) {
+            return null;
+        }
+        $country = strtoupper(trim((string) ($user->country ?? '')));
+        if ($country === 'UK' || $country === 'UNITED KINGDOM') {
+            $country = 'GB';
+        }
+        if (in_array($country, ['USA', 'UNITED STATES'], true)) {
+            $country = 'US';
+        }
+        $map = config('fx.country_currency', []);
+        if ($country === '') {
+            return null;
+        }
+        $mapped = is_array($map) ? strtoupper((string) ($map[$country] ?? '')) : '';
+        if (in_array($mapped, ['EUR', 'GBP', 'USD'], true)) {
+            return $mapped;
+        }
+
+        return 'EUR';
+    }
+
+    public function hasEuroLedgerHistory(?User $user): bool
+    {
+        if (! $user) {
+            return false;
+        }
+        try {
+            if (DepositRequest::query()->where('user_id', $user->id)->exists()) {
+                return true;
+            }
+        } catch (\Throwable) {
+        }
+        try {
+            if (WalletTransaction::query()->where('user_id', $user->id)->exists()) {
+                return true;
+            }
+        } catch (\Throwable) {
+        }
+        try {
+            if (Order::query()->where('user_id', $user->id)->exists()) {
+                return true;
+            }
+        } catch (\Throwable) {
+        }
+        try {
+            if (OrderItem::query()->whereHas('order', function ($query) use ($user): void {
+                $query->where('user_id', $user->id);
+            })->exists()) {
+                return true;
+            }
+        } catch (\Throwable) {
+        }
+        try {
+            if (OrderItem::query()->whereHas('site', function ($query) use ($user): void {
+                $query->where('publisher_id', $user->id);
+            })->exists()) {
+                return true;
+            }
+        } catch (\Throwable) {
+        }
+
+        return false;
+    }
+
+    /**
+     * @return 'EUR'|'GBP'|'USD'|null
+     */
+    private function explicitGuestChoice(?Request $request): ?string
+    {
+        if (! $request instanceof Request) {
+            return null;
+        }
+        if ($request->hasSession()) {
+            $fromSession = $this->normalize((string) $request->session()->get(self::SESSION_KEY, ''));
+            if ($fromSession !== null) {
+                return $fromSession;
+            }
+        }
+        $fromCookie = $this->normalize((string) $request->cookie(self::COOKIE_KEY, ''));
+        if ($fromCookie !== null) {
+            return $fromCookie;
+        }
+
+        return null;
+    }
+
+    private function usersHaveDisplayCurrencyColumn(): bool
+    {
+        try {
+            return Schema::hasColumn('users', 'display_currency');
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+}

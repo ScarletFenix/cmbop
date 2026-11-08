@@ -9,7 +9,6 @@ use App\Models\User;
 use App\Models\Wallet;
 use App\Services\Catalog\SiteUrlVisibility;
 use App\Services\ContentUpload\ScheduledOrderService;
-use App\Services\PlatformFeeService;
 use App\Services\Wallet\WalletOverviewService;
 use App\Support\AdvertiserOrderStatus;
 use Illuminate\Support\Collection;
@@ -26,7 +25,6 @@ class AdvertiserDashboardService
         private AdvertiserSpendService $spend,
         private SpendBudgetService $budgets,
         private WalletOverviewService $walletOverview,
-        private PlatformFeeService $fees,
         private ScheduledOrderService $scheduler,
     ) {}
 
@@ -43,7 +41,8 @@ class AdvertiserDashboardService
      *     spendSummary: array<string, mixed>,
      *     spendCandles: array<string, mixed>,
      *     primaryAction: string,
-     *     welcomeSituation: string
+     *     welcomeSituation: string,
+     *     needsActionOrders: Collection
      * }
      */
     public function build(User $user): array
@@ -77,6 +76,7 @@ class AdvertiserDashboardService
             0
         );
         $recentOrders = $this->safe($user, 'recent orders', fn () => $this->recentOrders((int) $user->id), collect());
+        $needsActionOrders = $this->safe($user, 'needs-you queue', fn () => $this->needsActionOrders((int) $user->id), collect());
         $recommendedSites = $this->safe($user, 'recommended sites', fn () => $this->recommendedSites($user), collect());
         $this->safe($user, 'url visibility warm', function () use ($visibility, $user, $recommendedSites) {
             $visibility->warmFor($user, $recommendedSites);
@@ -89,6 +89,7 @@ class AdvertiserDashboardService
         return [
             'stats' => $stats,
             'recentOrders' => $recentOrders instanceof Collection ? $recentOrders : collect(),
+            'needsActionOrders' => $needsActionOrders instanceof Collection ? $needsActionOrders : collect(),
             'recommendedSites' => $recommendedSites instanceof Collection ? $recommendedSites : collect(),
             'hasOrderableArticle' => (bool) $this->safe(
                 $user,
@@ -219,7 +220,7 @@ class AdvertiserDashboardService
      */
     public function orderStats(int $userId): array
     {
-        $base = Order::query()->where('user_id', $userId);
+        $base = Order::query()->where('user_id', $userId)->notSandbox();
 
         $needsReview = AdvertiserOrderStatus::constrainReviewReady(clone $base)->count();
         $reviewWaitingUrl = (clone $base)
@@ -269,6 +270,7 @@ class AdvertiserDashboardService
     {
         return Order::query()
             ->where('user_id', $userId)
+            ->notSandbox()
             ->with(['items' => function ($q) {
                 $cols = [
                     'id',
@@ -288,6 +290,33 @@ class AdvertiserDashboardService
             ->latest()
             ->take(5)
             ->get();
+    }
+
+    /**
+     * @return Collection<int, Order>
+     */
+    protected function needsActionOrders(int $userId): Collection
+    {
+        if ($userId <= 0) {
+            return collect();
+        }
+
+        $with = ['items'];
+        if (Schema::hasColumn('orders', 'project_id') && Schema::hasTable('projects')) {
+            $with[] = 'project:id,project_name';
+        }
+
+        return AdvertiserOrderStatus::needsActionQuery($userId)
+            ->with($with)
+            ->latest('id')
+            ->take(8)
+            ->get()
+            ->each(function (Order $order) {
+                $item = $order->items->first();
+                $meta = AdvertiserOrderStatus::meta($order, $item);
+                $order->setAttribute('status_label', $meta['label']);
+                $order->setAttribute('next_action', $meta['next']);
+            });
     }
 
     protected function recommendedSites(?User $user = null): Collection
@@ -313,8 +342,13 @@ class AdvertiserDashboardService
             ->orderByDesc('traffic')
             ->take(3)
             ->get()
-            ->map(function ($site) {
-                $site->display_price = $this->fees->advertiserBase((float) $site->price);
+            ->map(function ($site) use ($user) {
+                // Same pay figure the catalog paints (publisher base + hidden
+                // fee, then sale ?? list). Do not mark up $site->price again —
+                // that path skipped catalogPricesForViewer and could show the
+                // pre-sale list or a double fee if price was already marked up.
+                $viewPrices = $site->catalogPricesForViewer($user);
+                $site->display_price = $viewPrices['sale'] ?? $viewPrices['list'];
 
                 return $site;
             });

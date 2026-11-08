@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Mail\SiteDiscountEnded;
 use App\Models\ActivityLog;
 use App\Models\BulkSiteRequest;
+use App\Models\FeatureCredit;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\SiteFeaturePurchase;
@@ -193,7 +194,7 @@ class SitePromotionTest extends TestCase
             ->postJson(route('publisher.sites.bulk-join', $site->id), ['percent' => 12])
             ->assertOk()
             ->assertJsonPath('success', true)
-            ->assertJsonFragment(['message' => 'Joined bulk discount programme (12% on 3–5 articles). Exclusive better-of with any timed sale — not stacked. Off your list; advertisers pay list plus the platform fee, then this same percent.']);
+            ->assertJsonFragment(['message' => 'Joined bulk discount programme (3 for −12%). Exclusive better-of with any timed sale — not stacked. Off your list; advertisers pay list plus the platform fee, then this same percent.']);
 
         $this->assertSame(1, ActivityLog::query()->where('action', 'site.bulk_discount_joined')->count());
 
@@ -232,7 +233,7 @@ class SitePromotionTest extends TestCase
             ->postJson(route('publisher.sites.bulk-join', $site->id), ['percent' => 80])
             ->assertOk()
             ->assertJsonPath('success', true)
-            ->assertJsonFragment(['message' => 'Updated bulk discount to 80% on 3–5 articles. Exclusive better-of with any timed sale — not stacked. Off your list; advertisers pay list plus the platform fee, then this same percent.']);
+            ->assertJsonFragment(['message' => 'Updated bulk discount to 3 for −80%. Exclusive better-of with any timed sale — not stacked. Off your list; advertisers pay list plus the platform fee, then this same percent.']);
 
         $this->assertSame(80.0, (float) $site->fresh()->bulk_discount_percent);
         $this->assertSame(1, ActivityLog::query()->where('action', 'site.bulk_discount_joined')->count());
@@ -286,6 +287,131 @@ class SitePromotionTest extends TestCase
             ->assertStatus(422);
 
         $this->assertFalse($site->fresh()->joinsBulkDiscount());
+    }
+
+    public function test_publisher_can_set_all_three_pack_tiers(): void
+    {
+        $publisher = $this->publisherWithWallet();
+        $site = $this->site($publisher);
+
+        $this->actingAs($publisher)
+            ->postJson(route('publisher.sites.bulk-join', $site->id), [
+                'percent' => 10,
+                'percent_5' => 15,
+                'percent_10' => 25,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonFragment(['message' => 'Joined bulk discount programme (3 for −10% · 5 for −15% · 10 for −25%). Exclusive better-of with any timed sale — not stacked. Off your list; advertisers pay list plus the platform fee, then this same percent.']);
+
+        $site->refresh();
+        $this->assertTrue($site->joinsBulkDiscount());
+        $this->assertSame(10.0, (float) $site->bulk_discount_percent);
+        $this->assertSame(15.0, (float) $site->bulk_discount_percent_5);
+        $this->assertSame(25.0, (float) $site->bulk_discount_percent_10);
+        $this->assertSame('3 for −10% · 5 for −15% · 10 for −25%', $site->bulkDiscountLabel());
+    }
+
+    public function test_publisher_rejects_non_monotonic_pack_tiers(): void
+    {
+        $publisher = $this->publisherWithWallet();
+        $site = $this->site($publisher);
+
+        $this->actingAs($publisher)
+            ->postJson(route('publisher.sites.bulk-join', $site->id), [
+                'percent' => 20,
+                'percent_5' => 15,
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('percent_5');
+
+        $this->assertFalse($site->fresh()->joinsBulkDiscount());
+    }
+
+    public function test_publisher_can_join_with_five_or_ten_tier_only(): void
+    {
+        $publisher = $this->publisherWithWallet();
+        $site = $this->site($publisher);
+
+        $this->actingAs($publisher)
+            ->postJson(route('publisher.sites.bulk-join', $site->id), [
+                'percent_5' => 15,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $site->refresh();
+        $this->assertTrue($site->joinsBulkDiscount());
+        $this->assertNull($site->bulk_discount_percent);
+        $this->assertSame(15.0, (float) $site->bulk_discount_percent_5);
+        $this->assertSame('5 for −15%', $site->bulkDiscountLabel());
+    }
+
+    public function test_bulk_discount_tiers_apply_for_qty_3_4_5_9_10_12(): void
+    {
+        $publisher = $this->publisherWithWallet();
+        $site = $this->site($publisher);
+        app(SitePromotionService::class)->joinBulkDiscount($site, 10, 15, 25, true);
+        $site->refresh();
+        $pricing = app(CartPricingService::class);
+
+        $this->assertSame(10.0, $pricing->bulkDiscountPercentForQuantity($site, 3));
+        $this->assertSame(10.0, $pricing->bulkDiscountPercentForQuantity($site, 4));
+        $this->assertSame(15.0, $pricing->bulkDiscountPercentForQuantity($site, 5));
+        $this->assertSame(15.0, $pricing->bulkDiscountPercentForQuantity($site, 9));
+        $this->assertSame(25.0, $pricing->bulkDiscountPercentForQuantity($site, 10));
+        $this->assertSame(25.0, $pricing->bulkDiscountPercentForQuantity($site, 12));
+        $this->assertNull($pricing->bulkDiscountPercentForQuantity($site, 2));
+    }
+
+    public function test_bulk_discount_falls_back_to_the_next_lower_set_tier(): void
+    {
+        $publisher = $this->publisherWithWallet();
+        $pricing = app(CartPricingService::class);
+        $promotions = app(SitePromotionService::class);
+
+        $only3 = $this->site($publisher);
+        $promotions->joinBulkDiscount($only3, 10, null, null, true);
+        $only3->refresh();
+        $this->assertSame(10.0, $pricing->bulkDiscountPercentForQuantity($only3, 3));
+        $this->assertSame(10.0, $pricing->bulkDiscountPercentForQuantity($only3, 5));
+        $this->assertSame(10.0, $pricing->bulkDiscountPercentForQuantity($only3, 9));
+        $this->assertSame(10.0, $pricing->bulkDiscountPercentForQuantity($only3, 10));
+        $this->assertSame(10.0, $pricing->bulkDiscountPercentForQuantity($only3, 12));
+
+        $only5 = Site::create(array_merge($only3->only([
+            'publisher_id', 'da', 'dr', 'traffic', 'country', 'language', 'category',
+            'price', 'publication_time', 'description', 'link_type', 'verified', 'active',
+        ]), [
+            'site_name' => 'Five Only',
+            'site_url' => 'https://five-only.example',
+            'domain' => 'five-only.example',
+        ]));
+        $promotions->joinBulkDiscount($only5, null, 15, null, true);
+        $only5->refresh();
+        $this->assertNull($pricing->bulkDiscountPercentForQuantity($only5, 3));
+        $this->assertNull($pricing->bulkDiscountPercentForQuantity($only5, 4));
+        $this->assertSame(15.0, $pricing->bulkDiscountPercentForQuantity($only5, 5));
+        $this->assertSame(15.0, $pricing->bulkDiscountPercentForQuantity($only5, 9));
+        $this->assertSame(15.0, $pricing->bulkDiscountPercentForQuantity($only5, 10));
+        $this->assertSame(15.0, $pricing->bulkDiscountPercentForQuantity($only5, 12));
+
+        $threeAndTen = Site::create(array_merge($only3->only([
+            'publisher_id', 'da', 'dr', 'traffic', 'country', 'language', 'category',
+            'price', 'publication_time', 'description', 'link_type', 'verified', 'active',
+        ]), [
+            'site_name' => 'Three And Ten',
+            'site_url' => 'https://three-ten.example',
+            'domain' => 'three-ten.example',
+        ]));
+        $promotions->joinBulkDiscount($threeAndTen, 10, null, 25, true);
+        $threeAndTen->refresh();
+        $this->assertSame(10.0, $pricing->bulkDiscountPercentForQuantity($threeAndTen, 3));
+        $this->assertSame(10.0, $pricing->bulkDiscountPercentForQuantity($threeAndTen, 4));
+        $this->assertSame(10.0, $pricing->bulkDiscountPercentForQuantity($threeAndTen, 5));
+        $this->assertSame(10.0, $pricing->bulkDiscountPercentForQuantity($threeAndTen, 9));
+        $this->assertSame(25.0, $pricing->bulkDiscountPercentForQuantity($threeAndTen, 10));
+        $this->assertSame(25.0, $pricing->bulkDiscountPercentForQuantity($threeAndTen, 12));
     }
 
     public function test_custom_discount_and_expiry_notification(): void
@@ -650,5 +776,200 @@ class SitePromotionTest extends TestCase
         $this->assertStringNotContainsString('SQLSTATE', $result['message']);
         $this->assertStringNotContainsString('wallets', strtolower($result['message']));
         $this->assertSame('Could not feature this site. Please try again.', $result['message']);
+    }
+
+    public function test_admin_grant_stores_a_credit_without_featuring_or_charging(): void
+    {
+        $adminRole = Role::firstOrCreate(['name' => 'admin']);
+        $admin = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $adminRole->id,
+        ]);
+        $admin->roles()->syncWithoutDetaching([$adminRole->id]);
+        $publisher = $this->publisherWithWallet(50);
+        $site = $this->site($publisher);
+
+        $this->actingAs($admin)
+            ->post(route('admin.promotions.feature-credits.store'), [
+                'user_id' => $publisher->id,
+                'site_id' => $site->id,
+                'days' => 30,
+            ])
+            ->assertRedirect(route('admin.promotions.index'))
+            ->assertSessionHas('success');
+
+        $this->assertDatabaseHas('feature_credits', [
+            'user_id' => $publisher->id,
+            'days' => 30,
+            'granted_by' => $admin->id,
+            'site_id' => $site->id,
+        ]);
+        $this->assertNull(FeatureCredit::query()->where('user_id', $publisher->id)->value('used_at'));
+        $this->assertFalse($site->fresh()->isFeatured());
+        $this->assertSame(0, SiteFeaturePurchase::query()->count());
+        $this->assertEqualsWithDelta(50.0, (float) Wallet::where('user_id', $publisher->id)->value('balance'), 0.01);
+    }
+
+    public function test_admin_feature_credit_sites_are_limited_to_the_publisher(): void
+    {
+        $adminRole = Role::firstOrCreate(['name' => 'admin']);
+        $admin = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $adminRole->id,
+        ]);
+        $admin->roles()->syncWithoutDetaching([$adminRole->id]);
+        $publisher = $this->publisherWithWallet(50);
+        $site = $this->site($publisher);
+        $advertiserRole = Role::firstOrCreate(['name' => 'advertiser']);
+        $advertiser = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $advertiserRole->id,
+        ]);
+        $advertiser->roles()->syncWithoutDetaching([$advertiserRole->id]);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.promotions.feature-credits.sites', ['user_id' => $publisher->id]))
+            ->assertOk()
+            ->assertJsonPath('sites.0.id', $site->id)
+            ->assertJsonPath('sites.0.domain', 'promo.example');
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.promotions.feature-credits.sites', ['user_id' => $advertiser->id]))
+            ->assertNotFound();
+
+        $hub = $this->actingAs($admin)
+            ->get(route('admin.promotions.index'))
+            ->assertOk()
+            ->getContent();
+        $this->assertStringContainsString(route('admin.promotions.feature-credits.users'), $hub);
+        $this->assertStringNotContainsString((string) $advertiser->email, $hub);
+        $this->assertStringNotContainsString((string) $publisher->email, $hub);
+
+        $search = $this->actingAs($admin)
+            ->getJson(route('admin.promotions.feature-credits.users', ['q' => $publisher->email]))
+            ->assertOk()
+            ->json('options');
+        $this->assertTrue(collect($search)->contains(fn ($row) => str_contains((string) ($row['label'] ?? ''), (string) $publisher->email)));
+        $this->assertFalse(collect($search)->contains(fn ($row) => str_contains((string) ($row['label'] ?? ''), (string) $advertiser->email)));
+    }
+
+    public function test_non_admin_cannot_grant_a_feature_credit(): void
+    {
+        $publisher = $this->publisherWithWallet();
+
+        $this->actingAs($publisher)
+            ->post(route('admin.promotions.feature-credits.store'), [
+                'user_id' => $publisher->id,
+                'site_id' => $this->site($publisher)->id,
+                'days' => 30,
+            ])
+            ->assertForbidden();
+
+        $this->assertSame(0, FeatureCredit::query()->count());
+    }
+
+    public function test_publisher_can_spend_a_feature_credit_once_without_a_wallet_charge(): void
+    {
+        $publisher = $this->publisherWithWallet(50);
+        $site = $this->site($publisher);
+        $credit = FeatureCredit::query()->create([
+            'user_id' => $publisher->id,
+            'days' => 30,
+            'granted_by' => $publisher->id,
+        ]);
+
+        $this->actingAs($publisher)
+            ->postJson(route('publisher.sites.feature.credit', $site->id), [
+                'credit_id' => $credit->id,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertTrue($site->fresh()->isFeatured());
+        $this->assertNotNull($credit->fresh()->used_at);
+        $this->assertSame($site->id, (int) $credit->fresh()->site_id);
+        $purchase = SiteFeaturePurchase::query()->first();
+        $this->assertNotNull($purchase);
+        $this->assertSame('admin_grant', $purchase->payment_method);
+        $this->assertEqualsWithDelta(0.0, (float) $purchase->amount, 0.01);
+        $this->assertSame(30, (int) $purchase->days);
+        $this->assertEqualsWithDelta(50.0, (float) Wallet::where('user_id', $publisher->id)->value('balance'), 0.01);
+
+        $this->actingAs($publisher)
+            ->postJson(route('publisher.sites.feature.credit', $site->id), [
+                'credit_id' => $credit->id,
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+
+        $this->assertSame(1, SiteFeaturePurchase::query()->count());
+    }
+
+    public function test_feature_credit_cannot_be_used_on_a_different_site(): void
+    {
+        $publisher = $this->publisherWithWallet(50);
+        $site = $this->site($publisher);
+        $other = $site->replicate();
+        $other->domain = 'other-promo.example';
+        $other->site_url = 'https://other-promo.example';
+        $other->save();
+        $credit = FeatureCredit::query()->create([
+            'user_id' => $publisher->id,
+            'site_id' => $site->id,
+            'days' => 10,
+        ]);
+
+        $this->actingAs($publisher)
+            ->postJson(route('publisher.sites.feature.credit', $other->id), [
+                'credit_id' => $credit->id,
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+
+        $this->assertNull($credit->fresh()->used_at);
+        $this->assertFalse($other->fresh()->isFeatured());
+        $this->assertFalse($site->fresh()->isFeatured());
+    }
+
+    public function test_archived_site_cannot_spend_a_feature_credit(): void
+    {
+        $publisher = $this->publisherWithWallet(50);
+        $site = $this->site($publisher);
+        $site->update(['archived_at' => now()]);
+        $credit = FeatureCredit::query()->create([
+            'user_id' => $publisher->id,
+            'days' => 14,
+        ]);
+
+        $this->actingAs($publisher)
+            ->postJson(route('publisher.sites.feature.credit', $site->id), [
+                'credit_id' => $credit->id,
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+
+        $this->assertNull($credit->fresh()->used_at);
+        $this->assertFalse($site->fresh()->isFeatured());
+    }
+
+    public function test_wallet_summary_lists_unused_feature_credits(): void
+    {
+        $publisher = $this->publisherWithWallet();
+        $credit = FeatureCredit::query()->create([
+            'user_id' => $publisher->id,
+            'days' => 30,
+        ]);
+        FeatureCredit::query()->create([
+            'user_id' => $publisher->id,
+            'days' => 7,
+            'used_at' => now(),
+        ]);
+
+        $this->actingAs($publisher)
+            ->getJson(route('publisher.promotions.wallet'))
+            ->assertOk()
+            ->assertJsonPath('credits.0.id', $credit->id)
+            ->assertJsonPath('credits.0.days', 30)
+            ->assertJsonCount(1, 'credits');
     }
 }

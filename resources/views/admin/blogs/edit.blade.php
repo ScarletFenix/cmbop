@@ -1,5 +1,9 @@
 @extends('admin.layouts.app')
 
+@php
+    $listUrl = \App\Support\AdminBlog::listUrl($indexQuery ?? []);
+@endphp
+
 @section('content')
 <div class="container-fluid">
     <div class="row mb-4">
@@ -8,7 +12,7 @@
             <p class="text-muted">Update your blog post</p>
         </div>
         <div class="col-md-6 text-end">
-            <a href="{{ route('admin.blogs.index') }}" class="btn btn-secondary">
+            <a href="{{ $listUrl }}" class="btn btn-secondary">
                 <i class="fa fa-arrow-left me-2"></i> Back to Blogs
             </a>
         </div>
@@ -19,142 +23,33 @@
             <strong>Please fix the following errors:</strong>
             <ul class="mb-0 mt-2">
                 @foreach($errors->all() as $error)
-                    <li>{{ $error }}</li>
+                    <li>{{ scalar_text($error) }}</li>
                 @endforeach
             </ul>
             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Dismiss message"></button>
         </div>
     @endif
 
+    @if($blog->curated_key)
+        <div class="alert alert-info">
+            Pillar post (<code>{{ $blog->curated_key }}</code>). Sync skips this row after you edit. Delete stays deleted.
+        </div>
+    @endif
+
     <div class="card border-0 shadow-sm">
         <div class="card-body">
-            <form action="{{ route('admin.blogs.update', $blog->id) }}" method="POST" enctype="multipart/form-data" id="blogForm">
+            <form action="{{ route('admin.blogs.update', $blog->id) }}" method="POST" enctype="multipart/form-data" id="blogForm" class="admin-deposits-filters" data-admin-filter-live="1">
                 @csrf
                 @method('PUT')
 
                 <div class="row">
                     <div class="col-md-8">
-                        @php
-                            $translationMap = $blog->translations->keyBy('locale');
-                        @endphp
-                        <ul class="nav nav-tabs mb-3" role="tablist">
-                            @foreach(($locales ?? (class_exists(\App\Support\PublicI18n::class) ? \App\Support\PublicI18n::supported() : ['en'])) as $index => $locale)
-                                <li class="nav-item" role="presentation">
-                                    <button
-                                        class="nav-link {{ $index === 0 ? 'active' : '' }}"
-                                        data-bs-toggle="tab"
-                                        data-bs-target="#locale-pane-{{ $locale }}"
-                                        type="button"
-                                        role="tab"
-                                    >
-                                        {{ class_exists(\App\Support\PublicI18n::class) ? \App\Support\PublicI18n::shortLabel($locale) : strtoupper($locale) }} {!! $locale === 'en' ? '<span class="text-danger">*</span>' : '' !!}
-                                    </button>
-                                </li>
-                            @endforeach
-                        </ul>
-
-                        <div class="tab-content border rounded p-3 bg-white">
-                            @foreach(($locales ?? (class_exists(\App\Support\PublicI18n::class) ? \App\Support\PublicI18n::supported() : ['en'])) as $index => $locale)
-                                @php
-                                    $prefix = "translations.$locale";
-                                    $t = $translationMap[$locale] ?? null;
-                                @endphp
-                                <div class="tab-pane fade {{ $index === 0 ? 'show active' : '' }}" id="locale-pane-{{ $locale }}" role="tabpanel">
-                                    <div class="mb-3">
-                                        <label class="form-label fw-semibold">Title {!! $locale === 'en' ? '<span class="text-danger">*</span>' : '' !!}</label>
-                                        <input
-                                            type="text"
-                                            name="translations[{{ $locale }}][title]"
-                                            class="form-control form-control-lg @error($prefix.'.title') is-invalid @enderror"
-                                            value="{{ old_text('translations.'.$locale.'.title', $t?->title ?? ($locale === 'en' ? $blog->title : '')) }}"
-                                            {{ $locale === 'en' ? 'required' : '' }}
-                                        >
-                                        @error($prefix.'.title')
-                                            <div class="invalid-feedback">{{ $message }}</div>
-                                        @enderror
-                                    </div>
-
-                                    <div class="mb-3">
-                                        <label class="form-label fw-semibold">Slug</label>
-                                        <input
-                                            type="text"
-                                            name="translations[{{ $locale }}][slug]"
-                                            class="form-control @error($prefix.'.slug') is-invalid @enderror"
-                                            value="{{ old_text('translations.'.$locale.'.slug', $t?->slug ?? ($locale === 'en' ? $blog->slug : '')) }}"
-                                            placeholder="Leave blank to auto-generate from title"
-                                        >
-                                        @error($prefix.'.slug')
-                                            <div class="invalid-feedback">{{ $message }}</div>
-                                        @enderror
-                                    </div>
-
-                                    <div class="mb-3">
-                                        <label class="form-label fw-semibold">Meta excerpt</label>
-                                        <textarea
-                                            name="translations[{{ $locale }}][excerpt]"
-                                            rows="3"
-                                            class="form-control @error($prefix.'.excerpt') is-invalid @enderror"
-                                            maxlength="300"
-                                        >{{ old_text('translations.'.$locale.'.excerpt', $t?->excerpt ?? ($locale === 'en' ? $blog->excerpt : '')) }}</textarea>
-                                        @error($prefix.'.excerpt')
-                                            <div class="invalid-feedback">{{ $message }}</div>
-                                        @enderror
-                                    </div>
-
-                                    <div class="mb-3">
-                                        <label class="form-label fw-semibold">SEO title</label>
-                                        <input
-                                            type="text"
-                                            name="translations[{{ $locale }}][meta_title]"
-                                            class="form-control @error($prefix.'.meta_title') is-invalid @enderror"
-                                            value="{{ old_text('translations.'.$locale.'.meta_title', $t?->meta_title) }}"
-                                            maxlength="70"
-                                            placeholder="Optional. Defaults to the post title."
-                                        >
-                                        @error($prefix.'.meta_title')
-                                            <div class="invalid-feedback">{{ $message }}</div>
-                                        @enderror
-                                    </div>
-
-                                    <div class="mb-3">
-                                        <label class="form-label fw-semibold">SEO description</label>
-                                        <textarea
-                                            name="translations[{{ $locale }}][meta_description]"
-                                            rows="2"
-                                            class="form-control @error($prefix.'.meta_description') is-invalid @enderror"
-                                            maxlength="180"
-                                            placeholder="Optional. Defaults to the meta excerpt."
-                                        >{{ old_text('translations.'.$locale.'.meta_description', $t?->meta_description) }}</textarea>
-                                        @error($prefix.'.meta_description')
-                                            <div class="invalid-feedback">{{ $message }}</div>
-                                        @enderror
-                                    </div>
-
-                                    <div class="form-check mb-3">
-                                        <input type="hidden" name="translations[{{ $locale }}][is_published]" value="0">
-                                        <input
-                                            type="checkbox"
-                                            name="translations[{{ $locale }}][is_published]"
-                                            id="published-{{ $locale }}"
-                                            class="form-check-input"
-                                            value="1"
-                                            {{ old('translations.'.$locale.'.is_published', $t?->is_published ?? true) ? 'checked' : '' }}
-                                        >
-                                        <label class="form-check-label" for="published-{{ $locale }}">Publish this locale</label>
-                                    </div>
-
-                                    <div class="mb-3">
-                                        <label class="form-label fw-semibold">Content {!! $locale === 'en' ? '<span class="text-danger">*</span>' : '' !!}</label>
-                                        <div id="quillEditor-{{ $locale }}" class="border rounded bg-white" style="height: 320px;"></div>
-                                        <input type="hidden" name="translations[{{ $locale }}][content]" id="contentInput-{{ $locale }}">
-                                        <script type="application/json" id="existingContent-{{ $locale }}">{!! \App\Services\BlogHtmlSanitizer::encodeForEditor(old('translations.'.$locale.'.content', $t?->content ?? ($locale === 'en' ? $blog->content : ''))) !!}</script>
-                                        @error($prefix.'.content')
-                                            <div class="text-danger small mt-1">{{ $message }}</div>
-                                        @enderror
-                                    </div>
-                                </div>
-                            @endforeach
-                        </div>
+                        @include('admin.blogs.partials.locale-tabs', [
+                            'formLocales' => $formLocales ?? ['en'],
+                            'allLocales' => $locales ?? \App\Support\AdminBlog::publicLocales(),
+                            'blog' => $blog,
+                            'translationMap' => $blog->translations->keyBy('locale'),
+                        ])
 
                         @include('admin.blogs.partials.article-images-manager')
                     </div>
@@ -197,6 +92,9 @@
                             @error('author')
                                 <div class="invalid-feedback">{{ $message }}</div>
                             @enderror
+                            @if($blog->created_by)
+                                <div class="small mt-1"><a href="{{ route('admin.users.show', $blog->created_by) }}">Open user</a></div>
+                            @endif
                         </div>
 
                         <!-- Tags -->
@@ -212,12 +110,12 @@
                         <div class="mb-3">
                             <label class="form-label fw-semibold">Primary locale</label>
                             <select name="primary_locale" class="form-select @error('primary_locale') is-invalid @enderror">
-                                <option value="">Auto (current URL locale)</option>
-                                @foreach(($locales ?? (class_exists(\App\Support\PublicI18n::class) ? \App\Support\PublicI18n::supported() : ['en'])) as $code)
-                                    <option value="{{ $code }}" {{ old_text('primary_locale', $blog->primary_locale) === $code ? 'selected' : '' }}>{{ strtoupper($code) }}</option>
+                                <option value="" {{ old_text('primary_locale', $blog->primary_locale) === '' ? 'selected' : '' }}>English (UK) — default canonical</option>
+                                @foreach(($locales ?? \App\Support\AdminBlog::publicLocales()) as $code)
+                                    <option value="{{ $code }}" {{ old_text('primary_locale', $blog->primary_locale) === $code ? 'selected' : '' }}>{{ \App\Support\AdminBlog::shortLabel($code) }}</option>
                                 @endforeach
                             </select>
-                            <small class="text-muted">Preferred canonical locale for this post</small>
+                            <small class="text-muted">Public <code>/blog/{slug}</code> uses this locale’s slug. English title and body are still required.</small>
                             @error('primary_locale')
                                 <div class="invalid-feedback">{{ $message }}</div>
                             @enderror
@@ -227,8 +125,8 @@
                         <div class="mb-3">
                             <label class="form-label fw-semibold">Status <span class="text-danger">*</span></label>
                             <select name="status" class="form-select @error('status') is-invalid @enderror" required>
-                                <option value="draft" {{ old('status', $blog->status) == 'draft' ? 'selected' : '' }}>Draft</option>
-                                <option value="published" {{ old('status', $blog->status) == 'published' ? 'selected' : '' }}>Published</option>
+                                <option value="draft" {{ \App\Support\AdminBlog::normalizeStatus(old_text('status', $blog->status)) === 'draft' ? 'selected' : '' }}>Draft</option>
+                                <option value="published" {{ \App\Support\AdminBlog::normalizeStatus(old_text('status', $blog->status)) === 'published' ? 'selected' : '' }}>Published</option>
                             </select>
                             @error('status')
                                 <div class="invalid-feedback">{{ $message }}</div>
@@ -241,7 +139,7 @@
                     <button type="submit" class="btn btn-primary px-4" id="submitBtn">
                         <i class="fa fa-save me-2"></i> Update Blog
                     </button>
-                    <a href="{{ route('admin.blogs.index') }}" class="btn btn-secondary px-4">
+                    <a href="{{ $listUrl }}" class="btn btn-secondary px-4">
                         <i class="fa fa-times me-2"></i> Cancel
                     </a>
                 </div>

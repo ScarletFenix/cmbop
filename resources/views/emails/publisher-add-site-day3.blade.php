@@ -3,7 +3,7 @@
 
 Hi {{ $firstName }},
 
-You're registered as a publisher on **{{ $brand['name'] ?? config('app.name') }}**, but you haven't added a website yet.
+You're registered as a publisher on {{ $brand['name'] ?? config('app.name') }}, but you haven't added a website yet.
 
 Listing a site is how advertisers find you: set your niche, pricing, and availability, then start receiving guest-post orders with clear briefs and wallet payouts.
 

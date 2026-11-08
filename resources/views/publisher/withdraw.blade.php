@@ -1,5 +1,7 @@
 @extends('publisher.layouts.app')
 
+@section('title', 'Withdraw')
+
 @section('content')
 
 @php
@@ -15,6 +17,8 @@
     $supportEmail = $supportEmail ?? config('email_notifications.brand.support_email', config('mail.from.address'));
     $platformChargePercent = (float) ($platformChargePercent ?? 0);
     $minWithdrawalAmount = (float) ($minWithdrawalAmount ?? 20);
+    $walletCurrency = $walletCurrency ?? ($wallet->currency ?? 'EUR');
+    $publisherWallets = $publisherWallets ?? collect();
     $formBlocked = $hasDebt || $availableBalance < $minWithdrawalAmount;
     $preferredMethod = $payoutProfile['preferred_method'] ?? null;
     $availableMethods = $availableMethods ?? app(\App\Services\Wallet\PayoutProfileService::class)->availableMethods(auth()->user());
@@ -24,6 +28,15 @@
         'wise' => 'Wise',
         'crypto' => 'Cryptocurrency',
     ];
+    $allowedWithdrawalMethods = $allowedWithdrawalMethods ?? ['bank', 'paypal', 'wise', 'crypto'];
+    $allowedMethodsByCurrency = $allowedMethodsByCurrency ?? [$walletCurrency => $allowedWithdrawalMethods];
+    $savedMethods = $savedMethods ?? $availableMethods;
+    $conversionFeePercents = $conversionFeePercents ?? [];
+    $usdConversionFeePercent = (float) ($usdConversionFeePercent ?? ($conversionFeePercents[$walletCurrency] ?? 0));
+    $minWithdrawalAmounts = $minWithdrawalAmounts ?? [$walletCurrency => $minWithdrawalAmount];
+    $visibleMethods = $payoutLocked
+        ? array_values(array_intersect($availableMethods, $allowedWithdrawalMethods))
+        : $allowedWithdrawalMethods;
     $maskEmail = static function (?string $email): string {
         if (! $email || ! str_contains($email, '@')) {
             return '—';
@@ -46,13 +59,13 @@
     $recentWithdrawals = $recentWithdrawals ?? collect();
 @endphp
 
-<link href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.all.min.js"></script>
+<link rel="stylesheet" href="{{ asset('assets/css/publisher-notice.css') }}?v={{ @filemtime(public_path('assets/css/publisher-notice.css')) ?: '1' }}">
+<script src="{{ asset('assets/vendor/sweetalert2/sweetalert2.min.js') }}?v={{ @filemtime(public_path('assets/vendor/sweetalert2/sweetalert2.min.js')) ?: '1' }}"></script>
 
-<div class="container-fluid">
+<div class="container-fluid publisher-withdraw">
     <div class="row mb-4 align-items-end g-3">
         <div class="col-md-8">
-            <h2 class="mb-1 fw-semibold">Withdraw Funds</h2>
+            <h2 class="mb-1 fw-semibold">Withdraw</h2>
             <p class="text-muted mb-0">Request a withdrawal of your earnings. Withdrawals are processed within 1–2 business days.</p>
         </div>
         <div class="col-md-4 text-md-end">
@@ -63,16 +76,30 @@
     </div>
 
     @if($hasDebt)
-        <div class="alert alert-danger border-0 shadow-sm mb-4" role="alert">
-            <strong>Withdrawals blocked</strong> — you have outstanding clawback debt of
-            <strong>€{{ number_format($debtBalance, 2) }}</strong> from a removed post-completion placement.
-            Contact support at {{ $supportEmail }} to resolve this before withdrawing.
+        <div class="publisher-needs-alert mb-4" role="alert">
+            <div class="d-md-flex justify-content-md-between">
+                <p class="publisher-needs-alert__copy mb-0">
+                    <svg class="publisher-needs-alert__icon" xmlns="http://www.w3.org/2000/svg" viewBox="118 4 72 244" fill="currentColor" aria-hidden="true" focusable="false"><g transform="translate(1.4065934065934016 1.4065934065934016) scale(2.81 2.81)"><path d="M 49.083 71.489 l 5.776 -21.96 l 4.186 -15.247 c 3.497 -16.18 -32.704 -2.439 -38.002 1.695 l 0.425 4.853 c 4.824 -3.395 23.091 -7.744 19.449 4.275 l -1.634 6.135 l 0 0 l -8.329 31.071 c -3.497 16.18 32.704 2.439 38.002 -1.695 l -0.425 -4.853 C 63.708 79.159 45.441 83.508 49.083 71.489 z"/><circle cx="53.871" cy="11.201" r="11.201"/></g></svg>
+                    <strong>Withdrawals blocked</strong>
+                    <span class="ms-1">you have outstanding clawback debt of <strong>{{ format_money_amount($debtBalance, $walletCurrency) }}</strong> from a removed post-completion placement. Contact support at {{ $supportEmail }} to resolve this before withdrawing.</span>
+                </p>
+                <p class="mb-0 mt-3 mt-md-0 ms-md-4">
+                    <a class="publisher-needs-alert__link" href="mailto:{{ $supportEmail }}">Contact support</a>
+                </p>
+            </div>
         </div>
     @elseif($availableBalance < $minWithdrawalAmount)
-        <div class="alert alert-warning border-0 shadow-sm mb-4" role="alert">
-            <strong>Below minimum</strong> — you need at least
-            <strong>€{{ number_format($minWithdrawalAmount, 2) }}</strong> withdrawable balance to request a payout.
-            Available now: €{{ number_format($availableBalance, 2) }}.
+        <div class="publisher-needs-alert mb-4" role="alert">
+            <div class="d-md-flex justify-content-md-between">
+                <p class="publisher-needs-alert__copy mb-0">
+                    <svg class="publisher-needs-alert__icon" xmlns="http://www.w3.org/2000/svg" viewBox="118 4 72 244" fill="currentColor" aria-hidden="true" focusable="false"><g transform="translate(1.4065934065934016 1.4065934065934016) scale(2.81 2.81)"><path d="M 49.083 71.489 l 5.776 -21.96 l 4.186 -15.247 c 3.497 -16.18 -32.704 -2.439 -38.002 1.695 l 0.425 4.853 c 4.824 -3.395 23.091 -7.744 19.449 4.275 l -1.634 6.135 l 0 0 l -8.329 31.071 c -3.497 16.18 32.704 2.439 38.002 -1.695 l -0.425 -4.853 C 63.708 79.159 45.441 83.508 49.083 71.489 z"/><circle cx="53.871" cy="11.201" r="11.201"/></g></svg>
+                    <strong>Below minimum</strong>
+                    <span class="ms-1">you need at least <strong>{{ format_money_amount($minWithdrawalAmount, $walletCurrency) }}</strong> withdrawable balance to request a payout. Available now: {{ format_money_amount($availableBalance, $walletCurrency) }}.</span>
+                </p>
+                <p class="mb-0 mt-3 mt-md-0 ms-md-4">
+                    <a class="publisher-needs-alert__link" href="{{ route('publisher.balance') }}">View balance</a>
+                </p>
+            </div>
         </div>
     @endif
 
@@ -82,7 +109,7 @@
                 <div class="card-body d-flex justify-content-between">
                     <div>
                         <span class="text-muted small">Can Withdraw</span>
-                        <h3 class="mb-1 fw-bold" style="color: var(--brand-primary, #1a585e);">€{{ number_format($availableBalance, 2) }}</h3>
+                        <h3 class="mb-1 fw-bold" style="color: var(--brand-primary, #1a585e);">{{ format_money_amount($availableBalance, $walletCurrency) }}</h3>
                         <p class="text-muted small mb-0">Money you can cash out</p>
                     </div>
                     <div class="kpi-icon-mist rounded-3 d-flex align-items-center justify-content-center" style="width:44px;height:44px;">
@@ -96,7 +123,7 @@
                 <div class="card-body d-flex justify-content-between">
                     <div>
                         <span class="text-muted small">Free Credit</span>
-                        <h3 class="mb-1 fw-bold">€{{ number_format($bonusBalance, 2) }}</h3>
+                        <h3 class="mb-1 fw-bold">{{ format_money_amount($bonusBalance, $walletCurrency) }}</h3>
                         <p class="text-muted small mb-0">For orders only — not cash</p>
                     </div>
                     <div class="rounded-3 d-flex align-items-center justify-content-center" style="width:44px;height:44px;background:#f1f5f9;color: var(--brand-ink-muted, #75787B);border:1px solid #e2e8f0;">
@@ -110,7 +137,7 @@
                 <div class="card-body d-flex justify-content-between">
                     <div>
                         <span class="text-muted small">On Hold</span>
-                        <h3 class="mb-1 fw-bold">€{{ number_format($reservedBalance, 2) }}</h3>
+                        <h3 class="mb-1 fw-bold">{{ format_money_amount($reservedBalance, $walletCurrency) }}</h3>
                         <p class="text-muted small mb-0">Locked for open orders</p>
                     </div>
                     <div class="rounded-3 d-flex align-items-center justify-content-center" style="width:44px;height:44px;background:#fff;color:#1e293b;border:1px solid #e2e8f0;">
@@ -128,14 +155,24 @@
         </div>
     @endif
 
+    @if($usdConversionFeePercent > 0)
+        <div class="ui-callout ui-callout--info mb-4" id="usdConversionFeeCallout">
+            <span class="ui-callout__icon" aria-hidden="true"><i class="fa-solid fa-circle-info"></i></span>
+            <div class="ui-callout__body">USD withdrawals include a {{ rtrim(rtrim(number_format($usdConversionFeePercent, 2), '0'), '.') }}% conversion fee on PayPal, Wise, and USD bank transfer.</div>
+        </div>
+    @endif
+
     @if($payoutLocked)
-        <div class="ui-callout ui-callout--attention mb-4">
-            <span class="ui-callout__icon" aria-hidden="true"><i class="fa-solid fa-circle-exclamation"></i></span>
-            <div class="ui-callout__body">
-                <strong>Choose a saved payout method.</strong>
-                Details are locked — contact
-                <a href="mailto:{{ $supportEmail }}">{{ $supportEmail }}</a>
-                to change them or add a new destination.
+        <div class="publisher-needs-alert mb-4" role="alert">
+            <div class="d-md-flex justify-content-md-between">
+                <p class="publisher-needs-alert__copy mb-0">
+                    <svg class="publisher-needs-alert__icon" xmlns="http://www.w3.org/2000/svg" viewBox="118 4 72 244" fill="currentColor" aria-hidden="true" focusable="false"><g transform="translate(1.4065934065934016 1.4065934065934016) scale(2.81 2.81)"><path d="M 49.083 71.489 l 5.776 -21.96 l 4.186 -15.247 c 3.497 -16.18 -32.704 -2.439 -38.002 1.695 l 0.425 4.853 c 4.824 -3.395 23.091 -7.744 19.449 4.275 l -1.634 6.135 l 0 0 l -8.329 31.071 c -3.497 16.18 32.704 2.439 38.002 -1.695 l -0.425 -4.853 C 63.708 79.159 45.441 83.508 49.083 71.489 z"/><circle cx="53.871" cy="11.201" r="11.201"/></g></svg>
+                    <strong>Choose a saved payout method.</strong>
+                    <span class="ms-1">Details are locked — contact {{ $supportEmail }} to change them or add a new destination.</span>
+                </p>
+                <p class="mb-0 mt-3 mt-md-0 ms-md-4">
+                    <a class="publisher-needs-alert__link" href="mailto:{{ $supportEmail }}">Contact support</a>
+                </p>
             </div>
         </div>
     @else
@@ -158,7 +195,25 @@
                         @csrf
 
                         <div class="mb-4">
-                            <label class="form-label fw-semibold" for="amount">Amount (€)</label>
+                            @if($publisherWallets->count() > 1)
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold" for="withdraw_currency">Wallet currency</label>
+                                <select name="currency" id="withdraw_currency" class="form-select" @disabled($formBlocked)>
+                                    @foreach($publisherWallets as $pubWallet)
+                                        <option value="{{ strtoupper($pubWallet->currency) }}"
+                                            @selected(strtoupper((string) $pubWallet->currency) === strtoupper((string) $walletCurrency))
+                                            data-available="{{ $pubWallet->withdrawableBalance() }}"
+                                            data-min="{{ $minWithdrawalAmounts[strtoupper((string) $pubWallet->currency)] ?? $minWithdrawalAmount }}">
+                                            {{ format_money_amount($pubWallet->withdrawableBalance(), $pubWallet->currency) }}
+                                            ({{ strtoupper($pubWallet->currency) }})
+                                        </option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            @else
+                                <input type="hidden" name="currency" value="{{ $walletCurrency }}">
+                            @endif
+                            <label class="form-label fw-semibold" for="amount">Amount ({{ $walletCurrency }})</label>
                             <input type="number"
                                    name="amount"
                                    id="amount"
@@ -170,8 +225,8 @@
                                    @disabled($formBlocked)
                                    required>
                             <div class="form-text">
-                                Available: <strong>€{{ number_format($availableBalance, 2) }}</strong>
-                                · Minimum: <strong>€{{ number_format($minWithdrawalAmount, 2) }}</strong>
+                                Available: <strong>{{ format_money_amount($availableBalance, $walletCurrency) }}</strong>
+                                · Minimum: <strong>{{ format_money_amount($minWithdrawalAmount, $walletCurrency) }}</strong>
                                 @if($bonusBalance > 0)
                                     <span class="d-block mt-1 text-muted">{{ $promotionalBonusMessage }}</span>
                                 @endif
@@ -180,18 +235,22 @@
 
                         <div class="p-3 rounded mb-4" style="background: var(--surface-2, #f7fafb); border: 1px solid var(--border-subtle, #e2e8f0);">
                             <div class="d-flex justify-content-between align-items-center mb-1">
-                                <span class="text-muted small">Requested</span>
-                                <span id="previewGross">€0.00</span>
+                                <span class="text-muted small">Amount</span>
+                                <span id="previewGross">{{ format_money_amount(0, $walletCurrency) }}</span>
                             </div>
                             @if($platformChargePercent > 0)
                                 <div class="d-flex justify-content-between align-items-center mb-1">
                                     <span class="text-muted small">Fee ({{ $platformChargePercent }}%)</span>
-                                    <span id="previewFee">€0.00</span>
+                                    <span id="previewFee">{{ format_money_amount(0, $walletCurrency) }}</span>
                                 </div>
                             @endif
+                            <div id="previewConversionFeeRow" class="d-flex justify-content-between align-items-center mb-1{{ $usdConversionFeePercent > 0 ? '' : ' d-none' }}">
+                                <span class="text-muted small">Conversion fee (<span id="previewConversionPercent">{{ rtrim(rtrim(number_format($usdConversionFeePercent, 2), '0'), '.') }}</span>%)</span>
+                                <span id="previewConversionFee">$0.00</span>
+                            </div>
                             <div class="d-flex justify-content-between align-items-center">
                                 <span class="fw-semibold">You will receive</span>
-                                <strong class="fs-5" style="color: var(--brand-primary, #1a585e);" id="previewAmount">€0.00</strong>
+                                <strong class="fs-5" style="color: var(--brand-primary, #1a585e);" id="previewAmount">{{ format_money_amount(0, $walletCurrency) }}</strong>
                             </div>
                         </div>
 
@@ -201,15 +260,17 @@
                                 @if(! $payoutLocked)
                                     <option value="">Select</option>
                                     @foreach($methodLabels as $value => $label)
-                                        <option value="{{ $value }}" @selected($preferredMethod === $value)>{{ $label }}</option>
+                                        @if(in_array($value, $visibleMethods, true))
+                                            <option value="{{ $value }}" @selected($preferredMethod === $value)>{{ $label }}</option>
+                                        @endif
                                     @endforeach
                                 @else
                                     @php
-                                        $selectedMethod = in_array($preferredMethod, $availableMethods, true)
+                                        $selectedMethod = in_array($preferredMethod, $visibleMethods, true)
                                             ? $preferredMethod
-                                            : ($availableMethods[0] ?? null);
+                                            : ($visibleMethods[0] ?? null);
                                     @endphp
-                                    @forelse($availableMethods as $value)
+                                    @forelse($visibleMethods as $value)
                                         <option value="{{ $value }}" @selected($selectedMethod === $value)>
                                             {{ $methodLabels[$value] ?? ucfirst($value) }}
                                         </option>
@@ -363,9 +424,17 @@
                                         <td class="small fw-semibold">WD-{{ $w->id }}</td>
                                         <td class="small">{{ $w->created_at->format('M d, Y') }}</td>
                                         <td class="fw-semibold">
-                                            €{{ number_format($w->amount, 2) }}
-                                            @if((float) $w->fee > 0)
-                                                <div class="small text-muted">Fee €{{ number_format($w->fee, 2) }} · Net €{{ number_format($w->net_amount, 2) }}</div>
+                                            {{ format_money_amount($w->amount, $w->currency ?? $walletCurrency) }}
+                                            @if((float) $w->fee > 0 || (float) ($w->conversion_fee ?? 0) > 0)
+                                                <div class="small text-muted">
+                                                    @if((float) ($w->conversion_fee ?? 0) > 0)
+                                                        Conversion {{ format_money_amount($w->conversion_fee, $w->currency ?? $walletCurrency) }} ·
+                                                    @endif
+                                                    @if((float) $w->fee > 0)
+                                                        Fee {{ format_money_amount($w->fee, $w->currency ?? $walletCurrency) }} ·
+                                                    @endif
+                                                    Net {{ format_money_amount($w->net_amount, $w->currency ?? $walletCurrency) }}
+                                                </div>
                                             @endif
                                         </td>
                                         <td class="small text-muted">{{ $w->destination_snippet }}</td>
@@ -398,7 +467,7 @@
 
             <div class="ui-callout ui-callout--info mt-3 mb-0">
                 <span class="ui-callout__icon" aria-hidden="true"><i class="fa-solid fa-circle-info"></i></span>
-                <div class="ui-callout__body">Withdrawals are processed within 1–2 business days. Minimum request: €{{ number_format($minWithdrawalAmount, 2) }}.</div>
+                <div class="ui-callout__body">Withdrawals are processed within 1–2 business days. Minimum request: {{ format_money_amount($minWithdrawalAmount, $walletCurrency) }}.</div>
             </div>
         </div>
     </div>
@@ -422,6 +491,14 @@
 .ui-callout--attention .ui-callout__icon { color: var(--brand-danger, #dc2626); }
 .ui-callout__body { flex: 1 1 auto; min-width: 0; }
 .table td { vertical-align: middle; }
+@media (max-width: 767.98px) {
+    .publisher-withdraw .card-body { padding: 1rem; }
+    .publisher-withdraw .form-control-lg { font-size: 1rem; }
+    .publisher-withdraw .row.g-4 > [class*="col-"] { margin-bottom: 0.5rem; }
+    .publisher-withdraw #withdrawForm .payout-fields .mb-3 { margin-bottom: 0.85rem !important; }
+    .publisher-withdraw #withdrawForm .d-flex.justify-content-between { flex-wrap: wrap; gap: 0.25rem 0.75rem; }
+    .publisher-withdraw .col-md-4.text-md-end { text-align: left !important; }
+}
 </style>
 
 <script>
@@ -434,8 +511,14 @@ document.addEventListener('DOMContentLoaded', function() {
     const submitBtn = document.getElementById('submitWithdrawBtn');
     const form = document.getElementById('withdrawForm');
     const maxAmount = {{ json_encode((float) $availableBalance) }};
-    const minAmount = {{ json_encode((float) $minWithdrawalAmount) }};
+    let minAmount = {{ json_encode((float) $minWithdrawalAmount) }};
     const feePercent = {{ json_encode((float) $platformChargePercent) }};
+    const conversionFeePercents = @json($conversionFeePercents);
+    const allowedByCurrency = @json($allowedMethodsByCurrency);
+    const savedMethods = @json($savedMethods);
+    const methodLabels = @json($methodLabels);
+    const preferredMethod = @json($preferredMethod);
+    const currencySymbols = { EUR: '€', GBP: '£', USD: '$' };
     const payoutLocked = @json((bool) $payoutLocked);
     const formBlocked = @json((bool) $formBlocked);
     const historyUrl = @json(route('publisher.withdrawals.history'));
@@ -452,28 +535,103 @@ document.addEventListener('DOMContentLoaded', function() {
             .replace(/'/g, '&#39;');
     }
 
-    function money(n) {
-        return `€${(Number(n) || 0).toFixed(2)}`;
+    function currentCurrency() {
+        const select = document.getElementById('withdraw_currency');
+        if (select && select.value) return String(select.value).toUpperCase();
+        const hidden = form?.querySelector('input[name="currency"]');
+        return String(hidden?.value || @json($walletCurrency) || 'EUR').toUpperCase();
+    }
+
+    function money(n, currency) {
+        const code = currency || currentCurrency();
+        const symbol = currencySymbols[code] || '€';
+        return `${symbol}${(Number(n) || 0).toFixed(2)}`;
+    }
+
+    function conversionPercent() {
+        const code = currentCurrency();
+        return Number(conversionFeePercents[code] || 0);
     }
 
     function calcNet(gross) {
         const fee = Math.round((gross * feePercent) / 100 * 100) / 100;
-        const net = Math.round((gross - fee) * 100) / 100;
-        return { fee, net };
+        const conversion = Math.round((gross * conversionPercent()) / 100 * 100) / 100;
+        const net = Math.round((gross - fee - conversion) * 100) / 100;
+        return { fee, conversion, net };
     }
 
     function updatePreview() {
         let amount = parseFloat(amountInput.value) || 0;
-        if (amount > maxAmount) amount = maxAmount;
+        if (amount > currentMax()) amount = currentMax();
         if (amount < 0) amount = 0;
-        const { fee, net } = calcNet(amount);
+        const { fee, conversion, net } = calcNet(amount);
+        const convRow = document.getElementById('previewConversionFeeRow');
+        const convFee = document.getElementById('previewConversionFee');
+        const convPct = document.getElementById('previewConversionPercent');
+        const pct = conversionPercent();
+        if (convRow) convRow.classList.toggle('d-none', pct <= 0);
+        if (convPct) convPct.textContent = String(pct);
         if (previewGross) previewGross.textContent = money(amount);
         if (previewFee) previewFee.textContent = money(fee);
+        if (convFee) convFee.textContent = money(conversion);
         previewAmount.textContent = money(net);
+    }
+
+    function currentMax() {
+        const select = document.getElementById('withdraw_currency');
+        const option = select?.selectedOptions?.[0];
+        if (option && option.dataset.available) {
+            return parseFloat(option.dataset.available) || 0;
+        }
+        return maxAmount;
     }
 
     function currentMethod() {
         return paymentMethod.value;
+    }
+
+    function allowedMethodsForCurrency() {
+        return allowedByCurrency[currentCurrency()] || ['bank', 'paypal', 'wise', 'crypto'];
+    }
+
+    function rebuildMethods() {
+        if (!paymentMethod) return;
+        const allowed = allowedMethodsForCurrency();
+        const visible = payoutLocked
+            ? (savedMethods || []).filter((m) => allowed.includes(m))
+            : allowed;
+        const previous = paymentMethod.value;
+        paymentMethod.innerHTML = '';
+        if (!payoutLocked) {
+            const blank = document.createElement('option');
+            blank.value = '';
+            blank.textContent = 'Select';
+            paymentMethod.appendChild(blank);
+        }
+        if (!visible.length) {
+            const empty = document.createElement('option');
+            empty.value = '';
+            empty.textContent = 'No saved payout methods';
+            empty.disabled = true;
+            empty.selected = true;
+            paymentMethod.appendChild(empty);
+            togglePaymentFields();
+            return;
+        }
+        visible.forEach((value) => {
+            const opt = document.createElement('option');
+            opt.value = value;
+            opt.textContent = methodLabels[value] || value;
+            paymentMethod.appendChild(opt);
+        });
+        if (visible.includes(previous)) {
+            paymentMethod.value = previous;
+        } else if (preferredMethod && visible.includes(preferredMethod)) {
+            paymentMethod.value = preferredMethod;
+        } else if (payoutLocked) {
+            paymentMethod.value = visible[0];
+        }
+        togglePaymentFields();
     }
 
     function togglePaymentFields() {
@@ -494,7 +652,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function summaryHtml(amount, method) {
-        const { fee, net } = calcNet(amount);
+        const { fee, conversion, net } = calcNet(amount);
         let details = '';
         if (method === 'bank') {
             details = `<p class="mb-1"><strong>Bank:</strong> ${escapeHtml(form.bank_name?.value)}</p>
@@ -511,10 +669,14 @@ document.addEventListener('DOMContentLoaded', function() {
         const feeLine = feePercent > 0
             ? `<p class="mb-1"><strong>Fee (${escapeHtml(feePercent)}%):</strong> ${money(fee)}</p>`
             : '';
+        const conversionLine = conversionPercent() > 0
+            ? `<p class="mb-1"><strong>Conversion fee (${escapeHtml(conversionPercent())}%):</strong> ${money(conversion)}</p>`
+            : '';
         return `
             <div style="text-align:left">
-                <p class="mb-1"><strong>Requested:</strong> ${money(amount)}</p>
+                <p class="mb-1"><strong>Amount:</strong> ${money(amount)}</p>
                 ${feeLine}
+                ${conversionLine}
                 <p><strong>You will receive:</strong> ${money(net)}</p>
                 <hr>
                 ${details}
@@ -526,7 +688,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (formBlocked) {
             showError(@json($hasDebt
                 ? 'Withdrawals are blocked while you have outstanding clawback debt.'
-                : 'You need at least €'.number_format($minWithdrawalAmount, 2).' withdrawable balance.'));
+                : 'You need at least '.format_money_amount($minWithdrawalAmount, $walletCurrency).' withdrawable balance.'));
             return false;
         }
 
@@ -534,11 +696,11 @@ document.addEventListener('DOMContentLoaded', function() {
         const method = currentMethod();
 
         if (amount < minAmount) {
-            showError(`Minimum withdrawal amount is €${minAmount.toFixed(2)}.`);
+            showError(`Minimum withdrawal amount is ${money(minAmount)}.`);
             return false;
         }
-        if (amount > maxAmount) {
-            showError(maxAmount <= 0 ? @json($promotionalBonusMessage) : `Maximum withdrawal amount is €${maxAmount.toFixed(2)}.`);
+        if (amount > currentMax()) {
+            showError(currentMax() <= 0 ? @json($promotionalBonusMessage) : `Maximum withdrawal amount is ${money(currentMax())}.`);
             return false;
         }
         if (!method) { showError('Please select a payment method'); return false; }
@@ -612,10 +774,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
             body.innerHTML = rows.map(w => {
-                const feeNote = Number(w.fee) > 0
-                    ? `<div class="small text-muted">Fee ${money(w.fee)} · Net ${money(w.net_amount)}</div>`
+                const rowCurrency = w.currency || currentCurrency();
+                const conversionNote = Number(w.conversion_fee) > 0
+                    ? `Conversion ${money(w.conversion_fee, rowCurrency)} · `
+                    : '';
+                const feeNote = (Number(w.fee) > 0 || Number(w.conversion_fee) > 0)
+                    ? `<div class="small text-muted">${conversionNote}${Number(w.fee) > 0 ? `Fee ${money(w.fee, rowCurrency)} · ` : ''}Net ${money(w.net_amount, rowCurrency)}</div>`
                     : (Number(w.net_amount) !== Number(w.amount)
-                        ? `<div class="small text-muted">Net ${money(w.net_amount)}</div>`
+                        ? `<div class="small text-muted">Net ${money(w.net_amount, rowCurrency)}</div>`
                         : '');
                 const cancelBtn = w.cancellable
                     ? `<button type="button" class="btn btn-sm btn-outline-danger btn-cancel-withdrawal" data-id="${escapeHtml(w.id)}">Cancel</button>`
@@ -626,7 +792,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 return `<tr>
                     <td class="small fw-semibold">${escapeHtml(w.reference)}</td>
                     <td class="small">${formatDate(w.created_at)}</td>
-                    <td class="fw-semibold">${money(w.amount)}${feeNote}</td>
+                    <td class="fw-semibold">${money(w.amount, rowCurrency)}${feeNote}</td>
                     <td class="small text-muted">${escapeHtml(w.destination_snippet)}</td>
                     <td><span class="badge ${statusBadgeClass(w.status)}">${escapeHtml(w.status_label)}</span></td>
                     <td class="text-end"><div class="d-flex gap-1 justify-content-end flex-wrap">${copyBtn}${cancelBtn}</div></td>
@@ -650,6 +816,21 @@ document.addEventListener('DOMContentLoaded', function() {
 
     amountInput?.addEventListener('input', updatePreview);
     paymentMethod?.addEventListener('change', togglePaymentFields);
+    document.getElementById('withdraw_currency')?.addEventListener('change', () => {
+        const select = document.getElementById('withdraw_currency');
+        const option = select?.selectedOptions?.[0];
+        if (option?.dataset.min) {
+            minAmount = parseFloat(option.dataset.min) || minAmount;
+            if (amountInput) amountInput.min = String(minAmount);
+        }
+        if (option?.dataset.available && amountInput) {
+            amountInput.max = option.dataset.available;
+        }
+        const label = document.querySelector('label[for="amount"]');
+        if (label) label.textContent = `Amount (${currentCurrency()})`;
+        rebuildMethods();
+        updatePreview();
+    });
     updatePreview();
     togglePaymentFields();
     loadHistory(1);

@@ -14,8 +14,18 @@ class TawkChat
 
     public static function embedSrc(): ?string
     {
-        $property = trim((string) config('services.tawk.property_id', ''));
-        $widget = trim((string) config('services.tawk.widget_id', ''));
+        // Leftover config/services.php has no tawk key — still honor .env
+        // so live Hostinger can embed without a leftover 500. Empty default:
+        // do not ship a built-in property ID.
+        $property = self::configOrEnv(
+            'services.tawk.property_id',
+            'TAWK_PROPERTY_ID'
+        );
+        $widget = self::configOrEnv(
+            'services.tawk.widget_id',
+            'TAWK_WIDGET_ID',
+            'default'
+        );
 
         if ($property === '' || $widget === '') {
             return null;
@@ -30,5 +40,27 @@ class TawkChat
         }
 
         return 'https://embed.tawk.to/'.$property.'/'.$widget;
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function predefinedMessages(?string $role = null): array
+    {
+        if (class_exists(VisitorSupportChat::class)
+            && method_exists(VisitorSupportChat::class, 'questionsForRole')) {
+            return VisitorSupportChat::questionsForRole($role);
+        }
+
+        return [];
+    }
+
+    private static function configOrEnv(string $configKey, string $envKey, string $default = ''): string
+    {
+        if (function_exists('config') && config()->has($configKey)) {
+            return trim((string) config($configKey));
+        }
+
+        return trim((string) env($envKey, $default));
     }
 }

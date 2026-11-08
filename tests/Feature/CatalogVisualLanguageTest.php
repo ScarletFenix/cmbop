@@ -137,18 +137,20 @@ class CatalogVisualLanguageTest extends TestCase
         $this->assertStringContainsString('1,450,000 monthly visits', $html);
     }
 
-    public function test_traffic_uses_a_log_scale_so_small_sites_are_not_all_zero(): void
+    public function test_traffic_uses_a_themed_sparkline_instead_of_a_bar(): void
     {
         $this->makeSite(['traffic' => 800, 'domain' => 'small.example', 'site_url' => 'https://small.example']);
 
         $html = $this->catalogHtml();
 
-        // On a linear scale against millions, 800 visits would render as an empty
-        // bar and be indistinguishable from a site with none.
-        $this->assertMatchesRegularExpression(
-            '/catalog-metric__fill" style="width: (4[0-9]|5[0-9])(\.\d)?%"/',
-            $html
-        );
+        $this->assertStringContainsString('catalog-metric--traffic', $html);
+        $this->assertStringContainsString('catalog-metric__spark', $html);
+        $this->assertStringContainsString('catalog-metric__spark-line', $html);
+        $this->assertStringContainsString('catalog-traffic-spark-', $html);
+
+        $css = (string) file_get_contents(public_path('assets/css/catalog.css'));
+        $this->assertStringContainsString('.catalog-metric--traffic .catalog-metric__spark', $css);
+        $this->assertStringContainsString('stroke: #0b6266', $css);
     }
 
     public function test_each_listing_gets_a_monogram_tile_from_the_label_on_screen(): void
@@ -229,7 +231,8 @@ class CatalogVisualLanguageTest extends TestCase
 
         $this->assertStringContainsString('catalog-meta-chip', $html);
         $this->assertStringContainsString('DoFollow', $html);
-        $this->assertStringContainsString('>48 hours<', $html);
+        $this->assertStringContainsString('>2 days<', $html);
+        $this->assertStringNotContainsString('48 hours', $html);
 
         // The old prose lines added height to every row and read slowly.
         $this->assertStringNotContainsString('Max 03 DoFollow links</div>', $html);
@@ -276,11 +279,11 @@ class CatalogVisualLanguageTest extends TestCase
         $this->assertSame(4, substr_count($html, 'ahref.jpeg'));
         $this->assertSame(4, substr_count($html, 'moz_da.png'));
 
-        // Decorative: the heading and its tip already name the tool, so the logo
-        // would only repeat it to a screen reader.
         $this->assertStringContainsString('class="metric-source metric-source--md metric-source--fit-cover"', $html);
         $this->assertStringContainsString('metric-source--blend-multiply', $html);
-        $this->assertStringNotContainsString('alt="Ahrefs"', $html);
+        $this->assertStringContainsString('alt="Ahrefs DR"', $html);
+        $this->assertStringContainsString('alt="Moz DA"', $html);
+        $this->assertStringContainsString('alt="Organic traffic"', $html);
 
         // Intrinsic 400×400 Ahrefs / 225×225 Moz must not size the thead in Chrome.
         $this->assertMatchesRegularExpression(
@@ -438,11 +441,11 @@ class CatalogVisualLanguageTest extends TestCase
         $html = $this->catalogHtml();
         $js = (string) file_get_contents(public_path('assets/js/catalog.js'));
 
-        // The table used a bare chevron; the card already said "Details". Both
-        // now share the same labelled control and open/close voice.
-        $this->assertGreaterThanOrEqual(2, substr_count($html, 'catalog-details-toggle__label">Details'));
+        // Closed table rows and cards both expose a labelled Details control.
         $this->assertStringContainsString('expand-arrow catalog-details-toggle', $html);
+        $this->assertStringNotContainsString('class="expand-arrow visually-hidden"', $html);
+        $this->assertStringContainsString('catalog-details-toggle__label">Details', $html);
+        $this->assertStringContainsString('catalog-card-details-toggle', $html);
         $this->assertStringContainsString('function setCatalogDetailsToggleState(', $js);
-        $this->assertStringContainsString("label.textContent = open ? 'Hide details' : 'Details'", $js);
     }
 }

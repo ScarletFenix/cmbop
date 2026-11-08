@@ -112,3 +112,12 @@
 .single-select-option.hidden {
   display: none;
 }
+
+.single-select-option-group {
+  padding: 10px 12px 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--brand-ink-muted, #697078);
+}

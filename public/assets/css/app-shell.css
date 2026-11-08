@@ -12,6 +12,7 @@
   --shell-sidebar-width: 220px;
   --shell-sidebar-collapsed: 70px;
   --shell-topbar-height: 84px;
+  --shell-topbar-offset: calc(var(--shell-topbar-height) + env(safe-area-inset-top, 0px));
   --shell-border: var(--border-subtle, #e2e8f0);
   --shell-bg: var(--surface-2, #f7fafb);
   --shell-ink: var(--brand-ink, #1e293b);
@@ -51,6 +52,7 @@
 
 html {
   height: 100%;
+  scroll-padding-top: var(--shell-topbar-offset);
 }
 body, html {
   min-height: 100%;
@@ -60,6 +62,30 @@ body, html {
   color: var(--shell-ink);
   overflow-x: clip;
   max-width: 100%;
+}
+
+body.role-shell-advertiser,
+body.role-shell-publisher,
+body.role-shell-admin,
+body.role-shell-marketing {
+  /* Lift the FAB above the in-flow payment-logo footer (full footer
+     height, not a fraction) plus the device home-indicator inset. */
+  --slb-live-chat-footer-offset: calc(
+    var(--shell-footer-height, 72px) + env(safe-area-inset-bottom, 0px)
+  );
+}
+
+/* Catalog Sort sits at the results-bar trailing edge — keep the FAB
+   above that cluster the same way the dashboard Start-chat bar does. */
+body.role-shell-advertiser:has(.catalog-page) {
+  --slb-live-chat-footer-offset: calc(
+    var(--shell-footer-height, 72px) + 56px + env(safe-area-inset-bottom, 0px)
+  );
+}
+
+/* Keep the help FAB off the catalog filter row / Reset control. */
+body.role-shell-advertiser:has(.catalog-page) .help-fab {
+  bottom: calc(22px + var(--slb-live-chat-footer-offset, 72px));
 }
 
 body.role-shell-advertiser { --role-accent: #1a585e; }
@@ -115,7 +141,7 @@ body.role-shell-marketing #sidebar {
 
 /* Brand wordmarks — keep on one line / one visual plane */
 .shell-sidebar-brand {
-  padding: 4px 10px;
+  padding: 12px 10px 8px;
 }
 .shell-logo-wordmark,
 #logoSidebar,
@@ -144,7 +170,7 @@ body.role-shell-marketing #sidebar {
 .top-navbar .mobile-left > a.d-flex {
   flex-shrink: 1;
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 .top-navbar .mobile-left > a.d-flex img {
   max-width: 100%;
@@ -173,6 +199,7 @@ body.role-shell-marketing #sidebar {
   position: fixed;
   top: 0;
   left: 0;
+  padding-top: env(safe-area-inset-top, 0px);
   /* Fixed chrome must not count as a flex row on body — that left a
      white gap under the footer when the sidebar was expanded. */
   flex: none;
@@ -182,6 +209,21 @@ body.role-shell-marketing #sidebar {
 }
 
 #sidebar .menu { flex-grow: 1; overflow-y: auto; padding-bottom: 12px; }
+
+/* Advertiser sidebar section headings (Buy / Orders / Money / Tools) */
+.adv-nav-section {
+  padding: 14px 22px 4px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--brand-ink-muted, #697078);
+  line-height: 1.2;
+}
+
+#sidebar.collapsed .adv-nav-section {
+  display: none;
+}
 
 #sidebar a {
   display: flex;
@@ -202,8 +244,14 @@ body.role-shell-marketing #sidebar {
 
 #sidebar a i {
   width: 18px;
+  height: 18px;
+  min-width: 18px;
+  min-height: 18px;
+  flex: 0 0 18px;
+  font-size: 18px;
+  line-height: 1;
   text-align: center;
-  font-size: 15px;
+  vertical-align: middle;
   color: var(--brand-ink-muted, #697078);
   transition: color var(--motion-fast, 150ms ease);
 }
@@ -279,7 +327,11 @@ body.role-shell-marketing #sidebar {
 
 #sidebar .nav-sub-link i {
   color: var(--brand-primary-soft, #3faeb2);
-  width: 14px;
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  flex: 0 0 18px;
+  font-size: 18px;
   text-align: center;
 }
 
@@ -313,7 +365,13 @@ body.role-shell-marketing #sidebar {
   max-width: var(--shell-sidebar-collapsed);
 }
 #sidebar.collapsed a { justify-content: center; margin: 2px 6px; padding: 10px; gap: 0; position: relative; }
-#sidebar.collapsed a i { font-size: 18px; width: auto; }
+#sidebar.collapsed a i {
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  flex: 0 0 18px;
+  font-size: 18px;
+}
 /* Prefer clip over font-size:0 so labels stay in the accessibility tree */
 #sidebar.collapsed a .nav-label,
 #sidebar.collapsed a > span:not(.arrow):not(.badge):not(.nc-nav-badge) {
@@ -391,7 +449,8 @@ body.role-shell-marketing #sidebar {
 
 /* ——— Topbar ——— */
 .top-navbar {
-  height: var(--shell-topbar-height);
+  min-height: var(--shell-topbar-offset);
+  height: auto;
   position: sticky;
   top: 0;
   left: var(--shell-rail);
@@ -402,7 +461,7 @@ body.role-shell-marketing #sidebar {
   justify-content: space-between;
   align-items: center;
   gap: 8px;
-  padding: 0 24px;
+  padding: env(safe-area-inset-top, 0px) 24px 0;
   z-index: var(--shell-z-topbar, 1060);
   overflow: visible;
   min-width: 0;
@@ -412,7 +471,15 @@ body.role-shell-marketing #sidebar {
    they scroll underneath it. */
 .sticky-below-topbar {
   position: sticky;
-  top: calc(var(--shell-topbar-height) + 1rem);
+  top: calc(var(--shell-topbar-offset) + 1rem);
+}
+
+/* Desktop expanded rail already has the wordmark — don't stack a second
+   copy in the topbar now that the bar is inset to the content column. */
+@media (min-width: 992px) {
+  body:not(:has(#sidebar.collapsed)) .top-navbar .mobile-left > a.d-flex {
+    display: none;
+  }
 }
 .top-navbar .mobile-left {
   flex: 1 1 auto;
@@ -452,6 +519,12 @@ body.role-shell-marketing #sidebar {
   color: #334155;
   border-color: transparent;
 }
+body.role-shell-advertiser .topbar-icon-btn,
+body.role-shell-advertiser .top-navbar .btn,
+body.role-shell-advertiser .top-navbar .dropdown-toggle {
+  border: none;
+  box-shadow: none;
+}
 .topbar-icon-btn .notif-badge {
   position: absolute;
   top: -4px;
@@ -484,8 +557,24 @@ body.role-shell-marketing #sidebar {
 
 #toggleSidebar span.arrow { display: inline-block; font-size: 18px; }
 #toggleSidebar.collapsed span.arrow { transform: rotate(180deg); }
+#toggleSidebar .sidebar-toggle-bars { display: none; }
+
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  z-index: calc(var(--shell-z-sidebar, 1050) - 1);
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
 
 /* ——— Content + footer ——— */
+/* Topbar must share the content-column box. Sticky left/right do not
+   inset the used width, so a full-bleed bar painted over the sidebar
+   and sheared the wordmark / first dashboard card titles. */
+.top-navbar,
 #content,
 #main-content,
 footer.app-shell-footer,
@@ -494,9 +583,15 @@ body > footer {
   max-width: calc(100% - var(--shell-rail));
   box-sizing: border-box;
 }
+.top-navbar,
+#content,
+#main-content,
+footer.app-shell-footer,
+body > footer {
+  margin-left: var(--shell-rail);
+}
 #content,
 #main-content {
-  margin-left: var(--shell-rail);
   /* Extra top padding so Poppins 700 page titles are not sheared.
      A one-axis clip on this column turns it into a scrollport and crops
      the first heading. Keep horizontal wrapping on the document body. */
@@ -541,7 +636,9 @@ body > footer {
   width: 100%;
   min-width: 0;
   text-align: left;
-  padding-right: 72px;
+  /* 84px FAB + 16px inset + safe-area so the last payment logo stays visible. */
+  padding-right: max(112px, calc(84px + 16px + env(safe-area-inset-right, 0px)));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
   overflow: hidden;
 }
 .app-shell-footer__left {
@@ -618,6 +715,7 @@ body > footer {
 .dash-recent-col {
   display: flex;
   flex-direction: column;
+  align-self: start;
   min-width: 0;
 }
 
@@ -644,7 +742,7 @@ body > footer {
 .balance-block .balance-label {
   font-size: 11px;
   font-weight: 500;
-  color: var(--brand-primary-soft, #3faeb2);
+  color: var(--brand-primary, #1a585e);
   text-transform: uppercase;
   letter-spacing: 0.02em;
 }
@@ -748,7 +846,7 @@ body > footer {
   }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 991.98px) {
   body.role-shell-advertiser,
   body.role-shell-publisher,
   body.role-shell-admin,
@@ -761,11 +859,45 @@ body > footer {
     transition: none;
   }
   #sidebar {
-    top: var(--shell-topbar-height);
-    height: calc(100vh - var(--shell-topbar-height));
-    left: calc(-1 * var(--shell-sidebar-width));
+    top: var(--shell-topbar-offset);
+    height: calc(100vh - var(--shell-topbar-offset));
+    height: calc(100dvh - var(--shell-topbar-offset));
+    left: auto;
+    right: auto;
+    width: min(280px, 86vw);
+    min-width: 0;
+    max-width: min(280px, 86vw);
+    transform: translateX(-110%);
+    box-shadow: none;
   }
-  #sidebar.show { left: 0; }
+  #sidebar.show {
+    left: 0;
+    transform: translateX(0);
+    box-shadow: 12px 0 32px rgba(15, 23, 42, 0.18);
+  }
+  body.sidebar-open .sidebar-overlay {
+    display: block;
+  }
+  #toggleSidebar .sidebar-toggle-chevron { display: none; }
+  #toggleSidebar .sidebar-toggle-bars { display: inline-block; font-size: 20px; }
+  #toggleSidebar.collapsed span.arrow { transform: none; }
+  body.role-shell-advertiser #toggleSidebar {
+    color: #1a585e;
+    background: #e6f5f5;
+    border: 1px solid #b8e4e4;
+    width: 40px;
+    height: 40px;
+  }
+  .top-navbar .mobile-left > a.d-flex {
+    display: none !important;
+  }
+  #main-content .wizard-chrome h1,
+  #main-content .wizard-chrome .wizard-chrome__title,
+  #main-content .page-title,
+  #main-content h1 {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
   #content,
   #main-content,
   .top-navbar,
@@ -882,48 +1014,65 @@ nav[aria-label="Pagination Navigation"] svg {
 }
 
 /*
- * Tawk.to visitor chat. Body is a flex column with overflow-x:clip, so
- * leftover top/left on the iframe paints the pre-chat card over dashboard
- * KPIs / order totals. Pin the iframe and its immediate wrapper only —
- * a descendant :has(iframe) would match #app and pin the whole page.
- * Do not hide or replace Tawk's own bubble; html.tawk-open only caps the
- * maximized panel so leftover dimensions cannot cover the page.
+ * Tawk.to visitor chat. Body is a flex column, so an unsized iframe stretches
+ * with the page. Keep the widget out of that column and leave Tawk's own
+ * position, size, bubble, and branding bar alone.
  */
 iframe[title="chat widget"],
 iframe[title="Chat widget"],
 iframe[src*="tawk.to"] {
   position: fixed !important;
-  top: auto !important;
-  left: auto !important;
-  right: 16px !important;
-  bottom: 20px !important;
-  z-index: var(--shell-z-fab, 1080) !important;
   flex: 0 0 auto !important;
   align-self: flex-end !important;
   margin: 0 !important;
-  transform: none !important;
+  overscroll-behavior: contain;
 }
 
-html.tawk-open iframe[title="chat widget"],
-html.tawk-open iframe[title="Chat widget"],
-html.tawk-open iframe[src*="tawk.to"] {
-  max-width: min(400px, calc(100vw - 24px)) !important;
-  max-height: min(640px, calc(100dvh - 24px)) !important;
+.slb-chat-mark {
+  position: fixed;
+  right: 16px;
+  bottom: 20px;
+  z-index: 1081;
+  width: 84px;
+  height: 84px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  line-height: 0;
 }
 
-div:has(> iframe[title="chat widget"]),
-div:has(> iframe[title="Chat widget"]),
-div:has(> iframe[src*="tawk.to"]) {
-  position: fixed !important;
-  top: auto !important;
-  left: auto !important;
-  right: 16px !important;
-  bottom: 20px !important;
-  z-index: var(--shell-z-fab, 1080) !important;
-  flex: 0 0 auto !important;
-  align-self: flex-end !important;
-  width: auto !important;
-  height: auto !important;
-  margin: 0 !important;
-  transform: none !important;
+.slb-chat-mark svg {
+  width: 84px;
+  height: 84px;
+  display: block;
+}
+
+.slb-chat-mark.is-hidden {
+  display: none;
+}
+
+html.slb-tawk-open,
+html.slb-tawk-open body {
+  overflow: hidden !important;
+  overscroll-behavior: none;
+}
+
+.slb-currency-label {
+  font-size: 0.875rem;
+  min-width: 5.5rem;
+  padding: 0.25rem 0.55rem;
+  border-radius: 0.375rem;
+  color: var(--shell-ink, #1e293b);
+  background: var(--surface-2, #f7fafb);
+  border: 1px solid var(--shell-border, #e2e8f0);
+  cursor: default;
+  pointer-events: none;
+  user-select: none;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+body.publisher-wizard-open .slb-live-chat {
+  display: none !important;
 }

@@ -10,7 +10,7 @@ use App\Models\User;
 use App\Services\CheckoutSchemaService;
 use App\Services\InAppNotificationService;
 use App\Services\OrderChatContactGuard;
-use App\Support\AdvertiserOrderDetails;
+use App\Services\Orders\ManagedFulfilmentService;
 use App\Support\AdvertiserOrderStatus;
 use App\Support\CatalogVisitUrl;
 use App\Support\PublisherNeedsAction;
@@ -48,7 +48,7 @@ class ChatController extends Controller
             if ($activeRole === 'advertiser') {
                 $orderIds = Order::where('user_id', $user->id)->pluck('id');
                 $unreadQuery = OrderChatMessage::whereIn('order_id', $orderIds)
-                    ->where('sender_type', 'publisher')
+                    ->whereIn('sender_type', ['publisher', 'admin'])
                     ->where('is_read', false)
                     ->notBlocked();
                 $unreadChat = (clone $unreadQuery)->count();
@@ -68,8 +68,11 @@ class ChatController extends Controller
                     $orderIds = AdvertiserOrderStatus::itemsTableAvailable()
                         ? Order::where('payment_status', 'paid')
                             ->where('status', '!=', 'cancelled')
-                            ->whereHas('items.site', function ($q) use ($user) {
-                                $q->where('publisher_id', $user->id);
+                            ->whereHas('items', function ($iq) use ($user) {
+                                $iq->publisherFulfilment()
+                                    ->whereHas('site', function ($q) use ($user) {
+                                        $q->where('publisher_id', $user->id);
+                                    });
                             })->pluck('id')
                         : collect();
                     $needsAction = AdvertiserOrderStatus::itemsTableAvailable()
@@ -93,6 +96,37 @@ class ChatController extends Controller
                             'order_number' => $order->order_number,
                         ];
                     }
+                }
+            } elseif ($activeRole === 'admin') {
+                try {
+                    $managed = app(ManagedFulfilmentService::class);
+                    $orderIds = AdvertiserOrderStatus::itemsTableAvailable() && ManagedFulfilmentService::hasFulfilmentColumn()
+                        ? Order::query()
+                            ->where('payment_status', 'paid')
+                            ->where('status', '!=', 'cancelled')
+                            ->whereHas('items', fn ($iq) => $iq->managedBySlb())
+                            ->pluck('id')
+                        : collect();
+                    $unreadQuery = OrderChatMessage::whereIn('order_id', $orderIds)
+                        ->where('sender_type', 'advertiser')
+                        ->where('is_read', false)
+                        ->notBlocked();
+                    $unreadChat = (clone $unreadQuery)->count();
+                    $latestUnread = (clone $unreadQuery)->orderByDesc('created_at')->first();
+                    if ($latestUnread) {
+                        $order = Order::find($latestUnread->order_id);
+                        if ($order) {
+                            $latestUnreadOrder = [
+                                'id' => $order->id,
+                                'order_number' => $order->order_number,
+                            ];
+                        }
+                    }
+                    $needsAction = (int) $orderIds->count();
+                    unset($managed);
+                } catch (\Throwable $e) {
+                    $unreadChat = 0;
+                    $needsAction = 0;
                 }
             }
 
@@ -155,13 +189,14 @@ class ChatController extends Controller
 
             // Mark delivered counterpart messages as read when loading (including poll refreshes).
             try {
+                $isAdminViewer = $this->userIsAdmin($user);
                 if ($isAdvertiser) {
                     OrderChatMessage::where('order_id', $orderId)
-                        ->where('sender_type', 'publisher')
+                        ->whereIn('sender_type', ['publisher', 'admin'])
                         ->notBlocked()
                         ->where('is_read', false)
                         ->update(['is_read' => true, 'read_at' => now()]);
-                } else {
+                } elseif ($isAdminViewer || ! $isAdvertiser) {
                     OrderChatMessage::where('order_id', $orderId)
                         ->where('sender_type', 'advertiser')
                         ->notBlocked()
@@ -172,13 +207,19 @@ class ChatController extends Controller
                 // Leftover is_read / read_at must not hide the thread.
             }
 
-            $order->loadMissing(['items.site.publisher', 'user']);
+            try {
+                $order->loadMissing(['user']);
+            } catch (\Throwable $e) {
+                // Leftover users table must not hide the thread.
+            }
+            $this->loadOrderItemsForChat($order);
             $details = $this->buildOrderChatDetails($order, $user);
 
             return response()->json([
                 'success' => true,
                 'messages' => $this->serializeMessages($messages),
                 'has_more_older' => $hasMoreOlder,
+                'own_read_ids' => $this->ownReadMessageIds((int) $orderId, (int) $user->id),
                 'current_user_id' => $user->id,
                 'order_details' => $details,
                 'can_send' => $details['can_send'],
@@ -214,6 +255,7 @@ class ChatController extends Controller
             }
 
             $isAdvertiser = (int) $order->user_id === (int) $user->id;
+            $isAdminSender = $this->userIsAdmin($user);
 
             if ($order->status === 'cancelled' || $order->payment_status !== 'paid') {
                 return response()->json([
@@ -225,7 +267,15 @@ class ChatController extends Controller
                 ], 422);
             }
 
-            $senderType = $isAdvertiser ? 'advertiser' : 'publisher';
+            if ($isAdminSender && ! $isAdvertiser && ! app(ManagedFulfilmentService::class)->orderHasManagedLine($order)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Staff chat replies are only available on Managed by SLB orders.',
+                    'can_send' => false,
+                ], 422);
+            }
+
+            $senderType = $isAdvertiser ? 'advertiser' : ($isAdminSender ? 'admin' : 'publisher');
             $body = (string) $request->message;
             $guard = app(OrderChatContactGuard::class)->inspect($body);
             $isBlocked = (bool) $guard['blocked'];
@@ -258,7 +308,10 @@ class ChatController extends Controller
             }
 
             if (! $isBlocked) {
-                foreach ($this->resolveChatReceivers($order, $isAdvertiser) as $receiver) {
+                foreach ($this->resolveChatReceivers($order, $isAdvertiser, $isAdminSender) as $receiver) {
+                    if ((int) $receiver->id === (int) $user->id) {
+                        continue;
+                    }
                     if ($receiver->email) {
                         try {
                             Mail::to($receiver->email)->send(new NewChatMessageNotification(
@@ -317,10 +370,17 @@ class ChatController extends Controller
             return true;
         }
 
+        $managed = app(ManagedFulfilmentService::class);
+        if ($this->userIsAdmin($user) && $managed->orderHasManagedLine($order)) {
+            return $order->payment_status === 'paid' && $order->status !== 'cancelled';
+        }
+
         try {
-            $isPublisher = $order->items()->whereHas('site', function ($q) use ($user) {
-                $q->where('publisher_id', $user->id);
-            })->exists();
+            $isPublisher = $order->items()
+                ->publisherFulfilment()
+                ->whereHas('site', function ($q) use ($user) {
+                    $q->where('publisher_id', $user->id);
+                })->exists();
         } catch (\Throwable $e) {
             return false;
         }
@@ -329,19 +389,39 @@ class ChatController extends Controller
             return false;
         }
 
+        // Fully managed orders never surface to the catalog publisher.
+        if ($managed->orderIsFullyManaged($order)) {
+            return false;
+        }
+
         // Tasks already hide unpaid checkouts. Chat used to leak item ids
         // and content links to the publisher before payment landed.
         return $order->payment_status === 'paid' && $order->status !== 'cancelled';
     }
 
+    private function userIsAdmin(User $user): bool
+    {
+        try {
+            return method_exists($user, 'isAdmin') && $user->isAdmin();
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
     /**
      * @return list<User>
      */
-    private function resolveChatReceivers(Order $order, bool $senderIsAdvertiser): array
+    private function resolveChatReceivers(Order $order, bool $senderIsAdvertiser, bool $senderIsAdmin = false): array
     {
+        $managed = app(ManagedFulfilmentService::class);
+
         if ($senderIsAdvertiser) {
             if (! AdvertiserOrderStatus::itemsTableAvailable()) {
                 return [];
+            }
+
+            if ($managed->orderHasManagedLine($order)) {
+                return $managed->chatStaffReceivers($order);
             }
 
             try {
@@ -352,6 +432,9 @@ class ChatController extends Controller
 
             $publishers = [];
             foreach ($order->items as $item) {
+                if ($item->isManagedBySlb()) {
+                    continue;
+                }
                 $publisher = $item->site?->publisher;
                 if ($publisher instanceof User) {
                     $publishers[$publisher->id] = $publisher;
@@ -359,6 +442,12 @@ class ChatController extends Controller
             }
 
             return array_values($publishers);
+        }
+
+        if ($senderIsAdmin || $managed->orderHasManagedLine($order)) {
+            $advertiser = User::find($order->user_id);
+
+            return $advertiser instanceof User ? [$advertiser] : [];
         }
 
         $advertiser = User::find($order->user_id);
@@ -379,6 +468,25 @@ class ChatController extends Controller
             $inner->where('is_blocked', false)
                 ->orWhere('user_id', $user->id);
         });
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function ownReadMessageIds(int $orderId, int $userId): array
+    {
+        try {
+            return OrderChatMessage::query()
+                ->where('order_id', $orderId)
+                ->where('user_id', $userId)
+                ->where('is_read', true)
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->values()
+                ->all();
+        } catch (\Throwable $e) {
+            return [];
+        }
     }
 
     /**
@@ -475,7 +583,9 @@ class ChatController extends Controller
         }
         $liveUrl = safe_href_url($item?->live_url);
         $contentLink = safe_href_url($item?->publisherContentLink());
+        $isManaged = AdvertiserOrderStatus::isManagedBySlb($order, $item);
         $canReview = $isAdvertiser
+            && ! $isManaged
             && $order->status === 'review'
             && filled($liveUrl)
             && ! $openContentRevision;
@@ -544,12 +654,20 @@ class ChatController extends Controller
         if ($isAdvertiser) {
             $other = $site?->publisher;
             if (! $other) {
-                foreach ($order->items as $item) {
-                    $candidate = $item->site?->publisher;
-                    if ($candidate) {
-                        $other = $candidate;
-                        break;
+                try {
+                    foreach ($order->items as $item) {
+                        try {
+                            $candidate = $item->site?->publisher;
+                        } catch (\Throwable $e) {
+                            $candidate = null;
+                        }
+                        if ($candidate) {
+                            $other = $candidate;
+                            break;
+                        }
                     }
+                } catch (\Throwable $e) {
+                    $other = null;
                 }
             }
             $role = 'publisher';
@@ -562,7 +680,15 @@ class ChatController extends Controller
             return null;
         }
 
-        $presence = $other->presencePayload();
+        try {
+            $presence = $other->presencePayload();
+        } catch (\Throwable $e) {
+            $presence = [
+                'online' => false,
+                'last_seen_at' => null,
+                'label' => null,
+            ];
+        }
 
         return [
             'name' => (string) $other->name,
@@ -582,18 +708,23 @@ class ChatController extends Controller
         }
 
         try {
-            $order->loadMissing(['items.site']);
+            $order->loadMissing(['items.site.publisher']);
         } catch (\Throwable $e) {
             try {
                 $order->unsetRelation('items');
-                $order->loadMissing(['items']);
-                foreach ($order->items as $loaded) {
-                    if ($loaded instanceof OrderItem) {
-                        $loaded->setRelation('site', null);
+                $order->loadMissing(['items.site']);
+            } catch (\Throwable $siteGone) {
+                try {
+                    $order->unsetRelation('items');
+                    $order->loadMissing(['items']);
+                    foreach ($order->items as $loaded) {
+                        if ($loaded instanceof OrderItem) {
+                            $loaded->setRelation('site', null);
+                        }
                     }
+                } catch (\Throwable $inner) {
+                    $order->setRelation('items', collect());
                 }
-            } catch (\Throwable $inner) {
-                $order->setRelation('items', collect());
             }
         }
     }

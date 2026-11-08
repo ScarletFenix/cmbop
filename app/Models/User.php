@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\NormalizesCountry;
 use App\Models\Concerns\ToleratesUnparseableDates;
 use App\Notifications\VerifyEmail;
 use Carbon\CarbonInterface;
@@ -16,7 +17,7 @@ use Illuminate\Support\Facades\Schema;
 
 class User extends Authenticatable implements MustVerifyEmail
 {
-    use HasFactory, Notifiable, ToleratesUnparseableDates;
+    use HasFactory, NormalizesCountry, Notifiable, ToleratesUnparseableDates;
 
     /**
      * The attributes that are mass assignable.
@@ -50,6 +51,9 @@ class User extends Authenticatable implements MustVerifyEmail
      * - catalog_reveal_exempt* (CatalogActivityController)
      * - last_seen_at (RecordUserLastSeen)
      * - suspended_at / suspended_reason / suspended_by (Admin\UserController)
+     * - is_test (Admin\UserController::updateTestFlag)
+     * - staff_created / staff_created_by / staff_invite_sent_at / staff_onboarded_at
+     *   (PublisherOnboardingService)
      */
 
     /**
@@ -89,6 +93,10 @@ class User extends Authenticatable implements MustVerifyEmail
         'catalog_hide_until' => 'datetime',
         'last_seen_at' => 'datetime',
         'suspended_at' => 'datetime',
+        'is_test' => 'boolean',
+        'staff_created' => 'boolean',
+        'staff_invite_sent_at' => 'datetime',
+        'staff_onboarded_at' => 'datetime',
     ];
 
     public const ONLINE_WINDOW_SECONDS = 120;
@@ -235,6 +243,16 @@ class User extends Authenticatable implements MustVerifyEmail
         }
 
         return self::CATALOG_COPY_CLEAN;
+    }
+
+    public function catalogCopyStatusLabel(): ?string
+    {
+        return match ($this->catalogCopyStatus()) {
+            self::CATALOG_COPY_HIDDEN => 'Catalog hidden',
+            self::CATALOG_COPY_POST_HIDE => 'Hide served',
+            self::CATALOG_COPY_WARNED => 'Copy warned',
+            default => null,
+        };
     }
 
     public function payoutProfileLocked(): bool
@@ -465,6 +483,130 @@ class User extends Authenticatable implements MustVerifyEmail
         }
     }
 
+    public function isTestAccount(): bool
+    {
+        if (! static::hasUsersColumn('is_test')) {
+            return false;
+        }
+
+        try {
+            return (bool) $this->is_test;
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    public function isStaffCreated(): bool
+    {
+        if (! static::hasUsersColumn('staff_created')) {
+            return false;
+        }
+
+        try {
+            return (bool) $this->staff_created;
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    public function isStaffOnboarded(): bool
+    {
+        if (! static::hasUsersColumn('staff_onboarded_at')) {
+            return $this->hasVerifiedEmail();
+        }
+
+        try {
+            return $this->staff_onboarded_at !== null;
+        } catch (\Throwable) {
+            return $this->hasVerifiedEmail();
+        }
+    }
+
+    public function staffOnboardingStatus(): ?string
+    {
+        if (! $this->isStaffCreated()) {
+            return null;
+        }
+
+        return $this->isStaffOnboarded() ? 'activated' : 'invited';
+    }
+
+    public function needsStaffPasswordSetup(): bool
+    {
+        return $this->isStaffCreated() && ! $this->isStaffOnboarded();
+    }
+
+    public function markStaffInviteSent(): void
+    {
+        if (! static::hasUsersColumn('staff_invite_sent_at')) {
+            return;
+        }
+
+        try {
+            $this->forceFill(['staff_invite_sent_at' => now()])->save();
+        } catch (\Throwable $e) {
+            report($e);
+        }
+    }
+
+    public function activateStaffOnboarding(): void
+    {
+        $attrs = static::existingAttributes([
+            'staff_onboarded_at' => $this->staff_onboarded_at ?? now(),
+            'email_verified_at' => $this->email_verified_at ?? now(),
+        ]);
+        if ($attrs === []) {
+            if (! $this->email_verified_at) {
+                $this->email_verified_at = now();
+                $this->save();
+            }
+
+            return;
+        }
+
+        $this->forceFill($attrs)->save();
+    }
+
+    public function hasPendingStaffInvites(): bool
+    {
+        try {
+            return $this->sites()
+                ->whereNull('publisher_accepted_at')
+                ->whereNotNull('assigned_by_user_id')
+                ->exists();
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * @param  Builder<User>  $query
+     * @return Builder<User>
+     */
+    public function scopeStaffCreated($query)
+    {
+        if (! static::hasUsersColumn('staff_created')) {
+            return $query->whereRaw('0 = 1');
+        }
+
+        return $query->where('staff_created', 1);
+    }
+
+    /**
+     * @param  Builder<User>  $query
+     * @return Builder<User>
+     */
+    public function scopeNotTest($query)
+    {
+        if (! static::hasUsersColumn('is_test')) {
+            return $query;
+        }
+
+        return $query->where(function ($inner) {
+            $inner->where('is_test', 0)->orWhereNull('is_test');
+        });
+    }
+
     public function adminNotes()
     {
         return $this->hasMany(UserAdminNote::class)->latest('id');
@@ -562,6 +704,39 @@ class User extends Authenticatable implements MustVerifyEmail
     public function sites()
     {
         return $this->hasMany(Site::class, 'publisher_id');
+    }
+
+    public function supplyPartner()
+    {
+        return $this->hasOne(Partner::class);
+    }
+
+    public function isSupplyPartner(): bool
+    {
+        try {
+            if (! Schema::hasTable('partners')) {
+                return false;
+            }
+        } catch (\Throwable) {
+            return false;
+        }
+
+        if ($this->relationLoaded('supplyPartner')) {
+            return $this->supplyPartner !== null;
+        }
+
+        return Partner::query()->where('user_id', $this->id)->exists();
+    }
+
+    /** Portfolio shown in site counts — archived listings stay out. */
+    public function notArchivedSites()
+    {
+        return $this->sites()->notArchived();
+    }
+
+    public function archivedSites()
+    {
+        return $this->sites()->archived();
     }
 
     public function orders()

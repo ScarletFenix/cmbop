@@ -18,10 +18,13 @@ use Database\Seeders\LanguagesTableSeeder;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
+use Tests\Support\CreatesBlogUploads;
 use Tests\TestCase;
 
 class BulkSiteGuidedWorkflowTest extends TestCase
 {
+    use CreatesBlogUploads;
     use RefreshDatabase;
 
     private User $publisher;
@@ -31,6 +34,7 @@ class BulkSiteGuidedWorkflowTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        Storage::fake('public');
 
         $this->seed(RolesTableSeeder::class);
         $this->seed(CountriesTableSeeder::class);
@@ -100,8 +104,8 @@ class BulkSiteGuidedWorkflowTest extends TestCase
         $this->actingAs($this->admin)
             ->get(route('admin.bulk-site-requests.show', $bulk))
             ->assertOk()
-            ->assertSee('Publisher submitted (URL + price only)', false)
-            ->assertSee('Done — add sites &amp; notify publisher', false)
+            ->assertSee('pending to add', false)
+            ->assertSee('Done — publish now, or send to the publisher for review', false)
             ->assertSee('https://bulk-a.example', false)
             ->assertSee('https://bulk-b.example', false);
 
@@ -173,40 +177,53 @@ class BulkSiteGuidedWorkflowTest extends TestCase
         $language = Language::marketplace()->where('code', 'de')->first()
             ?? Language::marketplace()->firstOrFail();
 
+        $niche = Category::query()->where('name', 'Business & Finance')->first()
+            ?? Category::query()->firstOrFail();
+        $description = 'Guest posts on this website stay published and the link remains dofollow for advertisers.';
         $rows = implode("\n", [
-            'https://seed-one.example,99,40,45,12000,'.$language->code.','.$country->code.',Seed One',
-            'https://seed-two.example,150,50,55,20000,'.$language->code.','.$country->code,
+            'https://seed-one.example,99,40,45,12000,'.$language->code.','.$country->code.',Seed One,https://seed-one.example/sample,3days,permanent,dofollow,as_you_prefer,'.$niche->name.','.$description,
+            'https://seed-two.example,150,50,55,20000,'.$language->code.','.$country->code.',Seed Two,https://seed-two.example/sample,3days,permanent,dofollow,as_you_prefer,'.$niche->name.','.$description,
         ]);
 
         $this->actingAs($this->admin)
             ->post(route('admin.bulk-site-requests.seed', $bulk), ['rows' => $rows])
             ->assertRedirect()
-            ->assertSessionHas('success');
+            ->assertSessionHas('error', 'All rows failed validation.');
 
-        $one = Site::where('domain', 'seed-one.example')->first();
-        $this->assertNotNull($one);
-        $this->assertFalse((bool) $one->active);
-        $this->assertFalse((bool) $one->verified);
-        $this->assertSame(Site::ONBOARDING_AWAITING_DETAILS, $one->onboarding_status);
-        $this->assertSame($this->publisher->id, (int) $one->publisher_id);
-        $this->assertSame(99.0, (float) $one->price);
-        $this->assertSame(45, (int) $one->dr);
-
-        $this->assertSame(0, Site::where('active', 1)->where('domain', 'seed-one.example')->count());
-
-        $this->assertDatabaseHas('in_app_notifications', [
+        $this->assertNull(Site::where('domain', 'seed-one.example')->first());
+        $this->assertNull(Site::where('domain', 'seed-two.example')->first());
+        $this->assertDatabaseMissing('in_app_notifications', [
             'user_id' => $this->publisher->id,
-            'title' => '2 sites were added to Pending sites',
+            'title' => '2 sites are active on the platform',
         ]);
-        $seedNote = InAppNotification::query()
-            ->where('user_id', $this->publisher->id)
-            ->where('title', '2 sites were added to Pending sites')
-            ->first();
-        $this->assertNotNull($seedNote);
-        $this->assertStringContainsString('status=pending', (string) $seedNote->action_url);
     }
 
-    public function test_marketer_done_adds_drafts_from_submitted_items_and_notifies_publisher(): void
+
+    public function test_marketer_cannot_post_bulk_done(): void
+    {
+        $marketingRole = Role::where('name', 'marketing')->firstOrFail();
+        $marketer = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $marketingRole->id,
+        ]);
+        $marketer->roles()->attach($marketingRole->id);
+
+        $bulk = BulkSiteRequest::create([
+            'publisher_id' => $this->publisher->id,
+            'status' => BulkSiteRequest::STATUS_REQUESTED,
+            'estimated_count' => 1,
+        ]);
+
+        $this->actingAs($marketer)
+            ->get(route('marketing.bulk-site-requests.show', $bulk))
+            ->assertOk();
+
+        $this->actingAs($marketer)
+            ->post(route('marketing.bulk-site-requests.done', $bulk), [])
+            ->assertForbidden();
+    }
+
+    public function test_admin_done_adds_drafts_from_submitted_items_and_notifies_publisher(): void
     {
         Mail::fake();
 
@@ -243,8 +260,8 @@ class BulkSiteGuidedWorkflowTest extends TestCase
         ]);
         $marketer->roles()->attach($marketingRole->id);
 
-        $this->actingAs($marketer)
-            ->post(route('marketing.bulk-site-requests.done', $bulk), [
+        $this->actingAs($this->admin)
+            ->post(route('admin.bulk-site-requests.done', $bulk), [
                 'items' => [
                     $itemA->id => [
                         'language' => strtolower($language->code),
@@ -252,7 +269,7 @@ class BulkSiteGuidedWorkflowTest extends TestCase
                         'da' => 30,
                         'dr' => 35,
                         'traffic' => 5000,
-                        'categories' => $category->name,
+                        ...$this->publishableDoneFields($category->name),
                     ],
                     $itemB->id => [
                         'language' => strtolower($language->code),
@@ -260,7 +277,7 @@ class BulkSiteGuidedWorkflowTest extends TestCase
                         'da' => 40,
                         'dr' => 45,
                         'traffic' => 8000,
-                        'categories' => $category->name,
+                        ...$this->publishableDoneFields($category->name),
                     ],
                 ],
             ])
@@ -270,8 +287,8 @@ class BulkSiteGuidedWorkflowTest extends TestCase
         $this->assertDatabaseHas('sites', [
             'domain' => 'done-a.example',
             'bulk_site_request_id' => $bulk->id,
-            'onboarding_status' => Site::ONBOARDING_AWAITING_DETAILS,
-            'active' => false,
+            'onboarding_status' => null,
+            'active' => true,
             'verified' => false,
             'price' => 80,
             'da' => 30,
@@ -289,24 +306,24 @@ class BulkSiteGuidedWorkflowTest extends TestCase
         $siteA = Site::where('domain', 'done-a.example')->firstOrFail();
         $this->assertContains($category->name, $siteA->categories ?? []);
 
-        $this->assertSame(BulkSiteRequest::STATUS_AWAITING_PUBLISHER, $bulk->fresh()->status);
-        $this->assertSame('Waiting on publisher', $bulk->fresh()->statusLabel());
+        $this->assertSame(BulkSiteRequest::STATUS_COMPLETED, $bulk->fresh()->status);
+        $this->assertSame('Finished', $bulk->fresh()->statusLabel());
 
         $this->assertDatabaseHas('in_app_notifications', [
             'user_id' => $this->publisher->id,
-            'title' => '2 sites were added to Pending sites',
+            'title' => '2 sites are active on the platform',
         ]);
         $doneNote = InAppNotification::query()
             ->where('user_id', $this->publisher->id)
-            ->where('title', '2 sites were added to Pending sites')
+            ->where('title', '2 sites are active on the platform')
             ->first();
         $this->assertNotNull($doneNote);
-        $this->assertStringContainsString('status=pending', (string) $doneNote->action_url);
+        $this->assertStringContainsString('status=active', (string) $doneNote->action_url);
 
         Mail::assertQueued(BulkSitesSeededNotification::class);
     }
 
-    public function test_marketer_can_submit_one_complete_block_and_leave_others_pending(): void
+    public function test_admin_can_submit_one_complete_block_and_leave_others_pending(): void
     {
         Mail::fake();
         $country = Country::marketplace()->where('code', 'de')->first()
@@ -342,9 +359,9 @@ class BulkSiteGuidedWorkflowTest extends TestCase
         $category = Category::query()->where('name', 'Business & Finance')->first()
             ?? Category::query()->firstOrFail();
 
-        $this->actingAs($marketer)
-            ->from(route('marketing.bulk-site-requests.show', $bulk))
-            ->post(route('marketing.bulk-site-requests.done', $bulk), [
+        $this->actingAs($this->admin)
+            ->from(route('admin.bulk-site-requests.show', $bulk))
+            ->post(route('admin.bulk-site-requests.done', $bulk), [
                 'items' => [
                     $itemA->id => [
                         'language' => strtolower($language->code),
@@ -352,29 +369,31 @@ class BulkSiteGuidedWorkflowTest extends TestCase
                         'da' => 10,
                         'dr' => 12,
                         'traffic' => 100,
-                        'categories' => $category->name,
+                        ...$this->publishableDoneFields($category->name),
                     ],
                     // itemB left empty for later
                 ],
             ])
-            ->assertRedirect(route('marketing.bulk-site-requests.show', $bulk))
+            ->assertRedirect(route('admin.bulk-site-requests.show', $bulk))
             ->assertSessionHas('success')
             ->assertSessionHas('success', fn ($msg) => str_contains((string) $msg, 'still pending'));
 
         $this->assertDatabaseHas('sites', [
             'domain' => 'partial-a.example',
             'bulk_site_request_id' => $bulk->id,
-            'onboarding_status' => Site::ONBOARDING_AWAITING_DETAILS,
+            'onboarding_status' => null,
+            'active' => true,
+            'verified' => false,
         ]);
         $this->assertDatabaseMissing('sites', ['domain' => 'partial-b.example']);
         $this->assertNull($itemB->fresh()->site_id);
         $this->assertNotNull($itemA->fresh()->site_id);
-        $this->assertSame(BulkSiteRequest::STATUS_AWAITING_PUBLISHER, $bulk->fresh()->status);
+        $this->assertSame(BulkSiteRequest::STATUS_SEEDED, $bulk->fresh()->status);
 
         // Niches required on a started block: metrics alone are not enough for Done.
-        $this->actingAs($marketer)
-            ->from(route('marketing.bulk-site-requests.show', $bulk))
-            ->post(route('marketing.bulk-site-requests.done', $bulk), [
+        $this->actingAs($this->admin)
+            ->from(route('admin.bulk-site-requests.show', $bulk))
+            ->post(route('admin.bulk-site-requests.done', $bulk), [
                 'items' => [
                     $itemB->id => [
                         'language' => strtolower($language->code),
@@ -385,7 +404,7 @@ class BulkSiteGuidedWorkflowTest extends TestCase
                     ],
                 ],
             ])
-            ->assertRedirect(route('marketing.bulk-site-requests.show', $bulk))
+            ->assertRedirect(route('admin.bulk-site-requests.show', $bulk))
             ->assertSessionHasErrors('items.'.$itemB->id.'.categories')
             ->assertSessionHas('error');
 
@@ -393,6 +412,13 @@ class BulkSiteGuidedWorkflowTest extends TestCase
 
         $this->actingAs($marketer)
             ->get(route('marketing.bulk-site-requests.show', $bulk))
+            ->assertOk()
+            ->assertSee('partial-b.example', false)
+            ->assertSee('View only — ask an admin to change status', false)
+            ->assertDontSee('name="items['.$itemB->id.'][language]"', false);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.bulk-site-requests.show', $bulk))
             ->assertOk()
             ->assertSee('name="items['.$itemB->id.'][language]"', false)
             ->assertSee('name="items['.$itemB->id.'][da]"', false)
@@ -402,7 +428,7 @@ class BulkSiteGuidedWorkflowTest extends TestCase
             ->assertDontSee('name="items['.$itemA->id.'][language]"', false);
     }
 
-    public function test_marketer_done_rejects_partially_filled_block_even_with_another_complete(): void
+    public function test_admin_done_rejects_partially_filled_block_even_with_another_complete(): void
     {
         $country = Country::marketplace()->where('code', 'de')->first()
             ?? Country::marketplace()->firstOrFail();
@@ -437,9 +463,9 @@ class BulkSiteGuidedWorkflowTest extends TestCase
         $category = Category::query()->where('name', 'Business & Finance')->first()
             ?? Category::query()->firstOrFail();
 
-        $this->actingAs($marketer)
-            ->from(route('marketing.bulk-site-requests.show', $bulk))
-            ->post(route('marketing.bulk-site-requests.done', $bulk), [
+        $this->actingAs($this->admin)
+            ->from(route('admin.bulk-site-requests.show', $bulk))
+            ->post(route('admin.bulk-site-requests.done', $bulk), [
                 'items' => [
                     $itemA->id => [
                         'language' => strtolower($language->code),
@@ -447,7 +473,7 @@ class BulkSiteGuidedWorkflowTest extends TestCase
                         'da' => 10,
                         'dr' => 12,
                         'traffic' => 100,
-                        'categories' => $category->name,
+                        ...$this->publishableDoneFields($category->name),
                     ],
                     $itemB->id => [
                         'language' => strtolower($language->code),
@@ -455,7 +481,7 @@ class BulkSiteGuidedWorkflowTest extends TestCase
                     ],
                 ],
             ])
-            ->assertRedirect(route('marketing.bulk-site-requests.show', $bulk))
+            ->assertRedirect(route('admin.bulk-site-requests.show', $bulk))
             ->assertSessionHasErrors()
             ->assertSessionHas('error');
 
@@ -611,20 +637,18 @@ class BulkSiteGuidedWorkflowTest extends TestCase
 
         $this->actingAs($this->publisher)
             ->post(route('publisher.bulk-sites.review.submit'), ['submit_all' => 1])
-            ->assertRedirect(route('publisher.websites', ['status' => 'pending']))
+            ->assertRedirect(route('publisher.websites', ['status' => 'active']))
             ->assertSessionHas('success');
 
-        $this->assertSame(Site::ONBOARDING_READY_FOR_REVIEW, $first->fresh()->onboarding_status);
-        $this->assertSame(Site::ONBOARDING_READY_FOR_REVIEW, $second->fresh()->onboarding_status);
+        $this->assertNull($first->fresh()->onboarding_status);
+        $this->assertNull($second->fresh()->onboarding_status);
+        $this->assertTrue((bool) $first->fresh()->active);
+        $this->assertTrue((bool) $second->fresh()->active);
         $this->assertSame(BulkSiteRequest::STATUS_COMPLETED, $bulk->fresh()->status);
 
-        $adminNotes = InAppNotification::where('user_id', $this->admin->id)
+        $this->assertSame(0, InAppNotification::where('user_id', $this->admin->id)
             ->where('audience', InAppNotification::AUDIENCE_ADMIN)
-            ->orderBy('id')
-            ->get();
-
-        $this->assertCount(2, $adminNotes);
-        $this->assertStringContainsString('/admin/sites', (string) $adminNotes->last()->action_url);
+            ->count());
     }
 
     public function test_websites_page_exposes_paste_urls_helper(): void
@@ -880,5 +904,22 @@ class BulkSiteGuidedWorkflowTest extends TestCase
         ]);
 
         return $site;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function publishableDoneFields(string $category): array
+    {
+        return [
+            'example_url' => 'https://example.com/sample-article',
+            'turnaround_time' => '3days',
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'site_tag' => 'as_you_prefer',
+            'description' => 'Guest posts on this website stay published and the link remains dofollow for advertisers.',
+            'categories' => $category,
+            'site_image' => $this->fakeBlogUpload('cover.jpg', 80, 80),
+        ];
     }
 }

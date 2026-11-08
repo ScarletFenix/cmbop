@@ -7,7 +7,7 @@
 @php
     $company = $company ?? config('billing.company', []);
     $companiesHouseUrl = $companiesHouseUrl
-        ?? ('https://find-and-update.company-information.service.gov.uk/company/'.($company['registration_no'] ?? '16607074'));
+        ?? ('https://find-and-update.company-information.service.gov.uk/company/'.($company['registration_no'] ?? '17392540'));
     $stats = $stats ?? [
         'sites' => null,
         'countries' => null,
@@ -21,8 +21,10 @@
     if ($supportEmail === '') {
         $supportEmail = 'support@seolinkbuildings.com';
     }
-    $registrationNo = $company['registration_no'] ?? '16607074';
-    $legalName = $company['legal_name'] ?? 'SEOLinkBuildings Partners with (Topurlz LTD)';
+    $registrationNo = $company['registration_no'] ?? '17392540';
+    $legalName = class_exists(\App\Support\BrandOrganization::class)
+        ? \App\Support\BrandOrganization::confirmedLegalName()
+        : null;
     $address = implode(', ', $company['address_lines'] ?? ['20 Wenlock Road, London, England, N1 7GU']);
 
     $faqEntities = [];
@@ -54,10 +56,10 @@
     'name' => __('messages.meta_about_title'),
     'url' => localized_url('about'),
     'description' => __('messages.meta_about_description'),
-    'inLanguage' => class_exists(\App\Support\PublicI18n::class)
+    'inLanguage' => (class_exists(\App\Support\PublicI18n::class) && method_exists(\App\Support\PublicI18n::class, 'htmlLang'))
         ? \App\Support\PublicI18n::htmlLang()
         : 'en-GB',
-    'mainEntity' => class_exists(\App\Support\BrandOrganization::class)
+    'mainEntity' => (class_exists(\App\Support\BrandOrganization::class) && method_exists(\App\Support\BrandOrganization::class, 'schema'))
         ? \App\Support\BrandOrganization::schema([
         'foundingLocation' => [
             '@type' => 'Place',
@@ -88,14 +90,14 @@
         ],
     ])
         : ['@type' => 'Organization', 'name' => 'SEOLinkBuildings'],
-], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) !!}
+], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_HEX_TAG|JSON_HEX_AMP|JSON_INVALID_UTF8_SUBSTITUTE) ?: '{}' !!}
 </script>
 <script type="application/ld+json">
 {!! json_encode([
     '@@context' => 'https://schema.org',
     '@type' => 'FAQPage',
     'mainEntity' => $faqEntities,
-], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) !!}
+], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_HEX_TAG|JSON_HEX_AMP|JSON_INVALID_UTF8_SUBSTITUTE) ?: '{}' !!}
 </script>
 @endpush
 
@@ -299,7 +301,16 @@
         <h2 class="h4 mb-3" style="color:#1a585e;">{{ __('messages.about_page_company_title') }}</h2>
         <p class="text-muted mb-3">{{ __('messages.about_page_company_body') }}</p>
         <ul class="list-unstyled text-muted mb-0 small">
+            @if(is_string($legalName) && $legalName !== '')
             <li class="mb-2"><strong>{{ __('messages.about_page_legal_label') }}:</strong> {{ $legalName }}</li>
+            @endif
+            @if(class_exists(\App\Support\BrandPerson::class))
+            <li class="mb-2">
+                <strong>{{ __('messages.about_page_founder_label') }}:</strong>
+                <a href="{{ \App\Support\BrandPerson::url() }}" class="link-teal">{{ \App\Support\BrandPerson::publicName() }}</a>
+            </li>
+            <li class="mb-2"><strong>{{ __('messages.about_page_founded_label') }}:</strong> {{ config('company.founded', '2024') }}</li>
+            @endif
             <li class="mb-2">
                 <strong>{{ __('messages.about_page_reg_label') }}:</strong>
                 {{ $registrationNo }}

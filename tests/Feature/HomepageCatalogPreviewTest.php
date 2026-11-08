@@ -6,6 +6,7 @@ use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\Marketing\CatalogTeaserService;
+use App\Support\PublicI18n;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -49,19 +50,20 @@ class HomepageCatalogPreviewTest extends TestCase
         ], $overrides));
     }
 
-    public function test_homepage_hero_uses_static_german_catalog_image(): void
+    public function test_homepage_hero_uses_german_catalog_table(): void
     {
         $publisher = $this->publisher();
         $this->makeSite($publisher, [
-            'site_name' => 'German News Hub',
-            'domain' => 'german-news-hub.de',
-            'site_url' => 'https://german-news-hub.de',
+            'site_name' => 'Low Metric News',
+            'domain' => 'low-metric-news.de',
+            'site_url' => 'https://low-metric-news.de',
             'country' => 'de',
             'language' => 'de',
             'countries' => ['de'],
             'languages' => ['de'],
-            'dr' => 70,
-            'da' => 60,
+            'dr' => 12,
+            'da' => 12,
+            'traffic' => 100,
         ]);
         $this->makeSite($publisher, [
             'site_name' => 'French Lifestyle',
@@ -75,43 +77,151 @@ class HomepageCatalogPreviewTest extends TestCase
             'da' => 55,
         ]);
 
-        $this->get('/')
+        $html = $this->get('/')
             ->assertOk()
-            ->assertSee('dashboard.png', false)
-            ->assertSee('dashboard.webp', false)
-            ->assertDontSee('Live publisher catalog', false)
-            ->assertDontSee('German News Hub', false)
-            ->assertDontSee('advertiser/catalog', false);
+            ->assertSee('Publisher catalog preview', false)
+            ->assertSee('Add to cart', false)
+            ->assertSee('berlin**.de', false)
+            ->assertSee('munich**.de', false)
+            ->assertSee('hamburg**.de', false)
+            ->assertSee('Germany', false)
+            ->assertDontSee('Demo Site', false)
+            ->assertDontSee('Low Metric News', false)
+            ->assertDontSee('dashboard.png', false)
+            ->assertDontSee('French Lifestyle', false)
+            ->assertDontSee('french-lifestyle.fr', false)
+            ->assertDontSee('advertiser/catalog', false)
+            ->getContent();
+
+        $this->assertStringContainsString('**', $html);
+        $this->assertHeroDemoScreenshotScores($html);
     }
 
-    public function test_homepage_always_shows_static_catalog_image_even_without_sites(): void
+    public function test_homepage_always_shows_catalog_table_even_without_sites(): void
     {
-        $this->get('/')
+        $html = $this->get('/')
             ->assertOk()
-            ->assertSee('dashboard.png', false)
-            ->assertDontSee('Live publisher catalog', false)
-            ->assertDontSee('advertiser/catalog', false);
+            ->assertSee('Publisher catalog preview', false)
+            ->assertSee('Add to cart', false)
+            ->assertSee('Germany', false)
+            ->assertSee('berlin**.de', false)
+            ->assertSee('munich**.de', false)
+            ->assertSee('hamburg**.de', false)
+            ->assertDontSee('Demo Site', false)
+            ->assertDontSee('dashboard.png', false)
+            ->assertDontSee('advertiser/catalog', false)
+            ->getContent();
+
+        $this->assertHeroDemoScreenshotScores($html);
     }
 
-    public function test_hero_catalog_image_uses_contain_so_metrics_are_not_cropped(): void
+    public function test_hero_uses_live_teasers_when_quality_sites_exist(): void
+    {
+        $publisher = $this->publisher();
+        $this->makeSite($publisher, [
+            'site_name' => 'German News Hub',
+            'domain' => 'german-news-hub.de',
+            'site_url' => 'https://german-news-hub.de',
+            'country' => 'de',
+            'language' => 'de',
+            'countries' => ['de'],
+            'languages' => ['de'],
+            'dr' => 70,
+            'da' => 60,
+            'traffic' => 80000,
+        ]);
+
+        $html = $this->get('/')->assertOk()->getContent();
+
+        $this->assertStringContainsString('german**.de', $html);
+        $this->assertStringNotContainsString('berlin**.de', $html);
+        $this->assertStringNotContainsString('German News Hub', $html);
+        $this->assertStringContainsString('Germany', $html);
+        $this->assertDoesNotMatchRegularExpression(
+            '/catalog-metric--dr[^>]*>\s*<span class="catalog-metric__value">89</',
+            $html
+        );
+    }
+
+    public function test_hero_ctas_stay_on_one_line(): void
+    {
+        $html = $this->get('/')->assertOk()->getContent();
+        $this->assertStringContainsString('slb-hero-cta-group', $html);
+        $this->assertStringContainsString('Get Started', $html);
+        $this->assertStringContainsString('Become a publisher', $html);
+
+        $hero = (string) file_get_contents(resource_path('views/components/hero.blade.php'));
+        $this->assertMatchesRegularExpression(
+            '/\.slb-hero-cta-group\s*\{[^}]*flex-wrap:\s*nowrap/s',
+            $hero
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/\.slb-hero-cta-group\s*\{[^}]*flex-direction:\s*column/s',
+            $hero
+        );
+        $this->assertStringContainsString('white-space: nowrap', $hero);
+    }
+
+    public function test_hero_catalog_preview_keeps_full_table_readable_on_narrow_viewports(): void
     {
         $html = $this->get('/')
             ->assertOk()
             ->getContent();
 
-        $this->assertMatchesRegularExpression(
-            '/\.slb-hero-product\s*\{[^}]*object-fit:\s*contain/s',
-            $html
-        );
-        $this->assertStringContainsString('aspect-ratio: 1200 / 518', $html);
-        // Desktop used to force cover on .slb-hero-product (cropping metrics).
-        $this->assertDoesNotMatchRegularExpression(
-            '/\.slb-hero-product\s*\{[^}]*object-fit:\s*cover/s',
-            $html
-        );
-        // Mobile/tablet: readable pan inside the visual, not a stamped-down full frame.
+        $this->assertStringContainsString('catalog-table', $html);
+        $this->assertStringContainsString('slb-hero-catalog-clone', $html);
+        $catalogCssAt = strpos($html, 'assets/css/catalog.css');
+        $heroAt = strpos($html, 'class="slb-hero"');
+        $this->assertNotFalse($catalogCssAt);
+        $this->assertNotFalse($heroAt);
+        $this->assertLessThan($heroAt, $catalogCssAt, 'catalog.css must load in head before the hero paints');
         $this->assertStringContainsString('min-width: 720px', $html);
         $this->assertStringContainsString('overscroll-behavior-x: contain', $html);
+        $this->assertStringNotContainsString('235vw', $html);
+        $this->assertStringNotContainsString('230vw', $html);
+
+        $hero = (string) file_get_contents(resource_path('views/components/hero.blade.php'));
+        $this->assertStringContainsString('#mainNavbar .navbar-logo', $hero);
+        $this->assertStringContainsString('max-height: 52px', $hero);
+        $this->assertStringContainsString('transition: none !important', $hero);
+        $this->assertStringContainsString('animation: none !important', $hero);
+        $this->assertStringNotContainsString('animation: slbHeroFade', $hero);
+        $this->assertStringNotContainsString('animation: slbHeroRise', $hero);
+        $this->assertStringContainsString('overflow-x: clip', $hero);
+        $this->assertStringContainsString('overflow-y: visible', $hero);
+        $this->assertStringNotContainsString('overflow-x: hidden', $hero);
+        $this->assertStringContainsString('overflow-x: visible', $hero);
+        $this->assertStringContainsString("view()->exists('components.hero-catalog-preview')", $hero);
+        $this->assertDoesNotMatchRegularExpression(
+            '/#main-content[^{;]*\{[^}]*overflow-x:\s*clip/',
+            $hero
+        );
+    }
+
+    public function test_every_locale_homepage_uses_the_catalog_clone_hero(): void
+    {
+        $paths = ['/'];
+        foreach (PublicI18n::prefixed() as $locale) {
+            $paths[] = '/'.$locale;
+        }
+
+        foreach ($paths as $path) {
+            $html = $this->get($path)->assertOk()->getContent();
+            $this->assertStringContainsString('slb-hero-catalog-clone', $html, $path);
+            $this->assertStringContainsString('catalog-filters-card', $html, $path);
+            $this->assertStringContainsString('catalog-table', $html, $path);
+            $this->assertStringContainsString('slb-hero-search', $html, $path);
+            $this->assertStringNotContainsString('dashboard.png', $html, $path);
+            if ($path === '/fr') {
+                $this->assertStringContainsString('paris**.fr', $html, $path);
+                $this->assertStringContainsString('France', $html, $path);
+                $this->assertStringContainsString('Ajouter au panier', $html, $path);
+            }
+            if ($path === '/us') {
+                $this->assertStringContainsString('austin**.com', $html, $path);
+                $this->assertStringContainsString('United States', $html, $path);
+            }
+        }
     }
 
     public function test_teaser_service_diversifies_countries_before_filling(): void
@@ -155,6 +265,38 @@ class HomepageCatalogPreviewTest extends TestCase
         $this->assertContains('us', $countries);
         $this->assertContains('it', $countries);
         $this->assertSame(3, count(array_unique($countries)));
-        $this->assertStringContainsString('*', (string) $teasers->first()['domain_masked']);
+        $this->assertStringContainsString('**', (string) $teasers->first()['domain_masked']);
+    }
+
+    public function test_mask_domain_hides_the_middle_with_double_stars(): void
+    {
+        $service = app(CatalogTeaserService::class);
+
+        $this->assertSame('berlin**.de', $service->maskDomain('berlin-editorial.de'));
+        $this->assertSame('london**.co.uk', $service->maskDomain('www.london-trade.co.uk'));
+        $this->assertSame('site**.com', $service->maskDomain(''));
+    }
+
+    private function assertHeroDemoScreenshotScores(string $html): void
+    {
+        preg_match_all(
+            '/catalog-metric--dr[^>]*>\s*<span class="catalog-metric__value">(\d+)/',
+            $html,
+            $drMatches
+        );
+        preg_match_all(
+            '/catalog-metric--da">\s*<span class="catalog-metric__value">(\d+)/',
+            $html,
+            $daMatches
+        );
+
+        $this->assertSame(['89', '89', '88'], $drMatches[1], $html);
+        $this->assertSame(['83', '82', '83'], $daMatches[1], $html);
+        $this->assertStringContainsString('€253.87', $html);
+        $this->assertStringContainsString('€188.98', $html);
+        $this->assertStringContainsString('€149.63', $html);
+        $this->assertStringContainsString('627k', $html);
+        $this->assertStringContainsString('580.4k', $html);
+        $this->assertStringContainsString('501.2k', $html);
     }
 }

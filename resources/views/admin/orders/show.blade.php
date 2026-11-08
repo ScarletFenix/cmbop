@@ -1,10 +1,18 @@
 @extends('admin.layouts.app')
 
+@section('title', 'Order #'.($order->order_number ?: $order->id))
+
 @section('content')
 @php
+    $order->setRelation('items', $order->items->sortBy('id')->values());
     $item = $order->items->first();
     $site = $item?->site;
-    $publisher = $site?->publisher;
+    $linePublishers = $order->items
+        ->map(fn ($line) => $line->site?->publisher)
+        ->filter()
+        ->unique('id')
+        ->values();
+    $publisher = $site?->publisher ?? $linePublishers->first();
     $statusClass = match ($order->status) {
         'completed' => 'success',
         'cancelled' => 'danger',
@@ -35,11 +43,17 @@
         : null;
     $advertiserAdminUrl = $order->user?->adminShowUrl();
     $publisherAdminUrl = $publisher?->adminShowUrl();
+    $advertiserDossierUrl = $order->user ? route('admin.finance.user', $order->user) : null;
+    $chargeCode = strtoupper(trim((string) ($order->charge_currency ?? '')));
+    $showCharge = $chargeCode !== '' && $chargeCode !== 'EUR' && $order->charge_amount !== null;
+    $placementsMissing = \App\Support\AdvertiserOrderDetails::placementsMissing($order);
+    $completedAtDisplay = \App\Support\AdvertiserOrderDetails::completedAtDisplay($order);
+    $primaryOrderNumber = filled($order->order_number) ? (string) $order->order_number : (string) $order->id;
 @endphp
 <div class="container-fluid">
     @include('admin.partials.page-header', [
-        'title' => 'Order #' . $order->order_number,
-        'subtitle' => 'Stage can be corrected here · chat is read-only and payments use Order Payments',
+        'title' => 'Order #'.$primaryOrderNumber,
+        'subtitle' => 'Internal ID '.$order->id.(filled($order->reference_code) ? ' · Payment ref '.$order->reference_code : '').' · Stage can be corrected here · chat is read-only and payments use Order Payments',
         'actionUrl' => route('admin.orders.index'),
         'actionLabel' => 'All orders',
         'actionIcon' => 'fa-arrow-left',
@@ -94,17 +108,43 @@
                                     @endif
                                 </div>
                                 <div class="small text-muted">{{ $order->user?->email ?? '' }}</div>
+                                @if($advertiserDossierUrl)
+                                    <div class="small"><a href="{{ $advertiserDossierUrl }}">Finance dossier</a></div>
+                                @endif
                             </div>
                             <div>
                                 <div class="small text-muted">Publisher</div>
                                 <div class="fw-semibold">
                                     @if($publisherAdminUrl)
                                         <a href="{{ $publisherAdminUrl }}" class="link-dark">{{ $publisher?->name }}</a>
+                                    @elseif($publisher)
+                                        {{ $publisher->name }}
+                                    @elseif($placementsMissing)
+                                        <span class="text-muted">Unknown — no line items</span>
                                     @else
-                                        {{ $publisher?->name ?? '—' }}
+                                        —
                                     @endif
                                 </div>
+                                @if($placementsMissing && ! $publisher)
+                                    <div class="small text-muted">Publisher is stored on placements, not on the order row.</div>
+                                @endif
                                 <div class="small text-muted">{{ $publisher?->email ?? '' }}</div>
+                                @if($publisher)
+                                    <div class="small"><a href="{{ route('admin.finance.user', $publisher) }}">Finance dossier</a></div>
+                                @endif
+                                @if(($publisher === null && $linePublishers->isNotEmpty()) || $linePublishers->count() > 1)
+                                    <div class="mt-2">
+                                        @foreach($linePublishers as $linePublisher)
+                                            @if((int) $linePublisher->id === (int) ($publisher?->id ?? 0))
+                                                @continue
+                                            @endif
+                                            <div class="small">
+                                                <a href="{{ $linePublisher->adminShowUrl() }}" class="link-dark">{{ $linePublisher->name }}</a>
+                                                · <a href="{{ route('admin.finance.user', $linePublisher) }}">Finance</a>
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                @endif
                                 @if($remindableItems->isNotEmpty())
                                     <div class="mt-3 d-flex flex-wrap gap-2 align-items-center" id="remind-publisher">
                                         @foreach($remindableItems as $remindItem)
@@ -140,6 +180,19 @@
                                 @if(! $loop->first)
                                     <hr class="my-3">
                                 @endif
+                                <div class="mb-2"><span class="text-muted small">Publisher stage</span>
+                                    <div>{{ $line->publisher_status ? ucfirst((string) $line->publisher_status) : '—' }}</div>
+                                </div>
+                                <div class="mb-2"><span class="text-muted small">Fulfilment</span>
+                                    <div>
+                                        @if($line->isManagedBySlb())
+                                            <span class="badge text-bg-light text-dark border">Managed by SLB</span>
+                                            <a class="small ms-1" href="{{ route('admin.managed-orders.show', $line) }}">Open desk</a>
+                                        @else
+                                            Publisher portal
+                                        @endif
+                                    </div>
+                                </div>
                                 <div class="mb-2"><span class="text-muted small">Site</span>
                                     <div class="fw-semibold">
                                         @if($lineSite)
@@ -241,20 +294,79 @@
                                     </div>
                                 @endif
                             @empty
-                                <div class="text-muted">{{ \App\Support\AdvertiserOrderDetails::emptyItemsMessage($order) }}</div>
+                                <div class="alert alert-warning mb-0">
+                                    <div class="fw-semibold mb-1">No line items</div>
+                                    <div>{{ \App\Support\AdvertiserOrderDetails::emptyItemsMessage($order) }}</div>
+                                    @if($placementsMissing)
+                                        <div class="small mt-2">{{ \App\Support\AdvertiserOrderDetails::adminMissingPlacementsNote($order) }}</div>
+                                    @endif
+                                </div>
                             @endforelse
                         </div>
                     </div>
                 </div>
+                @if($order->payment_status === 'paid' && ! in_array($order->status, ['completed', 'cancelled'], true) && $order->items->contains(fn ($line) => ! $line->isManagedBySlb()))
+                <div class="col-12">
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-header bg-white border-0"><strong>Managed by SLB</strong></div>
+                        <div class="card-body">
+                            <p class="small text-muted mb-3">
+                                Switch fulfilment to the SLB team (email-managed). The advertiser keeps this order on My Orders;
+                                the catalog publisher will not see it in Tasks, get chat or nudges, or receive a platform payout.
+                            </p>
+                            <form method="POST" action="{{ route('admin.managed-orders.mark', $order) }}" class="row g-2 align-items-end">
+                                @csrf
+                                @if($order->items->count() > 1)
+                                    <div class="col-md-4">
+                                        <label class="form-label" for="managed_order_item_id">Placement</label>
+                                        <select name="order_item_id" id="managed_order_item_id" class="form-select">
+                                            <option value="">All unmarked placements</option>
+                                            @foreach($order->items as $markLine)
+                                                @continue($markLine->isManagedBySlb())
+                                                <option value="{{ $markLine->id }}">{{ $markLine->site_name ?: ('Item #'.$markLine->id) }}</option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                @endif
+                                <div class="col-md-4">
+                                    <label class="form-label" for="mark_managed_assignee">Assignee (optional)</label>
+                                    <select name="managed_assignee_id" id="mark_managed_assignee" class="form-select">
+                                        <option value="">Unassigned</option>
+                                        @foreach(app(\App\Services\Orders\ManagedFulfilmentService::class)->staffAssignees() as $staffUser)
+                                            <option value="{{ $staffUser->id }}">{{ $staffUser->name }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <button type="submit" class="btn btn-outline-primary">Mark Managed by SLB</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                @endif
                 <div class="col-12">
                     <div class="card border-0 shadow-sm">
                         <div class="card-header bg-white border-0"><strong>Order details</strong></div>
                         <div class="card-body">
                             <div class="row g-3">
-                                <div class="col-md-3"><span class="text-muted small">Reference</span><div>{{ $order->reference_code ?: '—' }}</div></div>
+                                <div class="col-md-3"><span class="text-muted small">Order number</span><div class="fw-semibold">#{{ $primaryOrderNumber }}</div></div>
+                                <div class="col-md-3"><span class="text-muted small">Internal ID</span><div>{{ $order->id }}</div></div>
+                                <div class="col-md-3"><span class="text-muted small">Payment ref</span><div>{{ $order->reference_code ?: '—' }}</div></div>
                                 <div class="col-md-3"><span class="text-muted small">Created</span><div>{{ optional($order->created_at)->format('M j, Y g:i A') }}</div></div>
                                 <div class="col-md-3"><span class="text-muted small">Paid at</span><div>{{ optional($order->paid_at)->format('M j, Y g:i A') ?: '—' }}</div></div>
-                                <div class="col-md-3"><span class="text-muted small">Completed at</span><div>{{ optional($order->completed_at)->format('M j, Y g:i A') ?: '—' }}</div></div>
+                                <div class="col-md-3">
+                                    <span class="text-muted small">Completed at</span>
+                                    <div>
+                                        {{ optional($completedAtDisplay['at'])->format('M j, Y g:i A') ?: '—' }}
+                                        @if(!empty($completedAtDisplay['inferred']))
+                                            <div class="small text-muted">Estimated</div>
+                                        @endif
+                                    </div>
+                                    @if(!empty($completedAtDisplay['note']))
+                                        <div class="small text-muted">{{ $completedAtDisplay['note'] }}</div>
+                                    @endif
+                                </div>
                                 <div class="col-md-3"><span class="text-muted small">Subtotal / Tax / Total</span>
                                     <div>€{{ number_format((float) $order->subtotal, 2) }} · €{{ number_format((float) $order->tax, 2) }} · €{{ number_format((float) $order->total_amount, 2) }}</div>
                                 </div>
@@ -377,25 +489,25 @@
                             </p>
 
                             @if($canOverrideStatus && count($statusTargets))
-                                <form method="POST" action="{{ route('admin.orders.status', $order->id) }}" id="adminOrderStageForm">
+                                <form method="POST" action="{{ route('admin.orders.status', $order->id) }}" id="adminOrderStageForm" class="admin-deposits-filters" data-admin-filter-live="1">
                                     @csrf
-                                    <div class="row g-2 align-items-start">
+                                    <div class="row g-2 align-items-end">
                                         <div class="col-md-3">
-                                            <label class="form-label small mb-1" for="adminOrderStage">Move to</label>
-                                            <select class="form-select form-select-sm" id="adminOrderStage" name="status" required>
+                                            <label class="form-label" for="adminOrderStage">Move to</label>
+                                            <select class="form-select" id="adminOrderStage" name="status" required>
                                                 @foreach($statusTargets as $target)
                                                     <option value="{{ $target }}">{{ ucfirst($target) }}</option>
                                                 @endforeach
                                             </select>
                                         </div>
                                         <div class="col-md-7">
-                                            <label class="form-label small mb-1" for="adminOrderStageReason">Reason (shown to both sides)</label>
-                                            <input type="text" class="form-control form-control-sm" id="adminOrderStageReason"
+                                            <label class="form-label" for="adminOrderStageReason">Reason (shown to both sides)</label>
+                                            <input type="text" class="form-control" id="adminOrderStageReason"
                                                    name="reason" minlength="5" maxlength="500" required
                                                    placeholder="e.g. Publisher accepted by mistake — moving back to pending">
                                         </div>
                                         <div class="col-md-2 d-flex align-items-end" style="min-height: 58px;">
-                                            <button type="submit" class="btn btn-sm btn-primary w-100">
+                                            <button type="submit" class="btn btn-primary w-100">
                                                 <i class="fa fa-shuffle me-1"></i> Move
                                             </button>
                                         </div>
@@ -488,8 +600,28 @@
                     <div class="row g-3 mb-3">
                         <div class="col-md-3"><span class="text-muted small">Payment status</span><div class="fw-semibold">{{ $order->payment_status }}</div></div>
                         <div class="col-md-3"><span class="text-muted small">Method</span><div class="fw-semibold">{{ \App\Models\Invoice::paymentMethodLabel($order->payment_method) }}</div></div>
-                        <div class="col-md-3"><span class="text-muted small">Total</span><div class="fw-semibold">€{{ number_format((float) $order->total_amount, 2) }}</div></div>
+                        <div class="col-md-3"><span class="text-muted small">Total</span>
+                            <div class="fw-semibold">€{{ number_format((float) $order->total_amount, 2) }}</div>
+                            @if($showCharge)
+                                <div class="small text-muted">{{ number_format((float) $order->charge_amount, 2) }} {{ $chargeCode }}</div>
+                            @endif
+                        </div>
                         <div class="col-md-3"><span class="text-muted small">Paid at</span><div>{{ optional($order->paid_at)->format('M j, Y g:i A') ?: '—' }}</div></div>
+                        @if(filled($order->stripe_session_id))
+                            <div class="col-md-6"><span class="text-muted small">Stripe session</span><div class="text-break">{{ $order->stripe_session_id }}</div></div>
+                        @endif
+                        @if(filled($order->stripe_payment_intent_id))
+                            <div class="col-md-6"><span class="text-muted small">Stripe payment</span><div class="text-break">{{ $order->stripe_payment_intent_id }}</div></div>
+                        @endif
+                        @if(filled($order->paypal_order_id))
+                            <div class="col-md-4"><span class="text-muted small">PayPal order</span><div class="text-break">{{ $order->paypal_order_id }}</div></div>
+                        @endif
+                        @if(filled($order->paypal_capture_id))
+                            <div class="col-md-4"><span class="text-muted small">PayPal capture</span><div class="text-break">{{ $order->paypal_capture_id }}</div></div>
+                        @endif
+                        @if(filled($order->paypal_refund_id))
+                            <div class="col-md-4"><span class="text-muted small">PayPal refund</span><div class="text-break">{{ $order->paypal_refund_id }}</div></div>
+                        @endif
                         <div class="col-md-3"><span class="text-muted small">Transfer reference</span><div>{{ $order->payment_reference ?: '—' }}</div></div>
                         <div class="col-md-9"><span class="text-muted small">Admin notes</span><div>{{ $order->admin_notes ?: '—' }}</div></div>
                     </div>

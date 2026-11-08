@@ -3,11 +3,14 @@
 namespace App\Services;
 
 use App\Mail\SiteDiscountEnded;
+use App\Models\FeatureCredit;
+use App\Models\FeatureOfferSetting;
 use App\Models\Site;
 use App\Models\SiteFeaturePurchase;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Services\Wallet\WalletLedgerService;
+use App\Support\BulkDiscount;
 use App\Support\UserFacingError;
 use Illuminate\Database\QueryException;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -15,6 +18,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 
 class SitePromotionService
 {
@@ -29,11 +33,54 @@ class SitePromotionService
     }
 
     /**
+     * Admin-editable monthly and yearly packages. Prices are euros; card checkout
+     * converts them for the publisher's location.
+     *
+     * @return list<array{key:string, label:string, price:float, days:int, active:bool, display:string}>
+     */
+    public function featureOffers(): array
+    {
+        $offers = [];
+        foreach (FeatureOfferSetting::offers() as $offer) {
+            if (! ($offer['active'] ?? false)) {
+                continue;
+            }
+            $offer['display'] = format_money((float) $offer['price']);
+            $offer['euros_label'] = '€'.number_format((float) $offer['price'], 2);
+            $offers[] = $offer;
+        }
+
+        return $offers;
+    }
+
+    /**
+     * @return array{0:float, 1:int}|null
+     */
+    public function priceAndDays(?string $plan): ?array
+    {
+        if ($plan === null || $plan === '') {
+            return [$this->featurePrice(), $this->featureDays()];
+        }
+
+        foreach ($this->featureOffers() as $offer) {
+            if ($offer['key'] === $plan) {
+                return [(float) $offer['price'], (int) $offer['days']];
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Refuse to apply a featured placement when Stripe charged a different amount.
+     * charge_amount is the location currency actually sent to Stripe.
      */
     public function assertStripeChargeMatchesFeaturePrice(object $session): void
     {
-        $expected = $this->featurePrice();
+        $meta = $this->sessionMeta($session);
+        $expected = isset($meta['charge_amount']) && $meta['charge_amount'] !== ''
+            ? round((float) $meta['charge_amount'], 2)
+            : $this->featurePrice();
         $stripeCents = null;
         if (isset($session->amount_total)) {
             $stripeCents = (int) $session->amount_total;
@@ -59,10 +106,13 @@ class SitePromotionService
      *
      * @return array{success:bool, message:string, site?:Site, needs_top_up?:bool, balance?:float, price?:float}
      */
-    public function featureWithWallet(Site $site, User $publisher): array
+    public function featureWithWallet(Site $site, User $publisher, ?string $plan = null): array
     {
-        $price = $this->featurePrice();
-        $days = $this->featureDays();
+        $resolved = $this->priceAndDays($plan);
+        if ($resolved === null) {
+            return ['success' => false, 'message' => 'Choose a monthly or yearly feature package.'];
+        }
+        [$price, $days] = $resolved;
         $roleId = Wallet::publisherRoleId();
 
         if (! $roleId) {
@@ -141,6 +191,97 @@ class SitePromotionService
     }
 
     /**
+     * Unused admin-granted feature days for this publisher. The clock starts
+     * only when they spend a credit on a site.
+     *
+     * @return list<array{id:int, days:int}>
+     */
+    public function unusedFeatureCredits(User $publisher): array
+    {
+        if (! Schema::hasTable('feature_credits')) {
+            return [];
+        }
+
+        return FeatureCredit::query()
+            ->where('user_id', $publisher->id)
+            ->unused()
+            ->orderBy('id')
+            ->get(['id', 'days', 'site_id'])
+            ->map(fn (FeatureCredit $credit) => [
+                'id' => (int) $credit->id,
+                'days' => (int) $credit->days,
+                'site_id' => $credit->site_id ? (int) $credit->site_id : null,
+            ])
+            ->all();
+    }
+
+    /**
+     * Spend one admin-granted credit. No wallet or card charge. Days are
+     * applied with the same featured_until rules as a paid package.
+     *
+     * @return array{success:bool, message:string, site?:Site}
+     */
+    public function featureWithCredit(Site $site, User $publisher, int $creditId): array
+    {
+        if (! Schema::hasTable('feature_credits')) {
+            return ['success' => false, 'message' => 'Feature credits are not available yet.'];
+        }
+
+        try {
+            return DB::transaction(function () use ($site, $publisher, $creditId) {
+                $lockedSite = Site::query()->whereKey($site->id)->lockForUpdate()->firstOrFail();
+                if ((int) $lockedSite->publisher_id !== (int) $publisher->id) {
+                    return ['success' => false, 'message' => 'You can only feature your own website.'];
+                }
+                if ($lockedSite->isArchived()) {
+                    return [
+                        'success' => false,
+                        'message' => 'Archived sites cannot be promoted. Restore the site first.',
+                    ];
+                }
+                if ($lockedSite->isFromCancelledBulk()) {
+                    return [
+                        'success' => false,
+                        'message' => 'This listing is not in the catalog and cannot be promoted.',
+                    ];
+                }
+                if (! $lockedSite->active && ! $lockedSite->verified) {
+                    return [
+                        'success' => false,
+                        'message' => 'Only verified or active sites can use promotions.',
+                    ];
+                }
+
+                $credit = FeatureCredit::query()->whereKey($creditId)->lockForUpdate()->first();
+                if (! $credit || (int) $credit->user_id !== (int) $publisher->id) {
+                    return ['success' => false, 'message' => 'That featured credit is not on your account.'];
+                }
+                if ($credit->used_at !== null) {
+                    return ['success' => false, 'message' => 'That featured credit was already used.'];
+                }
+                if ($credit->site_id && (int) $credit->site_id !== (int) $lockedSite->id) {
+                    return ['success' => false, 'message' => 'That featured credit is for a different website.'];
+                }
+
+                $days = max(1, (int) $credit->days);
+                $featured = $this->applyFeaturePeriod($lockedSite, $publisher, 0, $days, 'admin_grant');
+                $credit->forceFill([
+                    'used_at' => now(),
+                    'site_id' => $featured->id,
+                ])->save();
+
+                return [
+                    'success' => true,
+                    'message' => 'Site featured for '.$days.' days using your featured credit.',
+                    'site' => $featured,
+                ];
+            });
+        } catch (\Throwable $e) {
+            return $this->failedFeature($e, 'Could not use this featured credit. Please try again.');
+        }
+    }
+
+    /**
      * When a paid feature session can no longer be applied (site changed owner),
      * credit the payer's publisher wallet once and record the session so retries
      * do not feature the new owner's listing or double-credit.
@@ -151,9 +292,10 @@ class SitePromotionService
         Site $site,
         User $payer,
         string $stripeSessionId,
-        ?string $reason = null
+        ?string $reason = null,
+        ?float $paidPrice = null
     ): array {
-        $price = $this->featurePrice();
+        $price = $paidPrice !== null && $paidPrice > 0 ? round($paidPrice, 2) : $this->featurePrice();
         $roleId = Wallet::publisherRoleId();
         if (! $roleId) {
             return ['success' => false, 'message' => 'Publisher wallet is not available.'];
@@ -247,13 +389,20 @@ class SitePromotionService
     /**
      * Apply featured placement after a successful Stripe card payment (no wallet debit).
      */
-    public function featureFromStripePayment(Site $site, User $publisher, ?string $stripeSessionId = null): array
-    {
-        $price = $this->featurePrice();
-        $days = $this->featureDays();
+    public function featureFromStripePayment(
+        Site $site,
+        User $publisher,
+        ?string $stripeSessionId = null,
+        ?float $paidPrice = null,
+        ?int $paidDays = null,
+        ?string $chargeCurrency = null,
+        ?float $chargeAmount = null
+    ): array {
+        $price = $paidPrice !== null && $paidPrice > 0 ? round($paidPrice, 2) : $this->featurePrice();
+        $days = $paidDays !== null && $paidDays > 0 ? $paidDays : $this->featureDays();
 
         try {
-            return DB::transaction(function () use ($site, $publisher, $price, $days, $stripeSessionId) {
+            return DB::transaction(function () use ($site, $publisher, $price, $days, $stripeSessionId, $chargeCurrency, $chargeAmount) {
                 // Lock the site first so webhook + success URL cannot both
                 // pass an unlocked exists() check and stack two 7-day periods.
                 $locked = Site::query()->whereKey($site->id)->lockForUpdate()->firstOrFail();
@@ -282,7 +431,7 @@ class SitePromotionService
                     }
                 }
 
-                $featured = $this->applyFeaturePeriod($locked, $publisher, $price, $days, 'stripe', $stripeSessionId);
+                $featured = $this->applyFeaturePeriod($locked, $publisher, $price, $days, 'stripe', $stripeSessionId, $chargeCurrency, $chargeAmount);
                 $this->logStripeFeatureApplied($featured, $publisher, $price, $days, $stripeSessionId);
 
                 return [
@@ -423,7 +572,9 @@ class SitePromotionService
         float $price,
         int $days,
         string $paymentMethod,
-        ?string $stripeSessionId = null
+        ?string $stripeSessionId = null,
+        ?string $chargeCurrency = null,
+        ?float $chargeAmount = null
     ): Site {
         $starts = now();
         $currentUntil = $site->safeFeaturedUntil();
@@ -439,7 +590,7 @@ class SitePromotionService
             'featured_purchased_at' => $starts,
         ]);
 
-        SiteFeaturePurchase::create([
+        $purchase = [
             'site_id' => $site->id,
             'user_id' => $publisher->id,
             'amount' => $price,
@@ -448,31 +599,76 @@ class SitePromotionService
             'stripe_session_id' => $stripeSessionId,
             'starts_at' => $starts,
             'ends_at' => $ends,
-        ]);
+        ];
+        if ($chargeCurrency && $chargeAmount !== null
+            && Schema::hasColumn('site_feature_purchases', 'charge_currency')
+            && Schema::hasColumn('site_feature_purchases', 'charge_amount')) {
+            $purchase['charge_currency'] = strtoupper($chargeCurrency);
+            $purchase['charge_amount'] = $chargeAmount;
+        }
+        SiteFeaturePurchase::create($purchase);
 
         return $site->fresh();
     }
 
-    public function joinBulkDiscount(Site $site, float $percent): Site
-    {
-        $min = (float) config('site_promotions.bulk.min_percent', 10);
-        $max = (float) config('site_promotions.bulk.max_percent', 80);
-        $percent = max($min, min($max, round($percent, 2)));
+    /**
+     * Enable or update pack discount tiers. Each tier is optional; omitted
+     * higher tiers stay as they are unless $replaceAllTiers is true.
+     *
+     * @param  float|null  $percent  3-article tier (qty 3–4). Null with $replaceAllTiers clears it.
+     * @param  float|null  $percent5  5-article tier (qty 5–9)
+     * @param  float|null  $percent10  10-article tier (qty 10+)
+     */
+    public function joinBulkDiscount(
+        Site $site,
+        ?float $percent,
+        ?float $percent5 = null,
+        ?float $percent10 = null,
+        bool $replaceAllTiers = false
+    ): Site {
+        $current = BulkDiscount::tiersFromSite($site);
+        $incoming = [
+            BulkDiscount::TIER_3 => $percent,
+            BulkDiscount::TIER_5 => $replaceAllTiers || $percent5 !== null ? $percent5 : ($current[BulkDiscount::TIER_5] ?? null),
+            BulkDiscount::TIER_10 => $replaceAllTiers || $percent10 !== null ? $percent10 : ($current[BulkDiscount::TIER_10] ?? null),
+        ];
 
-        Site::query()->whereKey($site->id)->update([
+        $tiers = BulkDiscount::normalizeTiers($incoming);
+
+        if (! BulkDiscount::anyTierSet($tiers)) {
+            return $this->leaveBulkDiscount($site);
+        }
+
+        $payload = [
             'bulk_discount_enabled' => true,
-            'bulk_discount_percent' => $percent,
-        ]);
+            'bulk_discount_percent' => $tiers[BulkDiscount::TIER_3],
+        ];
+        if (BulkDiscount::hasColumn(BulkDiscount::TIER_5)) {
+            $payload['bulk_discount_percent_5'] = $tiers[BulkDiscount::TIER_5];
+        }
+        if (BulkDiscount::hasColumn(BulkDiscount::TIER_10)) {
+            $payload['bulk_discount_percent_10'] = $tiers[BulkDiscount::TIER_10];
+        }
+
+        Site::query()->whereKey($site->id)->update($payload);
 
         return $site->fresh();
     }
 
     public function leaveBulkDiscount(Site $site): Site
     {
-        Site::query()->whereKey($site->id)->update([
+        $payload = [
             'bulk_discount_enabled' => false,
             'bulk_discount_percent' => null,
-        ]);
+        ];
+        if (BulkDiscount::hasColumn(BulkDiscount::TIER_5)) {
+            $payload['bulk_discount_percent_5'] = null;
+        }
+        if (BulkDiscount::hasColumn(BulkDiscount::TIER_10)) {
+            $payload['bulk_discount_percent_10'] = null;
+        }
+
+        Site::query()->whereKey($site->id)->update($payload);
 
         return $site->fresh();
     }
@@ -556,5 +752,31 @@ class SitePromotionService
         }
 
         return $sent;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function sessionMeta(object $session): array
+    {
+        $raw = $session->metadata ?? null;
+        if (is_array($raw)) {
+            $meta = $raw;
+        } elseif (is_object($raw) && method_exists($raw, 'toArray')) {
+            $meta = $raw->toArray();
+        } elseif (is_object($raw)) {
+            $meta = (array) $raw;
+        } else {
+            $meta = [];
+        }
+
+        $out = [];
+        foreach ($meta as $key => $value) {
+            if (is_string($key)) {
+                $out[$key] = is_scalar($value) ? (string) $value : '';
+            }
+        }
+
+        return $out;
     }
 }

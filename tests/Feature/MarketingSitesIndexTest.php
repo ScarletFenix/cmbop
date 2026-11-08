@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
+use App\Services\Publisher\PublisherDashboardService;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -36,6 +37,17 @@ class MarketingSitesIndexTest extends TestCase
         $user->roles()->attach($role->id);
 
         return $user->fresh(['roles']);
+    }
+
+    private function queueRowHtml(string $html, int $siteId): string
+    {
+        $marker = 'data-flat-site-row="'.$siteId.'"';
+        $start = strpos($html, $marker);
+        $this->assertNotFalse($start, $marker);
+        $end = strpos($html, '</tr>', $start);
+        $this->assertNotFalse($end);
+
+        return substr($html, $start, $end - $start);
     }
 
     private function makeSite(User $publisher, array $overrides = []): Site
@@ -85,9 +97,22 @@ class MarketingSitesIndexTest extends TestCase
                 ->assertSee('Listed Publisher', false)
                 ->assertDontSee('hidden-advertiser@example.test', false)
                 ->assertDontSee('Hidden Advertiser', false)
-                ->assertSee('Search publishers', false)
+                ->assertSee('All sites', false)
+                ->assertSee('Publishers or sites', false)
                 ->assertDontSee('Search users', false)
                 ->assertDontSee('No users found', false);
+        }
+
+        foreach ([
+            route('marketing.sites.index', ['publishers' => 1]) => $this->marketer,
+            route('admin.sites.index', ['publishers' => 1]) => $this->admin,
+        ] as $url => $actor) {
+            $this->actingAs($actor)
+                ->get($url)
+                ->assertOk()
+                ->assertSee('listed-publisher@example.test', false)
+                ->assertSee('Publishers or sites', false)
+                ->assertDontSee('hidden-advertiser@example.test', false);
         }
     }
 
@@ -149,16 +174,20 @@ class MarketingSitesIndexTest extends TestCase
     public function test_sites_index_search_survives_pagination_and_needs_review_toggle(): void
     {
         foreach (range(1, 21) as $i) {
-            $this->userWithRole('publisher', [
+            $publisher = $this->userWithRole('publisher', [
                 'name' => sprintf('PubCo Search %02d', $i),
                 'email' => sprintf('pubco-search-%02d@example.test', $i),
+            ]);
+            $this->makeSite($publisher, [
+                'domain' => sprintf('pubco-search-%02d.example', $i),
+                'site_url' => sprintf('https://pubco-search-%02d.example', $i),
             ]);
         }
 
         $html = $this->actingAs($this->marketer)
             ->get(route('marketing.sites.index', ['q' => 'PubCo Search']))
             ->assertOk()
-            ->assertSee('pubco-search-01@example.test', false)
+            ->assertSee('pubco-search-21@example.test', false)
             ->getContent();
 
         $this->assertTrue(
@@ -189,7 +218,7 @@ class MarketingSitesIndexTest extends TestCase
         ]);
 
         $html = $this->actingAs($this->marketer)
-            ->get(route('marketing.sites.index'))
+            ->get(route('marketing.sites.index', ['empty_publishers' => 1]))
             ->assertOk()
             ->assertSee($empty->email, false)
             ->assertSee($queued->email, false)
@@ -200,6 +229,68 @@ class MarketingSitesIndexTest extends TestCase
         $this->assertNotFalse($queuedPos);
         $this->assertNotFalse($emptyPos);
         $this->assertLessThan($emptyPos, $queuedPos);
+    }
+
+    public function test_publishers_table_shows_country_live_dates_and_sorts(): void
+    {
+        $publisher = $this->userWithRole('publisher', [
+            'name' => 'Column Publisher',
+            'email' => 'column-publisher@example.test',
+            'country' => 'fr',
+            'last_seen_at' => now()->subMinutes(12),
+        ]);
+        $this->makeSite($publisher, [
+            'domain' => 'column-live.example',
+            'verified' => true,
+            'active' => true,
+        ]);
+        $this->makeSite($publisher, [
+            'domain' => 'column-review.example',
+            'onboarding_status' => Site::ONBOARDING_READY_FOR_REVIEW,
+        ]);
+
+        $html = $this->actingAs($this->admin)
+            ->get(route('admin.sites.index', ['sort' => 'sites']))
+            ->assertOk()
+            ->assertSee('column-publisher@example.test', false)
+            ->assertSee('sort=name', false)
+            ->assertSee('1 live', false)
+            ->assertSee('1 needs review', false)
+            ->getContent();
+
+        $this->assertStringContainsString('Last active', $html);
+        $this->assertStringContainsString('Joined', $html);
+        $this->assertStringContainsString('Showing', $html);
+        $this->assertTrue(
+            str_contains($html, 'France') || str_contains($html, 'FR') || str_contains($html, 'fr'),
+            'Publisher country should render'
+        );
+    }
+
+    public function test_sites_index_hides_publishers_with_no_sites_by_default(): void
+    {
+        $empty = $this->userWithRole('publisher', [
+            'name' => 'No Sites Publisher',
+            'email' => 'no-sites-publisher@example.test',
+        ]);
+        $listed = $this->userWithRole('publisher', [
+            'name' => 'Has Sites Publisher',
+            'email' => 'has-sites-publisher@example.test',
+        ]);
+        $this->makeSite($listed);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.sites.index'))
+            ->assertOk()
+            ->assertSee($listed->email, false)
+            ->assertDontSee($empty->email, false)
+            ->assertSee('Show publishers with no sites', false);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.sites.index', ['empty_publishers' => 1]))
+            ->assertOk()
+            ->assertSee($listed->email, false)
+            ->assertSee($empty->email, false);
     }
 
     public function test_sites_index_excludes_archived_from_review_count_and_user_sites(): void
@@ -226,7 +317,7 @@ class MarketingSitesIndexTest extends TestCase
             ->assertSee('waiting for Activate or delete (pending only)', false)
             ->getContent();
 
-        $this->assertStringContainsString('1 new', $html);
+        $this->assertStringContainsString('1 needs review', $html);
 
         $payload = $this->actingAs($this->marketer)
             ->getJson(route('marketing.users.sites', $publisher->id))
@@ -245,6 +336,74 @@ class MarketingSitesIndexTest extends TestCase
             ->assertSee('waiting for Verify, Activate, Reject, or Delete', false);
     }
 
+    public function test_publisher_sites_count_excludes_archived_and_shows_muted_caption(): void
+    {
+        $publisher = $this->userWithRole('publisher', [
+            'name' => 'Archive Count Publisher',
+            'email' => 'archive-count-publisher@example.test',
+        ]);
+        $this->makeSite($publisher, [
+            'domain' => 'live-count.example',
+            'verified' => true,
+            'active' => true,
+        ]);
+        $this->makeSite($publisher, [
+            'domain' => 'archived-count.example',
+            'verified' => true,
+            'active' => true,
+            'archived_at' => now(),
+        ]);
+
+        $this->assertSame(2, $publisher->sites()->count());
+        $this->assertSame(1, $publisher->sites()->notArchived()->count());
+        $this->assertSame(1, $publisher->archivedSites()->count());
+
+        $html = $this->actingAs($this->admin)
+            ->get(route('admin.sites.index'))
+            ->assertOk()
+            ->assertSee('archive-count-publisher@example.test', false)
+            ->getContent();
+
+        $this->assertMatchesRegularExpression('/\b1 site\b/', $html);
+        $this->assertStringContainsString('1 archived', $html);
+        $this->assertDoesNotMatchRegularExpression('/\b2 sites\b/', $html);
+
+        $this->actingAs($this->marketer)
+            ->get(route('marketing.sites.index'))
+            ->assertOk()
+            ->assertSee('archive-count-publisher@example.test', false)
+            ->assertSee('1 site', false)
+            ->assertSee('1 archived', false);
+
+        $nav = $this->actingAs($publisher)
+            ->get(route('publisher.websites'))
+            ->assertOk()
+            ->getContent();
+        $this->assertMatchesRegularExpression(
+            '/title="Total sites">\s*1\s*</',
+            $nav
+        );
+
+        $dashboard = app(PublisherDashboardService::class)->build($publisher);
+        $this->assertSame(1, (int) ($dashboard['siteCount'] ?? 0));
+    }
+
+    public function test_catalog_health_chips_link_and_explain_below_quality(): void
+    {
+        $html = $this->actingAs($this->admin)
+            ->get(route('admin.sites.index'))
+            ->assertOk()
+            ->assertSee('staff-catalog-health', false)
+            ->assertSee('below quality bar', false)
+            ->assertSee('unverified active', false)
+            ->assertSee('DA ≥ 30', false)
+            ->getContent();
+
+        $this->assertStringContainsString('below_quality=1', $html);
+        $this->assertStringContainsString('is-zero', $html);
+        $this->assertStringContainsString('of ', $html);
+    }
+
     public function test_sites_delete_script_checks_failed_responses(): void
     {
         $html = $this->actingAs($this->marketer)
@@ -255,17 +414,21 @@ class MarketingSitesIndexTest extends TestCase
         $this->assertStringContainsString("method:'DELETE'", $html);
         $this->assertStringContainsString("'Accept': 'application/json'", $html);
         $this->assertStringContainsString('if (!res.ok || !data.success)', $html);
-        $this->assertStringContainsString("toast(error.message || (isArchive ? 'Could not archive site' : 'Failed to delete site'), 'error')", $html);
-        $this->assertStringContainsString("IS_MARKETING_EDITOR ? 'Reject this site?' : 'Delete this site?'", $html);
-        $this->assertStringContainsString('const isArchive = canArchiveSiteRow(site)', $html);
+        $this->assertStringContainsString("toast(error.message || 'Failed to delete site', 'error')", $html);
+        $this->assertStringContainsString("'Reject this site?'", $html);
+        $this->assertStringContainsString("toast(error.message || 'Could not archive site', 'error')", $html);
+        $this->assertStringContainsString('/archive', $html);
+        $this->assertStringContainsString('/unarchive', $html);
         $this->assertStringContainsString('JSON.stringify({ reason })', $html);
-        $this->assertStringContainsString('${STAFF_BASE}/sites/${site.id}/edit', $html);
+        $this->assertStringContainsString('staffSitesEditUrl(site.id)', $html);
         $this->assertStringContainsString('IS_MARKETING_EDITOR && listingLocked', $html);
         $this->assertStringContainsString('Missing market', $html);
         $this->assertStringContainsString('Below quality bar', $html);
         $this->assertStringContainsString('QUALITY_MIN_DA', $html);
-        $this->assertStringContainsString('sitesLoadMore', $html);
-        $this->assertStringContainsString('Site queue', $html);
+        $this->assertStringContainsString('sitesPerPage', $html);
+        $this->assertStringContainsString('staff-sites-strip', $html);
+        $this->assertStringContainsString('data-staff-filter-autosubmit="1"', $html);
+        $this->assertStringContainsString('More filters', $html);
         $this->assertStringNotContainsString("}).then(() => {\n                toast('Deleted successfully');", $html);
     }
 
@@ -324,15 +487,23 @@ class MarketingSitesIndexTest extends TestCase
         );
         $this->assertStringContainsString(route('marketing.sites.edit', $ready->id, false), $html);
         $this->assertStringContainsString('js-mkt-activate', $html);
+        $this->assertStringContainsString('delete-site', $html);
+        $this->assertStringContainsString('aria-label="Reject"', $html);
         $this->assertStringContainsString($first->email, $html);
         $this->assertStringContainsString($second->email, $html);
         $this->assertStringContainsString('id="usersSection" class="d-none"', $html);
         $this->assertFalse($thin->hasGoodMetrics());
         $this->assertFalse($noMarket->hasMarketplaceCountry());
-        $thinSlice = substr($html, (int) strpos($html, 'Flat Thin Site'), 1600);
-        $this->assertStringNotContainsString('js-mkt-activate', $thinSlice);
+        $thinRow = $this->queueRowHtml($html, $thin->id);
+        $this->assertStringNotContainsString('js-mkt-activate', $thinRow);
+        $this->assertStringContainsString('Fix metrics', $thinRow);
         $this->assertStringContainsString('This listing is below the quality bar', $html);
         $this->assertStringContainsString('Set a marketplace country before activating', $html);
+        $flatCardStart = (int) strpos($html, 'data-flat-queue="1"');
+        $usersStart = (int) strpos($html, 'id="usersSection"');
+        $this->assertGreaterThan($flatCardStart, $usersStart);
+        $flatCard = substr($html, $flatCardStart, $usersStart - $flatCardStart);
+        $this->assertStringNotContainsString('toggle-verify', $flatCard);
     }
 
     public function test_waiting_on_publisher_flat_queue_lists_publisher_owned_drafts(): void
@@ -370,13 +541,328 @@ class MarketingSitesIndexTest extends TestCase
 
         $flatStart = strpos($html, 'data-flat-queue="1"');
         $this->assertNotFalse($flatStart);
-        $flatSlice = substr($html, $flatStart, 4000);
+        $usersStart = strpos($html, 'id="usersSection"');
+        $this->assertNotFalse($usersStart);
+        $flatSlice = substr($html, $flatStart, $usersStart - $flatStart);
         $this->assertStringContainsString('Waiting Details Draft', $flatSlice);
+        $this->assertStringContainsString('js-staff-publish-now', $flatSlice);
+        $this->assertStringContainsString('Active now (direct)', $flatSlice);
         $this->assertStringNotContainsString('js-mkt-activate', $flatSlice);
 
         $this->assertStringContainsString(
             e(route('marketing.sites.index', ['publisher' => $waiting->publisher_id, 'site' => $waiting->id], false)),
             $html
         );
+        $this->assertStringNotContainsString('toggle-verify', $flatSlice);
+        $this->assertStringNotContainsString('delete-site', $flatSlice);
+    }
+
+    public function test_sites_index_search_finds_publisher_by_site_domain(): void
+    {
+        $match = $this->userWithRole('publisher', [
+            'name' => 'Domain Match Pub',
+            'email' => 'domain-match-pub@example.test',
+        ]);
+        $other = $this->userWithRole('publisher', [
+            'name' => 'Domain Other Pub',
+            'email' => 'domain-other-pub@example.test',
+        ]);
+        $this->makeSite($match, [
+            'site_name' => 'Alpha Listed News',
+            'domain' => 'alpha-listed-news.example',
+            'site_url' => 'https://alpha-listed-news.example',
+        ]);
+        $this->makeSite($other, [
+            'site_name' => 'Beta Hidden News',
+            'domain' => 'beta-hidden-news.example',
+            'site_url' => 'https://beta-hidden-news.example',
+        ]);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.sites.index', ['q' => 'alpha-listed-news.example']))
+            ->assertRedirect();
+
+        $this->actingAs($this->marketer)
+            ->get(route('marketing.sites.index', ['q' => 'listed-news']))
+            ->assertOk()
+            ->assertSee('domain-match-pub@example.test', false)
+            ->assertDontSee('domain-other-pub@example.test', false)
+            ->assertSee('1 matched', false);
+    }
+
+    public function test_sites_index_exact_domain_search_deep_links_unique_site(): void
+    {
+        $publisher = $this->userWithRole('publisher', [
+            'name' => 'Unique Domain Pub',
+            'email' => 'unique-domain-pub@example.test',
+        ]);
+        $site = $this->makeSite($publisher, [
+            'site_name' => 'Unique Find Site',
+            'domain' => 'unique-find-site.example',
+            'site_url' => 'https://unique-find-site.example/path',
+        ]);
+
+        $response = $this->actingAs($this->admin)
+            ->get(route('admin.sites.index', ['q' => 'https://www.unique-find-site.example']));
+
+        $response->assertRedirect();
+        $location = (string) $response->headers->get('Location');
+        $this->assertStringContainsString('publisher='.$publisher->id, $location);
+        $this->assertStringContainsString('site='.$site->id, $location);
+        $this->assertStringContainsString('q=', $location);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.sites.index', [
+                'q' => (string) $site->id,
+            ]))
+            ->assertRedirect();
+    }
+
+    public function test_sites_index_email_search_does_not_treat_host_as_domain(): void
+    {
+        $match = $this->userWithRole('publisher', [
+            'name' => 'Email Host Pub',
+            'email' => 'email-host-pub@example.test',
+        ]);
+        $other = $this->userWithRole('publisher', [
+            'name' => 'Other Host Pub',
+            'email' => 'other-host-pub@example.test',
+        ]);
+        $this->makeSite($match, ['domain' => 'email-host-site.example']);
+        $this->makeSite($other, ['domain' => 'example.test']);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.sites.index', ['q' => 'email-host-pub@example.test']))
+            ->assertOk()
+            ->assertSee('email-host-pub@example.test', false)
+            ->assertDontSee('other-host-pub@example.test', false);
+    }
+
+    public function test_sites_index_search_skips_archived_sites(): void
+    {
+        $publisher = $this->userWithRole('publisher', [
+            'name' => 'Archived Domain Pub',
+            'email' => 'archived-domain-pub@example.test',
+        ]);
+        $this->makeSite($publisher, [
+            'domain' => 'archived-only.example',
+            'site_url' => 'https://archived-only.example',
+            'archived_at' => now(),
+        ]);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.sites.index', ['q' => 'archived-only.example']))
+            ->assertOk()
+            ->assertDontSee('archived-domain-pub@example.test', false);
+    }
+
+    public function test_user_sites_search_and_needs_review_are_server_side(): void
+    {
+        $publisher = $this->userWithRole('publisher', [
+            'name' => 'Filter Sites Pub',
+            'email' => 'filter-sites-pub@example.test',
+        ]);
+        $ready = $this->makeSite($publisher, [
+            'site_name' => 'Ready Filter Site',
+            'domain' => 'ready-filter.example',
+            'onboarding_status' => Site::ONBOARDING_READY_FOR_REVIEW,
+        ]);
+        $live = $this->makeSite($publisher, [
+            'site_name' => 'Live Filter Site',
+            'domain' => 'live-filter.example',
+            'verified' => true,
+            'active' => true,
+            'onboarding_status' => null,
+        ]);
+
+        $search = $this->actingAs($this->marketer)
+            ->getJson(route('marketing.users.sites', ['id' => $publisher->id, 'q' => 'ready-filter.example']))
+            ->assertOk()
+            ->json();
+
+        $searchIds = collect($search['sites'] ?? [])->pluck('id')->all();
+        $this->assertContains($ready->id, $searchIds);
+        $this->assertNotContains($live->id, $searchIds);
+        $this->assertSame('ready-filter.example', $search['meta']['q'] ?? null);
+
+        $review = $this->actingAs($this->marketer)
+            ->getJson(route('marketing.users.sites', ['id' => $publisher->id, 'needs_review' => 1]))
+            ->assertOk()
+            ->json();
+
+        $reviewIds = collect($review['sites'] ?? [])->pluck('id')->all();
+        $this->assertContains($ready->id, $reviewIds);
+        $this->assertNotContains($live->id, $reviewIds);
+        $this->assertTrue((bool) ($review['meta']['needs_review'] ?? false));
+    }
+
+    public function test_admin_flat_review_queue_offers_verify_and_delete(): void
+    {
+        $publisher = $this->userWithRole('publisher', [
+            'name' => 'Admin Queue Pub',
+            'email' => 'admin-queue-pub@example.test',
+        ]);
+        $this->makeSite($publisher, [
+            'site_name' => 'Admin Queue Ready Site',
+            'domain' => 'admin-queue-ready.example',
+            'onboarding_status' => Site::ONBOARDING_READY_FOR_REVIEW,
+            'da' => 30,
+            'dr' => 30,
+            'traffic' => 10000,
+        ]);
+
+        $html = $this->actingAs($this->admin)
+            ->get(route('admin.sites.index', ['needs_review' => 1, 'flat' => 1]))
+            ->assertOk()
+            ->assertSee('Admin Queue Ready Site', false)
+            ->assertSee('Unverified', false)
+            ->getContent();
+
+        $this->assertStringContainsString('toggle-verify', $html);
+        $this->assertStringContainsString('aria-label="Verify"', $html);
+        $this->assertStringContainsString('delete-site', $html);
+        $this->assertStringContainsString('aria-label="Reject"', $html);
+        $this->assertStringContainsString('js-mkt-activate', $html);
+        $this->assertStringContainsString('queryLooksLikeSiteSearch', $html);
+        $this->assertStringContainsString('refetchOpenPublisherSites', $html);
+    }
+
+    public function test_marketing_sites_index_offers_ready_to_activate_queue(): void
+    {
+        $publisher = $this->userWithRole('publisher', [
+            'email' => 'ready-chip-pub@example.test',
+        ]);
+        $this->makeSite($publisher, [
+            'site_name' => 'Ready Chip Site',
+            'domain' => 'ready-chip.example',
+            'onboarding_status' => Site::ONBOARDING_READY_FOR_REVIEW,
+            'da' => 30,
+            'dr' => 30,
+            'traffic' => 10000,
+        ]);
+
+        $html = $this->actingAs($this->marketer)
+            ->get(route('marketing.sites.index'))
+            ->assertOk()
+            ->assertSee('Sites Management', false)
+            ->assertSee('Ready to activate', false)
+            ->assertSee('ready-chip-pub@example.test', false)
+            ->assertDontSee('Ready Chip Site', false)
+            ->getContent();
+
+        $this->assertStringNotContainsString('staff-sites-crumb', $html);
+        $this->assertStringContainsString(
+            e(route('marketing.sites.index', ['needs_review' => 1, 'flat' => 1], false)),
+            $html
+        );
+
+        $this->actingAs($this->marketer)
+            ->get(route('marketing.sites.index', ['needs_review' => 1, 'flat' => 1]))
+            ->assertOk()
+            ->assertSee('Ready Chip Site', false)
+            ->assertSee('onchange="this.form.submit()"', false);
+    }
+
+    public function test_marketing_ready_queue_paginates_server_side(): void
+    {
+        $publisher = $this->userWithRole('publisher', [
+            'email' => 'ready-page-pub@example.test',
+        ]);
+        foreach (range(1, 21) as $i) {
+            $this->makeSite($publisher, [
+                'site_name' => sprintf('Ready Page Site %02d', $i),
+                'domain' => sprintf('ready-page-%02d.example', $i),
+                'onboarding_status' => Site::ONBOARDING_READY_FOR_REVIEW,
+                'da' => 30,
+                'dr' => 30,
+                'traffic' => 10000,
+            ]);
+        }
+
+        $page1 = $this->actingAs($this->marketer)
+            ->get(route('marketing.sites.index', ['needs_review' => 1, 'flat' => 1]))
+            ->assertOk()
+            ->assertSee('Showing 1–20 of 21', false)
+            ->assertSee('page=2', false)
+            ->getContent();
+
+        $this->assertStringContainsString('name="per_page"', $page1);
+
+        $this->actingAs($this->marketer)
+            ->get(route('marketing.sites.index', ['needs_review' => 1, 'flat' => 1, 'page' => 2, 'per_page' => 20]))
+            ->assertOk()
+            ->assertSee('Showing 21–21 of 21', false)
+            ->assertSee('Ready Page Site', false);
+    }
+
+    public function test_user_sites_json_includes_listed_dates(): void
+    {
+        $publisher = $this->userWithRole('publisher', [
+            'email' => 'listed-json-pub@example.test',
+        ]);
+        $site = $this->makeSite($publisher, [
+            'domain' => 'listed-json.example',
+            'created_at' => now()->subDays(2),
+        ]);
+
+        $payload = $this->actingAs($this->marketer)
+            ->getJson(route('marketing.users.sites', $publisher->id))
+            ->assertOk()
+            ->json();
+
+        $row = collect($payload['sites'] ?? [])->firstWhere('id', $site->id);
+        $this->assertNotNull($row);
+        $this->assertNotNull($row['listed_days'] ?? null);
+        $this->assertNotEmpty($row['listed_label'] ?? null);
+        $this->assertSame(
+            $site->created_at->timezone(config('app.timezone'))->format('M j, Y'),
+            $row['listed_date'] ?? null
+        );
+        $this->assertNotEmpty($row['created_at'] ?? null);
+    }
+
+    public function test_publisher_bulk_export_csv_and_quiet_archive_inactive(): void
+    {
+        $publisher = $this->userWithRole('publisher', [
+            'name' => 'Bulk Export Publisher',
+            'email' => 'bulk-export-publisher@example.test',
+        ]);
+        $inactive = $this->makeSite($publisher, [
+            'domain' => 'bulk-inactive.example',
+            'verified' => true,
+            'active' => false,
+        ]);
+        $live = $this->makeSite($publisher, [
+            'domain' => 'bulk-live.example',
+            'verified' => true,
+            'active' => true,
+        ]);
+
+        $csv = $this->actingAs($this->admin)
+            ->get(route('admin.sites.publishers-export', ['ids' => [$publisher->id]]))
+            ->assertOk()
+            ->assertHeader('content-type', 'text/csv; charset=UTF-8')
+            ->streamedContent();
+
+        $this->assertStringContainsString('bulk-export-publisher@example.test', $csv);
+        $this->assertStringContainsString('name,email', str_replace('"', '', $csv));
+
+        $this->actingAs($this->marketer)
+            ->postJson(route('marketing.sites.publishers-archive-inactive'), [
+                'ids' => [$publisher->id],
+            ])
+            ->assertForbidden();
+
+        $this->actingAs($this->admin)
+            ->postJson(route('admin.sites.publishers-archive-inactive'), [
+                'ids' => [$publisher->id],
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('archived', 1);
+
+        $this->assertNotNull($inactive->fresh()->archived_at);
+        $this->assertNull($live->fresh()->archived_at);
+        $this->assertSame(1, $publisher->sites()->notArchived()->count());
     }
 }

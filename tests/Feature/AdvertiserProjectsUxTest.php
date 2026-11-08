@@ -412,9 +412,9 @@ class AdvertiserProjectsUxTest extends TestCase
             ->getContent();
 
         $this->assertStringContainsString(route('advertiser.projects.index', [], false), $html);
-        $this->assertStringContainsString('<title>Projects</title>', $html);
-        $this->assertStringContainsString('>Projects</h2>', $html);
-        $this->assertStringContainsString('destination host matches this project', $html);
+        $this->assertStringContainsString('<title>Projects · SEOLinkBuildings</title>', $html);
+        $this->assertStringContainsString('>Projects</h1>', $html);
+        $this->assertStringContainsString('Assign orders at checkout', $html);
     }
 
     public function test_review_without_live_url_counts_as_in_review(): void

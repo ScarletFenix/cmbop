@@ -2,15 +2,42 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>@yield('title', 'Marketing') — SEOLinkBuildings</title>
+    @php
+        $marketingPageTitle = html_entity_decode(
+            trim((string) $__env->yieldContent('title', 'Marketing')),
+            ENT_QUOTES | ENT_HTML5,
+            'UTF-8'
+        );
+        if ($marketingPageTitle === '') {
+            $marketingPageTitle = 'Marketing';
+        }
+        if (! str_contains($marketingPageTitle, 'SEOLinkBuildings')) {
+            $marketingPageTitle .= ' — SEOLinkBuildings';
+        }
+        $marketingPageDescription = html_entity_decode(
+            trim((string) $__env->yieldContent('meta_description')),
+            ENT_QUOTES | ENT_HTML5,
+            'UTF-8'
+        );
+        if ($marketingPageDescription === '') {
+            $marketingPageDescription = 'Marketing dashboard for SEOLinkBuildings.';
+        }
+    @endphp
+    <title>{{ $marketingPageTitle }}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex, nofollow">
+    <meta name="description" content="{{ $marketingPageDescription }}">
+    @include('partials.social-meta', [
+        'title' => $marketingPageTitle,
+        'description' => $marketingPageDescription,
+        'url' => url()->current(),
+    ])
     <meta name="csrf-token" content="{{ csrf_token() }}">
     @include('components.favicon')
+    @include('partials.shell-wordmark-preload')
 
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="{{ asset('assets/vendor/bootstrap-5.3.0/bootstrap.min.css') }}?v={{ @filemtime(public_path('assets/vendor/bootstrap-5.3.0/bootstrap.min.css')) ?: '1' }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/slb-icons.css') }}?v={{ @filemtime(public_path('assets/css/slb-icons.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('assets/css/type-system.css') }}?v={{ @filemtime(public_path('assets/css/type-system.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('assets/css/brand-colors.css') }}?v={{ @filemtime(public_path('assets/css/brand-colors.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('assets/css/spacing-system.css') }}?v={{ @filemtime(public_path('assets/css/spacing-system.css')) ?: '1' }}" rel="stylesheet">
@@ -22,9 +49,11 @@
     <link href="{{ asset('assets/css/glass-tip.css') }}?v={{ @filemtime(public_path('assets/css/glass-tip.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('assets/css/pulse-badge.css') }}?v={{ @filemtime(public_path('assets/css/pulse-badge.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('assets/css/notification-center.css') }}?v={{ @filemtime(public_path('assets/css/notification-center.css')) ?: '5' }}" rel="stylesheet">
+    <link href=\"{{ asset('assets/css/order-lifecycle-stepper.css') }}?v={{ @filemtime(public_path('assets/css/order-lifecycle-stepper.css')) ?: '1' }}\" rel=\"stylesheet\">
     <link href="{{ asset('assets/css/dialog-system.css') }}?v={{ @filemtime(public_path('assets/css/dialog-system.css')) ?: '1' }}" rel="stylesheet">
     {{-- Sites list / bulk request screens are shared with the admin shell.
          Marketing overrides sit before hover-system.css, which must remain last. --}}
+    <link href="{{ asset('assets/css/admin-components.css') }}?v={{ @filemtime(public_path('assets/css/admin-components.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('assets/css/staff-sites.css') }}?v={{ @filemtime(public_path('assets/css/staff-sites.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('assets/css/marketing-shell.css') }}?v={{ @filemtime(public_path('assets/css/marketing-shell.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('assets/css/slb-live-search.css') }}?v={{ @filemtime(public_path('assets/css/slb-live-search.css')) ?: '1' }}" rel="stylesheet">
@@ -37,14 +66,15 @@
 
 <div id="sidebar">
     <div class="mobile-sidebar-logo">
-        <img id="mobileSidebarLogo" src="{{ asset('assets/img/logo1.png') }}?v={{ @filemtime(public_path('assets/img/logo1.png')) ?: '1' }}" height="48" width="172" alt="SEOLinkBuildings">
+        <img id="mobileSidebarLogo" src="{{ brand_shell_wordmark_url() }}" height="48" width="172" fetchpriority="high" alt="SEOLinkBuildings">
     </div>
     <div class="menu">
         <div class="text-center my-2 d-md-none">
             @include('partials.role-switcher', ['variant' => 'outline-secondary'])
+            <div class="mt-2">@include('partials.currency-switcher')</div>
         </div>
         <div class="shell-sidebar-brand text-center my-3 d-none d-md-block">
-            <img id="logoSidebar" class="shell-logo-wordmark" src="{{ asset('assets/img/logo1.png') }}?v={{ @filemtime(public_path('assets/img/logo1.png')) ?: '1' }}" height="48" width="172" style="width:auto;max-width:100%;object-fit:contain;background:transparent" alt="SEOLinkBuildings">
+            <img id="logoSidebar" class="shell-logo-wordmark" src="{{ brand_shell_wordmark_url() }}" height="48" width="172" style="width:auto;max-width:100%;object-fit:contain;background:transparent" fetchpriority="high" alt="SEOLinkBuildings">
             <img class="shell-logo-mark" src="{{ asset('assets/brand/web/favicon.svg') }}" height="36" width="36" alt="" aria-hidden="true">
         </div>
 
@@ -90,12 +120,13 @@
             <span class="arrow" aria-hidden="true"><i class="fa fa-chevron-left"></i></span>
         </button>
         <a href="/" class="d-flex align-items-center">
-            <img id="logoNavbar" src="{{ asset('assets/img/logo1.png') }}?v={{ @filemtime(public_path('assets/img/logo1.png')) ?: '1' }}" height="44" width="158" style="width:auto;max-width:min(220px,42vw);object-fit:contain;background:transparent" alt="SEOLinkBuildings">
+            <img id="logoNavbar" src="{{ brand_shell_wordmark_url() }}" height="44" width="158" style="width:auto;max-width:min(220px,42vw);object-fit:contain;background:transparent" alt="SEOLinkBuildings">
         </a>
         <div class="d-none d-md-block">
             <span class="mkt-mode-badge">Marketing workspace</span>
-            <span class="ms-2">
+            <span class="ms-2 d-inline-flex align-items-center gap-2">
                 @include('partials.role-switcher', ['variant' => 'outline-secondary'])
+                @include('partials.currency-switcher')
             </span>
         </div>
     </div>
@@ -144,12 +175,14 @@
     © {{ date('Y') }} SEOLinkBuildings · Marketing
 </footer>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="{{ asset('assets/vendor/bootstrap-5.3.0/bootstrap.bundle.min.js') }}?v={{ @filemtime(public_path('assets/vendor/bootstrap-5.3.0/bootstrap.bundle.min.js')) ?: '1' }}"></script>
 <script src="{{ asset('assets/js/modal-stack.js') }}?v={{ @filemtime(public_path('assets/js/modal-stack.js')) ?: '1' }}"></script>
 <script src="{{ asset('assets/js/admin-manage-dropdown.js') }}?v={{ @filemtime(public_path('assets/js/admin-manage-dropdown.js')) ?: '1' }}"></script>
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="{{ asset('assets/vendor/sweetalert2/sweetalert2.min.js') }}?v={{ @filemtime(public_path('assets/vendor/sweetalert2/sweetalert2.min.js')) ?: '1' }}"></script>
 <script src="{{ same_origin_asset('js/slb-confirm.js') }}?v={{ @filemtime(public_path('js/slb-confirm.js')) ?: '1' }}"></script>
+@include('partials.slb-icon-draw')
 <script src="{{ asset('js/slb-live-search.js') }}?v={{ @filemtime(public_path('js/slb-live-search.js')) ?: '1' }}"></script>
+@include('partials.money-display')
 @include('partials.app-toast')
 <script src="{{ asset('js/slb-http.js') }}?v={{ @filemtime(public_path('js/slb-http.js')) ?: '1' }}"></script>
 <script>
@@ -277,6 +310,7 @@
     window.refreshAdminQueueBadges();
 </script>
 <script src="{{ asset('js/role-switch.js') }}?v={{ @filemtime(public_path('js/role-switch.js')) ?: '1' }}"></script>
+<script src="{{ asset('assets/js/admin-theme-selects.js') }}?v={{ @filemtime(public_path('assets/js/admin-theme-selects.js')) ?: '1' }}"></script>
 <script src="{{ asset('assets/js/notification-center.js') }}?v={{ @filemtime(public_path('assets/js/notification-center.js')) ?: '8' }}" defer></script>
 @stack('scripts')
 </body>

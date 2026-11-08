@@ -2,17 +2,26 @@
 
 namespace App\Support;
 
+use App\Mail\AbandonedCartReminderMail;
 use App\Mail\AdminAssignedSiteNotification;
+use App\Mail\AdminBulkDiscountNotification;
 use App\Mail\AdminManualPaymentNotification;
 use App\Mail\AdminNewUserRegistered;
+use App\Mail\AdminNewUsersDigest;
+use App\Mail\AdminPublishedSiteNotification;
 use App\Mail\AdminStalledOrderAlert;
 use App\Mail\AdvertiserOrderStalledNotice;
 use App\Mail\AdvertiserReviewNudge;
+use App\Mail\ArticleApprovedForPublishMail;
+use App\Mail\ArticleReadyForApprovalMail;
+use App\Mail\ArticleRevisionRequestedMail;
 use App\Mail\AudienceCampaignMail;
 use App\Mail\AutoApproveReminderMail;
 use App\Mail\BulkSiteItemsRejected;
 use App\Mail\BulkSiteRequestCancelled;
+use App\Mail\BulkSiteRequestPublisherReminder;
 use App\Mail\BulkSiteRequestSubmitted;
+use App\Mail\BulkSitesReadyForPublisherReview;
 use App\Mail\BulkSitesSeededNotification;
 use App\Mail\CommunityFeedbackReviewed;
 use App\Mail\ContentEvaluationResult;
@@ -27,6 +36,7 @@ use App\Mail\DepositRequestSubmitted;
 use App\Mail\DisputeClawbackPublisher;
 use App\Mail\DisputeRefundAdvertiser;
 use App\Mail\GoogleTempPasswordMail;
+use App\Mail\LinkGuaranteeRestoreMail;
 use App\Mail\LiveUrlSubmitted;
 use App\Mail\ModificationRequested;
 use App\Mail\MonthlySpendingSummary;
@@ -38,6 +48,13 @@ use App\Mail\OrderApprovedByAdvertiser;
 use App\Mail\OrderPaymentConfirmed;
 use App\Mail\OrderRejected;
 use App\Mail\OrderStatusChanged;
+use App\Mail\PartnerCorrectionMail;
+use App\Mail\PartnerEmailChangeCancelMail;
+use App\Mail\PartnerEmailChangeConfirmMail;
+use App\Mail\PartnerNewOrderMail;
+use App\Mail\PartnerPasswordResetMail;
+use App\Mail\PartnerPayoutReleasedMail;
+use App\Mail\PartnerThreadMessageMail;
 use App\Mail\PasswordChangedMail;
 use App\Mail\PaymentFailedMail;
 use App\Mail\PaymentPendingMail;
@@ -47,7 +64,9 @@ use App\Mail\PaypalPaymentNotCompleted;
 use App\Mail\PublisherAcceptNudge;
 use App\Mail\PublisherAddSiteReminderMail;
 use App\Mail\PublisherPublishNudge;
+use App\Mail\PublisherStaffOnboardingMail;
 use App\Mail\RefundReceiptMail;
+use App\Mail\SavedSearchAlertMail;
 use App\Mail\SiteClaimOwnershipTransferred;
 use App\Mail\SiteClaimReviewed;
 use App\Mail\SiteClaimSubmitted;
@@ -58,10 +77,12 @@ use App\Mail\SpendBudgetAlertMail;
 use App\Mail\TrustpilotReviewRequest;
 use App\Mail\WebsiteSuggestionReviewed;
 use App\Mail\WeeklyActivitySummary;
+use App\Mail\WeeklyNewSitesDigestMail;
 use App\Mail\WelcomeEmail;
 use App\Mail\WithdrawalRequestedConfirmation;
 use App\Mail\WithdrawalRequestNotification;
 use App\Mail\WithdrawalStatusUpdated;
+use App\Mail\WritingDeadlineReminderMail;
 use App\Models\BulkSiteRequest;
 use App\Models\ContentSubmission;
 use App\Models\DepositRequest;
@@ -70,13 +91,16 @@ use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\OrderItemDispute;
+use App\Models\PartnerEmailChangeRequest;
 use App\Models\ProblemReport;
+use App\Models\SavedSearch;
 use App\Models\Site;
 use App\Models\SiteClaim;
 use App\Models\User;
 use App\Models\WebsiteSuggestion;
 use App\Models\Withdrawal;
 use Illuminate\Mail\Mailable;
+use Illuminate\Mail\Markdown;
 use Illuminate\Support\Str;
 
 class EmailCatalog
@@ -189,6 +213,55 @@ class EmailCatalog
                 'mailable' => SiteOwnerOrderNotification::class,
                 'status' => 'active',
             ],
+            'partner_new_order' => [
+                'name' => 'Partner: new order',
+                'description' => 'Catalog partner alert for a new order, with a one-click dashboard link. No SLB price or buyer identity.',
+                'category' => 'Partners',
+                'mailable' => PartnerNewOrderMail::class,
+                'status' => 'active',
+            ],
+            'partner_correction' => [
+                'name' => 'Partner: correction requested',
+                'description' => 'Catalog partner alert when a correction is requested.',
+                'category' => 'Partners',
+                'mailable' => PartnerCorrectionMail::class,
+                'status' => 'active',
+            ],
+            'partner_thread_message' => [
+                'name' => 'Partner: order message',
+                'description' => 'Catalog partner alert when a relayed thread message arrives. One-click dashboard link. No buyer identity.',
+                'category' => 'Partners',
+                'mailable' => PartnerThreadMessageMail::class,
+                'status' => 'active',
+            ],
+            'partner_payout_released' => [
+                'name' => 'Partner: payout released',
+                'description' => 'Catalog partner alert when a withdrawal is marked paid. Requires full login.',
+                'category' => 'Partners',
+                'mailable' => PartnerPayoutReleasedMail::class,
+                'status' => 'active',
+            ],
+            'partner_email_change_confirm' => [
+                'name' => 'Partner: confirm email change',
+                'description' => 'Sent to the new address. The change applies only after confirmation.',
+                'category' => 'Partners',
+                'mailable' => PartnerEmailChangeConfirmMail::class,
+                'status' => 'active',
+            ],
+            'partner_email_change_cancel' => [
+                'name' => 'Partner: cancel email change',
+                'description' => 'Sent to the old address with a This wasn’t me link.',
+                'category' => 'Partners',
+                'mailable' => PartnerEmailChangeCancelMail::class,
+                'status' => 'active',
+            ],
+            'partner_password_reset' => [
+                'name' => 'Partner: password reset',
+                'description' => 'Password reset for the partners.seolinkbuildings.com dashboard.',
+                'category' => 'Partners',
+                'mailable' => PartnerPasswordResetMail::class,
+                'status' => 'active',
+            ],
             'order_accepted' => [
                 'name' => 'Order Accepted',
                 'description' => 'Advertiser notified when publisher accepts an order.',
@@ -222,6 +295,48 @@ class EmailCatalog
                 'description' => 'Advertiser notified when the guest post goes live.',
                 'category' => 'Orders',
                 'mailable' => LiveUrlSubmitted::class,
+                'status' => 'active',
+            ],
+            'link_guarantee_restore' => [
+                'name' => 'Link Guarantee Restore',
+                'description' => 'Publisher notified when a monthly guarantee check cannot find the advertiser URL, with 7 days to restore it.',
+                'category' => 'Orders',
+                'mailable' => LinkGuaranteeRestoreMail::class,
+                'status' => 'active',
+            ],
+            'article_ready_for_approval' => [
+                'name' => 'Article Ready For Approval',
+                'description' => 'Advertiser notified when a written article is ready to approve or revise.',
+                'category' => 'Orders',
+                'mailable' => ArticleReadyForApprovalMail::class,
+                'status' => 'active',
+            ],
+            'article_approved_for_publish' => [
+                'name' => 'Article Approved For Publish',
+                'description' => 'Publisher notified when an approved written article is ready to publish.',
+                'category' => 'Orders',
+                'mailable' => ArticleApprovedForPublishMail::class,
+                'status' => 'active',
+            ],
+            'article_revision_requested' => [
+                'name' => 'Article Revision Requested',
+                'description' => 'Writer notified when the advertiser requests one free revision.',
+                'category' => 'Orders',
+                'mailable' => ArticleRevisionRequestedMail::class,
+                'status' => 'active',
+            ],
+            'writing_deadline_reminder' => [
+                'name' => 'Writing Deadline Reminder',
+                'description' => 'Staff notified when an SLB writing deadline is near.',
+                'category' => 'Orders',
+                'mailable' => WritingDeadlineReminderMail::class,
+                'status' => 'active',
+            ],
+            'saved_search_alert' => [
+                'name' => 'Saved Search Alert',
+                'description' => 'Advertiser daily notice when new active catalog sites match a saved search.',
+                'category' => 'Catalog',
+                'mailable' => SavedSearchAlertMail::class,
                 'status' => 'active',
             ],
             'modification_requested' => [
@@ -374,6 +489,13 @@ class EmailCatalog
                 'mailable' => SiteDiscountEnded::class,
                 'status' => 'active',
             ],
+            'admin_bulk_discount' => [
+                'name' => 'Admin Set Pack Discount',
+                'description' => 'Publisher notified when staff set, change, or remove the 3 / 5 / 10-article pack discount on their site.',
+                'category' => 'Publishers',
+                'mailable' => AdminBulkDiscountNotification::class,
+                'status' => 'active',
+            ],
             'payout_profile_updated' => [
                 'name' => 'Payout Profile Updated by Support',
                 'description' => 'Publisher notified when support changes their payout details.',
@@ -389,10 +511,24 @@ class EmailCatalog
                 'status' => 'active',
             ],
             'bulk_sites_seeded' => [
-                'name' => 'Bulk Sites Seeded — Complete Details',
-                'description' => 'Publisher asked to finish details after staff seed a bulk request.',
+                'name' => 'Bulk Sites Active',
+                'description' => 'Publisher told their bulk sites are active after staff publish them.',
                 'category' => 'Publishers',
                 'mailable' => BulkSitesSeededNotification::class,
+                'status' => 'active',
+            ],
+            'bulk_sites_publisher_review' => [
+                'name' => 'Bulk Sites Ready for Publisher Review',
+                'description' => 'Publisher asked to review bulk sites before they go live.',
+                'category' => 'Publishers',
+                'mailable' => BulkSitesReadyForPublisherReview::class,
+                'status' => 'active',
+            ],
+            'bulk_request_publisher_reminder' => [
+                'name' => 'Bulk Request Publisher Reminder',
+                'description' => 'Manual or scheduled nudge when a bulk request is still waiting on the publisher.',
+                'category' => 'Publishers',
+                'mailable' => BulkSiteRequestPublisherReminder::class,
                 'status' => 'active',
             ],
             'admin_assigned_site' => [
@@ -400,6 +536,20 @@ class EmailCatalog
                 'description' => 'Publisher asked to accept a website staff added for them.',
                 'category' => 'Publishers',
                 'mailable' => AdminAssignedSiteNotification::class,
+                'status' => 'active',
+            ],
+            'admin_published_site' => [
+                'name' => 'Admin Published Site — Live',
+                'description' => 'Publisher notified that staff published a website live (not verified, no Accept).',
+                'category' => 'Publishers',
+                'mailable' => AdminPublishedSiteNotification::class,
+                'status' => 'active',
+            ],
+            'publisher_staff_onboarding' => [
+                'name' => 'Publisher Staff Onboarding',
+                'description' => 'Staff-created publisher: set-password link plus listings waiting in My Sites → Invites.',
+                'category' => 'Publishers',
+                'mailable' => PublisherStaffOnboardingMail::class,
                 'status' => 'active',
             ],
             'audience_campaign' => [
@@ -428,6 +578,13 @@ class EmailCatalog
                 'description' => 'Admins notified when a new user registers.',
                 'category' => 'Admin',
                 'mailable' => AdminNewUserRegistered::class,
+                'status' => 'active',
+            ],
+            'admin_new_users_digest' => [
+                'name' => 'New Users Digest',
+                'description' => 'Batched admin notice of recent signups (replaces per-signup mail).',
+                'category' => 'Admin',
+                'mailable' => AdminNewUsersDigest::class,
                 'status' => 'active',
             ],
             'site_claim_submitted' => [
@@ -479,6 +636,13 @@ class EmailCatalog
                 'mailable' => DepositReminderMail::class,
                 'status' => 'active',
             ],
+            'abandoned_cart_reminder' => [
+                'name' => 'Abandoned Cart Reminder (24h / 72h)',
+                'description' => 'Hourly scheduled nudge listing cart sites at the advertiser price. Off until Admin → Abandoned carts is enabled.',
+                'category' => 'Advertisers',
+                'mailable' => AbandonedCartReminderMail::class,
+                'status' => 'active',
+            ],
             'publisher_accept_nudge' => [
                 'name' => 'Publisher: accept the order',
                 'description' => 'Chases a publisher who has not accepted a paid order. Escalates to admin at stage 3.',
@@ -526,6 +690,13 @@ class EmailCatalog
                 'description' => 'New and discounted catalog listings for advertisers who have already placed a paid order.',
                 'category' => 'Advertisers',
                 'mailable' => NewSitesDigest::class,
+                'status' => 'active',
+            ],
+            'weekly_new_sites' => [
+                'name' => 'Weekly new-site digest',
+                'description' => 'Monday personalised digest of newly catalogued sites matching an advertiser\'s paid niche+country pairs. Default on; admin can turn only this type off.',
+                'category' => 'Advertisers',
+                'mailable' => WeeklyNewSitesDigestMail::class,
                 'status' => 'active',
             ],
             'weekly_activity_summary' => [
@@ -588,6 +759,39 @@ class EmailCatalog
         return self::templates()[$key] ?? null;
     }
 
+    /**
+     * Exact HTML used by Admin → Emails → Preview.
+     */
+    public static function previewHtml(string $key, ?string $audience = null): ?string
+    {
+        if (! self::get($key)) {
+            return null;
+        }
+
+        if ($html = self::frameworkPreviewHtml($key)) {
+            return $html;
+        }
+
+        $mailable = self::makeMailable($key, array_filter([
+            'audience' => is_string($audience) && $audience !== '' ? $audience : null,
+        ]));
+
+        return $mailable?->render();
+    }
+
+    public static function frameworkPreviewHtml(string $key): ?string
+    {
+        return match ($key) {
+            'password_reset' => app(Markdown::class)->render('emails.password-reset-preview', [
+                'resetUrl' => rtrim(app_public_url(), '/').'/password/reset/preview-token',
+            ]),
+            'email_verification' => app(Markdown::class)->render('emails.email-verification-preview', [
+                'verifyUrl' => self::previewVerificationUrl(),
+            ]),
+            default => null,
+        };
+    }
+
     public static function keyFromMailable(?string $class): ?string
     {
         if (! $class) {
@@ -631,21 +835,45 @@ class EmailCatalog
             'withdrawal request received' => 'withdrawal_requested_confirmation',
             'withdrawal request ' => 'withdrawal_status',
             'new order for your site' => 'publisher_new_order',
+            'new order ' => 'partner_new_order',
+            'correction requested for order' => 'partner_correction',
+            'new message on order' => 'partner_thread_message',
+            'payout released:' => 'partner_payout_released',
+            'confirm your new seolinkbuildings partner email' => 'partner_email_change_confirm',
+            'a partner email change was requested' => 'partner_email_change_cancel',
+            'reset your seolinkbuildings partner password' => 'partner_password_reset',
             'manual payment required' => 'admin_manual_payment',
             'order accepted -' => 'order_accepted',
             'order rejected -' => 'order_rejected',
             'order approved by advertiser' => 'order_completed',
             'live url submitted' => 'live_url_submitted',
+            'ready for review' => 'order_status_changed',
+            'restore the live link' => 'link_guarantee_restore',
+            'article ready for approval' => 'article_ready_for_approval',
+            'article ready to publish' => 'article_approved_for_publish',
+            'revision requested — order' => 'article_revision_requested',
+            'writing deadline soon' => 'writing_deadline_reminder',
+            'new sites match' => 'saved_search_alert',
             'modification requested for order' => 'modification_requested',
             'publisher requested a revised article' => 'content_revision_requested',
             'revised article ready' => 'content_revision_fulfilled',
             'your article was approved' => 'content_evaluation_result',
             'article evaluation update' => 'content_evaluation_result',
             'your site discount has ended' => 'site_discount_ended',
+            'pack discount added' => 'admin_bulk_discount',
+            'pack discount updated' => 'admin_bulk_discount',
+            'pack discount removed' => 'admin_bulk_discount',
             'your payout details were updated' => 'payout_profile_updated',
             'bulk site request from' => 'bulk_site_request_submitted',
+            'your bulk sites are active' => 'bulk_sites_seeded',
+            'please review websites from your bulk request' => 'bulk_sites_publisher_review',
+            'reminder: websites from your bulk request still need you' => 'bulk_request_publisher_reminder',
             'your sites were added to pending sites' => 'bulk_sites_seeded',
             'please accept a website we added' => 'admin_assigned_site',
+            'review websites we added for you' => 'publisher_staff_onboarding',
+            'set your password and review' => 'publisher_staff_onboarding',
+            'a website is live on your account' => 'admin_published_site',
+            'websites are live on your account' => 'admin_published_site',
             'your bulk website request was cancelled' => 'bulk_request_cancelled',
             'we did not add' => 'bulk_request_items_rejected',
             'spend budget' => 'spend_budget_alert',
@@ -672,6 +900,8 @@ class EmailCatalog
             'finish setup' => 'publisher_add_site_reminder',
             'your €20 credit is waiting' => 'deposit_reminder',
             'add funds to place your first guest post' => 'deposit_reminder',
+            'you still have sites in your cart' => 'abandoned_cart_reminder',
+            'your cart is still waiting' => 'abandoned_cart_reminder',
             'a paid order is waiting on you' => 'publisher_accept_nudge',
             'is still unaccepted' => 'publisher_accept_nudge',
             'waiting to be published' => 'publisher_publish_nudge',
@@ -686,8 +916,11 @@ class EmailCatalog
             'new advertiser registered' => 'admin_new_user',
             'new publisher registered' => 'admin_new_user',
             'new user registered' => 'admin_new_user',
+            'new users registered' => 'admin_new_users_digest',
             'new sites in the catalog' => 'new_sites_digest',
             'new sites just added' => 'new_sites_digest',
+            'new sites match your placements' => 'weekly_new_sites',
+            'a new site matches your placements' => 'weekly_new_sites',
             'weekly activity summary' => 'weekly_activity_summary',
             'your spending summary' => 'monthly_spending_summary',
         ];
@@ -716,9 +949,15 @@ class EmailCatalog
         $item = self::sampleOrderItem();
         $site = self::sampleSite();
         $user = self::sampleUser();
-        $audience = in_array($options['audience'] ?? '', ['advertiser', 'publisher', 'admin'], true)
-            ? $options['audience']
+        $rawAudience = is_string($options['audience'] ?? null) ? $options['audience'] : '';
+        $completed = $rawAudience === 'completed';
+        $audience = in_array($rawAudience, ['advertiser', 'publisher', 'admin'], true)
+            ? $rawAudience
             : 'advertiser';
+        if ($key === 'welcome' && $audience === 'publisher') {
+            $user->setAttribute('preview_workspace', 'publisher');
+            $user->email_verified_at = now();
+        }
 
         return match ($key) {
             'welcome' => new WelcomeEmail($user),
@@ -727,11 +966,11 @@ class EmailCatalog
             'order_status_changed' => new OrderStatusChanged(
                 order: $order,
                 recipient: $user,
-                audience: $audience,
+                audience: $completed ? 'advertiser' : $audience,
                 changeKind: 'status',
-                previousValue: 'pending',
-                newValue: 'processing',
-                description: match ($audience) {
+                previousValue: $completed ? 'review' : 'pending',
+                newValue: $completed ? 'completed' : 'processing',
+                description: $completed ? null : match ($audience) {
                     'publisher' => 'This order is now processing — please continue the placement.',
                     'admin' => 'Order status changed to processing (admin copy).',
                     default => 'Great news — the publisher accepted this order and work can begin.',
@@ -744,11 +983,24 @@ class EmailCatalog
             'refund_receipt' => new RefundReceiptMail(self::sampleRefundDocument()),
             'order_completed' => new OrderApprovedByAdvertiser($order, $item, $site),
             'publisher_new_order' => new SiteOwnerOrderNotification($site, [$order]),
+            'partner_new_order' => new PartnerNewOrderMail($user, $item, rtrim(PartnerDashboard::origin(), '/').'/orders/'.$item->id),
+            'partner_correction' => new PartnerCorrectionMail($user, $item, 'Move the link into paragraph 2.', rtrim(PartnerDashboard::origin(), '/').'/orders/'.$item->id),
+            'partner_thread_message' => new PartnerThreadMessageMail($user, $item, 'Please keep the live URL on the agreed domain.', rtrim(PartnerDashboard::origin(), '/').'/orders/'.$item->id),
+            'partner_payout_released' => new PartnerPayoutReleasedMail($user, self::sampleWithdrawal()),
+            'partner_email_change_confirm' => new PartnerEmailChangeConfirmMail($user, self::samplePartnerEmailChange(), 'preview-confirm-token'),
+            'partner_email_change_cancel' => new PartnerEmailChangeCancelMail($user, self::samplePartnerEmailChange(), 'preview-cancel-token'),
+            'partner_password_reset' => new PartnerPasswordResetMail($user, 'preview-reset-token'),
             'order_accepted' => new OrderAccepted($order, $item, $site),
             'order_rejected' => new OrderRejected($order, $item, $site, 'Sample rejection reason for preview.'),
             'dispute_clawback_publisher' => new DisputeClawbackPublisher(self::sampleDispute(), $user, 100.0, 0.0),
             'dispute_refund_advertiser' => new DisputeRefundAdvertiser(self::sampleDispute(), $user, 115.0),
             'live_url_submitted' => new LiveUrlSubmitted($order, $item, $site, 'https://example.com/sample-live-url'),
+            'link_guarantee_restore' => new LinkGuaranteeRestoreMail($user, $order, $item, now()->addDays(7)),
+            'article_ready_for_approval' => new ArticleReadyForApprovalMail($user, $order, $item),
+            'article_approved_for_publish' => new ArticleApprovedForPublishMail($user, $order, $item),
+            'article_revision_requested' => new ArticleRevisionRequestedMail($user, $order, $item, 'Please tighten the introduction.'),
+            'writing_deadline_reminder' => new WritingDeadlineReminderMail($user, $order, $item),
+            'saved_search_alert' => new SavedSearchAlertMail($user, self::sampleSavedSearch(), collect([$site])),
             'modification_requested' => new ModificationRequested($order, 'Please update the anchor text.'),
             'content_revision_requested' => new ContentRevisionRequested($order, $item, $site, 'Please send a cleaner draft with the correct brand mentions.'),
             'content_revision_fulfilled' => new ContentRevisionFulfilled($order, $item, $site),
@@ -792,6 +1044,7 @@ class EmailCatalog
             ),
             'trustpilot_review' => new TrustpilotReviewRequest($user, $order),
             'admin_new_user' => new AdminNewUserRegistered($user, $user),
+            'admin_new_users_digest' => new AdminNewUsersDigest($user, collect([$user])),
             'site_claim_submitted' => new SiteClaimSubmitted(self::sampleSiteClaim()),
             'site_claim_reviewed' => new SiteClaimReviewed(self::sampleSiteClaim('approved')),
             'site_claim_ownership_transferred' => new SiteClaimOwnershipTransferred(self::sampleSiteClaim('approved'), $user),
@@ -799,6 +1052,22 @@ class EmailCatalog
             'website_suggestion_reviewed' => new WebsiteSuggestionReviewed(self::sampleWebsiteSuggestion()),
             'publisher_add_site_reminder' => new PublisherAddSiteReminderMail($user, PublisherAddSiteReminderMail::STEP_DAY3),
             'deposit_reminder' => new DepositReminderMail($user, DepositReminderMail::STEP_DAY14),
+            'abandoned_cart_reminder' => new AbandonedCartReminderMail($user, AbandonedCartReminderMail::STAGE_1, [
+                [
+                    'domain' => 'example.com',
+                    'quantity' => 1,
+                    'price' => 90.0,
+                    'was' => 120.0,
+                    'discount' => 25.0,
+                ],
+                [
+                    'domain' => 'sample-two.example',
+                    'quantity' => 2,
+                    'price' => 140.0,
+                    'was' => null,
+                    'discount' => null,
+                ],
+            ], 'preview'),
             'publisher_accept_nudge' => new PublisherAcceptNudge($user, $order, $item, $site, 2, 36),
             'publisher_publish_nudge' => new PublisherPublishNudge($user, collect([
                 [
@@ -821,6 +1090,7 @@ class EmailCatalog
                 ['site' => $site, 'price' => 140.0, 'was' => null, 'discount' => null, 'is_new' => true],
                 ['site' => $site, 'price' => 210.0, 'was' => null, 'discount' => null, 'is_new' => false],
             ])),
+            'weekly_new_sites' => self::sampleWeeklyNewSitesMail($user, $site),
             'weekly_activity_summary' => new WeeklyActivitySummary($user, [
                 'orders' => 3,
                 'spend' => 199.5,
@@ -852,6 +1122,13 @@ class EmailCatalog
                 'moderation_status' => 'approved',
             ]),
             'site_discount_ended' => new SiteDiscountEnded($site, $user, 20.0, now()->subDay()),
+            'admin_bulk_discount' => new AdminBulkDiscountNotification(
+                $site,
+                $user,
+                [3 => 10.0],
+                [3 => 10.0, 5 => 15.0, 10 => 25.0],
+                'updated'
+            ),
             'payout_profile_updated' => new PayoutProfileUpdatedBySupport($user, 'paypal'),
             'bulk_site_request_submitted' => new BulkSiteRequestSubmitted(
                 self::sampleBulkSiteRequest(),
@@ -859,7 +1136,17 @@ class EmailCatalog
                 $user
             ),
             'bulk_sites_seeded' => new BulkSitesSeededNotification(self::sampleBulkSiteRequest(), 3, $user, ['example.com', 'sample-two.example']),
+            'bulk_sites_publisher_review' => new BulkSitesReadyForPublisherReview(self::sampleBulkSiteRequest(), 2, $user, ['example.com', 'sample-two.example']),
+            'bulk_request_publisher_reminder' => new BulkSiteRequestPublisherReminder(self::sampleBulkSiteRequest(), $user),
             'admin_assigned_site' => new AdminAssignedSiteNotification($site, $user),
+            'admin_published_site' => new AdminPublishedSiteNotification($site, $user),
+            'publisher_staff_onboarding' => new PublisherStaffOnboardingMail(
+                tap($user, function (User $preview) {
+                    $preview->staff_created = true;
+                    $preview->staff_onboarded_at = null;
+                }),
+                [$site]
+            ),
             'audience_campaign' => new AudienceCampaignMail(self::sampleCampaign(), $user),
             'bulk_request_cancelled' => new BulkSiteRequestCancelled(self::sampleBulkSiteRequest(), $user, 'Sample cancellation reason for preview.'),
             'bulk_request_items_rejected' => new BulkSiteItemsRejected(
@@ -921,6 +1208,7 @@ class EmailCatalog
             'homepage_price' => 25.00,
             'social_channels' => ['facebook', 'x'],
             'content_link' => 'https://example.com/content.docx',
+            'live_url' => 'https://example.com/sample-live-url',
         ]);
         $item->id = self::PREVIEW_ID;
         $item->exists = false;
@@ -967,6 +1255,20 @@ class EmailCatalog
         $site->setRelation('publisher', $user);
 
         return $site;
+    }
+
+    protected static function sampleSavedSearch(): SavedSearch
+    {
+        $search = new SavedSearch([
+            'name' => 'Sample DE tech DR 40+',
+            'query_json' => ['country' => 'de', 'dr_min' => '40'],
+            'notify' => true,
+        ]);
+        $search->id = self::PREVIEW_ID;
+        $search->exists = false;
+        $search->user_id = self::PREVIEW_ID;
+
+        return $search;
     }
 
     protected static function sampleSiteClaim(string $status = 'pending'): SiteClaim
@@ -1164,6 +1466,21 @@ class EmailCatalog
         return $withdrawal;
     }
 
+    protected static function samplePartnerEmailChange(): PartnerEmailChangeRequest
+    {
+        $user = self::sampleUser();
+        $change = new PartnerEmailChangeRequest([
+            'user_id' => $user->id,
+            'old_email' => $user->email,
+            'new_email' => 'new-partner@example.com',
+        ]);
+        $change->id = self::PREVIEW_ID;
+        $change->exists = false;
+        $change->setRelation('user', $user);
+
+        return $change;
+    }
+
     protected static function sampleContentSubmission(): ContentSubmission
     {
         $user = self::sampleUser();
@@ -1212,5 +1529,59 @@ class EmailCatalog
         $campaign->exists = false;
 
         return $campaign;
+    }
+
+    protected static function sampleWeeklyNewSitesMail(User $user, Site $site): WeeklyNewSitesDigestMail
+    {
+        $site->domain = $site->domain ?: 'example.com';
+        $site->category = $site->category ?: 'Marketing';
+        $site->country = $site->country ?: 'gb';
+        $site->da = $site->da ?: 42;
+        $site->dr = $site->dr ?: 38;
+        $site->traffic = $site->traffic ?: 12000;
+        $site->metrics_fetched_at = $site->metrics_fetched_at ?: now()->subDay();
+        $site->price = $site->price ?: 90;
+
+        $cards = collect([
+            [
+                'site_id' => (int) ($site->id ?: self::PREVIEW_ID),
+                'domain' => (string) $site->domain,
+                'niche' => 'Marketing',
+                'country_code' => 'gb',
+                'country_label' => 'United Kingdom',
+                'da' => (int) $site->da,
+                'dr' => (int) $site->dr,
+                'traffic' => (int) $site->traffic,
+                'metrics_checked_at' => now()->subDay()->toDateString(),
+                'price' => 90.0,
+                'screenshot_url' => null,
+                'has_screenshot' => false,
+                'details_url' => rtrim(app_public_url(), '/').'/advertiser/catalog?site='.(int) ($site->id ?: self::PREVIEW_ID),
+            ],
+            [
+                'site_id' => self::PREVIEW_ID,
+                'domain' => 'sample-two.example',
+                'niche' => 'Marketing',
+                'country_code' => 'gb',
+                'country_label' => 'United Kingdom',
+                'da' => 55,
+                'dr' => 51,
+                'traffic' => 18000,
+                'metrics_checked_at' => now()->subDays(2)->toDateString(),
+                'price' => 140.0,
+                'screenshot_url' => null,
+                'has_screenshot' => false,
+                'details_url' => rtrim(app_public_url(), '/').'/advertiser/catalog?site='.self::PREVIEW_ID,
+            ],
+        ]);
+
+        $browse = [[
+            'niche' => 'Marketing',
+            'country_code' => 'gb',
+            'country_label' => 'United Kingdom',
+            'url' => rtrim(app_public_url(), '/').'/advertiser/catalog?category='.rawurlencode('Marketing').'&country=gb',
+        ]];
+
+        return new WeeklyNewSitesDigestMail($user, $cards, $browse, now()->format('o-\WW'), 0, 'preview');
     }
 }

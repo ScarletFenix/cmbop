@@ -12,19 +12,23 @@ Use this on **every** code update. Full media background:
 
 ## After upload / sync
 
-This agent cannot SSH to live Hostinger. `HOSTINGER_WEB_HEAL` (default on) plus
-`php artisan ops:production-ready --repair` cover migrate, `APP_URL`,
-`MEDIA_PATH`, roles, `public/storage`, and `schedule:run` without a login.
+This agent cannot SSH to live Hostinger. `php artisan ops:production-ready --repair`
+covers migrate, `APP_URL`, `MEDIA_PATH`, roles, and `public/storage`.
+`HOSTINGER_WEB_HEAL` (default on) repeats the filesystem and URL repair on a
+production page view. It does not migrate and it does not run the scheduler.
 
-1. Open any production page (or run `php artisan ops:production-ready --repair`).
+1. Run `php artisan ops:production-ready --repair` after each deploy.
    That writes `MEDIA_PATH=/home/USER/persistent/media` when it is empty or still
    under `public_html`, copies `APP_URL` from `PUBLIC_APP_URL` if it is still
    loopback, runs `migrate --force` (bootstrapping users/sites/orders/order_items
    first when the schema is empty), seeds roles, and repairs `public/storage`.
+   A later page view can refresh `MEDIA_PATH`, `APP_URL`, and `public/storage`
+   only.
 2. `grep '^MEDIA_PATH=' .env` — must be absolute path outside `public_html`
 3. `ls -la public/storage` — must symlink to that path; if not:
    `rm -f public/storage && php artisan storage:link`
-4. Pending SQL under `database/sql/` is still manual (e.g. `add_homepage_social_placement.sql`
+4. Pending SQL under `database/sql/` is still manual (e.g. `add_catalog_performance_indexes.sql`
+   for catalog filter indexes + `country_norm`/`language_norm`, `add_homepage_social_placement.sql`
    so catalog Site Details can show Homepage promotions + Social, and
    `restrict_order_items_site_id_on_delete.sql` so deleting a site cannot cascade-wipe orders)
 5. `php artisan config:clear` (and `config:cache` if you normally cache) — `--repair`
@@ -53,12 +57,28 @@ This agent cannot SSH to live Hostinger. `HOSTINGER_WEB_HEAL` (default on) plus
    (`SITE_CWEBP_PATH=/usr/bin/cwebp`). Without an encoder a validated original
    JPEG/PNG is stored (GIF still stays GIF). Enable one of those on Hostinger
    so new uploads become WebP.
-10. Confirm MySQL, `APP_URL`, `MEDIA_PATH`, uploads, mail drain, and the scheduler:
+10. Advertiser MCP (`/api/mcp/customer`) needs the MCP OAuth/cart migrations
+    (`php artisan migrate --force` or `--repair`) and a public **HTTPS**
+    `APP_URL`. No Passport keys. See [`advertiser-mcp.md`](advertiser-mcp.md).
+11. Confirm MySQL, `APP_URL`, `MEDIA_PATH`, uploads, mail drain, and the scheduler:
    `php artisan ops:production-ready --repair --strict`
-   Web traffic also runs `schedule:run` about once a minute. Add system cron if
-   the site is quiet overnight. Then spot-check register → verify email →
+   MySQL hostname must be `localhost` (unix socket), not `127.0.0.1`. Hostinger
+   blocks TCP to 127.0.0.1:3306 with `SQLSTATE[HY000] [2002] Operation not permitted`.
+   `--repair` rewrites leftover `DB_HOST=127.0.0.1` on Hostinger. Then `php artisan config:clear`.
+   Add **one** system cron (wrap with `flock` so a slow tick cannot stack
+   processes on the 120-process cap):
+   `* * * * * flock -n /tmp/laravel-schedule.lock -c 'cd /path/to/app && php artisan schedule:run'`.
+   Or, if CLI cron is unavailable, POST `/cron/run` with header `X-Cron-Key`
+   every minute — not both. Delete any leftover hourly GET to
+   `/cron/orders-auto-approve/<token>` (removed; use `orders:auto-approve` via
+   `schedule:run`). Page views do not run the scheduler.
+   Then spot-check register → verify email →
    catalog image → wallet order → chat mail.
 
 ## Weekly
 
-Back up `/home/USER/persistent/media` (zip / Hostinger backup / `tar`).
+Off-site: `backup:drive` (Google Drive, 03:00 Asia/Karachi) — see [`BACKUPS.md`](BACKUPS.md).
+Also back up `/home/USER/persistent/media` (zip / Hostinger backup / `tar`).
+
+Country ccTLD DNS/hosting is **not** part of a code deploy. Owner checklist:
+[`ops-country-domains.md`](ops-country-domains.md).

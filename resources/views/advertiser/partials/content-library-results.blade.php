@@ -35,19 +35,32 @@
         'available' => 0,
         'evaluating' => 0,
         'in_progress' => 0,
+        'in_cart' => 0,
+        'ordered' => 0,
         'completed' => 0,
         'expired' => 0,
         'archived' => 0,
         'needs_fix' => 0,
     ];
     $uploadsEnabled = $uploadsEnabled ?? true;
-    // Status strip: Approved · Processing · Needs corrections · Completed/LIVE · Archived · Expired
+    $articlePlacements = $articlePlacements ?? [];
+    // Status strip: Approved · In cart · Ordered · Processing · Needs corrections · Completed/LIVE · Archived · Expired
     // Processing is the existing in_progress bucket (ordered, not live) — not a new evaluating tab.
     $libraryStatusChips = [
         'approved' => [
             'label' => 'Approved',
             'count' => (int) ($availabilityCounts['available'] ?? 0),
             'params' => ['status' => 'approved', 'availability' => 'available'],
+        ],
+        'in_cart' => [
+            'label' => 'In cart',
+            'count' => (int) ($availabilityCounts['in_cart'] ?? 0),
+            'params' => ['status' => 'all', 'availability' => 'in_cart'],
+        ],
+        'ordered' => [
+            'label' => 'Ordered',
+            'count' => (int) ($availabilityCounts['ordered'] ?? ($availabilityCounts['in_progress'] ?? 0)),
+            'params' => ['status' => 'all', 'availability' => 'ordered'],
         ],
         'evaluating' => [
             'label' => 'Evaluating',
@@ -83,6 +96,10 @@
     $activeLibraryChip = 'approved';
     if (($availabilityFilter ?? 'all') === 'completed') {
         $activeLibraryChip = 'completed';
+    } elseif (($availabilityFilter ?? 'all') === 'in_cart') {
+        $activeLibraryChip = 'in_cart';
+    } elseif (($availabilityFilter ?? 'all') === 'ordered') {
+        $activeLibraryChip = 'ordered';
     } elseif (($availabilityFilter ?? 'all') === 'evaluating') {
         $activeLibraryChip = 'evaluating';
     } elseif (($availabilityFilter ?? 'all') === 'in_progress') {
@@ -131,6 +148,7 @@
         )->contains(fn ($row) => filled($row->expires_at ?? null));
 @endphp
 
+    <div class="library-toolbar">
     <nav class="library-status-row" aria-label="Library status filter">
         @foreach($libraryStatusChips as $key => $chip)
             @php
@@ -158,7 +176,7 @@
         <p class="library-table-note" role="note">Unused originals are removed after expiry; preview stays.</p>
     @endif
 
-    <form method="POST" action="{{ route('advertiser.content-submissions.bulk-archive') }}" id="libraryBulkForm" class="d-flex flex-wrap gap-2 mb-2">
+    <form method="POST" action="{{ route('advertiser.content-submissions.bulk-archive') }}" id="libraryBulkForm" class="library-bulk-bar d-none" hidden>
         @csrf
         <button type="submit" class="btn btn-sm btn-outline-secondary" id="libraryBulkArchiveBtn"
                 data-slb-confirm="Archive the selected unused articles?"
@@ -176,6 +194,7 @@
         </button>
         <span class="small text-muted align-self-center">Unused articles only · up to 50</span>
     </form>
+    </div>
 
     <div class="library-table border shadow-sm">
         <div class="table-responsive">
@@ -226,6 +245,16 @@
                         $statusDisplay = $libraryStatusDisplay($availability, (string) $submission->moderation_status);
                         $label = $statusDisplay['label'];
                         $statusCategory = $statusDisplay['category'];
+                        $rowPlacement = $articlePlacements[$submission->id] ?? null;
+                        if (is_array($rowPlacement)) {
+                            $label = (string) ($rowPlacement['label'] ?? $label);
+                            $statusCategory = match ((string) ($rowPlacement['state'] ?? '')) {
+                                'in_cart' => 'in_cart',
+                                'ordered' => 'processing',
+                                'published' => 'completed',
+                                default => $statusCategory,
+                            };
+                        }
                     @endphp
                     <tr id="library-row-{{ $submission->id }}" @class(['library-row--completed' => $availability === 'published'])>
                         <td>
@@ -242,9 +271,12 @@
                             @endphp
                             @if($featureThumb !== '')
                                 <img src="{{ $featureThumb }}"
-                                     alt=""
+                                     alt="{{ $submission->title ?: $submission->original_filename ?: 'Article image' }}"
                                      class="library-feature-thumb"
+                                     width="40"
+                                     height="40"
                                      loading="lazy"
+                                     decoding="async"
                                      onerror="this.style.display='none'; this.insertAdjacentHTML('afterend','<span class=\'text-muted small\'>Image unavailable</span>');">
                             @endif
                             <div class="library-title text-truncate" data-title-display="{{ $submission->id }}" title="{{ $submission->title ?: $submission->original_filename }}">
@@ -268,7 +300,7 @@
                                             <div><strong>Order:</strong> #{{ $libraryOrder->id }}</div>
                                         @endif
                                         @if($placement?->price !== null)
-                                            <div><strong>Price:</strong> €{{ number_format((float) $placement->price, 2) }}</div>
+                                            <div><strong>Price:</strong> {{ format_money($placement->price) }}</div>
                                         @endif
                                         @if($publishedDateLabel)
                                             <div><strong>Published:</strong> {{ $publishedDateLabel }}</div>
@@ -360,15 +392,15 @@
                                     <div class="d-flex flex-wrap gap-1 align-items-end">
                                         <select name="country" class="form-select form-select-sm" style="max-width:8rem;" required>
                                             @foreach(($countries ?? []) as $country)
-                                                <option value="{{ $country->code }}" @selected(strtolower((string) $submission->country) === strtolower((string) $country->code))>
-                                                    {{ $country->name }}
+                                                <option value="{{ marketplace_option_code($country) }}" @selected(strtolower((string) $submission->country) === marketplace_option_code($country))>
+                                                    {{ marketplace_option_name($country) }}
                                                 </option>
                                             @endforeach
                                         </select>
                                         <select name="language" class="form-select form-select-sm" style="max-width:8rem;" required>
                                             @foreach(($languages ?? []) as $language)
-                                                <option value="{{ $language->code }}" @selected(strtolower((string) $submission->language) === strtolower((string) $language->code))>
-                                                    {{ $language->name }}
+                                                <option value="{{ marketplace_option_code($language) }}" @selected(strtolower((string) $submission->language) === marketplace_option_code($language))>
+                                                    {{ marketplace_option_name($language, 'language') }}
                                                 </option>
                                             @endforeach
                                         </select>
@@ -397,11 +429,22 @@
                             <div class="library-status-wrap">
                                 <span class="library-status library-status--{{ $statusCategory }}">
                                     {{ $label }}
-                                    @if($statusCategory === 'processing')
+                                    @if($statusCategory === 'processing' || $statusCategory === 'ordered')
                                         <span class="library-status-sweep" aria-hidden="true"></span>
                                     @endif
                                 </span>
-                                @if($statusCategory === 'completed' && $publishedDateLabel)
+                                @if(is_array($rowPlacement) && ($rowPlacement['state'] ?? '') === 'published' && ! empty($rowPlacement['live_url']))
+                                    <a class="library-placement-link" href="{{ $rowPlacement['live_url'] }}" target="_blank" rel="noopener noreferrer">
+                                        {{ $rowPlacement['live_url'] }} <i class="fa fa-external-link fa-xs" aria-hidden="true"></i>
+                                    </a>
+                                @elseif(is_array($rowPlacement) && ($rowPlacement['state'] ?? '') === 'ordered' && ! empty($rowPlacement['order_url']))
+                                    <a class="library-placement-link" href="{{ $rowPlacement['order_url'] }}">View order</a>
+                                @elseif(is_array($rowPlacement) && ($rowPlacement['state'] ?? '') === 'in_cart' && ! empty($rowPlacement['pay_url']))
+                                    <a class="btn btn-sm btn-primary library-pay-now" href="{{ $rowPlacement['pay_url'] }}">Pay now</a>
+                                @endif
+                                @if(is_array($rowPlacement) && ! empty($rowPlacement['stale_hint']))
+                                    <span class="library-stale-hint">{{ $rowPlacement['stale_hint'] }}</span>
+                                @elseif($statusCategory === 'completed' && $publishedDateLabel)
                                     <span class="library-status-time">Published {{ $publishedDateLabel }}</span>
                                 @elseif($uploadedAgo = $submission->uploadedAgoLabel())
                                     <span class="library-status-time">Uploaded {{ $uploadedAgo }}</span>
@@ -430,10 +473,11 @@
                         </td>
                         <td class="text-end library-actions">
                             @if($availability === 'published')
-                            <div class="d-inline-flex flex-wrap gap-1 justify-content-end">
+                            <div class="library-actions-group">
                                 <div class="dropdown">
                                     <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
-                                            data-bs-toggle="dropdown" data-bs-display="static"
+                                            data-bs-toggle="dropdown"
+                                            data-bs-popper-config='{"strategy":"fixed"}'
                                             data-bs-auto-close="true" aria-expanded="false" aria-haspopup="true">
                                         More
                                     </button>
@@ -455,8 +499,13 @@
                                 </div>
                             </div>
                             @else
-                            <div class="d-inline-flex flex-wrap gap-1 justify-content-end">
-                                @if($submission->canOrderFromLibrary())
+                            <div class="library-actions-group">
+                                @if(is_array($rowPlacement) && ($rowPlacement['state'] ?? '') === 'in_cart' && ! empty($rowPlacement['checkout_url']))
+                                    <a class="btn btn-sm btn-primary"
+                                       href="{{ $rowPlacement['checkout_url'] }}">
+                                        Go to checkout
+                                    </a>
+                                @elseif($submission->canOrderFromLibrary() && ! (is_array($rowPlacement) && in_array($rowPlacement['state'] ?? '', ['ordered', 'published'], true) && empty($rowPlacement['replaceable'])))
                                     <a class="btn btn-sm btn-primary"
                                        href="{{ route('advertiser.content-library.order', $submission, false) }}">
                                         Order
@@ -475,13 +524,6 @@
                                             Resubmit
                                         </a>
                                     @endif
-                                @elseif($submission->canDuplicateForLibrary())
-                                    <button type="button"
-                                            class="btn btn-sm btn-outline-secondary js-library-duplicate"
-                                            data-submission-id="{{ $submission->id }}"
-                                            data-title="{{ $submission->title ?: $submission->original_filename }}">
-                                        Duplicate
-                                    </button>
                                 @endif
                                 @if($availability === 'in_progress'
                                     || ($submission->libraryOrder() && ! $submission->isPublished() && $availability !== 'available'))
@@ -490,7 +532,8 @@
 
                                 <div class="dropdown">
                                     <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
-                                            data-bs-toggle="dropdown" data-bs-display="static"
+                                            data-bs-toggle="dropdown"
+                                            data-bs-popper-config='{"strategy":"fixed"}'
                                             data-bs-auto-close="true" aria-expanded="false" aria-haspopup="true">
                                         More
                                     </button>
@@ -601,6 +644,18 @@
                                     icon="fa-spinner"
                                     title="Nothing is being scanned"
                                     message="New uploads appear here while uniqueness and policy checks run. You can open preview, but wait before replacing."
+                                />
+                            @elseif(($availabilityFilter ?? 'all') === 'in_cart')
+                                <x-ui.empty-state
+                                    icon="fa-cart-shopping"
+                                    title="Nothing in your cart"
+                                    message="When you assign an approved article to a site, it appears here until you pay."
+                                />
+                            @elseif(($availabilityFilter ?? 'all') === 'ordered')
+                                <x-ui.empty-state
+                                    icon="fa-receipt"
+                                    title="No ordered articles"
+                                    message="Paid placements show here until they go live."
                                 />
                             @elseif(($availabilityFilter ?? 'all') === 'in_progress')
                                 <x-ui.empty-state

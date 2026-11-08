@@ -6,6 +6,7 @@ use App\Models\Blog;
 use App\Models\BlogTranslation;
 use App\Models\CuratedBlogTombstone;
 use App\Models\User;
+use App\Support\BrandPerson;
 use App\Support\PublicI18n;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -54,6 +55,10 @@ class CuratedBlogWriter
     public static function upsert(string $slug, array $payload, ?int $actorId = null): ?Blog
     {
         unset($payload['faq']);
+        $metaTitle = trim((string) ($payload['meta_title'] ?? ''));
+        $metaDescription = trim((string) ($payload['meta_description'] ?? ''));
+        $localeTranslations = is_array($payload['translations'] ?? null) ? $payload['translations'] : [];
+        unset($payload['meta_title'], $payload['meta_description'], $payload['translations']);
 
         if (self::isTombstoned($slug)) {
             return null;
@@ -89,7 +94,13 @@ class CuratedBlogWriter
             $data['published_at'] = $existing->published_at ?? now();
             $data['created_by'] = $existing->created_by ?? $authorUserId;
             if ($existing->author) {
-                $data['author'] = $existing->author;
+                if (class_exists(BrandPerson::class)
+                    && method_exists(BrandPerson::class, 'isFounderAlias')
+                    && BrandPerson::isFounderAlias($existing->author)) {
+                    $data['author'] = BrandPerson::publicName();
+                } else {
+                    $data['author'] = $existing->author;
+                }
             }
             if ($existing->featured_image) {
                 $data['featured_image'] = $existing->featured_image;
@@ -108,13 +119,15 @@ class CuratedBlogWriter
         if ($existing) {
             $existing->fill($data);
             $existing->save();
-            self::syncPrimaryTranslation($existing);
+            self::syncPrimaryTranslation($existing, $metaTitle, $metaDescription);
+            self::syncLocaleTranslations($existing, $localeTranslations);
 
             return $existing;
         }
 
         $created = Blog::create($data);
-        self::syncPrimaryTranslation($created);
+        self::syncPrimaryTranslation($created, $metaTitle, $metaDescription);
+        self::syncLocaleTranslations($created, $localeTranslations);
 
         return $created;
     }
@@ -187,13 +200,13 @@ class CuratedBlogWriter
      * Upsert commands that only write blogs.* leave DE/FR/NL pillars stale
      * after a deploy until an admin full-saves the post.
      */
-    public static function syncPrimaryTranslation(Blog $blog): void
+    public static function syncPrimaryTranslation(Blog $blog, string $metaTitle = '', string $metaDescription = ''): void
     {
         if (! Schema::hasTable('blog_translations')) {
             return;
         }
 
-        $locale = (class_exists(PublicI18n::class) && PublicI18n::isSupported($blog->primary_locale))
+        $locale = (class_exists(PublicI18n::class) && method_exists(PublicI18n::class, 'isSupported') && PublicI18n::isSupported($blog->primary_locale))
             ? $blog->primary_locale
             : 'en';
 
@@ -209,19 +222,111 @@ class CuratedBlogWriter
                 : self::uniqueTranslationSlug($slug, $blog->id, $locale);
         }
 
+        $row = [
+            'title' => $blog->title,
+            'slug' => $slug,
+            'excerpt' => $blog->excerpt,
+            'content' => $blog->content,
+            'is_published' => $blog->status === 'published',
+        ];
+
+        try {
+            if (Schema::hasColumn('blog_translations', 'meta_title') && $metaTitle !== '') {
+                $row['meta_title'] = $metaTitle;
+            }
+            if (Schema::hasColumn('blog_translations', 'meta_description') && $metaDescription !== '') {
+                $row['meta_description'] = $metaDescription;
+            }
+        } catch (\Throwable) {
+            // Leftover sqlite/host schema without meta columns.
+        }
+
         BlogTranslation::query()->updateOrCreate(
             [
                 'blog_id' => $blog->id,
                 'locale' => $locale,
             ],
-            [
-                'title' => $blog->title,
-                'slug' => $slug,
-                'excerpt' => $blog->excerpt,
-                'content' => $blog->content,
-                'is_published' => $blog->status === 'published',
-            ]
+            $row
         );
+    }
+
+    /**
+     * Extra locales on the same pillar (hreflang), leftover-safe.
+     *
+     * @param  array<string, mixed>  $translations
+     */
+    public static function syncLocaleTranslations(Blog $blog, array $translations): void
+    {
+        if ($translations === [] || ! Schema::hasTable('blog_translations')) {
+            return;
+        }
+
+        $primary = (class_exists(PublicI18n::class) && method_exists(PublicI18n::class, 'isSupported') && PublicI18n::isSupported($blog->primary_locale))
+            ? $blog->primary_locale
+            : 'en';
+
+        foreach ($translations as $locale => $fields) {
+            try {
+                $locale = strtolower(trim((string) $locale));
+                if ($locale === '' || $locale === $primary) {
+                    continue;
+                }
+                if (class_exists(PublicI18n::class) && method_exists(PublicI18n::class, 'isSupported') && ! PublicI18n::isSupported($locale)) {
+                    continue;
+                }
+                if (! is_array($fields)) {
+                    continue;
+                }
+
+                $title = trim((string) ($fields['title'] ?? ''));
+                $content = (string) ($fields['content'] ?? '');
+                if ($title === '' || $content === '') {
+                    continue;
+                }
+
+                $slug = trim((string) ($fields['slug'] ?? ''));
+                if ($slug === '') {
+                    $slug = ($blog->slug ?: 'post-'.$blog->id).'-'.$locale;
+                }
+                if (self::translationSlugTaken($slug, $blog->id, $locale)) {
+                    $existingSlug = BlogTranslation::query()
+                        ->where('blog_id', $blog->id)
+                        ->where('locale', $locale)
+                        ->value('slug');
+                    $slug = is_string($existingSlug) && $existingSlug !== ''
+                        && ! self::translationSlugTaken($existingSlug, $blog->id, $locale)
+                        ? $existingSlug
+                        : self::uniqueTranslationSlug($slug, $blog->id, $locale);
+                }
+
+                $row = [
+                    'title' => $title,
+                    'slug' => $slug,
+                    'excerpt' => (string) ($fields['excerpt'] ?? ''),
+                    'content' => $content,
+                    'is_published' => true,
+                ];
+
+                $metaTitle = trim((string) ($fields['meta_title'] ?? ''));
+                $metaDescription = trim((string) ($fields['meta_description'] ?? ''));
+                if (Schema::hasColumn('blog_translations', 'meta_title') && $metaTitle !== '') {
+                    $row['meta_title'] = $metaTitle;
+                }
+                if (Schema::hasColumn('blog_translations', 'meta_description') && $metaDescription !== '') {
+                    $row['meta_description'] = $metaDescription;
+                }
+
+                BlogTranslation::query()->updateOrCreate(
+                    [
+                        'blog_id' => $blog->id,
+                        'locale' => $locale,
+                    ],
+                    $row
+                );
+            } catch (\Throwable) {
+                continue;
+            }
+        }
     }
 
     private static function translationSlugTaken(string $slug, int $blogId, string $locale): bool

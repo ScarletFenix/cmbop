@@ -2,16 +2,40 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>@yield('title', 'Admin Dashboard') — SEOLinkBuildings</title>
+    @php
+        $adminPageTitle = \App\Support\AdminPageTitle::document(
+            html_entity_decode(
+                trim((string) $__env->yieldContent('title')),
+                ENT_QUOTES | ENT_HTML5,
+                'UTF-8'
+            ),
+            request()->route()?->getName()
+        );
+        $adminPageDescription = html_entity_decode(
+            trim((string) $__env->yieldContent('meta_description')),
+            ENT_QUOTES | ENT_HTML5,
+            'UTF-8'
+        );
+        if ($adminPageDescription === '') {
+            $adminPageDescription = 'Admin dashboard for SEOLinkBuildings.';
+        }
+    @endphp
+    <title>{{ $adminPageTitle }}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex, nofollow">
+    <meta name="description" content="{{ $adminPageDescription }}">
+    @include('partials.social-meta', [
+        'title' => $adminPageTitle,
+        'description' => $adminPageDescription,
+        'url' => url()->current(),
+    ])
     <meta name="csrf-token" content="{{ csrf_token() }}">
     @include('components.favicon')
+    @include('partials.shell-wordmark-preload')
 
     <!-- Bootstrap 5 CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="{{ asset('assets/vendor/bootstrap-5.3.0/bootstrap.min.css') }}?v={{ @filemtime(public_path('assets/vendor/bootstrap-5.3.0/bootstrap.min.css')) ?: '1' }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/slb-icons.css') }}?v={{ @filemtime(public_path('assets/css/slb-icons.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('assets/css/type-system.css') }}?v={{ @filemtime(public_path('assets/css/type-system.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('assets/css/brand-colors.css') }}?v={{ @filemtime(public_path('assets/css/brand-colors.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('assets/css/spacing-system.css') }}?v={{ @filemtime(public_path('assets/css/spacing-system.css')) ?: '1' }}" rel="stylesheet">
@@ -22,7 +46,8 @@
     <link href="{{ asset('assets/css/admin-tables.css') }}?v={{ @filemtime(public_path('assets/css/admin-tables.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('assets/css/glass-tip.css') }}?v={{ @filemtime(public_path('assets/css/glass-tip.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('assets/css/pulse-badge.css') }}?v={{ @filemtime(public_path('assets/css/pulse-badge.css')) ?: '1' }}" rel="stylesheet">
-    <link href="{{ asset('assets/css/notification-center.css') }}?v={{ @filemtime(public_path('assets/css/notification-center.css')) ?: '5' }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/notification-center.css') }}?v={{ @filemtime(public_path('assets/css/notification-center.css')) ?: '6' }}" rel="stylesheet">
+    <link href=\"{{ asset('assets/css/order-lifecycle-stepper.css') }}?v={{ @filemtime(public_path('assets/css/order-lifecycle-stepper.css')) ?: '1' }}\" rel=\"stylesheet\">
     <link href="{{ asset('assets/css/dialog-system.css') }}?v={{ @filemtime(public_path('assets/css/dialog-system.css')) ?: '1' }}" rel="stylesheet">
     {{-- Admin overrides sit before hover-system.css, which must stay last in the
          cascade; they win where needed through body.role-shell-admin specificity. --}}
@@ -30,7 +55,9 @@
     <link href="{{ asset('assets/css/admin-components.css') }}?v={{ @filemtime(public_path('assets/css/admin-components.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('assets/css/staff-sites.css') }}?v={{ @filemtime(public_path('assets/css/staff-sites.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('assets/css/slb-live-search.css') }}?v={{ @filemtime(public_path('assets/css/slb-live-search.css')) ?: '1' }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/slb-loader.css') }}?v={{ @filemtime(public_path('assets/css/slb-loader.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('assets/css/hover-system.css') }}?v={{ @filemtime(public_path('assets/css/hover-system.css')) ?: '1' }}" rel="stylesheet">
+    <script src="{{ asset('assets/js/slb-loader.js') }}?v={{ @filemtime(public_path('assets/js/slb-loader.js')) ?: '1' }}" defer data-lottie-src="{{ asset('assets/vendor/lottie-web/lottie_light.min.js') }}?v={{ @filemtime(public_path('assets/vendor/lottie-web/lottie_light.min.js')) ?: '1' }}"></script>
     <script src="{{ asset('assets/js/pulse-badge.js') }}?v={{ @filemtime(public_path('assets/js/pulse-badge.js')) ?: '1' }}" defer></script>
     <script src="{{ asset('assets/js/glass-tip.js') }}?v={{ @filemtime(public_path('assets/js/glass-tip.js')) ?: '1' }}" defer></script>
     <script src="{{ asset('assets/js/admin-pagination.js') }}?v={{ @filemtime(public_path('assets/js/admin-pagination.js')) ?: '1' }}" defer></script>
@@ -40,14 +67,15 @@
 <!-- Sidebar -->
 <div id="sidebar">
     <div class="mobile-sidebar-logo">
-        <img id="mobileSidebarLogo" src="{{ asset('assets/img/logo1.png') }}?v={{ @filemtime(public_path('assets/img/logo1.png')) ?: '1' }}" height="48" width="172" alt="SEOLinkBuildings">
+        <img id="mobileSidebarLogo" src="{{ brand_shell_wordmark_url() }}" height="48" width="172" fetchpriority="high" alt="SEOLinkBuildings">
     </div>
     <div class="menu">
         <div class="text-center my-2 d-md-none">
             @include('partials.role-switcher', ['variant' => 'outline-secondary'])
+            <div class="mt-2">@include('partials.currency-switcher')</div>
         </div>
         <div class="shell-sidebar-brand text-center my-3 d-none d-md-block">
-            <img id="logoSidebar" class="shell-logo-wordmark" src="{{ asset('assets/img/logo1.png') }}?v={{ @filemtime(public_path('assets/img/logo1.png')) ?: '1' }}" height="48" width="172" style="width:auto;max-width:100%;object-fit:contain;background:transparent" alt="SEOLinkBuildings">
+            <img id="logoSidebar" class="shell-logo-wordmark" src="{{ brand_shell_wordmark_url() }}" height="48" width="172" style="width:auto;max-width:100%;object-fit:contain;background:transparent" fetchpriority="high" alt="SEOLinkBuildings">
             <img class="shell-logo-mark" src="{{ asset('assets/brand/web/favicon.svg') }}" height="36" width="36" alt="" aria-hidden="true">
         </div>
 
@@ -64,6 +92,15 @@
         <a href="{{ route('admin.orders.index') }}" class="{{ request()->routeIs('admin.orders.*') ? 'active' : '' }}">
             <i class="fa fa-shopping-bag"></i> <span>Orders</span>
         </a>
+        <a href="{{ route('admin.link-guarantees.index') }}" class="{{ request()->routeIs('admin.link-guarantees*') ? 'active' : '' }}">
+            <i class="fa fa-link"></i> <span>Link guarantees</span>
+        </a>
+        <a href="{{ route('admin.writing-queue.index') }}" class="{{ request()->routeIs('admin.writing-queue*') ? 'active' : '' }}">
+            <i class="fa fa-pen-nib"></i> <span>Writing queue</span>
+        </a>
+        <a href="{{ route('admin.managed-orders.index') }}" class="{{ request()->routeIs('admin.managed-orders*') ? 'active' : '' }}">
+            <i class="fa fa-headset"></i> <span>Managed by SLB</span>
+        </a>
         @endif
         <a href="{{ staff_route('sites.index') }}" class="{{ request()->routeIs($staffPrefix.'sites.*') ? 'active' : '' }}" title="Sites Management — all publishers">
             <i class="fa fa-globe"></i>
@@ -73,10 +110,18 @@
             </span>
         </a>
         <a href="{{ staff_route('bulk-site-requests.index') }}" class="{{ request()->routeIs($staffPrefix.'bulk-site-requests.*') ? 'active' : '' }}">
-            <i class="fa fa-layer-group"></i> <span>Bulk requests</span>
+            <i class="fa fa-layer-group"></i>
+            <span class="d-flex align-items-center w-100">
+                <span>Bulk requests</span>
+                <span id="navBadgeBulk" class="badge bg-warning text-dark rounded-pill ms-auto" style="display:none;">0</span>
+            </span>
         </a>
         <a href="{{ staff_route('site-enrichment.index') }}" class="{{ request()->routeIs($staffPrefix.'site-enrichment.*') ? 'active' : '' }}">
-            <i class="fa fa-chart-line"></i> <span>Enrichment</span>
+            <i class="fa fa-chart-line"></i>
+            <span class="d-flex align-items-center w-100">
+                <span>Enrichment</span>
+                <span id="navBadgeEnrichment" class="badge bg-warning text-dark rounded-pill ms-auto" style="display:none;">0</span>
+            </span>
         </a>
         <a href="{{ staff_route('staff-handbook') }}" class="{{ request()->routeIs($staffPrefix.'staff-handbook') ? 'active' : '' }}">
             <i class="fa fa-book"></i> <span>Staff handbook</span>
@@ -126,6 +171,18 @@
         <a href="{{ route('admin.users.index') }}" class="{{ request()->routeIs('admin.users.*') ? 'active' : '' }}">
             <i class="fa fa-users"></i> <span>Users</span>
         </a>
+        <a href="{{ route('admin.publishers.onboardings') }}" class="{{ request()->routeIs('admin.publishers.*') ? 'active' : '' }}">
+            <i class="fa fa-user-plus"></i> <span>Add publisher</span>
+        </a>
+        <a href="{{ route('admin.partners.index') }}" class="{{ request()->routeIs('admin.partners.*') && ! request()->routeIs('admin.partners.relay*') && ! request()->routeIs('admin.partners.payouts') ? 'active' : '' }}">
+            <i class="fa fa-handshake"></i> <span>Partners</span>
+        </a>
+        <a href="{{ route('admin.partners.relay') }}" class="{{ request()->routeIs('admin.partners.relay*') ? 'active' : '' }}">
+            <i class="fa fa-comments"></i> <span>Partner relay</span>
+        </a>
+        <a href="{{ route('admin.partners.payouts') }}" class="{{ request()->routeIs('admin.partners.payouts') ? 'active' : '' }}">
+            <i class="fa fa-coins"></i> <span>Partner payouts</span>
+        </a>
         <a href="{{ route('admin.community.index') }}" class="{{ request()->routeIs('admin.community.*') ? 'active' : '' }}">
             <i class="fa fa-comments"></i>
             <span class="d-flex align-items-center w-100">
@@ -139,10 +196,20 @@
             <i class="fa fa-blog"></i> <span>Blogs</span>
         </a>
         <a href="{{ route('admin.emails.index') }}" class="{{ request()->routeIs('admin.emails.*') ? 'active' : '' }}">
-            <i class="fa fa-envelope-open-text"></i> <span>Email Center</span>
+            <i class="fa fa-envelope-open-text"></i>
+            <span class="d-flex align-items-center w-100">
+                <span>Email Center</span>
+                <span id="navBadgeMail" class="badge bg-danger text-white rounded-pill ms-auto" style="display:none;">0</span>
+            </span>
         </a>
         <a href="{{ route('admin.campaigns.index') }}" class="{{ request()->routeIs('admin.campaigns.*') ? 'active' : '' }}">
             <i class="fa fa-paper-plane"></i> <span>Campaigns</span>
+        </a>
+        <a href="{{ route('admin.abandoned-carts.index') }}" class="{{ request()->routeIs('admin.abandoned-carts.*') ? 'active' : '' }}">
+            <i class="fa fa-shopping-cart"></i> <span>Abandoned carts</span>
+        </a>
+        <a href="{{ route('admin.weekly-new-sites.index') }}" class="{{ request()->routeIs('admin.weekly-new-sites.*') ? 'active' : '' }}">
+            <i class="fa fa-globe"></i> <span>Weekly new sites</span>
         </a>
         <a href="{{ route('admin.audiences.index') }}" class="{{ request()->routeIs('admin.audiences.*') ? 'active' : '' }}">
             <i class="fa fa-address-book"></i> <span>Audiences</span>
@@ -151,7 +218,11 @@
             <i class="fa fa-bullhorn"></i> <span>Promotions</span>
         </a>
         <a href="{{ route('admin.moderation.index') }}" class="{{ request()->routeIs('admin.moderation.*') ? 'active' : '' }}">
-            <i class="fa fa-shield-alt"></i> <span>Moderation</span>
+            <i class="fa fa-shield-alt"></i>
+            <span class="d-flex align-items-center w-100">
+                <span>Moderation</span>
+                <span id="navBadgeModeration" class="badge bg-danger text-white rounded-pill ms-auto" style="display:none;">0</span>
+            </span>
         </a>
         <a href="{{ route('admin.content-library.index') }}" class="{{ request()->routeIs('admin.content-library.*') ? 'active' : '' }}">
             <i class="fa fa-folder-open"></i> <span>Content Library</span>
@@ -161,7 +232,11 @@
             <i class="fa fa-history"></i> <span>Activity History</span>
         </a>
         <a href="{{ route('admin.catalog-activity') }}" class="{{ request()->routeIs('admin.catalog-activity*') ? 'active' : '' }}" title="Hide-mode and copy-strike queue">
-            <i class="fa fa-eye"></i> <span>Catalog Activity</span>
+            <i class="fa fa-eye"></i>
+            <span class="d-flex align-items-center w-100">
+                <span>Catalog Activity</span>
+                <span id="navBadgeCatalog" class="badge bg-warning text-dark rounded-pill ms-auto" style="display:none;">0</span>
+            </span>
         </a>
         @endif
     </div>
@@ -174,16 +249,13 @@
             <span class="arrow" aria-hidden="true"><i class="fa fa-chevron-left"></i></span>
         </button>
 
-        <a href="/" class="d-flex align-items-center">
-            <img id="logoNavbar" src="{{ asset('assets/img/logo1.png') }}?v={{ @filemtime(public_path('assets/img/logo1.png')) ?: '1' }}" height="44" width="158" style="width:auto;max-width:min(220px,42vw);object-fit:contain;background:transparent" alt="SEOLinkBuildings">
-        </a>
-
         <div class="d-none d-md-block">
             <span class="admin-mode-badge">
                 {{ auth()->user()->isMarketing() ? 'Marketing' : 'Admin' }}
             </span>
-            <span class="ms-2">
+            <span class="ms-2 d-inline-flex align-items-center gap-2">
                 @include('partials.role-switcher', ['variant' => 'outline-secondary'])
+                @include('partials.currency-switcher')
             </span>
         </div>
     </div>
@@ -241,14 +313,17 @@
     © {{ date('Y') }} SEOLinkBuildings
 </footer>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="{{ asset('assets/vendor/bootstrap-5.3.0/bootstrap.bundle.min.js') }}?v={{ @filemtime(public_path('assets/vendor/bootstrap-5.3.0/bootstrap.bundle.min.js')) ?: '1' }}"></script>
 <script src="{{ asset('assets/js/modal-stack.js') }}?v={{ @filemtime(public_path('assets/js/modal-stack.js')) ?: '1' }}"></script>
 <script src="{{ asset('assets/js/admin-manage-dropdown.js') }}?v={{ @filemtime(public_path('assets/js/admin-manage-dropdown.js')) ?: '1' }}"></script>
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="{{ asset('assets/vendor/sweetalert2/sweetalert2.min.js') }}?v={{ @filemtime(public_path('assets/vendor/sweetalert2/sweetalert2.min.js')) ?: '1' }}"></script>
 <script src="{{ same_origin_asset('js/slb-confirm.js') }}?v={{ @filemtime(public_path('js/slb-confirm.js')) ?: '1' }}"></script>
+@include('partials.slb-icon-draw')
 <script src="{{ asset('js/slb-live-search.js') }}?v={{ @filemtime(public_path('js/slb-live-search.js')) ?: '1' }}"></script>
+@include('partials.money-display')
 @include('partials.app-toast')
 <script src="{{ asset('js/slb-http.js') }}?v={{ @filemtime(public_path('js/slb-http.js')) ?: '1' }}"></script>
+@include('partials.slb-loader')
 
 
 <script>
@@ -282,14 +357,25 @@
     document.body.classList.remove('layout-dark');
     try { localStorage.removeItem('layoutDarkMode'); } catch (e) {}
 
+    function formatNavBadgeCount(count) {
+        const n = Number(count) || 0;
+        if (n < 1000) return String(n);
+        const k = n / 1000;
+        const rounded = Math.round(k * 10) / 10;
+        return (Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1)) + 'k';
+    }
+
     function setNavBadge(id, count) {
         const el = document.getElementById(id);
         if (!el) return;
-        if (count > 0) {
+        const n = Number(count) || 0;
+        if (n > 0) {
             el.style.display = 'inline-block';
-            el.textContent = count > 99 ? '99+' : count;
+            el.textContent = formatNavBadgeCount(n);
+            el.title = n.toLocaleString() + ' need review';
         } else {
             el.style.display = 'none';
+            el.removeAttribute('title');
         }
     }
 
@@ -307,6 +393,14 @@
             setNavBadge('navBadgeSites', data.unverified_sites || 0);
             setNavBadge('navBadgePayments', data.pending_payments || 0);
             setNavBadge('navBadgeCommunity', data.pending_community || data.pending_claims || 0);
+            setNavBadge('navBadgeBulk', data.open_bulk_requests || 0);
+            setNavBadge('navBadgeEnrichment', data.enrichment_failed || 0);
+            setNavBadge('navBadgeMail', data.failed_mail || 0);
+            setNavBadge('navBadgeModeration', data.moderation_errors || 0);
+            setNavBadge('navBadgeCatalog', data.catalog_hide || 0);
+            if (typeof window.refreshAdminDashboardQueues === 'function') {
+                window.refreshAdminDashboardQueues(data);
+            }
         })
         .catch(() => {});
     }
@@ -315,7 +409,8 @@
     @endif
 </script>
 <script src="{{ asset('js/role-switch.js') }}?v={{ @filemtime(public_path('js/role-switch.js')) ?: '1' }}"></script>
-<script src="{{ asset('assets/js/notification-center.js') }}?v={{ @filemtime(public_path('assets/js/notification-center.js')) ?: '8' }}" defer></script>
+<script src="{{ asset('assets/js/admin-theme-selects.js') }}?v={{ @filemtime(public_path('assets/js/admin-theme-selects.js')) ?: '1' }}"></script>
+<script src="{{ asset('assets/js/notification-center.js') }}?v={{ @filemtime(public_path('assets/js/notification-center.js')) ?: '9' }}" defer></script>
 @stack('scripts')
 </body>
 </html>

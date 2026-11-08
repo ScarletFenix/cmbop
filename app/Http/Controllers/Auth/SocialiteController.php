@@ -8,17 +8,22 @@ use App\Models\User;
 use App\Models\UserConsent;
 use App\Models\Wallet;
 use App\Services\EmailNotificationService;
+use App\Services\Staff\PublisherOnboardingService;
 use App\Services\Wallet\WalletLedgerService;
 use App\Services\Wallet\WelcomeBonusService;
-use App\Support\UserMessages;
+use App\Support\PartnerDashboard;
+use App\Support\SignupCountry;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
+use Illuminate\View\View;
 use Laravel\Socialite\Contracts\Provider;
 use Laravel\Socialite\Facades\Socialite;
 use Laravel\Socialite\Two\InvalidStateException;
@@ -33,7 +38,7 @@ class SocialiteController extends Controller
                 'callback' => rtrim(request()->getSchemeAndHttpHost(), '/').'/auth/google/callback',
             ]);
 
-            return $this->loginRedirect(UserMessages::get('oauth.unavailable'));
+            return $this->loginRedirect($this->copy('oauth.unavailable', 'Google sign-in is not available. Please use email and password.'));
         }
 
         try {
@@ -43,7 +48,7 @@ class SocialiteController extends Controller
                 'exception' => $e::class,
             ]);
 
-            return $this->loginRedirect(UserMessages::get('oauth.temporary'));
+            return $this->loginRedirect($this->copy('oauth.temporary', 'Google sign-in is temporarily unavailable. Please try again or use email and password.'));
         }
     }
 
@@ -58,13 +63,13 @@ class SocialiteController extends Controller
 
             return $this->loginRedirect(
                 $denied
-                    ? UserMessages::get('oauth.cancelled')
-                    : UserMessages::get('oauth.failed')
+                    ? $this->copy('oauth.cancelled', 'Google sign-in was cancelled. You can try again or use email and password.')
+                    : $this->copy('oauth.failed', 'Google sign-in failed. Please try again or use email and password.')
             );
         }
 
         if (! google_oauth_configured()) {
-            return $this->loginRedirect(UserMessages::get('oauth.unavailable'));
+            return $this->loginRedirect($this->copy('oauth.unavailable', 'Google sign-in is not available. Please use email and password.'));
         }
 
         try {
@@ -92,12 +97,20 @@ class SocialiteController extends Controller
                     $existingUser->email_verified_at = now();
                 }
                 $existingUser->save();
+                $this->activateStaffOnboarding($existingUser);
 
                 return $this->loginAndRedirect($existingUser);
             }
 
+            if (class_exists(PartnerDashboard::class)
+                && PartnerDashboard::isPartnerHost(request())) {
+                return $this->loginRedirect(
+                    'This Google account is not a catalog partner. Sign in on the main site to create an account.'
+                );
+            }
+
             if (! $email) {
-                return $this->loginRedirect(UserMessages::get('oauth.no_email'));
+                return $this->loginRedirect($this->copy('oauth.no_email', 'Google did not share an email address. Please use another sign-in method.'));
             }
 
             $request = request();
@@ -105,102 +118,21 @@ class SocialiteController extends Controller
             $registerKey = $bonusService->registerRateLimitKey($request);
             if (RateLimiter::tooManyAttempts($registerKey, 5)) {
                 return $this->loginRedirect(
-                    UserMessages::get('register.throttled')
+                    $this->copy('register.throttled', 'Too many registration attempts. Please try again later.')
                 );
             }
             RateLimiter::hit($registerKey, 600);
 
-            DB::beginTransaction();
-
-            $advertiserRole = Role::where('name', 'advertiser')->first();
-            $publisherRole = Role::where('name', 'publisher')->first();
-
-            if (! $advertiserRole || ! $publisherRole) {
-                throw new \RuntimeException('Roles not found. Please run database seeders.');
-            }
-
-            // Letters + numbers only — symbols in temp passwords get mangled when
-            // copied from email clients, so login with the emailed value fails even
-            // though Hash::check against the pristine string would pass. The User
-            // model hashed cast hashes once on assign; do not Hash::make here.
-            $temporaryPassword = Str::password(14, letters: true, numbers: true, symbols: false);
-
-            $user = User::create([
-                'name' => $name,
+            $request->session()->put(SignupCountry::GOOGLE_SESSION, [
+                'id' => $providerId,
                 'email' => $email,
-                'password' => $temporaryPassword,
-                'google_id' => $providerId,
+                'name' => $name,
                 'avatar' => $this->normalizedAvatarUrl($socialUser->getAvatar()),
+                'token' => $socialUser->token ?? null,
+                'refresh_token' => $socialUser->refreshToken ?? null,
             ]);
 
-            // Not mass-assignable: tokens, role, and verify must be set explicitly.
-            $user->google_token = $socialUser->token ?? null;
-            $user->google_refresh_token = $socialUser->refreshToken ?? null;
-            $user->active_role_id = $advertiserRole->id;
-            $user->email_verified_at = now();
-            $user->save();
-
-            $user->roles()->sync([$advertiserRole->id, $publisherRole->id]);
-
-            $welcomeBonus = $bonusService->amountFor($request, 'advertiser');
-            if ($welcomeBonus > 0 && ! $bonusService->recordClaim($user, $request, $welcomeBonus, 'socialite')) {
-                $welcomeBonus = 0.0;
-            }
-
-            $welcomeBonus = Wallet::insertRegistrationPair(
-                $user->id,
-                $advertiserRole->id,
-                $publisherRole->id,
-                $welcomeBonus
-            );
-
-            if (Schema::hasTable('user_consents')) {
-                UserConsent::create([
-                    'user_id' => $user->id,
-                    'terms_accepted' => true,
-                    'marketing_consent' => false,
-                    'newsletter_consent' => false,
-                    'consented_at' => now(),
-                    'ip_address' => request()->ip(),
-                    'user_agent' => request()->userAgent(),
-                ]);
-            }
-
-            DB::commit();
-
-            if ($welcomeBonus > 0) {
-                $bonusService->queueClaimCookie();
-            }
-
-            try {
-                $advertiserWallet = Wallet::where('user_id', $user->id)
-                    ->where('role_id', $advertiserRole->id)
-                    ->first();
-                if ($advertiserWallet && $welcomeBonus > 0) {
-                    app(WalletLedgerService::class)->recordBonusCredit(
-                        $advertiserWallet,
-                        (float) $welcomeBonus,
-                        'Welcome promotional bonus',
-                        ['source' => 'socialite']
-                    );
-                }
-            } catch (\Throwable $e) {
-                Log::warning('Welcome bonus ledger write failed during Google signup', [
-                    'user_id' => $user->id,
-                    'error' => $e->getMessage(),
-                ]);
-            }
-
-            try {
-                app(EmailNotificationService::class)->sendGoogleTempPassword($user, $temporaryPassword);
-            } catch (\Throwable $e) {
-                Log::warning('Google temporary password email failed during signup', [
-                    'user_id' => $user->id,
-                    'error' => $e->getMessage(),
-                ]);
-            }
-
-            return $this->loginAndRedirect($user);
+            return redirect()->to(route('auth.google.complete', absolute: false));
         } catch (\Throwable $e) {
             if (DB::transactionLevel() > 0) {
                 DB::rollBack();
@@ -211,8 +143,191 @@ class SocialiteController extends Controller
             ]);
 
             return redirect()->to(route('login', absolute: false))
-                ->with('error', UserMessages::get('oauth.failed'));
+                ->with('error', $this->copy('oauth.failed', 'Google sign-in failed. Please try again or use email and password.'));
         }
+    }
+
+    public function showGoogleComplete(Request $request): RedirectResponse|View
+    {
+        $pending = $this->pendingGoogleSignup($request);
+        if ($pending === null) {
+            return $this->loginRedirect($this->copy('oauth.failed', 'Google sign-in failed. Please try again or use email and password.'));
+        }
+
+        $roles = ['advertiser' => 'Advertiser', 'publisher' => 'Publisher'];
+
+        return view('auth.register-google', array_merge(
+            compact('roles'),
+            SignupCountry::formPayload(),
+            ['pendingGoogle' => $pending]
+        ));
+    }
+
+    public function completeGoogle(Request $request): RedirectResponse
+    {
+        $pending = $this->pendingGoogleSignup($request);
+        if ($pending === null) {
+            return $this->loginRedirect($this->copy('oauth.failed', 'Google sign-in failed. Please try again or use email and password.'));
+        }
+
+        $request->merge([
+            'country' => SignupCountry::incoming($request->input('country')),
+        ]);
+
+        $validator = Validator::make($request->all(), [
+            'country' => SignupCountry::countryRules(),
+            'role' => 'required|in:advertiser,publisher',
+            'terms' => 'accepted',
+        ], [
+            'country.required' => 'Please select your country.',
+            'country.in' => 'Please select a valid country.',
+            'terms.accepted' => 'You must agree to the Terms and Services.',
+        ]);
+
+        if ($validator->fails()) {
+            return redirect()->to(route('auth.google.complete', absolute: false))
+                ->withErrors($validator)
+                ->withInput();
+        }
+
+        $existingUser = User::where('email', $pending['email'])->first();
+        if ($existingUser) {
+            $request->session()->forget(SignupCountry::GOOGLE_SESSION);
+            $this->activateStaffOnboarding($existingUser);
+
+            return $this->loginAndRedirect($existingUser);
+        }
+
+        try {
+            $user = $this->createGoogleUser($pending, (string) $request->input('role'), (string) $request->input('country'), $request);
+            $request->session()->forget(SignupCountry::GOOGLE_SESSION);
+
+            return $this->loginAndRedirect($user);
+        } catch (\Throwable $e) {
+            if (DB::transactionLevel() > 0) {
+                DB::rollBack();
+            }
+
+            Log::error('Google signup completion failed: '.($e->getMessage() !== '' ? $e->getMessage() : $e::class), [
+                'exception' => $e::class,
+            ]);
+
+            return $this->loginRedirect($this->copy('oauth.failed', 'Google sign-in failed. Please try again or use email and password.'));
+        }
+    }
+
+    /**
+     * @return array{id: mixed, email: string, name: string, avatar: ?string, token: mixed, refresh_token: mixed}|null
+     */
+    private function pendingGoogleSignup(Request $request): ?array
+    {
+        $pending = $request->session()->get(SignupCountry::GOOGLE_SESSION);
+        if (! is_array($pending) || empty($pending['email'])) {
+            return null;
+        }
+
+        return $pending;
+    }
+
+    /**
+     * @param  array{id: mixed, email: string, name: string, avatar: ?string, token: mixed, refresh_token: mixed}  $pending
+     */
+    private function createGoogleUser(array $pending, string $role, string $country, Request $request): User
+    {
+        $bonusService = app(WelcomeBonusService::class);
+
+        DB::beginTransaction();
+
+        $advertiserRole = Role::where('name', 'advertiser')->first();
+        $publisherRole = Role::where('name', 'publisher')->first();
+
+        if (! $advertiserRole || ! $publisherRole) {
+            throw new \RuntimeException('Roles not found. Please run database seeders.');
+        }
+
+        // Letters + numbers only — symbols in temp passwords get mangled when
+        // copied from email clients, so login with the emailed value fails even
+        // though Hash::check against the pristine string would pass. The User
+        // model hashed cast hashes once on assign; do not Hash::make here.
+        $temporaryPassword = Str::password(14, letters: true, numbers: true, symbols: false);
+
+        $user = User::create([
+            'name' => $pending['name'] ?: Str::before($pending['email'], '@'),
+            'email' => $pending['email'],
+            'password' => $temporaryPassword,
+            'google_id' => $pending['id'],
+            'avatar' => $pending['avatar'] ?? null,
+        ]);
+
+        // Not mass-assignable: tokens, role, and verify must be set explicitly.
+        $user->google_token = $pending['token'] ?? null;
+        $user->google_refresh_token = $pending['refresh_token'] ?? null;
+        $user->active_role_id = $role === 'publisher' ? $publisherRole->id : $advertiserRole->id;
+        $user->email_verified_at = now();
+        $user->save();
+        SignupCountry::applyToUser($user, $country);
+
+        $user->roles()->sync([$advertiserRole->id, $publisherRole->id]);
+
+        $welcomeBonus = $bonusService->amountFor($request, $role === 'publisher' ? 'publisher' : 'advertiser');
+        if ($welcomeBonus > 0 && ! $bonusService->recordClaim($user, $request, $welcomeBonus, 'socialite')) {
+            $welcomeBonus = 0.0;
+        }
+
+        $welcomeBonus = Wallet::insertRegistrationPair(
+            $user->id,
+            $advertiserRole->id,
+            $publisherRole->id,
+            $welcomeBonus
+        );
+
+        if (Schema::hasTable('user_consents')) {
+            UserConsent::create([
+                'user_id' => $user->id,
+                'terms_accepted' => true,
+                'marketing_consent' => $request->boolean('marketing'),
+                'newsletter_consent' => $request->boolean('newsletter'),
+                'consented_at' => now(),
+                'ip_address' => $request->ip(),
+                'user_agent' => $request->userAgent(),
+            ]);
+        }
+
+        DB::commit();
+
+        if ($welcomeBonus > 0) {
+            $bonusService->queueClaimCookie();
+        }
+
+        try {
+            $advertiserWallet = Wallet::where('user_id', $user->id)
+                ->where('role_id', $advertiserRole->id)
+                ->first();
+            if ($advertiserWallet && $welcomeBonus > 0) {
+                app(WalletLedgerService::class)->recordBonusCredit(
+                    $advertiserWallet,
+                    (float) $welcomeBonus,
+                    'Welcome promotional bonus',
+                    ['source' => 'socialite']
+                );
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Welcome bonus ledger write failed during Google signup', [
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        try {
+            app(EmailNotificationService::class)->sendGoogleTempPassword($user, $temporaryPassword);
+        } catch (\Throwable $e) {
+            Log::warning('Google temporary password email failed during signup', [
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $user;
     }
 
     /**
@@ -319,6 +434,11 @@ class SocialiteController extends Controller
 
     private function loginRedirect(string $message): RedirectResponse
     {
+        if (class_exists(PartnerDashboard::class)
+            && PartnerDashboard::isPartnerHost(request())) {
+            return redirect()->to(PartnerDashboard::url('/login'))->with('error', $message);
+        }
+
         return redirect()->to(route('login', absolute: false))->with('error', $message);
     }
 
@@ -332,8 +452,8 @@ class SocialiteController extends Controller
 
     private function loginAndRedirect(User $user): RedirectResponse
     {
-        if ($user->isSuspended()) {
-            return $this->loginRedirect(UserMessages::get('login.suspended'));
+        if (method_exists($user, 'isSuspended') && $user->isSuspended()) {
+            return $this->loginRedirect($this->copy('login.suspended', 'This account has been suspended. Contact support if you think this is a mistake.'));
         }
 
         Auth::login($user, true);
@@ -341,7 +461,23 @@ class SocialiteController extends Controller
 
         $user->load('activeRoleRelation', 'roles');
 
-        $destination = $this->postLoginDestination($user);
+        if (class_exists(PartnerDashboard::class)
+            && PartnerDashboard::isPartnerHost(request())) {
+            if (! PartnerDashboard::userMayAccess($user)) {
+                Auth::logout();
+                request()->session()->invalidate();
+                request()->session()->regenerateToken();
+
+                return redirect()->to(PartnerDashboard::url('/login'))
+                    ->with('error', PartnerDashboard::denialMessage($user))
+                    ->with('main_site_url', PartnerDashboard::mainSiteUrl('login'));
+            }
+            request()->session()->put('partner_scope_level', 'full');
+
+            return redirect()->to(PartnerDashboard::url('/'));
+        }
+
+        $destination = $this->staffInviteDestination($user) ?? $this->postLoginDestination($user);
 
         // Keep Location host-relative when possible so a bad APP_URL cannot
         // send the browser to http://127.0.0.1 after a successful Google login.
@@ -356,9 +492,37 @@ class SocialiteController extends Controller
      * Prefer a safe intended URL; never bounce back to login/register/OAuth
      * or to a loopback host when the user is browsing elsewhere.
      */
+    private function activateStaffOnboarding(User $user): void
+    {
+        if (method_exists($user, 'needsStaffPasswordSetup') && $user->needsStaffPasswordSetup()) {
+            app(PublisherOnboardingService::class)->activate($user);
+        }
+    }
+
+    private function staffInviteDestination(User $user): ?string
+    {
+        if (! method_exists($user, 'hasPendingStaffInvites') || ! $user->hasPendingStaffInvites()) {
+            return null;
+        }
+
+        if (method_exists($user, 'isActiveRole') && ! $user->isActiveRole('publisher')) {
+            $publisherRole = Role::where('name', 'publisher')->first();
+            if ($publisherRole && $user->roles()->where('roles.id', $publisherRole->id)->exists()) {
+                $user->active_role_id = $publisherRole->id;
+                $user->save();
+            }
+        }
+
+        request()->session()->flash('prompt_payout_setup', true);
+
+        return route('publisher.websites', ['status' => 'invites'], false);
+    }
+
     private function postLoginDestination(User $user): string
     {
-        $dashboard = $user->getDashboardRoute();
+        $dashboard = method_exists($user, 'getDashboardRoute')
+            ? $user->getDashboardRoute()
+            : '/';
         $intended = session()->pull('url.intended');
 
         if (! is_string($intended) || $intended === '') {
@@ -385,5 +549,12 @@ class SocialiteController extends Controller
         }
 
         return $intended;
+    }
+
+    private function copy(string $key, string $fallback): string
+    {
+        return function_exists('user_message')
+            ? user_message($key, $fallback)
+            : $fallback;
     }
 }

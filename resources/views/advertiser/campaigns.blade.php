@@ -19,17 +19,17 @@
         : route('advertiser.orders', ['status' => 'needs_action'], false);
 @endphp
 
-<div class="container-fluid">
+<div class="container-fluid projects-page">
 
 <div class="project-page-head mb-4">
     <div class="project-page-head__copy">
-        <h2 class="mb-1 fw-semibold">Projects</h2>
-        <p class="text-muted mb-0">
-            One project per client site. Counts are placements whose destination host matches this project.
+        <h1 class="project-page-title">Projects</h1>
+        <p class="project-page-sub">
+            One project per client site. Assign orders at checkout. Counts include assigned orders and unassigned placements whose destination host matches.
         </p>
     </div>
-    <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#projectModal">
-        <i class="fa fa-plus" aria-hidden="true"></i> Create Project
+    <button type="button" class="btn btn-sm btn-primary project-create-btn" data-bs-toggle="modal" data-bs-target="#projectModal">
+        Create Project
     </button>
 </div>
 
@@ -59,7 +59,7 @@
 
         <div class="project-card-col">
 
-            <div class="card project-card shadow-sm rounded-3">
+            <div class="card project-card">
 
                 <div class="card-body">
 
@@ -90,9 +90,10 @@
 
                         <div class="project-card__actions">
                             <button type="button"
-                                    class="btn btn-sm btn-outline-secondary"
+                                    class="project-action-icon"
                                     data-bs-toggle="modal"
                                     data-bs-target="#editProjectModal{{ $project->id }}"
+                                    title="Edit"
                                     aria-label="Edit {{ $project->project_name }}">
                                 <i class="fa-solid fa-pen-to-square" aria-hidden="true"></i>
                             </button>
@@ -106,7 +107,7 @@
                                 @csrf
                                 @method('DELETE')
 
-                                <button class="btn btn-sm btn-outline-danger" type="submit" aria-label="Delete project">
+                                <button class="project-action-icon project-action-icon--danger" type="submit" title="Delete" aria-label="Delete project">
                                     <i class="fa-solid fa-trash" aria-hidden="true"></i>
                                 </button>
                             </form>
@@ -176,14 +177,15 @@
 
     @empty
         <div class="ui-callout ui-callout--info project-empty">
-            <span class="ui-callout__icon" aria-hidden="true"><i class="fa-solid fa-folder-open"></i></span>
-            <div class="ui-callout__body">
-                <strong>No projects yet</strong>
-                <span class="d-block text-muted">Create a project for each client site so placement counts stay grouped.</span>
-            </div>
-            <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#projectModal">
-                Create project
-            </button>
+            <x-ui.empty-state
+                icon="fa-folder-open"
+                title="No projects yet"
+                message="Create a project for each client site so placement counts stay grouped. Assign orders at checkout."
+            >
+                <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#projectModal">
+                    Create project
+                </button>
+            </x-ui.empty-state>
         </div>
     @endforelse
 

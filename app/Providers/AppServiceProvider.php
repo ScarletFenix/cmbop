@@ -10,16 +10,22 @@ use App\Listeners\StampEmailLogFailedJobUuid;
 use App\Models\Blog;
 use App\Models\DepositRequest;
 use App\Models\Order;
-use App\Models\Project;
+use App\Models\OrderItem;
 use App\Models\User;
+use App\Services\Advertiser\AdvertiserOrderWebhookBridge;
 use App\Services\CartPricingService;
 use App\Services\EmailNotificationService;
+use App\Services\Partners\PartnerPriceFreeze;
 use App\Services\Wallet\WelcomeBonusService;
 use App\Support\BillingCustomerMailSuppressor;
+use App\Support\DisplayCurrencyPreference;
+use App\Support\HostingerMysqlHost;
 use App\Support\MarketingOpsQueues;
 use App\Support\OrderLifecycleMailSuppressor;
+use App\Support\PartnerDashboard;
 use App\Support\PublicStorageLink;
-use App\Support\UserMessages;
+use Illuminate\Auth\Events\Login;
+use Illuminate\Auth\Events\Logout;
 use Illuminate\Auth\Middleware\RedirectIfAuthenticated;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -28,6 +34,7 @@ use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\RateLimiter;
@@ -43,6 +50,9 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(OrderLifecycleMailSuppressor::class);
         $this->app->singleton(BillingCustomerMailSuppressor::class);
 
+        // Before any provider opens PDO: Hostinger blocks TCP 127.0.0.1:3306.
+        HostingerMysqlHost::applyRuntime();
+
         // Blade views call these helpers on every form page. Composer "files"
         // autoload is enough after dump-autoload, but a deploy that only
         // synced PHP without regenerating the classmap leaves My Sites (and
@@ -54,6 +64,7 @@ class AppServiceProvider extends ServiceProvider
             app_path('Helpers/FormHelper.php'),
             app_path('Helpers/UrlHelper.php'),
             app_path('Helpers/SiteDescriptionHelper.php'),
+            app_path('Helpers/MoneyHelper.php'),
         ] as $helper) {
             if (is_file($helper)) {
                 require_once $helper;
@@ -105,7 +116,9 @@ class AppServiceProvider extends ServiceProvider
                 ->response(function (Request $request, array $headers) {
                     return response()->json([
                         'status' => 'error',
-                        'message' => UserMessages::get('password.throttled'),
+                        'message' => function_exists('user_message')
+                            ? user_message('password.throttled', 'Too many attempts. Please try again later.')
+                            : 'Too many attempts. Please try again later.',
                     ], 429, $headers);
                 });
         });
@@ -116,16 +129,131 @@ class AppServiceProvider extends ServiceProvider
                 ->response(function (Request $request, array $headers) {
                     return response()->json([
                         'status' => 'error',
-                        'message' => UserMessages::get('password.reset_throttled'),
+                        'message' => function_exists('user_message')
+                            ? user_message('password.reset_throttled', 'Too many attempts. Try again later.')
+                            : 'Too many attempts. Try again later.',
                     ], 429, $headers);
+                });
+        });
+
+        // Isolated from numeric throttle:N,M. Those share one per-user key, so
+        // catalog favicons / copy-track / live search would burn a 10/min
+        // report bucket after a few seconds of browsing.
+        RateLimiter::for('mcp', function (Request $request) {
+            $id = $request->user()?->getAuthIdentifier() ?: $request->ip();
+
+            return Limit::perMinute(60)->by('mcp:'.$id);
+        });
+
+        RateLimiter::for('partner-api', function (Request $request) {
+            $id = $request->attributes->get('partner_api_key_id') ?: $request->ip();
+
+            return Limit::perMinute((int) config('partners.api_rate_per_minute', 60))
+                ->by('partner-api:'.$id);
+        });
+
+        RateLimiter::for('advertiser-api', function (Request $request) {
+            $id = $request->attributes->get('advertiser_api_key_id') ?: $request->ip();
+
+            return Limit::perMinute((int) config('advertiser_api.rate_per_minute', 60))
+                ->by('advertiser-api:'.$id);
+        });
+
+        RateLimiter::for('contact-form', function (Request $request) {
+            return Limit::perHour(5)
+                ->by('contact-form:'.$request->ip())
+                ->response(function (Request $request, array $headers) {
+                    return back()
+                        ->withInput()
+                        ->with('error', __('messages.contact_form_throttled'));
+                });
+        });
+
+        RateLimiter::for('catalog-site-report', function (Request $request) {
+            $id = $request->user()?->getAuthIdentifier() ?: $request->ip();
+
+            return Limit::perMinute(10)
+                ->by('catalog-site-report:'.$id)
+                ->response(function (Request $request, array $headers) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'You sent several reports just now. Wait a minute and try again.',
+                    ], 429, $headers);
+                });
+        });
+
+        $verificationThrottleMessage = static function (): string {
+            return function_exists('user_message')
+                ? user_message('verification.throttled', 'Too many verification emails. Please wait a minute and try again.')
+                : 'Too many verification emails. Please wait a minute and try again.';
+        };
+
+        RateLimiter::for('email-verify-click', function (Request $request) {
+            return Limit::perMinute(6)->by('email-verify-click:'.$request->ip());
+        });
+
+        RateLimiter::for('email-verify-send', function (Request $request) use ($verificationThrottleMessage) {
+            $id = $request->user()?->getAuthIdentifier() ?: $request->ip();
+
+            return Limit::perMinute(6)
+                ->by('email-verify-send:'.$id)
+                ->response(function (Request $request, array $headers) use ($verificationThrottleMessage) {
+                    return redirect()
+                        ->route('verification.notice')
+                        ->with('error', $verificationThrottleMessage());
+                });
+        });
+
+        RateLimiter::for('email-verify-resend', function (Request $request) use ($verificationThrottleMessage) {
+            $email = strtolower(trim((string) $request->input('email', '')));
+
+            return Limit::perMinute(3)
+                ->by('email-verify-resend:'.$request->ip().'|'.$email)
+                ->response(function (Request $request, array $headers) use ($verificationThrottleMessage) {
+                    $message = $verificationThrottleMessage();
+                    if ($request->expectsJson() || $request->wantsJson()) {
+                        return response()->json([
+                            'status' => 'error',
+                            'message' => $message,
+                        ], 429, $headers);
+                    }
+
+                    return redirect()
+                        ->route('verification.notice')
+                        ->withInput()
+                        ->with('error', $message)
+                        ->with('verify_email', $request->input('email'));
                 });
         });
 
         // Authenticated users hitting /login or /register go to their role dashboard.
         RedirectIfAuthenticated::redirectUsing(function () {
+            if (class_exists(PartnerDashboard::class) && PartnerDashboard::isPartnerHost(request())) {
+                return '/';
+            }
             $user = Auth::user();
+            if ($user && method_exists($user, 'getDashboardRoute')) {
+                return $user->getDashboardRoute();
+            }
 
-            return $user ? $user->getDashboardRoute() : '/';
+            return '/';
+        });
+
+        // Locked display_currency wins; first login persists euro history or EUR.
+        // Logout drops the year-long cookie so a shared browser cannot leak rails.
+        Event::listen(Login::class, function (Login $event): void {
+            try {
+                if ($event->user instanceof User) {
+                    app(DisplayCurrencyPreference::class)->persistAuthenticatedChoice($event->user);
+                }
+            } catch (\Throwable) {
+            }
+        });
+        Event::listen(Logout::class, function (): void {
+            try {
+                app(DisplayCurrencyPreference::class)->forgetBrowserChoice();
+            } catch (\Throwable) {
+            }
         });
 
         // Gap-fill: welcome + admin new-user (HTTP only — skips seeders/artisan)
@@ -180,6 +308,28 @@ class AppServiceProvider extends ServiceProvider
                     'error' => $e->getMessage(),
                 ]);
             }
+
+            try {
+                if ((string) $order->payment_status === 'paid') {
+                    app(AdvertiserOrderWebhookBridge::class)->emitForOrder($order, 'order.created');
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Advertiser order.created webhook hook failed', [
+                    'order_id' => $order->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        });
+
+        OrderItem::created(function (OrderItem $item) {
+            try {
+                app(PartnerPriceFreeze::class)->freeze($item);
+            } catch (\Throwable $e) {
+                Log::warning('Partner price freeze on create failed', [
+                    'order_item_id' => $item->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         });
 
         Order::updated(function (Order $order) {
@@ -205,6 +355,17 @@ class AppServiceProvider extends ServiceProvider
                 app(SendTrustpilotReviewOnOrderCompleted::class)->handle($order);
             } catch (\Throwable $e) {
                 Log::warning('Trustpilot review hook failed', [
+                    'order_id' => $order->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
+            try {
+                if ($order->wasChanged('status') && (string) $order->status === 'cancelled') {
+                    app(AdvertiserOrderWebhookBridge::class)->emitForOrder($order, 'order.cancelled');
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Advertiser order.cancelled webhook hook failed', [
                     'order_id' => $order->id,
                     'error' => $e->getMessage(),
                 ]);
@@ -235,31 +396,18 @@ class AppServiceProvider extends ServiceProvider
             }
         });
 
-        View::composer('*', function ($view) {
-            try {
-                if (auth()->check()) {
-                    $projects = Project::where('user_id', auth()->id())
-                        ->latest()
-                        ->get();
-                } else {
-                    $projects = collect();
-                }
-            } catch (\Throwable $e) {
-                Log::warning('sidebarProjects composer failed', ['error' => $e->getMessage()]);
-                $projects = collect();
-            }
-
-            $view->with('sidebarProjects', $projects);
-        });
-
         // Recent published posts for the public footer "Latest Updates" section
         View::composer('components.footer', function ($view) {
             $posts = collect();
 
             try {
                 if (Schema::hasTable('blogs')) {
-                    $locale = public_locale();
-                    $posts = Blog::published()
+                    $locale = Blog::catalogLocale(public_locale());
+                    $posts = Blog::published();
+                    if (method_exists(Blog::class, 'scopeWithoutLegacyRedirects')) {
+                        $posts = $posts->withoutLegacyRedirects();
+                    }
+                    $posts = $posts
                         ->withPublishedLocale($locale)
                         ->orderByDesc('published_at')
                         ->limit(4)
@@ -294,8 +442,16 @@ class AppServiceProvider extends ServiceProvider
         });
 
         View::composer('advertiser.layouts.app', function ($view) {
+            $sessionCart = [];
+            try {
+                $rawCart = session('cart', []);
+                $sessionCart = is_array($rawCart) ? array_values($rawCart) : [];
+            } catch (\Throwable $e) {
+                Log::warning('Advertiser header cart session unreadable', ['error' => $e->getMessage()]);
+            }
+
             $pruned = [
-                'cart' => array_values(session('cart', []) ?: []),
+                'cart' => $sessionCart,
                 'removed_inactive' => [],
                 'removed_owned' => [],
             ];
@@ -309,10 +465,12 @@ class AppServiceProvider extends ServiceProvider
                 Log::warning('Advertiser cart prune composer failed', ['error' => $e->getMessage()]);
             }
 
+            $headerCart = is_array($pruned['cart'] ?? null) ? $pruned['cart'] : [];
+
             $view->with([
-                'headerCart' => $pruned['cart'],
-                'ssrCartRemovedInactive' => $pruned['removed_inactive'],
-                'ssrCartRemovedOwned' => $pruned['removed_owned'],
+                'headerCart' => $headerCart,
+                'ssrCartRemovedInactive' => is_array($pruned['removed_inactive'] ?? null) ? $pruned['removed_inactive'] : [],
+                'ssrCartRemovedOwned' => is_array($pruned['removed_owned'] ?? null) ? $pruned['removed_owned'] : [],
             ]);
         });
     }

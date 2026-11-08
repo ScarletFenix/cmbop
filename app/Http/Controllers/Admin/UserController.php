@@ -5,18 +5,26 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Mail\PayoutProfileUpdatedBySupport;
 use App\Models\ActivityLog;
+use App\Models\BulkSiteRequest;
+use App\Models\ProblemReport;
 use App\Models\Role;
+use App\Models\SiteClaim;
+use App\Models\Suggestion;
 use App\Models\User;
 use App\Models\UserAdminNote;
+use App\Models\WebsiteSuggestion;
 use App\Services\ActivityLogger;
 use App\Services\Admin\FinanceOverviewService;
 use App\Services\Wallet\PayoutProfileService;
+use App\Support\AccountCurrency;
 use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class UserController extends Controller
 {
@@ -49,6 +57,9 @@ class UserController extends Controller
                 ], 'total_amount');
             }
         }
+        if ($this->tableExists('wallets') && $this->hasColumn('wallets', 'balance')) {
+            $query->withSum('wallets as wallet_balance', 'balance');
+        }
 
         $this->applyUserIndexFilters($query, $filters);
 
@@ -80,6 +91,85 @@ class UserController extends Controller
         $maxMarketing = self::MAX_MARKETING;
 
         return view('admin.users', compact('users', 'adminCount', 'marketingCount', 'maxMarketing', 'filters'));
+    }
+
+    public function export(Request $request): StreamedResponse
+    {
+        $hasRolePivot = $this->rolePivotAvailable();
+        $filters = $this->userIndexFilters($request);
+        $query = User::query();
+        if ($hasRolePivot) {
+            $query->with('roles');
+        }
+        if ($this->tableExists('orders') && $this->hasColumn('orders', 'payment_status')) {
+            $query->withCount([
+                'orders as paid_orders_count' => fn ($q) => $q->where('payment_status', 'paid'),
+            ]);
+        }
+        if ($this->tableExists('wallets') && $this->hasColumn('wallets', 'balance')) {
+            $query->withSum('wallets as wallet_balance', 'balance');
+        }
+        $this->applyUserIndexFilters($query, $filters);
+
+        $limit = 10000;
+        $rows = $query->limit($limit)->get();
+
+        ActivityLogger::tryLog(
+            'user.exported',
+            ($request->user()?->name ?? 'Admin').' exported users ('.$rows->count().' row(s)).',
+            null,
+            ['rows_exported' => $rows->count()]
+        );
+
+        $filename = 'users-export-'.now()->format('Y-m-d-His').'.csv';
+
+        return response()->streamDownload(function () use ($rows, $hasRolePivot) {
+            $out = fopen('php://output', 'w');
+            fputcsv($out, [
+                'id',
+                'name',
+                'email',
+                'phone',
+                'country',
+                'roles',
+                'wallet_balance',
+                'paid_orders',
+                'verified',
+                'suspended',
+                'joined_at',
+                'last_seen_at',
+            ]);
+            foreach ($rows as $user) {
+                $roles = $hasRolePivot && $user->relationLoaded('roles')
+                    ? $user->roles->pluck('name')->implode('|')
+                    : '';
+                fputcsv($out, [
+                    $user->id,
+                    $this->csvCell($user->name),
+                    $this->csvCell($user->email),
+                    $this->csvCell($user->phone),
+                    $this->csvCell($user->country),
+                    $this->csvCell($roles),
+                    number_format((float) ($user->wallet_balance ?? 0), 2, '.', ''),
+                    (int) ($user->paid_orders_count ?? 0),
+                    $user->hasVerifiedEmail() ? 'yes' : 'no',
+                    $user->isSuspended() ? 'yes' : 'no',
+                    optional($user->created_at)?->toDateTimeString(),
+                    optional($user->last_seen_at)?->toDateTimeString(),
+                ]);
+            }
+            fclose($out);
+        }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    private function csvCell(mixed $value): string
+    {
+        $text = (string) ($value ?? '');
+        if ($text !== '' && preg_match('/^[=+\-@\t\r]/', $text)) {
+            return "'".$text;
+        }
+
+        return $text;
     }
 
     /**
@@ -140,7 +230,27 @@ class UserController extends Controller
             $activities = collect();
         }
 
-        return view('admin.users.show', compact('user', 'dossier', 'sites', 'notes', 'activities'));
+        try {
+            $related = $this->userRelatedSnapshot($user);
+        } catch (\Throwable $e) {
+            report($e);
+            $related = [];
+        }
+        $marketingCount = $this->marketingCount();
+        $maxMarketing = self::MAX_MARKETING;
+        $currencyChangeRisk = AccountCurrency::changeRisk($user);
+
+        return view('admin.users.show', compact(
+            'user',
+            'dossier',
+            'sites',
+            'notes',
+            'activities',
+            'related',
+            'marketingCount',
+            'maxMarketing',
+            'currencyChangeRisk'
+        ));
     }
 
     public function suspend(Request $request, User $user)
@@ -222,6 +332,40 @@ class UserController extends Controller
         return back()->with('success', $user->name.' can sign in again.');
     }
 
+    public function updateTestFlag(Request $request, User $user)
+    {
+        $data = $request->validate([
+            'is_test' => 'required|boolean',
+        ]);
+
+        if (! User::hasUsersColumn('is_test')) {
+            return back()->with('error', 'Test accounts cannot be marked on this database. Run database/sql/add_users_is_test.sql.');
+        }
+
+        $from = $user->isTestAccount();
+        $user->forceFill(User::existingAttributes([
+            'is_test' => (bool) $data['is_test'],
+        ]))->save();
+
+        ActivityLogger::tryLog(
+            $user->isTestAccount() ? 'user.marked_test' : 'user.unmarked_test',
+            ($request->user()?->name ?? 'Admin').' '.($user->isTestAccount() ? 'marked' : 'unmarked').' user #'.$user->id.' as a test account',
+            $user,
+            [
+                'from' => $from,
+                'to' => $user->isTestAccount(),
+            ],
+            $user->name
+        );
+
+        return back()->with(
+            'success',
+            $user->isTestAccount()
+                ? $user->name.' is a test account and is hidden from dashboard metrics by default.'
+                : $user->name.' is no longer a test account.'
+        );
+    }
+
     public function storeNote(Request $request, User $user)
     {
         $data = $request->validate([
@@ -295,7 +439,40 @@ class UserController extends Controller
             $user->name
         );
 
-        return back()->with('success', 'Verification email queued for '.$user->email.'.');
+        return back()->with('success', 'Verification email sent to '.$user->email.'.');
+    }
+
+    public function sendPasswordReset(Request $request, User $user)
+    {
+        $email = trim((string) $user->email);
+        if ($email === '' || filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+            return back()->with('error', 'This account has no valid email for a reset link.');
+        }
+
+        try {
+            $status = Password::sendResetLink(['email' => $email]);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return back()->with('error', UserFacingError::message($e, 'Could not send the password reset email.'));
+        }
+
+        if ($status === Password::RESET_THROTTLED) {
+            return back()->with('error', 'A reset email was just sent. Wait a minute and try again.');
+        }
+        if ($status !== Password::RESET_LINK_SENT) {
+            return back()->with('error', 'Could not send the password reset email.');
+        }
+
+        ActivityLogger::tryLog(
+            'user.password_reset_sent',
+            ($request->user()?->name ?? 'Admin').' sent a password reset to user #'.$user->id,
+            $user,
+            [],
+            $user->name
+        );
+
+        return back()->with('success', 'Password reset email queued for '.$email.'.');
     }
 
     // ✅ Update Company (AJAX)
@@ -351,6 +528,84 @@ class UserController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => UserFacingError::message($e, 'Could not update company name. Please try again.'),
+            ], 500);
+        }
+    }
+
+    /**
+     * Support-only: set a user's display currency (EUR/GBP/USD). Ledger stays EUR.
+     */
+    public function updateDisplayCurrency(Request $request, $id)
+    {
+        $actor = auth()->user();
+        if (! $actor || (! $actor->isAdmin() && ! $actor->hasRole('admin'))) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Only an admin can change display currency.',
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'display_currency' => 'required|in:EUR,GBP,USD',
+            'reason' => 'required|string|min:5|max:500',
+        ]);
+
+        $user = User::findOrFail($id);
+        if (! User::hasUsersColumn('display_currency')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Display currency cannot be saved on this database.',
+            ], 422);
+        }
+
+        $from = strtoupper(trim((string) ($user->display_currency ?? '')));
+        $from = in_array($from, ['EUR', 'GBP', 'USD'], true) ? $from : null;
+        $to = $validated['display_currency'];
+        $reason = trim($validated['reason']);
+        $risk = AccountCurrency::changeRisk($user);
+
+        if ($from === $to) {
+            return response()->json([
+                'success' => true,
+                'display_currency' => $to,
+                'warning' => $risk['warning'],
+                'warning_message' => $risk['message'],
+                'message' => 'Display currency is already '.$to.'.',
+            ]);
+        }
+
+        try {
+            $user->display_currency = $to;
+            $user->save();
+
+            ActivityLogger::tryLog(
+                'user.display_currency_updated',
+                ($actor->name ?? 'Admin').' changed display currency for user #'.$user->id.' from '.($from ?: 'unset').' to '.$to,
+                $user,
+                [
+                    'from' => $from,
+                    'to' => $to,
+                    'reason' => $reason,
+                    'actor_id' => $actor->id,
+                    'ledger_unchanged' => true,
+                    'had_balance' => $risk['has_balance'],
+                    'had_open_orders' => $risk['has_open_orders'],
+                    'had_open_withdrawals' => $risk['has_open_withdrawals'],
+                ],
+                $user->name
+            );
+
+            return response()->json([
+                'success' => true,
+                'display_currency' => $to,
+                'warning' => $risk['warning'],
+                'warning_message' => $risk['message'],
+                'message' => 'Display currency updated to '.$to.'. Wallet balance stays in EUR.',
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'Could not update display currency. Please try again.'),
             ], 500);
         }
     }
@@ -598,7 +853,7 @@ class UserController extends Controller
     }
 
     /**
-     * @return array{q: string, role: string, status: string, sort: string, user: int}
+     * @return array{q: string, role: string, status: string, flag: string, sort: string, user: int}
      */
     private function userIndexFilters(Request $request): array
     {
@@ -612,6 +867,11 @@ class UserController extends Controller
             $status = '';
         }
 
+        $flag = search_text($request->input('flag'));
+        if (! in_array($flag, ['catalog_hide', 'copy_strike', 'payout_locked', 'test'], true)) {
+            $flag = '';
+        }
+
         $sort = search_text($request->input('sort'));
         if (! in_array($sort, ['oldest', 'name', 'last_seen'], true)) {
             $sort = 'newest';
@@ -621,13 +881,14 @@ class UserController extends Controller
             'q' => search_text($request->input('q', $request->input('user_search'))),
             'role' => $role,
             'status' => $status,
+            'flag' => $flag,
             'sort' => $sort,
-            'user' => $request->integer('user'),
+            'user' => max(0, (int) (filter_number($request->input('user')) ?? 0)),
         ];
     }
 
     /**
-     * @param  array{q: string, role: string, status: string, sort: string, user: int}  $filters
+     * @param  array{q: string, role: string, status: string, flag: string, sort: string, user: int}  $filters
      */
     private function applyUserIndexFilters($query, array $filters): void
     {
@@ -677,6 +938,17 @@ class UserController extends Controller
             $query->whereNull('suspended_at');
         }
 
+        $flag = $filters['flag'] ?? '';
+        if ($flag === 'catalog_hide' && $this->hasColumn('users', 'catalog_hide_until')) {
+            $query->whereNotNull('catalog_hide_until')->where('catalog_hide_until', '>', now());
+        } elseif ($flag === 'copy_strike' && $this->hasColumn('users', 'catalog_copy_strike_count')) {
+            $query->where('catalog_copy_strike_count', '>=', 1);
+        } elseif ($flag === 'payout_locked' && $this->hasColumn('users', 'payout_profile_locked_at')) {
+            $query->whereNotNull('payout_profile_locked_at');
+        } elseif ($flag === 'test' && $this->hasColumn('users', 'is_test')) {
+            $query->where('is_test', 1);
+        }
+
         match ($filters['sort']) {
             'oldest' => $query->orderBy('id'),
             'name' => $query->orderBy('name')->orderByDesc('id'),
@@ -685,6 +957,86 @@ class UserController extends Controller
                 : $query->latest('id'),
             default => $query->latest('id'),
         };
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function userRelatedSnapshot(User $user): array
+    {
+        $email = trim((string) $user->email);
+        $q = $email !== '' ? $email : null;
+        $snapshot = [
+            'sites_count' => 0,
+            'sites_url' => null,
+            'problems_count' => 0,
+            'problems_url' => null,
+            'claims_count' => 0,
+            'claims_url' => null,
+            'suggestions_count' => 0,
+            'suggestions_url' => null,
+            'websites_count' => 0,
+            'websites_url' => null,
+            'bulk_count' => 0,
+            'bulk_url' => null,
+            'catalog_url' => null,
+        ];
+
+        try {
+            $snapshot['sites_url'] = staff_route('sites.index', ['publisher' => $user->id]);
+            $snapshot['problems_url'] = route('admin.community.index', array_filter(['tab' => 'problems', 'q' => $q]));
+            $snapshot['claims_url'] = route('admin.community.index', array_filter(['tab' => 'claims', 'q' => $q]));
+            $snapshot['suggestions_url'] = route('admin.community.index', array_filter(['tab' => 'suggestions', 'q' => $q]));
+            $snapshot['websites_url'] = route('admin.community.index', array_filter(['tab' => 'websites', 'q' => $q]));
+            $snapshot['bulk_url'] = route('admin.bulk-site-requests.index', array_filter(['q' => $q, 'status' => 'all']));
+            $snapshot['catalog_url'] = route('admin.catalog-activity.show', $user->id);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        try {
+            if ($this->tableExists('sites') && $this->hasColumn('sites', 'publisher_id')) {
+                $snapshot['sites_count'] = (int) $user->sites()->notArchived()->count();
+            }
+        } catch (\Throwable) {
+        }
+
+        try {
+            if (ProblemReport::tableAvailable() && ProblemReport::hasTableColumn('user_id')) {
+                $snapshot['problems_count'] = (int) ProblemReport::query()->where('user_id', $user->id)->count();
+            }
+        } catch (\Throwable) {
+        }
+
+        try {
+            if (Suggestion::tableAvailable() && Suggestion::hasTableColumn('user_id')) {
+                $snapshot['suggestions_count'] = (int) Suggestion::query()->where('user_id', $user->id)->count();
+            }
+        } catch (\Throwable) {
+        }
+
+        try {
+            if (WebsiteSuggestion::tableAvailable() && WebsiteSuggestion::hasTableColumn('user_id')) {
+                $snapshot['websites_count'] = (int) WebsiteSuggestion::query()->where('user_id', $user->id)->count();
+            }
+        } catch (\Throwable) {
+        }
+
+        try {
+            if (SiteClaim::tableAvailable() && SiteClaim::hasTableColumn('claimer_id')) {
+                $snapshot['claims_count'] = (int) SiteClaim::query()->where('claimer_id', $user->id)->count();
+            }
+        } catch (\Throwable) {
+        }
+
+        try {
+            if ($this->tableExists('bulk_site_requests') && $this->hasColumn('bulk_site_requests', 'publisher_id')) {
+                $snapshot['bulk_count'] = (int) BulkSiteRequest::query()->where('publisher_id', $user->id)->count();
+            }
+        } catch (\Throwable) {
+        }
+
+        return $snapshot;
     }
 
     private function suspendGuard(?User $actor, User $target, bool $allowAdmins = false)

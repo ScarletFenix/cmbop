@@ -19,7 +19,7 @@ class LocalizedPublicPath
      */
     public static function map(): array
     {
-        return [
+        $maps = [
             'de' => [
                 'about' => 'ueber-uns',
                 'faq' => 'haeufige-fragen',
@@ -90,7 +90,152 @@ class LocalizedPublicPath
                 'cookie-policy' => 'cookie',
                 'refund-policy' => 'rimborso',
             ],
+            'pt' => [
+                'about' => 'sobre-nos',
+                'faq' => 'perguntas-frequentes',
+                'pricing' => 'precos',
+                'marketplace' => 'marketplace',
+                'how-it-works' => 'como-funciona',
+                'become-a-publisher' => 'tornar-se-publisher',
+                'why-choose-us' => 'porque-nos',
+                'contact' => 'contacto',
+                'privacy-policy' => 'privacidade',
+                'terms-of-services' => 'termos',
+                'cookie-policy' => 'cookies',
+                'refund-policy' => 'reembolso',
+            ],
+            'ro' => [
+                'about' => 'despre-noi',
+                'faq' => 'intrebari-frecvente',
+                'pricing' => 'preturi',
+                'marketplace' => 'piata',
+                'how-it-works' => 'cum-functioneaza',
+                'become-a-publisher' => 'devino-publisher',
+                'why-choose-us' => 'de-ce-noi',
+                'contact' => 'contact',
+                'privacy-policy' => 'confidentialitate',
+                'terms-of-services' => 'termeni',
+                'cookie-policy' => 'cookie',
+                'refund-policy' => 'rambursare',
+            ],
+            'gr' => [
+                'about' => 'sxetika-me-emas',
+                'faq' => 'syxnes-erotiseis',
+                'pricing' => 'times',
+                'marketplace' => 'agora',
+                'how-it-works' => 'pos-leitourgei',
+                'become-a-publisher' => 'gine-ekdotis',
+                'why-choose-us' => 'giati-emas',
+                'contact' => 'epikoinonia',
+                'privacy-policy' => 'aporrito',
+                'terms-of-services' => 'oroi',
+                'cookie-policy' => 'cookies',
+                'refund-policy' => 'epistrofi',
+            ],
+            'dk' => [
+                'about' => 'om-os',
+                'faq' => 'ofte-stillede-spoergsmaal',
+                'pricing' => 'priser',
+                'marketplace' => 'markedsplads',
+                'how-it-works' => 'saadan-virker-det',
+                'become-a-publisher' => 'bliv-publisher',
+                'why-choose-us' => 'derfor-os',
+                'contact' => 'kontakt',
+                'privacy-policy' => 'privatlivspolitik',
+                'terms-of-services' => 'vilkaar',
+                'cookie-policy' => 'cookiepolitik',
+                'refund-policy' => 'refundering',
+            ],
+            'se' => [
+                'about' => 'om-oss',
+                'faq' => 'vanliga-fragor',
+                'pricing' => 'priser',
+                'marketplace' => 'marknadsplats',
+                'how-it-works' => 'sa-fungerar-det',
+                'become-a-publisher' => 'bli-publisher',
+                'why-choose-us' => 'varfor-vi',
+                'contact' => 'kontakt',
+                'privacy-policy' => 'integritetspolicy',
+                'terms-of-services' => 'villkor',
+                'cookie-policy' => 'cookiepolicy',
+                'refund-policy' => 'aterbetalning',
+            ],
+            'no' => [
+                'about' => 'om-oss',
+                'faq' => 'ofte-stilte-sporsmal',
+                'pricing' => 'priser',
+                'marketplace' => 'markedsplass',
+                'how-it-works' => 'slik-fungerer-det',
+                'become-a-publisher' => 'bli-publisher',
+                'why-choose-us' => 'hvorfor-oss',
+                'contact' => 'kontakt',
+                'privacy-policy' => 'personvern',
+                'terms-of-services' => 'vilkar',
+                'cookie-policy' => 'informasjonskapsler',
+                'refund-policy' => 'refusjon',
+            ],
+            'bg' => [
+                'about' => 'za-nas',
+                'faq' => 'chesti-vaprosi',
+                'pricing' => 'ceni',
+                'marketplace' => 'pazar',
+                'how-it-works' => 'kak-raboti',
+                'become-a-publisher' => 'stani-publisher',
+                'why-choose-us' => 'zashto-nie',
+                'contact' => 'kontakt',
+                'privacy-policy' => 'poveritelnost',
+                'terms-of-services' => 'usloviya',
+                'cookie-policy' => 'cookies',
+                'refund-policy' => 'vrashtane',
+            ],
+            'hu' => [
+                'about' => 'rolunk',
+                'faq' => 'gyakori-kerdesek',
+                'pricing' => 'arak',
+                'marketplace' => 'piac',
+                'how-it-works' => 'hogyan-mukodik',
+                'become-a-publisher' => 'legy-publisher',
+                'why-choose-us' => 'miert-minket',
+                'contact' => 'kapcsolat',
+                'privacy-policy' => 'adatvedelem',
+                'terms-of-services' => 'feltetelek',
+                'cookie-policy' => 'sutik',
+                'refund-policy' => 'visszaterites',
+            ],
+            'ee' => [
+                'about' => 'meist',
+                'faq' => 'kkk',
+                'pricing' => 'hinnad',
+                'marketplace' => 'turg',
+                'how-it-works' => 'kuidas-tootab',
+                'become-a-publisher' => 'saa-kirjastajaks',
+                'why-choose-us' => 'miks-meie',
+                'contact' => 'kontakt',
+                'privacy-policy' => 'privaatsus',
+                'terms-of-services' => 'tingimused',
+                'cookie-policy' => 'kupsised',
+                'refund-policy' => 'tagastus',
+            ],
+            'pl' => [
+                'about' => 'o-nas',
+                'faq' => 'faq',
+                'pricing' => 'cennik',
+                'marketplace' => 'rynek',
+                'how-it-works' => 'jak-to-dziala',
+                'become-a-publisher' => 'zostan-wydawca',
+                'why-choose-us' => 'dlaczego-my',
+                'contact' => 'kontakt',
+                'privacy-policy' => 'polityka-prywatnosci',
+                'terms-of-services' => 'regulamin',
+                'cookie-policy' => 'polityka-cookies',
+                'refund-policy' => 'zwroty',
+            ],
         ];
+
+        $maps['at'] = $maps['de'];
+        $maps['ch'] = $maps['de'];
+
+        return $maps;
     }
 
     /**
@@ -121,7 +266,13 @@ class LocalizedPublicPath
     public static function for(string $englishPath, ?string $locale): string
     {
         $englishPath = trim($englishPath, '/');
-        if ($englishPath === '' || ! PublicI18n::isSupported($locale) || $locale === PublicI18n::default() || $locale === 'us') {
+        if ($englishPath === ''
+            || ! class_exists(PublicI18n::class)
+            || ! method_exists(PublicI18n::class, 'isSupported')
+            || ! method_exists(PublicI18n::class, 'default')
+            || ! PublicI18n::isSupported($locale)
+            || $locale === PublicI18n::default()
+            || $locale === 'us') {
             return $englishPath;
         }
 
@@ -142,6 +293,12 @@ class LocalizedPublicPath
             $english = array_search($segment, $localeMap, true);
             if ($english !== false) {
                 return $english;
+            }
+        }
+
+        foreach (self::historicalAliases() as $aliases) {
+            if (isset($aliases[$segment])) {
+                return $aliases[$segment];
             }
         }
 
@@ -185,10 +342,16 @@ class LocalizedPublicPath
      */
     public static function publicPath(string $englishPath, ?string $locale): string
     {
-        $locale = $locale ?? PublicI18n::default();
+        $locale = $locale ?? (
+            class_exists(PublicI18n::class) && method_exists(PublicI18n::class, 'default')
+                ? PublicI18n::default()
+                : 'en'
+        );
         $localized = self::for($englishPath, $locale);
 
-        if (! PublicI18n::isPrefixed($locale)) {
+        if (! class_exists(PublicI18n::class)
+            || ! method_exists(PublicI18n::class, 'isPrefixed')
+            || ! PublicI18n::isPrefixed($locale)) {
             return $localized === '' ? '/' : '/'.$localized;
         }
 
@@ -213,7 +376,23 @@ class LocalizedPublicPath
     }
 
     /**
+     * Retired first segments Google still has (old Italian slug, etc.).
+     * Values are English path keys.
+     *
+     * @return array<string, array<string, string>>
+     */
+    public static function historicalAliases(): array
+    {
+        return [
+            'it' => [
+                'diventare-publisher' => 'become-a-publisher',
+            ],
+        ];
+    }
+
+    /**
      * English path → localized slug, only when they differ.
+     * Includes retired aliases for the same locale.
      *
      * @return array<string, string>
      */
@@ -223,6 +402,30 @@ class LocalizedPublicPath
         foreach (self::map()[$locale] ?? [] as $english => $localized) {
             if ($english !== $localized) {
                 $out[$english] = $localized;
+            }
+        }
+
+        foreach (self::historicalAliases()[$locale] ?? [] as $old => $english) {
+            $localized = self::map()[$locale][$english] ?? $english;
+            if ($old !== $localized) {
+                $out[$old] = $localized;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Retired slugs indexed at the site root (no locale prefix).
+     *
+     * @return array<string, string>
+     */
+    public static function unprefixedLegacyRedirects(): array
+    {
+        $out = [];
+        foreach (self::historicalAliases() as $locale => $aliases) {
+            foreach ($aliases as $old => $english) {
+                $out[$old] = self::publicPath($english, $locale);
             }
         }
 

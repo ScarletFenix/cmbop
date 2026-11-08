@@ -14,8 +14,14 @@ use App\Models\Wallet;
 use App\Models\WalletTransaction;
 use App\Services\Advertiser\SpendBudgetService;
 use App\Services\ContentModeration\ContentModerationService;
+use App\Services\Marketplace\ArticleWritingService;
+use App\Services\Marketplace\CheckoutAddOnService;
+use App\Services\Marketplace\WritingFeeService;
+use App\Services\Orders\OrderPackService;
 use App\Services\Orders\OrderRefundService;
+use App\Services\Partners\PartnerAlertService;
 use App\Services\Wallet\WalletLedgerService;
+use App\Support\PlatformCharge;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
@@ -1844,7 +1850,7 @@ class OrderPaymentService
         $schema->ensureCheckoutTables();
 
         $refundedInFinalize = 0.0;
-        $created = DB::transaction(function () use ($package, $referenceCode, $session, $schema, &$refundedInFinalize) {
+        $created = DB::transaction(function () use ($package, $referenceCode, $session, $schema, $meta, &$refundedInFinalize) {
             $already = Order::query()
                 ->where('reference_code', $referenceCode)
                 ->where('payment_method', 'card')
@@ -1923,10 +1929,13 @@ class OrderPaymentService
                     'schedule_timezone' => $schedule['timezone'] ?? 'UTC',
                     'stripe_session_id' => $stripeSessionId,
                     'stripe_payment_intent_id' => $stripePaymentIntentId,
+                    ...$this->lineCharge($meta, (float) ($line['price'] ?? 0)),
                     'stripe_response' => method_exists($session, 'toArray')
                         ? json_encode($session->toArray())
                         : json_encode($session),
                     'paid_at' => now(),
+                    'project_id' => ((int) ($package['project_id'] ?? 0)) ?: null,
+                    ...app(CheckoutAddOnService::class)->orderColumns($line),
                 ]);
 
                 if ($order === null) {
@@ -1939,7 +1948,9 @@ class OrderPaymentService
                     'site_name' => $line['site_name'] ?? $site?->site_name,
                     'site_url' => $line['site_url'] ?? $site?->site_url,
                     'price' => $line['price'] ?? 0,
-                    'content_link' => $line['content_link'] ?? null,
+                    'content_link' => $line['content_link']
+                        ?? (CheckoutAddOnService::isWrittenSource($line) ? OrderItem::PENDING_WRITTEN_LINK : null),
+                    'content_source' => $line['content_source'] ?? WritingFeeService::SOURCE_BUYER,
                     'content_submission_id' => $attachSubmission ? $submission->id : null,
                     'content_disk' => $attachSubmission ? $submission->disk : ($expectLibrary ? null : ($line['content_disk'] ?? null)),
                     'content_path' => $attachSubmission ? $submission->path : ($expectLibrary ? null : ($line['content_path'] ?? null)),
@@ -1958,9 +1969,12 @@ class OrderPaymentService
                     'publisher_price' => $line['publisher_price'] ?? null,
                     'platform_fee_percent' => $line['platform_fee_percent'] ?? null,
                     'platform_fee_amount' => $line['platform_fee_amount'] ?? null,
+                    ...OrderItem::fxSnapshotFromPricing($line),
+                    ...app(CheckoutAddOnService::class)->orderItemColumns($line),
                 ];
 
                 $item = OrderItem::create($schema->filterExistingColumns('order_items', $itemPayload));
+                app(ArticleWritingService::class)->initializePaidItem($item, $site instanceof Site ? $site : null);
 
                 if ($articleTaken || $articleUnready) {
                     $reason = $articleTaken
@@ -2078,6 +2092,14 @@ class OrderPaymentService
             : 0.0;
         if ($userId > 0) {
             $this->rereserveReleasedCheckoutBonus($userId, $referenceCode, $bonusKeep);
+        }
+
+        try {
+            app(OrderPackService::class)->linkCreatedOrders($created, $package);
+        } catch (\Throwable $e) {
+            Log::warning('Pack link after Stripe finalize failed: '.$e->getMessage(), [
+                'reference_code' => $referenceCode,
+            ]);
         }
 
         $this->forgetPendingCheckoutKeepLeftoverHold($referenceCode, $userId);
@@ -2265,10 +2287,17 @@ class OrderPaymentService
                     'publication_mode' => $schedule['mode'] ?? 'immediate',
                     'scheduled_publish_at' => $schedule['at'] ?? null,
                     'schedule_timezone' => $schedule['timezone'] ?? 'UTC',
+                    ...$this->lineCharge([
+                        'charge_currency' => $captured['currency'] ?? 'EUR',
+                        'charge_amount' => $captured['charge_amount'] ?? null,
+                        'order_total' => $package['order_total'] ?? $package['amount_due'] ?? 0,
+                    ], (float) ($line['price'] ?? 0)),
                     'paypal_order_id' => $paypalOrderId !== '' ? $paypalOrderId : null,
                     'paypal_capture_id' => $storedCaptureOnFirst ? null : $captureId,
                     'paypal_response' => $captured['raw'] ?? $captured,
                     'paid_at' => now(),
+                    'project_id' => ((int) ($package['project_id'] ?? 0)) ?: null,
+                    ...app(CheckoutAddOnService::class)->orderColumns($line),
                 ]);
                 if ($order === null) {
                     continue;
@@ -2283,7 +2312,9 @@ class OrderPaymentService
                     'site_name' => $line['site_name'] ?? $site?->site_name,
                     'site_url' => $line['site_url'] ?? $site?->site_url,
                     'price' => $line['price'] ?? 0,
-                    'content_link' => $line['content_link'] ?? null,
+                    'content_link' => $line['content_link']
+                        ?? (CheckoutAddOnService::isWrittenSource($line) ? OrderItem::PENDING_WRITTEN_LINK : null),
+                    'content_source' => $line['content_source'] ?? WritingFeeService::SOURCE_BUYER,
                     'content_submission_id' => $attachSubmission ? $submission->id : null,
                     'content_disk' => $attachSubmission ? $submission->disk : ($expectLibrary ? null : ($line['content_disk'] ?? null)),
                     'content_path' => $attachSubmission ? $submission->path : ($expectLibrary ? null : ($line['content_path'] ?? null)),
@@ -2302,8 +2333,11 @@ class OrderPaymentService
                     'publisher_price' => $line['publisher_price'] ?? null,
                     'platform_fee_percent' => $line['platform_fee_percent'] ?? null,
                     'platform_fee_amount' => $line['platform_fee_amount'] ?? null,
+                    ...OrderItem::fxSnapshotFromPricing($line),
+                    ...app(CheckoutAddOnService::class)->orderItemColumns($line),
                 ];
                 $item = OrderItem::create($schema->filterExistingColumns('order_items', $itemPayload));
+                app(ArticleWritingService::class)->initializePaidItem($item, $site instanceof Site ? $site : null);
 
                 if ($articleTaken || $articleUnready) {
                     $reason = $articleTaken
@@ -2374,6 +2408,14 @@ class OrderPaymentService
             : 0.0;
         if ($userId > 0) {
             $this->rereserveReleasedCheckoutBonus($userId, $referenceCode, $bonusKeep);
+        }
+
+        try {
+            app(OrderPackService::class)->linkCreatedOrders($created, $package);
+        } catch (\Throwable $e) {
+            Log::warning('Pack link after PayPal finalize failed: '.$e->getMessage(), [
+                'reference_code' => $referenceCode,
+            ]);
         }
 
         $this->forgetPendingCheckoutKeepLeftoverHold($referenceCode, $userId);
@@ -2521,9 +2563,22 @@ class OrderPaymentService
             }
 
             try {
-                $submission = ContentSubmission::query()->whereKey($id)->lockForUpdate()->first();
-            } catch (\Throwable) {
-                return 'missing';
+                $query = ContentSubmission::query()->whereKey($id);
+                if (DB::transactionLevel() > 0) {
+                    $query->lockForUpdate();
+                }
+                $submission = $query->first();
+            } catch (\Throwable $e) {
+                report($e);
+                try {
+                    $submission = ContentSubmission::query()->whereKey($id)->first();
+                } catch (\Throwable $fallback) {
+                    report($fallback);
+                    throw new \RuntimeException('Could not read the Content Library article for settlement.', 0, $fallback);
+                }
+                if (! $submission instanceof ContentSubmission) {
+                    throw new \RuntimeException('Could not read the Content Library article for settlement.');
+                }
             }
             if (! $submission) {
                 return 'missing';
@@ -2787,8 +2842,28 @@ class OrderPaymentService
     }
 
     /**
-     * @return array<string, mixed>
+     * @param  array<string, mixed>  $meta
+     * @return array{charge_currency: ?string, charge_amount: ?float}
      */
+    private function lineCharge(array $meta, float $lineEuros): array
+    {
+        $code = strtoupper(trim((string) ($meta['charge_currency'] ?? 'EUR')));
+        $lineEuros = round($lineEuros, 2);
+        $cartCharge = round((float) ($meta['charge_amount'] ?? 0), 2);
+        $cartEuros = round((float) ($meta['order_total'] ?? $meta['expected_amount'] ?? 0), 2);
+        if ($cartCharge > 0 && $cartEuros > 0) {
+            return [
+                'charge_currency' => $code !== '' ? $code : 'EUR',
+                'charge_amount' => round($lineEuros / $cartEuros * $cartCharge, 2),
+            ];
+        }
+        if ($code === '' || $code === 'EUR') {
+            return ['charge_currency' => 'EUR', 'charge_amount' => $lineEuros];
+        }
+
+        return ['charge_currency' => null, 'charge_amount' => null];
+    }
+
     private function sessionMetadataArray(object $session): array
     {
         $meta = $session->metadata ?? null;
@@ -2947,6 +3022,20 @@ class OrderPaymentService
             $stripeCents = (int) $session->amount_total;
         } elseif (isset($session->amount_received) || isset($session->amount)) {
             $stripeCents = (int) ($session->amount_received ?: $session->amount);
+        }
+
+        $metadata = [];
+        if (isset($session->metadata)) {
+            $raw = $session->metadata;
+            $metadata = is_array($raw) ? $raw : (method_exists($raw, 'toArray') ? $raw->toArray() : []);
+        }
+        $fromCharge = app(PlatformCharge::class)->eurosFromStripe($session, $metadata);
+        if ($fromCharge !== null) {
+            return $fromCharge;
+        }
+        $currency = strtolower((string) ($session->currency ?? ($metadata['charge_currency'] ?? 'eur')));
+        if ($currency !== '' && $currency !== 'eur') {
+            return null;
         }
 
         return $stripeCents === null ? null : StripePaymentService::fromCents($stripeCents);
@@ -3112,6 +3201,17 @@ class OrderPaymentService
                 return;
             }
 
+            try {
+                $package = null;
+                $ref = (string) (collect($orders)->first()?->reference_code ?? '');
+                if ($ref !== '') {
+                    $package = $this->getPendingCheckout($ref);
+                }
+                app(OrderPackService::class)->linkCreatedOrders($orders, is_array($package) ? $package : null);
+            } catch (\Throwable $e) {
+                Log::warning('Pack link after paid checkout failed: '.$e->getMessage());
+            }
+
             $freshOrders = collect();
             foreach ($orders as $order) {
                 try {
@@ -3137,6 +3237,9 @@ class OrderPaymentService
             $siteOrders = [];
             foreach ($orders as $order) {
                 foreach ($order->items as $item) {
+                    if (method_exists($item, 'isManagedBySlb') && $item->isManagedBySlb()) {
+                        continue;
+                    }
                     $siteId = $item->site_id;
                     if (! isset($siteOrders[$siteId])) {
                         $site = Site::find($siteId);
@@ -3166,6 +3269,10 @@ class OrderPaymentService
                 }
 
                 try {
+                    if (class_exists(PartnerAlertService::class)
+                        && app(PartnerAlertService::class)->sendNewOrderIfPartner($publisher, $site, $siteData['orders'])) {
+                        continue;
+                    }
                     Mail::to($publisher->email)->send(
                         new SiteOwnerOrderNotification($site, $siteData['orders'])
                     );

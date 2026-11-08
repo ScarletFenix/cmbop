@@ -14,6 +14,7 @@ use App\Models\Wallet;
 use App\Services\CheckoutSchemaService;
 use App\Services\InAppNotificationService;
 use App\Services\Orders\OrderRefundService;
+use App\Services\Partners\PartnerSettlement;
 use App\Services\Wallet\WalletLedgerService;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
@@ -61,6 +62,7 @@ class AutoApproveOrders extends Command
         $notYetDueAt = Carbon::now()->subHours($windowHours);
 
         $query = OrderItem::query()
+            ->publisherFulfilment()
             ->whereNotNull('live_url')
             ->where('live_url', '!=', '')
             ->whereLiveUrlSubmittedAtIsRecorded()
@@ -82,6 +84,9 @@ class AutoApproveOrders extends Command
             ->whereHas('order', function ($q) {
                 $q->where('status', 'review')
                     ->where('payment_status', 'paid');
+                if (Order::hasSandboxColumn()) {
+                    $q->notSandbox();
+                }
             });
 
         if (OrderItem::autoApproveRequiresLiveUrlOk() && Schema::hasColumn('order_items', 'live_url_check_ok')) {
@@ -89,6 +94,9 @@ class AutoApproveOrders extends Command
                 $q->whereNull('live_url_check_ok')
                     ->orWhere('live_url_check_ok', true);
             });
+        }
+        if (OrderItem::hasSandboxColumn()) {
+            $query->notSandbox();
         }
 
         $items = $query->limit(200)->get();
@@ -144,6 +152,7 @@ class AutoApproveOrders extends Command
     protected function autoApproveDueOrders(int $windowHours): int
     {
         $query = OrderItem::query()
+            ->publisherFulfilment()
             ->whereNotNull('live_url')
             ->where('live_url', '!=', '')
             ->whereLiveUrlSubmittedAtIsRecorded()
@@ -163,6 +172,9 @@ class AutoApproveOrders extends Command
             ->whereHas('order', function ($q) {
                 $q->where('status', 'review')
                     ->where('payment_status', 'paid');
+                if (Order::hasSandboxColumn()) {
+                    $q->notSandbox();
+                }
             });
 
         if (OrderItem::autoApproveRequiresLiveUrlOk() && Schema::hasColumn('order_items', 'live_url_check_ok')) {
@@ -171,8 +183,11 @@ class AutoApproveOrders extends Command
                     ->orWhere('live_url_check_ok', true);
             });
         }
+        if (OrderItem::hasSandboxColumn()) {
+            $query->notSandbox();
+        }
 
-        $orderItems = $query->get();
+        $orderItems = $query->limit(200)->get();
         $this->info('Found '.$orderItems->count().' order(s) ready for auto-approval');
 
         $approvedCount = 0;
@@ -227,6 +242,9 @@ class AutoApproveOrders extends Command
                     continue;
                 }
 
+                $partnerSettled = class_exists(PartnerSettlement::class)
+                    && app(PartnerSettlement::class)->settleOnApproval($lockedItem);
+
                 $itemUpdate = [
                     'auto_approve_triggered' => true,
                     'auto_approve_at' => Carbon::now(),
@@ -257,23 +275,34 @@ class AutoApproveOrders extends Command
                     Site::refreshCompletedOrdersCount((int) $site->id);
                 }
 
-                if ($site && $site->publisher_id && $publisherRoleId) {
+                if ($lockedItem->isManagedBySlb()) {
+                    // Managed by SLB is completed by staff, never auto-paid to the catalog publisher.
+                    Log::info('Auto-approve skipped publisher credit for Managed by SLB item', [
+                        'order_id' => $order->id,
+                        'order_item_id' => $lockedItem->id,
+                    ]);
+                } elseif ($site && $site->publisher_id && $publisherRoleId && ! $partnerSettled) {
                     $publisher = User::find($site->publisher_id);
 
                     if ($publisher) {
-                        $publisherWallet = Wallet::lockOrCreateForRole($publisher->id, $publisherRoleId);
-                        $amount = (float) $lockedItem->publisherPayoutAmount();
-                        $advertiserPaid = round((float) $lockedItem->price, 2);
-                        if ($amount > $advertiserPaid) {
+                        $credit = $lockedItem->cappedPublisherCredit();
+                        $publisherWallet = Wallet::lockOrCreateForRole(
+                            $publisher->id,
+                            $publisherRoleId,
+                            $credit['currency']
+                        );
+                        $amount = $credit['amount'];
+                        $advertiserPaid = $credit['advertiser_eur'];
+                        if ($credit['capped']) {
                             Log::warning('Auto-approve: capping publisher payout to advertiser-paid amount', [
                                 'order_id' => $order->id,
                                 'order_item_id' => $lockedItem->id,
                                 'advertiser_paid' => $advertiserPaid,
-                                'uncapped_payout' => $amount,
+                                'uncapped_payout' => $credit['uncapped'],
+                                'publisher_currency' => $credit['currency'],
                             ]);
-                            $amount = $advertiserPaid;
                         }
-                        $platformFee = max(0, round($advertiserPaid - $amount, 2));
+                        $platformFee = $credit['platform_fee_eur'];
                         $publisherWallet->credit($amount);
 
                         try {

@@ -29,4 +29,38 @@ return [
         FILTER_VALIDATE_BOOL
     ),
 
+    /*
+    | Recheck completed live URLs this many days after the last check.
+    */
+    'live_url_recheck_stale_days' => (int) env('ORDER_LIVE_URL_RECHECK_STALE_DAYS', 7),
+
+    /*
+    | Max completed placements to recheck per scheduled run.
+    */
+    'live_url_recheck_limit' => (int) env('ORDER_LIVE_URL_RECHECK_LIMIT', 40),
+
+    /*
+    | Completed placements with a failed live-URL check stay in Needs you
+    | for this many days after the last check.
+    */
+    'live_url_down_window_days' => (int) env('ORDER_LIVE_URL_DOWN_WINDOW_DAYS', 90),
+
+    /*
+    | Optional 12-month link guarantee add-on. Advertiser pays a percent of
+    | the placement; publishers pay nothing. Monthly HTTP + href checks.
+    */
+    'writing' => [
+        'deadline_days' => (int) env('ORDER_WRITING_DEADLINE_DAYS', 5),
+        'turnaround_text' => env('ORDER_WRITING_TURNAROUND_TEXT', '2–3 working days'),
+        'explainer' => "Written by the SEOLinkBuildings team (or the publisher, if they write for this site) in the site's language and sent to you for approval before publishing.",
+    ],
+
+    'link_guarantee' => [
+        'percent' => (float) env('ORDER_LINK_GUARANTEE_PERCENT', 10),
+        'months' => (int) env('ORDER_LINK_GUARANTEE_MONTHS', 12),
+        'restore_days' => (int) env('ORDER_LINK_GUARANTEE_RESTORE_DAYS', 7),
+        'check_interval_days' => (int) env('ORDER_LINK_GUARANTEE_CHECK_DAYS', 28),
+        'check_limit' => (int) env('ORDER_LINK_GUARANTEE_CHECK_LIMIT', 40),
+    ],
+
 ];

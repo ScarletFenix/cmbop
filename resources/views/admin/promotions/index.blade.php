@@ -37,6 +37,7 @@
     </div>
 
     @include('admin.promotions.partials.undo-bar')
+    @include('admin.promotions.partials.now-showing')
 
     @if(empty($announcementsTableReady) || empty($bannersTableReady) || (auth()->user()?->isAdmin() && empty($welcomeBonusTableReady)))
         <div class="alert alert-danger" role="alert">
@@ -126,6 +127,132 @@
                     @endif
                 </div>
             </div>
+        </div>
+    </div>
+    @endif
+
+    @if(auth()->user()?->isAdmin())
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-body">
+            <h2 class="h5 mb-1">Featured website packages</h2>
+            <p class="text-muted small mb-3">
+                Publishers choose one of these to feature a site. Prices are stored in euros.
+                A publisher in another country is charged the live converted amount on card.
+                Wallet payment still deducts the euro price.
+            </p>
+            <form method="POST" action="{{ route('admin.promotions.feature-offers.update') }}">
+                @csrf
+                <div class="row g-3">
+                    @foreach(['month' => 'Monthly', 'year' => 'Yearly'] as $key => $fallbackLabel)
+                        @php $offer = $featureOffers[$key] ?? ['label' => $fallbackLabel, 'price' => $key === 'month' ? 15 : 100, 'days' => $key === 'month' ? 30 : 365, 'active' => true]; @endphp
+                        <div class="col-md-6">
+                            <div class="border rounded p-3 h-100">
+                                <div class="fw-semibold mb-2">{{ $fallbackLabel }}</div>
+                                <label class="form-label small mb-1" for="offer-{{ $key }}-label">Name</label>
+                                <input id="offer-{{ $key }}-label" type="text" name="offers[{{ $key }}][label]" class="form-control form-control-sm mb-2" maxlength="40" value="{{ $offer['label'] }}" required>
+                                <div class="row g-2">
+                                    <div class="col-6">
+                                        <label class="form-label small mb-1" for="offer-{{ $key }}-price">Price (EUR)</label>
+                                        <input id="offer-{{ $key }}-price" type="number" name="offers[{{ $key }}][price]" class="form-control form-control-sm" min="0.5" max="5000" step="0.01" value="{{ number_format((float) $offer['price'], 2, '.', '') }}" required>
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="form-label small mb-1" for="offer-{{ $key }}-days">Days</label>
+                                        <input id="offer-{{ $key }}-days" type="number" name="offers[{{ $key }}][days]" class="form-control form-control-sm" min="1" max="400" step="1" value="{{ (int) $offer['days'] }}" required>
+                                    </div>
+                                </div>
+                                <div class="form-check mt-2">
+                                    <input class="form-check-input" type="checkbox" name="offers[{{ $key }}][active]" value="1" id="offer-{{ $key }}-active" @checked($offer['active'] ?? true)>
+                                    <label class="form-check-label small" for="offer-{{ $key }}-active">Offered to publishers</label>
+                                </div>
+                            </div>
+                        </div>
+                    @endforeach
+                </div>
+                <button type="submit" class="btn btn-sm btn-primary mt-3">Save packages</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-body">
+            <h2 class="h5 mb-1">Featured credits</h2>
+            <p class="text-muted small mb-3">
+                Give a user days of featuring for one of their sites. Nothing is charged and the site is not featured yet.
+                They use the credit on that site whenever they want. Paid Monthly and Yearly packages stay the same.
+            </p>
+            @if(empty($featureCreditsTableReady))
+                <p class="small text-muted mb-0">Feature credits are unavailable until the database is migrated.</p>
+            @else
+                <form method="POST" action="{{ route('admin.promotions.feature-credits.store') }}" class="admin-deposits-filters row g-2 align-items-end" data-admin-filter-live="1" data-admin-select-no-submit="1">
+                    @csrf
+                    <div class="col-md-4">
+                        <label class="form-label" for="featureCreditUser">Publisher</label>
+                        <select id="featureCreditUser" name="user_id" class="form-select"
+                                data-admin-select-search="1"
+                                data-admin-select-search-url="{{ route('admin.promotions.feature-credits.users') }}"
+                                data-admin-select-search-label="Search publishers"
+                                data-admin-select-search-empty="No matching publishers">
+                            <option value="">Choose a publisher</option>
+                            @foreach($featureCreditUsers ?? [] as $creditUser)
+                                <option value="{{ $creditUser->id }}" @selected((string) old('user_id') === (string) $creditUser->id)>
+                                    {{ trim((string) $creditUser->name) !== '' ? $creditUser->name.' — '.$creditUser->email : $creditUser->email }}
+                                </option>
+                            @endforeach
+                        </select>
+                        @error('user_id')
+                            <div class="small text-danger mt-1">{{ $message }}</div>
+                        @enderror
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label" for="featureCreditSite">Site</label>
+                        <select id="featureCreditSite" name="site_id" class="form-select"
+                                data-sites-url="{{ route('admin.promotions.feature-credits.sites') }}"
+                                data-selected-id="{{ old('site_id') }}"
+                                data-admin-select-search="1" data-admin-select-search-label="Search sites" data-admin-select-search-empty="No sites for this publisher">
+                            <option value="">{{ old('user_id') ? 'Choose a site' : 'Select a publisher first' }}</option>
+                            @foreach($featureCreditSites ?? [] as $creditSite)
+                                <option value="{{ $creditSite->id }}" @selected((string) old('site_id') === (string) $creditSite->id)>
+                                    {{ trim((string) $creditSite->site_name) !== '' ? $creditSite->site_name.' — '.$creditSite->domain : $creditSite->domain }}
+                                </option>
+                            @endforeach
+                        </select>
+                        @error('site_id')
+                            <div class="small text-danger mt-1">{{ $message }}</div>
+                        @enderror
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label" for="featureCreditDays">Days</label>
+                        <input id="featureCreditDays" type="number" name="days" class="form-control" min="1" max="400" step="1" value="{{ old('days', 30) }}" required>
+                    </div>
+                    <div class="col-md-2">
+                        <button type="submit" class="btn btn-sm btn-primary">Give credit</button>
+                    </div>
+                </form>
+                @if(($featureCredits ?? collect())->isNotEmpty())
+                    <div class="table-responsive mt-3">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Publisher</th>
+                                    <th>Site</th>
+                                    <th>Days</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach($featureCredits as $credit)
+                                    <tr>
+                                        <td>{{ $credit->user->email ?? 'Removed account' }}</td>
+                                        <td>{{ $credit->site->domain ?? 'Any site' }}</td>
+                                        <td>{{ (int) $credit->days }}</td>
+                                        <td>{{ $credit->used_at ? 'Used' : 'Unused' }}</td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @endif
+            @endif
         </div>
     </div>
     @endif
@@ -244,7 +371,12 @@
                                         <td><span class="badge bg-light text-dark">{{ $item->typeLabel() }}</span></td>
                                         <td class="small text-muted">{{ scalar_text(config('promotions.audiences.'.scalar_text($item->audience), $item->audience)) }}</td>
                                         <td class="small text-muted">@include('admin.promotions.partials.schedule', ['item' => $item])</td>
-                                        <td>@include('admin.promotions.partials.status-badge', ['item' => $item])</td>
+                                        <td>@include('admin.promotions.partials.status-badge', [
+                                            'item' => $item,
+                                            'showingState' => $item->isCurrentlyLive()
+                                                ? (in_array((int) $item->id, $showingNoticeIds ?? [], true) ? 'showing' : 'queued')
+                                                : null,
+                                        ])</td>
                                     </tr>
                                 @empty
                                     <tr>
@@ -285,7 +417,12 @@
                                         </td>
                                         <td class="small">{{ $banner->width }}×{{ $banner->height }}</td>
                                         <td class="small text-muted">@include('admin.promotions.partials.schedule', ['item' => $banner])</td>
-                                        <td>@include('admin.promotions.partials.status-badge', ['item' => $banner])</td>
+                                        <td>@include('admin.promotions.partials.status-badge', [
+                                            'item' => $banner,
+                                            'showingState' => ($banner->isCurrentlyLive() && $banner->imageSrc())
+                                                ? (in_array((int) $banner->id, $showingBannerIds ?? [], true) ? 'showing' : 'rotated_out')
+                                                : null,
+                                        ])</td>
                                     </tr>
                                 @empty
                                     <tr>
@@ -334,7 +471,7 @@
                                 <td class="small text-muted">
                                     @if($site->isFeatured()) until {{ optional($site->safeFeaturedUntil())->format('M j') }} @endif
                                     @if($site->hasActiveCustomDiscount()) −{{ rtrim(rtrim(number_format((float) $site->custom_discount_percent, 2), '0'), '.') }}% @endif
-                                    @if($site->joinsBulkDiscount()) pack −{{ rtrim(rtrim(number_format((float) $site->bulk_discount_percent, 2), '0'), '.') }}% @endif
+                                    @if($site->joinsBulkDiscount()) {{ $site->bulkDiscountLabel() ?: ('pack −'.rtrim(rtrim(number_format((float) $site->bulk_discount_percent, 2), '0'), '.').'%') }} @endif
                                 </td>
                             </tr>
                         @empty
@@ -375,3 +512,58 @@
     </div>
 </div>
 @endsection
+
+@push('scripts')
+<script>
+(function () {
+    var user = document.getElementById('featureCreditUser');
+    var site = document.getElementById('featureCreditSite');
+    if (!user || !site) return;
+    var url = site.getAttribute('data-sites-url') || '';
+    var selectedId = String(site.getAttribute('data-selected-id') || '');
+
+    function optionLabel(row) {
+        var name = String(row.site_name || '').trim();
+        var domain = String(row.domain || '');
+        return name !== '' ? name + ' — ' + domain : domain;
+    }
+
+    function fill(rows) {
+        site.replaceChildren();
+        var placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = user.value ? 'Choose a site' : 'Select a publisher first';
+        site.appendChild(placeholder);
+        (rows || []).forEach(function (row) {
+            var opt = document.createElement('option');
+            opt.value = String(row.id);
+            opt.textContent = optionLabel(row);
+            if (String(row.id) === selectedId) opt.selected = true;
+            site.appendChild(opt);
+        });
+        site.dispatchEvent(new Event('change', { bubbles: true }));
+        site.dispatchEvent(new Event('admin-select-refresh'));
+    }
+
+    function loadSites() {
+        if (!user.value || !url) {
+            fill([]);
+            return;
+        }
+        site.innerHTML = '<option value="">Loading…</option>';
+        fetch(url + '?user_id=' + encodeURIComponent(user.value), {
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            credentials: 'same-origin'
+        }).then(function (res) { return res.ok ? res.json() : { sites: [] }; })
+          .then(function (data) { fill(data.sites || []); })
+          .catch(function () { fill([]); });
+    }
+
+    user.addEventListener('change', function () {
+        selectedId = '';
+        loadSites();
+    });
+    if (user.value && site.options.length <= 1) loadSites();
+})();
+</script>
+@endpush
