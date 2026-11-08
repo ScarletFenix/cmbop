@@ -8,5 +8,6 @@ class VerifyCsrfToken extends Middleware
 {
     protected $except = [
         'email/unsubscribe/*',
+        'email/weekly-new-sites/*',
     ];
 }

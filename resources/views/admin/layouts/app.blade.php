@@ -208,6 +208,9 @@
         <a href="{{ route('admin.abandoned-carts.index') }}" class="{{ request()->routeIs('admin.abandoned-carts.*') ? 'active' : '' }}">
             <i class="fa fa-shopping-cart"></i> <span>Abandoned carts</span>
         </a>
+        <a href="{{ route('admin.weekly-new-sites.index') }}" class="{{ request()->routeIs('admin.weekly-new-sites.*') ? 'active' : '' }}">
+            <i class="fa fa-globe"></i> <span>Weekly new sites</span>
+        </a>
         <a href="{{ route('admin.audiences.index') }}" class="{{ request()->routeIs('admin.audiences.*') ? 'active' : '' }}">
             <i class="fa fa-address-book"></i> <span>Audiences</span>
         </a>

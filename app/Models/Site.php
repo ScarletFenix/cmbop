@@ -31,6 +31,17 @@ class Site extends Model
 
     protected static function booted(): void
     {
+        static::saving(static function (Site $site): void {
+            if (! static::hasSitesColumn('first_catalogued_at')) {
+                return;
+            }
+            if ($site->first_catalogued_at) {
+                return;
+            }
+            if ($site->isCatalogVisible()) {
+                $site->first_catalogued_at = now();
+            }
+        });
         static::saved(static fn () => static::forgetMarketingCaches());
         static::deleted(static fn () => static::forgetMarketingCaches());
     }
@@ -85,6 +96,7 @@ class Site extends Model
         'verify_token_created_at',
         'verify_method',
         'active',
+        'first_catalogued_at',
         'archived_at',
         'owner_id',
         'rating_avg',
@@ -134,6 +146,7 @@ class Site extends Model
         'verify_token_created_at' => 'datetime',
         'publisher_accepted_at' => 'datetime',
         'active' => 'boolean',
+        'first_catalogued_at' => 'datetime',
         'sponsored' => 'boolean',
         'partner_material' => 'boolean',
         'as_you_prefer' => 'boolean',

@@ -77,6 +77,7 @@ use App\Mail\SpendBudgetAlertMail;
 use App\Mail\TrustpilotReviewRequest;
 use App\Mail\WebsiteSuggestionReviewed;
 use App\Mail\WeeklyActivitySummary;
+use App\Mail\WeeklyNewSitesDigestMail;
 use App\Mail\WelcomeEmail;
 use App\Mail\WithdrawalRequestedConfirmation;
 use App\Mail\WithdrawalRequestNotification;
@@ -691,6 +692,13 @@ class EmailCatalog
                 'mailable' => NewSitesDigest::class,
                 'status' => 'active',
             ],
+            'weekly_new_sites' => [
+                'name' => 'Weekly new-site digest',
+                'description' => 'Monday personalised digest of newly catalogued sites matching an advertiser\'s paid niche+country pairs. Default on; admin can turn only this type off.',
+                'category' => 'Advertisers',
+                'mailable' => WeeklyNewSitesDigestMail::class,
+                'status' => 'active',
+            ],
             'weekly_activity_summary' => [
                 'name' => 'Weekly Activity Summary',
                 'description' => 'Weekly advertiser activity digest (scheduled).',
@@ -911,6 +919,8 @@ class EmailCatalog
             'new users registered' => 'admin_new_users_digest',
             'new sites in the catalog' => 'new_sites_digest',
             'new sites just added' => 'new_sites_digest',
+            'new sites match your placements' => 'weekly_new_sites',
+            'a new site matches your placements' => 'weekly_new_sites',
             'weekly activity summary' => 'weekly_activity_summary',
             'your spending summary' => 'monthly_spending_summary',
         ];
@@ -1080,6 +1090,7 @@ class EmailCatalog
                 ['site' => $site, 'price' => 140.0, 'was' => null, 'discount' => null, 'is_new' => true],
                 ['site' => $site, 'price' => 210.0, 'was' => null, 'discount' => null, 'is_new' => false],
             ])),
+            'weekly_new_sites' => self::sampleWeeklyNewSitesMail($user, $site),
             'weekly_activity_summary' => new WeeklyActivitySummary($user, [
                 'orders' => 3,
                 'spend' => 199.5,
@@ -1518,5 +1529,59 @@ class EmailCatalog
         $campaign->exists = false;
 
         return $campaign;
+    }
+
+    protected static function sampleWeeklyNewSitesMail(User $user, Site $site): WeeklyNewSitesDigestMail
+    {
+        $site->domain = $site->domain ?: 'example.com';
+        $site->category = $site->category ?: 'Marketing';
+        $site->country = $site->country ?: 'gb';
+        $site->da = $site->da ?: 42;
+        $site->dr = $site->dr ?: 38;
+        $site->traffic = $site->traffic ?: 12000;
+        $site->metrics_fetched_at = $site->metrics_fetched_at ?: now()->subDay();
+        $site->price = $site->price ?: 90;
+
+        $cards = collect([
+            [
+                'site_id' => (int) ($site->id ?: self::PREVIEW_ID),
+                'domain' => (string) $site->domain,
+                'niche' => 'Marketing',
+                'country_code' => 'gb',
+                'country_label' => 'United Kingdom',
+                'da' => (int) $site->da,
+                'dr' => (int) $site->dr,
+                'traffic' => (int) $site->traffic,
+                'metrics_checked_at' => now()->subDay()->toDateString(),
+                'price' => 90.0,
+                'screenshot_url' => null,
+                'has_screenshot' => false,
+                'details_url' => rtrim(app_public_url(), '/').'/advertiser/catalog?site='.(int) ($site->id ?: self::PREVIEW_ID),
+            ],
+            [
+                'site_id' => self::PREVIEW_ID,
+                'domain' => 'sample-two.example',
+                'niche' => 'Marketing',
+                'country_code' => 'gb',
+                'country_label' => 'United Kingdom',
+                'da' => 55,
+                'dr' => 51,
+                'traffic' => 18000,
+                'metrics_checked_at' => now()->subDays(2)->toDateString(),
+                'price' => 140.0,
+                'screenshot_url' => null,
+                'has_screenshot' => false,
+                'details_url' => rtrim(app_public_url(), '/').'/advertiser/catalog?site='.self::PREVIEW_ID,
+            ],
+        ]);
+
+        $browse = [[
+            'niche' => 'Marketing',
+            'country_code' => 'gb',
+            'country_label' => 'United Kingdom',
+            'url' => rtrim(app_public_url(), '/').'/advertiser/catalog?category='.rawurlencode('Marketing').'&country=gb',
+        ]];
+
+        return new WeeklyNewSitesDigestMail($user, $cards, $browse, now()->format('o-\WW'), 0, 'preview');
     }
 }

@@ -42,6 +42,8 @@ final class AdminPageTitle
         'admin.emails.index' => 'Email Center',
         'admin.emails.log' => 'Email log',
         'admin.emails.preview' => 'Email preview',
+        'admin.weekly-new-sites.index' => 'Weekly new sites',
+        'admin.weekly-new-sites.preview' => 'Weekly new sites preview',
         'admin.campaigns.index' => 'Campaigns',
         'admin.abandoned-carts.index' => 'Abandoned carts',
         'admin.campaigns.show' => 'Campaign',

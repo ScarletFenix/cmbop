@@ -52,6 +52,28 @@ class LegalIdentity
             .'. Registered in England and Wales. Company number: '.$number.'.';
     }
 
+    /**
+     * Registered office as used on invoices. Empty pieces are dropped so we
+     * never invent a street we do not have.
+     */
+    public static function registeredOffice(): string
+    {
+        $company = config('billing.company', []);
+        $lines = $company['address_lines'] ?? [];
+        if (! is_array($lines)) {
+            $lines = [];
+        }
+        $parts = [];
+        foreach ($lines as $line) {
+            $value = trim((string) $line);
+            if ($value !== '') {
+                $parts[] = $value;
+            }
+        }
+
+        return implode(', ', $parts);
+    }
+
     public static function isMisleadingPartnerWording(?string $value): bool
     {
         $value = strtolower(trim((string) $value));

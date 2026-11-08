@@ -15,3 +15,7 @@ The catalog is preview + send-test-to-the-signed-in-admin. **Notification Settin
 ## Ops
 
 Queue worker, `MAIL_QUEUE_AUTO_DRAIN`, cron, and `APP_URL` / `PUBLIC_APP_URL` live in [`docs/ops-mail-reminders.md`](ops-mail-reminders.md).
+
+## Weekly new-site digest
+
+Admin → **Weekly new sites** (`/admin/weekly-new-sites`) is the desk for the personalised Monday digest: global on/off (this type only, default on), dry-run, match preview, delivery logs, and observational click/order counts. It does not send live campaigns. Scheduler, watermark, SQL, and consent rules: [`docs/weekly-new-sites-digest.md`](weekly-new-sites-digest.md).
