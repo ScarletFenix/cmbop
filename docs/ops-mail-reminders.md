@@ -23,6 +23,7 @@ Defined in `bootstrap/app.php` (not `app/Console/Kernel.php`):
 - `emails:send-abandoned-cart-reminders` — hourly (no-op unless Admin → Abandoned carts is on, or `ABANDONED_CART_REMINDERS_ENABLED=true` with no DB override)
 - `emails:send-digests` — weekly / monthly
 - `sites:send-new-sites-digest` — daily
+- `emails:send-weekly-new-sites-digest` — weekly Monday 10:00 Asia/Karachi (personalised new-site digest; default on)
 - `mail:drain-queue` — every minute (when no resident worker)
 - `backup:drive` — daily 03:00 Asia/Karachi (Google Drive; see [`BACKUPS.md`](BACKUPS.md))
 

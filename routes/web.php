@@ -17,8 +17,8 @@ use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
 use App\Http\Controllers\Admin\DepositApproveConfirmController as AdminDepositApproveConfirmController;
 use App\Http\Controllers\Admin\DepositController as AdminDepositController;
 use App\Http\Controllers\Admin\EmailCenterController as AdminEmailCenterController;
-// Publisher and Advertiser controllers
 use App\Http\Controllers\Admin\FinanceController as AdminFinanceController;
+// Publisher and Advertiser controllers
 use App\Http\Controllers\Admin\InvoiceController as AdminInvoiceController;
 use App\Http\Controllers\Admin\LinkGuaranteeController as AdminLinkGuaranteeController;
 use App\Http\Controllers\Admin\ManagedOrderController as AdminManagedOrderController;
@@ -41,6 +41,7 @@ use App\Http\Controllers\Admin\SiteEnrichmentController;
 use App\Http\Controllers\Admin\SiteRatingController;
 use App\Http\Controllers\Admin\StalledOrderController as AdminStalledOrderController;
 use App\Http\Controllers\Admin\UserController;
+use App\Http\Controllers\Admin\WeeklyNewSitesDigestController as AdminWeeklyNewSitesDigestController;
 use App\Http\Controllers\Admin\WelcomeBonusSettingController as AdminWelcomeBonusSettingController;
 use App\Http\Controllers\Admin\WithdrawalMarkPaidConfirmController;
 use App\Http\Controllers\Admin\WritingQueueController as AdminWritingQueueController;
@@ -70,6 +71,7 @@ use App\Http\Controllers\Advertiser\SiteUrlConcealController;
 use App\Http\Controllers\Advertiser\SiteUrlRevealController;
 use App\Http\Controllers\Advertiser\SiteVisitController;
 use App\Http\Controllers\Advertiser\WebsiteSuggestionController;
+use App\Http\Controllers\Advertiser\WeeklyNewSitesPreferenceController;
 use App\Http\Controllers\AnnouncementClickController;
 use App\Http\Controllers\AnnouncementDismissController;
 use App\Http\Controllers\ApiDocs\AdvertiserApiDocsController;
@@ -95,8 +97,8 @@ use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\NotificationPreferenceController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PromotionTrackController;
-// BlogController for public blog pages
 use App\Http\Controllers\PublicMediaController;
+// BlogController for public blog pages
 use App\Http\Controllers\Publisher\BalanceController;
 use App\Http\Controllers\Publisher\BillingController as PublisherBillingController;
 use App\Http\Controllers\Publisher\BulkSiteRequestController as PublisherBulkSiteRequestController;
@@ -112,6 +114,7 @@ use App\Http\Controllers\Publisher\WithdrawalController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SitemapController;
 use App\Http\Controllers\VisitorSupportChatController;
+use App\Http\Controllers\WeeklyNewSitesMailController;
 use App\Http\Middleware\RedirectMarketingFromAdmin;
 use App\Http\Middleware\RoleMiddleware;
 use App\Models\Site;
@@ -1285,6 +1288,11 @@ Route::match(['get', 'post'], '/email/unsubscribe/{user}', EmailUnsubscribeContr
     ->middleware('throttle:30,1')
     ->name('email.unsubscribe');
 
+Route::match(['get', 'post'], '/email/weekly-new-sites/{token}', WeeklyNewSitesMailController::class)
+    ->where('token', '[A-Za-z0-9]+')
+    ->middleware('throttle:60,1')
+    ->name('weekly-new-sites.action');
+
 // Resend verification email (requires login — leftover sessions only)
 Route::post('/email/verification-notification', [EmailVerificationController::class, 'send'])
     ->middleware(['auth', 'throttle:email-verify-send'])
@@ -1761,6 +1769,14 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
         Route::post('/emails/dismiss', [AdminEmailCenterController::class, 'dismissFailed'])->name('emails.dismiss');
         Route::post('/emails/settings', [AdminEmailCenterController::class, 'updateSettings'])->name('emails.settings');
 
+        Route::get('/weekly-new-sites', [AdminWeeklyNewSitesDigestController::class, 'index'])->name('weekly-new-sites.index');
+        Route::post('/weekly-new-sites/toggle', [AdminWeeklyNewSitesDigestController::class, 'toggle'])
+            ->name('weekly-new-sites.toggle');
+        Route::post('/weekly-new-sites/dry-run', [AdminWeeklyNewSitesDigestController::class, 'dryRun'])
+            ->name('weekly-new-sites.dry-run');
+        Route::get('/weekly-new-sites/preview', [AdminWeeklyNewSitesDigestController::class, 'preview'])
+            ->name('weekly-new-sites.preview');
+
         Route::post('/promotions/welcome-bonus', [AdminWelcomeBonusSettingController::class, 'toggle'])
             ->name('promotions.welcome-bonus.toggle');
         Route::post('/promotions/welcome-bonus/amount', [AdminWelcomeBonusSettingController::class, 'updateAmount'])
@@ -1961,6 +1977,9 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
     ->group(function () {
 
         Route::get('/dashboard', [AdvertiserDashboardController::class, 'index'])->name('dashboard');
+
+        Route::get('/new-site-digest', [WeeklyNewSitesPreferenceController::class, 'edit'])->name('weekly-new-sites.edit');
+        Route::post('/new-site-digest', [WeeklyNewSitesPreferenceController::class, 'update'])->name('weekly-new-sites.update');
 
         Route::get('/api', [ApiSettingsController::class, 'index'])->name('api.index');
         Route::post('/api/tokens', [ApiSettingsController::class, 'store'])

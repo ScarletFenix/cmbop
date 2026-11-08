@@ -61,7 +61,12 @@
                 </div>
                 <div class="d-flex justify-content-between align-items-center mt-4">
                     <a href="{{ route('profile') }}" class="btn btn-outline-secondary btn-sm">Back to profile</a>
-                    <button type="submit" class="btn btn-primary btn-sm">Save preferences</button>
+                    <div class="d-flex gap-2">
+                        @if(auth()->user()?->hasRole('advertiser') && \Illuminate\Support\Facades\Route::has('advertiser.weekly-new-sites.edit'))
+                            <a href="{{ route('advertiser.weekly-new-sites.edit') }}" class="btn btn-outline-secondary btn-sm">New-site digest pairs</a>
+                        @endif
+                        <button type="submit" class="btn btn-primary btn-sm">Save preferences</button>
+                    </div>
                 </div>
             </div>
         </div>

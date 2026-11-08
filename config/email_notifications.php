@@ -76,6 +76,7 @@ use App\Mail\SpendBudgetAlertMail;
 use App\Mail\TrustpilotReviewRequest;
 use App\Mail\WebsiteSuggestionReviewed;
 use App\Mail\WeeklyActivitySummary;
+use App\Mail\WeeklyNewSitesDigestMail;
 use App\Mail\WelcomeEmail;
 use App\Mail\WithdrawalRequestedConfirmation;
 use App\Mail\WithdrawalRequestNotification;
@@ -164,6 +165,7 @@ return [
         'chat_emails' => ['label' => 'Chat Emails', 'default' => true],
         'marketing_emails' => ['label' => 'Marketing Emails', 'default' => true],
         'weekly_summary' => ['label' => 'Weekly Activity Summary', 'default' => true],
+        'weekly_new_sites' => ['label' => 'Weekly new-site digest', 'default' => true],
         'monthly_summary' => ['label' => 'Monthly Spending Summary', 'default' => true],
         'review_requests' => ['label' => 'Review Requests', 'default' => true],
         'system_updates' => ['label' => 'System Updates', 'default' => true],
@@ -767,6 +769,13 @@ return [
             'audience' => 'advertiser',
             'preference' => 'marketing_emails',
             'mailable' => NewSitesDigest::class,
+            'default_enabled' => true,
+        ],
+        'weekly_new_sites' => [
+            'name' => 'Weekly new-site digest',
+            'audience' => 'advertiser',
+            'preference' => 'weekly_new_sites',
+            'mailable' => WeeklyNewSitesDigestMail::class,
             'default_enabled' => true,
         ],
         'weekly_activity_summary' => [

@@ -68,6 +68,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // Gmail List-Unsubscribe=One-Click POSTs have no CSRF token.
         $middleware->validateCsrfTokens(except: [
             'email/unsubscribe/*',
+            'email/weekly-new-sites/*',
             'oauth/token',
             'oauth/register',
             'oauth/revoke',
@@ -305,6 +306,18 @@ return Application::configure(basePath: dirname(__DIR__))
         // New and discounted listings for advertisers who have bought before.
         // Daily run, per-recipient 15-day clock inside the command.
         $mutex($schedule->command('sites:send-new-sites-digest')->dailyAt('10:15'));
+
+        // Personalised weekly new-site digest (niche+country pairs).
+        // Monday 10:00 Asia/Karachi (PKT UTC+5, no DST) = Monday 05:00 UTC.
+        $mutex(
+            $schedule->command('emails:send-weekly-new-sites-digest')
+                ->weeklyOn(
+                    (int) config('weekly_new_sites_digest.weekday', 1),
+                    (string) config('weekly_new_sites_digest.time', '10:00')
+                )
+                ->timezone((string) config('weekly_new_sites_digest.timezone', 'Asia/Karachi')),
+            180
+        );
 
         // Content upload: release scheduled orders + 24h reminders; purge expired files
         $mutex($schedule->command('orders:release-scheduled')->everyFiveMinutes(), 10);
