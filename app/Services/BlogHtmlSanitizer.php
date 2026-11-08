@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Support\BlogInlineImages;
+use App\Support\PublicImageDimensions;
 
 /**
  * Sanitize stored blog HTML (Quill editor output) before it is rendered.
@@ -171,7 +172,44 @@ class BlogHtmlSanitizer
                     return '';
                 }
 
-                return '<img src="'.e($src).'" alt="'.e($this->attribute($m[1], 'alt')).'">';
+                $width = null;
+                $height = null;
+                if (class_exists(PublicImageDimensions::class)
+                    && method_exists(PublicImageDimensions::class, 'forUrl')) {
+                    try {
+                        $local = PublicImageDimensions::forUrl($src);
+                        if (is_array($local)) {
+                            $width = $local['width'] ?? null;
+                            $height = $local['height'] ?? null;
+                        }
+                    } catch (\Throwable) {
+                    }
+                }
+                if (! is_int($width) || ! is_int($height) || $width < 1 || $height < 1) {
+                    $width = $this->integerAttribute($m[1], 'width');
+                    $height = $this->integerAttribute($m[1], 'height');
+                    if ($width === null || $height === null) {
+                        $width = null;
+                        $height = null;
+                    }
+                }
+
+                $loading = strtolower($this->attribute($m[1], 'loading'));
+                if (! in_array($loading, ['lazy', 'eager'], true)) {
+                    $loading = 'lazy';
+                }
+                $decoding = strtolower($this->attribute($m[1], 'decoding'));
+                if (! in_array($decoding, ['async', 'sync', 'auto'], true)) {
+                    $decoding = 'async';
+                }
+
+                $tag = '<img src="'.e($src).'" alt="'.e($this->attribute($m[1], 'alt')).'"';
+                if (is_int($width) && is_int($height)) {
+                    $tag .= ' width="'.$width.'" height="'.$height.'"';
+                }
+                $tag .= ' loading="'.e($loading).'" decoding="'.e($decoding).'">';
+
+                return $tag;
             },
             $html
         ) ?? $html;
@@ -219,6 +257,18 @@ class BlogHtmlSanitizer
         }
 
         return trim(html_entity_decode($m[2], ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+    }
+
+    private function integerAttribute(string $attrs, string $name): ?int
+    {
+        $raw = $this->attribute($attrs, $name);
+        if ($raw === '' || preg_match('/^\d+$/', $raw) !== 1) {
+            return null;
+        }
+
+        $value = (int) $raw;
+
+        return ($value >= 1 && $value <= 8192) ? $value : null;
     }
 
     /**

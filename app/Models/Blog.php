@@ -8,6 +8,7 @@ use App\Models\Concerns\ToleratesMissingSchema;
 use App\Models\Concerns\ToleratesUnparseableDates;
 use App\Support\BrandPerson;
 use App\Support\PublicI18n;
+use App\Support\PublicImageDimensions;
 use App\Support\ThinBlogRedirects;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -376,11 +377,42 @@ class Blog extends Model
      */
     public function publicFeaturedImageUrl(): ?string
     {
-        $relative = $this->featuredImageUrl();
+        if ($this->publicFeaturedDiskPath() === null) {
+            return null;
+        }
+
+        return $this->featuredImageUrl();
+    }
+
+    /**
+     * Intrinsic pixel size of the on-disk featured file. Never HTTP; omit when unknown.
+     *
+     * @return array{width: int, height: int}|null
+     */
+    public function publicFeaturedImageDimensions(): ?array
+    {
+        if (! class_exists(PublicImageDimensions::class)
+            || ! method_exists(PublicImageDimensions::class, 'forPublicDiskPath')) {
+            return null;
+        }
+
+        $relative = $this->publicFeaturedDiskPath();
         if ($relative === null) {
             return null;
         }
 
+        try {
+            return PublicImageDimensions::forPublicDiskPath($relative);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * Public-disk relative path (blogs/featured|content/…) when the file exists.
+     */
+    public function publicFeaturedDiskPath(): ?string
+    {
         $path = $this->featured_image;
         if (! is_string($path) || trim($path) === '') {
             return null;
@@ -410,7 +442,7 @@ class Blog extends Model
             }
         }
 
-        if ($normalized === '') {
+        if ($normalized === '' || str_contains($normalized, '..')) {
             return null;
         }
 
@@ -422,7 +454,7 @@ class Blog extends Model
             return null;
         }
 
-        return $relative;
+        return $normalized;
     }
 
     /**

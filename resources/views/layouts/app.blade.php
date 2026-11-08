@@ -45,6 +45,14 @@
         $pageImageType = str_ends_with($pageImagePath, '.jpg') || str_ends_with($pageImagePath, '.jpeg')
             ? 'image/jpeg'
             : 'image/png';
+        $pageImageWidth = trim($__env->yieldContent('og_image_width'));
+        $pageImageHeight = trim($__env->yieldContent('og_image_height'));
+        if ($pageImageWidth === '' || preg_match('/^\d+$/', $pageImageWidth) !== 1 || (int) $pageImageWidth < 1) {
+            $pageImageWidth = '1200';
+        }
+        if ($pageImageHeight === '' || preg_match('/^\d+$/', $pageImageHeight) !== 1 || (int) $pageImageHeight < 1) {
+            $pageImageHeight = '630';
+        }
         $pageImageAlt = html_entity_decode(
             trim($__env->yieldContent('og_image_alt')) ?: 'SEOLinkBuildings — Guest post & backlink marketplace',
             ENT_QUOTES | ENT_HTML5,
@@ -156,8 +164,8 @@
     <meta property="og:url" content="{{ $pageCanonical }}">
     <meta property="og:image" content="{{ $pageImage }}">
     <meta property="og:image:type" content="{{ $pageImageType }}">
-    <meta property="og:image:width" content="1200">
-    <meta property="og:image:height" content="630">
+    <meta property="og:image:width" content="{{ $pageImageWidth }}">
+    <meta property="og:image:height" content="{{ $pageImageHeight }}">
     <meta property="og:image:alt" content="{{ $pageImageAlt }}">
     <meta property="og:logo" content="{{ $pageLogo }}">
     <meta name="twitter:card" content="summary_large_image">
