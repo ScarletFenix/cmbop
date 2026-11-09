@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Support\BrandOrganization;
 use App\Support\CommercialPageCluster;
 use App\Support\EnglishCommercialLanders;
+use App\Support\MoneyLanderRoutes;
 use App\Support\PublicI18n;
 use App\Support\ViewerCountry;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -92,14 +93,39 @@ class AiVisibilityOnsiteFixesTest extends TestCase
 
     public function test_english_commercial_aliases_redirect(): void
     {
-        $this->get('/agencies')->assertRedirect('/for-agencies');
-        $this->assertSame(301, $this->get('/agencies')->status());
+        $this->assertTrue(MoneyLanderRoutes::englishOwnsUnprefixed('advertorial'));
+        $this->assertFalse(MoneyLanderRoutes::englishOwnsUnprefixed('gastbeitrag-kaufen'));
+
+        foreach (EnglishCommercialLanders::aliases() as $alias => $canonical) {
+            $this->get('/'.$alias)->assertRedirect($canonical);
+            $this->assertSame(301, $this->get('/'.$alias)->status(), $alias);
+            $this->assertSame(1, self::getRouteCount($alias), 'duplicate GET /'.$alias.' (route-cache last-route-wins)');
+        }
+
+        $this->get('/advertorial')->assertRedirect('/sponsored-articles');
+        $this->assertSame(301, $this->get('/advertorial')->status());
         $this->get('/advertorials')->assertRedirect('/sponsored-articles');
+        $this->get('/sponsored-posts')->assertRedirect('/sponsored-articles');
+        $this->get('/agencies')->assertRedirect('/for-agencies');
         $this->get('/marketplace-alternatives')->assertRedirect('/alternatives');
         $this->get('/de/agencies')->assertRedirect('/agencies');
         $this->get('/de/advertorial')->assertOk();
         $this->get('/at/advertorial')->assertOk();
         $this->get('/ch/advertorial')->assertOk();
+        $this->assertSame(1, self::getRouteCount('de/advertorial'));
+    }
+
+    public function test_deploy_workflow_removes_stale_public_llms_txt(): void
+    {
+        $yml = (string) file_get_contents(base_path('.github/workflows/deploy.yml'));
+        $rsyncPos = strpos($yml, '"$APP_DIR/public/" "$PUBLIC_DIR/"');
+        $rmPos = strpos($yml, 'rm -f "$PUBLIC_DIR/llms.txt"');
+        $this->assertNotFalse($rsyncPos);
+        $this->assertNotFalse($rmPos);
+        $this->assertGreaterThan($rsyncPos, $rmPos);
+        $this->assertStringNotContainsString('rm -rf "$PUBLIC_DIR"', $yml);
+        $this->assertStringNotContainsString('rm -f "$PUBLIC_DIR/default.php"', $yml);
+        $this->assertFileDoesNotExist(public_path('llms.txt'));
     }
 
     public function test_agency_cluster_pairs_english_with_locale_twins(): void
@@ -226,5 +252,22 @@ class AiVisibilityOnsiteFixesTest extends TestCase
         $html = $this->get('/is-seolinkbuildings-safe')->assertOk()->getContent();
         $this->assertStringContainsString('<title>Is SEOLinkBuildings safe? Verified publishers, held payments</title>', $html);
         $this->assertStringNotContainsString('honest answers</title>', $html);
+    }
+
+    private static function getRouteCount(string $uri): int
+    {
+        $uri = trim($uri, '/');
+        $count = 0;
+        foreach (app('router')->getRoutes() as $route) {
+            if ($route->uri() !== $uri) {
+                continue;
+            }
+            if (! in_array('GET', $route->methods(), true)) {
+                continue;
+            }
+            $count++;
+        }
+
+        return $count;
     }
 }

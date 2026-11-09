@@ -527,12 +527,17 @@ if ($italianMoneySlugs !== [] && method_exists(MarketingPageController::class, '
     });
 
     foreach ($italianMoneySlugs as $slug) {
-        Route::get('/'.$slug, function () use ($slug) {
-            $query = request()->getQueryString();
-            $target = '/it/'.$slug;
+        $englishOwnsSlug = class_exists(MoneyLanderRoutes::class)
+            && method_exists(MoneyLanderRoutes::class, 'englishOwnsUnprefixed')
+            && MoneyLanderRoutes::englishOwnsUnprefixed($slug);
+        if (! $englishOwnsSlug) {
+            Route::get('/'.$slug, function () use ($slug) {
+                $query = request()->getQueryString();
+                $target = '/it/'.$slug;
 
-            return Redirect::to($query ? $target.'?'.$query : $target, 301);
-        });
+                return Redirect::to($query ? $target.'?'.$query : $target, 301);
+            });
+        }
 
         foreach ($prefixedLocales as $locale) {
             if ($locale === 'it') {
@@ -686,7 +691,10 @@ if ($germanMoneySlugs !== [] && method_exists(MarketingPageController::class, 'g
     foreach ($germanMoneySlugs as $slug) {
         $italianOwnsSlug = class_exists(ItalianMoneyLanders::class)
             && ItalianMoneyLanders::isSlug($slug);
-        if (! $italianOwnsSlug) {
+        $englishOwnsSlug = class_exists(MoneyLanderRoutes::class)
+            && method_exists(MoneyLanderRoutes::class, 'englishOwnsUnprefixed')
+            && MoneyLanderRoutes::englishOwnsUnprefixed($slug);
+        if (! $italianOwnsSlug && ! $englishOwnsSlug) {
             Route::get('/'.$slug, function () use ($slug) {
                 $query = request()->getQueryString();
                 $target = '/de/'.$slug;
@@ -759,7 +767,10 @@ if ($germanMoneyAliases !== []) {
         });
         $italianOwnsFrom = class_exists(ItalianMoneyLanders::class)
             && ItalianMoneyLanders::isPublicSegment($from);
-        if (! $italianOwnsFrom) {
+        $englishOwnsFrom = class_exists(MoneyLanderRoutes::class)
+            && method_exists(MoneyLanderRoutes::class, 'englishOwnsUnprefixed')
+            && MoneyLanderRoutes::englishOwnsUnprefixed($from);
+        if (! $italianOwnsFrom && ! $englishOwnsFrom) {
             Route::get('/'.$from, function () use ($to) {
                 $query = request()->getQueryString();
 
@@ -890,7 +901,10 @@ if ($portugueseMoneySlugs !== [] && method_exists(MarketingPageController::class
             && SwissMoneyLanders::isSlug($slug);
         $spanishOwnsSlug = class_exists(SpanishMoneyLanders::class)
             && SpanishMoneyLanders::isSlug($slug);
-        if ($italianOwnsSlug || $germanOwnsSlug || $austrianOwnsSlug || $swissOwnsSlug || $spanishOwnsSlug) {
+        $englishOwnsSlug = class_exists(MoneyLanderRoutes::class)
+            && method_exists(MoneyLanderRoutes::class, 'englishOwnsUnprefixed')
+            && MoneyLanderRoutes::englishOwnsUnprefixed($slug);
+        if ($italianOwnsSlug || $germanOwnsSlug || $austrianOwnsSlug || $swissOwnsSlug || $spanishOwnsSlug || $englishOwnsSlug) {
             continue;
         }
 
@@ -970,7 +984,10 @@ if ($romanianMoneySlugs !== [] && method_exists(MarketingPageController::class, 
             || (class_exists(SpanishMoneyLanders::class) && SpanishMoneyLanders::isSlug($slug))
             || (class_exists(DutchMoneyLanders::class) && DutchMoneyLanders::isSlug($slug))
             || (class_exists(FrenchMoneyLanders::class) && FrenchMoneyLanders::isSlug($slug));
-        if ($ownedElsewhere) {
+        $englishOwnsSlug = class_exists(MoneyLanderRoutes::class)
+            && method_exists(MoneyLanderRoutes::class, 'englishOwnsUnprefixed')
+            && MoneyLanderRoutes::englishOwnsUnprefixed($slug);
+        if ($ownedElsewhere || $englishOwnsSlug) {
             continue;
         }
 

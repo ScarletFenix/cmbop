@@ -58,12 +58,14 @@ class MoneyLanderRoutes
                 continue;
             }
 
-            Route::get('/'.$slug, function () use ($locale, $slug) {
-                $query = request()->getQueryString();
-                $target = '/'.$locale.'/'.$slug;
+            if (! self::englishOwnsUnprefixed($slug)) {
+                Route::get('/'.$slug, function () use ($locale, $slug) {
+                    $query = request()->getQueryString();
+                    $target = '/'.$locale.'/'.$slug;
 
-                return Redirect::to($query ? $target.'?'.$query : $target, 301);
-            });
+                    return Redirect::to($query ? $target.'?'.$query : $target, 301);
+                });
+            }
 
             foreach ($prefixedLocales as $other) {
                 if ($other === $locale) {
@@ -91,5 +93,38 @@ class MoneyLanderRoutes
                 return Redirect::to($query ? $to.'?'.$query : $to, 301);
             });
         }
+    }
+
+    /**
+     * English commercial landers (and their aliases) keep the unprefixed URL.
+     * Locale unique-slug 301s must not steal GET /advertorial after those
+     * aliases — artisan optimize last-route-wins would send it to /de/advertorial.
+     */
+    public static function englishOwnsUnprefixed(string $segment): bool
+    {
+        $segment = trim($segment, '/');
+        if ($segment === '') {
+            return false;
+        }
+        if (! class_exists(EnglishCommercialLanders::class)) {
+            return false;
+        }
+
+        try {
+            if (method_exists(EnglishCommercialLanders::class, 'isSlug')
+                && EnglishCommercialLanders::isSlug($segment)) {
+                return true;
+            }
+            if (method_exists(EnglishCommercialLanders::class, 'aliases')) {
+                $aliases = EnglishCommercialLanders::aliases();
+                if (is_array($aliases) && array_key_exists($segment, $aliases)) {
+                    return true;
+                }
+            }
+        } catch (Throwable) {
+            return false;
+        }
+
+        return false;
     }
 }

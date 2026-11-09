@@ -155,6 +155,10 @@ jobs:
             --exclude='index.php' \
             "$APP_DIR/public/" "$PUBLIC_DIR/"
 
+          # rsync does not delete untracked leftovers. A static public_html/llms.txt
+          # shadows GET /llms.txt (RewriteCond %{REQUEST_FILENAME} !-f).
+          rm -f "$PUBLIC_DIR/llms.txt"
+
           echo "Checking production files..."
 
           test -f "$APP_DIR/.env"
