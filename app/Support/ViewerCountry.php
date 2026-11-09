@@ -97,6 +97,10 @@ class ViewerCountry
             }
         }
 
+        if ($this->isPublicCrawler($request) && ! Auth::check()) {
+            return 'EUR';
+        }
+
         $preference = app(DisplayCurrencyPreference::class);
         $preferred = $preference->preferred($request);
         if ($preferred !== null) {
@@ -146,6 +150,36 @@ class ViewerCountry
     private function allowsLocalOverride(): bool
     {
         return app()->environment(['local', 'testing']);
+    }
+
+    /**
+     * Search and preview crawlers should see the canonical EUR public price,
+     * not a geo-switched USD/GBP snapshot. Logged-in display currency is unchanged.
+     */
+    public function isPublicCrawler(?Request $request = null): bool
+    {
+        $request ??= request();
+        if (! $request instanceof Request) {
+            return false;
+        }
+
+        $ua = strtolower(trim((string) $request->userAgent()));
+        if ($ua === '') {
+            return false;
+        }
+
+        foreach ([
+            'googlebot', 'bingbot', 'slurp', 'duckduckbot', 'yandex', 'baiduspider',
+            'facebookexternalhit', 'linkedinbot', 'twitterbot', 'gptbot', 'claudebot',
+            'perplexitybot', 'bytespider', 'ccbot', 'applebot', 'semrush', 'ahrefs',
+            'dotbot', 'petalbot', 'ia_archiver', 'oai-searchbot', 'chatgpt-user',
+        ] as $marker) {
+            if (str_contains($ua, $marker)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function headerCountry(Request $request): ?string

@@ -11,7 +11,6 @@
     $stats = $stats ?? [
         'sites' => null,
         'countries' => null,
-        'completed_orders' => null,
         'verified_sites' => null,
         'rated_sites' => null,
     ];
@@ -43,7 +42,6 @@
 
     $hasNumericProof = ($stats['sites'] ?? null)
         || ($stats['countries'] ?? null)
-        || ($stats['completed_orders'] ?? null)
         || ($stats['verified_sites'] ?? null)
         || ($stats['rated_sites'] ?? null);
 @endphp
@@ -197,14 +195,6 @@
                     </div>
                 </li>
             @endif
-            @if(!empty($stats['completed_orders']))
-                <li class="col-sm-6 col-lg-4">
-                    <div class="about-proof-item">
-                        <span class="about-proof-value">{{ number_format($stats['completed_orders']) }}</span>
-                        <span class="about-proof-label">{{ __('messages.about_page_proof_orders') }}</span>
-                    </div>
-                </li>
-            @endif
             <li class="col-sm-6 col-lg-4">
                 <div class="about-proof-item about-proof-item--text">
                     <span class="about-proof-label">{{ __('messages.about_page_proof_wallet') }}</span>
@@ -245,6 +235,15 @@
             <a href="{{ localized_url('marketplace') }}" class="btn btn-outline-secondary btn-lg px-4">{{ __('messages.about_page_cta_marketplace') }}</a>
             <a href="{{ localized_url('become-a-publisher') }}" class="btn btn-outline-secondary btn-lg px-4">{{ __('messages.about_page_cta_publisher') }}</a>
         </div>
+        @if(function_exists('public_locale') && in_array(public_locale(), ['en', 'us'], true))
+            <p class="small mt-3 mb-0">
+                <a href="{{ url('/for-agencies') }}">For agencies</a>
+                · <a href="{{ url('/sponsored-articles') }}">Sponsored articles</a>
+                · <a href="{{ url('/alternatives') }}">How we differ</a>
+                · <a href="{{ url('/guest-post-prices-europe') }}">EU guest-post price index</a>
+                · <a href="{{ localized_url('why-choose-us') }}">{{ __('messages.why_choose_title') }}</a>
+            </p>
+        @endif
     </section>
 
     {{-- FAQ --}}

@@ -7,6 +7,16 @@
         'has_index' => false,
     ];
     $canonical = url('/guest-post-prices-europe');
+    $csvUrl = url('/guest-post-prices-europe.csv');
+    $asOfRaw = is_string($index['generated_at'] ?? null) ? $index['generated_at'] : null;
+    $asOfLabel = null;
+    if ($asOfRaw) {
+        try {
+            $asOfLabel = \Illuminate\Support\Carbon::parse($asOfRaw)->utc()->toDayDateTimeString().' UTC';
+        } catch (\Throwable) {
+            $asOfLabel = $asOfRaw;
+        }
+    }
     $metaTitle = 'Guest Post Prices in Europe — Median by Country | SEOLinkBuildings';
     $metaDescription = 'Median guest post prices in Europe by publisher country, calculated from the live SEOLinkBuildings catalog. Advertiser checkout prices — not quotes or bids.';
     $faqs = [
@@ -69,6 +79,12 @@
         : ['@type' => 'Organization', 'name' => 'SEOLinkBuildings'],
     'isAccessibleForFree' => true,
     'license' => url('/terms-of-services'),
+    'dateModified' => $asOfRaw,
+    'distribution' => [
+        '@type' => 'DataDownload',
+        'encodingFormat' => 'text/csv',
+        'contentUrl' => $csvUrl,
+    ],
     'spatialCoverage' => [
         '@type' => 'Place',
         'name' => 'Europe',
@@ -114,13 +130,22 @@
         ],
     ])
 
+    <p class="text-muted mb-4" data-price-index-as-of>
+        @if($asOfLabel)
+            Data as of {{ $asOfLabel }} — live catalog medians, cached briefly, not a historical archive.
+        @else
+            Data as of the live catalog. A dated stamp appears once enough European listings exist to compute a median.
+        @endif
+        <a href="{{ $csvUrl }}">Download CSV</a> of the same public country figures.
+    </p>
+
     @if(!empty($index['has_index']))
         <div class="row g-3 mb-5">
             @if($index['europe']['median'] !== null)
                 <div class="col-md-6">
                     <div class="h-100 p-4 rounded-4 bg-white border">
                         <div class="small text-muted mb-1" data-price-index-kpi="europe-median">Europe median</div>
-                        <div class="h3 mb-0" style="color:#1a585e;">{{ format_money($index['europe']['median'], ['decimals' => 0]) }}</div>
+                        <div class="h3 mb-0" style="color:#1a585e;">{{ format_money_amount($index['europe']['median'], 'EUR', ['decimals' => 0]) }}</div>
                         <p class="small text-muted mb-0 mt-2">Median advertiser checkout price across {{ number_format((int) $index['europe']['listings']) }} European catalog listings.</p>
                     </div>
                 </div>
@@ -164,7 +189,7 @@
                                     {{ $row['name'] }}
                                 @endif
                             </td>
-                            <td class="fw-semibold" style="color:#1a585e;">{{ format_money($row['median'], ['decimals' => 0]) }}</td>
+                            <td class="fw-semibold" style="color:#1a585e;">{{ format_money_amount($row['median'], 'EUR', ['decimals' => 0]) }}</td>
                             <td>{{ number_format((int) $row['listings']) }}</td>
                         </tr>
                     @endforeach

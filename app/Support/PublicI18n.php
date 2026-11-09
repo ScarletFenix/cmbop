@@ -226,6 +226,12 @@ class PublicI18n
         }
 
         $locales = [];
+        if (class_exists(CommercialPageCluster::class) && method_exists(CommercialPageCluster::class, 'locales')) {
+            try {
+                $locales = array_merge($locales, CommercialPageCluster::locales($slug));
+            } catch (\Throwable) {
+            }
+        }
         if (class_exists(MoneyLanderCatalog::class) && method_exists(MoneyLanderCatalog::class, 'classes')) {
             foreach (MoneyLanderCatalog::classes() as $locale => $class) {
                 if (! is_string($locale) || ! is_string($class)) {
@@ -267,7 +273,7 @@ class PublicI18n
             $locales[] = 'nl';
         }
 
-        return $locales;
+        return array_values(array_unique($locales));
     }
 
     public static function moneyLanderXDefault(string $slug): string
@@ -346,9 +352,20 @@ class PublicI18n
      */
     public static function moneyLanderPathByLocale(string $slug): array
     {
+        $slug = trim($slug, '/');
+        if ($slug !== '' && class_exists(CommercialPageCluster::class) && method_exists(CommercialPageCluster::class, 'pathByLocale')) {
+            try {
+                $cluster = CommercialPageCluster::pathByLocale($slug);
+                if ($cluster !== []) {
+                    return $cluster;
+                }
+            } catch (\Throwable) {
+            }
+        }
+
         $paths = [];
         foreach (self::moneyLanderLocales($slug) as $locale) {
-            $paths[$locale] = trim($slug, '/');
+            $paths[$locale] = $slug;
         }
 
         return $paths;
@@ -362,7 +379,22 @@ class PublicI18n
             return null;
         }
 
-        return url('/'.$locale.'/'.$slug);
+        if (class_exists(CommercialPageCluster::class) && method_exists(CommercialPageCluster::class, 'urlForLocale')) {
+            try {
+                $clusterUrl = CommercialPageCluster::urlForLocale($slug, $locale);
+                if (is_string($clusterUrl) && $clusterUrl !== '') {
+                    return $clusterUrl;
+                }
+            } catch (\Throwable) {
+            }
+        }
+
+        $path = self::moneyLanderPathByLocale($slug)[$locale] ?? $slug;
+        if ($locale === self::default()) {
+            return url('/'.$path);
+        }
+
+        return url('/'.$locale.'/'.$path);
     }
 
     /**
@@ -690,8 +722,14 @@ class PublicI18n
             $path = LocalizedPublicPath::canonicalize($path);
         }
 
-        if (self::isEnglishOnlyPath($request)
-            || (method_exists(self::class, 'isEnglishOnlyMarketingPath') && self::isEnglishOnlyMarketingPath($request))) {
+        $switchFirst = $path === '' ? '' : explode('/', $path, 2)[0];
+        $clusterOwned = $switchFirst !== ''
+            && class_exists(CommercialPageCluster::class)
+            && method_exists(CommercialPageCluster::class, 'owns')
+            && CommercialPageCluster::owns($switchFirst);
+
+        if (! $clusterOwned && (self::isEnglishOnlyPath($request)
+            || (method_exists(self::class, 'isEnglishOnlyMarketingPath') && self::isEnglishOnlyMarketingPath($request)))) {
             if (method_exists(self::class, 'isEnglishOnlyMarketingPath')
                 && self::isEnglishOnlyMarketingPath($request)
                 && self::isDefaultEnglish($targetLocale)) {
@@ -933,18 +971,10 @@ class PublicI18n
         }
 
         $first = $path === '' ? '' : explode('/', $path, 2)[0];
-        if ($locales === null && $first !== ''
-            && method_exists(self::class, 'englishOnlyMarketingSlugs')
-            && in_array($first, self::englishOnlyMarketingSlugs(), true)) {
-            $locales = [self::default()];
-            $xDefaultLocale = self::default();
-        }
         if ($first !== '' && method_exists(self::class, 'moneyLanderLocales')) {
             $moneyLocales = self::moneyLanderLocales($first);
             if ($moneyLocales !== []) {
-                if ($locales === null) {
-                    $locales = $moneyLocales;
-                }
+                $locales = $moneyLocales;
                 if ($xDefaultLocale === null && method_exists(self::class, 'moneyLanderXDefault')) {
                     $xDefaultLocale = self::moneyLanderXDefault($first);
                 }
@@ -955,6 +985,12 @@ class PublicI18n
                     );
                 }
             }
+        }
+        if ($locales === null && $first !== ''
+            && method_exists(self::class, 'englishOnlyMarketingSlugs')
+            && in_array($first, self::englishOnlyMarketingSlugs(), true)) {
+            $locales = [self::default()];
+            $xDefaultLocale = self::default();
         }
         if ($locales === null && $first !== ''
             && class_exists(ItalianMoneyLanders::class)

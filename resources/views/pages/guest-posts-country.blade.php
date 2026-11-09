@@ -186,6 +186,10 @@
     <p class="text-center small mt-2 mb-0">
         Europe-wide medians:
         <a href="{{ url('/guest-post-prices-europe') }}">EU guest-post price index</a>
+        · <a href="{{ url('/for-agencies') }}">For agencies</a>
+        · <a href="{{ url('/sponsored-articles') }}">Sponsored articles</a>
+        · <a href="{{ url('/alternatives') }}">How we differ</a>
+        · <a href="{{ localized_url('marketplace') }}">{{ __('messages.nav_marketplace') }}</a>
     </p>
 
     @if(view()->exists('components.country-lander-nav'))

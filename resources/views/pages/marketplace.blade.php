@@ -41,6 +41,35 @@
         @endforeach
     </div>
 
+    @if(function_exists('public_locale') && in_array(public_locale(), ['en', 'us'], true))
+        <section class="mb-5" aria-labelledby="marketplace-europe-heading">
+            <h2 id="marketplace-europe-heading" class="h4 mb-3" style="color:#1a585e;">Who this marketplace is for</h2>
+            <p class="text-muted">Advertisers and agencies buying editorial guest posts, sponsored articles, and backlinks on verified publisher sites. Publishers listing approved inventory. SEOLinkBuildings is a two-sided catalog with EUR wallet checkout — not a closed “package of links” and not a branded reseller portal.</p>
+            <p class="text-muted mb-0">How ordering works: register, fund a euro wallet, pick listings, send the brief, and track the live URL on the order. Funds are held before the publisher starts. Completed placements can be reported for 30 days if the live link is removed. Country medians: <a href="{{ url('/guest-post-prices-europe') }}">EU guest-post price index</a>. Workflow: <a href="{{ localized_url('how-it-works') }}">how it works</a>.</p>
+        </section>
+        <section class="mb-5" aria-labelledby="marketplace-commercial-heading">
+            <h2 id="marketplace-commercial-heading" class="h4 mb-3" style="color:#1a585e;">Agencies, sponsored articles, and how we differ</h2>
+            <p class="text-muted mb-2">
+                <a href="{{ url('/for-agencies') }}">Link building for agencies</a>
+                · <a href="{{ url('/sponsored-articles') }}">Sponsored articles and advertorials</a>
+                · <a href="{{ url('/alternatives') }}">How we differ</a>
+                · <a href="{{ localized_url('why-choose-us') }}">Why choose us</a>
+                · <a href="{{ localized_url('pricing') }}">Pricing</a>
+            </p>
+            <p class="small mb-0">
+                <a href="{{ url('/guest-posts-germany') }}">Germany</a>
+                · <a href="{{ url('/guest-posts-uk') }}">UK</a>
+                · <a href="{{ url('/guest-posts-france') }}">France</a>
+                · <a href="{{ url('/guest-posts-netherlands') }}">Netherlands</a>
+                · <a href="{{ url('/guest-posts-spain') }}">Spain</a>
+                · <a href="{{ url('/guest-posts-italy') }}">Italy</a>
+                · <a href="{{ url('/guest-posts-poland') }}">Poland</a>
+                · <a href="{{ url('/guest-posts-denmark') }}">Denmark</a>
+                · <a href="{{ url('/guest-posts-sweden') }}">Sweden</a>
+                · <a href="{{ url('/guest-posts-norway') }}">Norway</a>
+            </p>
+        </section>
+    @endif
     <div class="text-center mt-4 d-flex flex-wrap justify-content-center gap-2">
         <a href="{{ url('/register') }}" class="btn btn-primary btn-lg px-4">{{ __('messages.get_started') }}</a>
         <a href="{{ localized_url('become-a-publisher') }}" class="btn btn-outline-secondary btn-lg px-4">{{ __('messages.nav_become_publisher') }}</a>

@@ -45,6 +45,9 @@ class RobotsTxt
             '/how-it-works',
             '/guest-post-prices-europe',
             '/is-seolinkbuildings-safe',
+            '/for-agencies',
+            '/sponsored-articles',
+            '/alternatives',
         ];
 
         if (class_exists(CountryLander::class)) {

@@ -125,6 +125,7 @@ use App\Support\AustrianMoneyLanders;
 use App\Support\BrandPerson;
 use App\Support\CountryLander;
 use App\Support\DutchMoneyLanders;
+use App\Support\EnglishCommercialLanders;
 use App\Support\EnglishOnlyMarketingSlugs;
 use App\Support\FrenchMoneyLanders;
 use App\Support\GermanMoneyLanders;
@@ -348,6 +349,31 @@ $registerEnglishOnlyMarketingRoutes = function () {
     Route::get('/is-seolinkbuildings-safe', [MarketingPageController::class, 'isItSafe'])->name('is-it-safe');
     Route::get('/guest-post-prices-europe', [MarketingPageController::class, 'europePriceIndex'])
         ->name('guest-post-prices-europe');
+    Route::get('/guest-post-prices-europe.csv', [MarketingPageController::class, 'europePriceIndexCsv'])
+        ->name('guest-post-prices-europe.csv');
+
+    $englishCommercial = class_exists(EnglishCommercialLanders::class) ? EnglishCommercialLanders::slugs() : [];
+    foreach ($englishCommercial as $commercialSlug) {
+        Route::get('/'.$commercialSlug, [MarketingPageController::class, 'englishCommercialLander'])
+            ->defaults('slug', $commercialSlug)
+            ->name('english-commercial.'.$commercialSlug);
+    }
+    $englishAliases = class_exists(EnglishCommercialLanders::class)
+        && method_exists(EnglishCommercialLanders::class, 'aliases')
+            ? EnglishCommercialLanders::aliases()
+            : [];
+    foreach ($englishAliases as $alias => $canonical) {
+        $alias = trim((string) $alias, '/');
+        $canonical = '/'.ltrim((string) $canonical, '/');
+        if ($alias === '' || $canonical === '/') {
+            continue;
+        }
+        Route::get('/'.$alias, function () use ($canonical) {
+            $query = request()->getQueryString();
+
+            return Redirect::to($query ? $canonical.'?'.$query : $canonical, 301);
+        });
+    }
 };
 
 Route::get('/api/docs/advertiser', [AdvertiserApiDocsController::class, 'show'])

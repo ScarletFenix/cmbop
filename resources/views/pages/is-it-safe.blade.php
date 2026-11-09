@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'Is SEOLinkBuildings safe? Verified publishers, held payments, honest answers')
+@section('title', 'Is SEOLinkBuildings safe? Verified publishers, held payments')
 @section('description', 'How SEOLinkBuildings works: verified publishers, no PBNs, payment held until you approve the live link, sponsored/nofollow options, Google link policy explained, company details and how to report issues.')
 @section('canonical', url('/is-seolinkbuildings-safe'))
 
