@@ -20,6 +20,7 @@ class ThinBlogRedirects
         return [
             'how-to-build-high-quality-backlinks-in-2026' => HowToGetBacklinksBlogPost::SLUG,
             'digital-pr-ideas-that-earn-coverage-and-links' => LinkBuildingGuideBlogPost::SLUG,
+            'link-building-gu' => LinkBuildingGuideBlogPost::SLUG,
             'guest-posting-checklist-for-advertisers' => GuestPostingGuideBlogPost::SLUG,
             'choosing-publishers-by-country-and-language' => ChoosePublisherSiteBlogPost::SLUG,
         ];

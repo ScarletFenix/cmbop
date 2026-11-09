@@ -5,20 +5,29 @@ namespace App\Http\Controllers;
 use App\Models\Blog;
 use App\Models\BlogTranslation;
 use App\Services\CuratedBlogSync;
+use App\Support\BlogIndexPaginator;
 use App\Support\GermanMoneyLanders;
 use App\Support\ThinBlogRedirects;
 use App\Support\UserFacingError;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Arr;
 
 class BlogController extends Controller
 {
     /**
      * Display a listing of published blog posts.
      */
-    public function index()
+    public function index(Request $request)
     {
+        $firstPageRedirect = $this->redirectRedundantFirstPage($request);
+        if ($firstPageRedirect !== null) {
+            return $firstPageRedirect;
+        }
+
+        $query = $request->except('page');
+
         try {
             CuratedBlogSync::ensurePresent();
             $requestedLocale = public_locale();
@@ -37,6 +46,7 @@ class BlogController extends Controller
             $blog->getCollection()->transform(
                 fn (Blog $post) => $post->applyPublishedLocale($catalogLocale)
             );
+            $blog = $this->withoutFirstPageQuery($blog, $query);
 
             return view('pages.blog', compact('blog'));
         } catch (\Throwable $e) {
@@ -47,11 +57,45 @@ class BlogController extends Controller
             );
 
             $blog = new LengthAwarePaginator([], 0, 12, 1, [
-                'path' => request()->url(),
+                'path' => $request->url(),
                 'pageName' => 'page',
+                'query' => $query,
             ]);
+            $blog = $this->withoutFirstPageQuery($blog, $query);
 
             return view('pages.blog', compact('blog'));
+        }
+    }
+
+    /**
+     * ?page=1 is the same listing as the clean blog URL.
+     */
+    private function redirectRedundantFirstPage(Request $request): mixed
+    {
+        if ((string) $request->query('page') !== '1') {
+            return null;
+        }
+
+        $query = $request->query();
+        unset($query['page']);
+        $target = $request->url();
+        if ($query !== []) {
+            $target .= '?'.Arr::query($query);
+        }
+
+        return redirect()->to($target, 301);
+    }
+
+    private function withoutFirstPageQuery(LengthAwarePaginator $paginator, array $query): LengthAwarePaginator
+    {
+        if (! class_exists(BlogIndexPaginator::class) || ! method_exists(BlogIndexPaginator::class, 'wrap')) {
+            return $paginator->appends($query);
+        }
+
+        try {
+            return BlogIndexPaginator::wrap($paginator, $query);
+        } catch (\Throwable) {
+            return $paginator->appends($query);
         }
     }
 

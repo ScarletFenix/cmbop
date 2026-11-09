@@ -71,6 +71,10 @@ class RobotsTxt
             '/auth/',
             '/cron/',
             '/blog/tag',
+            // Lottie JSON/player only. Public pages render with Bootstrap /
+            // SweetAlert under /assets/vendor/; do not Disallow that whole tree.
+            '/assets/vendor/lottie/',
+            '/assets/vendor/lottie-web/',
         ];
     }
 

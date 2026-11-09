@@ -22,11 +22,20 @@
 @endif
 
 @push('head')
-    @if(isset($blog) && $blog->previousPageUrl())
-        <link rel="prev" href="{{ $blog->previousPageUrl() }}">
+    @php
+        $blogPrevUrl = (isset($blog) && $blog->previousPageUrl()) ? $blog->previousPageUrl() : null;
+        if (is_string($blogPrevUrl)
+            && class_exists(\App\Support\BlogIndexPaginator::class)
+            && method_exists(\App\Support\BlogIndexPaginator::class, 'withoutPageOneQuery')) {
+            $blogPrevUrl = \App\Support\BlogIndexPaginator::withoutPageOneQuery($blogPrevUrl);
+        }
+        $blogNextUrl = (isset($blog) && $blog->nextPageUrl()) ? $blog->nextPageUrl() : null;
+    @endphp
+    @if($blogPrevUrl)
+        <link rel="prev" href="{{ $blogPrevUrl }}">
     @endif
-    @if(isset($blog) && $blog->nextPageUrl())
-        <link rel="next" href="{{ $blog->nextPageUrl() }}">
+    @if($blogNextUrl)
+        <link rel="next" href="{{ $blogNextUrl }}">
     @endif
 @endpush
 
