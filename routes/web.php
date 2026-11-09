@@ -363,6 +363,7 @@ Route::group([], function () use ($registerPublicMarketingRoutes, $registerEngli
 Route::get('/privacy', fn () => Redirect::to('/privacy-policy', 301));
 Route::get('/terms', fn () => Redirect::to('/terms-of-services', 301));
 Route::get('/terms-of-service', fn () => Redirect::to('/terms-of-services', 301));
+Route::get('/terms-and-services', fn () => Redirect::to('/terms-of-services', 301));
 Route::get('/contact-us', function () {
     $query = request()->getQueryString();
     $to = '/contact';
@@ -461,6 +462,15 @@ foreach ($prefixedLocales as $locale) {
         $target = class_exists(LocalizedPublicPath::class)
             ? LocalizedPublicPath::publicPath('contact', $locale)
             : '/'.$locale.'/contact';
+
+        return Redirect::to($query ? $target.'?'.$query : $target, 301);
+    });
+
+    Route::get('/'.$locale.'/terms-and-services', function () use ($locale) {
+        $query = request()->getQueryString();
+        $target = class_exists(LocalizedPublicPath::class)
+            ? LocalizedPublicPath::publicPath('terms-of-services', $locale)
+            : '/'.$locale.'/terms-of-services';
 
         return Redirect::to($query ? $target.'?'.$query : $target, 301);
     });

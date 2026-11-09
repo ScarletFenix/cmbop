@@ -258,8 +258,10 @@ class SeoAndSecurityHeadersTest extends TestCase
         $this->get('/privacy')->assertRedirect('/privacy-policy');
         $this->get('/terms')->assertRedirect('/terms-of-services');
         $this->get('/terms-of-service')->assertRedirect('/terms-of-services');
+        $this->get('/terms-and-services')->assertRedirect('/terms-of-services');
         $this->assertSame(301, $this->get('/privacy')->status());
         $this->assertSame(301, $this->get('/terms-of-service')->status());
+        $this->assertSame(301, $this->get('/terms-and-services')->status());
     }
 
     public function test_blog_page_two_has_rel_prev_and_self_canonical(): void
@@ -280,13 +282,20 @@ class SeoAndSecurityHeadersTest extends TestCase
             ]);
         }
 
-        $this->get('/blog?page=2')
+        $html = $this->get('/blog?page=2')
             ->assertOk()
-            ->assertSee('rel="prev"', false)
             ->assertSee('rel="canonical" href="'.url('/blog').'?page=2"', false)
             ->assertSee('name="robots" content="noindex, follow"', false)
             ->assertSee(' — Page 2', false)
-            ->assertDontSee('hreflang="de"', false);
+            ->assertDontSee('hreflang="de"', false)
+            ->getContent();
+
+        $this->assertStringContainsString('rel="prev" href="'.url('/blog').'"', $html);
+        $this->assertStringNotContainsString('rel="prev" href="'.url('/blog').'?page=1"', $html);
+        $this->assertDoesNotMatchRegularExpression(
+            '/class="page-link"[^>]+href="[^"]*(?:\?|&amp;)page=1(?:&|"|#)/',
+            $html
+        );
     }
 
     public function test_static_robots_txt_matches_renderer_for_production_origin(): void

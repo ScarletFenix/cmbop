@@ -36,6 +36,8 @@ Disallow: /email/
 Disallow: /auth/
 Disallow: /cron/
 Disallow: /blog/tag
+Disallow: /assets/vendor/lottie/
+Disallow: /assets/vendor/lottie-web/
 
 User-agent: Googlebot
 Allow: /
@@ -75,6 +77,8 @@ Disallow: /email/
 Disallow: /auth/
 Disallow: /cron/
 Disallow: /blog/tag
+Disallow: /assets/vendor/lottie/
+Disallow: /assets/vendor/lottie-web/
 
 User-agent: bingbot
 Allow: /
@@ -114,6 +118,8 @@ Disallow: /email/
 Disallow: /auth/
 Disallow: /cron/
 Disallow: /blog/tag
+Disallow: /assets/vendor/lottie/
+Disallow: /assets/vendor/lottie-web/
 
 User-agent: Slurp
 Allow: /
@@ -153,6 +159,8 @@ Disallow: /email/
 Disallow: /auth/
 Disallow: /cron/
 Disallow: /blog/tag
+Disallow: /assets/vendor/lottie/
+Disallow: /assets/vendor/lottie-web/
 
 User-agent: DuckDuckBot
 Allow: /
@@ -192,6 +200,8 @@ Disallow: /email/
 Disallow: /auth/
 Disallow: /cron/
 Disallow: /blog/tag
+Disallow: /assets/vendor/lottie/
+Disallow: /assets/vendor/lottie-web/
 
 User-agent: GPTBot
 Allow: /
@@ -231,6 +241,8 @@ Disallow: /email/
 Disallow: /auth/
 Disallow: /cron/
 Disallow: /blog/tag
+Disallow: /assets/vendor/lottie/
+Disallow: /assets/vendor/lottie-web/
 
 User-agent: ChatGPT-User
 Allow: /
@@ -270,6 +282,8 @@ Disallow: /email/
 Disallow: /auth/
 Disallow: /cron/
 Disallow: /blog/tag
+Disallow: /assets/vendor/lottie/
+Disallow: /assets/vendor/lottie-web/
 
 User-agent: OAI-SearchBot
 Allow: /
@@ -309,6 +323,8 @@ Disallow: /email/
 Disallow: /auth/
 Disallow: /cron/
 Disallow: /blog/tag
+Disallow: /assets/vendor/lottie/
+Disallow: /assets/vendor/lottie-web/
 
 User-agent: Google-Extended
 Allow: /
@@ -348,6 +364,8 @@ Disallow: /email/
 Disallow: /auth/
 Disallow: /cron/
 Disallow: /blog/tag
+Disallow: /assets/vendor/lottie/
+Disallow: /assets/vendor/lottie-web/
 
 User-agent: ClaudeBot
 Allow: /
@@ -387,6 +405,8 @@ Disallow: /email/
 Disallow: /auth/
 Disallow: /cron/
 Disallow: /blog/tag
+Disallow: /assets/vendor/lottie/
+Disallow: /assets/vendor/lottie-web/
 
 User-agent: Anthropic-AI
 Allow: /
@@ -426,6 +446,8 @@ Disallow: /email/
 Disallow: /auth/
 Disallow: /cron/
 Disallow: /blog/tag
+Disallow: /assets/vendor/lottie/
+Disallow: /assets/vendor/lottie-web/
 
 User-agent: PerplexityBot
 Allow: /
@@ -465,6 +487,8 @@ Disallow: /email/
 Disallow: /auth/
 Disallow: /cron/
 Disallow: /blog/tag
+Disallow: /assets/vendor/lottie/
+Disallow: /assets/vendor/lottie-web/
 
 User-agent: Bytespider
 Allow: /
@@ -504,6 +528,8 @@ Disallow: /email/
 Disallow: /auth/
 Disallow: /cron/
 Disallow: /blog/tag
+Disallow: /assets/vendor/lottie/
+Disallow: /assets/vendor/lottie-web/
 
 User-agent: CCBot
 Allow: /
@@ -543,6 +569,8 @@ Disallow: /email/
 Disallow: /auth/
 Disallow: /cron/
 Disallow: /blog/tag
+Disallow: /assets/vendor/lottie/
+Disallow: /assets/vendor/lottie-web/
 
 User-agent: Applebot-Extended
 Allow: /
@@ -582,6 +610,8 @@ Disallow: /email/
 Disallow: /auth/
 Disallow: /cron/
 Disallow: /blog/tag
+Disallow: /assets/vendor/lottie/
+Disallow: /assets/vendor/lottie-web/
 
 User-agent: meta-externalagent
 Allow: /
@@ -621,6 +651,8 @@ Disallow: /email/
 Disallow: /auth/
 Disallow: /cron/
 Disallow: /blog/tag
+Disallow: /assets/vendor/lottie/
+Disallow: /assets/vendor/lottie-web/
 
 User-agent: LinkedInBot
 Allow: /
@@ -660,6 +692,8 @@ Disallow: /email/
 Disallow: /auth/
 Disallow: /cron/
 Disallow: /blog/tag
+Disallow: /assets/vendor/lottie/
+Disallow: /assets/vendor/lottie-web/
 
 User-agent: facebookexternalhit
 Allow: /
@@ -699,6 +733,8 @@ Disallow: /email/
 Disallow: /auth/
 Disallow: /cron/
 Disallow: /blog/tag
+Disallow: /assets/vendor/lottie/
+Disallow: /assets/vendor/lottie-web/
 
 User-agent: FacebookBot
 Allow: /
@@ -738,6 +774,8 @@ Disallow: /email/
 Disallow: /auth/
 Disallow: /cron/
 Disallow: /blog/tag
+Disallow: /assets/vendor/lottie/
+Disallow: /assets/vendor/lottie-web/
 
 Sitemap: https://seolinkbuildings.com/sitemap.xml
 # AI / LLM product digest for assistants and answer engines

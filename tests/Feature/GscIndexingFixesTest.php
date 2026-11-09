@@ -123,6 +123,9 @@ class GscIndexingFixesTest extends TestCase
         $this->assertStringNotContainsString("Disallow: /forgot-password\n", $txt);
         $this->assertStringNotContainsString("Disallow: /reset-password\n", $txt);
         $this->assertStringContainsString('Disallow: /admin/', $txt);
+        $this->assertStringContainsString("Disallow: /assets/vendor/lottie/\n", $txt);
+        $this->assertStringContainsString("Disallow: /assets/vendor/lottie-web/\n", $txt);
+        $this->assertStringNotContainsString("Disallow: /assets/vendor/\n", $txt);
         $this->assertSame(
             RobotsTxt::render('https://seolinkbuildings.com'),
             (string) file_get_contents(public_path('robots.txt'))

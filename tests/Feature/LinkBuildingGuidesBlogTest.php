@@ -174,6 +174,10 @@ class LinkBuildingGuidesBlogTest extends TestCase
             ->assertStatus(301)
             ->assertRedirect(PublicI18n::urlForLocale('blog/'.LinkBuildingGuideBlogPost::SLUG, 'en'));
 
+        $this->get('/blog/link-building-gu')
+            ->assertStatus(301)
+            ->assertRedirect(PublicI18n::urlForLocale('blog/'.LinkBuildingGuideBlogPost::SLUG, 'en'));
+
         $deSlug = HowToGetBacklinksBlogPost::translations()['de']['slug'];
         $this->get('/de/blog/how-to-build-high-quality-backlinks-in-2026')
             ->assertStatus(301)

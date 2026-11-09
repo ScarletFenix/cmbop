@@ -215,6 +215,14 @@ class SeoLeftoverClassHardeningTest extends TestCase
         $localizedPath = (string) file_get_contents(base_path('app/Support/LocalizedPublicPath.php'));
         $this->assertStringContainsString("method_exists(PublicI18n::class, 'isSupported')", $localizedPath);
         $this->assertStringContainsString("method_exists(PublicI18n::class, 'isPrefixed')", $localizedPath);
+
+        $blogController = (string) file_get_contents(base_path('app/Http/Controllers/BlogController.php'));
+        $this->assertStringContainsString('class_exists(BlogIndexPaginator::class)', $blogController);
+        $this->assertStringContainsString("method_exists(BlogIndexPaginator::class, 'wrap')", $blogController);
+
+        $blogIndex = (string) file_get_contents(base_path('resources/views/pages/blog.blade.php'));
+        $this->assertStringContainsString('class_exists(\\App\\Support\\BlogIndexPaginator::class)', $blogIndex);
+        $this->assertStringContainsString("method_exists(\\App\\Support\\BlogIndexPaginator::class, 'withoutPageOneQuery')", $blogIndex);
     }
 
     public function test_public_money_pages_and_admin_login_stay_up(): void

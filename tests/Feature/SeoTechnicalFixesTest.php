@@ -156,5 +156,7 @@ class SeoTechnicalFixesTest extends TestCase
     {
         $this->get('/terms-of-service')->assertRedirect('/terms-of-services');
         $this->assertSame(301, $this->get('/terms-of-service')->status());
+        $this->get('/terms-and-services')->assertRedirect('/terms-of-services');
+        $this->assertSame(301, $this->get('/terms-and-services')->status());
     }
 }
