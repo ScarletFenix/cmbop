@@ -139,6 +139,27 @@
             ])
         </div>
     @endif
+    @if(function_exists('public_locale') && in_array(public_locale(), ['en', 'us'], true) && class_exists(\App\Support\EnglishCommercialLanders::class) && view()->exists('components.italian-seo-cluster-nav'))
+        <div class="container py-4">
+            @include('components.italian-seo-cluster-nav', [
+                'links' => \App\Support\EnglishCommercialLanders::clusterLinks('home'),
+                'current' => 'home',
+                'title' => 'Agencies, sponsored articles, and European markets',
+            ])
+            <p class="small mb-0">
+                <a href="{{ url('/guest-posts-germany') }}">Germany</a>
+                · <a href="{{ url('/guest-posts-uk') }}">UK</a>
+                · <a href="{{ url('/guest-posts-france') }}">France</a>
+                · <a href="{{ url('/guest-posts-netherlands') }}">Netherlands</a>
+                · <a href="{{ url('/guest-posts-spain') }}">Spain</a>
+                · <a href="{{ url('/guest-posts-italy') }}">Italy</a>
+                · <a href="{{ url('/guest-posts-poland') }}">Poland</a>
+                · <a href="{{ url('/guest-posts-denmark') }}">Denmark</a>
+                · <a href="{{ url('/guest-posts-sweden') }}">Sweden</a>
+                · <a href="{{ url('/guest-posts-norway') }}">Norway</a>
+            </p>
+        </div>
+    @endif
     @include('components.features')
     @include('components.how-it-works')
     @include('components.pricing')

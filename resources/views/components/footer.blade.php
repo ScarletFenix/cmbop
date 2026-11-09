@@ -34,6 +34,11 @@
                     <li><a href="{{ localized_url('pricing') }}" class="text-dark text-decoration-none d-block mb-2">{{ __('messages.nav_pricing') }}</a></li>
                     <li><a href="{{ localized_url('how-it-works') }}" class="text-dark text-decoration-none d-block mb-2">{{ __('messages.nav_how_it_works') }}</a></li>
                     <li><a href="{{ localized_url('why-choose-us') }}" class="text-dark text-decoration-none d-block mb-2">{{ __('messages.why_choose_title') }}</a></li>
+                    @if(function_exists('public_locale') && in_array(public_locale(), ['en', 'us'], true))
+                        <li><a href="{{ url('/for-agencies') }}" class="text-dark text-decoration-none d-block mb-2">For agencies</a></li>
+                        <li><a href="{{ url('/sponsored-articles') }}" class="text-dark text-decoration-none d-block mb-2">Sponsored articles</a></li>
+                        <li><a href="{{ url('/alternatives') }}" class="text-dark text-decoration-none d-block mb-2">How we differ</a></li>
+                    @endif
                     <li><a href="{{ localized_url('become-a-publisher') }}" class="text-dark text-decoration-none d-block mb-2">{{ __('messages.nav_become_publisher') }}</a></li>
                     <li><a href="{{ localized_url('faq') }}" class="text-dark text-decoration-none d-block mb-2">{{ __('messages.nav_faq') }}</a></li>
                     <li><a href="{{ url('/is-seolinkbuildings-safe') }}" class="text-dark text-decoration-none d-block mb-2">Is SEOLinkBuildings safe?</a></li>

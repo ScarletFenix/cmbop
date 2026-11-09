@@ -140,16 +140,16 @@ class BrandPresenceTest extends TestCase
         $this->assertStringContainsString('https://www.linkedin.com/company/seolinkbuildings', $html);
         $this->assertStringContainsString('https://www.facebook.com/seolinkbuildings/', $html);
         $this->assertStringContainsString('https://www.instagram.com/seolinkbuildings', $html);
-        $this->assertStringContainsString('https://x.com/seolinbuildings', $html);
+        $this->assertStringNotContainsString('https://x.com/seolinbuildings', $html);
+        $this->assertStringNotContainsString('https://x.com/seolinkbuildings', $html);
         $this->assertStringContainsString('https://www.youtube.com/@seolinkbuildingss', $html);
         $this->assertStringContainsString('fab fa-facebook', $html);
         $this->assertStringContainsString('fab fa-instagram', $html);
-        $this->assertStringContainsString('fab fa-x-twitter', $html);
         $this->assertStringContainsString('fab fa-youtube', $html);
         $this->assertStringNotContainsString('igsh=', $html);
         $this->assertStringContainsString('aria-label="SEOLinkBuildings on Facebook"', $html);
         $this->assertStringContainsString('aria-label="SEOLinkBuildings on Instagram"', $html);
-        $this->assertStringContainsString('aria-label="SEOLinkBuildings on X"', $html);
+        $this->assertStringNotContainsString('aria-label="SEOLinkBuildings on X"', $html);
         $this->assertStringContainsString('aria-label="SEOLinkBuildings on YouTube"', $html);
     }
 }

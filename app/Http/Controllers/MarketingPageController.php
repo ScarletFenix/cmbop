@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Models\Blog;
 use App\Models\Country;
-use App\Models\Order;
 use App\Models\Site;
 use App\Services\CuratedBlogWriter;
 use App\Services\Marketing\CatalogTeaserService;
@@ -13,6 +12,7 @@ use App\Support\AustrianMoneyLanders;
 use App\Support\BrandPerson;
 use App\Support\CountryLander;
 use App\Support\DutchMoneyLanders;
+use App\Support\EnglishCommercialLanders;
 use App\Support\GermanMoneyLanders;
 use App\Support\ItalianMoneyLanders;
 use App\Support\MoneyLanderCatalog;
@@ -20,6 +20,8 @@ use App\Support\PortugueseMoneyLanders;
 use App\Support\RomanianMoneyLanders;
 use App\Support\SpanishMoneyLanders;
 use App\Support\SwissMoneyLanders;
+use Illuminate\Support\Carbon;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
 
 class MarketingPageController extends Controller
@@ -437,6 +439,90 @@ class MarketingPageController extends Controller
         ]);
     }
 
+    public function europePriceIndexCsv(): StreamedResponse
+    {
+        abort_unless(class_exists(GuestPostPriceIndex::class), 404);
+
+        try {
+            $snapshot = app(GuestPostPriceIndex::class)->snapshot();
+        } catch (Throwable) {
+            abort(404);
+        }
+
+        $generated = is_string($snapshot['generated_at'] ?? null) ? $snapshot['generated_at'] : now()->toIso8601String();
+        $stamp = 'live';
+        try {
+            $stamp = Carbon::parse($generated)->utc()->format('Y-m-d');
+        } catch (Throwable) {
+        }
+
+        $filename = 'eu-guest-post-prices-'.$stamp.'.csv';
+
+        return response()->streamDownload(function () use ($snapshot, $generated) {
+            $handle = fopen('php://output', 'w');
+            if ($handle === false) {
+                return;
+            }
+            fputcsv($handle, [
+                'country_code',
+                'country_name',
+                'median_eur',
+                'from_eur',
+                'listings',
+                'lander_url',
+                'generated_at',
+            ]);
+            foreach (($snapshot['countries'] ?? []) as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                fputcsv($handle, [
+                    $row['code'] ?? '',
+                    $row['name'] ?? '',
+                    $row['median'] ?? '',
+                    $row['from'] ?? '',
+                    $row['listings'] ?? '',
+                    $row['lander_url'] ?? '',
+                    $generated,
+                ]);
+            }
+            fclose($handle);
+        }, $filename, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
+    public function englishCommercialLander(string $slug)
+    {
+        abort_unless(class_exists(EnglishCommercialLanders::class), 404);
+        abort_unless(view()->exists('pages.english-money-lander'), 404);
+
+        $page = EnglishCommercialLanders::find($slug);
+        abort_unless(is_array($page), 404);
+
+        $codes = array_values(array_filter(array_map(
+            static fn ($code) => strtolower(trim((string) $code)),
+            $page['teaser_countries'] ?? ['de', 'fr', 'nl', 'es', 'it', 'uk']
+        )));
+        if ($codes === []) {
+            $codes = ['de'];
+        }
+
+        $teasers = $this->catalogTeaserService();
+
+        return view('pages.english-money-lander', [
+            'slug' => $slug,
+            'page' => $page,
+            'teasers' => $teasers?->teasersForCountries($codes, 8) ?? collect(),
+            'siteCount' => $teasers?->countForCountries($codes),
+            'priceFrom' => $teasers?->priceFromForCountries($codes),
+            'cluster' => method_exists(EnglishCommercialLanders::class, 'clusterLinks')
+                ? EnglishCommercialLanders::clusterLinks($slug)
+                : [],
+            'countryLanders' => $this->countryLanderSiblings(),
+        ]);
+    }
+
     /**
      * @return array{generated_at: ?string, europe: array{median: ?float, listings: int}, countries: list<array<string, mixed>>, has_index: bool}
      */
@@ -515,10 +601,11 @@ class MarketingPageController extends Controller
      * Live marketplace proof points. Never invent numbers — omit a metric when
      * the query fails or the count is zero.
      *
+     * Catalog proof only. Order volume is not a public marketing metric.
+     *
      * @return array{
      *     sites: ?int,
      *     countries: ?int,
-     *     completed_orders: ?int,
      *     verified_sites: ?int,
      *     rated_sites: ?int
      * }
@@ -528,7 +615,6 @@ class MarketingPageController extends Controller
         $stats = [
             'sites' => null,
             'countries' => null,
-            'completed_orders' => null,
             'verified_sites' => null,
             'rated_sites' => null,
         ];
@@ -546,15 +632,6 @@ class MarketingPageController extends Controller
             $countries = (int) Country::query()->marketplace()->count();
             if ($countries > 0) {
                 $stats['countries'] = $countries;
-            }
-        } catch (Throwable) {
-            //
-        }
-
-        try {
-            $completed = (int) Order::query()->where('status', 'completed')->count();
-            if ($completed > 0) {
-                $stats['completed_orders'] = $completed;
             }
         } catch (Throwable) {
             //

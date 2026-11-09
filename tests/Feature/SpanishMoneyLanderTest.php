@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Support\CommercialPageCluster;
 use App\Support\ItalianMoneyLanders;
 use App\Support\PublicI18n;
 use App\Support\SpanishMoneyLanders;
@@ -31,7 +32,11 @@ class SpanishMoneyLanderTest extends TestCase
                 ->assertSee('/es/mercado', false)
                 ->getContent();
 
-            $this->assertStringNotContainsString('hreflang="en-GB"', $html, $slug);
+            if (class_exists(CommercialPageCluster::class) && CommercialPageCluster::hasEnglishAlternate($slug)) {
+                $this->assertStringContainsString('hreflang="en-GB"', $html, $slug);
+            } else {
+                $this->assertStringNotContainsString('hreflang="en-GB"', $html, $slug);
+            }
             $this->assertStringNotContainsString('advertiser/catalog', $html, $slug);
             $this->assertStringNotContainsString('listino', $html, $slug);
             $this->assertStringNotContainsString('Listino', $html, $slug);

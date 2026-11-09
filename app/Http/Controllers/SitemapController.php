@@ -10,6 +10,7 @@ use App\Support\AustrianMoneyLanders;
 use App\Support\BrandPerson;
 use App\Support\CountryLander;
 use App\Support\DutchMoneyLanders;
+use App\Support\EnglishCommercialLanders;
 use App\Support\FrenchMoneyLanders;
 use App\Support\GermanMoneyLanders;
 use App\Support\ItalianMoneyLanders;
@@ -165,6 +166,17 @@ class SitemapController extends Controller
             if (class_exists(GuestPostPriceIndex::class)) {
                 $priceIndex = GuestPostPriceIndex::SLUG;
                 $urls[] = $this->urlEntry($priceIndex, $locale, 'weekly', '0.8', ['en'], ['en' => $priceIndex]);
+            }
+
+            if (class_exists(EnglishCommercialLanders::class) && method_exists(EnglishCommercialLanders::class, 'slugs')) {
+                foreach (EnglishCommercialLanders::slugs() as $commercialSlug) {
+                    if (! is_string($commercialSlug) || $commercialSlug === '') {
+                        continue;
+                    }
+                    [$locales, $paths] = $this->moneyLanderSitemapCluster($commercialSlug, ['en']);
+                    $entry = $this->urlEntry($commercialSlug, $locale, 'weekly', '0.85', $locales, $paths);
+                    $urls[] = $this->withMoneyLanderXDefault($entry, $commercialSlug, $paths);
+                }
             }
 
             $safePage = 'is-seolinkbuildings-safe';

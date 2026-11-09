@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Support\AustrianMoneyLanders;
+use App\Support\CommercialPageCluster;
 use App\Support\GermanMoneyLanders;
 use App\Support\ItalianMoneyLanders;
 use App\Support\PublicI18n;
@@ -33,7 +34,11 @@ class AustrianMoneyLanderTest extends TestCase
                 ->assertSee('/at/marktplatz', false)
                 ->getContent();
 
-            $this->assertStringNotContainsString('hreflang="en-GB"', $html, $slug);
+            if (class_exists(CommercialPageCluster::class) && CommercialPageCluster::hasEnglishAlternate($slug)) {
+                $this->assertStringContainsString('hreflang="en-GB"', $html, $slug);
+            } else {
+                $this->assertStringNotContainsString('hreflang="en-GB"', $html, $slug);
+            }
             $this->assertStringNotContainsString('advertiser/catalog', $html, $slug);
             $this->assertStringNotContainsString('rel="canonical" href="'.url('/de/'.$slug).'"', $html, $slug);
             $this->assertGreaterThanOrEqual(30, mb_strlen((string) $page['meta_title']), $slug);
@@ -44,7 +49,7 @@ class AustrianMoneyLanderTest extends TestCase
                 && ItalianMoneyLanders::isSlug($slug);
             if ($sharedWithItalian) {
                 $this->assertStringContainsString('hreflang="it"', $html, $slug);
-            } else {
+            } elseif (! (class_exists(CommercialPageCluster::class) && CommercialPageCluster::owns($slug))) {
                 $this->assertStringNotContainsString('hreflang="it"', $html, $slug);
             }
         }

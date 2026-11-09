@@ -24,7 +24,9 @@ return [
         ],
         'x' => [
             'label' => 'X',
-            'url' => env('SOCIAL_X_URL') ?: env('SOCIAL_TWITTER_URL') ?: 'https://x.com/seolinbuildings',
+            // No verified public X/Twitter profile: x.com/seolinbuildings is misspelled
+            // and x.com/seolinkbuildings 404s. Leave empty rather than invent a handle.
+            'url' => env('SOCIAL_X_URL') ?: env('SOCIAL_TWITTER_URL') ?: '',
             'icon' => 'fab fa-x-twitter',
         ],
         'youtube' => [

@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Support\AustrianMoneyLanders;
+use App\Support\CommercialPageCluster;
 use App\Support\GermanMoneyLanders;
 use App\Support\PublicI18n;
 use App\Support\SwissMoneyLanders;
@@ -33,7 +34,11 @@ class SwissMoneyLanderTest extends TestCase
                 ->assertSee('/ch/marktplatz', false)
                 ->getContent();
 
-            $this->assertStringNotContainsString('hreflang="en-GB"', $html, $slug);
+            if (class_exists(CommercialPageCluster::class) && CommercialPageCluster::hasEnglishAlternate($slug)) {
+                $this->assertStringContainsString('hreflang="en-GB"', $html, $slug);
+            } else {
+                $this->assertStringNotContainsString('hreflang="en-GB"', $html, $slug);
+            }
             $this->assertStringNotContainsString('advertiser/catalog', $html, $slug);
             $this->assertStringNotContainsString('rel="canonical" href="'.url('/de/'.$slug).'"', $html, $slug);
             $this->assertStringNotContainsString('ß', (string) ($page['h1'] ?? ''), $slug);

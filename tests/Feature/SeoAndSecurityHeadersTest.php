@@ -194,7 +194,8 @@ class SeoAndSecurityHeadersTest extends TestCase
         $this->assertStringContainsString('fetchpriority="high"', $html);
         $this->assertStringContainsString('https://www.facebook.com/seolinkbuildings/', $html);
         $this->assertStringContainsString('https://www.instagram.com/seolinkbuildings', $html);
-        $this->assertStringContainsString('https://x.com/seolinbuildings', $html);
+        $this->assertStringNotContainsString('https://x.com/seolinbuildings', $html);
+        $this->assertStringNotContainsString('https://x.com/seolinkbuildings', $html);
         $this->assertStringContainsString('https://www.youtube.com/@seolinkbuildingss', $html);
         $this->assertStringContainsString('"inLanguage":"en-GB"', $html);
         $this->assertStringNotContainsString('"inLanguage":[', $html);

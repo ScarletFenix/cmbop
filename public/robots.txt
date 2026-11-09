@@ -7,6 +7,9 @@ Allow: /pricing
 Allow: /how-it-works
 Allow: /guest-post-prices-europe
 Allow: /is-seolinkbuildings-safe
+Allow: /for-agencies
+Allow: /sponsored-articles
+Allow: /alternatives
 Allow: /guest-posts-germany
 Allow: /guest-posts-uk
 Allow: /guest-posts-italy
@@ -48,6 +51,9 @@ Allow: /pricing
 Allow: /how-it-works
 Allow: /guest-post-prices-europe
 Allow: /is-seolinkbuildings-safe
+Allow: /for-agencies
+Allow: /sponsored-articles
+Allow: /alternatives
 Allow: /guest-posts-germany
 Allow: /guest-posts-uk
 Allow: /guest-posts-italy
@@ -89,6 +95,9 @@ Allow: /pricing
 Allow: /how-it-works
 Allow: /guest-post-prices-europe
 Allow: /is-seolinkbuildings-safe
+Allow: /for-agencies
+Allow: /sponsored-articles
+Allow: /alternatives
 Allow: /guest-posts-germany
 Allow: /guest-posts-uk
 Allow: /guest-posts-italy
@@ -130,6 +139,9 @@ Allow: /pricing
 Allow: /how-it-works
 Allow: /guest-post-prices-europe
 Allow: /is-seolinkbuildings-safe
+Allow: /for-agencies
+Allow: /sponsored-articles
+Allow: /alternatives
 Allow: /guest-posts-germany
 Allow: /guest-posts-uk
 Allow: /guest-posts-italy
@@ -171,6 +183,9 @@ Allow: /pricing
 Allow: /how-it-works
 Allow: /guest-post-prices-europe
 Allow: /is-seolinkbuildings-safe
+Allow: /for-agencies
+Allow: /sponsored-articles
+Allow: /alternatives
 Allow: /guest-posts-germany
 Allow: /guest-posts-uk
 Allow: /guest-posts-italy
@@ -212,6 +227,9 @@ Allow: /pricing
 Allow: /how-it-works
 Allow: /guest-post-prices-europe
 Allow: /is-seolinkbuildings-safe
+Allow: /for-agencies
+Allow: /sponsored-articles
+Allow: /alternatives
 Allow: /guest-posts-germany
 Allow: /guest-posts-uk
 Allow: /guest-posts-italy
@@ -253,6 +271,9 @@ Allow: /pricing
 Allow: /how-it-works
 Allow: /guest-post-prices-europe
 Allow: /is-seolinkbuildings-safe
+Allow: /for-agencies
+Allow: /sponsored-articles
+Allow: /alternatives
 Allow: /guest-posts-germany
 Allow: /guest-posts-uk
 Allow: /guest-posts-italy
@@ -294,6 +315,9 @@ Allow: /pricing
 Allow: /how-it-works
 Allow: /guest-post-prices-europe
 Allow: /is-seolinkbuildings-safe
+Allow: /for-agencies
+Allow: /sponsored-articles
+Allow: /alternatives
 Allow: /guest-posts-germany
 Allow: /guest-posts-uk
 Allow: /guest-posts-italy
@@ -335,6 +359,9 @@ Allow: /pricing
 Allow: /how-it-works
 Allow: /guest-post-prices-europe
 Allow: /is-seolinkbuildings-safe
+Allow: /for-agencies
+Allow: /sponsored-articles
+Allow: /alternatives
 Allow: /guest-posts-germany
 Allow: /guest-posts-uk
 Allow: /guest-posts-italy
@@ -376,6 +403,9 @@ Allow: /pricing
 Allow: /how-it-works
 Allow: /guest-post-prices-europe
 Allow: /is-seolinkbuildings-safe
+Allow: /for-agencies
+Allow: /sponsored-articles
+Allow: /alternatives
 Allow: /guest-posts-germany
 Allow: /guest-posts-uk
 Allow: /guest-posts-italy
@@ -417,6 +447,9 @@ Allow: /pricing
 Allow: /how-it-works
 Allow: /guest-post-prices-europe
 Allow: /is-seolinkbuildings-safe
+Allow: /for-agencies
+Allow: /sponsored-articles
+Allow: /alternatives
 Allow: /guest-posts-germany
 Allow: /guest-posts-uk
 Allow: /guest-posts-italy
@@ -458,6 +491,9 @@ Allow: /pricing
 Allow: /how-it-works
 Allow: /guest-post-prices-europe
 Allow: /is-seolinkbuildings-safe
+Allow: /for-agencies
+Allow: /sponsored-articles
+Allow: /alternatives
 Allow: /guest-posts-germany
 Allow: /guest-posts-uk
 Allow: /guest-posts-italy
@@ -499,6 +535,9 @@ Allow: /pricing
 Allow: /how-it-works
 Allow: /guest-post-prices-europe
 Allow: /is-seolinkbuildings-safe
+Allow: /for-agencies
+Allow: /sponsored-articles
+Allow: /alternatives
 Allow: /guest-posts-germany
 Allow: /guest-posts-uk
 Allow: /guest-posts-italy
@@ -540,6 +579,9 @@ Allow: /pricing
 Allow: /how-it-works
 Allow: /guest-post-prices-europe
 Allow: /is-seolinkbuildings-safe
+Allow: /for-agencies
+Allow: /sponsored-articles
+Allow: /alternatives
 Allow: /guest-posts-germany
 Allow: /guest-posts-uk
 Allow: /guest-posts-italy
@@ -581,6 +623,9 @@ Allow: /pricing
 Allow: /how-it-works
 Allow: /guest-post-prices-europe
 Allow: /is-seolinkbuildings-safe
+Allow: /for-agencies
+Allow: /sponsored-articles
+Allow: /alternatives
 Allow: /guest-posts-germany
 Allow: /guest-posts-uk
 Allow: /guest-posts-italy
@@ -622,6 +667,9 @@ Allow: /pricing
 Allow: /how-it-works
 Allow: /guest-post-prices-europe
 Allow: /is-seolinkbuildings-safe
+Allow: /for-agencies
+Allow: /sponsored-articles
+Allow: /alternatives
 Allow: /guest-posts-germany
 Allow: /guest-posts-uk
 Allow: /guest-posts-italy
@@ -663,6 +711,9 @@ Allow: /pricing
 Allow: /how-it-works
 Allow: /guest-post-prices-europe
 Allow: /is-seolinkbuildings-safe
+Allow: /for-agencies
+Allow: /sponsored-articles
+Allow: /alternatives
 Allow: /guest-posts-germany
 Allow: /guest-posts-uk
 Allow: /guest-posts-italy
@@ -704,6 +755,9 @@ Allow: /pricing
 Allow: /how-it-works
 Allow: /guest-post-prices-europe
 Allow: /is-seolinkbuildings-safe
+Allow: /for-agencies
+Allow: /sponsored-articles
+Allow: /alternatives
 Allow: /guest-posts-germany
 Allow: /guest-posts-uk
 Allow: /guest-posts-italy
@@ -745,6 +799,9 @@ Allow: /pricing
 Allow: /how-it-works
 Allow: /guest-post-prices-europe
 Allow: /is-seolinkbuildings-safe
+Allow: /for-agencies
+Allow: /sponsored-articles
+Allow: /alternatives
 Allow: /guest-posts-germany
 Allow: /guest-posts-uk
 Allow: /guest-posts-italy
