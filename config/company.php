@@ -36,6 +36,6 @@ return [
 
     'support_email' => env('COMPANY_SUPPORT_EMAIL', 'support@seolinkbuildings.com'),
 
-    'description' => 'SEOLinkBuildings is a European guest post and link building marketplace with verified publishers.',
+    'description' => 'SEOLinkBuildings is a European guest post and link building marketplace with 1000+ publishers.',
 
 ];

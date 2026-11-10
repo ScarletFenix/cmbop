@@ -9,8 +9,8 @@ return [
     'hero_tagline' => 'Self-Service für Schweizer Advertiser: .ch-Publisher und deutschsprachige Sites, EUR-Wallet (kein CHF-Checkout), Live-URL im Auftrag.',
 
     'meta_home_title' => 'Marktplatz für Gastbeiträge in der Schweiz | SEOLinkBuildings',
-    'meta_home_description' => 'Publisher-Marktplatz für Gastbeiträge, Backlinks und Linkbuilding in der Schweiz. .ch-Sites filtern, in EUR zahlen, Live-URL am Auftrag verfolgen.',
-    'meta_home_description_off' => 'Publisher-Marktplatz für Gastbeiträge, Backlinks und Linkbuilding in der Schweiz. .ch-Sites filtern, in EUR zahlen, Live-URL am Auftrag verfolgen.',
+    'meta_home_description' => 'Publisher-Marktplatz für Gastbeiträge, Backlinks und Linkbuilding in der Schweiz. 1000+ publishers. .ch-Sites filtern, in EUR zahlen, Live-URL am Auftrag verfolgen.',
+    'meta_home_description_off' => 'Publisher-Marktplatz für Gastbeiträge, Backlinks und Linkbuilding in der Schweiz. 1000+ publishers. .ch-Sites filtern, in EUR zahlen, Live-URL am Auftrag verfolgen.',
 
     'meta_marketplace_title' => 'Gastbeitrag-Portale & Publisher in der Schweiz | SEOLinkBuildings',
     'meta_marketplace_description' => 'Publisher-Katalog Schweiz: .ch- und deutschsprachige Sites nach Nische, DA/DR und EUR-Preis filtern. Der vollständige Katalog öffnet sich nach der Registrierung.',
@@ -20,7 +20,7 @@ return [
 
     'marketplace_kicker' => 'Schweiz-Katalog',
     'marketplace_title' => 'Gastbeitrag-Portale und Schweizer Publisher',
-    'marketplace_subtitle' => 'Filtern Sie Primärland Schweiz, Sprache und Nische — und kaufen Sie Veröffentlichungen zu klaren EUR-Preisen.',
+    'marketplace_subtitle' => 'Filtern Sie Primärland Schweiz, Sprache und Nische — 1000+ publishers — und kaufen Sie Veröffentlichungen zu klaren EUR-Preisen.',
     'marketplace_point_1_title' => 'Schweiz-first, nicht DACH-Mix',
     'marketplace_point_1_body' => 'Die öffentliche Vorschau zeigt Primärland Schweiz. Deutschland und Österreich haben eigene Katalogseiten.',
     'marketplace_point_2_title' => 'Wallet in Euro',

@@ -21,14 +21,15 @@ class HomepageAiVisibilityTest extends TestCase
         $html = $this->get('/')->assertOk()->getContent();
 
         $this->assertStringContainsString('The guest post marketplace for verified publisher sites.', $html);
-        $this->assertStringContainsString('SEOLinkBuildings is a European guest-post and link building marketplace with verified publishers.', $html);
+        $this->assertStringContainsString('SEOLinkBuildings is a European guest-post and link building marketplace with 1000+ publishers.', $html);
         $this->assertStringContainsString('Teqno Ltd', $html);
         $this->assertStringContainsString('17392540', $html);
         $this->assertStringContainsString('20 Wenlock Road', $html);
         $this->assertStringContainsString('M. Arslan', $html);
         $this->assertStringContainsString('founded in 2024', $html);
         $this->assertStringContainsString('Publishers pay nothing', $html);
-        $this->assertStringContainsString('500+ publishers', $html);
+        $this->assertStringContainsString('1000+ publishers', $html);
+        $this->assertStringNotContainsString('500+ publishers', $html);
         $this->assertStringContainsString('held until you approve', $html);
         $this->assertStringContainsString('What is the best guest post marketplace for Europe?', $html);
         $this->assertStringContainsString('Can I buy German backlinks on SEOLinkBuildings?', $html);
@@ -71,6 +72,7 @@ class HomepageAiVisibilityTest extends TestCase
     {
         $this->assertSame(20.0, HomepageAiVisibility::marketplaceFromEur());
         $this->assertSame('€20', HomepageAiVisibility::formatFromEur());
+        $this->assertSame('1000+ publishers', HomepageAiVisibility::publisherCountLabel());
 
         $empty = $this->get('/')->assertOk()->getContent();
         $this->assertStringContainsString('data-home-from-price', $empty);
@@ -128,6 +130,19 @@ class HomepageAiVisibilityTest extends TestCase
         $llms = $this->get('/llms.txt')->assertOk()->getContent();
         $this->assertStringContainsString('Marketplace placements: start from €20.', $llms);
         $this->assertStringNotContainsString('start from a low EUR amount', $llms);
+        $this->assertStringContainsString('1000+ publishers', $llms);
+        $this->assertStringNotContainsString('500+ publishers', $llms);
+
+        $about = $this->get('/about')->assertOk()->getContent();
+        $this->assertStringContainsString('1000+ publishers', $about);
+        $this->assertStringNotContainsString('500+ publishers', $about);
+
+        $this->assertStringContainsString('1000+ publishers', $faq);
+        $this->assertStringNotContainsString('500+ publishers', $faq);
+
+        $germany = $this->get('/guest-posts-germany')->assertOk()->getContent();
+        $this->assertStringContainsString('1000+ publishers', $germany);
+        $this->assertStringNotContainsString('500+ publishers', $germany);
     }
 
     public function test_locale_home_does_not_get_english_faq_wall(): void

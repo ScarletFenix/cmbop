@@ -19,8 +19,8 @@ return array_replace(require __DIR__.'/../en/messages.php', [
     'home' => 'Início',
 
     'meta_home_title' => 'Marketplace de guest posts em Portugal | SEOLinkBuildings',
-    'meta_home_description' => 'Marketplace de publishers para guest posts, backlinks e link building em Portugal. Filtre sites .pt, pague em EUR e acompanhe o URL em vivo na encomenda.',
-    'meta_home_description_off' => 'Marketplace de publishers para guest posts, backlinks e link building em Portugal. Filtre sites .pt, pague em EUR e acompanhe o URL em vivo na encomenda.',
+    'meta_home_description' => 'Marketplace de publishers para guest posts, backlinks e link building em Portugal. 1000+ publishers. Filtre sites .pt, pague em EUR e acompanhe o URL em vivo na encomenda.',
+    'meta_home_description_off' => 'Marketplace de publishers para guest posts, backlinks e link building em Portugal. 1000+ publishers. Filtre sites .pt, pague em EUR e acompanhe o URL em vivo na encomenda.',
 
     'meta_marketplace_title' => 'Catálogo de meios e publishers em Portugal | SEOLinkBuildings',
     'meta_marketplace_description' => 'Catálogo de publishers em Portugal: filtre sites .pt e em português por nicho, DA/DR e preço em EUR. O catálogo completo abre-se depois do registo.',
@@ -30,7 +30,7 @@ return array_replace(require __DIR__.'/../en/messages.php', [
 
     'marketplace_kicker' => 'Catálogo Portugal',
     'marketplace_title' => 'Catálogo de meios e publishers em Portugal',
-    'marketplace_subtitle' => 'Filtre o país primário Portugal, o idioma e o nicho — e compre publicações a preços claros em EUR.',
+    'marketplace_subtitle' => 'Filtre o país primário Portugal, o idioma e o nicho — 1000+ publishers — e compre publicações a preços claros em EUR.',
     'marketplace_point_1_title' => 'Portugal primeiro, não um mix lusófono',
     'marketplace_point_1_body' => 'A pré-visualização pública mostra o país primário Portugal. O Brasil e outros mercados têm filtros próprios depois do login.',
     'marketplace_point_2_title' => 'Carteira em euros',

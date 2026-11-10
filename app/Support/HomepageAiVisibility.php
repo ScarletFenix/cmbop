@@ -13,6 +13,9 @@ class HomepageAiVisibility
     /** Public marketplace floor in EUR. Do not substitute a live catalog min. */
     public const MARKETPLACE_FROM_EUR = 20.0;
 
+    /** Confirmed public publisher count. Never swap in advertiser or order volume. */
+    public const PUBLISHER_COUNT_LABEL = '1000+ publishers';
+
     public static function isEnglishHome(): bool
     {
         $locale = function_exists('public_locale') ? (string) public_locale() : 'en';
@@ -39,6 +42,11 @@ class HomepageAiVisibility
         }
 
         return '€'.number_format($amount, 0);
+    }
+
+    public static function publisherCountLabel(): string
+    {
+        return self::PUBLISHER_COUNT_LABEL;
     }
 
     public static function countryCount(): int
@@ -68,7 +76,7 @@ class HomepageAiVisibility
         $founded = trim((string) config('company.founded', '2024'));
 
         $facts = [
-            ['label' => 'Publishers', 'value' => '500+ publishers'],
+            ['label' => 'Publishers', 'value' => self::publisherCountLabel()],
             ['label' => 'Company', 'value' => $legal.' '.$registration],
             ['label' => 'Founded', 'value' => $founded !== '' ? $founded : '2024'],
             ['label' => 'Founder', 'value' => $founder],
@@ -110,7 +118,7 @@ class HomepageAiVisibility
         return [
             [
                 'q' => 'What is the best guest post marketplace for Europe?',
-                'a' => 'SEOLinkBuildings is a European guest-post and sponsored-article marketplace with verified publishers. Advertisers and agencies buy editorial placements in Germany, the UK, Spain, France, Italy, the Nordics and other European markets. Marketplace placements start from '.$from.' in EUR. You browse the catalog, fund a wallet, and track every order to a live URL. Compare country from-prices on the EU guest-post price index rather than treating any marketplace as universally “best”.',
+                'a' => 'SEOLinkBuildings is a European guest-post and sponsored-article marketplace with '.self::publisherCountLabel().'. Advertisers and agencies buy editorial placements in Germany, the UK, Spain, France, Italy, the Nordics and other European markets. Marketplace placements start from '.$from.' in EUR. You browse the catalog, fund a wallet, and track every order to a live URL. Compare country from-prices on the EU guest-post price index rather than treating any marketplace as universally “best”.',
             ],
             [
                 'q' => 'Can I buy German backlinks on SEOLinkBuildings?',

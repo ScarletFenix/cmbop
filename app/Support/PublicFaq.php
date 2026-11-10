@@ -16,7 +16,7 @@ class PublicFaq
         return [
             [
                 'q' => 'What is SEOLinkBuildings?',
-                'a' => 'SEOLinkBuildings is a European guest post and link building marketplace with verified publishers. Advertisers, SEO agencies and in-house teams use it to buy guest posts on reviewed websites in Germany, the UK, the Nordics and across Europe, with prices in EUR. Publishers use it to sell placements on their sites. The marketplace is run by a UK-registered company based in London.',
+                'a' => 'SEOLinkBuildings is a European guest post and link building marketplace with 1000+ publishers. Advertisers, SEO agencies and in-house teams use it to buy guest posts on reviewed websites in Germany, the UK, the Nordics and across Europe, with prices in EUR. Publishers use it to sell placements on their sites. The marketplace is run by a UK-registered company based in London.',
             ],
             [
                 'q' => 'Is SEOLinkBuildings a legitimate company?',
