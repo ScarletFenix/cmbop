@@ -13,6 +13,7 @@ use App\Services\OrderChatContactGuard;
 use App\Services\Orders\ManagedFulfilmentService;
 use App\Support\AdvertiserOrderStatus;
 use App\Support\CatalogVisitUrl;
+use App\Support\OrderNotificationReconciliation;
 use App\Support\PublisherNeedsAction;
 use App\Support\UserFacingError;
 use Illuminate\Database\Eloquent\Builder;
@@ -99,7 +100,6 @@ class ChatController extends Controller
                 }
             } elseif ($activeRole === 'admin') {
                 try {
-                    $managed = app(ManagedFulfilmentService::class);
                     $orderIds = AdvertiserOrderStatus::itemsTableAvailable() && ManagedFulfilmentService::hasFulfilmentColumn()
                         ? Order::query()
                             ->where('payment_status', 'paid')
@@ -122,8 +122,7 @@ class ChatController extends Controller
                             ];
                         }
                     }
-                    $needsAction = (int) $orderIds->count();
-                    unset($managed);
+                    $needsAction = OrderNotificationReconciliation::adminOpenWorkCount();
                 } catch (\Throwable $e) {
                     $unreadChat = 0;
                     $needsAction = 0;

@@ -5,7 +5,9 @@ namespace Tests\Feature;
 use App\Models\InAppNotification;
 use App\Models\InAppNotificationPreference;
 use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\Role;
+use App\Models\Site;
 use App\Models\User;
 use App\Services\InAppNotificationService;
 use App\Support\InAppNotificationPresenter;
@@ -41,9 +43,9 @@ class NotificationCenterUxUpgradeTest extends TestCase
         return $user;
     }
 
-    private function makeOrder(User $advertiser, string $orderNumber): Order
+    private function makeOrder(User $advertiser, string $orderNumber, array $overrides = [], array $itemAttrs = []): Order
     {
-        return Order::create([
+        $order = Order::create(array_merge([
             'user_id' => $advertiser->id,
             'order_number' => $orderNumber,
             'reference_code' => 'REF-NC-'.random_int(1000, 9999),
@@ -54,7 +56,38 @@ class NotificationCenterUxUpgradeTest extends TestCase
             'payment_status' => 'paid',
             'status' => 'pending',
             'paid_at' => now(),
+        ], $overrides));
+
+        $site = Site::create([
+            'publisher_id' => $advertiser->id,
+            'site_name' => 'example.com',
+            'site_url' => 'https://example.com',
+            'domain' => 'example.com',
+            'da' => 20,
+            'dr' => 20,
+            'traffic' => 100,
+            'country' => 'us',
+            'language' => 'en',
+            'category' => 'Tech',
+            'price' => 92,
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Notification center order fixture. ', 3),
+            'verified' => true,
+            'active' => true,
         ]);
+
+        OrderItem::create(array_merge([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => 'example.com',
+            'site_url' => 'https://example.com',
+            'content_link' => 'https://example.com/article',
+            'price' => 92,
+            'additional_price' => 0,
+        ], $itemAttrs));
+
+        return $order->fresh(['items']);
     }
 
     public function test_js_copies_stay_identical(): void
@@ -105,7 +138,12 @@ class NotificationCenterUxUpgradeTest extends TestCase
         $user = $this->makeAdvertiser();
         $service = app(InAppNotificationService::class);
 
-        $order = $this->makeOrder($user, '695973');
+        $order = $this->makeOrder($user, '695973', [
+            'status' => 'review',
+        ], [
+            'live_url' => 'https://example.com/article-1',
+            'live_url_submitted_at' => now(),
+        ]);
 
         $service->notify(
             $user,
@@ -252,7 +290,12 @@ class NotificationCenterUxUpgradeTest extends TestCase
     {
         $user = $this->makeAdvertiser();
         $service = app(InAppNotificationService::class);
-        $order = $this->makeOrder($user, '555');
+        $order = $this->makeOrder($user, '555', [
+            'status' => 'review',
+        ], [
+            'live_url' => 'https://news.example/post',
+            'live_url_submitted_at' => now(),
+        ]);
 
         $service->notify(
             $user,

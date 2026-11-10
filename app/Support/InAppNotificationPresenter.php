@@ -7,7 +7,6 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Site;
 use App\Services\InAppNotificationService;
-use App\Support\AdvertiserOrderStatus;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
@@ -49,29 +48,49 @@ class InAppNotificationPresenter
             return [];
         }
 
-        $ordersById = $this->loadOrders($models);
+        [$ordersById, $liveActionIds] = $this->loadOrders($models);
 
         return $models
-            ->map(fn (InAppNotification $n) => $this->presentOne($n, $ordersById))
+            ->map(fn (InAppNotification $n) => $this->presentOne($n, $ordersById, $liveActionIds))
             ->all();
     }
 
     /**
-     * @param  Collection<int, Order>  $ordersById
+     * @param  Collection<int, Order>|null  $ordersById
+     * @param  array<int, true>|null  $liveActionIds
      * @return array<string, mixed>
      */
-    public function presentOne(InAppNotification $notification, ?Collection $ordersById = null): array
-    {
+    public function presentOne(
+        InAppNotification $notification,
+        ?Collection $ordersById = null,
+        ?array $liveActionIds = null
+    ): array {
         $base = $notification->toApiArray();
         $meta = is_array($base['meta'] ?? null) ? $base['meta'] : [];
         $order = $this->resolveOrder($notification, $ordersById);
+        if (! $order) {
+            $order = $this->fetchRelatedOrder($notification);
+        }
         $item = $order?->items?->first();
         $site = $item?->site;
 
+        if ($liveActionIds === null && $order) {
+            $liveActionIds = app(OrderNotificationReconciliation::class)->liveActionOrderIds(
+                (int) $notification->user_id,
+                (string) ($notification->audience ?: InAppNotification::AUDIENCE_ALL),
+                [(int) $order->id],
+                collect([(int) $order->id => $order])
+            );
+        }
+
         $liveUrl = $this->resolveLiveUrl($meta, $item);
         $domain = $this->resolveDomain($meta, $site, $item);
-        $actionNeeded = $this->isActionNeeded($base['type'] ?? '', $base['action_label'] ?? null, $base['priority'] ?? null);
-        $autoApproveLabel = $this->autoApproveLabel($base['type'] ?? '', $meta, $item, $notification->created_at);
+        $actionNeeded = app(OrderNotificationReconciliation::class)->notificationNeedsAction(
+            $notification,
+            $order,
+            $liveActionIds ?? []
+        );
+        $autoApproveLabel = $this->autoApproveLabel($base['type'] ?? '', $meta, $item, $notification->created_at, $order);
         $timelineStep = $this->timelineStepForType($base['type'] ?? '');
 
         $base['action_needed'] = $actionNeeded;
@@ -158,23 +177,7 @@ class InAppNotificationPresenter
 
     public function isActionNeeded(string $type, ?string $actionLabel = null, ?string $priority = null): bool
     {
-        if (in_array($type, self::ACTION_NEEDED_TYPES, true)) {
-            return true;
-        }
-
-        if ($type === InAppNotificationService::TYPE_ORDER_UPDATED) {
-            $label = strtolower((string) $actionLabel);
-            foreach (['review', 'accept', 'submit', 'open task', 'open tasks', 'send revised'] as $needle) {
-                if ($needle !== '' && str_contains($label, $needle)) {
-                    return true;
-                }
-            }
-            if (in_array($priority, [InAppNotification::PRIORITY_HIGH, InAppNotification::PRIORITY_URGENT], true)) {
-                return true;
-            }
-        }
-
-        return false;
+        return app(OrderNotificationReconciliation::class)->typeHeuristic($type, $actionLabel, $priority);
     }
 
     /**
@@ -199,26 +202,24 @@ class InAppNotificationPresenter
         $lifecycle = null;
         if (($latest['order_id'] ?? null) && ($latest['category'] ?? '') === InAppNotificationService::CATEGORY_ORDERS) {
             $timeline = $this->buildTimeline($events);
-            $fromTimeline = null;
-            if (is_array($timeline) && $timeline !== []) {
+            $fromOrder = collect($events)->first(
+                fn ($e) => ! empty($e['action_needed']) && ! empty($e['lifecycle_stepper']) && is_array($e['lifecycle_stepper'])
+            )['lifecycle_stepper'] ?? null;
+            if (! is_array($fromOrder) || $fromOrder === []) {
+                $fromOrder = ! empty($latest['lifecycle_stepper']) && is_array($latest['lifecycle_stepper'])
+                    ? $latest['lifecycle_stepper']
+                    : null;
+            }
+            // Live order stepper wins. Event history is kept on `timeline` only.
+            $lifecycle = $fromOrder;
+            if (! $lifecycle && is_array($timeline) && $timeline !== []) {
                 $current = 1;
                 foreach ($timeline as $i => $step) {
                     if (($step['state'] ?? '') === 'current') {
                         $current = $i + 1;
                     }
                 }
-                $fromTimeline = ['current' => $current, 'steps' => $timeline];
-            }
-            $fromOrder = ! empty($latest['lifecycle_stepper']) && is_array($latest['lifecycle_stepper'])
-                ? $latest['lifecycle_stepper']
-                : null;
-            // Prefer whichever view is further along (event timeline can lead the order row).
-            if ($fromTimeline && $fromOrder) {
-                $lifecycle = ((int) ($fromTimeline['current'] ?? 0) >= (int) ($fromOrder['current'] ?? 0))
-                    ? $fromTimeline
-                    : $fromOrder;
-            } else {
-                $lifecycle = $fromOrder ?? $fromTimeline;
+                $lifecycle = ['current' => $current, 'steps' => $timeline];
             }
         }
 
@@ -317,9 +318,9 @@ class InAppNotificationPresenter
 
     /**
      * @param  Collection<int, InAppNotification>  $models
-     * @return Collection<int, Order>
+     * @return array{0: Collection<int, Order>, 1: array<int, true>}
      */
-    protected function loadOrders(Collection $models): Collection
+    protected function loadOrders(Collection $models): array
     {
         $orderIds = $models
             ->filter(function (InAppNotification $n) {
@@ -336,24 +337,43 @@ class InAppNotificationPresenter
             ->all();
 
         if ($orderIds === []) {
-            return collect();
+            return [collect(), []];
         }
 
         try {
-            return Order::query()
-                ->with([
-                    'items' => fn ($q) => $q->select([
-                        'id', 'order_id', 'site_id', 'site_name', 'live_url',
-                        'live_url_submitted_at', 'auto_approve_triggered',
-                    ]),
-                    'items.site' => fn ($q) => $q->select(['id', 'domain', 'site_name', 'favicon_path', 'url']),
-                ])
+            $orders = Order::query()
+                ->with(['items.site'])
                 ->whereIn('id', $orderIds)
-                ->get(['id', 'order_number', 'order_pack_id', 'user_id'])
+                ->get()
                 ->keyBy('id');
         } catch (\Throwable) {
-            return collect();
+            return [collect(), []];
         }
+
+        $liveActionIds = [];
+        $byUserAudience = [];
+        foreach ($models as $notification) {
+            $oid = (int) $notification->related_id;
+            if ($oid < 1 || ! $orders->has($oid)) {
+                continue;
+            }
+            $uid = (int) $notification->user_id;
+            $audience = strtolower((string) ($notification->audience ?: InAppNotification::AUDIENCE_ALL));
+            $byUserAudience[$uid][$audience][$oid] = true;
+        }
+        $reconciliation = app(OrderNotificationReconciliation::class);
+        foreach ($byUserAudience as $userId => $audiences) {
+            foreach ($audiences as $audience => $ids) {
+                $liveActionIds += $reconciliation->liveActionOrderIds(
+                    (int) $userId,
+                    (string) $audience,
+                    array_map('intval', array_keys($ids)),
+                    $orders
+                );
+            }
+        }
+
+        return [$orders, $liveActionIds];
     }
 
     /**
@@ -371,6 +391,24 @@ class InAppNotificationPresenter
         }
 
         return $ordersById?->get($id);
+    }
+
+    protected function fetchRelatedOrder(InAppNotification $notification): ?Order
+    {
+        $type = (string) $notification->related_type;
+        $id = (int) $notification->related_id;
+        if ($id <= 0) {
+            return null;
+        }
+        if (! ($type === Order::class || $type === 'App\\Models\\Order' || str_ends_with($type, '\\Order'))) {
+            return null;
+        }
+
+        try {
+            return Order::query()->with('items.site')->find($id);
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     /**
@@ -502,8 +540,22 @@ class InAppNotificationPresenter
         string $type,
         array $meta,
         ?OrderItem $item,
-        mixed $createdAt
+        mixed $createdAt,
+        ?Order $order = null
     ): ?string {
+        if ($order) {
+            if ((string) $order->status !== 'review') {
+                return null;
+            }
+            try {
+                if (AdvertiserOrderStatus::isManagedBySlb($order, $item)) {
+                    return null;
+                }
+            } catch (\Throwable) {
+                // continue with the window label
+            }
+        }
+
         // Only surface when the platform has a real auto-approve window.
         $hoursConfigured = null;
         try {

@@ -18,6 +18,7 @@ use App\Models\Withdrawal;
 use App\Services\Billing\WithdrawalPayoutStatementService;
 use App\Services\Orders\AdminOrderStatusOverride;
 use App\Services\Orders\OrderRefundService;
+use App\Support\OrderNotificationReconciliation;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
@@ -105,7 +106,7 @@ class InAppNotificationService
                 return null;
             }
 
-            return InAppNotification::create([
+            $created = InAppNotification::create([
                 'user_id' => $userId,
                 'audience' => $options['audience'] ?? $this->inferAudienceFromUrl($options['action_url'] ?? null),
                 'type' => $type,
@@ -121,6 +122,10 @@ class InAppNotificationService
                 'action_url' => $options['action_url'] ?? null,
                 'meta' => $options['meta'] ?? null,
             ]);
+
+            $this->syncRelatedOrderAfterNotify($related, $relatedType, $relatedId);
+
+            return $created;
         } catch (\Throwable $e) {
             Log::error('Failed to create in-app notification: '.$e->getMessage(), [
                 'type' => $type,
@@ -2685,11 +2690,191 @@ class InAppNotificationService
             return 0;
         }
 
+        $this->reconcileUserOrderNotifications($userId, $audience);
+
         return InAppNotification::forUser($userId)
             ->forAudience($audience)
             ->unread()
             ->notArchivedClock()
             ->count();
+    }
+
+    /**
+     * Archive order-task bells that no longer match the live order state.
+     *
+     * Idempotent. Safe to call after any status transition and from the
+     * one-off `notifications:sync-order-actions` command.
+     */
+    public function syncOrderActionNotifications(?Order $order): int
+    {
+        if (! $order || (int) $order->id < 1) {
+            return 0;
+        }
+
+        InAppNotification::ensureTable();
+        if (! InAppNotification::tableAvailable()) {
+            return 0;
+        }
+
+        try {
+            $order = $order->relationLoaded('items')
+                ? $order
+                : $order->fresh(['items.site']) ?? $order;
+        } catch (\Throwable) {
+            // use the instance we have
+        }
+
+        $archived = 0;
+        try {
+            $notes = InAppNotification::query()
+                ->whereIn('type', OrderNotificationReconciliation::STALEABLE_TYPES)
+                ->where(function ($q) {
+                    $q->whereNull('status')
+                        ->orWhere('status', '!=', InAppNotification::STATUS_ARCHIVED);
+                })
+                ->notArchivedClock()
+                ->where('related_id', $order->id)
+                ->where(function ($type) {
+                    $type->where('related_type', Order::class)
+                        ->orWhere('related_type', 'App\\Models\\Order');
+                })
+                ->get();
+        } catch (\Throwable $e) {
+            Log::warning('Failed to load order notifications for sync', [
+                'order_id' => $order->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return 0;
+        }
+
+        $reconciliation = app(OrderNotificationReconciliation::class);
+        foreach ($notes as $note) {
+            try {
+                if ($reconciliation->isStaleActionNotification($note, $order)) {
+                    $note->archive();
+                    $archived++;
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Failed to archive stale order notification', [
+                    'notification_id' => $note->id,
+                    'order_id' => $order->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return $archived;
+    }
+
+    /**
+     * Lazy cleanup for one user's active order-task bells (bell poll / inbox).
+     */
+    public function reconcileUserOrderNotifications(int $userId, ?string $audience = null): int
+    {
+        InAppNotification::ensureTable();
+        if (! InAppNotification::tableAvailable() || $userId < 1) {
+            return 0;
+        }
+
+        try {
+            $notes = InAppNotification::forUser($userId)
+                ->forAudience($audience)
+                ->whereIn('type', OrderNotificationReconciliation::STALEABLE_TYPES)
+                ->where(function ($q) {
+                    $q->whereNull('status')
+                        ->orWhere('status', '!=', InAppNotification::STATUS_ARCHIVED);
+                })
+                ->notArchivedClock()
+                ->get();
+        } catch (\Throwable $e) {
+            Log::warning('Failed to load user order notifications for reconcile', [
+                'user_id' => $userId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return 0;
+        }
+
+        if ($notes->isEmpty()) {
+            return 0;
+        }
+
+        $orderIds = $notes->pluck('related_id')->map(fn ($id) => (int) $id)->filter()->unique()->values()->all();
+        $orders = collect();
+        if ($orderIds !== []) {
+            try {
+                $orders = Order::query()->with('items')->whereIn('id', $orderIds)->get()->keyBy('id');
+            } catch (\Throwable) {
+                $orders = collect();
+            }
+        }
+
+        $reconciliation = app(OrderNotificationReconciliation::class);
+        $archived = 0;
+        foreach ($notes as $note) {
+            $order = $orders->get((int) $note->related_id);
+            try {
+                if ($reconciliation->isStaleActionNotification($note, $order)) {
+                    $note->archive();
+                    $archived++;
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Failed to archive stale user order notification', [
+                    'notification_id' => $note->id,
+                    'user_id' => $userId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return $archived;
+    }
+
+    /**
+     * Walk every staleable order bell (artisan backfill). Idempotent.
+     *
+     * @return array{scanned: int, archived: int}
+     */
+    public function reconcileAllOrderActionNotifications(bool $dryRun = false): array
+    {
+        InAppNotification::ensureTable();
+        if (! InAppNotification::tableAvailable()) {
+            return ['scanned' => 0, 'archived' => 0];
+        }
+
+        $scanned = 0;
+        $archived = 0;
+        $reconciliation = app(OrderNotificationReconciliation::class);
+
+        InAppNotification::query()
+            ->whereIn('type', OrderNotificationReconciliation::STALEABLE_TYPES)
+            ->where(function ($q) {
+                $q->whereNull('status')
+                    ->orWhere('status', '!=', InAppNotification::STATUS_ARCHIVED);
+            })
+            ->notArchivedClock()
+            ->orderBy('id')
+            ->chunkById(200, function ($notes) use ($dryRun, $reconciliation, &$scanned, &$archived) {
+                $orderIds = $notes->pluck('related_id')->map(fn ($id) => (int) $id)->filter()->unique()->values()->all();
+                $orders = $orderIds === []
+                    ? collect()
+                    : Order::query()->with('items')->whereIn('id', $orderIds)->get()->keyBy('id');
+
+                foreach ($notes as $note) {
+                    $scanned++;
+                    $order = $orders->get((int) $note->related_id);
+                    if (! $reconciliation->isStaleActionNotification($note, $order instanceof Order ? $order : null)) {
+                        continue;
+                    }
+                    if (! $dryRun) {
+                        $note->archive();
+                    }
+                    $archived++;
+                }
+            });
+
+        return ['scanned' => $scanned, 'archived' => $archived];
     }
 
     public function listForUser(int $userId, array $filters = [], int $perPage = 20): LengthAwarePaginator
@@ -2698,6 +2883,8 @@ class InAppNotificationService
         if (! InAppNotification::tableAvailable()) {
             return new \Illuminate\Pagination\LengthAwarePaginator([], 0, $perPage);
         }
+
+        $this->reconcileUserOrderNotifications($userId, $filters['audience'] ?? null);
 
         $query = InAppNotification::forUser($userId)
             ->forAudience($filters['audience'] ?? null)
@@ -2757,6 +2944,29 @@ class InAppNotificationService
                 'read_at' => now(),
                 'updated_at' => now(),
             ]);
+    }
+
+    protected function syncRelatedOrderAfterNotify(mixed $related, mixed $relatedType, mixed $relatedId): void
+    {
+        try {
+            $order = null;
+            if ($related instanceof Order) {
+                $order = $related;
+            } elseif ($related instanceof OrderItem) {
+                $order = $related->order ?? Order::find($related->order_id);
+            } elseif (is_string($relatedType)
+                && (int) $relatedId > 0
+                && ($relatedType === Order::class || $relatedType === 'App\\Models\\Order' || str_ends_with($relatedType, '\\Order'))) {
+                $order = Order::with('items')->find((int) $relatedId);
+            }
+            if ($order) {
+                $this->syncOrderActionNotifications($order);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Order notification sync after notify failed', [
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     protected function inferAudienceFromUrl(?string $url): string
