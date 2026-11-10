@@ -163,6 +163,12 @@
             <li>{{ __('messages.about_page_trust_reach') }}</li>
         </ul>
         <ul class="about-proof-list list-unstyled row g-3 mb-0">
+            <li class="col-sm-6 col-lg-4">
+                <div class="about-proof-item">
+                    <span class="about-proof-value">{{ class_exists(\App\Support\HomepageAiVisibility::class) && method_exists(\App\Support\HomepageAiVisibility::class, 'publisherCountLabel') ? \App\Support\HomepageAiVisibility::publisherCountLabel() : '1000+ publishers' }}</span>
+                    <span class="about-proof-label">{{ __('messages.about_page_who_publishers_title') }}</span>
+                </div>
+            </li>
             @if(!empty($stats['sites']))
                 <li class="col-sm-6 col-lg-4">
                     <div class="about-proof-item">

@@ -17,8 +17,8 @@ return array_replace(require __DIR__.'/../en/messages.php', [
     'blog' => 'Ιστολόγιο',
     'language' => 'Γλώσσα',
     'meta_home_title' => 'Αγοράστε guest posts από επαληθευμένους εκδότες | SEOLinkBuildings',
-    'meta_home_description' => 'Αγοράστε guest posts σε επαληθευμένους εκδότες. Πορτοφόλι EUR, σαφείς τιμές, ζωντανό URL στην παραγγελία — το marketplace του SEOLinkBuildings.',
-    'meta_home_description_off' => 'Αγοράστε guest posts σε επαληθευμένους εκδότες. Πορτοφόλι EUR, σαφείς τιμές, ζωντανό URL στην παραγγελία — το marketplace του SEOLinkBuildings.',
+    'meta_home_description' => 'Αγοράστε guest posts σε επαληθευμένους εκδότες. 1000+ publishers. Πορτοφόλι EUR, σαφείς τιμές, ζωντανό URL στην παραγγελία — το marketplace του SEOLinkBuildings.',
+    'meta_home_description_off' => 'Αγοράστε guest posts σε επαληθευμένους εκδότες. 1000+ publishers. Πορτοφόλι EUR, σαφείς τιμές, ζωντανό URL στην παραγγελία — το marketplace του SEOLinkBuildings.',
     'meta_blog_title' => 'Blog για link building και digital PR | SEOLinkBuildings',
     'meta_blog_description' => 'Πρακτικοί οδηγοί για guest posts, άγκυρες, AEO/SEO και outreach από την ομάδα SEOLinkBuildings.',
 

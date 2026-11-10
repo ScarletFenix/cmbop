@@ -73,9 +73,9 @@ class LocaleCanonicalAndOpenGraphTest extends TestCase
                 continue;
             }
             $type = $payload['@type'] ?? null;
-            if ($type === 'SoftwareApplication' || $type === 'WebSite') {
+            if ($type === 'Service' || $type === 'WebSite') {
                 $this->assertSame($canonical, $payload['url'] ?? null, (string) $type);
-                $sawSoftware = $sawSoftware || $type === 'SoftwareApplication';
+                $sawSoftware = $sawSoftware || $type === 'Service';
                 $sawWebsite = $sawWebsite || $type === 'WebSite';
             }
         }

@@ -71,6 +71,7 @@
 ])
 
 <div class="container py-5" style="max-width: 1040px;">
+    @include('components.marketplace-publisher-count')
     @include('components.breadcrumbs', [
         'items' => [
             ['name' => __('messages.home'), 'url' => localized_url('/')],

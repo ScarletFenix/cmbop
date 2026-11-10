@@ -9,8 +9,8 @@ return [
     'hero_tagline' => 'Self-Service für österreichische Advertiser: .at-Publisher und deutschsprachige Sites, EUR-Wallet, Live-URL im Auftrag.',
 
     'meta_home_title' => 'Marktplatz für Gastbeiträge in Österreich | SEOLinkBuildings',
-    'meta_home_description' => 'Publisher-Marktplatz für Gastbeiträge, Backlinks und Linkbuilding in Österreich. .at-Sites filtern, in EUR zahlen, Live-URL am Auftrag verfolgen.',
-    'meta_home_description_off' => 'Publisher-Marktplatz für Gastbeiträge, Backlinks und Linkbuilding in Österreich. .at-Sites filtern, in EUR zahlen, Live-URL am Auftrag verfolgen.',
+    'meta_home_description' => 'Publisher-Marktplatz für Gastbeiträge, Backlinks und Linkbuilding in Österreich. 1000+ publishers. .at-Sites filtern, in EUR zahlen, Live-URL am Auftrag verfolgen.',
+    'meta_home_description_off' => 'Publisher-Marktplatz für Gastbeiträge, Backlinks und Linkbuilding in Österreich. 1000+ publishers. .at-Sites filtern, in EUR zahlen, Live-URL am Auftrag verfolgen.',
 
     'meta_marketplace_title' => 'Gastbeitrag-Portale & Publisher in Österreich | SEOLinkBuildings',
     'meta_marketplace_description' => 'Publisher-Katalog Österreich: .at- und deutschsprachige Sites nach Nische, DA/DR und EUR-Preis filtern. Der vollständige Katalog öffnet sich nach der Registrierung.',
@@ -20,7 +20,7 @@ return [
 
     'marketplace_kicker' => 'Österreich-Katalog',
     'marketplace_title' => 'Gastbeitrag-Portale und österreichische Publisher',
-    'marketplace_subtitle' => 'Filtern Sie Primärland Österreich, Sprache und Nische — und kaufen Sie Veröffentlichungen zu klaren EUR-Preisen.',
+    'marketplace_subtitle' => 'Filtern Sie Primärland Österreich, Sprache und Nische — 1000+ publishers — und kaufen Sie Veröffentlichungen zu klaren EUR-Preisen.',
     'marketplace_point_1_title' => 'Österreich-first, nicht DACH-Mix',
     'marketplace_point_1_body' => 'Die öffentliche Vorschau zeigt Primärland Österreich. Deutschland und die Schweiz haben eigene Katalogseiten.',
     'marketplace_point_2_title' => 'Wallet in Euro',

@@ -111,12 +111,12 @@ class EnglishCommercialLanders
                 'h1' => 'Link building for SEO and digital PR agencies',
                 'subtitle' => 'A self-service European guest-post and sponsored-article catalog for agencies that rebill clients. One EUR wallet, tracked orders, live URLs — not a reseller storefront with your logo on the public site.',
                 'meta_title' => 'Link Building for SEO Agencies | SEOLinkBuildings',
-                'meta_description' => 'Self-service guest posts and sponsored articles for SEO agencies: EUR wallet, tracked live URLs, UK company invoices. You pick the sites; we are not a branded reseller portal.',
+                'meta_description' => 'Guest posts for SEO agencies: 1000+ publishers, EUR wallet, tracked live URLs, UK company invoices. You pick the sites; we are not a branded reseller portal.',
                 'teaser_countries' => ['de', 'fr', 'nl', 'es', 'it', 'uk', 'pl'],
                 'teaser_title' => 'Inventory you can rebill',
                 'teaser_subtitle' => 'The same verified listings an in-house advertiser sees. You stay the account; brands live in your projects and orders.',
                 'intro' => [
-                    'SEOLinkBuildings is a two-sided marketplace, not an agency that chooses sites for you. If you run SEO or link-building campaigns for clients, you stay in control: filter the catalog, pay in euro, send the brief, and hand the live URL back to the client.',
+                    'SEOLinkBuildings is a two-sided marketplace with 1000+ publishers, not an agency that chooses sites for you. If you run SEO or link-building campaigns for clients, you stay in control: filter the catalog, pay in euro, send the brief, and hand the live URL back to the client.',
                     'Operational white label means the end client does not have to create a marketplace account. It is not a reseller programme with your brand on the public website, and we do not invent a second “agency price list”. Checkout is the listing price in EUR.',
                 ],
                 'points' => [
@@ -175,12 +175,12 @@ class EnglishCommercialLanders
                 'h1' => 'Sponsored articles and advertorials on publisher sites',
                 'subtitle' => 'Sponsored post, advertorial, or native article: the same European marketplace checkout as a guest post — EUR price, briefing, live URL, and the labelling the listing actually allows.',
                 'meta_title' => 'Sponsored Articles & Advertorials | SEOLinkBuildings',
-                'meta_description' => 'Buy sponsored articles and advertorials on verified publishers. Same catalog checkout as guest posts, in EUR, with briefing and a tracked live URL — no ranking promise.',
+                'meta_description' => 'Buy sponsored articles and advertorials from 1000+ publishers. Same catalog checkout as guest posts, in EUR, with briefing and a tracked live URL — no ranking promise.',
                 'teaser_countries' => ['de', 'fr', 'nl', 'es', 'it', 'uk'],
                 'teaser_title' => 'Sites for paid publications',
                 'teaser_subtitle' => 'The same catalog as guest posts. The difference is commercial vocabulary: advertorial, sponsored, native — plus disclosure and link attributes on the listing.',
                 'intro' => [
-                    '“Buy a sponsored article”, “advertorial”, and “native advertising” describe a paid publication on a site you do not own. On SEOLinkBuildings that is not a separate SKU: it is the same catalog order, with disclosure and link attributes as the publisher lists them.',
+                    '“Buy a sponsored article”, “advertorial”, and “native advertising” describe a paid publication on a site you do not own. On SEOLinkBuildings that is the same catalog of 1000+ publishers, with disclosure and link attributes as the publisher lists them.',
                     'We do not sell rankings, a national press wire, or Google News placement. We sell a publication with visible rules, euro checkout, and a live URL on the order.',
                 ],
                 'points' => [
@@ -238,12 +238,12 @@ class EnglishCommercialLanders
                 'h1' => 'How SEOLinkBuildings differs from agencies and other marketplaces',
                 'subtitle' => 'A European guest-post and sponsored-article marketplace: filterable catalog, EUR wallet, live URL on the order, 30-day removal reports. We do not invent competitor stats or our own order volume.',
                 'meta_title' => 'How SEOLinkBuildings Differs | Guest Post Marketplaces',
-                'meta_description' => 'How SEOLinkBuildings differs from opaque packages and other guest-post marketplaces: European catalog, EUR wallet, tracked live URLs, 30-day removal reports — no invented stats.',
+                'meta_description' => 'How SEOLinkBuildings differs from opaque packages: 1000+ publishers, EUR wallet, tracked live URLs, 30-day removal reports — no invented advertiser or order counts.',
                 'teaser_countries' => ['de', 'fr', 'nl', 'es', 'it', 'uk', 'pl'],
                 'teaser_title' => 'The same public catalog',
                 'teaser_subtitle' => 'We do not clone another platform’s inventory. After you register you see our listings with EUR checkout prices.',
                 'intro' => [
-                    'Searches for “guest post marketplace alternatives” or “how we differ from link-building agencies” want a comparison. This page does not claim we are “cheaper” or “larger” than a named competitor. It lists what you can check on SEOLinkBuildings today.',
+                    'Searches for “guest post marketplace alternatives” or “how we differ from link-building agencies” want a comparison. SEOLinkBuildings has 1000+ publishers. This page does not claim we are “cheaper” or “larger” than a named competitor. It lists what you can check on SEOLinkBuildings today.',
                     'Brand: SEOLinkBuildings. Legal entity: Teqno Ltd (company number 17392540), registered in England and Wales, 20 Wenlock Road, London N1 7GU. Founded 2024. Catalog and checkout in EUR. Spanish-language comparison copy lives on <a href="/es/alternativas">/es/alternativas</a> — one conquest page, not a doorway per brand.',
                 ],
                 'points' => [

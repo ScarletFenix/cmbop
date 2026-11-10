@@ -14,26 +14,13 @@
   html, body { background: #f7fafb; }
   .slb-reveal { animation: none !important; opacity: 1 !important; }
 </style>
+@if(class_exists(\App\Support\HomepageAiVisibility::class) && method_exists(\App\Support\HomepageAiVisibility::class, 'jsonLdBlocks'))
+    @foreach(\App\Support\HomepageAiVisibility::jsonLdBlocks() as $homeJsonLd)
 <script type="application/ld+json">
-{!! json_encode([
-    '@@context' => 'https://schema.org',
-    '@type' => 'SoftwareApplication',
-    'name' => 'SEOLinkBuildings',
-    'applicationCategory' => 'BusinessApplication',
-    'operatingSystem' => 'Web',
-    'url' => localized_url('/'),
-    'description' => welcome_bonus_message('meta_home_description', 'meta_home_description_off'),
-    'image' => asset('assets/img/logo1.png'),
-    'offers' => [
-        '@type' => 'Offer',
-        'price' => '0',
-        'priceCurrency' => 'EUR',
-    ],
-    'provider' => [
-        '@id' => \App\Support\BrandOrganization::organizationId(),
-    ],
-], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_HEX_TAG|JSON_HEX_AMP|JSON_INVALID_UTF8_SUBSTITUTE) ?: '{}' !!}
+{!! \App\Support\BrandOrganization::jsonLd($homeJsonLd) !!}
 </script>
+    @endforeach
+@else
 <script type="application/ld+json">
 {!! json_encode([
     '@@context' => 'https://schema.org',
@@ -56,6 +43,7 @@
     ],
 ], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_HEX_TAG|JSON_HEX_AMP|JSON_INVALID_UTF8_SUBSTITUTE) ?: '{}' !!}
 </script>
+@endif
 @endpush
 
 @section('content')
@@ -146,22 +134,22 @@
                 'current' => 'home',
                 'title' => 'Agencies, sponsored articles, and European markets',
             ])
-            <p class="small mb-0">
-                <a href="{{ url('/guest-posts-germany') }}">Germany</a>
-                · <a href="{{ url('/guest-posts-uk') }}">UK</a>
-                · <a href="{{ url('/guest-posts-france') }}">France</a>
-                · <a href="{{ url('/guest-posts-netherlands') }}">Netherlands</a>
-                · <a href="{{ url('/guest-posts-spain') }}">Spain</a>
-                · <a href="{{ url('/guest-posts-italy') }}">Italy</a>
-                · <a href="{{ url('/guest-posts-poland') }}">Poland</a>
-                · <a href="{{ url('/guest-posts-denmark') }}">Denmark</a>
-                · <a href="{{ url('/guest-posts-sweden') }}">Sweden</a>
-                · <a href="{{ url('/guest-posts-norway') }}">Norway</a>
-            </p>
         </div>
+    @endif
+    @if(class_exists(\App\Support\HomepageAiVisibility::class)
+        && method_exists(\App\Support\HomepageAiVisibility::class, 'isEnglishHome')
+        && \App\Support\HomepageAiVisibility::isEnglishHome()
+        && view()->exists('components.homepage-ai'))
+        @include('components.homepage-ai', ['section' => 'facts'])
     @endif
     @include('components.features')
     @include('components.how-it-works')
+    @if(class_exists(\App\Support\HomepageAiVisibility::class)
+        && method_exists(\App\Support\HomepageAiVisibility::class, 'isEnglishHome')
+        && \App\Support\HomepageAiVisibility::isEnglishHome()
+        && view()->exists('components.homepage-ai'))
+        @include('components.homepage-ai', ['section' => 'faq'])
+    @endif
     @include('components.pricing')
     @include('components.newsletter')
     @include('components.cta')

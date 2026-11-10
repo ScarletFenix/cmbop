@@ -103,12 +103,12 @@ return [
 
     // Default + page meta (SEOLinkBuildings / seolinkbuildings.com)
     'meta_default_title' => 'SEOLinkBuildings — Marketplace di guest post e backlink',
-    'meta_default_description' => 'Seolinkbuildings.com è il marketplace di guest post per comprare e vendere backlink editoriali con publisher verificati e prezzi trasparenti in EUR.',
+    'meta_default_description' => 'Seolinkbuildings.com è il marketplace di guest post per comprare e vendere backlink editoriali con publisher verificati e prezzi trasparenti in EUR. 1000+ publishers.',
     'meta_home_title' => 'Marketplace guest post e link building | SEOLinkBuildings',
-    'meta_home_description' => 'Piattaforma self-service per guest post e backlink editoriali. Catalogo europeo, wallet in EUR, URL live sull’ordine — SEOLinkBuildings.',
-    'meta_home_description_off' => 'Piattaforma self-service per guest post e backlink editoriali. Catalogo europeo, wallet in EUR, URL live sull’ordine — SEOLinkBuildings.',
+    'meta_home_description' => 'Piattaforma self-service per guest post e backlink editoriali. 1000+ publishers. Catalogo europeo, wallet in EUR, URL live sull’ordine — SEOLinkBuildings.',
+    'meta_home_description_off' => 'Piattaforma self-service per guest post e backlink editoriali. 1000+ publishers. Catalogo europeo, wallet in EUR, URL live sull’ordine — SEOLinkBuildings.',
     'meta_about_title' => 'Chi siamo — Marketplace europeo di guest post | SEOLinkBuildings',
-    'meta_about_description' => 'Scopri come SEOLinkBuildings mette in contatto inserzionisti e publisher per guest post etici e PR digitale in Europa e nei mercati anglofoni. Il sito pubblico è disponibile in inglese (UK/US), tedesco, francese, olandese, spagnolo e italiano. Gestito da Teqno Ltd (UK).',
+    'meta_about_description' => 'Scopri come SEOLinkBuildings mette in contatto inserzionisti e publisher per guest post etici e PR digitale in Europa e nei mercati anglofoni. 1000+ publishers. Il sito pubblico è disponibile in inglese (UK/US), tedesco, francese, olandese, spagnolo e italiano. Gestito da Teqno Ltd (UK).',
     'meta_faq_title' => 'FAQ — Guest post, pagamenti e pubblicazione | SEOLinkBuildings',
     'meta_faq_description' => 'Risposte su wallet, ordini, rimborsi, verifica e pubblicazione. Scopri come funziona il marketplace di Seolinkbuildings.com prima di comprare o vendere.',
     'meta_pricing_title' => 'Prezzi guest post e costo link building | SEOLinkBuildings',
@@ -145,7 +145,7 @@ return [
     // About
     'about_page_kicker' => 'Chi siamo',
     'about_page_title' => 'Il marketplace di guest post pensato per l\'Europa',
-    'about_page_subtitle' => 'SEOLinkBuildings mette in contatto inserzionisti e publisher verificati in Europa e nei principali mercati anglofoni, con prezzi chiari in EUR, checkout dal wallet e consegna tracciata.',
+    'about_page_subtitle' => 'SEOLinkBuildings mette in contatto inserzionisti e publisher verificati in Europa e nei principali mercati anglofoni, con prezzi chiari in EUR, checkout dal wallet e consegna tracciata. 1000+ publishers.',
     'about_page_mission_title' => 'La nostra missione',
     'about_page_mission_body' => 'Rendere accessibili guest post di qualità e pubblicazioni di PR digitale senza pacchetti opachi. Gli inserzionisti vedono i prezzi reali dei siti, ricaricano un wallet in EUR e seguono ogni ordine dal brief all\'URL live. I publisher mettono in elenco l\'inventario una volta e guadagnano alle condizioni che fissano loro.',
     'about_page_approach_title' => 'Il nostro approccio',
@@ -165,7 +165,7 @@ return [
     'about_page_proof_intro' => 'La fiducia su SEOLinkBuildings è nel catalogo, non in pacchetti opachi. Puoi filtrare e confrontare i publisher con gli stessi segnali che gli inserzionisti usano dopo la consegna.',
     'about_page_trust_ratings' => 'Valutazioni degli inserzionisti: a ordine completato, gli acquirenti possono valutare il publisher. I siti mostrano un punteggio a stelle e quante valutazioni hanno.',
     'about_page_trust_completions' => 'Storico di completamento: ogni sito mostra le pubblicazioni riuscite rispetto a quelle annullate, così vedi lo storico di consegna prima di comprare.',
-    'about_page_trust_verified' => 'Publisher verificati: gli elenchi vengono recensiti prima di andare live. Cerca il badge Verificato e filtra i siti verificati nel catalogo.',
+    'about_page_trust_verified' => 'Publisher verificati: gli elenchi vengono recensiti prima di andare live. 1000+ publishers. Cerca il badge Verificato e filtra i siti verificati nel catalogo.',
     'about_page_trust_reach' => 'Publisher in tutto il mondo con focus sull\'Europa: sfoglia i mercati europei e altre regioni supportate. Il sito pubblico è disponibile in inglese (UK/US), tedesco, francese, olandese, spagnolo e italiano.',
     'about_page_proof_sites' => 'Siti publisher attivi nel catalogo',
     'about_page_proof_verified' => 'Siti publisher attivi e verificati',
@@ -254,7 +254,7 @@ return [
     // Marketplace marketing page
     'marketplace_kicker' => 'Catalogo',
     'marketplace_title' => 'Lista siti per guest post in Italia',
-    'marketplace_subtitle' => 'Confronta editori italiani ed europei per nicchia, lingua, DA/DR e prezzo in euro. I domini completi si vedono dopo l\'accesso.',
+    'marketplace_subtitle' => 'Confronta editori italiani ed europei per nicchia, lingua, DA/DR e prezzo in euro. 1000+ publishers. I domini completi si vedono dopo l\'accesso.',
     'marketplace_point_1_title' => 'Publisher verificati',
     'marketplace_point_1_body' => 'Concentrati su siti editoriali reali in Europa e nei principali mercati internazionali.',
     'marketplace_point_2_title' => 'Checkout dal wallet',
@@ -336,7 +336,7 @@ return [
     // Why choose us
     'why_choose_kicker' => 'Perché SEOLinkBuildings',
     'why_choose_title' => 'Perché i team ci scelgono',
-    'why_choose_subtitle' => 'Un marketplace pensato per chiarezza, qualità e portata internazionale.',
+    'why_choose_subtitle' => 'Un marketplace pensato per chiarezza, qualità e portata internazionale. 1000+ publishers.',
     'why_choose_point_1_title' => 'Qualità prima del volume',
     'why_choose_point_1_body' => 'Diamo priorità a publisher pertinenti e aderenza editoriale, non a pacchetti opachi all\'ingrosso.',
     'why_choose_point_2_title' => 'Prezzi trasparenti',

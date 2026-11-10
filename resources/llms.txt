@@ -6,10 +6,10 @@
 - Brand name: SEOLinkBuildings
 - Domain: seolinkbuildings.com
 - Product: two-sided marketplace for buying and selling editorial guest-post placements and backlinks
-- Positioning: verified publishers, transparent EUR pricing, wallet checkout, live-URL order tracking
+- Positioning: 1000+ publishers, transparent EUR pricing, wallet checkout, live-URL order tracking
 
 ## Product
-SEOLinkBuildings (seolinkbuildings.com) is a two-sided marketplace for buying and selling editorial guest-post placements. Advertisers browse a catalog of publisher sites, fund a EUR wallet, assign approved articles, and track orders to live URL. Publishers list sites, fulfil placement tasks, and withdraw earnings.
+SEOLinkBuildings (seolinkbuildings.com) is a two-sided marketplace for buying and selling editorial guest-post placements. The catalog has 1000+ publishers. Advertisers browse a catalog of publisher sites, fund a EUR wallet, assign approved articles, and track orders to live URL. Publishers list sites, fulfil placement tasks, and withdraw earnings.
 
 Public marketing site languages: English UK (default, unprefixed), German (/de), French (/fr), Dutch (/nl), Spanish (/es), Portuguese (/pt), Italian (/it), Polish (/pl), plus additional European locale prefixes (/at, /ch, /ro, /gr, /dk, /se, /no, /bg, /hu, /ee). `/us` is a convenience overlay of UK English and is served `noindex, follow` — it is not a second indexable site. Logged-in SaaS dashboard is English. Country guest-post landers (English URLs only) include Germany, UK, Italy, Spain, France, Netherlands, Switzerland, Austria, Romania, Greece, Denmark, Sweden, Norway, Bulgaria, Hungary, Estonia, and Poland.
 
@@ -507,7 +507,7 @@ Indexable unique copy and money landers only. Thin German-fallback chrome (about
 Locale mirrors use `/de/`, `/fr/`, `/nl/`, `/es/`, `/pt/`, `/it/`, `/us/`, `/pl/`, `/at/`, `/ch/`, `/ro/`, `/gr/`, `/dk/`, `/se/`, `/no/`, `/bg/`, `/hu/`, and `/ee/` prefixes for the same public pages. Blog posts appear under a locale only when that language has a published translation.
 
 ## Pricing (snapshot)
-- Marketplace placements: priced per publisher listing; public pages state placements start from a low EUR amount (catalog after login).
+- Marketplace placements: start from €20. Each listing has its own checkout price in EUR (full catalog after login).
 - New advertisers: promotional welcome credit is spend-only when granted; it is not always offered.
 - Managed Digital PR packages (monthly):
   - Starter: €499
@@ -516,6 +516,7 @@ Locale mirrors use `/de/`, `/fr/`, `/nl/`, `/es/`, `/pt/`, `/it/`, `/us/`, `/pl/
 
 ## Company
 - Brand: SEOLinkBuildings
+- Catalog: 1000+ publishers
 - Operating company: Teqno Ltd
 - Company number on the site: 17392540. The public schema publishes legalName only when it is the exact Companies House spelling for that number.
 - Company number: 17392540

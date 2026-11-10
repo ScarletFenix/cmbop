@@ -26,6 +26,13 @@
 
       <p class="slb-hero-tagline">{{ __('messages.hero_tagline') }}</p>
 
+      @if (class_exists(\App\Support\HomepageAiVisibility::class)
+          && method_exists(\App\Support\HomepageAiVisibility::class, 'isEnglishHome')
+          && \App\Support\HomepageAiVisibility::isEnglishHome()
+          && view()->exists('components.homepage-intro'))
+        @include('components.homepage-intro')
+      @endif
+
       <form class="slb-hero-search" action="{{ $marketplaceHref }}" method="get" role="search">
         <label class="visually-hidden" for="heroMarketplaceSearch">{{ __('messages.hero_search_label') }}</label>
         <input type="search"
@@ -219,6 +226,19 @@
     color: #4b5563;
     max-width: 36ch;
     animation: none;
+  }
+
+  .slb-hero-intro {
+    margin: 0.7rem 0 0;
+    font-size: 0.95rem;
+    line-height: 1.55;
+    color: #4b5563;
+    max-width: 48ch;
+  }
+
+  .slb-hero-intro a {
+    color: var(--brand-primary, #1a585e);
+    font-weight: 600;
   }
 
   .slb-hero-search {
@@ -492,7 +512,8 @@
       max-width: min(420px, 88%);
     }
     .slb-hero-title,
-    .slb-hero-tagline {
+    .slb-hero-tagline,
+    .slb-hero-intro {
       max-width: 34ch;
       margin-left: auto;
       margin-right: auto;
