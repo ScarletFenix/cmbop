@@ -507,7 +507,7 @@ Indexable unique copy and money landers only. Thin German-fallback chrome (about
 Locale mirrors use `/de/`, `/fr/`, `/nl/`, `/es/`, `/pt/`, `/it/`, `/us/`, `/pl/`, `/at/`, `/ch/`, `/ro/`, `/gr/`, `/dk/`, `/se/`, `/no/`, `/bg/`, `/hu/`, and `/ee/` prefixes for the same public pages. Blog posts appear under a locale only when that language has a published translation.
 
 ## Pricing (snapshot)
-- Marketplace placements: priced per publisher listing; public pages state placements start from a low EUR amount (catalog after login).
+- Marketplace placements: start from €20. Each listing has its own checkout price in EUR (full catalog after login).
 - New advertisers: promotional welcome credit is spend-only when granted; it is not always offered.
 - Managed Digital PR packages (monthly):
   - Starter: €499

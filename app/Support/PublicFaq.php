@@ -40,7 +40,7 @@ class PublicFaq
             ],
             [
                 'q' => 'How much does a guest post on a German website cost?',
-                'a' => 'Verified German listings on SEOLinkBuildings start at €52. Each publisher sets its own price, so the cost depends on the site\'s audience, authority, niche and the type of placement. You can see every price in EUR before you order, and filter German, Austrian and Swiss publishers separately if you are targeting the DACH market.',
+                'a' => 'Marketplace placements on SEOLinkBuildings start from €20. Each German publisher sets its own price, so the cost depends on the site\'s audience, authority, niche and the type of placement. You can see every price in EUR before you order, and filter German, Austrian and Swiss publishers separately if you are targeting the DACH market.',
             ],
             [
                 'q' => 'How does buyer protection work?',
@@ -68,7 +68,7 @@ class PublicFaq
             ],
             [
                 'q' => 'Can I buy German-language links for Germany, Austria and Switzerland?',
-                'a' => 'Yes. SEOLinkBuildings has dedicated marketplace pages and filters for Germany, Austria and Switzerland, so you can find German-language publishers for each DACH market. Verified German listings start at €52, prices are shown in EUR, and every publisher is reviewed before it appears. You can filter further by niche and SEO metrics to find relevant sites.',
+                'a' => 'Yes. SEOLinkBuildings has dedicated marketplace pages and filters for Germany, Austria and Switzerland, so you can find German-language publishers for each DACH market. Marketplace placements start from €20, prices are shown in EUR, and every publisher is reviewed before it appears. You can filter further by niche and SEO metrics to find relevant sites.',
             ],
             [
                 'q' => 'What are the Digital PR plans and what do they cost?',

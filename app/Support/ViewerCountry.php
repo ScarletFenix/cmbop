@@ -169,9 +169,11 @@ class ViewerCountry
         }
 
         foreach ([
-            'googlebot', 'bingbot', 'slurp', 'duckduckbot', 'yandex', 'baiduspider',
+            'googlebot', 'google-extended', 'bingbot', 'bingpreview', 'microsoftpreview',
+            'slurp', 'duckduckbot', 'yandex', 'baiduspider',
             'facebookexternalhit', 'linkedinbot', 'twitterbot', 'gptbot', 'claudebot',
-            'perplexitybot', 'bytespider', 'ccbot', 'applebot', 'semrush', 'ahrefs',
+            'anthropic', 'perplexitybot', 'perplexity-user', 'bytespider', 'ccbot',
+            'applebot', 'semrush', 'ahrefs',
             'dotbot', 'petalbot', 'ia_archiver', 'oai-searchbot', 'chatgpt-user',
         ] as $marker) {
             if (str_contains($ua, $marker)) {

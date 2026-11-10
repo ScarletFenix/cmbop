@@ -1,19 +1,13 @@
 @php
     $showIntro = $showIntro ?? true;
-    $fromPrice = '50';
-    try {
-        $minPublisherPrice = \App\Models\Site::query()
-            ->where('active', 1)
-            ->where(function ($q) {
-                $q->where('verified', 1)->orWhere('verified', true);
-            })
-            ->min('price');
-        $fromPrice = $minPublisherPrice
-            ? number_format(app(\App\Services\PlatformFeeService::class)->advertiserBase((float) $minPublisherPrice), 0)
-            : '50';
-    } catch (\Throwable $e) {
-        $fromPrice = '50';
+    $fromPrice = '20';
+    if (class_exists(\App\Support\HomepageAiVisibility::class)
+        && defined(\App\Support\HomepageAiVisibility::class.'::MARKETPLACE_FROM_EUR')) {
+        $fromPrice = (string) (int) \App\Support\HomepageAiVisibility::MARKETPLACE_FROM_EUR;
     }
+    $fromPriceLabel = function_exists('format_money_amount')
+        ? format_money_amount((float) $fromPrice, 'EUR', ['decimals' => 0])
+        : '€'.$fromPrice;
 
     $t = function (string $key, string $fallback): string {
         return trans()->has('messages.'.$key) ? (string) __('messages.'.$key) : $fallback;
@@ -35,7 +29,7 @@
       <h2 class="slb-section-title">{{ $t('pricing_hero_title', 'Buy placements that match your market') }}</h2>
       <p class="slb-section-lead mb-2">{{ $t('pricing_hero_lead', 'Browse verified publisher sites, pick a price that fits, and checkout from your wallet.') }}</p>
       @endif
-      <p class="text-muted mb-4">{{ $t('pricing_hero_from', 'Marketplace placements start from') }} <strong class="slb-price-from">{{ format_money((float) $fromPrice, ['decimals' => 0]) }}</strong>.</p>
+      <p class="text-muted mb-4">{{ $t('pricing_hero_from', 'Marketplace placements start from') }} <strong class="slb-price-from">{{ $fromPriceLabel }}</strong>.</p>
       <div class="d-flex flex-wrap justify-content-center gap-2">
         <a href="{{ url('/register') }}" class="btn btn-primary btn-lg px-4">
           {{ __('messages.get_started') }}

@@ -5,22 +5,22 @@
 @section('canonical', localized_url('pricing'))
 
 @php
-    $fromPrice = '50';
-    try {
-        $minPublisherPrice = \App\Models\Site::query()
-            ->where('active', 1)
-            ->where(function ($q) {
-                $q->where('verified', 1)->orWhere('verified', true);
-            })
-            ->min('price');
-        $fromPrice = $minPublisherPrice
-            ? number_format(app(\App\Services\PlatformFeeService::class)->advertiserBase((float) $minPublisherPrice), 0, '.', '')
-            : '50';
-    } catch (\Throwable $e) {
-        $fromPrice = '50';
+    $fromPrice = '20';
+    if (class_exists(\App\Support\HomepageAiVisibility::class)
+        && defined(\App\Support\HomepageAiVisibility::class.'::MARKETPLACE_FROM_EUR')) {
+        $fromPrice = (string) (int) \App\Support\HomepageAiVisibility::MARKETPLACE_FROM_EUR;
     }
 
     $offerCatalog = [
+        [
+            '@type' => 'Offer',
+            'name' => 'Marketplace guest-post placement',
+            'description' => 'Editorial guest post or sponsored article on a verified publisher site. Marketplace placements start from €'.$fromPrice.'.',
+            'price' => $fromPrice,
+            'priceCurrency' => 'EUR',
+            'availability' => 'https://schema.org/InStock',
+            'url' => localized_url('marketplace'),
+        ],
         [
             '@type' => 'Offer',
             'name' => __('messages.pricing_card_1_title'),
@@ -68,7 +68,7 @@
         '@type' => 'AggregateOffer',
         'priceCurrency' => 'EUR',
         'lowPrice' => $fromPrice,
-        'offerCount' => 3,
+        'offerCount' => 4,
         'offers' => $offerCatalog,
     ],
 ], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_HEX_TAG|JSON_HEX_AMP|JSON_INVALID_UTF8_SUBSTITUTE) ?: '{}' !!}

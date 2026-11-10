@@ -105,6 +105,9 @@ class SeoAndSecurityHeadersTest extends TestCase
             ->assertSee('OAI-SearchBot', false)
             ->assertSee('Google-Extended', false)
             ->assertSee('PerplexityBot', false)
+            ->assertSee('MicrosoftPreview', false)
+            ->assertSee('Allow: /llms.txt', false)
+            ->assertSee('Allow: /about', false)
             ->assertSee('Bytespider', false)
             ->assertSee('Applebot-Extended', false)
             ->assertSee('LinkedInBot', false)
@@ -189,7 +192,12 @@ class SeoAndSecurityHeadersTest extends TestCase
 
         $this->assertStringContainsString('"@type":"WebSite"', $html);
         $this->assertStringContainsString('"@type":"Organization"', $html);
-        $this->assertStringContainsString('"@type":"SoftwareApplication"', $html);
+        $this->assertStringContainsString('"@type":"Service"', $html);
+        $this->assertStringContainsString('"@type":"OfferCatalog"', $html);
+        $this->assertStringContainsString('"@type":"FAQPage"', $html);
+        $this->assertStringContainsString('"@type":"SearchAction"', $html);
+        $this->assertStringNotContainsString('"@type":"SoftwareApplication"', $html);
+        $this->assertStringNotContainsString('"price":"0"', $html);
         $this->assertStringContainsString('17392540', $html);
         $this->assertStringContainsString('fetchpriority="high"', $html);
         $this->assertStringContainsString('https://www.facebook.com/seolinkbuildings/', $html);

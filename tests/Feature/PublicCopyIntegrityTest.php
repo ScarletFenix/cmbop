@@ -270,12 +270,12 @@ class PublicCopyIntegrityTest extends TestCase
             $this->assertStringNotContainsString('20 € welcome', $html);
 
             $descriptions = $this->softwareApplicationDescriptions($html);
-            $this->assertNotEmpty($descriptions, $uri.' is missing SoftwareApplication JSON-LD');
+            $this->assertNotEmpty($descriptions, $uri.' is missing Service JSON-LD');
             foreach ($descriptions as $description) {
                 $this->assertDoesNotMatchRegularExpression(
                     $pattern,
                     $description,
-                    $uri.' SoftwareApplication description still advertises the closed welcome credit: '.$description
+                    $uri.' Service description still advertises the closed welcome credit: '.$description
                 );
                 $this->assertStringContainsString('EUR wallet', $description);
                 $this->assertStringContainsString('transparent prices', $description);
@@ -324,7 +324,7 @@ class PublicCopyIntegrityTest extends TestCase
                 ? $payload['@graph']
                 : [$payload];
             foreach ($nodes as $node) {
-                if (($node['@type'] ?? null) === 'SoftwareApplication' && isset($node['description'])) {
+                if (in_array($node['@type'] ?? null, ['SoftwareApplication', 'Service'], true) && isset($node['description'])) {
                     $descriptions[] = (string) $node['description'];
                 }
             }
