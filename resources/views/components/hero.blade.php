@@ -24,12 +24,17 @@
 
       <h1 class="slb-hero-title">{{ __('messages.hero_support') }}</h1>
 
+      @php
+          $englishHomeIntro = class_exists(\App\Support\HomepageAiVisibility::class)
+              && method_exists(\App\Support\HomepageAiVisibility::class, 'isEnglishHome')
+              && \App\Support\HomepageAiVisibility::isEnglishHome()
+              && view()->exists('components.homepage-intro');
+      @endphp
+      @unless($englishHomeIntro)
       <p class="slb-hero-tagline">{{ __('messages.hero_tagline') }}</p>
+      @endunless
 
-      @if (class_exists(\App\Support\HomepageAiVisibility::class)
-          && method_exists(\App\Support\HomepageAiVisibility::class, 'isEnglishHome')
-          && \App\Support\HomepageAiVisibility::isEnglishHome()
-          && view()->exists('components.homepage-intro'))
+      @if($englishHomeIntro)
         @include('components.homepage-intro')
       @endif
 
@@ -229,11 +234,11 @@
   }
 
   .slb-hero-intro {
-    margin: 0.7rem 0 0;
-    font-size: 0.95rem;
-    line-height: 1.55;
+    margin: 0.85rem 0 0;
+    font-size: 1.02rem;
+    line-height: 1.6;
     color: #4b5563;
-    max-width: 48ch;
+    max-width: 46ch;
   }
 
   .slb-hero-intro a {

@@ -147,6 +147,12 @@
     @if(class_exists(\App\Support\HomepageAiVisibility::class)
         && method_exists(\App\Support\HomepageAiVisibility::class, 'isEnglishHome')
         && \App\Support\HomepageAiVisibility::isEnglishHome()
+        && view()->exists('components.homepage-how-company'))
+        @include('components.homepage-how-company')
+    @endif
+    @if(class_exists(\App\Support\HomepageAiVisibility::class)
+        && method_exists(\App\Support\HomepageAiVisibility::class, 'isEnglishHome')
+        && \App\Support\HomepageAiVisibility::isEnglishHome()
         && view()->exists('components.homepage-ai'))
         @include('components.homepage-ai', ['section' => 'faq'])
     @endif
