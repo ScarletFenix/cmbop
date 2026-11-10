@@ -145,6 +145,58 @@ class HomepageAiVisibilityTest extends TestCase
         $this->assertStringNotContainsString('500+ publishers', $germany);
     }
 
+    public function test_english_hero_keeps_definition_and_moves_escrow_company_below(): void
+    {
+        $html = $this->get('/')->assertOk()->getContent();
+
+        $this->assertSame(1, preg_match('/<section class="slb-hero">([\s\S]*?)<\/section>/', $html, $heroMatch));
+        $hero = $heroMatch[1];
+
+        $this->assertStringContainsString('class="slb-hero-intro"', $hero);
+        $this->assertStringContainsString('SEOLinkBuildings is a European guest-post and link building marketplace with 1000+ publishers.', $hero);
+        $this->assertStringContainsString('Marketplace placements start from', $hero);
+        $this->assertStringContainsString('data-home-from-price', $hero);
+        $this->assertStringNotContainsString('class="slb-hero-tagline"', $hero);
+        $this->assertStringNotContainsString('European guest post and link building marketplace', $hero);
+        $this->assertStringNotContainsString('After you buy', $hero);
+        $this->assertStringNotContainsString('operated by', $hero);
+        $this->assertStringNotContainsString('17392540', $hero);
+        $this->assertStringNotContainsString('20 Wenlock Road', $hero);
+
+        $this->assertSame(1, preg_match('/<section[^>]*id="homepage-how-company"/', $html));
+        $this->assertDoesNotMatchRegularExpression(
+            '/id="homepage-how-company"[^>]*(hidden|style="[^"]*display\s*:\s*none)/i',
+            $html
+        );
+
+        $this->assertSame(1, preg_match('/<section[^>]*id="homepage-how-company"[\s\S]*?<\/section>/', $html, $companyMatch));
+        $company = $companyMatch[0];
+        $this->assertStringContainsString('How it works &amp; company', $company);
+        $this->assertStringContainsString('After you buy, payment is held until you approve the live URL, or for 72 hours after the publisher submits it', $company);
+        $this->assertStringContainsString('how ordering works', $company);
+        $this->assertStringContainsString('EU guest-post price index', $company);
+        $this->assertStringContainsString('Publishers pay nothing', $company);
+        $this->assertStringContainsString('operated by', $company);
+        $this->assertStringContainsString('17392540', $company);
+        $this->assertStringContainsString('20 Wenlock Road', $company);
+        $this->assertStringContainsString('founded in 2024', $company);
+        $this->assertStringContainsString('/llms.txt', $company);
+        $this->assertStringNotContainsString('display:none', $company);
+        $this->assertStringNotContainsString('display: none', $company);
+
+        $heroPos = strpos($html, 'class="slb-hero"');
+        $howItWorksPos = strpos($html, 'id="how-it-works"');
+        $companyPos = strpos($html, 'id="homepage-how-company"');
+        $faqPos = strpos($html, 'id="homepage-faq"');
+        $this->assertNotFalse($heroPos);
+        $this->assertNotFalse($howItWorksPos);
+        $this->assertNotFalse($companyPos);
+        $this->assertNotFalse($faqPos);
+        $this->assertLessThan($howItWorksPos, $heroPos);
+        $this->assertLessThan($companyPos, $howItWorksPos);
+        $this->assertLessThan($faqPos, $companyPos);
+    }
+
     public function test_locale_home_does_not_get_english_faq_wall(): void
     {
         $html = $this->get('/de')->assertOk()->getContent();
@@ -152,6 +204,10 @@ class HomepageAiVisibilityTest extends TestCase
         $this->assertStringNotContainsString('"@type":"FAQPage"', $html);
         $this->assertStringContainsString('"@type":"Service"', $html);
         $this->assertStringContainsString('"@type":"WebSite"', $html);
+        $this->assertStringContainsString('class="slb-hero-tagline"', $html);
+        $this->assertStringNotContainsString('id="homepage-how-company"', $html);
+        $this->assertStringNotContainsString('How it works &amp; company', $html);
+        $this->assertStringNotContainsString('class="slb-hero-intro"', $html);
     }
 
     public function test_robots_allow_llms_and_microsoft_preview(): void
