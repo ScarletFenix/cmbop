@@ -14,7 +14,7 @@
         .catalog-results-busy[hidden]{display:none!important}
         .catalog-page button.site-badge-new,
         .catalog-page .site-badge-new{background:#ef4444!important;background-image:none!important;color:#fff!important;border:0!important}
-        .catalog-page button.site-badge-new.catalog-new-ribbon{background:transparent!important;width:56px!important;height:56px!important;padding:0!important;min-width:0!important;border-radius:0!important;box-shadow:none!important}
+        .catalog-page button.site-badge-new.catalog-new-ribbon{background:transparent!important;width:36px!important;height:36px!important;padding:0!important;min-width:0!important;border-radius:0!important;box-shadow:none!important}
         .catalog-page .metric-source{width:var(--metric-source-size,20px);height:var(--metric-source-size,20px);max-width:var(--metric-source-size,20px);max-height:var(--metric-source-size,20px);overflow:hidden}
         .catalog-page .metric-source img{width:var(--metric-source-size,20px);height:var(--metric-source-size,20px);max-width:var(--metric-source-size,20px);max-height:var(--metric-source-size,20px)}
         /* Category clamps — must survive a stale CDN catalog.css (chips otherwise
@@ -132,7 +132,19 @@
     @endif
 
     @if(($approvedArticleCount ?? 0) === 0 && empty($orderingSubmission))
-        <div class="alert alert-info border-0 shadow-sm d-flex flex-wrap justify-content-between align-items-center gap-2 catalog-article-banner catalog-article-banner--one-line py-2">
+        @php
+            $catalogLiArticleBanner = \App\Support\LinkInsertionProduct::isCatalogLinkInsertionTab($catalogProductTab ?? request('product'));
+        @endphp
+        {{-- Both banners stay in the DOM so live product-tab clicks can swap them
+             without a full reload (results fragment does not include this chrome). --}}
+        <div class="alert alert-info border-0 shadow-sm catalog-article-banner catalog-article-banner--li py-2"
+             data-catalog-article-banner="li"
+             @if(! $catalogLiArticleBanner) hidden @endif>
+            <div class="small mb-0">{{ __('messages.catalog_li_banner') }}</div>
+        </div>
+        <div class="alert alert-info border-0 shadow-sm d-flex flex-wrap justify-content-between align-items-center gap-2 catalog-article-banner catalog-article-banner--one-line py-2"
+             data-catalog-article-banner="gp"
+             @if($catalogLiArticleBanner) hidden @endif>
             <div class="small mb-0 text-nowrap text-truncate">
                 Each site needs its own approved article — upload or assign before you pay.
             </div>
@@ -289,8 +301,8 @@
     if (request('favorites_filter') == '1') $activeFilterChips[] = ['label' => 'Favorites', 'key' => 'favorites_filter', 'params' => ['favorites_filter']];
     if (request('blacklist_filter') == '1') $activeFilterChips[] = ['label' => 'Blacklist', 'key' => 'blacklist_filter', 'params' => ['blacklist_filter']];
     if (request('bulk_deals') == '1') $activeFilterChips[] = ['label' => 'Bulk deals', 'key' => 'bulk_deals', 'params' => ['bulk_deals']];
-    if (request('da_min') || request('da_max')) $activeFilterChips[] = ['label' => 'DA (Domain Authority)', 'key' => 'da', 'params' => ['da_min', 'da_max']];
-    if (request('dr_min') || request('dr_max')) $activeFilterChips[] = ['label' => 'DR (Domain Rating)', 'key' => 'dr', 'params' => ['dr_min', 'dr_max']];
+    if (request('da_min') || request('da_max')) $activeFilterChips[] = ['label' => \App\Services\Catalog\CatalogFilterChips::scoreLabel('DA', request('da_min'), request('da_max')), 'key' => 'da', 'params' => ['da_min', 'da_max']];
+    if (request('dr_min') || request('dr_max')) $activeFilterChips[] = ['label' => \App\Services\Catalog\CatalogFilterChips::scoreLabel('DR', request('dr_min'), request('dr_max')), 'key' => 'dr', 'params' => ['dr_min', 'dr_max']];
     if (request('traffic_min') || request('traffic_max')) $activeFilterChips[] = ['label' => 'Traffic', 'key' => 'traffic', 'params' => ['traffic_min', 'traffic_max']];
     if (request('new_badge') == '1') $activeFilterChips[] = ['label' => 'New sites', 'key' => 'new_badge', 'params' => ['new_badge']];
     if (request('on_sale') == '1') $activeFilterChips[] = ['label' => 'On sale', 'key' => 'on_sale', 'params' => ['on_sale']];
@@ -989,6 +1001,11 @@ window.CatalogConfig = {
         selectedCount: @json(__('messages.catalog_selected_count')),
         guestPost: @json(__('messages.catalog_tab_guest_posts')),
         linkInsertion: @json(__('messages.catalog_tab_link_insertions')),
+        addToCart: @json(__('messages.catalog_preview_add_to_cart')),
+        saveAction: @json(__('messages.catalog_save_action')),
+        savedAction: @json(__('messages.catalog_saved_action')),
+        hideAction: @json(__('messages.catalog_hide_action')),
+        hiddenAction: @json(__('messages.catalog_hidden_action')),
         mobileCartCount: @json(__('messages.catalog_mobile_cart_count')),
         filters: @json(__('messages.catalog_filters_toggle')),
         filtersCount: @json(__('messages.catalog_filters_toggle_count'))

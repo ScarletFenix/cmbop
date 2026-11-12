@@ -92,7 +92,7 @@ class CatalogImprovementsTest extends TestCase
         $this->assertStringContainsString('High Improve DA', $html);
         $this->assertStringNotContainsString('Low Improve DA', $html);
 
-        $this->assertStringContainsString('Remove filter: DA (Domain Authority)', $html);
+        $this->assertStringContainsString('Remove filter: DA 50+', $html);
     }
 
     public function test_live_results_expose_effective_query_after_metric_tokens(): void

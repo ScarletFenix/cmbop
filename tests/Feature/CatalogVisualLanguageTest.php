@@ -399,7 +399,7 @@ class CatalogVisualLanguageTest extends TestCase
         foreach ([
             // Three metrics per layout, everything else once per layout.
             'advertiser.partials.catalog-metric' => 6,
-            'advertiser.partials.catalog-price' => 2,
+            'advertiser.partials.catalog-site-buy' => 2,
             'advertiser.partials.catalog-meta-chips' => 2,
             'advertiser.partials.catalog-empty-art' => 2,
             // Table head names each source once; the cards have no head, so they

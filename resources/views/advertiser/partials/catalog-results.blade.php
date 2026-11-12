@@ -348,19 +348,22 @@
                 @if((int) ($site->getAttribute('owner_id') ?? 0) > 0) data-owner-id="{{ (int) $site->getAttribute('owner_id') }}" @endif
                 @if($isOwnedByMe) data-own-listing="1" @endif>
                 <td class="catalog-site-cell">
+                    <div class="catalog-site-row">
                     @include('advertiser.partials.catalog-row-select')
-                    @include('advertiser.partials.catalog-new-ribbon', ['isNew' => $isNew])
 
                     <div class="catalog-site-stack catalog-site-stack--tiled">
-                        @include('advertiser.partials.catalog-site-tile', [
-                            'label' => $displayHost,
-                            'alt' => $displayName !== '' ? $displayName : $displayHost,
-                            'size' => 'md',
-                            'faviconUrl' => $tileFaviconUrl,
-                            'faviconChain' => $tileFaviconChain,
-                            'masked' => ! $showsIdentity,
-                            'openDetailsId' => (string) $site->id,
-                        ])
+                        <div class="catalog-tile-wrap">
+                            @include('advertiser.partials.catalog-new-ribbon', ['isNew' => $isNew])
+                            @include('advertiser.partials.catalog-site-tile', [
+                                'label' => $displayHost,
+                                'alt' => $displayName !== '' ? $displayName : $displayHost,
+                                'size' => 'md',
+                                'faviconUrl' => $tileFaviconUrl,
+                                'faviconChain' => $tileFaviconChain,
+                                'masked' => ! $showsIdentity,
+                                'openDetailsId' => (string) $site->id,
+                            ])
+                        </div>
 
                         <div class="catalog-site-stack__body">
                         <!-- Name + Verified + Details stay on one nowrap row.
@@ -509,6 +512,7 @@
                         ])
                         </div>
                     </div>
+                    </div>
                 </td>
 
                 <td class="text-center catalog-stat-cell catalog-category-cell">
@@ -599,19 +603,6 @@
 
                 <td class="text-center catalog-stat-cell catalog-td-action">
                     <div class="catalog-row-actions">
-                        @unless($offersLinkInsertion && $linkInsertionListPrice > 0 && $guestPostListPrice > 0)
-                        @include('advertiser.partials.catalog-price', [
-                            'listPrice' => $catalogListPrice,
-                            'salePrice' => $catalogSalePrice,
-                            'salePercent' => $catalogSalePctDisplay,
-                            'align' => 'center',
-                            'bulkLabel' => $catalogDeals['bulk_note'] ?? null,
-                            'showFrom' => ! empty($catalogDeals['has_paid_addons']),
-                            'siteId' => $site->id,
-                            'featured' => $site->isFeatured(),
-                        ])
-                        @endunless
-
                         @include('advertiser.partials.catalog-site-buy', ['align' => 'center'])
 
                         <div class="catalog-row-actions__secondary">
@@ -627,6 +618,7 @@
                                         aria-label="{{ $isFavorited ? __('messages.catalog_unsave_site') : __('messages.catalog_save_site') }}"
                                         title="{{ $isFavorited ? __('messages.catalog_unsave_site') : __('messages.catalog_save_site') }}">
                                     <i class="fa-{{ $isFavorited ? 'solid' : 'regular' }} fa-heart" aria-hidden="true"></i>
+                                    <span class="catalog-row-action-label">{{ $isFavorited ? __('messages.catalog_saved_action') : __('messages.catalog_save_action') }}</span>
                                 </button>
 
                                 <button type="button"
@@ -640,6 +632,7 @@
                                         aria-label="{{ $isBlacklisted ? __('messages.catalog_unhide_site') : __('messages.catalog_hide_site') }}"
                                         title="{{ $isBlacklisted ? __('messages.catalog_unhide_site') : __('messages.catalog_hide_site') }}">
                                     <i class="fa-solid fa-ban" aria-hidden="true"></i>
+                                    <span class="catalog-row-action-label">{{ $isBlacklisted ? __('messages.catalog_hidden_action') : __('messages.catalog_hide_action') }}</span>
                                 </button>
                             </div>
                         </div>
@@ -1159,19 +1152,21 @@
                  data-compare-publication="{{ $isLinkInsertionCatalog ? '' : ($site->publicationDurationLabel() ?: '') }}"
                  @if((int) ($site->getAttribute('owner_id') ?? 0) > 0) data-owner-id="{{ (int) $site->getAttribute('owner_id') }}" @endif
                  @if($isOwnedByMe) data-own-listing="1" @endif>
-            @include('advertiser.partials.catalog-new-ribbon', ['isNew' => $isNew])
             <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
                 @include('advertiser.partials.catalog-row-select')
                 <div class="catalog-mobile-card__host d-flex align-items-start gap-2">
-                    @include('advertiser.partials.catalog-site-tile', [
-                        'label' => $displayHost,
-                        'alt' => $displayName !== '' ? $displayName : $displayHost,
-                        'size' => 'lg',
-                        'faviconUrl' => $tileFaviconUrl,
-                        'faviconChain' => $tileFaviconChain,
-                        'masked' => ! $showsIdentity,
-                        'openDetailsId' => (string) $site->id,
-                    ])
+                    <div class="catalog-tile-wrap">
+                        @include('advertiser.partials.catalog-new-ribbon', ['isNew' => $isNew])
+                        @include('advertiser.partials.catalog-site-tile', [
+                            'label' => $displayHost,
+                            'alt' => $displayName !== '' ? $displayName : $displayHost,
+                            'size' => 'lg',
+                            'faviconUrl' => $tileFaviconUrl,
+                            'faviconChain' => $tileFaviconChain,
+                            'masked' => ! $showsIdentity,
+                            'openDetailsId' => (string) $site->id,
+                        ])
+                    </div>
 
                     <div class="catalog-mobile-card__main">
                     <div class="catalog-site-title-row">
@@ -1365,9 +1360,9 @@
                 </div>
             @endif
             @if($showAdvertiserPay)
-                {{-- Always present so homepage-only cards have a live You pay
-                     target (JS rewrites this when radios change). --}}
-                <div class="selected-price-info mt-1" id="price-info-mobile-{{ $site->id }}">
+                {{-- Live target for addon JS. Hidden on the card face so the
+                     Buy column is a single price block above Add to cart. --}}
+                <div class="selected-price-info catalog-pay-echo mt-1" id="price-info-mobile-{{ $site->id }}" hidden>
                     <small class="text-muted">
                         You pay:
                         <strong>{{ format_money($articlePay) }}</strong>
@@ -1447,19 +1442,6 @@
             @endif
             <div class="catalog-card-buy">
                 @include('advertiser.partials.catalog-site-buy', ['align' => 'start'])
-
-                @unless($offersLinkInsertion && $linkInsertionListPrice > 0 && $guestPostListPrice > 0)
-                @include('advertiser.partials.catalog-price', [
-                    'listPrice' => $catalogListPrice,
-                    'salePrice' => $catalogSalePrice,
-                    'salePercent' => $catalogSalePctDisplay,
-                    'align' => 'start',
-                    'bulkLabel' => $catalogDeals['bulk_note'] ?? null,
-                    'showFrom' => ! empty($catalogDeals['has_paid_addons']),
-                    'siteId' => $site->id,
-                    'featured' => $site->isFeatured(),
-                ])
-                @endunless
             </div>
 
             <div class="catalog-row-actions mt-2">
@@ -1479,6 +1461,7 @@
                                 aria-label="{{ $isFavorited ? __('messages.catalog_unsave_site') : __('messages.catalog_save_site') }}"
                                 title="{{ $isFavorited ? __('messages.catalog_unsave_site') : __('messages.catalog_save_site') }}">
                             <i class="fa-{{ $isFavorited ? 'solid' : 'regular' }} fa-heart" aria-hidden="true"></i>
+                            <span class="catalog-row-action-label">{{ $isFavorited ? __('messages.catalog_saved_action') : __('messages.catalog_save_action') }}</span>
                         </button>
                         <button type="button"
                                 class="btn-icon-quiet blacklist-btn {{ $isBlacklisted ? 'is-active' : '' }}"
@@ -1491,6 +1474,7 @@
                                 aria-label="{{ $isBlacklisted ? __('messages.catalog_unhide_site') : __('messages.catalog_hide_site') }}"
                                 title="{{ $isBlacklisted ? __('messages.catalog_unhide_site') : __('messages.catalog_hide_site') }}">
                             <i class="fa-solid fa-ban" aria-hidden="true"></i>
+                            <span class="catalog-row-action-label">{{ $isBlacklisted ? __('messages.catalog_hidden_action') : __('messages.catalog_hide_action') }}</span>
                         </button>
                     </div>
                 </div>

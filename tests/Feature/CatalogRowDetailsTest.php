@@ -182,7 +182,8 @@ class CatalogRowDetailsTest extends TestCase
         $pricePos = strpos($chunk, 'catalog-price');
         $this->assertNotFalse($buyPos);
         $this->assertNotFalse($pricePos);
-        $this->assertLessThan($pricePos, $buyPos);
+        // Price block sits above Add to cart on the card (same as the table).
+        $this->assertLessThan($buyPos, $pricePos);
     }
 
     public function test_tile_title_says_initials_are_not_a_country_code(): void

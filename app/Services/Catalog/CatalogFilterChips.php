@@ -28,6 +28,23 @@ class CatalogFilterChips
     /**
      * @param  array<string, string>  $names  code => label
      */
+    public static function scoreLabel(string $prefix, mixed $minRaw, mixed $maxRaw): string
+    {
+        $min = is_numeric($minRaw) ? (int) $minRaw : null;
+        $max = is_numeric($maxRaw) ? (int) $maxRaw : null;
+        if ($min === null && $max === null) {
+            return $prefix;
+        }
+        if ($min !== null && $max !== null) {
+            return $prefix.' '.$min.'–'.$max;
+        }
+        if ($min !== null) {
+            return $prefix.' '.$min.'+';
+        }
+
+        return $prefix.' ≤ '.$max;
+    }
+
     public static function languageLabel(string $raw, array $names = []): string
     {
         $codes = array_values(array_filter(array_map(

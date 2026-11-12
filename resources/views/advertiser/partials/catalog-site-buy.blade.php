@@ -1,5 +1,6 @@
-{{-- Buy CTAs for one catalog row/card. Dual advertiser prices when the site
-     offers both products. Primary Add to cart stays the active tab product. --}}
+{{-- Buy CTAs for one catalog row/card. Primary price is a single large number
+     (same style as a GP-only row). When the site also offers the other product,
+     a small secondary line names that product and its advertiser list price. --}}
 @php
     $buyAlign = ($align ?? 'center') === 'start' ? 'start' : 'center';
     $isLinkInsertionCatalog = $isLinkInsertionCatalog ?? false;
@@ -11,19 +12,11 @@
         && empty($isOwnedByMe);
     $includedBits = [];
     if ($showLiPrimary) {
-        $liType = $site->linkInsertionLinkTypeLabel();
-        if ($liType) {
-            $includedBits[] = $liType;
-        }
         $liDays = $site->linkInsertionDeliveryLabel();
         if ($liDays) {
             $includedBits[] = $liDays;
         }
     } else {
-        $gpType = $site->linkTypeLabel();
-        if ($gpType) {
-            $includedBits[] = $gpType;
-        }
         $gpDays = $site->turnaroundLabel();
         if ($gpDays) {
             $includedBits[] = $gpDays;
@@ -37,12 +30,32 @@
 @if($isOwnedByMe)
     @include('advertiser.partials.catalog-own-listing', ['align' => $buyAlign])
 @else
-    @if($showDualPrices)
-        <div class="catalog-dual-price">
-            <span class="catalog-dual-price__item{{ $showLiPrimary ? '' : ' is-active' }}">{{ __('messages.catalog_price_guest_post', ['price' => format_money($guestPostListPrice)]) }}</span>
-            <span class="catalog-dual-price__sep" aria-hidden="true">·</span>
-            <span class="catalog-dual-price__item{{ $showLiPrimary ? ' is-active' : '' }}">{{ __('messages.catalog_price_link_insertion', ['price' => format_money($linkInsertionListPrice)]) }}</span>
+    @if($showLiPrimary)
+        <div class="catalog-price catalog-price--{{ $buyAlign }}">
+            <div class="catalog-price__row">
+                <span class="catalog-price__pay base-price-display">{{ format_money($linkInsertionListPrice) }}</span>
+            </div>
         </div>
+    @else
+        @include('advertiser.partials.catalog-price', [
+            'listPrice' => $catalogListPrice,
+            'salePrice' => $catalogSalePrice,
+            'salePercent' => $catalogSalePctDisplay,
+            'align' => $buyAlign,
+            'bulkLabel' => $catalogDeals['bulk_note'] ?? null,
+            'showFrom' => ! empty($catalogDeals['has_paid_addons']),
+            'siteId' => $site->id,
+            'featured' => $site->isFeatured(),
+        ])
+    @endif
+    @if($showDualPrices)
+        <p class="catalog-price-alt">
+            @if($showLiPrimary)
+                {{ __('messages.catalog_price_guest_post', ['price' => format_money($guestPostListPrice)]) }}
+            @else
+                {{ __('messages.catalog_price_link_insertion', ['price' => format_money($linkInsertionListPrice)]) }}
+            @endif
+        </p>
     @endif
     @if($includedBits !== [])
         <p class="catalog-included">{{ implode(' · ', $includedBits) }}</p>
@@ -81,10 +94,6 @@
                 <span>Add to cart</span>
             @endif
         </button>
-    @endif
-    <p class="catalog-trust">{{ __('messages.catalog_trust_held') }}</p>
-    @if($showLiPrimary)
-        <p class="catalog-trust catalog-trust--li">{{ __('messages.catalog_trust_li_guarantee') }}</p>
     @endif
     <div class="catalog-buy-addon-hint small text-muted mt-1" data-site-id="{{ $site->id }}" hidden></div>
 @endif

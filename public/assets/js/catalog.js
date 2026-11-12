@@ -3086,6 +3086,15 @@ const CatalogLive = (function () {
         return 'Price';
     }
 
+    function catalogScoreChipLabel(prefix, minRaw, maxRaw) {
+        const hasMin = minRaw != null && String(minRaw).trim() !== '';
+        const hasMax = maxRaw != null && String(maxRaw).trim() !== '';
+        if (hasMin && hasMax) return prefix + ' ' + String(parseInt(minRaw, 10)) + '–' + String(parseInt(maxRaw, 10));
+        if (hasMin) return prefix + ' ' + String(parseInt(minRaw, 10)) + '+';
+        if (hasMax) return prefix + ' ≤ ' + String(parseInt(maxRaw, 10));
+        return prefix;
+    }
+
     function catalogLanguageChipLabel(raw) {
         const names = (window.CatalogConfig && CatalogConfig.languageNames) || {};
         const codes = String(raw || '').split(',').map(function (c) { return c.trim().toLowerCase(); }).filter(Boolean);
@@ -3126,8 +3135,8 @@ const CatalogLive = (function () {
         if (params.get('favorites_filter') === '1') chips.push({ label: 'Favorites', params: ['favorites_filter'] });
         if (params.get('blacklist_filter') === '1') chips.push({ label: 'Blacklist', params: ['blacklist_filter'] });
         if (params.get('bulk_deals') === '1') chips.push({ label: 'Bulk deals', params: ['bulk_deals'] });
-        if (params.get('da_min') || params.get('da_max')) chips.push({ label: 'DA (Domain Authority)', params: ['da_min', 'da_max'] });
-        if (params.get('dr_min') || params.get('dr_max')) chips.push({ label: 'DR (Domain Rating)', params: ['dr_min', 'dr_max'] });
+        if (params.get('da_min') || params.get('da_max')) chips.push({ label: catalogScoreChipLabel('DA', params.get('da_min'), params.get('da_max')), params: ['da_min', 'da_max'] });
+        if (params.get('dr_min') || params.get('dr_max')) chips.push({ label: catalogScoreChipLabel('DR', params.get('dr_min'), params.get('dr_max')), params: ['dr_min', 'dr_max'] });
         if (params.get('traffic_min') || params.get('traffic_max')) chips.push({ label: 'Traffic', params: ['traffic_min', 'traffic_max'] });
         if (params.get('new_badge') === '1') chips.push({ label: 'New sites', params: ['new_badge'] });
         if (params.get('on_sale') === '1') chips.push({ label: 'On sale', params: ['on_sale'] });
@@ -3825,6 +3834,10 @@ function syncProductTabs(params) {
     if (input) input.value = want;
     const explainer = document.querySelector('[data-catalog-li-explainer]');
     if (explainer) explainer.hidden = want !== 'link_insertion';
+    document.querySelectorAll('[data-catalog-article-banner]').forEach(function (banner) {
+        const isLi = banner.getAttribute('data-catalog-article-banner') === 'li';
+        banner.hidden = want === 'link_insertion' ? !isLi : isLi;
+    });
     const card = document.getElementById('catalogResults');
     if (card) {
         const guest = card.getAttribute('data-tab-count-guest');
@@ -5034,29 +5047,35 @@ function updateButtonStates() {
     document.querySelectorAll('.favorite-btn').forEach(btn => {
         let id = parseInt(btn.dataset.id);
         const icon = btn.querySelector('i');
+        const label = btn.querySelector('.catalog-row-action-label');
         if (favorites.includes(id)) {
             btn.classList.add('is-active');
             if (icon) { icon.classList.remove('fa-regular'); icon.classList.add('fa-solid'); }
             btn.title = 'Remove from Favorites';
             btn.setAttribute('aria-label', 'Remove from favorites');
+            if (label) label.textContent = (window.CatalogConfig && CatalogConfig.i18n && CatalogConfig.i18n.savedAction) || 'Saved';
         } else {
             btn.classList.remove('is-active');
             if (icon) { icon.classList.remove('fa-solid'); icon.classList.add('fa-regular'); }
             btn.title = 'Add to Favorites';
             btn.setAttribute('aria-label', 'Add to favorites');
+            if (label) label.textContent = (window.CatalogConfig && CatalogConfig.i18n && CatalogConfig.i18n.saveAction) || 'Save';
         }
     });
 
     document.querySelectorAll('.blacklist-btn').forEach(btn => {
         let id = parseInt(btn.dataset.id);
+        const label = btn.querySelector('.catalog-row-action-label');
         if (blacklist.includes(id)) {
             btn.classList.add('is-active');
             btn.title = 'Remove from Blacklist';
             btn.setAttribute('aria-label', 'Remove from blacklist');
+            if (label) label.textContent = (window.CatalogConfig && CatalogConfig.i18n && CatalogConfig.i18n.hiddenAction) || 'Hidden';
         } else {
             btn.classList.remove('is-active');
             btn.title = 'Blacklist Site';
             btn.setAttribute('aria-label', 'Blacklist site');
+            if (label) label.textContent = (window.CatalogConfig && CatalogConfig.i18n && CatalogConfig.i18n.hideAction) || 'Hide';
         }
         btn.style.backgroundColor = '';
         btn.style.color = '';
@@ -7072,6 +7091,7 @@ document.addEventListener('click', async function (e) {
 
     function compareRow(el) {
         return {
+            id: el.getAttribute('data-id') || '',
             name: el.getAttribute('data-compare-name') || el.getAttribute('data-name') || '',
             category: el.getAttribute('data-compare-category') || '',
             traffic: el.getAttribute('data-compare-traffic') || '',
@@ -7086,6 +7106,19 @@ document.addEventListener('click', async function (e) {
         };
     }
 
+    function compareMetric(value) {
+        const n = parseFloat(String(value || '').replace(/[^0-9.]/g, ''));
+        return Number.isFinite(n) ? n : null;
+    }
+
+    function compareBestFlags(rows, key, preferHigh) {
+        const nums = rows.map(function (row) { return compareMetric(row[key]); });
+        const valid = nums.filter(function (n) { return n !== null; });
+        if (!valid.length) return nums.map(function () { return false; });
+        const target = preferHigh ? Math.max.apply(null, valid) : Math.min.apply(null, valid);
+        return nums.map(function (n) { return n !== null && n === target; });
+    }
+
     const compareBtn = document.getElementById('catalogCompareBtn');
     if (compareBtn) {
         compareBtn.addEventListener('click', function () {
@@ -7093,34 +7126,42 @@ document.addEventListener('click', async function (e) {
                 return document.querySelector('.site-row[data-id="' + id + '"], .catalog-mobile-card[data-id="' + id + '"]');
             }).filter(Boolean).map(compareRow);
             const fields = [
-                ['name', 'Site'],
-                ['category', 'Category'],
-                ['traffic', 'Traffic'],
-                ['dr', 'DR'],
-                ['da', 'DA'],
-                ['country', 'Country'],
-                ['gp', i18n('guestPost') || 'Guest posts'],
-                ['li', i18n('linkInsertion') || 'Link insertions'],
-                ['linkType', 'Link type'],
-                ['delivery', 'Delivery'],
-                ['publication', 'Duration'],
+                ['name', 'Site', null],
+                ['category', 'Category', null],
+                ['traffic', 'Traffic', true],
+                ['dr', 'DR', true],
+                ['da', 'DA', true],
+                ['country', 'Country', null],
+                ['gp', i18n('guestPost') || 'Guest posts', false],
+                ['li', i18n('linkInsertion') || 'Link insertions', false],
+                ['linkType', 'Link type', null],
+                ['delivery', 'Delivery', null],
+                ['publication', 'Duration', null],
             ];
             let html = '<div class="table-responsive"><table class="catalog-compare-table"><thead><tr><th></th>';
             rows.forEach(function (row) {
-                html += '<th>' + catalogEscapeHtml(row.name) + '</th>';
+                html += '<th class="catalog-compare-site">' + catalogEscapeHtml(row.name) + '</th>';
             });
             html += '</tr></thead><tbody>';
             fields.forEach(function (pair) {
                 if (pair[0] === 'name') return;
                 const any = rows.some(function (row) { return String(row[pair[0]] || '').trim() !== ''; });
                 if (!any) return;
+                const best = pair[2] === null ? null : compareBestFlags(rows, pair[0], pair[2] === true);
                 html += '<tr><th>' + catalogEscapeHtml(pair[1]) + '</th>';
-                rows.forEach(function (row) {
-                    html += '<td>' + catalogEscapeHtml(row[pair[0]] || '—') + '</td>';
+                rows.forEach(function (row, index) {
+                    const text = catalogEscapeHtml(row[pair[0]] || '—');
+                    html += '<td>' + (best && best[index] ? '<span class="catalog-compare-best">' + text + '</span>' : text) + '</td>';
                 });
                 html += '</tr>';
             });
-            html += '</tbody></table></div>';
+            html += '<tr class="catalog-compare-actions"><th></th>';
+            rows.forEach(function (row) {
+                html += '<td><button type="button" class="btn btn-sm btn-primary catalog-compare-add" data-id="'
+                    + catalogEscapeHtml(row.id)
+                    + '">' + catalogEscapeHtml(i18n('addToCart') || 'Add to cart') + '</button></td>';
+            });
+            html += '</tr></tbody></table></div>';
             const body = document.getElementById('catalogCompareBody');
             if (body) body.innerHTML = html;
             const modalEl = document.getElementById('catalogCompareModal');
@@ -7132,6 +7173,17 @@ document.addEventListener('click', async function (e) {
             }
         });
     }
+
+    document.addEventListener('click', function (e) {
+        const addBtn = e.target && e.target.closest && e.target.closest('.catalog-compare-add');
+        if (!addBtn) return;
+        const id = String(addBtn.getAttribute('data-id') || '');
+        if (!id) return;
+        const buy = document.querySelector('.site-row[data-id="' + id + '"] .buy-now, .catalog-mobile-card[data-id="' + id + '"] .buy-now');
+        if (buy && !buy.classList.contains('is-in-cart') && buy.dataset.inCart !== '1') {
+            buy.click();
+        }
+    });
 
     catalogSyncMobileCartBar();
     catalogSyncFilterToggleCount((document.querySelectorAll('#activeFilterChips .filter-chip') || []).length);

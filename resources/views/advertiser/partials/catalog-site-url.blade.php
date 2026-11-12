@@ -13,6 +13,7 @@
        data-visit-href="{{ route('advertiser.catalog.visit', $site->id) }}"
        data-site-host
        aria-label="Open {{ $displayRootedUrl }} in a new tab"
+       title="{{ $displayRootedUrl }}"
        @if($showsIdentity) data-host="{{ $displayHost }}" @endif>{{ $displayRootedUrl }}</a>
 @else
     <span class="{{ $urlClass }} catalog-site-url--hidden"

@@ -247,7 +247,7 @@ class CatalogUiHardeningTest extends TestCase
 
         $this->assertStringContainsString('filter-chip__remove', $html);
         $this->assertStringContainsString('aria-label="Remove filter: Search: catalog"', $html);
-        $this->assertStringContainsString('aria-label="Remove filter: DA (Domain Authority)"', $html);
+        $this->assertStringContainsString('aria-label="Remove filter: DA 30–60"', $html);
         // Clearing one chip keeps the others, unlike the old clear-all-only link.
         $this->assertStringContainsString('da_min=30', $html);
         $this->assertStringContainsString('Clear all', $html);

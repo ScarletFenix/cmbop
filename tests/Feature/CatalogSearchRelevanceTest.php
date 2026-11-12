@@ -100,7 +100,7 @@ class CatalogSearchRelevanceTest extends TestCase
         $this->assertStringContainsString('name="da_min"', $html);
         $this->assertMatchesRegularExpression('/name="da_min"[^>]*value="50"/', $html);
         $this->assertStringNotContainsString('search=da', $html);
-        $this->assertStringContainsString('Remove filter: DA (Domain Authority)', $html);
+        $this->assertStringContainsString('Remove filter: DA 50+', $html);
 
         unset($high, $low);
     }

@@ -1124,3 +1124,23 @@ body.layout-dark.role-shell-advertiser #sidebar a.active {
   background: #1e293b;
   color: #5eead4;
 }
+
+html[data-bs-theme="dark"] body.role-shell-advertiser .shell-logo-wordmark,
+html[data-bs-theme="dark"] body.role-shell-advertiser #logoNavbar,
+html[data-bs-theme="dark"] body.role-shell-advertiser #logoSidebar,
+html[data-bs-theme="dark"] body.role-shell-advertiser #mobileSidebarLogo,
+body.layout-dark.role-shell-advertiser .shell-logo-wordmark,
+body.layout-dark.role-shell-advertiser #logoNavbar,
+body.layout-dark.role-shell-advertiser #logoSidebar,
+body.layout-dark.role-shell-advertiser #mobileSidebarLogo {
+  background: #ffffff;
+  border-radius: 8px;
+  padding: 4px 8px;
+  box-sizing: content-box;
+}
+
+html[data-bs-theme="dark"] body.role-shell-advertiser .role-switch-btn,
+body.layout-dark.role-shell-advertiser .role-switch-btn {
+  color: #99f6e4 !important;
+  border-color: #2dd4bf !important;
+}

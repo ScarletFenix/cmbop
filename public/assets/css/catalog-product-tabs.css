@@ -131,7 +131,9 @@
     }
 
     .catalog-product-tabs__soon {
-        display: none;
+        display: inline-flex;
+        padding: 0 5px;
+        font-size: 8px;
     }
 
     .catalog-product-tabs::after {

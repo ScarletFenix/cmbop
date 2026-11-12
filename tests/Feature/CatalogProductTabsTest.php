@@ -109,17 +109,28 @@ class CatalogProductTabsTest extends TestCase
         $this->assertStringContainsString('data-product-type="guest_post"', $html);
         $this->assertStringContainsString('Guest post', $html);
         $this->assertStringContainsString('Link insertion', $html);
-        $this->assertStringContainsString('catalog-dual-price', $html);
+        $this->assertStringContainsString('catalog-price-alt', $html);
+        $this->assertStringContainsString('catalog-row-action-label', $html);
         $this->assertStringNotContainsString('Also available as link insertion', $html);
         $this->assertStringNotContainsString('Add link insertion', $html);
-        $this->assertStringContainsString('Payment held until your link is live', $html);
+        $this->assertStringNotContainsString('Payment held until your link is live', $html);
         $this->assertStringContainsString('data-catalog-select', $html);
         $this->assertStringContainsString('Save site', $html);
         $this->assertStringContainsString('Hide site', $html);
+        $this->assertStringContainsString('>Save</span>', $html);
+        $this->assertStringContainsString('>Hide</span>', $html);
         $this->assertStringNotContainsString('Link insertions from', $html);
         $this->assertStringContainsString('data-catalog-tab-count="guest_post"', $html);
         $this->assertMatchesRegularExpression('/data-catalog-tab-count="guest_post"[^>]*>2</', $html);
         $this->assertMatchesRegularExpression('/data-catalog-tab-count="link_insertion"[^>]*>1</', $html);
+        $this->assertMatchesRegularExpression(
+            '/data-catalog-article-banner="gp"(?![^>]*\bhidden\b)/',
+            $html
+        );
+        $this->assertMatchesRegularExpression(
+            '/data-catalog-article-banner="li"[^>]*\bhidden\b/',
+            $html
+        );
     }
 
     public function test_link_insertion_tab_filters_sites_and_uses_advertiser_price(): void
@@ -174,7 +185,17 @@ class CatalogProductTabsTest extends TestCase
             'data-inventory-from="'.number_format($advertiserPrice, 2, '.', '').'"',
             $html
         );
-        $this->assertStringContainsString('Optional Link guarantee at checkout', $html);
+        $this->assertStringNotContainsString('Optional Link guarantee at checkout', $html);
+        $this->assertStringNotContainsString('Payment held until your link is live', $html);
+        $this->assertStringContainsString(__('messages.catalog_li_banner'), $html);
+        $this->assertMatchesRegularExpression(
+            '/data-catalog-article-banner="li"(?![^>]*\bhidden\b)/',
+            $html
+        );
+        $this->assertMatchesRegularExpression(
+            '/data-catalog-article-banner="gp"[^>]*\bhidden\b/',
+            $html
+        );
         $this->assertStringContainsString(__('messages.catalog_tab_explainer_link_insertions'), $html);
         $this->assertStringContainsString(__('messages.catalog_li_guarantee_badge'), $html);
         $this->assertStringContainsString(__('messages.catalog_li_min_article_age', ['count' => 30]), $html);
@@ -253,7 +274,7 @@ class CatalogProductTabsTest extends TestCase
         $this->assertStringContainsString('catalog-skeleton', $html);
         $this->assertStringContainsString('DoFollow', $html);
         $this->assertStringContainsString('Permanent', $html);
-        $this->assertStringContainsString('Payment held until your link is live', $html);
+        $this->assertStringNotContainsString('Payment held until your link is live', $html);
         $this->assertMatchesRegularExpression('/data-compare-gp-price="[^"]+"/', $html);
         $this->assertStringNotContainsString('data-compare-publisher', $html);
         $this->assertDoesNotMatchRegularExpression('/data-compare-[a-z-]+="[^"]*publisher/i', $html);
@@ -262,6 +283,9 @@ class CatalogProductTabsTest extends TestCase
         $this->assertStringContainsString('catalogCompareModal', $js);
         $this->assertStringContainsString('const COMPARE_LIMIT = 4', $js);
         $this->assertStringContainsString('btn.click()', $js);
+        $this->assertStringContainsString('catalog-compare-best', $js);
+        $this->assertStringContainsString('catalog-compare-add', $js);
+        $this->assertStringContainsString('data-catalog-article-banner', $js);
         $this->assertStringContainsString(':focus-visible', (string) file_get_contents(public_path('assets/css/catalog.css')));
     }
 
