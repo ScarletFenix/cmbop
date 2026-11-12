@@ -15,6 +15,7 @@
                 @continue
             @endif
             @php
+                $isLinkInsertion = \App\Support\LinkInsertionProduct::isLinkInsertion($item);
                 $publisherOffered = !empty($item['writing_offered']);
                 $fee = (float) ($item['writing_fee'] ?? 0);
                 $writer = $item['writing_writer'] ?? ($publisherOffered ? 'publisher' : 'slb');
@@ -31,7 +32,75 @@
                  data-base-total="{{ (float) ($item['total'] ?? $item['price'] ?? 0) }}"
                  data-paying-now="{{ $payingNow ? '1' : '0' }}"
                  data-guarantee-offered="{{ $guaranteeOffered ? '1' : '0' }}">
-                <div class="fw-semibold mb-2">{{ $item['name'] }}</div>
+                <div class="fw-semibold mb-2">{{ $item['name'] }}
+                    @if($isLinkInsertion)
+                        <span class="badge text-bg-light border ms-1">Link insertion</span>
+                    @endif
+                </div>
+                @if($isLinkInsertion)
+                    <p class="small text-muted mb-2">{{ \App\Support\LinkInsertionProduct::PERMANENT_COPY }}</p>
+                    <div class="mb-2">
+                        <label class="form-label small" for="preferredArticle{{ $item['id'] }}">Preferred article URL</label>
+                        <input type="url" class="form-control form-control-sm" required
+                               name="preferred_article_url[{{ $item['id'] }}]"
+                               id="preferredArticle{{ $item['id'] }}"
+                               placeholder="https://"
+                               value="{{ $item['preferred_article_url'] ?? '' }}">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small" for="insertionTarget{{ $item['id'] }}">Your target URL</label>
+                        <input type="url" class="form-control form-control-sm" required
+                               name="insertion_target_url[{{ $item['id'] }}]"
+                               id="insertionTarget{{ $item['id'] }}"
+                               placeholder="https://"
+                               value="{{ $writingTarget }}">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small" for="insertionAnchor{{ $item['id'] }}">Anchor text</label>
+                        <input type="text" class="form-control form-control-sm" required
+                               name="insertion_anchor_text[{{ $item['id'] }}]"
+                               id="insertionAnchor{{ $item['id'] }}"
+                               maxlength="160"
+                               value="{{ $writingAnchor }}">
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" value="1"
+                               name="insertion_sentence_same[{{ $item['id'] }}]"
+                               id="insertionSame{{ $item['id'] }}"
+                               @checked(!empty($item['insertion_sentence_same']))>
+                        <label class="form-check-label" for="insertionSame{{ $item['id'] }}">Insert in the same sentence</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" value="1"
+                               name="insertion_sentence_new[{{ $item['id'] }}]"
+                               id="insertionNew{{ $item['id'] }}"
+                               @checked(!empty($item['insertion_sentence_new']))>
+                        <label class="form-check-label" for="insertionNew{{ $item['id'] }}">Add a new sentence</label>
+                    </div>
+                    <div class="mb-2 mt-1">
+                        <label class="form-label small" for="insertionNewText{{ $item['id'] }}">New sentence (if chosen)</label>
+                        <textarea class="form-control form-control-sm" rows="2"
+                                  name="insertion_sentence_new_text[{{ $item['id'] }}]"
+                                  id="insertionNewText{{ $item['id'] }}"
+                                  maxlength="500">{{ $item['insertion_sentence_new_text'] ?? '' }}</textarea>
+                    </div>
+                    @if($guaranteeOffered)
+                        <div class="form-check mt-2">
+                            <input class="form-check-input" type="checkbox" value="1"
+                                   name="link_guarantee_items[{{ $item['id'] }}]"
+                                   id="linkGuaranteeItem{{ $item['id'] }}"
+                                   @checked(!empty($item['link_guarantee']))>
+                            <label class="form-check-label" for="linkGuaranteeItem{{ $item['id'] }}">
+                                Add {{ \App\Support\LinkInsertionProduct::GUARANTEE_LABEL }}
+                                @if(!empty($item['guarantee_fee_label']))
+                                    <span class="text-muted">(+ {{ $item['guarantee_fee_label'] }} — {{ rtrim(rtrim(number_format($guaranteePercent, 2), '0'), '.') }}% of this item)</span>
+                                @endif
+                            </label>
+                        </div>
+                        <p class="small text-muted mb-0 mt-1">{{ \App\Support\LinkInsertionProduct::withAddonPolicyCopy() }} {{ \App\Support\LinkInsertionProduct::withoutAddonRefundCopy() }}</p>
+                    @endif
+                    @continue
+                @endif
                 @if(!$payingNow)
                     <p class="small text-muted mb-2">Choose writing to pay this site now without an uploaded article.</p>
                 @endif
@@ -82,17 +151,28 @@
             </div>
         @endforeach
 
-        @if($anyGuarantee)
+        @php
+            $hasGuestPostGuarantee = collect($cartItems)->contains(function ($row) use ($addons) {
+                return empty($row['stays_in_cart']) && !empty($row['guarantee_offered']) && ! \App\Support\LinkInsertionProduct::isLinkInsertion($row);
+            });
+            $hasLinkInsertion = collect($cartItems)->contains(function ($row) {
+                return empty($row['stays_in_cart']) && \App\Support\LinkInsertionProduct::isLinkInsertion($row);
+            });
+        @endphp
+        @if($hasGuestPostGuarantee)
             <div class="form-check mt-2">
                 <input class="form-check-input" type="checkbox" value="1" id="linkGuarantee" name="link_guarantee">
                 <label class="form-check-label" for="linkGuarantee">
                     Add a 12-month link guarantee
-                    <span class="text-muted">({{ rtrim(rtrim(number_format($guaranteePercent, 2), '0'), '.') }}% of eligible placements — 12 months or permanent only)</span>
+                    <span class="text-muted">({{ rtrim(rtrim(number_format($guaranteePercent, 2), '0'), '.') }}% of eligible guest-post placements — 12 months or permanent only)</span>
                 </label>
             </div>
             <p class="small text-muted mb-0 mt-2" id="linkGuaranteeTerms">{{ $guaranteeTerms }}</p>
-        @else
+        @elseif(!$hasLinkInsertion)
             <p class="small text-muted mb-0 mt-2" id="linkGuaranteeTerms">{{ $addons->eligibilityHelpText() }}</p>
+        @endif
+        @if($hasLinkInsertion)
+            <p class="small text-muted mb-0 mt-2">{{ $addons->linkInsertionTermsText() }}</p>
         @endif
     </div>
 </div>

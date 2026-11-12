@@ -776,7 +776,7 @@
                                 <span id="writingFeeAmount">€0.00</span>
                             </div>
                             <div class="d-flex justify-content-between mb-2 d-none" id="guaranteeFeeRow">
-                                <span class="text-muted">12-month link guarantee:</span>
+                                <span class="text-muted">Link guarantee:</span>
                                 <span id="guaranteeFeeAmount">€0.00</span>
                             </div>
                             <div class="d-flex justify-content-between mb-2">
@@ -1451,9 +1451,25 @@ document.addEventListener('DOMContentLoaded', function() {
         return Math.round(total * 100) / 100;
     }
     function guaranteeFee() {
-        const box = document.getElementById('linkGuarantee');
-        if (!box || !box.checked) return 0;
-        return Math.round(eligibleGuaranteeBase() * (guaranteePercent / 100) * 100) / 100;
+        let fee = 0;
+        const cartWide = document.getElementById('linkGuarantee');
+        const cartWideOn = !!(cartWide && cartWide.checked);
+        document.querySelectorAll('.checkout-writing-line').forEach(function (line) {
+            if (line.getAttribute('data-guarantee-offered') !== '1' || !isLineChargedNow(line)) {
+                return;
+            }
+            const itemBox = line.querySelector('input[name^="link_guarantee_items"]');
+            const on = itemBox ? itemBox.checked : cartWideOn;
+            if (!on) {
+                return;
+            }
+            let base = parseFloat(line.getAttribute('data-base-total') || '0') || 0;
+            if (isWrittenSelected(line)) {
+                base += parseFloat(line.getAttribute('data-writing-fee') || '0') || 0;
+            }
+            fee += Math.round(base * (guaranteePercent / 100) * 100) / 100;
+        });
+        return Math.round(fee * 100) / 100;
     }
     function refreshAddOnTotals() {
         totalAmount = Math.round((placementTotal() + guaranteeFee()) * 100) / 100;
@@ -1567,6 +1583,9 @@ document.addEventListener('DOMContentLoaded', function() {
         useBonusEl.addEventListener('change', refreshBonusUi);
     }
     document.querySelectorAll('.checkout-content-source').forEach(function (el) {
+        el.addEventListener('change', refreshAddOnTotals);
+    });
+    document.querySelectorAll('input[name^="link_guarantee_items"]').forEach(function (el) {
         el.addEventListener('change', refreshAddOnTotals);
     });
     const guaranteeBox = document.getElementById('linkGuarantee');
@@ -1804,6 +1823,62 @@ document.addEventListener('DOMContentLoaded', function() {
                 reference_code: referenceCode,
                 use_bonus: !!(useBonusEl && useBonusEl.checked),
                 link_guarantee: !!(document.getElementById('linkGuarantee') && document.getElementById('linkGuarantee').checked),
+                link_guarantee_items: (function () {
+                    const out = {};
+                    document.querySelectorAll('input[name^="link_guarantee_items"]').forEach(function (el) {
+                        const match = String(el.name || '').match(/\[(\d+)\]/);
+                        if (match) out[match[1]] = el.checked ? 1 : 0;
+                    });
+                    return out;
+                })(),
+                preferred_article_url: (function () {
+                    const out = {};
+                    document.querySelectorAll('input[name^="preferred_article_url"]').forEach(function (el) {
+                        const match = String(el.name || '').match(/\[(\d+)\]/);
+                        if (match) out[match[1]] = el.value || '';
+                    });
+                    return out;
+                })(),
+                insertion_target_url: (function () {
+                    const out = {};
+                    document.querySelectorAll('input[name^="insertion_target_url"]').forEach(function (el) {
+                        const match = String(el.name || '').match(/\[(\d+)\]/);
+                        if (match) out[match[1]] = el.value || '';
+                    });
+                    return out;
+                })(),
+                insertion_anchor_text: (function () {
+                    const out = {};
+                    document.querySelectorAll('input[name^="insertion_anchor_text"]').forEach(function (el) {
+                        const match = String(el.name || '').match(/\[(\d+)\]/);
+                        if (match) out[match[1]] = el.value || '';
+                    });
+                    return out;
+                })(),
+                insertion_sentence_same: (function () {
+                    const out = {};
+                    document.querySelectorAll('input[name^="insertion_sentence_same"]').forEach(function (el) {
+                        const match = String(el.name || '').match(/\[(\d+)\]/);
+                        if (match) out[match[1]] = el.checked ? 1 : 0;
+                    });
+                    return out;
+                })(),
+                insertion_sentence_new: (function () {
+                    const out = {};
+                    document.querySelectorAll('input[name^="insertion_sentence_new"]').forEach(function (el) {
+                        const match = String(el.name || '').match(/\[(\d+)\]/);
+                        if (match) out[match[1]] = el.checked ? 1 : 0;
+                    });
+                    return out;
+                })(),
+                insertion_sentence_new_text: (function () {
+                    const out = {};
+                    document.querySelectorAll('textarea[name^="insertion_sentence_new_text"]').forEach(function (el) {
+                        const match = String(el.name || '').match(/\[(\d+)\]/);
+                        if (match) out[match[1]] = el.value || '';
+                    });
+                    return out;
+                })(),
                 content_source: (function () {
                     const out = {};
                     document.querySelectorAll('.checkout-writing-line').forEach(function (line) {

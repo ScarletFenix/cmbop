@@ -48,6 +48,7 @@
         || request()->filled('turnaround_max')
         || request()->input('sensitive_topics') == '1'
         || request()->input('google_news') == '1'
+        || request()->filled('product')
         || \App\Services\Catalog\CatalogUrlQuery::perPage(request())
             !== \App\Services\Catalog\CatalogUrlQuery::DEFAULT_PER_PAGE
     );
@@ -83,6 +84,7 @@
     $blacklist = $blacklist ?? [];
     $inventoryFrom = $inventoryFrom ?? null;
     $cartSiteIds = [];
+    $cartLinkInsertionSiteIds = [];
     try {
         $catalogCartLines = is_array($cart ?? null) ? $cart : session('cart', []);
         if (! is_array($catalogCartLines)) {
@@ -92,12 +94,17 @@
             $cid = (int) (is_array($line) ? ($line['id'] ?? 0) : 0);
             if ($cid > 0) {
                 $cartSiteIds[$cid] = $cid;
+                if (\App\Support\LinkInsertionProduct::isLinkInsertion($line)) {
+                    $cartLinkInsertionSiteIds[$cid] = $cid;
+                }
             }
         }
         $cartSiteIds = array_values($cartSiteIds);
+        $cartLinkInsertionSiteIds = array_values($cartLinkInsertionSiteIds);
     } catch (\Throwable $e) {
         report($e);
         $cartSiteIds = [];
+        $cartLinkInsertionSiteIds = [];
     }
     $occupiedSites = $occupiedSites ?? [];
     if ($occupiedSites === []) {
@@ -249,6 +256,19 @@
                 $catalogSalePrice = $viewPrices['sale'];
                 $articlePay = $catalogSalePrice ?? $catalogListPrice;
                 $showAdvertiserPay = ! $isOwnedByMe;
+                $offersLinkInsertion = false;
+                $linkInsertionListPrice = 0.0;
+                $inLinkInsertionCart = false;
+                try {
+                    $offersLinkInsertion = $site->offersLinkInsertions();
+                    if ($offersLinkInsertion) {
+                        $liView = $site->catalogLinkInsertionPricesForViewer(auth()->user());
+                        $linkInsertionListPrice = (float) ($liView['list'] ?? 0);
+                        $inLinkInsertionCart = in_array((int) $site->id, $cartLinkInsertionSiteIds, true);
+                    }
+                } catch (\Throwable $e) {
+                    report($e);
+                }
                 // Advertisers always get a Details pay line so homepage-only
                 // listings cannot show publisher +€ amounts with no article total.
                 $hasPricingExtras = $hasSensitiveExtras || $showAdvertiserPay;
@@ -558,6 +578,7 @@
                                 data-publisher-price="{{ $catalogPublisherPrice }}"
                                 data-discount-percent="{{ $catalogSalePct ?? 0 }}"
                                 data-name="{{ $displayName }}"
+                                data-product-type="guest_post"
                                 @if($inCart) data-in-cart="1" @endif
                                 aria-label="{{ $inCart ? 'In cart — open cart, '.$identityLabel.' is already in your cart' : 'Add to cart for '.$identityLabel }}">
                             @if($inCart)
@@ -568,6 +589,24 @@
                                 <span>Add to cart</span>
                             @endif
                         </button>
+                        @if($offersLinkInsertion && $linkInsertionListPrice > 0)
+                            <div class="small text-muted mt-1">Link insertion {{ format_money($linkInsertionListPrice) }}</div>
+                            <button type="button" class="btn btn-sm btn-outline-primary buy-now d-inline-flex justify-content-center align-items-center gap-2 mt-1{{ $inLinkInsertionCart ? ' is-in-cart' : '' }}"
+                                    data-id="{{ $site->id }}"
+                                    data-base-price="{{ $linkInsertionListPrice }}"
+                                    data-name="{{ $displayName }}"
+                                    data-product-type="link_insertion"
+                                    @if($inLinkInsertionCart) data-in-cart="1" @endif
+                                    aria-label="{{ $inLinkInsertionCart ? 'Link insertion in cart' : 'Add link insertion for '.$identityLabel }}">
+                                @if($inLinkInsertionCart)
+                                    <i class="fa-solid fa-cart-shopping" aria-hidden="true"></i>
+                                    <span>Insertion in cart</span>
+                                @else
+                                    <i class="fa-solid fa-link" aria-hidden="true"></i>
+                                    <span>Add link insertion</span>
+                                @endif
+                            </button>
+                        @endif
                         <div class="catalog-buy-addon-hint small text-muted mt-1" data-site-id="{{ $site->id }}" hidden></div>
                         @endif
 
@@ -1061,6 +1100,19 @@
             $articlePay = $catalogSalePrice ?? $catalogListPrice;
             $showAdvertiserPay = ! $isOwnedByMe;
             $inCart = in_array((int) $site->id, $cartSiteIds, true);
+            $offersLinkInsertion = false;
+            $linkInsertionListPrice = 0.0;
+            $inLinkInsertionCart = false;
+            try {
+                $offersLinkInsertion = $site->offersLinkInsertions();
+                if ($offersLinkInsertion) {
+                    $liView = $site->catalogLinkInsertionPricesForViewer(auth()->user());
+                    $linkInsertionListPrice = (float) ($liView['list'] ?? 0);
+                    $inLinkInsertionCart = in_array((int) $site->id, $cartLinkInsertionSiteIds, true);
+                }
+            } catch (\Throwable $e) {
+                report($e);
+            }
         @endphp
         <article class="catalog-mobile-card {{ $isBlacklisted ? 'is-blacklisted' : '' }}{{ ! empty($catalogReported) && in_array((int) $site->id, $catalogReported, true) ? ' is-catalog-reported' : '' }}"
                  data-id="{{ $site->id }}"
@@ -1354,6 +1406,7 @@
                         data-publisher-price="{{ $catalogPublisherPrice }}"
                         data-discount-percent="{{ $catalogSalePct ?? 0 }}"
                         data-name="{{ $displayName }}"
+                        data-product-type="guest_post"
                         @if($inCart) data-in-cart="1" @endif
                         aria-label="{{ $inCart ? 'In cart — open cart, '.$identityLabel.' is already in your cart' : 'Add to cart for '.$identityLabel }}">
                     @if($inCart)
@@ -1364,6 +1417,24 @@
                         <span>Add to cart</span>
                     @endif
                 </button>
+                @if($offersLinkInsertion && $linkInsertionListPrice > 0)
+                    <div class="small text-muted mt-1">Link insertion {{ format_money($linkInsertionListPrice) }}</div>
+                    <button type="button" class="btn btn-sm btn-outline-primary buy-now d-inline-flex justify-content-center align-items-center gap-2 mt-1{{ $inLinkInsertionCart ? ' is-in-cart' : '' }}"
+                            data-id="{{ $site->id }}"
+                            data-base-price="{{ $linkInsertionListPrice }}"
+                            data-name="{{ $displayName }}"
+                            data-product-type="link_insertion"
+                            @if($inLinkInsertionCart) data-in-cart="1" @endif
+                            aria-label="{{ $inLinkInsertionCart ? 'Link insertion in cart' : 'Add link insertion for '.$identityLabel }}">
+                        @if($inLinkInsertionCart)
+                            <i class="fa-solid fa-cart-shopping" aria-hidden="true"></i>
+                            <span>Insertion in cart</span>
+                        @else
+                            <i class="fa-solid fa-link" aria-hidden="true"></i>
+                            <span>Add link insertion</span>
+                        @endif
+                    </button>
+                @endif
                 <div class="catalog-buy-addon-hint small text-muted" data-site-id="{{ $site->id }}" hidden></div>
                 @endif
 

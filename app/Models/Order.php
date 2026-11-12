@@ -7,6 +7,7 @@ namespace App\Models;
 use App\Models\Concerns\ExcludesSandbox;
 use App\Models\Concerns\ToleratesUnparseableDates;
 use App\Services\Marketplace\CheckoutAddOnService;
+use App\Support\LinkInsertionProduct;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
@@ -93,14 +94,27 @@ class Order extends Model
 
     public function linkGuaranteeTermsNote(): string
     {
-        if (! $this->link_guarantee) {
+        $item = null;
+        try {
+            $item = $this->relationLoaded('items') ? $this->items->first() : $this->items()->first();
+        } catch (\Throwable) {
+            $item = null;
+        }
+        $isLi = $item && method_exists($item, 'isLinkInsertion') && $item->isLinkInsertion();
+        $hasAddon = (bool) $this->link_guarantee
+            || ($item && method_exists($item, 'hasPaidLinkGuarantee') && $item->hasPaidLinkGuarantee());
+        if (! $hasAddon) {
             return '';
         }
 
         try {
-            return app(CheckoutAddOnService::class)->termsText();
+            $addons = app(CheckoutAddOnService::class);
+
+            return $isLi ? $addons->linkInsertionTermsText() : $addons->termsText();
         } catch (\Throwable) {
-            return 'Optional 12-month link guarantee: monthly URL checks, 7 days to restore a missing hyperlink, then a wallet refund of the guaranteed placement amount.';
+            return $isLi
+                ? LinkInsertionProduct::withAddonPolicyCopy()
+                : 'Optional 12-month link guarantee: monthly URL checks, 7 days to restore a missing hyperlink, then a wallet refund of the guaranteed placement amount.';
         }
     }
 

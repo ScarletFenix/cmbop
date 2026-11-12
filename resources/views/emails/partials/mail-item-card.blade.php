@@ -18,8 +18,19 @@
 <span class="mail-item-domain" style="color:#123f42;">{{ $name }}</span>
 @endif
 </p>
+@if(!empty($card['product_type_label']) && $card['product_type_label'] === 'Link insertion')
+<p style="margin:0 0 8px 0;color:#64748b;font-family:Arial,Helvetica,sans-serif;font-size:13px;">Link insertion · Permanent</p>
+@endif
 @if($showPrice && \App\Support\MailNotificationPresenter::hasMailValue($price))
 <p style="margin:0 0 8px 0;color:#123f42;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:700;">{{ $price }}</p>
+@endif
+@if(!empty($card['link_guarantee']))
+<p style="margin:0 0 8px 0;color:#334155;font-family:Arial,Helvetica,sans-serif;font-size:13px;">
+Link guarantee
+@if(!empty($card['link_guarantee_fee_label']))
+ — {{ $card['link_guarantee_fee_label'] }}
+@endif
+</p>
 @endif
 @if(!empty($content))
 <p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.4;">

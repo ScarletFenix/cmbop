@@ -234,6 +234,12 @@ class SiteController extends Controller
             'turnaround_time' => 'required|string|in:24h,48h,3days,5days,7days',
             'publicationTime' => 'required|string|max:20|'.PublicationDuration::rule(),
             'link_type' => 'required|in:dofollow,nofollow',
+            'accepts_link_insertions' => 'nullable|boolean',
+            'link_insertion_price' => 'nullable|numeric|min:0|max:99999999.99',
+            'link_insertion_min_article_age_days' => 'nullable|integer|min:0|max:3650',
+            'link_insertion_allow_high_traffic' => 'nullable|boolean',
+            'link_insertion_link_type' => 'nullable|in:dofollow,nofollow',
+            'link_insertion_delivery_days' => 'nullable|integer|min:1|max:60',
             'siteDescription' => 'required|string',
             'price_sensitive.*' => 'nullable|numeric|min:0|max:99999999.99',
             'sensitive.crypto' => 'nullable|boolean',
@@ -354,6 +360,13 @@ class SiteController extends Controller
                     'turnaround_time' => $request->turnaround_time,
                     'publication_time' => $request->publicationTime,
                     'link_type' => $request->link_type,
+                    'accepts_link_insertions' => $listingFields['accepts_link_insertions'] ?? false,
+                    'listing_link_insertion_price' => $listingFields['listing_link_insertion_price'] ?? null,
+                    'link_insertion_price' => $listingFields['link_insertion_price'] ?? null,
+                    'link_insertion_min_article_age_days' => $listingFields['link_insertion_min_article_age_days'] ?? null,
+                    'link_insertion_allow_high_traffic' => $listingFields['link_insertion_allow_high_traffic'] ?? false,
+                    'link_insertion_link_type' => $listingFields['link_insertion_link_type'] ?? 'dofollow',
+                    'link_insertion_delivery_days' => $listingFields['link_insertion_delivery_days'] ?? 7,
                     'description' => $cleanDescription,
                     'verified' => false,
                     'active' => false,
@@ -881,6 +894,12 @@ class SiteController extends Controller
                 'turnaround_time' => $site->turnaround_time,
                 'publication_time' => $site->publication_time,
                 'link_type' => $site->link_type,
+                'accepts_link_insertions' => (bool) $site->accepts_link_insertions,
+                'link_insertion_price' => $site->listingLinkInsertionAmount() ?: null,
+                'link_insertion_min_article_age_days' => $site->link_insertion_min_article_age_days,
+                'link_insertion_allow_high_traffic' => (bool) $site->link_insertion_allow_high_traffic,
+                'link_insertion_link_type' => $site->link_insertion_link_type ?: 'dofollow',
+                'link_insertion_delivery_days' => (int) ($site->link_insertion_delivery_days ?: 7),
                 'description' => $site->description,
                 'sponsored' => (bool) $site->sponsored,
                 'partner_material' => (bool) $site->partner_material,
@@ -970,6 +989,12 @@ class SiteController extends Controller
             'turnaround_time' => 'required|string|in:24h,48h,3days,5days,7days',
             'publicationTime' => 'required|string|max:20|'.PublicationDuration::rule(),
             'link_type' => 'required|in:dofollow,nofollow',
+            'accepts_link_insertions' => 'nullable|boolean',
+            'link_insertion_price' => 'nullable|numeric|min:0|max:99999999.99',
+            'link_insertion_min_article_age_days' => 'nullable|integer|min:0|max:3650',
+            'link_insertion_allow_high_traffic' => 'nullable|boolean',
+            'link_insertion_link_type' => 'nullable|in:dofollow,nofollow',
+            'link_insertion_delivery_days' => 'nullable|integer|min:1|max:60',
             'siteDescription' => 'required|string',
             'price_sensitive.*' => 'nullable|numeric|min:0|max:99999999.99',
             'sensitive.crypto' => 'nullable|boolean',
@@ -1061,6 +1086,13 @@ class SiteController extends Controller
                     'turnaround_time' => $request->turnaround_time,
                     'publication_time' => $request->publicationTime,
                     'link_type' => $request->link_type,
+                    'accepts_link_insertions' => $listingFields['accepts_link_insertions'] ?? false,
+                    'listing_link_insertion_price' => $listingFields['listing_link_insertion_price'] ?? null,
+                    'link_insertion_price' => $listingFields['link_insertion_price'] ?? null,
+                    'link_insertion_min_article_age_days' => $listingFields['link_insertion_min_article_age_days'] ?? null,
+                    'link_insertion_allow_high_traffic' => $listingFields['link_insertion_allow_high_traffic'] ?? false,
+                    'link_insertion_link_type' => $listingFields['link_insertion_link_type'] ?? 'dofollow',
+                    'link_insertion_delivery_days' => $listingFields['link_insertion_delivery_days'] ?? 7,
                     'description' => $cleanDescription,
                     'sensitive_prices' => ! empty($sensitivePrices) ? $sensitivePrices : null,
                     'homepage_placement_prices' => ! empty($homepagePrices) ? $homepagePrices : null,
@@ -1412,11 +1444,33 @@ class SiteController extends Controller
         $writing = app(WritingFeeService::class)
             ->persistenceFromRequest($request, $site ?? new Site, $country);
 
+        $acceptsLi = $request->boolean('accepts_link_insertions');
+        $liListing = $request->filled('link_insertion_price')
+            ? round((float) $request->input('link_insertion_price'), 2)
+            : null;
+        if ($acceptsLi && ($liListing === null || $liListing <= 0)) {
+            $acceptsLi = false;
+            $liListing = null;
+        }
+
         return [
             'listing_currency' => $currency,
             'listing_price' => $listingPrice,
             'listing_sensitive_prices' => $listingSensitive !== [] ? $listingSensitive : null,
             'listing_homepage_prices' => $listingHomepage !== [] ? $listingHomepage : null,
+            'accepts_link_insertions' => $acceptsLi,
+            'listing_link_insertion_price' => $acceptsLi ? $liListing : null,
+            'link_insertion_price' => $acceptsLi && $liListing !== null
+                ? $listing->toEuros($liListing, $currency, false)
+                : null,
+            'link_insertion_min_article_age_days' => $request->filled('link_insertion_min_article_age_days')
+                ? (int) $request->input('link_insertion_min_article_age_days')
+                : null,
+            'link_insertion_allow_high_traffic' => $request->boolean('link_insertion_allow_high_traffic'),
+            'link_insertion_link_type' => $request->input('link_insertion_link_type', 'dofollow') === 'nofollow'
+                ? 'nofollow'
+                : 'dofollow',
+            'link_insertion_delivery_days' => max(1, min(60, (int) $request->input('link_insertion_delivery_days', 7))),
             'price' => $listing->toEuros($listingPrice, $currency, false),
             'sensitive_prices' => $listingSensitive !== []
                 ? $listing->mapToEuros($listingSensitive, $currency, false)

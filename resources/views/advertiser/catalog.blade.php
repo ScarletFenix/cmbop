@@ -235,7 +235,7 @@
 
     <!-- FILTERS SECTION -->
 @php
-    $moreFilterKeys = ['favorites_filter','blacklist_filter','bulk_deals','da_min','da_max','dr_min','dr_max','traffic_min','traffic_max','new_badge','on_sale','featured','quality','rating_min','has_completions','publication_time','link_type','turnaround_max','sensitive_topics','google_news'];
+    $moreFilterKeys = ['favorites_filter','blacklist_filter','bulk_deals','da_min','da_max','dr_min','dr_max','traffic_min','traffic_max','new_badge','on_sale','featured','quality','rating_min','has_completions','publication_time','link_type','turnaround_max','sensitive_topics','google_news','product'];
     $moreTagActive = \App\Support\SiteTag::catalogFilterFromRequest(request()) !== null;
     $moreFilterCount = collect($moreFilterKeys)->filter(fn ($k) => filled(request($k)))->count()
         + ($moreTagActive ? 1 : 0);
@@ -606,6 +606,17 @@
                         {{-- DA/DR/traffic are taller (min/max + preset chips). Bottom-aligning
                              this row pulled those cells up so the DA label sat above Tag/Favorites/Blacklist. --}}
                         <div class="row g-3 align-items-start">
+                            <div class="col-6 col-md-4 col-lg-3">
+                                <label class="form-label fw-semibold small text-muted mb-1" for="catalogProductFilter-trigger">Product</label>
+                                @include('advertiser.partials.catalog-theme-select', [
+                                    'selectId' => 'catalogProductFilter',
+                                    'name' => 'product',
+                                    'label' => 'Product',
+                                    'current' => search_text(request('product')),
+                                    'options' => ['' => 'All products', 'link_insertion' => 'Link insertions'],
+                                ])
+                            </div>
+
                             <div class="col-6 col-md-4 col-lg-3">
                                 <label class="form-label fw-semibold small text-muted mb-1" for="catalogTagFilter-trigger">
                                     <abbr class="metric-abbr text-decoration-none" title="{{ \App\Support\SiteTag::FILTER_TOOLTIP }}">Tag</abbr>

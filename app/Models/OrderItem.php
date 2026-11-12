@@ -6,6 +6,7 @@ namespace App\Models;
 
 use App\Models\Concerns\ExcludesSandbox;
 use App\Models\Concerns\ToleratesUnparseableDates;
+use App\Support\LinkInsertionProduct;
 use App\Support\ListingMoney;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
@@ -118,6 +119,14 @@ class OrderItem extends Model
         'slb_price_eur_internal',
         'is_sandbox',
         'live_url_href_found',
+        'product_type',
+        'preferred_article_url',
+        'insertion_sentence_same',
+        'insertion_sentence_new',
+        'insertion_sentence_new_text',
+        'link_guarantee',
+        'link_guarantee_fee',
+        'link_guarantee_covered_amount',
         'live_url_rel',
         'live_url_anchor_match',
     ];
@@ -174,11 +183,37 @@ class OrderItem extends Model
         'writing_reminder_sent_at' => 'datetime',
         'article_revision_used' => 'integer',
         'managed_marked_at' => 'datetime',
+        'insertion_sentence_same' => 'boolean',
+        'insertion_sentence_new' => 'boolean',
+        'link_guarantee' => 'boolean',
+        'link_guarantee_fee' => 'decimal:2',
+        'link_guarantee_covered_amount' => 'decimal:2',
     ];
 
     protected $hidden = [
         'slb_price_eur_internal',
     ];
+
+    public function isLinkInsertion(): bool
+    {
+        return LinkInsertionProduct::isLinkInsertion($this);
+    }
+
+    public function productTypeLabel(): string
+    {
+        return LinkInsertionProduct::label($this);
+    }
+
+    public function hasPaidLinkGuarantee(): bool
+    {
+        if ($this->isLinkInsertion()) {
+            return (bool) $this->link_guarantee;
+        }
+
+        $order = $this->relationLoaded('order') ? $this->order : $this->order()->first();
+
+        return (bool) ($order?->link_guarantee);
+    }
 
     /**
      * Real Gregorian accepted_at. Leftover Hostinger strings are not acceptance.
@@ -435,7 +470,11 @@ class OrderItem extends Model
         }
 
         $link = trim((string) ($this->content_link ?: ''));
-        if ($link === '' || in_array($link, [self::PENDING_WRITTEN_LINK, 'publisher-written'], true)) {
+        if ($link === '' || in_array($link, [
+            self::PENDING_WRITTEN_LINK,
+            'publisher-written',
+            LinkInsertionProduct::CONTENT_LINK,
+        ], true)) {
             return null;
         }
 
@@ -476,7 +515,11 @@ class OrderItem extends Model
     public function publicContentLink(): ?string
     {
         $link = trim((string) ($this->content_link ?: ''));
-        if ($link === '') {
+        if ($link === '' || in_array($link, [
+            self::PENDING_WRITTEN_LINK,
+            'publisher-written',
+            LinkInsertionProduct::CONTENT_LINK,
+        ], true)) {
             return null;
         }
 

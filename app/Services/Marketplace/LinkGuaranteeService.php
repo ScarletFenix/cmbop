@@ -224,11 +224,15 @@ class LinkGuaranteeService
         }
 
         $start = $order->completed_at ?: now();
+        $order->loadMissing('items');
+        $permanent = $order->items->contains(
+            fn ($line) => $line instanceof OrderItem && $line->isLinkInsertion() && (bool) $line->link_guarantee
+        );
         $months = max(1, (int) config('orders.link_guarantee.months', 12));
         $order->update([
             'link_guarantee_status' => self::STATUS_ACTIVE,
             'link_guarantee_starts_at' => $start,
-            'link_guarantee_ends_at' => $start->copy()->addMonths($months),
+            'link_guarantee_ends_at' => $permanent ? null : $start->copy()->addMonths($months),
         ]);
     }
 

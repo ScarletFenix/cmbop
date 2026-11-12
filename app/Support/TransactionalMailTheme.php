@@ -615,6 +615,12 @@ class TransactionalMailTheme
             'homepage_placement' => $extras['homepage_placement'],
             'social_promotion' => $extras['social_promotion'],
             'social_urls' => $extras['social_urls'],
+            'product_type_label' => $item->productTypeLabel(),
+            'link_guarantee_label' => $item->isLinkInsertion()
+                ? ($item->hasPaidLinkGuarantee()
+                    ? 'Permanent — restore first, then refund if the live link cannot be restored'
+                    : 'Not added — refund only if the publisher rejects the order')
+                : ($order->link_guarantee ? '12-month add-on' : null),
         ];
     }
 

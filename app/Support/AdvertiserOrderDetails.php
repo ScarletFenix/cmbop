@@ -99,8 +99,13 @@ final class AdvertiserOrderDetails
                 return '';
             }
 
-            $note = 'If a published link is later removed, use Report link removed.';
-            if ($order->link_guarantee) {
+            $item = $order->items->first();
+            if ($item instanceof OrderItem && $item->isLinkInsertion() && ! $item->hasPaidLinkGuarantee()) {
+                $note = LinkInsertionProduct::withoutAddonRefundCopy();
+            } else {
+                $note = 'If a published link is later removed, use Report link removed.';
+            }
+            if ($order->link_guarantee || ($item instanceof OrderItem && $item->hasPaidLinkGuarantee())) {
                 $note .= ' '.$order->linkGuaranteeTermsNote();
             }
 
@@ -204,7 +209,17 @@ final class AdvertiserOrderDetails
             $chips[] = ['key' => 'publication_time', 'label' => $publication];
         }
 
-        if ($order->link_guarantee !== null) {
+        $item = $order->items->first();
+        $isLi = $item instanceof OrderItem && $item->isLinkInsertion();
+        if ($isLi) {
+            $chips[] = ['key' => 'product_type', 'label' => 'Link insertion'];
+            $chips[] = ['key' => 'duration', 'label' => 'Permanent'];
+            $hasAddon = $item->hasPaidLinkGuarantee() || (bool) $order->link_guarantee;
+            $chips[] = [
+                'key' => 'link_guarantee',
+                'label' => $hasAddon ? 'Link guarantee' : 'No Link guarantee',
+            ];
+        } elseif ($order->link_guarantee !== null) {
             $chips[] = [
                 'key' => 'link_guarantee',
                 'label' => $order->link_guarantee ? '12-month guarantee' : 'No 12-month guarantee',
@@ -313,6 +328,15 @@ final class AdvertiserOrderDetails
         $row['feature_image_url'] = $line->feature_image_url;
         $row['price'] = $line->price;
         $row['content_source'] = $line->content_source ?? 'buyer';
+        $row['product_type'] = LinkInsertionProduct::normalize($line->product_type ?? null);
+        $row['product_type_label'] = $line->productTypeLabel();
+        $row['preferred_article_url'] = $line->preferred_article_url;
+        $row['insertion_sentence_same'] = (bool) $line->insertion_sentence_same;
+        $row['insertion_sentence_new'] = (bool) $line->insertion_sentence_new;
+        $row['insertion_sentence_new_text'] = $line->insertion_sentence_new_text;
+        $row['link_guarantee'] = (bool) $line->link_guarantee;
+        $row['link_guarantee_fee'] = $line->link_guarantee_fee;
+        $row['link_guarantee_covered_amount'] = $line->link_guarantee_covered_amount;
         $row['writing_fee'] = $line->writing_fee;
         $row['writing_status'] = $line->writing_status ? (string) $line->writing_status : null;
         $row['article_approved_at'] = self::iso($line->article_approved_at ?? null);

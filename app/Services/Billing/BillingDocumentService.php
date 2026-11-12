@@ -17,6 +17,7 @@ use App\Models\Withdrawal;
 use App\Services\InAppNotificationService;
 use App\Services\Partners\PartnerSandbox;
 use App\Support\BillingCustomerMailSuppressor;
+use App\Support\MailNotificationPresenter;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
@@ -496,33 +497,51 @@ class BillingDocumentService
             $total = round((float) ($order->total_amount ?? ($subtotal + $taxAmount - $discount)), 2);
         }
 
-        $lineItems = $order->items->map(function ($item) {
+        $lineItems = [];
+        foreach ($order->items as $item) {
             $qty = 1;
             $unit = (float) $item->price;
-            $service = 'Guest post / sponsored placement';
+            $guaranteeFee = round((float) ($item->link_guarantee_fee ?? 0), 2);
+            $itemGuarantee = $item->isLinkInsertion()
+                ? (bool) ($item->link_guarantee ?? false)
+                : ((bool) ($item->link_guarantee ?? false) || (bool) $order->link_guarantee);
+            $splitLiGuarantee = $item->isLinkInsertion() && $itemGuarantee && $guaranteeFee > 0;
+            $placementUnit = $splitLiGuarantee ? round($unit - $guaranteeFee, 2) : $unit;
+            $service = $item->isLinkInsertion()
+                ? 'Link insertion'
+                : 'Guest post / sponsored placement';
             if (! empty($item->sensitive_type)) {
                 $service .= ' (+ '.$item->sensitive_type.')';
             }
             if (($item->content_source ?? '') === 'publisher' && (float) ($item->writing_fee ?? 0) > 0) {
                 $service .= ' + publisher-written article';
             }
-            $order = $item->relationLoaded('order') ? $item->order : $item->order()->first();
-            if ($order && $order->link_guarantee) {
+            if ($itemGuarantee && ! $splitLiGuarantee) {
                 $service .= ' + 12-month link guarantee';
             }
 
-            $liveUrl = \App\Support\MailNotificationPresenter::safeLiveUrl($item->live_url ?? null);
-
-            return [
+            $liveUrl = MailNotificationPresenter::safeLiveUrl($item->live_url ?? null);
+            $lineItems[] = [
                 'description' => $service,
                 'site_name' => $item->site_name,
                 'site_url' => $item->site_url,
                 'live_url' => $liveUrl,
                 'quantity' => $qty,
-                'unit_price' => $unit,
-                'line_total' => $unit * $qty,
+                'unit_price' => $placementUnit,
+                'line_total' => $placementUnit * $qty,
             ];
-        })->values()->all();
+            if ($splitLiGuarantee) {
+                $lineItems[] = [
+                    'description' => 'Link guarantee (permanent)',
+                    'site_name' => $item->site_name,
+                    'site_url' => $item->site_url,
+                    'live_url' => $liveUrl,
+                    'quantity' => 1,
+                    'unit_price' => $guaranteeFee,
+                    'line_total' => $guaranteeFee,
+                ];
+            }
+        }
 
         $transactionId = $order->stripe_payment_intent_id
             ?: $order->stripe_session_id

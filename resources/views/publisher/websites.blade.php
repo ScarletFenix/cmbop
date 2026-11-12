@@ -1415,6 +1415,51 @@
                     </div>
 
                     <div class="form-section">
+                        <span class="form-section-title">Link insertions (optional)</span>
+                        <div class="row bg-light p-3 rounded g-3 g-form">
+                            <div class="col-12">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="accepts_link_insertions" value="1" id="accepts_link_insertions" {{ old('accepts_link_insertions') ? 'checked' : '' }}>
+                                    <label class="form-check-label" for="accepts_link_insertions">I offer link insertions on existing articles</label>
+                                </div>
+                                <p class="small text-muted mb-0 mt-1">{{ \App\Support\LinkInsertionProduct::PERMANENT_COPY }} Advertisers see your price in EUR. Restricted niches follow the same guest-post rules.</p>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label" for="link_insertion_price">Link insertion price</label>
+                                <input type="number" name="link_insertion_price" id="link_insertion_price" class="form-control" min="0" step="0.01" value="{{ old_text('link_insertion_price') }}" placeholder="Your price">
+                                <p class="small text-muted mb-0 mt-1">You set this. Marketplace marketing starts from {{ \App\Support\LinkInsertionProduct::formatFromEur() }}.</p>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label" for="link_insertion_delivery_days">Delivery (days)</label>
+                                <input type="number" name="link_insertion_delivery_days" id="link_insertion_delivery_days" class="form-control" min="1" max="60" value="{{ old('link_insertion_delivery_days', 7) }}">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label" for="link_insertion_min_article_age_days">Min. article age (days)</label>
+                                <input type="number" name="link_insertion_min_article_age_days" id="link_insertion_min_article_age_days" class="form-control" min="0" max="3650" value="{{ old_text('link_insertion_min_article_age_days') }}" placeholder="Optional">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Link insertion type</label>
+                                <div class="d-flex gap-3 mt-2">
+                                    <div class="form-check">
+                                        <input type="radio" name="link_insertion_link_type" id="liLinkTypeDofollow" value="dofollow" class="form-check-input" {{ old('link_insertion_link_type', 'dofollow') == 'dofollow' ? 'checked' : '' }}>
+                                        <label class="form-check-label" for="liLinkTypeDofollow">DoFollow</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input type="radio" name="link_insertion_link_type" id="liLinkTypeNofollow" value="nofollow" class="form-check-input" {{ old('link_insertion_link_type') == 'nofollow' ? 'checked' : '' }}>
+                                        <label class="form-check-label" for="liLinkTypeNofollow">NoFollow</label>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-8">
+                                <div class="form-check mt-4">
+                                    <input class="form-check-input" type="checkbox" name="link_insertion_allow_high_traffic" value="1" id="link_insertion_allow_high_traffic" {{ old('link_insertion_allow_high_traffic') ? 'checked' : '' }}>
+                                    <label class="form-check-label" for="link_insertion_allow_high_traffic">Allow insertion on high-traffic articles</label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-section">
                         <span class="form-section-title">Tags</span>
                         @php
                             $oldTag = old('site_tag');
@@ -2603,6 +2648,12 @@ function saveSiteDraft() {
             price: $('#price').val(),
             publicationTime: $('#publicationTime').val(),
             link_type: $('input[name="link_type"]:checked').val() || 'dofollow',
+            accepts_link_insertions: $('#accepts_link_insertions').is(':checked'),
+            link_insertion_price: $('#link_insertion_price').val(),
+            link_insertion_delivery_days: $('#link_insertion_delivery_days').val(),
+            link_insertion_min_article_age_days: $('#link_insertion_min_article_age_days').val(),
+            link_insertion_link_type: $('input[name="link_insertion_link_type"]:checked').val() || 'dofollow',
+            link_insertion_allow_high_traffic: $('#link_insertion_allow_high_traffic').is(':checked'),
             language: $('#selectedLanguage').val(),
             country: $('#selectedCountry').val(),
             categories: $('#selectedCategories').val(),
@@ -2664,6 +2715,16 @@ function loadSiteDraft() {
         } else {
             $('#linkTypeDofollow').prop('checked', true);
         }
+        $('#accepts_link_insertions').prop('checked', !!draft.accepts_link_insertions);
+        $('#link_insertion_price').val(draft.link_insertion_price || '');
+        $('#link_insertion_delivery_days').val(draft.link_insertion_delivery_days || 7);
+        $('#link_insertion_min_article_age_days').val(draft.link_insertion_min_article_age_days || '');
+        if (draft.link_insertion_link_type === 'nofollow') {
+            $('#liLinkTypeNofollow').prop('checked', true);
+        } else {
+            $('#liLinkTypeDofollow').prop('checked', true);
+        }
+        $('#link_insertion_allow_high_traffic').prop('checked', !!draft.link_insertion_allow_high_traffic);
         const draftTag = draft.site_tag
             || (draft.sponsored ? 'sponsored' : '')
             || (draft.partner_material ? 'partner_material' : '')
@@ -3499,6 +3560,16 @@ function prefillSiteForm(site) {
     } else {
         $('#linkTypeNofollow').prop('checked', true);
     }
+    $('#accepts_link_insertions').prop('checked', !!site.accepts_link_insertions);
+    $('#link_insertion_price').val(site.link_insertion_price || '');
+    $('#link_insertion_delivery_days').val(site.link_insertion_delivery_days || 7);
+    $('#link_insertion_min_article_age_days').val(site.link_insertion_min_article_age_days || '');
+    if (site.link_insertion_link_type === 'nofollow') {
+        $('#liLinkTypeNofollow').prop('checked', true);
+    } else {
+        $('#liLinkTypeDofollow').prop('checked', true);
+    }
+    $('#link_insertion_allow_high_traffic').prop('checked', !!site.link_insertion_allow_high_traffic);
 
     let siteTag = '';
     if (site.sponsored) siteTag = 'sponsored';

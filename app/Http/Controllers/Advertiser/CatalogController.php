@@ -82,6 +82,7 @@ use App\Support\CatalogSensitiveTopics;
 use App\Support\CatalogTurnaroundFilter;
 use App\Support\CatalogVisitUrl;
 use App\Support\DepositPaymentConfig;
+use App\Support\LinkInsertionProduct;
 use App\Support\ListingMoney;
 use App\Support\PaypalPaymentError;
 use App\Support\PlatformCharge;
@@ -999,6 +1000,23 @@ class CatalogController extends Controller
             $query->where('publication_time', $publication);
         }
 
+        $productFilter = LinkInsertionProduct::normalize($request->input('product'));
+        if ($request->filled('product') && $productFilter === LinkInsertionProduct::TYPE) {
+            if (Site::hasSitesColumn('accepts_link_insertions')) {
+                $query->where('accepts_link_insertions', 1)
+                    ->where(function ($q) {
+                        if (Site::hasSitesColumn('listing_link_insertion_price')) {
+                            $q->where('listing_link_insertion_price', '>', 0);
+                        }
+                        if (Site::hasSitesColumn('link_insertion_price')) {
+                            $q->orWhere('link_insertion_price', '>', 0);
+                        }
+                    });
+            } else {
+                $query->whereRaw('1 = 0');
+            }
+        }
+
         // More → Bulk deals — pack program only (not custom Sale −%).
         if ($request->input('bulk_deals') == '1' || $request->input('bulk_deals') === 1) {
             if (Site::hasSitesColumn('bulk_discount_enabled')) {
@@ -1282,8 +1300,9 @@ class CatalogController extends Controller
         $homepagePart = ($homepage === null || $homepage === '' || (int) $homepage === 0)
             ? ''
             : (string) (int) $homepage;
+        $product = LinkInsertionProduct::normalize($row['product_type'] ?? null);
 
-        return $id.'|'.$sensitive.'|'.$homepagePart;
+        return $id.'|'.$sensitive.'|'.$homepagePart.'|'.$product;
     }
 
     /**
@@ -1306,6 +1325,7 @@ class CatalogController extends Controller
         int $siteId,
         ?string $sensitiveType,
         int|string|null $homepageDays = null,
+        ?string $productType = null,
     ): bool {
         if ((int) ($item['id'] ?? 0) !== $siteId) {
             return false;
@@ -1314,6 +1334,15 @@ class CatalogController extends Controller
         $itemSensitive = $item['sensitive_type'] ?? null;
         if (($itemSensitive ?: null) != ($sensitiveType ?: null)) {
             return false;
+        }
+
+        $wantProduct = LinkInsertionProduct::normalize($productType ?? LinkInsertionProduct::GUEST_POST);
+        if (LinkInsertionProduct::normalize($item['product_type'] ?? null) !== $wantProduct) {
+            return false;
+        }
+
+        if ($wantProduct === LinkInsertionProduct::TYPE) {
+            return true;
         }
 
         return $this->normalizeHomepageDaysKey($item['homepage_days'] ?? null)
@@ -1355,12 +1384,24 @@ class CatalogController extends Controller
             $sensitiveType = null;
         }
 
+        $productType = LinkInsertionProduct::normalize($line['product_type'] ?? null);
+        $isLinkInsertion = $productType === LinkInsertionProduct::TYPE;
+        $line['product_type'] = $productType;
+        if ($isLinkInsertion) {
+            $qty = 1;
+            $line['quantity'] = 1;
+            $line['bulk_pack'] = false;
+            $line['bulk_eligible'] = false;
+        }
+
         $hasHomepageKey = array_key_exists('homepage_days', $line);
-        $homepageInput = $hasHomepageKey
-            ? (($line['homepage_days'] === null || $line['homepage_days'] === '')
-                ? 'none'
-                : $line['homepage_days'])
-            : null;
+        $homepageInput = $isLinkInsertion
+            ? 'none'
+            : ($hasHomepageKey
+                ? (($line['homepage_days'] === null || $line['homepage_days'] === '')
+                    ? 'none'
+                    : $line['homepage_days'])
+                : null);
 
         try {
             $pricing = $this->cartPricing()->priceForAdvertiser(
@@ -1368,7 +1409,9 @@ class CatalogController extends Controller
                 $sensitiveType,
                 $qty,
                 $homepageInput,
-                ! $hasHomepageKey
+                $isLinkInsertion ? false : ! $hasHomepageKey,
+                null,
+                $productType
             );
         } catch (\InvalidArgumentException $e) {
             // Invalid sensitive and/or homepage — drop the bad choice and retry.
@@ -1386,10 +1429,12 @@ class CatalogController extends Controller
                     $sensitiveType,
                     $qty,
                     $homepageInput,
-                    ! $hasHomepageKey
+                    $isLinkInsertion ? false : ! $hasHomepageKey,
+                    null,
+                    $productType
                 );
             } catch (\InvalidArgumentException) {
-                $pricing = $this->cartPricing()->priceForAdvertiser($site, null, $qty, 'none', false);
+                $pricing = $this->cartPricing()->priceForAdvertiser($site, null, $qty, 'none', false, null, $productType);
                 $sensitiveType = null;
                 $line['additional_price'] = 0;
             }
@@ -1413,7 +1458,9 @@ class CatalogController extends Controller
         $line['languages'] = $site->languageCodes();
         $line['country'] = $site->country;
         $line['countries'] = $site->countryCodes();
-        $line['link_type'] = $line['link_type'] ?? $site->link_type;
+        $line['link_type'] = $line['link_type']
+            ?? ($isLinkInsertion ? ($site->link_insertion_link_type ?: $site->link_type) : $site->link_type);
+        $line['product_type'] = $productType;
         $line['da'] = self::cartMetricInt($site->da);
         $line['dr'] = self::cartMetricInt($site->dr);
         $line['domain'] = trim((string) ($site->domain ?: ''));
@@ -2987,6 +3034,8 @@ class CatalogController extends Controller
 
             $hasHomepageInput = $request->exists('homepage_days');
             $homepageInput = $hasHomepageInput ? $request->input('homepage_days') : null;
+            $productType = LinkInsertionProduct::normalize($request->input('product_type'));
+            $isLinkInsertion = $productType === LinkInsertionProduct::TYPE;
 
             $site = Site::query()->catalogVisible()->where('id', $id)->first();
             if (! $site) {
@@ -3005,20 +3054,30 @@ class CatalogController extends Controller
                 ], 403);
             }
 
-            // Resolve homepage up-front so re-adds merge onto the same identity key.
-            try {
-                $homepageResolved = $this->cartPricing()->resolveHomepageSelection(
-                    $site,
-                    $hasHomepageInput ? $homepageInput : null,
-                    ! $hasHomepageInput
-                );
-            } catch (\InvalidArgumentException $e) {
+            if ($isLinkInsertion && ! $site->offersLinkInsertions()) {
                 return response()->json([
                     'success' => false,
-                    'error' => UserFacingError::message($e, 'That homepage promotion option is not available for this site.'),
+                    'error' => 'This site does not offer link insertions.',
                 ], 422);
             }
-            $resolvedHomepageDays = $homepageResolved['days'];
+
+            // Resolve homepage up-front so re-adds merge onto the same identity key.
+            $resolvedHomepageDays = null;
+            if (! $isLinkInsertion) {
+                try {
+                    $homepageResolved = $this->cartPricing()->resolveHomepageSelection(
+                        $site,
+                        $hasHomepageInput ? $homepageInput : null,
+                        ! $hasHomepageInput
+                    );
+                } catch (\InvalidArgumentException $e) {
+                    return response()->json([
+                        'success' => false,
+                        'error' => UserFacingError::message($e, 'That homepage promotion option is not available for this site.'),
+                    ], 422);
+                }
+                $resolvedHomepageDays = $homepageResolved['days'];
+            }
 
             $cart = $this->leftoverSessionCart();
             $attachArticleId = null;
@@ -3055,7 +3114,7 @@ class CatalogController extends Controller
                         || $this->articlePlacement()->isLockedToAnotherSite($librarySubmission, $cart, (int) $id);
                     $existingLineKey = null;
                     foreach ($cart as $key => $item) {
-                        if ($this->cartLineMatches($item, (int) $id, $sensitiveType, $resolvedHomepageDays)) {
+                        if ($this->cartLineMatches($item, (int) $id, $sensitiveType, $resolvedHomepageDays, $productType)) {
                             $existingLineKey = $key;
                             break;
                         }
@@ -3108,7 +3167,10 @@ class CatalogController extends Controller
             // Bulk deals (Buy 3–10) start as a multi-article pack so the cart
             // opens with one document slot per placement to publish separately.
             $isBulkPackAdd = false;
-            if ($wantsBulk && $site->joinsBulkDiscount()) {
+            if ($isLinkInsertion) {
+                $requestedQty = 1;
+                $wantsBulk = false;
+            } elseif ($wantsBulk && $site->joinsBulkDiscount()) {
                 if ($requestedQty < $minBulk) {
                     $requestedQty = $minBulk;
                 }
@@ -3121,7 +3183,7 @@ class CatalogController extends Controller
             $existingItem = null;
             $currentQty = 0;
             foreach ($cart as $key => $item) {
-                if ($this->cartLineMatches($item, (int) $id, $sensitiveType, $resolvedHomepageDays)) {
+                if ($this->cartLineMatches($item, (int) $id, $sensitiveType, $resolvedHomepageDays, $productType)) {
                     $existingItem = $key;
                     $currentQty = max(1, (int) ($item['quantity'] ?? 1));
                     break;
@@ -3151,8 +3213,9 @@ class CatalogController extends Controller
 
             if ($existingItem !== null) {
                 $line = $cart[$existingItem];
-                $line['quantity'] = $nextQty;
-                $line['homepage_days'] = $resolvedHomepageDays;
+                $line['product_type'] = $productType;
+                $line['quantity'] = $isLinkInsertion ? 1 : $nextQty;
+                $line['homepage_days'] = $isLinkInsertion ? null : $resolvedHomepageDays;
                 if ($isBulkPackAdd || ! empty($line['bulk_pack']) || ($site->joinsBulkDiscount() && $nextQty >= $minBulk)) {
                     $line['bulk_pack'] = true;
                 }
@@ -3187,13 +3250,16 @@ class CatalogController extends Controller
                     'id' => $site->id,
                     'name' => $site->site_name,
                     'url' => $site->site_url,
-                    'quantity' => $nextQty,
+                    'quantity' => $isLinkInsertion ? 1 : $nextQty,
                     'sensitive_type' => $sensitiveType,
-                    'homepage_days' => $resolvedHomepageDays,
-                    'bulk_pack' => $isBulkPackAdd || ($site->joinsBulkDiscount() && $nextQty >= $minBulk),
-                    'link_type' => $site->link_type,
+                    'homepage_days' => $isLinkInsertion ? null : $resolvedHomepageDays,
+                    'bulk_pack' => ! $isLinkInsertion && ($isBulkPackAdd || ($site->joinsBulkDiscount() && $nextQty >= $minBulk)),
+                    'link_type' => $isLinkInsertion
+                        ? ($site->link_insertion_link_type ?: $site->link_type)
+                        : $site->link_type,
                     'country' => $site->country,
                     'language' => $site->language,
+                    'product_type' => $productType,
                 ];
                 if ($attachArticleId) {
                     $line = $this->applyCartLineContentIds($line, [0 => $attachArticleId]);
@@ -3572,7 +3638,8 @@ class CatalogController extends Controller
      */
     private function cartLineHasArticleOrWriting(array $line): bool
     {
-        if (CheckoutAddOnService::isWrittenSource($line)) {
+        if (CheckoutAddOnService::isWrittenSource($line)
+            || LinkInsertionProduct::isLinkInsertion($line)) {
             return true;
         }
 
@@ -4176,7 +4243,8 @@ class CatalogController extends Controller
                 continue;
             }
             $written = is_array($orderItem) && CheckoutAddOnService::isWrittenSource($orderItem);
-            if (! $written && ! $submission instanceof ContentSubmission) {
+            $linkInsertion = is_array($orderItem) && LinkInsertionProduct::isLinkInsertion($orderItem);
+            if (! $written && ! $linkInsertion && ! $submission instanceof ContentSubmission) {
                 continue;
             }
             if ((int) $site->publisher_id === (int) $userId) {
@@ -4208,7 +4276,9 @@ class CatalogController extends Controller
                 'content_submission_id' => $submission instanceof ContentSubmission ? $submission->id : null,
                 'content_link' => $submission instanceof ContentSubmission
                     ? route('advertiser.content-submissions.download', $submission)
-                    : (CheckoutAddOnService::isWrittenSource($orderItem) ? OrderItem::PENDING_WRITTEN_LINK : null),
+                    : (LinkInsertionProduct::isLinkInsertion($orderItem)
+                        ? LinkInsertionProduct::CONTENT_LINK
+                        : (CheckoutAddOnService::isWrittenSource($orderItem) ? OrderItem::PENDING_WRITTEN_LINK : null)),
                 'content_disk' => $submission instanceof ContentSubmission ? $submission->disk : null,
                 'content_path' => $submission instanceof ContentSubmission ? $submission->path : null,
                 'content_original_name' => $submission instanceof ContentSubmission ? $submission->original_filename : null,
@@ -6684,7 +6754,8 @@ class CatalogController extends Controller
             $writtenOnly = collect($checkoutContent['lines'])->every(function ($line) {
                 $orderItem = is_array($line['orderItem'] ?? null) ? $line['orderItem'] : [];
 
-                return CheckoutAddOnService::isWrittenSource($orderItem);
+                return CheckoutAddOnService::isWrittenSource($orderItem)
+                    || LinkInsertionProduct::isLinkInsertion($orderItem);
             });
             if ($writtenOnly) {
                 return null;
@@ -7726,12 +7797,13 @@ class CatalogController extends Controller
             $homepageDays = $orderItem['homepage_days'] ?? null;
 
             // Prefer per-cart content_submission_id, then request map, then library session
-            $cartLine = collect($cart)->first(function ($row) use ($site, $sensitiveType, $homepageDays) {
+            $cartLine = collect($cart)->first(function ($row) use ($site, $sensitiveType, $homepageDays, $orderItem) {
                 return $this->cartLineMatches(
                     is_array($row) ? $row : [],
                     (int) $site->id,
                     $sensitiveType,
-                    $homepageDays
+                    $homepageDays,
+                    $orderItem['product_type'] ?? null
                 );
             });
 
@@ -7744,6 +7816,46 @@ class CatalogController extends Controller
                 ?? null;
 
             if (! $submissionId) {
+                if (LinkInsertionProduct::isLinkInsertion($orderItem)
+                    || LinkInsertionProduct::isLinkInsertion(is_array($cartLine) ? $cartLine : [])) {
+                    $preferred = trim((string) ($orderItem['preferred_article_url'] ?? ''));
+                    $target = trim((string) ($orderItem['writing_target_url'] ?? ''));
+                    $anchor = trim((string) ($orderItem['writing_anchor_text'] ?? ''));
+                    if ($preferred === '' || ! preg_match('#^https://#i', $preferred)) {
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'Add the preferred article URL (https://) for each link insertion.',
+                        ], 422);
+                    }
+                    if ($target === '' || ! preg_match('#^https://#i', $target)) {
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'Add a target URL (https://) for each link insertion.',
+                        ], 422);
+                    }
+                    if ($anchor === '') {
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'Add anchor text for each link insertion.',
+                        ], 422);
+                    }
+                    if (empty($orderItem['insertion_sentence_same']) && empty($orderItem['insertion_sentence_new'])) {
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'Choose whether to insert the link in the same sentence or a new sentence.',
+                        ], 422);
+                    }
+                    if (! empty($orderItem['insertion_sentence_new'])
+                        && trim((string) ($orderItem['insertion_sentence_new_text'] ?? '')) === '') {
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'Add the new sentence that should include your link.',
+                        ], 422);
+                    }
+                    $lines[] = ['orderItem' => $orderItem, 'submission' => null];
+
+                    continue;
+                }
                 if (CheckoutAddOnService::isWrittenSource($orderItem)
                     || CheckoutAddOnService::isWrittenSource(is_array($cartLine) ? $cartLine : [])) {
                     $target = trim((string) ($orderItem['writing_target_url'] ?? ''));
@@ -7864,7 +7976,8 @@ class CatalogController extends Controller
         foreach ($checkoutContent['lines'] as $index => $line) {
             $submission = $line['submission'] ?? null;
             if (! $submission instanceof ContentSubmission) {
-                if (CheckoutAddOnService::isWrittenSource($line['orderItem'] ?? [])) {
+                if (CheckoutAddOnService::isWrittenSource($line['orderItem'] ?? [])
+                    || LinkInsertionProduct::isLinkInsertion($line['orderItem'] ?? [])) {
                     continue;
                 }
 
@@ -8094,7 +8207,9 @@ class CatalogController extends Controller
             'price' => $orderItem['price'],
             'content_link' => $submission
                 ? route('advertiser.content-submissions.download', $submission)
-                : (CheckoutAddOnService::isWrittenSource($orderItem) ? OrderItem::PENDING_WRITTEN_LINK : null),
+                : (LinkInsertionProduct::isLinkInsertion($orderItem)
+                    ? LinkInsertionProduct::CONTENT_LINK
+                    : (CheckoutAddOnService::isWrittenSource($orderItem) ? OrderItem::PENDING_WRITTEN_LINK : null)),
             'content_submission_id' => $submission?->id,
             'content_disk' => $submission?->disk,
             'content_path' => $submission?->path,
@@ -8102,6 +8217,11 @@ class CatalogController extends Controller
             'content_mime' => $submission?->mime,
             'anchor_text' => $submission?->anchor_text ?: ($orderItem['writing_anchor_text'] ?? null),
             'target_url' => $submission?->target_url ?: ($orderItem['writing_target_url'] ?? null),
+            'product_type' => LinkInsertionProduct::normalize($orderItem['product_type'] ?? null),
+            'preferred_article_url' => $orderItem['preferred_article_url'] ?? null,
+            'insertion_sentence_same' => ! empty($orderItem['insertion_sentence_same']),
+            'insertion_sentence_new' => ! empty($orderItem['insertion_sentence_new']),
+            'insertion_sentence_new_text' => $orderItem['insertion_sentence_new_text'] ?? null,
             'feature_image_url' => $submission?->feature_image_url,
             'moderation_status' => $submission?->moderation_status,
             'sensitive_type' => $orderItem['sensitive_type'],
@@ -8428,7 +8548,8 @@ class CatalogController extends Controller
                 continue;
             }
 
-            if (CheckoutAddOnService::isWrittenSource($item)) {
+            if (CheckoutAddOnService::isWrittenSource($item)
+                || LinkInsertionProduct::isLinkInsertion($item)) {
                 $payable[] = $item;
 
                 continue;

@@ -10,6 +10,7 @@ use App\Services\Catalog\SiteUrlVisibility;
 use App\Services\Marketplace\CheckoutAddOnService;
 use App\Services\Marketplace\WritingFeeService;
 use App\Services\Mcp\MarketplaceListing;
+use App\Support\LinkInsertionProduct;
 use App\Support\SiteDescriptionRules;
 
 class AdvertiserApiSerializer
@@ -74,6 +75,18 @@ class AdvertiserApiSerializer
                     ? 'Optional 12-month link guarantee from SEOLinkBuildings.'
                     : 'Not offered: publication period must be at least 12 months or permanent.',
             ],
+            'link_insertion' => [
+                'offered' => $site->offersLinkInsertions(),
+                'from_eur' => LinkInsertionProduct::FROM_EUR,
+                'duration' => LinkInsertionProduct::PERMANENT_COPY,
+                'guarantee' => [
+                    'offered' => $site->offersLinkInsertions(),
+                    'percent' => $this->addons->guaranteePercent(),
+                    'note' => $site->offersLinkInsertions()
+                        ? 'Optional Link guarantee (10% of the item total). Permanent while the article remains published.'
+                        : 'This listing does not offer link insertions.',
+                ],
+            ],
             'rules' => [
                 'description' => SiteDescriptionRules::forTextarea((string) ($site->description ?? '')),
                 'link_type' => strtolower((string) ($site->link_type ?? 'dofollow')) ?: 'dofollow',
@@ -117,6 +130,13 @@ class AdvertiserApiSerializer
                 WritingFeeService::SOURCE_PUBLISHER,
                 WritingFeeService::SOURCE_SLB,
             ], true),
+            'product_type' => $item ? LinkInsertionProduct::normalize($item->product_type ?? null) : LinkInsertionProduct::GUEST_POST,
+            'preferred_article_url' => (string) ($item?->preferred_article_url ?? ''),
+            'link_guarantee' => [
+                'purchased' => (bool) ($item?->hasPaidLinkGuarantee() || $order->link_guarantee),
+                'fee_eur' => round((float) ($item?->link_guarantee_fee ?? $order->link_guarantee_fee ?? 0), 2),
+                'permanent' => (bool) ($item && $item->isLinkInsertion()),
+            ],
             'live_url' => $this->liveUrl($item),
             'link_check' => $this->linkCheck($item),
             'publisher_status' => (string) ($item?->publisher_status ?? ''),

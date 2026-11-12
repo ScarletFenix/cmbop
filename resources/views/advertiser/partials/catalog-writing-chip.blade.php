@@ -32,3 +32,6 @@
 @if($guaranteeOffered)
     <p class="small text-muted mb-0">Optional 12-month link guarantee at checkout (publication period is 12 months or permanent).</p>
 @endif
+@if($site->offersLinkInsertions())
+    <p class="small text-muted mb-0">Link insertion available — {{ \App\Support\LinkInsertionProduct::PERMANENT_COPY }} Optional {{ \App\Support\LinkInsertionProduct::GUARANTEE_LABEL }} (10% of the item) at checkout.</p>
+@endif

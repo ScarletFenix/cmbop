@@ -3,7 +3,7 @@
 
 Hello,
 
-A monthly 12-month link guarantee check did not find the advertiser’s target URL as a hyperlink on the live page for {{ $siteName }}.
+A monthly {{ !empty($isLinkInsertion) ? 'Link guarantee' : '12-month link guarantee' }} check did not find the advertiser’s target URL as a hyperlink on the live page for {{ $siteName }}.
 
 Please restore that hyperlink by {{ $due }}. If it is still missing after that date, we refund the guaranteed placement amount to the advertiser.
 

@@ -88,7 +88,11 @@ class PublicFaq
             ],
             [
                 'q' => 'Do publishers set their own prices?',
-                'a' => 'Yes. Publishers set their own price for each listing on SEOLinkBuildings, and the price is shown to buyers in EUR. You can price different placement types separately, for example a sponsored post or a partner article. Clear, realistic prices help buyers compare your site with others in your country and niche.',
+                'a' => 'Yes. Publishers set their own price for each listing on SEOLinkBuildings, and the price is shown to buyers in EUR. You can price different placement types separately, for example a sponsored post, a partner article, or a link insertion. Clear, realistic prices help buyers compare your site with others in your country and niche.',
+            ],
+            [
+                'q' => LinkInsertionProduct::faqQuestion(),
+                'a' => LinkInsertionProduct::faqAnswer(),
             ],
         ];
     }

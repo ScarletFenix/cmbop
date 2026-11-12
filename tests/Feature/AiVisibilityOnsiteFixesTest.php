@@ -28,6 +28,7 @@ class AiVisibilityOnsiteFixesTest extends TestCase
         $this->assertStringNotContainsString('16607074', $body);
         $this->assertStringContainsString('/for-agencies', $body);
         $this->assertStringContainsString('/sponsored-articles', $body);
+        $this->assertStringContainsString('/link-insertion', $body);
         $this->assertStringContainsString('/alternatives', $body);
         $this->assertStringContainsString('/is-seolinkbuildings-safe', $body);
         $this->assertStringContainsString('/pl/', $body);
@@ -165,6 +166,7 @@ class AiVisibilityOnsiteFixesTest extends TestCase
         $robots = $this->get('/robots.txt')->assertOk()->getContent();
         $this->assertStringContainsString('Allow: /for-agencies', $robots);
         $this->assertStringContainsString('Allow: /sponsored-articles', $robots);
+        $this->assertStringContainsString('Allow: /link-insertion', $robots);
         $this->assertStringContainsString('Allow: /alternatives', $robots);
     }
 

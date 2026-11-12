@@ -10,6 +10,7 @@ use App\Services\Catalog\SiteUrlVisibility;
 use App\Services\Marketing\GuestPostPriceIndex;
 use App\Services\SiteDescriptionSanitizer;
 use App\Support\BulkDiscount;
+use App\Support\LinkInsertionProduct;
 use App\Support\ListingMoney;
 use App\Support\PublicationDuration;
 use App\Support\SiteDescriptionRules;
@@ -128,6 +129,13 @@ class Site extends Model
         'slb_price_writing_eur',
         'slb_price_sensitive_extra_eur',
         'partner_rate_version',
+        'accepts_link_insertions',
+        'listing_link_insertion_price',
+        'link_insertion_price',
+        'link_insertion_min_article_age_days',
+        'link_insertion_allow_high_traffic',
+        'link_insertion_link_type',
+        'link_insertion_delivery_days',
     ];
 
     public const ONBOARDING_AWAITING_DETAILS = 'awaiting_details';
@@ -193,6 +201,12 @@ class Site extends Model
         'slb_price_writing_eur' => 'decimal:2',
         'slb_price_sensitive_extra_eur' => 'decimal:2',
         'partner_rate_version' => 'integer',
+        'accepts_link_insertions' => 'boolean',
+        'listing_link_insertion_price' => 'decimal:2',
+        'link_insertion_price' => 'decimal:2',
+        'link_insertion_min_article_age_days' => 'integer',
+        'link_insertion_allow_high_traffic' => 'boolean',
+        'link_insertion_delivery_days' => 'integer',
     ];
 
     /**
@@ -2869,6 +2883,124 @@ class Site extends Model
         }
 
         return $this->publisherBasePrice();
+    }
+
+    public function offersLinkInsertions(): bool
+    {
+        if (! static::hasSitesColumn('accepts_link_insertions') || ! $this->accepts_link_insertions) {
+            return false;
+        }
+
+        return $this->listingLinkInsertionAmount() > 0;
+    }
+
+    public function publisherLinkInsertionPrice(): float
+    {
+        if (static::hasSitesColumn('link_insertion_price')
+            && $this->link_insertion_price !== null
+            && $this->link_insertion_price !== '') {
+            return round((float) $this->link_insertion_price, 2);
+        }
+
+        return $this->listingLinkInsertionAmount();
+    }
+
+    public function listingLinkInsertionAmount(): float
+    {
+        if (static::hasSitesColumn('listing_link_insertion_price')
+            && $this->listing_link_insertion_price !== null
+            && $this->listing_link_insertion_price !== '') {
+            return round((float) $this->listing_link_insertion_price, 2);
+        }
+
+        if (static::hasSitesColumn('link_insertion_price')
+            && $this->link_insertion_price !== null
+            && $this->link_insertion_price !== '') {
+            return round((float) $this->link_insertion_price, 2);
+        }
+
+        return 0.0;
+    }
+
+    /**
+     * Advertiser catalog/cart unit prices for a link insertion on this listing.
+     *
+     * @return array<string, mixed>
+     */
+    public function advertiserLinkInsertionPricing(?string $sensitiveType = null, ?string $buyerCurrency = null): array
+    {
+        $forCart = clone $this;
+        $forCart->setAttribute('price', $this->publisherLinkInsertionPrice());
+
+        return app(CartPricingService::class)
+            ->priceForAdvertiser(
+                $forCart,
+                $sensitiveType,
+                1,
+                'none',
+                false,
+                $buyerCurrency,
+                LinkInsertionProduct::TYPE
+            );
+    }
+
+    /**
+     * @return array{owned: bool, list: float, publisher: float, sale: float|null, sale_percent: float|null, sale_percent_nominal: float|null}
+     */
+    public function catalogLinkInsertionPricesForViewer(?User $user): array
+    {
+        if (! $this->offersLinkInsertions()) {
+            return [
+                'owned' => $this->isOwnedBy($user),
+                'list' => 0.0,
+                'publisher' => 0.0,
+                'sale' => null,
+                'sale_percent' => null,
+                'sale_percent_nominal' => null,
+            ];
+        }
+
+        try {
+            $owned = $this->isOwnedBy($user);
+            if ($owned) {
+                $base = $this->publisherLinkInsertionPrice();
+
+                return [
+                    'owned' => true,
+                    'list' => $base,
+                    'publisher' => $base,
+                    'sale' => null,
+                    'sale_percent' => null,
+                    'sale_percent_nominal' => null,
+                ];
+            }
+
+            $buyerCurrency = $user instanceof User
+                ? app(ListingMoney::class)->buyerCurrency($user)
+                : null;
+            $pricing = $this->advertiserLinkInsertionPricing(null, $buyerCurrency);
+            $list = (float) $pricing['base'];
+
+            return [
+                'owned' => false,
+                'list' => $list,
+                'publisher' => (float) $pricing['publisher_price'],
+                'sale' => null,
+                'sale_percent' => null,
+                'sale_percent_nominal' => null,
+            ];
+        } catch (\Throwable $e) {
+            report($e);
+
+            return [
+                'owned' => false,
+                'list' => $this->publisherLinkInsertionPrice(),
+                'publisher' => $this->publisherLinkInsertionPrice(),
+                'sale' => null,
+                'sale_percent' => null,
+                'sale_percent_nominal' => null,
+            ];
+        }
     }
 
     /**

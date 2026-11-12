@@ -681,16 +681,18 @@ class MarketplaceCatalogAddOnsTest extends TestCase
     public function test_terms_and_refund_pages_state_guarantee_eligibility(): void
     {
         $terms = $this->get(localized_url('terms-of-services'))->assertOk()->getContent();
-        $this->assertStringContainsString('Optional 12-month link guarantee', $terms);
+        $this->assertStringContainsString('Optional link guarantee', $terms);
         $this->assertStringContainsString('at least 12 months or Permanent', $terms);
         $this->assertStringContainsString('not available on 6-month listings', $terms);
+        $this->assertStringContainsString('link insertions', strtolower($terms));
         $this->assertStringContainsString('SEOLinkBuildings', $terms);
         $this->assertStringContainsString('flat €35', $terms);
         $this->assertStringContainsString('placement amount only', $terms);
 
         $refund = $this->get(localized_url('refund-policy'))->assertOk()->getContent();
-        $this->assertStringContainsString('Optional 12-month link guarantee', $refund);
+        $this->assertStringContainsString('Optional link guarantee', $refund);
         $this->assertStringContainsString('never on 6-month listings', $refund);
+        $this->assertStringContainsString('link insertions', strtolower($refund));
         $this->assertStringContainsString('SEOLinkBuildings', $refund);
         $this->assertStringContainsString('placement amount only', $refund);
     }

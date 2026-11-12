@@ -31,6 +31,8 @@ class EnglishCommercialLanders
             'sponsored-posts' => '/sponsored-articles',
             'advertorial' => '/sponsored-articles',
             'marketplace-alternatives' => '/alternatives',
+            'link-insertions' => '/link-insertion',
+            'buy-link-insertion' => '/link-insertion',
         ];
     }
 
@@ -66,6 +68,7 @@ class EnglishCommercialLanders
             ['slug' => 'marketplace', 'label' => 'Marketplace', 'url' => url('/marketplace')],
             ['slug' => 'for-agencies', 'label' => 'For agencies', 'url' => self::url('for-agencies')],
             ['slug' => 'sponsored-articles', 'label' => 'Sponsored articles', 'url' => self::url('sponsored-articles')],
+            ['slug' => 'link-insertion', 'label' => 'Link insertions', 'url' => self::url('link-insertion')],
             ['slug' => 'alternatives', 'label' => 'How we differ', 'url' => self::url('alternatives')],
             ['slug' => 'pricing', 'label' => 'Pricing', 'url' => url('/pricing')],
             ['slug' => 'guest-post-prices-europe', 'label' => 'EU price index', 'url' => url('/guest-post-prices-europe')],
@@ -106,6 +109,70 @@ class EnglishCommercialLanders
         $pl = '/pl/wpis-goscinny';
 
         return [
+            'link-insertion' => [
+                'kicker' => 'Marketplace product',
+                'h1' => LinkInsertionProduct::landerH1(),
+                'subtitle' => LinkInsertionProduct::landerSubtitle(),
+                'meta_title' => 'Buy Link Insertions | SEOLinkBuildings',
+                'meta_description' => 'Buy link insertions on verified publisher sites. '.LinkInsertionProduct::marketingFromCopy().'. '.LinkInsertionProduct::PERMANENT_COPY,
+                'teaser_countries' => ['de', 'fr', 'nl', 'es', 'it', 'uk', 'pl'],
+                'teaser_title' => 'Sites that take placements',
+                'teaser_subtitle' => 'Register to open the catalog and filter publishers who offer link insertions.',
+                'intro' => [
+                    'A link insertion puts your URL into an article that is already live. It is a separate product from a guest post: you do not send a new article. Publishers who offer it set their own price. '.LinkInsertionProduct::marketingFromCopy().'.',
+                    LinkInsertionProduct::PERMANENT_COPY.' Restricted niches follow the same guest-post rules. An optional paid Link guarantee (10% of the item total) restores a missing link or refunds the placement; without it, a full refund applies only if the publisher rejects the order.',
+                ],
+                'points' => [
+                    [
+                        'title' => 'You pick the site',
+                        'body' => 'Filter the catalog for link insertions after you register. Checkout shows the advertiser price in EUR. Publishers set their own prices.',
+                    ],
+                    [
+                        'title' => 'Permanent while the article is live',
+                        'body' => LinkInsertionProduct::PERMANENT_COPY,
+                    ],
+                    [
+                        'title' => 'Optional Link guarantee',
+                        'body' => 'Add Link guarantee at checkout for 10% of the item total. If the live link is removed or broken we first restore it; if it cannot be restored we refund. Without the add-on there is no post-live removal refund.',
+                    ],
+                ],
+                'sections' => [
+                    [
+                        'h2' => 'How a link insertion order works',
+                        'body' => 'Create an advertiser account, add EUR to the wallet, and add a link insertion to cart. At checkout you send the preferred article URL, your target URL, the anchor, and whether to insert in the same sentence or a new sentence. The publisher inserts the link and submits the live URL. Funds stay held until you approve, or for 72 hours after they submit it.',
+                    ],
+                    [
+                        'h2' => 'Niches and policy',
+                        'body' => LinkInsertionProduct::nichesCopy().' Casino, adult, and the rest of the guest-post restricted list are not accepted.',
+                    ],
+                    [
+                        'h2' => 'Guest posts still start from €20',
+                        'body' => 'Guest-post marketplace placements start from €20. Link insertions are a separate product. Compare both in the catalog after you register. Workflow: <a href="'.$how.'">how it works</a>. Catalog: <a href="'.$marketplace.'">marketplace</a>.',
+                    ],
+                ],
+                'faqs' => [
+                    [
+                        'q' => LinkInsertionProduct::faqQuestion(),
+                        'a' => LinkInsertionProduct::faqAnswer(),
+                    ],
+                    [
+                        'q' => 'Do publishers set their own link-insertion prices?',
+                        'a' => LinkInsertionProduct::publishersSetPricesCopy(),
+                    ],
+                    [
+                        'q' => 'Is the Link guarantee included?',
+                        'a' => 'No. It is an optional 10% add-on at checkout, shown as a separate line. '.LinkInsertionProduct::withAddonPolicyCopy().' '.LinkInsertionProduct::withoutAddonRefundCopy(),
+                    ],
+                ],
+                'cta_primary' => ['label' => 'Create an advertiser account', 'url' => $register],
+                'cta_secondary' => ['label' => 'See the marketplace', 'url' => $marketplace],
+                'see_also' => [
+                    ['label' => 'Sponsored articles', 'url' => $sponsored],
+                    ['label' => 'For agencies', 'url' => $agencies],
+                    ['label' => 'Pricing', 'url' => $pricing],
+                    ['label' => 'Refund policy', 'url' => $refund],
+                ],
+            ],
             'for-agencies' => [
                 'kicker' => 'B2B advertiser account',
                 'h1' => 'Link building for SEO and digital PR agencies',
