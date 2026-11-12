@@ -901,6 +901,50 @@ class Site extends Model
     }
 
     /**
+     * Link attribute for the insertion product (falls back to the guest-post type).
+     */
+    public function linkInsertionLinkTypeLabel(): ?string
+    {
+        $raw = strtolower(trim((string) ($this->link_insertion_link_type ?? '')));
+        if ($raw === 'dofollow') {
+            return 'DoFollow';
+        }
+        if ($raw === 'nofollow') {
+            return 'NoFollow';
+        }
+
+        return $this->linkTypeLabel();
+    }
+
+    /**
+     * Insertion delivery, not the guest-post turnaround.
+     */
+    public function linkInsertionDeliveryLabel(): ?string
+    {
+        $days = (int) ($this->link_insertion_delivery_days ?? 0);
+        if ($days < 1) {
+            return null;
+        }
+
+        return $days === 1
+            ? __('messages.catalog_turnaround_one')
+            : __('messages.catalog_turnaround_many', ['count' => $days]);
+    }
+
+    /**
+     * Optional floor on how old the host article must be.
+     */
+    public function linkInsertionMinArticleAgeLabel(): ?string
+    {
+        $days = (int) ($this->link_insertion_min_article_age_days ?? 0);
+        if ($days < 1) {
+            return null;
+        }
+
+        return __('messages.catalog_li_min_article_age', ['count' => $days]);
+    }
+
+    /**
      * Exclusive listing tag (sponsored / partner_material / as_you_prefer).
      * When legacy rows have more than one flag, sponsored wins, then partner.
      */

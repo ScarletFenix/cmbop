@@ -131,6 +131,8 @@
                  data-current-page="{{ (int) ($resultCurrentPage ?? 1) }}"
                  data-last-page="{{ (int) ($resultLastPage ?? 1) }}"
                  data-inventory-from="{{ $inventoryFrom !== null ? e(number_format((float) $inventoryFrom, 2, '.', '')) : '' }}"
+                 data-tab-count-guest="{{ (int) (($catalogTabCounts['guest_post'] ?? 0)) }}"
+                 data-tab-count-li="{{ (int) (($catalogTabCounts['link_insertion'] ?? 0)) }}"
                  data-status-text="{{ $catalogResultsStatus['text'] }}"
                  data-status-announce="{{ $catalogResultsStatus['announce'] }}">
                 <div class="catalog-results-busy" hidden aria-hidden="true">
@@ -339,7 +341,7 @@
                              NEW is the corner ribbon. Listing tags and visit live
                              on the wrapping identity row with the rooted URL. -->
                         <div class="catalog-site-title-row">
-                            <span class="text-dark catalog-site-name catalog-site-name--concat"
+                            <span class="catalog-site-name catalog-site-name--concat"
                                   data-site-name-label
                                   title="{{ $displayName }}">
                                 {{ $displayName }}
@@ -477,6 +479,7 @@
 
                         @include('advertiser.partials.catalog-meta-chips', [
                             'site' => $site,
+                            'isLinkInsertionCatalog' => $isLinkInsertionCatalog,
                         ])
                         </div>
                     </div>
@@ -1118,7 +1121,7 @@
 
                     <div class="catalog-mobile-card__main">
                     <div class="catalog-site-title-row">
-                    <div class="fw-semibold text-dark catalog-site-name catalog-site-name--concat"
+                    <div class="fw-semibold catalog-site-name catalog-site-name--concat"
                          data-site-name-label
                          title="{{ $displayName }}">{{ $displayName }}</div>
                     @if($site->verified)
@@ -1185,6 +1188,7 @@
                     <span class="category-badge mt-1" title="{{ $mobileCategory }}">{{ $mobileCategory }}</span>
                     @include('advertiser.partials.catalog-meta-chips', [
                         'site' => $site,
+                        'isLinkInsertionCatalog' => $isLinkInsertionCatalog,
                     ])
                     </div>
                 </div>

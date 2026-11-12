@@ -77,6 +77,9 @@ class CatalogProductTabsTest extends TestCase
         $this->assertNotFalse($js);
         $this->assertStringContainsString("'product'", $js);
         $this->assertStringContainsString('function syncProductTabs', $js);
+        $this->assertStringContainsString('data-tab-count-guest', $js);
+        $this->assertStringContainsString('catalog-results-count__n', $js);
+        $this->assertStringNotContainsString('strong class="text-dark"', $js);
     }
 
     public function test_catalog_default_tab_is_guest_posts_and_shows_both_sites(): void
@@ -104,7 +107,12 @@ class CatalogProductTabsTest extends TestCase
         $this->assertStringContainsString('Tab gp-only', $html);
         $this->assertStringContainsString('Tab li-also', $html);
         $this->assertStringContainsString('data-product-type="guest_post"', $html);
-        $this->assertStringContainsString('Add link insertion', $html);
+        $this->assertStringContainsString('Also available as link insertion', $html);
+        $this->assertStringNotContainsString('Add link insertion', $html);
+        $this->assertStringNotContainsString('Link insertions from', $html);
+        $this->assertStringContainsString('data-catalog-tab-count="guest_post"', $html);
+        $this->assertMatchesRegularExpression('/data-catalog-tab-count="guest_post"[^>]*>2</', $html);
+        $this->assertMatchesRegularExpression('/data-catalog-tab-count="link_insertion"[^>]*>1</', $html);
     }
 
     public function test_link_insertion_tab_filters_sites_and_uses_advertiser_price(): void
@@ -114,6 +122,9 @@ class CatalogProductTabsTest extends TestCase
             'accepts_link_insertions' => true,
             'listing_link_insertion_price' => 40,
             'link_insertion_price' => 40,
+            'link_insertion_delivery_days' => 5,
+            'link_insertion_min_article_age_days' => 30,
+            'link_insertion_link_type' => 'nofollow',
         ]);
 
         $priced = app(CartPricingService::class)->priceForAdvertiser(
@@ -156,6 +167,20 @@ class CatalogProductTabsTest extends TestCase
             'data-inventory-from="'.number_format($advertiserPrice, 2, '.', '').'"',
             $html
         );
+        $this->assertStringContainsString(__('messages.catalog_tab_explainer_link_insertions'), $html);
+        $this->assertStringContainsString(__('messages.catalog_li_guarantee_badge'), $html);
+        $this->assertStringContainsString(__('messages.catalog_li_min_article_age', ['count' => 30]), $html);
+        $this->assertStringContainsString('NoFollow', $html);
+        $this->assertStringContainsString(__('messages.catalog_turnaround_many', ['count' => 5]), $html);
+        $this->assertStringContainsString('Banners and text links are coming soon', $html);
+        $this->assertStringNotContainsString('Link insertions from', $html);
+        $this->assertDoesNotMatchRegularExpression('/>\s*data-site-name-label/', $html);
+        $this->assertMatchesRegularExpression(
+            '/class="[^"]*catalog-site-name[^"]*"[^>]*data-site-name-label/',
+            $html
+        );
+        $this->assertMatchesRegularExpression('/data-catalog-tab-count="link_insertion"[^>]*>1</', $html);
+        $this->assertMatchesRegularExpression('/data-catalog-tab-count="guest_post"[^>]*>2</', $html);
     }
 
     public function test_link_insertion_tab_empty_state(): void

@@ -83,9 +83,10 @@ body.role-shell-advertiser:has(.catalog-page) {
   );
 }
 
-/* Keep the help FAB off the catalog filter row / Reset control. */
+/* Keep the help FAB in the catalog corner without covering Buy / chevrons. */
 body.role-shell-advertiser:has(.catalog-page) .help-fab {
-  bottom: calc(22px + var(--slb-live-chat-footer-offset, 72px));
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  right: max(16px, env(safe-area-inset-right, 0px));
 }
 
 body.role-shell-advertiser { --role-accent: #1a585e; }
@@ -1075,4 +1076,51 @@ html.slb-tawk-open body {
 
 body.publisher-wizard-open .slb-live-chat {
   display: none !important;
+}
+
+/* Whole-shell dark when a catalog (or other) surface sets the theme.
+   Header/sidebar stay on the same ink so the page does not split light/dark. */
+html[data-bs-theme="dark"] body.role-shell-advertiser,
+html[data-theme="dark"] body.role-shell-advertiser,
+body.layout-dark.role-shell-advertiser {
+  --shell-bg: #0f172a;
+  --shell-ink: #e2e8f0;
+  --shell-border: #334155;
+  --shell-sidebar-bg: #111827;
+  --shell-topbar-bg: #111827;
+  --surface-1: #1e293b;
+  --surface-2: #0f172a;
+  --surface-3: #1e293b;
+  --brand-ink: #f8fafc;
+  --brand-ink-muted: #cbd5e1;
+  --border-subtle: #334155;
+  background-color: #0f172a;
+  color: #e2e8f0;
+}
+
+html[data-bs-theme="dark"] body.role-shell-advertiser #sidebar,
+html[data-bs-theme="dark"] body.role-shell-advertiser .top-navbar,
+html[data-bs-theme="dark"] body.role-shell-advertiser #content,
+html[data-bs-theme="dark"] body.role-shell-advertiser #main-content,
+html[data-bs-theme="dark"] body.role-shell-advertiser footer,
+html[data-theme="dark"] body.role-shell-advertiser #sidebar,
+body.layout-dark.role-shell-advertiser #sidebar,
+body.layout-dark.role-shell-advertiser .top-navbar,
+body.layout-dark.role-shell-advertiser #content,
+body.layout-dark.role-shell-advertiser footer {
+  background-color: var(--shell-sidebar-bg, #111827);
+  color: var(--shell-ink, #e2e8f0);
+  border-color: var(--shell-border, #334155);
+}
+
+html[data-bs-theme="dark"] body.role-shell-advertiser #sidebar a,
+html[data-bs-theme="dark"] body.role-shell-advertiser .top-navbar,
+body.layout-dark.role-shell-advertiser #sidebar a {
+  color: #e2e8f0;
+}
+
+html[data-bs-theme="dark"] body.role-shell-advertiser #sidebar a.active,
+body.layout-dark.role-shell-advertiser #sidebar a.active {
+  background: #1e293b;
+  color: #5eead4;
 }

@@ -3014,8 +3014,8 @@ const CatalogLive = (function () {
         const last = parseInt(card.getAttribute('data-last-item') || '0', 10) || 0;
         const fromHtml = inventoryFromHtml(card);
         if (total > 0 && first > 0) {
-            el.innerHTML = 'Showing <strong class="text-dark">' + first + '–' + last
-                + '</strong> of <strong class="text-dark">' + total.toLocaleString()
+            el.innerHTML = 'Showing <strong class="catalog-results-count__n">' + first + '–' + last
+                + '</strong> of <strong class="catalog-results-count__n">' + total.toLocaleString()
                 + '</strong> ' + (total === 1 ? 'site' : 'sites') + fromHtml;
         } else {
             // Keep Phase 6 empty-status wording after live fragment swap.
@@ -3811,6 +3811,17 @@ function syncProductTabs(params) {
     });
     const input = document.getElementById('catalogProductInput');
     if (input) input.value = want;
+    const explainer = document.querySelector('[data-catalog-li-explainer]');
+    if (explainer) explainer.hidden = want !== 'link_insertion';
+    const card = document.getElementById('catalogResults');
+    if (card) {
+        const guest = card.getAttribute('data-tab-count-guest');
+        const li = card.getAttribute('data-tab-count-li');
+        const guestEl = document.querySelector('[data-catalog-tab-count="guest_post"]');
+        const liEl = document.querySelector('[data-catalog-tab-count="link_insertion"]');
+        if (guestEl && guest != null && guest !== '') guestEl.textContent = Number(guest).toLocaleString();
+        if (liEl && li != null && li !== '') liEl.textContent = Number(li).toLocaleString();
+    }
 }
 
 function syncTagQuick(params) {
@@ -4955,6 +4966,12 @@ window.catalogSyncInCartButtons = function catalogSyncInCartButtons(cartItems) {
         const productType = catalogButtonProductType(btn);
         const inCart = !!ids[String(btn.dataset.id) + '|' + productType]
             || (productType === 'guest_post' && !btn.dataset.productType && !!ids[String(btn.dataset.id)]);
+        if (btn.classList.contains('catalog-li-also')) {
+            btn.classList.toggle('is-in-cart', inCart);
+            if (inCart) btn.dataset.inCart = '1';
+            else delete btn.dataset.inCart;
+            return;
+        }
         btn.classList.toggle('is-in-cart', inCart);
         if (inCart) {
             btn.dataset.inCart = '1';
