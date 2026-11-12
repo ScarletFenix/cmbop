@@ -153,6 +153,26 @@ class TransactionalMailLayoutTest extends TestCase
             'Progress steps should be true circles (50% or 28px radius)'
         );
         $this->assertStringContainsString('mail-dofollow', $html);
+        $this->assertStringContainsString('mail-dofollow-pill', $html);
+        $this->assertTrue(
+            str_contains($html, 'background-color:#dcfce7') || str_contains($html, 'background-color: #dcfce7'),
+            'Light-mode Dofollow pill should keep the mint background'
+        );
+        $this->assertTrue(
+            str_contains($html, 'color:#15803d') || str_contains($html, 'color: #15803d'),
+            'Light-mode Dofollow pill should keep green text'
+        );
+        $this->assertTrue(
+            str_contains($html, 'background-color: #14532d !important')
+            || str_contains($html, 'background-color:#14532d !important'),
+            'Dark-mode Dofollow pill should keep a green background'
+        );
+        $this->assertTrue(
+            str_contains($html, 'color: #dcfce7 !important') || str_contains($html, 'color:#dcfce7 !important'),
+            'Dark-mode Dofollow pill should keep light mint text'
+        );
+        $this->assertStringContainsString('[data-ogsc] .mail-dofollow-pill', $html);
+        $this->assertStringContainsString('[data-ogsb] .mail-dofollow-pill', $html);
         $this->assertTrue(
             str_contains($html, 'word-break:normal') || str_contains($html, 'word-break: normal'),
             'Anchor URL should use word-break: normal'

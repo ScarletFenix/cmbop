@@ -37,7 +37,7 @@
 </p>
 @if(!empty($live['show_dofollow_pill']))
 <p class="mail-dofollow" style="margin:8px 0 0 0;">
-<span style="display:inline-block;background-color:#dcfce7;color:#15803d;font-size:11px;font-weight:700;padding:4px 8px;border-radius:999px;font-family:Arial,Helvetica,sans-serif;">Dofollow verified</span>
+<span class="mail-dofollow-pill" style="display:inline-block;background-color:#dcfce7;color:#15803d;font-size:11px;font-weight:700;padding:4px 8px;border-radius:999px;font-family:Arial,Helvetica,sans-serif;">Dofollow verified</span>
 </p>
 @endif
 </td>

@@ -44,7 +44,7 @@ body, table, td, th, p, a, span, div, h1, h2, h3, h4, li, strong, em, b {
   }
   .mail-card td, .mail-details td, .mail-item-card td, .mail-anchor td,
   .mail-card p, .mail-details p, .mail-item-card p, .mail-anchor p,
-  .mail-anchor span, .mail-anchor strong, .mail-protection td {
+  .mail-anchor-label, .mail-anchor-value, .mail-anchor strong, .mail-protection td {
     background-color: transparent !important;
     color: #d4f1f0 !important;
   }
@@ -94,7 +94,21 @@ body, table, td, th, p, a, span, div, h1, h2, h3, h4, li, strong, em, b {
   .mail-progress-line-on { border-color: #3faeb2 !important; }
   .mail-progress-line-off { border-color: #64748b !important; }
   .mail-progress-line-edge { border-color: #123f42 !important; }
-  .mail-pill { background-color: #0b2a2d !important; color: #d4f1f0 !important; }
+  .mail-pill {
+    display: inline-block !important;
+    background-color: #0b2a2d !important;
+    color: #d4f1f0 !important;
+    padding: 7px 14px !important;
+    border-radius: 999px !important;
+  }
+  .mail-dofollow-pill, .mail-anchor .mail-dofollow-pill, span.mail-dofollow-pill {
+    display: inline-block !important;
+    background-color: #14532d !important;
+    color: #dcfce7 !important;
+    padding: 4px 8px !important;
+    border-radius: 999px !important;
+    font-weight: 700 !important;
+  }
 }
 [data-ogsc] .mail-logo-pill, [data-ogsb] .mail-logo-pill { background-color: #ffffff !important; }
 [data-ogsc] .mail-header-bar, [data-ogsb] .mail-header-bar { background-color: #123f42 !important; }
@@ -148,4 +162,21 @@ body, table, td, th, p, a, span, div, h1, h2, h3, h4, li, strong, em, b {
 [data-ogsc] .mail-progress-line-edge, [data-ogsb] .mail-progress-line-edge { border-color: #123f42 !important; }
 [data-ogsc] .mail-progress-line-on, [data-ogsb] .mail-progress-line-on { border-color: #3faeb2 !important; }
 [data-ogsc] .mail-progress-line-off, [data-ogsb] .mail-progress-line-off { border-color: #64748b !important; }
+[data-ogsc] .mail-pill, [data-ogsb] .mail-pill {
+  display: inline-block !important;
+  background-color: #0b2a2d !important;
+  color: #d4f1f0 !important;
+  padding: 7px 14px !important;
+  border-radius: 999px !important;
+}
+[data-ogsc] .mail-dofollow-pill, [data-ogsb] .mail-dofollow-pill,
+[data-ogsc] .mail-anchor .mail-dofollow-pill, [data-ogsb] .mail-anchor .mail-dofollow-pill,
+[data-ogsc] span.mail-dofollow-pill, [data-ogsb] span.mail-dofollow-pill {
+  display: inline-block !important;
+  background-color: #14532d !important;
+  color: #dcfce7 !important;
+  padding: 4px 8px !important;
+  border-radius: 999px !important;
+  font-weight: 700 !important;
+}
 </style>
