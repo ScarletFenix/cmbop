@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\Site;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
 
@@ -287,7 +288,7 @@ class MailNotificationPresenter
     public static function supportLine(string $intent = 'order'): string
     {
         if ($intent === 'order') {
-            return 'Questions or corrections belong on the order page. Replies to this email are not delivered to the order.';
+            return 'Questions about this order belong on the order page.';
         }
 
         $support = static::supportEmail();
@@ -309,5 +310,90 @@ class MailNotificationPresenter
         }
 
         return static::hasAnyLiveUrl(static::placements($order, self::CONTEXT_REVIEW_READY));
+    }
+
+    /**
+     * Exact auto-approve instant: live_url_submitted_at + configured window (default 72h).
+     */
+    public static function autoApproveDeadlineAt(?OrderItem $item): ?Carbon
+    {
+        if (! $item) {
+            return null;
+        }
+
+        $start = $item->live_url_submitted_at;
+        if (! $start instanceof CarbonInterface) {
+            if (blank($item->live_url_submitted_at)) {
+                return null;
+            }
+            try {
+                $start = Carbon::parse((string) $item->live_url_submitted_at);
+            } catch (\Throwable) {
+                return null;
+            }
+        }
+
+        try {
+            return $start->copy()->addHours(OrderItem::autoApproveHours());
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * True only when a stored check actually verified a dofollow live link.
+     * Listing `link_type` and HTTP reachability are not enough — never invent this.
+     */
+    public static function dofollowVerified(?OrderItem $item): bool
+    {
+        if (! $item) {
+            return false;
+        }
+
+        foreach (['dofollow_verified', 'live_link_dofollow_verified', 'rel_dofollow_verified'] as $attribute) {
+            if (array_key_exists($attribute, $item->getAttributes()) && $item->getAttribute($attribute) === true) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Homepage screenshot/thumb for a placement, if the app already stored one.
+     */
+    public static function articlePreviewUrl(?OrderItem $item): ?string
+    {
+        $site = $item?->site;
+        if (! $site) {
+            return null;
+        }
+
+        $origin = rtrim(function_exists('brand_public_origin') ? brand_public_origin() : '', '/');
+        if ($origin === '' && function_exists('app_public_url')) {
+            $origin = rtrim((string) app_public_url(), '/');
+        }
+
+        if (! method_exists($site, 'homepagePreviewUrlChain')) {
+            return null;
+        }
+
+        foreach ($site->homepagePreviewUrlChain() as $url) {
+            if (! is_string($url) || trim($url) === '') {
+                continue;
+            }
+            $url = trim($url);
+            if (method_exists($site, 'isPlaceholderPreviewPath') && Site::isPlaceholderPreviewPath($url)) {
+                continue;
+            }
+            if (preg_match('#^https?://#i', $url) === 1) {
+                return static::safeLiveUrl($url);
+            }
+            if (str_starts_with($url, '/media/') || str_starts_with($url, '/storage/')) {
+                return $origin !== '' ? $origin.$url : null;
+            }
+        }
+
+        return null;
     }
 }

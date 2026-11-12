@@ -28,6 +28,8 @@ class OrderAccepted extends PlatformMailable
             - (float) ($orderItem->homepage_price ?? 0),
             2
         );
+        $this->notificationType = 'order_accepted';
+        $this->recipientUser = $order->user;
     }
 
     public function build()

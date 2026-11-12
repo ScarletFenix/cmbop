@@ -5,6 +5,7 @@
 namespace App\Mail;
 
 use App\Models\Order;
+use App\Support\MailNotificationPresenter;
 use Illuminate\Support\Facades\Log;
 
 class OrderPaymentConfirmed extends PlatformMailable
@@ -25,6 +26,9 @@ class OrderPaymentConfirmed extends PlatformMailable
         $this->totalAmount = $order->total_amount;
         $this->orderItems = $order->items;
 
+        $this->notificationType = 'order_payment_confirmed';
+        $this->recipientUser = $this->user;
+
         Log::info('OrderPaymentConfirmed mail initialized', [
             'order_id' => $order->id,
             'order_number' => $order->order_number,
@@ -43,8 +47,8 @@ class OrderPaymentConfirmed extends PlatformMailable
                 'user' => $this->user,
                 'totalAmount' => $this->totalAmount,
                 'orderItems' => $this->orderItems,
-                'orderDate' => \App\Support\MailNotificationPresenter::formatDateTime($this->order->created_at),
-                'paidDate' => \App\Support\MailNotificationPresenter::formatDateTime(now()),
+                'orderDate' => MailNotificationPresenter::formatDateTime($this->order->created_at),
+                'paidDate' => MailNotificationPresenter::formatDateTime(now()),
             ]);
     }
 }

@@ -13,5 +13,5 @@ Open the order to resubmit the live URL. Replies by email are not delivered.
 Open order
 @endcomponent
 
-Teqno Ltd · SEOLinkBuildings partner desk
+SEOLinkBuildings partner desk
 @endcomponent

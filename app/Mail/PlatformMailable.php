@@ -13,6 +13,7 @@ use App\Services\Billing\InvoicePdfGenerator;
 use App\Services\Wallet\WelcomeBonusService;
 use App\Support\EmailCatalog;
 use App\Support\MailAddress;
+use App\Support\TransactionalMailTheme;
 use Carbon\Carbon;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -72,6 +73,21 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
         $this->onConnection(static::resolveQueueConnection());
         $this->onQueue(config('email_notifications.queue', 'emails'));
         $this->queuedAt = now()->toIso8601String();
+    }
+
+    /**
+     * Bind the shared transactional chrome before HTML or text views render.
+     * The mail::message component does not inherit parent view data, so the
+     * theme is stored on the container for the layout partials to read.
+     */
+    public function buildViewData()
+    {
+        $data = parent::buildViewData();
+        $theme = TransactionalMailTheme::fromViewData($data);
+        $data['mailTheme'] = $theme;
+        app()->instance('transactional.mailTheme', $theme);
+
+        return $data;
     }
 
     /**

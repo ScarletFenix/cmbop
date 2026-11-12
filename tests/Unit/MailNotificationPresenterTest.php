@@ -2,8 +2,10 @@
 
 namespace Tests\Unit;
 
+use App\Models\OrderItem;
 use App\Support\LegalIdentity;
 use App\Support\MailNotificationPresenter;
+use Carbon\Carbon;
 use Tests\TestCase;
 
 class MailNotificationPresenterTest extends TestCase
@@ -32,6 +34,18 @@ class MailNotificationPresenterTest extends TestCase
         $this->assertNull(MailNotificationPresenter::safeLiveUrl(''));
         $this->assertNull(MailNotificationPresenter::safeLiveUrl('/relative/path'));
         $this->assertNull(MailNotificationPresenter::safeLiveUrl('not-a-url'));
+    }
+
+    public function test_auto_approve_deadline_uses_configured_window(): void
+    {
+        config(['orders.auto_approve_hours' => 72, 'app.timezone' => 'UTC']);
+        $item = new OrderItem;
+        $item->live_url_submitted_at = Carbon::parse('2026-11-01 12:00:00', 'UTC');
+
+        $at = MailNotificationPresenter::autoApproveDeadlineAt($item);
+        $this->assertNotNull($at);
+        $this->assertSame('2026-11-04 12:00:00', $at->timezone('UTC')->format('Y-m-d H:i:s'));
+        $this->assertFalse(MailNotificationPresenter::dofollowVerified($item));
     }
 
     public function test_legal_identity_normalizes_partners_with_wording(): void

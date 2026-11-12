@@ -23,6 +23,8 @@ class OrderRejected extends PlatformMailable
         $this->orderItem = $orderItem;
         $this->site = $site;
         $this->reason = $reason;
+        $this->notificationType = 'order_rejected';
+        $this->recipientUser = $order->user;
     }
 
     public function build()

@@ -16,13 +16,14 @@ Place a new order
 
 Thank you for choosing us, and we look forward to working with you again soon!
 @else
-# {{ $heading }}
-
 Hello {{ $firstName }},
 
 {{ $copy }}
 
-@if(!empty($reviewReady) || ($changeKind === 'status' && in_array($newValue ?? '', ['review', 'completed'], true)))
+@if(!empty($articleLive))
+@include('emails.partials.mail-article-live', ['articleLive' => $articleLive])
+@endif
+@if(empty($articleLive) && (!empty($reviewReady) || ($changeKind === 'status' && in_array($newValue ?? '', ['review', 'completed'], true))))
 @include('emails.partials.placement-urls', [
     'placements' => $placements ?? [],
     'missingLabel' => 'Not submitted yet',
@@ -38,6 +39,7 @@ Hello {{ $firstName }},
     ['label' => 'Updated', 'value' => $updatedAt],
 ]])
 
+@if(empty($articleLive))
 ## Order summary
 
 @include('emails.partials.summary-table', ['rows' => $summaryRows ?? []])
@@ -45,6 +47,7 @@ Hello {{ $firstName }},
 @component('mail::button', ['url' => $ctaUrl])
 {{ $ctaLabel }}
 @endcomponent
+@endif
 
 @include('emails.partials.mail-support', ['supportLine' => $supportLine ?? null, 'intent' => 'order'])
 

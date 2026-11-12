@@ -27,6 +27,7 @@ class OrderApprovedByAdvertiser extends PlatformMailable
         // Show publisher earnings (excludes the 15% platform fee)
         $this->basePrice = $orderItem->publisherBasePrice();
         $this->payoutAmount = $orderItem->publisherPayoutAmount();
+        $this->notificationType = 'order_completed';
     }
 
     public function build()

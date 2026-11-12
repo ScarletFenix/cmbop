@@ -9,5 +9,5 @@ Open the order to accept, reject, or submit the live URL. Replies by email are n
 Open order
 @endcomponent
 
-Teqno Ltd · SEOLinkBuildings partner desk
+SEOLinkBuildings partner desk
 @endcomponent

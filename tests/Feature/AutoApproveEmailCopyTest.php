@@ -94,7 +94,8 @@ class AutoApproveEmailCopyTest extends TestCase
 
         $html = (new LiveUrlSubmitted($order, $item, $site, $item->live_url))->render();
 
-        $this->assertStringContainsString('within 72 hours', $html);
+        $this->assertStringContainsString('No action by the deadline? The order is approved automatically.', $html);
+        $this->assertMatchesRegularExpression('/\b(UTC|GMT)\b/', $html);
         $this->assertStringNotContainsString('within 48 hours', $html);
     }
 

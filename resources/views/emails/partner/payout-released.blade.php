@@ -9,5 +9,5 @@ Sign in to the partner dashboard to view Money. This email cannot be switched of
 Sign in
 @endcomponent
 
-Teqno Ltd · SEOLinkBuildings partner desk
+SEOLinkBuildings partner desk
 @endcomponent

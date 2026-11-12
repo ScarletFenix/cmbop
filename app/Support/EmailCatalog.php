@@ -48,6 +48,7 @@ use App\Mail\OrderApprovedByAdvertiser;
 use App\Mail\OrderPaymentConfirmed;
 use App\Mail\OrderRejected;
 use App\Mail\OrderStatusChanged;
+use App\Mail\PackProgressMail;
 use App\Mail\PartnerCorrectionMail;
 use App\Mail\PartnerEmailChangeCancelMail;
 use App\Mail\PartnerEmailChangeConfirmMail;
@@ -91,6 +92,7 @@ use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\OrderItemDispute;
+use App\Models\OrderPack;
 use App\Models\PartnerEmailChangeRequest;
 use App\Models\ProblemReport;
 use App\Models\SavedSearch;
@@ -295,6 +297,13 @@ class EmailCatalog
                 'description' => 'Advertiser notified when the guest post goes live.',
                 'category' => 'Orders',
                 'mailable' => LiveUrlSubmitted::class,
+                'status' => 'active',
+            ],
+            'pack_progress' => [
+                'name' => 'Pack Progress',
+                'description' => 'Advertiser update when a pack of guest posts publishes another article.',
+                'category' => 'Orders',
+                'mailable' => PackProgressMail::class,
                 'status' => 'active',
             ],
             'link_guarantee_restore' => [
@@ -847,6 +856,7 @@ class EmailCatalog
             'order rejected -' => 'order_rejected',
             'order approved by advertiser' => 'order_completed',
             'live url submitted' => 'live_url_submitted',
+            'pack of' => 'pack_progress',
             'ready for review' => 'order_status_changed',
             'restore the live link' => 'link_guarantee_restore',
             'article ready for approval' => 'article_ready_for_approval',
@@ -995,6 +1005,7 @@ class EmailCatalog
             'dispute_clawback_publisher' => new DisputeClawbackPublisher(self::sampleDispute(), $user, 100.0, 0.0),
             'dispute_refund_advertiser' => new DisputeRefundAdvertiser(self::sampleDispute(), $user, 115.0),
             'live_url_submitted' => new LiveUrlSubmitted($order, $item, $site, 'https://example.com/sample-live-url'),
+            'pack_progress' => new PackProgressMail(self::samplePack($order, $item, $site), $order, false),
             'link_guarantee_restore' => new LinkGuaranteeRestoreMail($user, $order, $item, now()->addDays(7)),
             'article_ready_for_approval' => new ArticleReadyForApprovalMail($user, $order, $item),
             'article_approved_for_publish' => new ArticleApprovedForPublishMail($user, $order, $item),
@@ -1209,12 +1220,35 @@ class EmailCatalog
             'social_channels' => ['facebook', 'x'],
             'content_link' => 'https://example.com/content.docx',
             'live_url' => 'https://example.com/sample-live-url',
+            'anchor_text' => 'guest posting marketplace',
+            'target_url' => 'https://advertiser.example/offer',
         ]);
         $item->id = self::PREVIEW_ID;
         $item->exists = false;
+        $item->live_url_submitted_at = now();
         $item->setRelation('site', self::sampleSite());
 
         return $item;
+    }
+
+    protected static function samplePack(Order $order, OrderItem $item, Site $site): OrderPack
+    {
+        $pack = new OrderPack([
+            'user_id' => self::PREVIEW_ID,
+            'site_id' => self::PREVIEW_ID,
+            'reference_code' => 'PACK-PREVIEW',
+            'pack_size' => 2,
+            'status' => OrderPack::STATUS_IN_PROGRESS,
+            'published_count' => 1,
+            'total_amount' => 200,
+        ]);
+        $pack->id = self::PREVIEW_ID;
+        $pack->exists = false;
+        $order->setRelation('items', collect([$item]));
+        $pack->setRelation('site', $site);
+        $pack->setRelation('orders', collect([$order]));
+
+        return $pack;
     }
 
     protected static function sampleDispute(): OrderItemDispute

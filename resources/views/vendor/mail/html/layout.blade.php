@@ -1,58 +1,37 @@
+@props(['mailTheme' => null])
+@php
+    $mailTheme = $mailTheme
+        ?? (app()->bound('transactional.mailTheme') ? app('transactional.mailTheme') : null);
+@endphp
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml" lang="{{ str_replace('_', '-', app()->getLocale()) }}">
 <head>
 <title>{{ config('app.name') }}</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
-<meta name="color-scheme" content="light">
-<meta name="supported-color-schemes" content="light">
-<style>
-@media only screen and (max-width: 600px) {
-.inner-body {
-width: 100% !important;
-}
-
-.footer {
-width: 100% !important;
-}
-
-.table td:first-child,
-.table th:first-child {
-white-space: normal !important;
-width: 34% !important;
-}
-
-.mail-summary-label {
-white-space: normal !important;
-width: 34% !important;
-}
-}
-
-@media only screen and (max-width: 500px) {
-.button {
-width: 100% !important;
-}
-}
-</style>
+<meta name="color-scheme" content="light dark">
+<meta name="supported-color-schemes" content="light dark">
+@include('emails.partials.mail-css')
 {!! $head ?? '' !!}
 </head>
-<body>
-
-<table class="wrapper" width="100%" cellpadding="0" cellspacing="0" role="presentation">
+<body class="mail-wrapper" style="margin:0;padding:0;width:100%;background-color:#f4fbfb;color:#334155;">
+@include('emails.partials.mail-preheader')
+<table class="wrapper" width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;background-color:#f4fbfb;margin:0;padding:0;">
 <tr>
-<td align="center">
-<table class="content" width="100%" cellpadding="0" cellspacing="0" role="presentation">
+<td align="center" style="padding:16px 8px;">
+<table class="content mail-shell" width="600" cellpadding="0" cellspacing="0" role="presentation" style="width:600px;max-width:600px;margin:0 auto;">
 {!! $header ?? '' !!}
 
-<!-- Email Body -->
 <tr>
-<td class="body" width="100%" cellpadding="0" cellspacing="0" style="border: hidden !important;">
-<table class="inner-body" align="center" width="570" cellpadding="0" cellspacing="0" role="presentation">
-<!-- Body content -->
+<td class="body" width="100%" cellpadding="0" cellspacing="0" style="border: hidden !important;background-color:#f7fafb;">
+<table class="inner-body mail-body-card" align="center" width="600" cellpadding="0" cellspacing="0" role="presentation" style="width:600px;max-width:600px;background-color:#f7fafb;">
 <tr>
-<td class="content-cell">
+<td class="content-cell mail-pad{{ !empty($mailTheme?->hideFirstBodyHeading) ? ' mail-has-hero' : '' }}" style="padding:24px 28px 28px 28px;">
+@include('emails.partials.mail-hero')
+@include('emails.partials.mail-progress')
+<div class="mail-body-copy">
 {!! Illuminate\Mail\Markdown::parse($slot) !!}
-
+</div>
 {!! $subcopy ?? '' !!}
 </td>
 </tr>

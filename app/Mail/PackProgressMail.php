@@ -20,6 +20,7 @@ class PackProgressMail extends PlatformMailable
         $this->pack = $pack;
         $this->order = $order;
         $this->complete = $complete;
+        $this->notificationType = 'pack_progress';
         $this->recipientUser = $order->user;
     }
 

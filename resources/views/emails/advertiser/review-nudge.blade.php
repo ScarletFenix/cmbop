@@ -5,9 +5,10 @@ Hi {{ $firstName }},
 
 The publisher has submitted the live link for your guest post on {{ $siteName }} (order #{{ $order->order_number }}).
 
+@include('emails.partials.mail-article-live', ['articleLive' => $articleLive ?? null])
 @php $safeLive = \App\Support\MailNotificationPresenter::safeLiveUrl($liveUrl ?? null); @endphp
-@if($safeLive)
-Live article URL: [{{ $safeLive }}]({{ $safeLive }})
+@if(empty($articleLive) && $safeLive)
+Live article URL: <a href="{{ $safeLive }}">{{ $safeLive }}</a>
 @endif
 
 Worth a quick check: that the anchor text and target URL are right, the link is not marked nofollow when you paid for dofollow, and the article reads as agreed.

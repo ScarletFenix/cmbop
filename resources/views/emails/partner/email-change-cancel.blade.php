@@ -9,5 +9,5 @@ If this was not you, cancel the change. That signs out every session and locks t
 This wasn’t me
 @endcomponent
 
-Teqno Ltd · SEOLinkBuildings partner desk
+SEOLinkBuildings partner desk
 @endcomponent

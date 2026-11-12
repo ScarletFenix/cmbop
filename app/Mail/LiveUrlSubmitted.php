@@ -6,6 +6,7 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Site;
 use App\Support\MailNotificationPresenter;
+use App\Support\TransactionalMailTheme;
 
 class LiveUrlSubmitted extends PlatformMailable
 {
@@ -25,6 +26,7 @@ class LiveUrlSubmitted extends PlatformMailable
         $this->site = $site;
         $this->liveUrl = $liveUrl;
         $this->recipientUser = $order->user;
+        $this->notificationType = 'live_url_submitted';
     }
 
     public function build()
@@ -46,6 +48,13 @@ class LiveUrlSubmitted extends PlatformMailable
         ]];
 
         $advertiser = $order->user;
+        $articleLive = TransactionalMailTheme::articleLivePayload([
+            'order' => $order,
+            'orderItem' => $this->orderItem,
+            'site' => $this->site,
+            'liveUrl' => $safeUrl,
+            'ctaUrl' => $this->advertiserOrdersUrl((int) $order->id),
+        ], true);
 
         return $this->subject('Live URL submitted — order #'.$order->order_number)
             ->markdown('emails.publisher.live_url_submitted')
@@ -56,10 +65,15 @@ class LiveUrlSubmitted extends PlatformMailable
                 'site' => $this->site,
                 'placements' => $placements,
                 'liveUrl' => $safeUrl,
+                'articleLive' => $articleLive,
+                'reviewReady' => true,
                 'autoApproveHours' => OrderItem::autoApproveHours(),
                 'ctaUrl' => $this->advertiserOrdersUrl((int) $order->id),
                 'supportLine' => MailNotificationPresenter::supportLine('order'),
                 'brand' => $this->brand(),
+                'preheader' => $articleLive['review_by']
+                    ? 'Review it by '.$articleLive['review_by'].'. Your payment stays protected until you approve.'
+                    : null,
             ]);
     }
 }

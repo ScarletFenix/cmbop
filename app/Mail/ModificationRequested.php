@@ -18,6 +18,7 @@ class ModificationRequested extends PlatformMailable
         parent::__construct();
         $this->order = $order;
         $this->reason = $reason;
+        $this->notificationType = 'modification_requested';
     }
 
     public function build()

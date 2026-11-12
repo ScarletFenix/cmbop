@@ -9,5 +9,5 @@ Confirm new email
 
 If you did not request this, ignore this message.
 
-Teqno Ltd · SEOLinkBuildings partner desk
+SEOLinkBuildings partner desk
 @endcomponent

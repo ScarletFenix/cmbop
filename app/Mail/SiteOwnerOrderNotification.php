@@ -22,6 +22,8 @@ class SiteOwnerOrderNotification extends PlatformMailable
         $this->publisher = $site->relationLoaded('publisher') && $site->publisher
             ? $site->publisher
             : User::find($site->publisher_id);
+        $this->notificationType = 'publisher_new_order';
+        $this->recipientUser = $this->publisher instanceof User ? $this->publisher : null;
     }
 
     public function build()

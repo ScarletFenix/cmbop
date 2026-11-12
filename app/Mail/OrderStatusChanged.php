@@ -5,6 +5,7 @@ namespace App\Mail;
 use App\Models\Order;
 use App\Models\User;
 use App\Support\MailNotificationPresenter;
+use App\Support\TransactionalMailTheme;
 
 class OrderStatusChanged extends PlatformMailable
 {
@@ -71,6 +72,14 @@ class OrderStatusChanged extends PlatformMailable
             default => 'Order is now '.$newLabel,
         };
 
+        $articleLive = null;
+        if ($reviewReady && $this->audience === 'advertiser' && $order->items->count() === 1) {
+            $articleLive = TransactionalMailTheme::articleLivePayload([
+                'order' => $order,
+                'ctaUrl' => $ctaUrl,
+            ], true);
+        }
+
         return $this->subject($subject)
             ->markdown('emails.orders.status-changed')
             ->with([
@@ -78,6 +87,7 @@ class OrderStatusChanged extends PlatformMailable
                 'greetingName' => $greetingName !== '' ? $greetingName : 'there',
                 'advertiserCompleted' => $advertiserCompleted,
                 'reviewReady' => $reviewReady,
+                'articleLive' => $articleLive,
                 'catalogUrl' => $this->customerFacingRoute('advertiser.catalog'),
                 'audience' => $this->audience,
                 'changeKind' => $this->changeKind,

@@ -5,6 +5,7 @@ namespace App\Mail;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Site;
+use App\Support\TransactionalMailTheme;
 
 class AutoApproveReminderMail extends PlatformMailable
 {
@@ -30,6 +31,14 @@ class AutoApproveReminderMail extends PlatformMailable
     public function build()
     {
         $siteName = $this->site?->site_name ?? $this->orderItem->site_name ?? 'your placement';
+        $ordersUrl = $this->advertiserOrdersUrl((int) $this->order->id);
+        $articleLive = TransactionalMailTheme::articleLivePayload([
+            'order' => $this->order,
+            'orderItem' => $this->orderItem,
+            'site' => $this->site,
+            'liveUrl' => $this->orderItem->live_url,
+            'ctaUrl' => $ordersUrl,
+        ], true);
 
         return $this->subject('1 day left to review order #'.$this->order->order_number)
             ->markdown('emails.advertiser.auto-approve-reminder', [
@@ -39,7 +48,9 @@ class AutoApproveReminderMail extends PlatformMailable
                 'siteName' => $siteName,
                 'hoursRemaining' => $this->hoursRemaining,
                 'liveUrl' => $this->orderItem->live_url,
-                'ordersUrl' => $this->advertiserOrdersUrl((int) $this->order->id),
+                'articleLive' => $articleLive,
+                'reviewReady' => true,
+                'ordersUrl' => $ordersUrl,
             ]);
     }
 }

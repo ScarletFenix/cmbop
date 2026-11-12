@@ -5,9 +5,10 @@ Your guest post on {{ $siteName }} (order #{{ $order->order_number }}) is still 
 
 If you take no action in about {{ $hoursRemaining }} hour(s), the order will be auto-completed and the publisher will be paid.
 
+@include('emails.partials.mail-article-live', ['articleLive' => $articleLive ?? null])
 @php $safeLive = \App\Support\MailNotificationPresenter::safeLiveUrl($liveUrl ?? null); @endphp
-@if($safeLive)
-Live article URL: [{{ $safeLive }}]({{ $safeLive }})
+@if(empty($articleLive) && $safeLive)
+Live article URL: <a href="{{ $safeLive }}">{{ $safeLive }}</a>
 @endif
 
 You can:

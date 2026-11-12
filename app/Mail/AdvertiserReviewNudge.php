@@ -6,6 +6,7 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Site;
 use App\Models\User;
+use App\Support\TransactionalMailTheme;
 use Illuminate\Support\Carbon;
 
 /**
@@ -33,6 +34,14 @@ class AdvertiserReviewNudge extends PlatformMailable
     public function build()
     {
         $siteName = $this->site?->site_name ?: ($this->orderItem->site_name ?: 'your placement');
+        $ordersUrl = $this->advertiserOrdersUrl((int) $this->order->id);
+        $articleLive = TransactionalMailTheme::articleLivePayload([
+            'order' => $this->order,
+            'orderItem' => $this->orderItem,
+            'site' => $this->site,
+            'liveUrl' => $this->orderItem->live_url,
+            'ctaUrl' => $ordersUrl,
+        ], true);
 
         return $this->subject('Your link is live — take a look at order #'.$this->order->order_number)
             ->markdown('emails.advertiser.review-nudge', [
@@ -41,8 +50,10 @@ class AdvertiserReviewNudge extends PlatformMailable
                 'orderItem' => $this->orderItem,
                 'siteName' => $siteName,
                 'liveUrl' => $this->orderItem->live_url,
+                'articleLive' => $articleLive,
+                'reviewReady' => true,
                 'autoCompletesAt' => $this->autoCompletesAt,
-                'ordersUrl' => $this->advertiserOrdersUrl((int) $this->order->id),
+                'ordersUrl' => $ordersUrl,
                 'brand' => $this->brand(),
             ]);
     }

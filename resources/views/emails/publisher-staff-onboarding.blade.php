@@ -35,5 +35,5 @@
 {{ $payoutLine }}
 
 Thanks,<br>
-{{ $brand['name'] ?? config('app.name') }} · Teqno Ltd
+{{ $brand['name'] ?? config('app.name') }}
 @endcomponent
